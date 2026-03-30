@@ -1,0 +1,64 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Misc
+.DS_Store
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+Untitled*.ipynb
+
+# Constat session data
+.constat/
+*.constat.json
+.env
+demo/vector_store.duckdb
+demo/notebook_demo.ipynb
+demo/raise_emails.csv
+
+# Data files
+data/
+*.duckdb
+*.duckdb.wal
+
+# Screenshots
+Screenshot*
+
+# Canary system
+.canary_registry.json
