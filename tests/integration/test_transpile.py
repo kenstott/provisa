@@ -1,0 +1,81 @@
+# Copyright (c) 2025 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""Integration tests for SQLGlot PG SQL → Trino SQL transpilation."""
+
+import pytest
+
+from provisa.transpiler.transpile import transpile_to_trino
+
+
+class TestTranspileToTrino:
+    def test_simple_select(self):
+        pg = 'SELECT "id", "amount" FROM "public"."orders"'
+        trino_sql = transpile_to_trino(pg)
+        assert "id" in trino_sql.lower()
+        assert "amount" in trino_sql.lower()
+        assert "orders" in trino_sql.lower()
+
+    def test_where_with_placeholder(self):
+        pg = 'SELECT "id" FROM "public"."orders" WHERE "region" = $1'
+        trino_sql = transpile_to_trino(pg)
+        assert "region" in trino_sql.lower()
+
+    def test_left_join(self):
+        pg = (
+            'SELECT "t0"."id", "t1"."name" '
+            'FROM "public"."orders" "t0" '
+            'LEFT JOIN "public"."customers" "t1" '
+            'ON "t0"."customer_id" = "t1"."id"'
+        )
+        trino_sql = transpile_to_trino(pg)
+        assert "left" in trino_sql.lower() or "LEFT" in trino_sql
+        assert "join" in trino_sql.lower()
+
+    def test_limit_offset(self):
+        pg = 'SELECT "id" FROM "public"."orders" LIMIT 10 OFFSET 20'
+        trino_sql = transpile_to_trino(pg)
+        assert "10" in trino_sql
+        assert "20" in trino_sql
+
+    def test_order_by(self):
+        pg = 'SELECT "id" FROM "public"."orders" ORDER BY "created_at" DESC'
+        trino_sql = transpile_to_trino(pg)
+        assert "desc" in trino_sql.lower()
+
+    def test_in_clause(self):
+        pg = 'SELECT "id" FROM "public"."orders" WHERE "region" IN ($1, $2)'
+        trino_sql = transpile_to_trino(pg)
+        assert "in" in trino_sql.lower()
+
+    def test_is_null(self):
+        pg = 'SELECT "id" FROM "public"."orders" WHERE "region" IS NULL'
+        trino_sql = transpile_to_trino(pg)
+        assert "is null" in trino_sql.lower()
+
+    def test_empty_sql_returns_empty(self):
+        result = transpile_to_trino("")
+        assert result == ""
+
+    def test_combined_query(self):
+        pg = (
+            'SELECT "t0"."id", "t0"."amount", "t1"."name" '
+            'FROM "public"."orders" "t0" '
+            'LEFT JOIN "public"."customers" "t1" '
+            'ON "t0"."customer_id" = "t1"."id" '
+            'WHERE "t0"."region" = $1 '
+            'ORDER BY "t0"."amount" DESC '
+            'LIMIT 10 OFFSET 5'
+        )
+        trino_sql = transpile_to_trino(pg)
+        lower = trino_sql.lower()
+        assert "left" in lower
+        assert "join" in lower
+        assert "order by" in lower or "order" in lower
+        assert "10" in trino_sql

@@ -1,0 +1,40 @@
+# Dev mode: PG + Trino only. Run Provisa locally with native debugger.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: provisa
+      POSTGRES_USER: provisa
+      POSTGRES_PASSWORD: provisa
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U provisa"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  trino:
+    image: trinodb/trino:439
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino/etc/config.properties:/etc/trino/config.properties:ro
+      - ./trino/etc/jvm.config:/etc/trino/jvm.config:ro
+      - ./trino/etc/node.properties:/etc/trino/node.properties:ro
+      - ./trino/catalog:/etc/trino/catalog
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "trino --execute 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  pg_data:

@@ -1,0 +1,46 @@
+[project]
+name = "provisa"
+version = "0.1.0"
+description = "Config-driven data virtualization platform"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "asyncpg",
+    "pydantic>=2",
+    "strawberry-graphql[fastapi]",
+    "pyyaml",
+    "graphql-core>=3.2",
+    "sqlglot",
+    "trino",
+    "grpcio",
+    "pyarrow",
+    "httpx",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+    "black",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["provisa*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+markers = [
+    "integration: requires Docker Compose stack (PG + Trino)",
+    "e2e: full HTTP pipeline tests against running app",
+    "slow: long-running tests",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100

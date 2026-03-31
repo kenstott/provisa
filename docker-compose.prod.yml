@@ -1,0 +1,20 @@
+# Production override: adds Provisa container.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up
+services:
+  provisa:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      PG_HOST: postgres
+      PG_PORT: 5432
+      PG_DATABASE: provisa
+      PG_USER: provisa
+      PG_PASSWORD: provisa
+      TRINO_HOST: trino
+      TRINO_PORT: 8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      trino:
+        condition: service_healthy

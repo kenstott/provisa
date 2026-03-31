@@ -1,0 +1,97 @@
+sources:
+  - id: sales-pg
+    type: postgresql
+    host: localhost
+    port: 5432
+    database: provisa
+    username: provisa
+    password: ${env:PG_PASSWORD}
+
+domains:
+  - id: sales-analytics
+    description: Sales operational and analytical data
+  - id: product-catalog
+    description: Product catalog data
+
+naming:
+  rules:
+    - pattern: "^prod_pg_"
+      replace: ""
+
+tables:
+  - source_id: sales-pg
+    domain_id: sales-analytics
+    schema: public
+    table: orders
+    governance: pre-approved
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: customer_id
+        visible_to: [admin, analyst]
+      - name: amount
+        visible_to: [admin]
+      - name: region
+        visible_to: [admin, analyst]
+      - name: status
+        visible_to: [admin, analyst]
+      - name: created_at
+        visible_to: [admin, analyst]
+  - source_id: sales-pg
+    domain_id: sales-analytics
+    schema: public
+    table: customers
+    governance: pre-approved
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: name
+        visible_to: [admin, analyst]
+      - name: email
+        visible_to: [admin]
+      - name: region
+        visible_to: [admin, analyst]
+  - source_id: sales-pg
+    domain_id: product-catalog
+    schema: public
+    table: products
+    governance: registry-required
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: name
+        visible_to: [admin, analyst]
+      - name: price
+        visible_to: [admin]
+      - name: category
+        visible_to: [admin, analyst]
+
+relationships:
+  - id: orders-to-customers
+    source_table_id: orders
+    target_table_id: customers
+    source_column: customer_id
+    target_column: id
+    cardinality: many-to-one
+
+roles:
+  - id: admin
+    capabilities:
+      - source_registration
+      - table_registration
+      - relationship_registration
+      - security_config
+      - query_development
+      - query_approval
+      - admin
+    domain_access: ["*"]
+  - id: analyst
+    capabilities:
+      - query_development
+    domain_access:
+      - sales-analytics
+
+rls_rules:
+  - table_id: orders
+    role_id: analyst
+    filter: "region = current_setting('provisa.user_region')"
