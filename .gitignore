@@ -62,3 +62,6 @@ Screenshot*
 
 # Canary system
 .canary_registry.json
+
+# Claude Code
+.claude/scheduled_tasks.lock
