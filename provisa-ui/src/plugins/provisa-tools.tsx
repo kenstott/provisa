@@ -8,6 +8,7 @@
 import { useState, useCallback } from "react";
 import { useOperationsEditorState } from "@graphiql/react";
 import { compileQuery, submitQuery } from "../api/admin";
+import { format as formatSql } from "sql-formatter";
 import type { GraphiQLPlugin } from "graphiql";
 
 interface CompileResult {
@@ -19,6 +20,69 @@ interface CompileResult {
   sources: string[];
   params: unknown[];
 }
+
+function SqlPanel({ compiled }: { compiled: CompileResult }) {
+  const [copied, setCopied] = useState(false);
+  const rawSql = compiled.direct_sql || compiled.trino_sql || compiled.sql;
+  const formatted = formatSql(rawSql, {
+    language: compiled.trino_sql ? "trino" : "postgresql",
+    tabWidth: 2,
+    keywordCase: "upper",
+  });
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(formatted).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [formatted]);
+
+  const label = compiled.direct_sql
+    ? "Direct SQL"
+    : compiled.trino_sql
+      ? "Trino SQL"
+      : "Compiled SQL";
+
+  return (
+    <div className="provisa-tools-sql">
+      <div className="provisa-tools-meta">
+        <div>
+          <strong>Route:</strong> {compiled.route}
+        </div>
+        <div className="provisa-tools-reason">{compiled.route_reason}</div>
+        <div>
+          <strong>Sources:</strong> {compiled.sources.join(", ")}
+        </div>
+      </div>
+      <div className="provisa-tools-code-header">
+        <span className="provisa-tools-label">{label}</span>
+        <button
+          className="provisa-tools-copy"
+          onClick={handleCopy}
+          title="Copy SQL"
+        >
+          {copied ? (
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+          )}
+        </button>
+      </div>
+      <pre className="provisa-tools-code">{formatted}</pre>
+      {compiled.params.length > 0 && (
+        <div className="provisa-tools-params">
+          <strong>Params:</strong> {JSON.stringify(compiled.params)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const [query] = useOperationsEditorState();
@@ -134,32 +198,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
       {submitMsg && <div className="provisa-tools-success">{submitMsg}</div>}
 
       {compiled && (
-        <div className="provisa-tools-sql">
-          <div className="provisa-tools-meta">
-            <div>
-              <strong>Route:</strong> {compiled.route}
-            </div>
-            <div className="provisa-tools-reason">{compiled.route_reason}</div>
-            <div>
-              <strong>Sources:</strong> {compiled.sources.join(", ")}
-            </div>
-          </div>
-          <div className="provisa-tools-label">
-            {compiled.direct_sql
-              ? "Direct SQL"
-              : compiled.trino_sql
-                ? "Trino SQL"
-                : "Compiled SQL"}
-          </div>
-          <pre className="provisa-tools-code">
-            {compiled.direct_sql || compiled.trino_sql || compiled.sql}
-          </pre>
-          {compiled.params.length > 0 && (
-            <div className="provisa-tools-params">
-              <strong>Params:</strong> {JSON.stringify(compiled.params)}
-            </div>
-          )}
-        </div>
+        <SqlPanel compiled={compiled} />
       )}
     </div>
   );

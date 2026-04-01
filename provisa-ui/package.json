@@ -26,6 +26,7 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-router-dom": "^7.13.2",
+    "sql-formatter": "^15.7.3",
     "vite-plugin-monaco-editor": "^1.1.0"
   },
   "devDependencies": {
