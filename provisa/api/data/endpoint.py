@@ -413,10 +413,14 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
             trino_sql = transpile_to_trino(exec_sql)
 
             if state.flight_client is not None:
-                from provisa.executor.trino_flight import execute_trino_flight
-                result = execute_trino_flight(
-                    state.flight_client, trino_sql, compiled.params,
-                )
+                try:
+                    from provisa.executor.trino_flight import execute_trino_flight
+                    result = execute_trino_flight(
+                        state.flight_client, trino_sql, compiled.params,
+                    )
+                except Exception as flight_err:
+                    log.warning("Flight SQL failed, falling back to REST: %s", flight_err)
+                    result = execute_trino(state.trino_conn, trino_sql, compiled.params)
             else:
                 result = execute_trino(state.trino_conn, trino_sql, compiled.params)
     except HTTPException:
@@ -455,10 +459,13 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
             else:
                 full_trino_sql = transpile_to_trino(compiled.sql)
                 if state.flight_client is not None:
-                    from provisa.executor.trino_flight import execute_trino_flight
-                    full_result = execute_trino_flight(
-                        state.flight_client, full_trino_sql, compiled.params,
-                    )
+                    try:
+                        from provisa.executor.trino_flight import execute_trino_flight
+                        full_result = execute_trino_flight(
+                            state.flight_client, full_trino_sql, compiled.params,
+                        )
+                    except Exception:
+                        full_result = execute_trino(state.trino_conn, full_trino_sql, compiled.params)
                 else:
                     full_result = execute_trino(state.trino_conn, full_trino_sql, compiled.params)
 
