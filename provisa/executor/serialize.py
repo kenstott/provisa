@@ -29,6 +29,8 @@ def _convert_value(val: object) -> object:
         if f == int(f) and "." not in str(val):
             return int(f)
         return f
+    if hasattr(val, 'isoformat'):
+        return val.isoformat()
     return val
 
 

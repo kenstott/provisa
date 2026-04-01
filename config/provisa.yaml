@@ -141,6 +141,9 @@ tables:
     description: "Customer support events from Kafka (tickets + resolutions)"
     governance: pre-approved
     columns:
+      - name: _timestamp
+        visible_to: [admin, analyst]
+        description: "Kafka message timestamp"
       - name: event_type
         visible_to: [admin, analyst]
         description: "Event discriminator: TicketCreated or TicketResolved"

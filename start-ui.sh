@@ -23,8 +23,16 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
   set +a
 fi
 
-# Ensure PG_PASSWORD is set
+# Ensure required env vars are set
 export PG_PASSWORD="${PG_PASSWORD:-provisa}"
+export REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
+export PROVISA_REDIRECT_ENABLED="${PROVISA_REDIRECT_ENABLED:-true}"
+export PROVISA_REDIRECT_ENDPOINT="${PROVISA_REDIRECT_ENDPOINT:-http://localhost:9000}"
+export PROVISA_REDIRECT_ACCESS_KEY="${PROVISA_REDIRECT_ACCESS_KEY:-minioadmin}"
+export PROVISA_REDIRECT_SECRET_KEY="${PROVISA_REDIRECT_SECRET_KEY:-minioadmin}"
+export PROVISA_REDIRECT_BUCKET="${PROVISA_REDIRECT_BUCKET:-provisa-results}"
+export PROVISA_CHANGE_EVENT_BOOTSTRAP="${PROVISA_CHANGE_EVENT_BOOTSTRAP:-localhost:9092}"
+export KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
 
 # Recreate data volumes if requested (useful after Docker crashes)
 if [ "$RESET_VOLUMES" = true ]; then
