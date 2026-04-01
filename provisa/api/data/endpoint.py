@@ -575,7 +575,14 @@ class SubmitRequest(BaseModel):
     query: str
     variables: dict | None = None
     role: str = "admin"
-    sink: SinkRequest | None = None  # optional Kafka sink request
+    sink: SinkRequest | None = None
+    business_purpose: str | None = None
+    use_cases: str | None = None
+    data_sensitivity: str | None = None  # public, internal, confidential, restricted
+    refresh_frequency: str | None = None  # real-time, hourly, daily, weekly, ad-hoc
+    expected_row_count: str | None = None  # <1K, 1K-100K, 100K+
+    owner_team: str | None = None
+    expiry_date: str | None = None  # ISO date
 
 
 def _extract_operation_name(query_text: str) -> str | None:
@@ -721,15 +728,31 @@ async def submit_endpoint(
             developer_id=role_id,
         )
 
-        # Save sink request if provided
-        if request.sink:
+        # Save optional metadata and sink
+        updates = []
+        params = []
+        idx = 1
+        for field, value in [
+            ("sink_topic", request.sink.topic if request.sink else None),
+            ("sink_trigger", request.sink.trigger if request.sink else None),
+            ("sink_key_column", request.sink.key_column if request.sink else None),
+            ("business_purpose", request.business_purpose),
+            ("use_cases", request.use_cases),
+            ("data_sensitivity", request.data_sensitivity),
+            ("refresh_frequency", request.refresh_frequency),
+            ("expected_row_count", request.expected_row_count),
+            ("owner_team", request.owner_team),
+            ("expiry_date", request.expiry_date),
+        ]:
+            if value is not None:
+                updates.append(f"{field} = ${idx}")
+                params.append(value)
+                idx += 1
+        if updates:
+            params.append(query_id)
             await conn.execute(
-                "UPDATE persisted_queries SET sink_topic = $1, sink_trigger = $2, "
-                "sink_key_column = $3 WHERE id = $4",
-                request.sink.topic,
-                request.sink.trigger,
-                request.sink.key_column,
-                query_id,
+                f"UPDATE persisted_queries SET {', '.join(updates)} WHERE id = ${idx}",
+                *params,
             )
 
     return {

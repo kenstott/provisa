@@ -154,15 +154,30 @@ CREATE TABLE IF NOT EXISTS persisted_queries (
     sink_topic      TEXT,               -- Kafka sink topic (REQ-176)
     sink_trigger    TEXT CHECK (sink_trigger IN ('change_event', 'schedule', 'manual')),
     sink_key_column TEXT,               -- message key column
+    -- Submission metadata
+    business_purpose TEXT,              -- why this query is needed
+    use_cases       TEXT,               -- expected consumers/dashboards/reports
+    data_sensitivity TEXT CHECK (data_sensitivity IN ('public', 'internal', 'confidential', 'restricted')),
+    refresh_frequency TEXT,             -- how often results are needed (e.g., "real-time", "hourly", "daily")
+    expected_row_count TEXT,            -- estimated result size (e.g., "<1K", "1K-100K", "100K+")
+    owner_team      TEXT,               -- team responsible for this query
+    expiry_date     DATE,               -- optional: when this query should be reviewed/retired
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Migration: add sink columns
+-- Migration: add sink and metadata columns
 DO $$ BEGIN
     ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS sink_topic TEXT;
     ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS sink_trigger TEXT;
     ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS sink_key_column TEXT;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS business_purpose TEXT;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS use_cases TEXT;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS data_sensitivity TEXT;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS refresh_frequency TEXT;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS expected_row_count TEXT;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS owner_team TEXT;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS expiry_date DATE;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

@@ -179,6 +179,13 @@ class Query:
                     sink_topic=r.get("sink_topic"),
                     sink_trigger=r.get("sink_trigger"),
                     sink_key_column=r.get("sink_key_column"),
+                    business_purpose=r.get("business_purpose"),
+                    use_cases=r.get("use_cases"),
+                    data_sensitivity=r.get("data_sensitivity"),
+                    refresh_frequency=r.get("refresh_frequency"),
+                    expected_row_count=r.get("expected_row_count"),
+                    owner_team=r.get("owner_team"),
+                    expiry_date=str(r["expiry_date"]) if r.get("expiry_date") else None,
                 )
                 for r in rows
             ]

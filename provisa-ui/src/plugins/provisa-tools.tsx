@@ -87,6 +87,15 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Submission metadata
+  const [showSubmitForm, setShowSubmitForm] = useState(false);
+  const [businessPurpose, setBusinessPurpose] = useState("");
+  const [useCases, setUseCases] = useState("");
+  const [dataSensitivity, setDataSensitivity] = useState("internal");
+  const [refreshFrequency, setRefreshFrequency] = useState("ad-hoc");
+  const [expectedRowCount, setExpectedRowCount] = useState("<1K");
+  const [ownerTeam, setOwnerTeam] = useState("");
+
   // Sink options
   const [showSink, setShowSink] = useState(false);
   const [sinkTopic, setSinkTopic] = useState("");
@@ -127,7 +136,15 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
               key_column: sinkKeyColumn.trim() || undefined,
             }
           : undefined;
-      const result = await submitQuery(roleId, query, undefined, sink);
+      const metadata = {
+        business_purpose: businessPurpose.trim() || undefined,
+        use_cases: useCases.trim() || undefined,
+        data_sensitivity: dataSensitivity,
+        refresh_frequency: refreshFrequency,
+        expected_row_count: expectedRowCount,
+        owner_team: ownerTeam.trim() || undefined,
+      };
+      const result = await submitQuery(roleId, query, undefined, sink, metadata);
       setSubmitMsg(
         result.message +
           (sink ? ` (sink → ${sink.topic}, trigger: ${sink.trigger})` : ""),
@@ -137,19 +154,89 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [roleId, query, showSink, sinkTopic, sinkTrigger, sinkKeyColumn]);
+  }, [roleId, query, showSink, sinkTopic, sinkTrigger, sinkKeyColumn,
+      businessPurpose, useCases, dataSensitivity, refreshFrequency, expectedRowCount, ownerTeam]);
 
   return (
     <div className="provisa-tools">
       <div className="provisa-tools-actions">
         <button
-          onClick={handleSubmit}
-          disabled={loading || !query.trim()}
-          className="submit-btn"
+          onClick={() => setShowSubmitForm(!showSubmitForm)}
+          disabled={!query.trim()}
+          className={showSubmitForm ? "" : "submit-btn"}
         >
-          Submit for Approval
+          {showSubmitForm ? "Cancel" : "Submit for Approval"}
         </button>
+        {showSubmitForm && (
+          <button
+            onClick={handleSubmit}
+            disabled={loading || !query.trim() || !businessPurpose.trim()}
+            className="submit-btn"
+          >
+            {loading ? "Submitting..." : "Submit"}
+          </button>
+        )}
       </div>
+
+      {showSubmitForm && (
+        <div className="provisa-tools-metadata">
+          <label>
+            Business Purpose <span className="required">*</span>
+            <textarea
+              value={businessPurpose}
+              onChange={(e) => setBusinessPurpose(e.target.value)}
+              placeholder="Why is this query needed? What decision does it support?"
+              rows={2}
+            />
+          </label>
+          <label>
+            Expected Use Cases
+            <textarea
+              value={useCases}
+              onChange={(e) => setUseCases(e.target.value)}
+              placeholder="Dashboards, reports, APIs, or teams that will consume this"
+              rows={2}
+            />
+          </label>
+          <div className="provisa-tools-meta-row">
+            <label>
+              Data Sensitivity
+              <select value={dataSensitivity} onChange={(e) => setDataSensitivity(e.target.value)}>
+                <option value="public">Public</option>
+                <option value="internal">Internal</option>
+                <option value="confidential">Confidential</option>
+                <option value="restricted">Restricted</option>
+              </select>
+            </label>
+            <label>
+              Refresh Frequency
+              <select value={refreshFrequency} onChange={(e) => setRefreshFrequency(e.target.value)}>
+                <option value="real-time">Real-time</option>
+                <option value="hourly">Hourly</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="ad-hoc">Ad-hoc</option>
+              </select>
+            </label>
+            <label>
+              Expected Size
+              <select value={expectedRowCount} onChange={(e) => setExpectedRowCount(e.target.value)}>
+                <option value="<1K">&lt;1K rows</option>
+                <option value="1K-100K">1K-100K</option>
+                <option value="100K+">100K+</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Owner Team
+            <input
+              value={ownerTeam}
+              onChange={(e) => setOwnerTeam(e.target.value)}
+              placeholder="Team responsible for this query"
+            />
+          </label>
+        </div>
+      )}
 
       <label className="provisa-tools-sink-toggle">
         <input

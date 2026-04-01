@@ -348,14 +348,33 @@ export async function compileQuery(
   return resp.json();
 }
 
+export interface SubmitMetadata {
+  business_purpose?: string;
+  use_cases?: string;
+  data_sensitivity?: string;
+  refresh_frequency?: string;
+  expected_row_count?: string;
+  owner_team?: string;
+  sink?: { topic: string; trigger: string; key_column?: string };
+}
+
 export async function submitQuery(
   roleId: string,
   query: string,
   variables?: Record<string, unknown>,
   sink?: { topic: string; trigger: string; key_column?: string },
+  metadata?: SubmitMetadata,
 ): Promise<{ query_id: number; operation_name: string; message: string }> {
   const body: Record<string, unknown> = { query, variables };
   if (sink) body.sink = sink;
+  if (metadata) {
+    if (metadata.business_purpose) body.business_purpose = metadata.business_purpose;
+    if (metadata.use_cases) body.use_cases = metadata.use_cases;
+    if (metadata.data_sensitivity) body.data_sensitivity = metadata.data_sensitivity;
+    if (metadata.refresh_frequency) body.refresh_frequency = metadata.refresh_frequency;
+    if (metadata.expected_row_count) body.expected_row_count = metadata.expected_row_count;
+    if (metadata.owner_team) body.owner_team = metadata.owner_team;
+  }
   const resp = await fetch(`${API_BASE_RAW}/data/submit`, {
     method: "POST",
     headers: {

@@ -157,6 +157,13 @@ class PersistedQueryType:
     sink_topic: str | None
     sink_trigger: str | None
     sink_key_column: str | None
+    business_purpose: str | None
+    use_cases: str | None
+    data_sensitivity: str | None
+    refresh_frequency: str | None
+    expected_row_count: str | None
+    owner_team: str | None
+    expiry_date: str | None
 
 
 @strawberry.type
