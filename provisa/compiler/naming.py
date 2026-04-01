@@ -89,5 +89,11 @@ def generate_name(
 
 
 def to_type_name(field_name: str) -> str:
-    """Convert a field name to a GraphQL type name (PascalCase)."""
+    """Convert a field name to a GraphQL type name (PascalCase).
+
+    Preserves the domain separator: sales_analytics__orders → SalesAnalytics_Orders
+    """
+    if "__" in field_name:
+        parts = field_name.split("__", 1)
+        return _to_pascal_case(parts[0]) + "_" + _to_pascal_case(parts[1])
     return _to_pascal_case(field_name)
