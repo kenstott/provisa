@@ -222,6 +222,32 @@ body.graphiql-dark .graphiql-dialog {
   flex: 1;
 }
 
+.provisa-tools-delivery {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.provisa-tools-delivery-label {
+  font-size: 12px;
+  color: hsl(224, 10%, 60%);
+}
+
+.provisa-tools-delivery-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+}
+
+.provisa-tools-delivery-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: hsl(224, 10%, 75%);
+  cursor: pointer;
+}
+
 .provisa-tools-sink-toggle {
   display: flex;
   align-items: center;

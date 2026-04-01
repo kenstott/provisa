@@ -235,47 +235,74 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
               placeholder="Team responsible for this query"
             />
           </label>
-        </div>
-      )}
 
-      <label className="provisa-tools-sink-toggle">
-        <input
-          type="checkbox"
-          checked={showSink}
-          onChange={(e) => setShowSink(e.target.checked)}
-        />
-        Include Kafka sink
-      </label>
+          <div className="provisa-tools-delivery">
+            <span className="provisa-tools-delivery-label">Expected Delivery</span>
+            <div className="provisa-tools-delivery-grid">
+              {[
+                { id: "json", label: "JSON (REST)" },
+                { id: "arrow", label: "Arrow Flight" },
+                { id: "grpc", label: "Protobuf gRPC" },
+                { id: "jdbc", label: "JDBC" },
+                { id: "parquet", label: "Parquet (S3)" },
+                { id: "kafka", label: "Kafka Sink" },
+              ].map((d) => (
+                <label key={d.id} className="provisa-tools-delivery-item">
+                  <input
+                    type="checkbox"
+                    checked={
+                      d.id === "kafka" ? showSink : (useCases.includes(d.id))
+                    }
+                    onChange={(e) => {
+                      if (d.id === "kafka") {
+                        setShowSink(e.target.checked);
+                      } else {
+                        const current = useCases.split(",").map(s => s.trim()).filter(Boolean);
+                        if (e.target.checked) {
+                          setUseCases([...current, d.id].join(", "));
+                        } else {
+                          setUseCases(current.filter(c => c !== d.id).join(", "));
+                        }
+                      }
+                    }}
+                  />
+                  {d.label}
+                </label>
+              ))}
+            </div>
+          </div>
 
-      {showSink && (
-        <div className="provisa-tools-sink">
-          <label>
-            Topic
-            <input
-              value={sinkTopic}
-              onChange={(e) => setSinkTopic(e.target.value)}
-              placeholder="e.g., order-report-updates"
-            />
-          </label>
-          <label>
-            Trigger
-            <select
-              value={sinkTrigger}
-              onChange={(e) => setSinkTrigger(e.target.value)}
-            >
-              <option value="change_event">On data change</option>
-              <option value="schedule">On schedule</option>
-              <option value="manual">Manual</option>
-            </select>
-          </label>
-          <label>
-            Key Column <span style={{ fontWeight: "normal" }}>(optional)</span>
-            <input
-              value={sinkKeyColumn}
-              onChange={(e) => setSinkKeyColumn(e.target.value)}
-              placeholder="e.g., region"
-            />
-          </label>
+          {showSink && (
+            <div className="provisa-tools-sink">
+              <label>
+                Topic
+                <input
+                  value={sinkTopic}
+                  onChange={(e) => setSinkTopic(e.target.value)}
+                  placeholder="e.g., order-report-updates"
+                />
+              </label>
+              <label>
+                Trigger
+                <select
+                  value={sinkTrigger}
+                  onChange={(e) => setSinkTrigger(e.target.value)}
+                >
+                  <option value="change_event">On data change</option>
+                  <option value="schedule">On schedule</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </label>
+              <label>
+                Key Column <span style={{ fontWeight: "normal" }}>(optional)</span>
+                <input
+                  value={sinkKeyColumn}
+                  onChange={(e) => setSinkKeyColumn(e.target.value)}
+                  placeholder="e.g., region"
+                />
+              </label>
+            </div>
+          )}
         </div>
       )}
 
