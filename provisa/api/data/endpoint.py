@@ -404,7 +404,7 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
                 compiled = rewrite_if_mv_match(compiled, fresh_mvs)
                 if sampling:
                     compiled = apply_sampling(compiled, get_sample_size())
-            if state.trino_conn is None and state.flight_client is None:
+            if state.trino_conn is None:
                 raise HTTPException(status_code=503, detail="Trino not connected")
 
             exec_sql = compiled.sql
@@ -412,17 +412,7 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
                 exec_sql = _inject_probe_limit(exec_sql, probe_limit)
             trino_sql = transpile_to_trino(exec_sql)
 
-            if state.flight_client is not None:
-                try:
-                    from provisa.executor.trino_flight import execute_trino_flight
-                    result = execute_trino_flight(
-                        state.flight_client, trino_sql, compiled.params,
-                    )
-                except Exception as flight_err:
-                    log.warning("Flight SQL failed, falling back to REST: %s", flight_err)
-                    result = execute_trino(state.trino_conn, trino_sql, compiled.params)
-            else:
-                result = execute_trino(state.trino_conn, trino_sql, compiled.params)
+            result = execute_trino(state.trino_conn, trino_sql, compiled.params)
     except HTTPException:
         raise
     except Exception as e:
@@ -458,16 +448,7 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
                 )
             else:
                 full_trino_sql = transpile_to_trino(compiled.sql)
-                if state.flight_client is not None:
-                    try:
-                        from provisa.executor.trino_flight import execute_trino_flight
-                        full_result = execute_trino_flight(
-                            state.flight_client, full_trino_sql, compiled.params,
-                        )
-                    except Exception:
-                        full_result = execute_trino(state.trino_conn, full_trino_sql, compiled.params)
-                else:
-                    full_result = execute_trino(state.trino_conn, full_trino_sql, compiled.params)
+                full_result = execute_trino(state.trino_conn, full_trino_sql, compiled.params)
 
             redirect_result = await upload_and_presign(
                 full_result, redirect_config,
