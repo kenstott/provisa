@@ -24,11 +24,16 @@ interface CompileResult {
 function SqlPanel({ compiled }: { compiled: CompileResult }) {
   const [copied, setCopied] = useState(false);
   const rawSql = compiled.direct_sql || compiled.trino_sql || compiled.sql;
-  const formatted = formatSql(rawSql, {
-    language: compiled.trino_sql ? "trino" : "postgresql",
-    tabWidth: 2,
-    keywordCase: "upper",
-  });
+  let formatted: string;
+  try {
+    formatted = formatSql(rawSql, {
+      language: "postgresql",
+      tabWidth: 2,
+      keywordCase: "upper",
+    });
+  } catch {
+    formatted = rawSql;
+  }
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(formatted).then(() => {
