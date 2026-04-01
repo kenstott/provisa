@@ -215,7 +215,7 @@ def _build_order_by_input(
 
     field_enum = GraphQLEnumType(
         f"{type_name}OrderByField",
-        {name.upper(): GraphQLEnumValue(name) for name in visible_col_names},
+        {name: GraphQLEnumValue(name) for name in visible_col_names},
     )
 
     return GraphQLInputObjectType(
