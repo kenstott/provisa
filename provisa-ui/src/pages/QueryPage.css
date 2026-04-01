@@ -241,6 +241,7 @@ body.graphiql-dark .graphiql-dialog {
 
 .provisa-tools-delivery-item {
   display: flex;
+  flex-direction: row !important;
   align-items: center;
   gap: 5px;
   font-size: 12px;
