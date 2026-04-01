@@ -1,3 +1,6 @@
+-- MV cache schema for materialized views
+CREATE SCHEMA IF NOT EXISTS mv_cache;
+
 -- Demo schema for Provisa development
 -- Two schemas: public (sales data) and analytics (reporting views)
 -- Used to test cross-source routing through Trino
