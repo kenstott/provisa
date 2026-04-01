@@ -217,12 +217,26 @@ async def _load_and_build(config_path: str | None = None) -> None:
             )
 
     # Load Kafka source configs (windows + discriminators)
+    # Discriminators only apply when multiple topic configs map to separate
+    # registered tables. If multiple configs share the same table_name,
+    # skip the discriminator (user filters manually via where clause).
     from provisa.kafka.window import KafkaTableConfig
+    _kafka_table_count: dict[str, int] = {}
+    for ks in raw_config.get("kafka_sources", []):
+        for topic in ks.get("topics", []):
+            tn = topic.get("table_name") or topic["topic"].replace(".", "_").replace("-", "_")
+            _kafka_table_count[tn] = _kafka_table_count.get(tn, 0) + 1
+
     for ks in raw_config.get("kafka_sources", []):
         for topic in ks.get("topics", []):
             table_name = topic.get("table_name") or topic["topic"].replace(".", "_").replace("-", "_")
             window = topic.get("default_window", "1h")
+
+            # Only apply discriminator if this table_name has a unique topic config
             disc = topic.get("discriminator")
+            if _kafka_table_count.get(table_name, 0) > 1:
+                disc = None  # Multiple configs share same table — no auto-discriminator
+
             disc_field = disc.get("field") if disc else None
             disc_value = disc.get("value") if disc else None
 
@@ -232,7 +246,6 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 discriminator_value=disc_value,
             )
 
-            # Also populate kafka_windows for backward compat
             if window:
                 state.kafka_windows[ks["id"]] = window
 
