@@ -134,22 +134,20 @@ export function QueryPage() {
             ))}
           </select>
         </label>
-        {redirectFormat && (
-          <label className="query-option">
-            Threshold
-            <input
-              type="number"
-              min="0"
-              placeholder="all"
-              value={redirectThreshold}
-              onChange={onThresholdChange}
-              className="threshold-input"
-            />
-          </label>
-        )}
-        {redirectFormat && !redirectThreshold && (
-          <span className="query-hint">All results redirect to S3</span>
-        )}
+        <label className="query-option" style={{ visibility: redirectFormat ? "visible" : "hidden" }}>
+          Threshold
+          <input
+            type="number"
+            min="0"
+            placeholder="all"
+            value={redirectThreshold}
+            onChange={onThresholdChange}
+            className="threshold-input"
+          />
+        </label>
+        <span className="query-hint" style={{ visibility: redirectFormat && !redirectThreshold ? "visible" : "hidden" }}>
+          All results redirect to S3
+        </span>
       </div>
       <GraphiQL
         fetcher={fetcher}
