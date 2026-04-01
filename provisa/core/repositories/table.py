@@ -19,11 +19,14 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
     """Upsert a registered table and its columns. Returns the table row id."""
     table_id = await conn.fetchval(
         """
-        INSERT INTO registered_tables (source_id, domain_id, schema_name, table_name, governance)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO registered_tables
+            (source_id, domain_id, schema_name, table_name, governance, alias, description)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         ON CONFLICT (source_id, schema_name, table_name) DO UPDATE SET
             domain_id = EXCLUDED.domain_id,
-            governance = EXCLUDED.governance
+            governance = EXCLUDED.governance,
+            alias = EXCLUDED.alias,
+            description = EXCLUDED.description
         RETURNING id
         """,
         table.source_id,
@@ -31,20 +34,43 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
         table.schema_name,
         table.table_name,
         table.governance.value,
+        getattr(table, "alias", None),
+        getattr(table, "description", None),
     )
 
     # Replace columns: delete existing, insert new
     await conn.execute("DELETE FROM table_columns WHERE table_id = $1", table_id)
+    await conn.execute("DELETE FROM column_masking_rules WHERE table_id = $1", table_id)
     for col in table.columns:
         await conn.execute(
             """
-            INSERT INTO table_columns (table_id, column_name, visible_to)
-            VALUES ($1, $2, $3)
+            INSERT INTO table_columns (table_id, column_name, visible_to, alias, description)
+            VALUES ($1, $2, $3, $4, $5)
             """,
             table_id,
             col.name,
             col.visible_to,
+            getattr(col, "alias", None),
+            getattr(col, "description", None),
         )
+        # Persist masking rules per (column, role)
+        if col.masking:
+            for role_id, rule in col.masking.items():
+                await conn.execute(
+                    """
+                    INSERT INTO column_masking_rules
+                        (table_id, column_name, role_id, mask_type, pattern, replace, value, precision)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    """,
+                    table_id,
+                    col.name,
+                    role_id,
+                    rule.type,
+                    rule.pattern,
+                    rule.replace,
+                    str(rule.value) if rule.value is not None else None,
+                    rule.precision,
+                )
     return table_id
 
 

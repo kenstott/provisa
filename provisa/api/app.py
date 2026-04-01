@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -22,11 +23,18 @@ import yaml
 from fastapi import FastAPI
 
 from provisa.api.data.endpoint import router as data_router
+from provisa.api.data.sdl import router as sdl_router
 from provisa.compiler.introspect import ColumnMetadata, introspect_tables
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
+from provisa.compiler.rls import RLSContext, build_rls_context
 from provisa.compiler.sql_gen import CompilationContext, build_context
 from provisa.core.config_loader import load_config, parse_config_dict
 from provisa.core.db import create_pool, init_schema
+from provisa.core.secrets import resolve_secrets
+from provisa.executor.pool import SourcePool
+from provisa.compiler.mask_inject import MaskingRules
+from provisa.cache.store import CacheStore, NoopCacheStore, RedisCacheStore
+from provisa.mv.registry import MVRegistry
 
 
 class AppState:
@@ -34,11 +42,42 @@ class AppState:
 
     pg_pool: asyncpg.Pool | None = None
     trino_conn: trino.dbapi.Connection | None = None
+    flight_client: object | None = None  # pyarrow.flight.FlightClient
     schemas: dict[str, object] = {}  # role_id → GraphQLSchema
     contexts: dict[str, CompilationContext] = {}  # role_id → CompilationContext
+    rls_contexts: dict[str, RLSContext] = {}  # role_id → RLSContext
+    roles: dict[str, dict] = {}  # role_id → role dict
+    source_pools: SourcePool = SourcePool()
+    source_types: dict[str, str] = {}  # source_id → source_type
+    source_dialects: dict[str, str] = {}  # source_id → sqlglot dialect
+    masking_rules: MaskingRules = {}  # (table_id, role_id) → {col: (rule, dtype)}
+    cache_store: CacheStore = NoopCacheStore()
+    cache_default_ttl: int = 300
+    mv_registry: MVRegistry = MVRegistry()
+    _mv_refresh_task: asyncio.Task | None = None
+    proto_files: dict[str, str] = {}  # role_id → .proto content
+    _grpc_server: object | None = None
+    _flight_server: object | None = None  # ProvisaFlightServer
 
 
 state = AppState()
+
+
+def _parse_mask_value(raw: str | None) -> object:
+    """Parse a stored mask value string back to a Python value."""
+    if raw is None:
+        return None
+    if raw == "None":
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        pass
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    return raw
 
 
 async def _load_and_build(config_path: str | None = None) -> None:
@@ -79,12 +118,177 @@ async def _load_and_build(config_path: str | None = None) -> None:
         user="provisa",
         catalog="postgresql",
         schema="public",
+        http_scheme="http",
+        request_timeout=10,
     )
+
+    # Create Arrow Flight SQL connection to Trino (separate gRPC port)
+    trino_flight_port = int(os.environ.get("TRINO_FLIGHT_PORT", "8480"))
+    try:
+        from provisa.executor.trino_flight import create_flight_connection
+        state.flight_client = create_flight_connection(
+            host=trino_host, port=trino_flight_port,
+        )
+        import logging
+        logging.getLogger(__name__).info(
+            "Arrow Flight SQL connected to %s:%d", trino_host, trino_flight_port,
+        )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Arrow Flight SQL unavailable — falling back to REST",
+            exc_info=True,
+        )
+
+    # Ensure MinIO results bucket exists
+    try:
+        from provisa.executor.redirect import RedirectConfig
+        rc = RedirectConfig.from_env()
+        if rc.endpoint_url:
+            import boto3
+            from botocore.config import Config as BotoConfig
+            s3 = boto3.client(
+                "s3",
+                endpoint_url=rc.endpoint_url,
+                aws_access_key_id=rc.access_key,
+                aws_secret_access_key=rc.secret_key,
+                region_name=rc.region,
+                config=BotoConfig(signature_version="s3v4"),
+            )
+            try:
+                s3.head_bucket(Bucket=rc.bucket)
+            except Exception:
+                s3.create_bucket(Bucket=rc.bucket)
+                import logging
+                logging.getLogger(__name__).info("Created S3 bucket %s", rc.bucket)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("Could not ensure S3 bucket", exc_info=True)
+
+    # Ensure results schema exists for CTAS redirects
+    try:
+        from provisa.executor.trino_write import ensure_results_schema
+        ensure_results_schema(state.trino_conn)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Could not create results schema — CTAS redirect unavailable",
+            exc_info=True,
+        )
 
     # Load config into PG (and create Trino catalogs)
     config = parse_config_dict(raw_config)
+
+    # Initialize cache store from config
+    cache_config = raw_config.get("cache", {})
+    if cache_config.get("enabled"):
+        redis_url = cache_config.get("redis_url", "")
+        if redis_url.startswith("${env:"):
+            env_key = redis_url[6:-1]
+            redis_url = os.environ.get(env_key, "")
+        if redis_url:
+            state.cache_store = RedisCacheStore(redis_url)
+        state.cache_default_ttl = cache_config.get("default_ttl", 300)
+
     async with state.pg_pool.acquire() as conn:
         await load_config(config, conn, state.trino_conn)
+
+    # Build source metadata and direct connection pools
+    from provisa.executor.drivers.registry import has_driver
+    for src in config.sources:
+        state.source_types[src.id] = src.type.value
+        state.source_dialects[src.id] = src.dialect or ""
+        if has_driver(src.type.value):
+            resolved_pw = resolve_secrets(src.password)
+            await state.source_pools.add(
+                source_id=src.id,
+                source_type=src.type.value,
+                host=src.host if src.host != "postgres" else os.environ.get("PG_HOST", "localhost"),
+                port=src.port,
+                database=src.database,
+                user=src.username,
+                password=resolved_pw,
+                min_size=src.pool_min,
+                max_size=src.pool_max,
+                use_pgbouncer=src.use_pgbouncer,
+                pgbouncer_port=src.pgbouncer_port,
+            )
+
+    # Load materialized view definitions
+    from provisa.mv.models import MVDefinition, JoinPattern
+    mv_configs = raw_config.get("materialized_views", [])
+    for mvc in mv_configs:
+        jp = None
+        if "join_pattern" in mvc:
+            jp_cfg = mvc["join_pattern"]
+            jp = JoinPattern(
+                left_table=jp_cfg["left_table"],
+                left_column=jp_cfg["left_column"],
+                right_table=jp_cfg["right_table"],
+                right_column=jp_cfg["right_column"],
+                join_type=jp_cfg.get("join_type", "left"),
+            )
+        mv = MVDefinition(
+            id=mvc["id"],
+            source_tables=mvc.get("source_tables", []),
+            target_catalog=mvc.get("target_catalog", "postgresql"),
+            target_schema=mvc.get("target_schema", "mv_cache"),
+            target_table=mvc.get("target_table"),
+            refresh_interval=mvc.get("refresh_interval", 300),
+            enabled=mvc.get("enabled", True),
+            join_pattern=jp,
+            sql=mvc.get("sql"),
+            expose_in_sdl=mvc.get("expose_in_sdl", False),
+        )
+        state.mv_registry.register(mv)
+
+    # Auto-generate MVs from cross-source relationships with materialize=true
+    _table_source_map: dict[str, str] = {}  # table_name → source_id
+    for tbl_cfg in raw_config.get("tables", []):
+        tbl_name = tbl_cfg.get("table") or tbl_cfg.get("table_name")
+        if tbl_name and "source_id" in tbl_cfg:
+            _table_source_map[tbl_name] = tbl_cfg["source_id"]
+
+    for rel_cfg in raw_config.get("relationships", []):
+        if not rel_cfg.get("materialize", False):
+            continue
+
+        src_table = rel_cfg["source_table_id"]
+        tgt_table = rel_cfg["target_table_id"]
+        src_source = _table_source_map.get(src_table)
+        tgt_source = _table_source_map.get(tgt_table)
+
+        # Only auto-materialize cross-source relationships
+        if src_source and tgt_source and src_source != tgt_source:
+            mv_id = f"auto-mv-{rel_cfg['id']}"
+            if state.mv_registry.get(mv_id) is not None:
+                continue  # Already registered (e.g., from explicit MV config)
+
+            # Determine left/right based on cardinality
+            # many-to-one: source has FK → source is left, target is right
+            # one-to-many: source is parent → source is left, target is right
+            jp = JoinPattern(
+                left_table=src_table,
+                left_column=rel_cfg["source_column"],
+                right_table=tgt_table,
+                right_column=rel_cfg["target_column"],
+                join_type="left",
+            )
+            mv = MVDefinition(
+                id=mv_id,
+                source_tables=[src_table, tgt_table],
+                target_catalog="postgresql",
+                target_schema="mv_cache",
+                refresh_interval=rel_cfg.get("refresh_interval", 300),
+                enabled=True,
+                join_pattern=jp,
+            )
+            state.mv_registry.register(mv)
+            import logging
+            logging.getLogger(__name__).info(
+                "Auto-materialized cross-source relationship %s (%s.%s → %s.%s)",
+                rel_cfg["id"], src_source, src_table, tgt_source, tgt_table,
+            )
 
     # Introspect and build schemas per role
     async with state.pg_pool.acquire() as conn:
@@ -111,7 +315,46 @@ async def _load_and_build(config_path: str | None = None) -> None:
         column_types = introspect_tables(state.trino_conn, tables, sources)
         col_types_converted: dict[int, list[ColumnMetadata]] = column_types
 
+        # Load RLS rules
+        rls_rules = [
+            dict(r) for r in await conn.fetch(
+                "SELECT table_id, role_id, filter_expr FROM rls_rules"
+            )
+        ]
+
+        # Load masking rules
+        from provisa.security.masking import MaskingRule, MaskType, validate_masking_rule
+        masking_rows = await conn.fetch(
+            "SELECT table_id, column_name, role_id, mask_type, pattern, "
+            "replace, value, precision FROM column_masking_rules"
+        )
+        for mrow in masking_rows:
+            mask_rule = MaskingRule(
+                mask_type=MaskType(mrow["mask_type"]),
+                pattern=mrow["pattern"],
+                replace=mrow["replace"],
+                value=_parse_mask_value(mrow["value"]),
+                precision=mrow["precision"],
+            )
+            # Look up column data type for validation and expression generation
+            table_id = mrow["table_id"]
+            col_name = mrow["column_name"]
+            col_metas = col_types_converted.get(table_id, [])
+            data_type = "varchar"
+            is_nullable = True
+            for cm in col_metas:
+                if cm.column_name == col_name:
+                    data_type = cm.data_type
+                    is_nullable = cm.is_nullable
+                    break
+            validate_masking_rule(mask_rule, col_name, data_type, is_nullable)
+            key = (table_id, mrow["role_id"])
+            if key not in state.masking_rules:
+                state.masking_rules[key] = {}
+            state.masking_rules[key][col_name] = (mask_rule, data_type)
+
         for role in roles:
+            state.roles[role["id"]] = role
             si = SchemaInput(
                 tables=tables,
                 relationships=relationships,
@@ -119,31 +362,49 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 naming_rules=naming_rules,
                 role=role,
                 domains=domains,
+                source_types=state.source_types,
+                domain_prefix=raw_config.get("naming", {}).get("domain_prefix", False),
             )
             try:
                 state.schemas[role["id"]] = generate_schema(si)
                 state.contexts[role["id"]] = build_context(si)
+                state.rls_contexts[role["id"]] = build_rls_context(
+                    rls_rules, role["id"],
+                )
             except ValueError:
                 # Role has no visible tables — skip
+                pass
+
+            # Generate proto for this role
+            try:
+                from provisa.grpc.proto_gen import generate_proto
+                state.proto_files[role["id"]] = generate_proto(si)
+            except ValueError:
                 pass
 
 
 async def _fetch_tables(conn: asyncpg.Connection) -> list[dict]:
     """Fetch registered tables with columns."""
     rows = await conn.fetch(
-        "SELECT id, source_id, domain_id, schema_name, table_name, governance "
+        "SELECT id, source_id, domain_id, schema_name, table_name, governance, "
+        "alias, description "
         "FROM registered_tables ORDER BY id"
     )
     tables = []
     for row in rows:
         table = dict(row)
         col_rows = await conn.fetch(
-            "SELECT column_name, visible_to FROM table_columns "
-            "WHERE table_id = $1 ORDER BY id",
+            "SELECT column_name, visible_to, alias, description "
+            "FROM table_columns WHERE table_id = $1 ORDER BY id",
             row["id"],
         )
         table["columns"] = [
-            {"column_name": r["column_name"], "visible_to": list(r["visible_to"])}
+            {
+                "column_name": r["column_name"],
+                "visible_to": list(r["visible_to"]),
+                "alias": r["alias"],
+                "description": r["description"],
+            }
             for r in col_rows
         ]
         tables.append(table)
@@ -162,18 +423,199 @@ async def _fetch_relationships(conn: asyncpg.Connection) -> list[dict]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """App lifespan: load config and build schemas at startup."""
-    await _load_and_build()
+    import logging
+    _log = logging.getLogger(__name__)
+    try:
+        await _load_and_build()
+    except Exception:
+        _log.exception("Startup failed during _load_and_build")
+        raise
+
+    # Start MV refresh background task
+    if state.mv_registry.get_enabled() and state.trino_conn:
+        from provisa.mv.refresh import refresh_loop
+        state._mv_refresh_task = asyncio.create_task(
+            refresh_loop(state.trino_conn, state.mv_registry),
+        )
+
+    # Start gRPC server if protos were generated
+    if state.proto_files:
+        try:
+            import tempfile
+            from provisa.grpc.schema_gen import compile_proto
+            from provisa.grpc.server import start_grpc_server
+
+            # Use the first role's proto to compile stubs (service is the same)
+            first_proto = next(iter(state.proto_files.values()))
+            grpc_output_dir = tempfile.mkdtemp(prefix="provisa_grpc_")
+            pb2_path, pb2_grpc_path = compile_proto(first_proto, grpc_output_dir)
+            grpc_port = int(os.environ.get("GRPC_PORT", "50051"))
+            state._grpc_server = await start_grpc_server(
+                grpc_port, state, pb2_path, pb2_grpc_path,
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("gRPC server startup failed")
+
+    # Start Arrow Flight server
+    try:
+        from provisa.api.flight.server import ProvisaFlightServer
+        flight_port = int(os.environ.get("FLIGHT_PORT", "8815"))
+        flight_server = ProvisaFlightServer(
+            state, location=f"grpc://0.0.0.0:{flight_port}",
+        )
+        import threading
+        flight_thread = threading.Thread(
+            target=flight_server.serve, daemon=True,
+        )
+        flight_thread.start()
+        state._flight_server = flight_server
+        _log.info("Arrow Flight server listening on port %d", flight_port)
+    except Exception:
+        _log.exception("Arrow Flight server startup failed")
+
     yield
+
+    # Stop Arrow Flight server
+    if state._flight_server:
+        state._flight_server.shutdown()
+
+    # Stop gRPC server
+    if state._grpc_server:
+        await state._grpc_server.stop(grace=5)
+
+    # Cancel MV refresh task
+    if state._mv_refresh_task:
+        state._mv_refresh_task.cancel()
+        try:
+            await state._mv_refresh_task
+        except asyncio.CancelledError:
+            pass
+    await state.cache_store.close()
+    await state.source_pools.close_all()
     if state.pg_pool:
         await state.pg_pool.close()
+    if state.flight_client:
+        state.flight_client.close()
     if state.trino_conn:
         state.trino_conn.close()
 
 
 def create_app() -> FastAPI:
     """Create the FastAPI application."""
+    from fastapi.middleware.cors import CORSMiddleware
+    from strawberry.fastapi import GraphQLRouter
+
+    from provisa.api.admin.schema import admin_schema
+
     app = FastAPI(title="Provisa", lifespan=lifespan)
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     app.include_router(data_router)
+    app.include_router(sdl_router)
+
+    # Admin GraphQL API (Strawberry) at /admin/graphql
+    admin_router = GraphQLRouter(admin_schema)
+    app.include_router(admin_router, prefix="/admin/graphql")
+
+    from provisa.api.admin.discovery import router as discovery_router
+    app.include_router(discovery_router)
+
+    @app.get("/admin/config")
+    async def download_config():
+        """Download the current config YAML."""
+        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+        path = Path(config_path)
+        if not path.exists():
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Config file not found")
+        from fastapi.responses import Response
+        return Response(
+            content=path.read_text(),
+            media_type="application/x-yaml",
+            headers={"Content-Disposition": f"attachment; filename={path.name}"},
+        )
+
+    @app.put("/admin/config")
+    async def upload_config(request):
+        """Upload a revised config YAML and reload."""
+        body = await request.body()
+        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+        path = Path(config_path)
+        # Write a backup before overwriting
+        if path.exists():
+            backup = path.with_suffix(".yaml.bak")
+            backup.write_text(path.read_text())
+        path.write_bytes(body)
+        # Reload config
+        try:
+            await _load_and_build(config_path)
+            return {"success": True, "message": "Config uploaded and reloaded"}
+        except Exception as e:
+            return {"success": False, "message": str(e)}
+
+    @app.get("/admin/settings")
+    async def get_settings():
+        """Return current platform settings."""
+        from provisa.executor.redirect import RedirectConfig
+        from provisa.compiler.sampling import get_sample_size
+        rc = RedirectConfig.from_env()
+        return {
+            "redirect": {
+                "enabled": rc.enabled,
+                "threshold": rc.threshold,
+                "default_format": rc.default_format,
+                "ttl": rc.ttl,
+            },
+            "sampling": {
+                "default_sample_size": get_sample_size(),
+            },
+            "cache": {
+                "default_ttl": state.cache_default_ttl,
+            },
+        }
+
+    @app.put("/admin/settings")
+    async def update_settings(request):
+        """Update platform settings at runtime."""
+        body = await request.json()
+        updated = []
+
+        if "redirect" in body:
+            r = body["redirect"]
+            if "enabled" in r:
+                os.environ["PROVISA_REDIRECT_ENABLED"] = str(r["enabled"]).lower()
+                updated.append("redirect.enabled")
+            if "threshold" in r:
+                os.environ["PROVISA_REDIRECT_THRESHOLD"] = str(r["threshold"])
+                updated.append("redirect.threshold")
+            if "default_format" in r:
+                os.environ["PROVISA_REDIRECT_FORMAT"] = r["default_format"]
+                updated.append("redirect.default_format")
+            if "ttl" in r:
+                os.environ["PROVISA_REDIRECT_TTL"] = str(r["ttl"])
+                updated.append("redirect.ttl")
+
+        if "sampling" in body:
+            s = body["sampling"]
+            if "default_sample_size" in s:
+                os.environ["PROVISA_SAMPLE_SIZE"] = str(s["default_sample_size"])
+                updated.append("sampling.default_sample_size")
+
+        if "cache" in body:
+            c = body["cache"]
+            if "default_ttl" in c:
+                state.cache_default_ttl = int(c["default_ttl"])
+                updated.append("cache.default_ttl")
+
+        return {"success": True, "updated": updated}
 
     @app.get("/health")
     async def health():

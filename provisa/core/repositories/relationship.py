@@ -28,14 +28,17 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
     await conn.execute(
         """
         INSERT INTO relationships (id, source_table_id, target_table_id,
-                                   source_column, target_column, cardinality)
-        VALUES ($1, $2, $3, $4, $5, $6)
+                                   source_column, target_column, cardinality,
+                                   materialize, refresh_interval)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (id) DO UPDATE SET
             source_table_id = EXCLUDED.source_table_id,
             target_table_id = EXCLUDED.target_table_id,
             source_column = EXCLUDED.source_column,
             target_column = EXCLUDED.target_column,
-            cardinality = EXCLUDED.cardinality
+            cardinality = EXCLUDED.cardinality,
+            materialize = EXCLUDED.materialize,
+            refresh_interval = EXCLUDED.refresh_interval
         """,
         rel.id,
         source_tbl["id"],
@@ -43,6 +46,8 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
         rel.source_column,
         rel.target_column,
         rel.cardinality.value,
+        rel.materialize,
+        rel.refresh_interval,
     )
 
 

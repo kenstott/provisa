@@ -1,0 +1,80 @@
+/* Provisa indigo theme for GraphiQL */
+body.graphiql-dark .graphiql-container,
+body.graphiql-dark .graphiql-dialog {
+  --color-primary: 239, 84%, 67%;
+  --color-secondary: 224, 76%, 48%;
+  --color-tertiary: 199, 89%, 48%;
+  --color-info: 217, 91%, 60%;
+  --color-success: 142, 71%, 45%;
+  --color-warning: 38, 92%, 50%;
+  --color-error: 0, 84%, 60%;
+}
+
+/* Override the navbar height variable for proper sizing */
+.query-page {
+  height: calc(100vh - 49px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.query-page .graphiql-container {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Options bar above GraphiQL */
+.query-options {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 12px;
+  background: hsl(224, 20%, 16%);
+  border-bottom: 1px solid hsl(224, 15%, 24%);
+  font-size: 13px;
+  color: hsl(224, 10%, 75%);
+}
+
+.query-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.query-option select,
+.query-option .threshold-input {
+  background: hsl(224, 20%, 22%);
+  color: hsl(224, 10%, 85%);
+  border: 1px solid hsl(224, 15%, 30%);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 13px;
+}
+
+.query-option .threshold-input {
+  width: 72px;
+}
+
+.query-hint {
+  color: hsl(224, 10%, 50%);
+  font-style: italic;
+  font-size: 12px;
+}
+
+
+/* Hide GraphiQL branding */
+.graphiql-container .graphiql-logo {
+  display: none;
+}
+
+/* Give the query name input extra room — the ch-based inline width is too tight */
+.graphiql-explorer-root .graphiql-operation-title-bar input {
+  width: auto !important;
+  min-width: 8ch;
+}
+
+/* Prevent the explorer title from being clipped */
+.graphiql-explorer-root > div:first-child {
+  overflow: visible !important;
+}

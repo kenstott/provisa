@@ -17,13 +17,37 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SourceType(str, Enum):
+    # RDBMS
     postgresql = "postgresql"
     mysql = "mysql"
+    singlestore = "singlestore"
+    mariadb = "mariadb"
     sqlserver = "sqlserver"
+    oracle = "oracle"
     duckdb = "duckdb"
+    # Cloud DW
     snowflake = "snowflake"
     bigquery = "bigquery"
+    databricks = "databricks"
+    redshift = "redshift"
+    # Analytics / OLAP
+    clickhouse = "clickhouse"
+    elasticsearch = "elasticsearch"
+    pinot = "pinot"
+    druid = "druid"
+    # Data Lake
+    delta_lake = "delta_lake"
+    iceberg = "iceberg"
+    hive = "hive"
+    # NoSQL
     mongodb = "mongodb"
+    cassandra = "cassandra"
+    redis = "redis"
+    kudu = "kudu"
+    accumulo = "accumulo"
+    # Other
+    google_sheets = "google_sheets"
+    prometheus = "prometheus"
 
 
 class GovernanceLevel(str, Enum):
@@ -41,7 +65,9 @@ SOURCE_TO_CONNECTOR: dict[str, str] = {
     "postgresql": "postgresql",
     "mysql": "mysql",
     "sqlserver": "sqlserver",
+    "oracle": "oracle",
     "mongodb": "mongodb",
+    "cassandra": "cassandra",
     "duckdb": "memory",
     "snowflake": "snowflake",
     "bigquery": "bigquery",
@@ -52,6 +78,7 @@ SOURCE_TO_DIALECT: dict[str, str] = {
     "postgresql": "postgres",
     "mysql": "mysql",
     "sqlserver": "tsql",
+    "oracle": "oracle",
     "duckdb": "duckdb",
     "snowflake": "snowflake",
     "bigquery": "bigquery",
@@ -80,14 +107,19 @@ class Source(BaseModel):
     database: str
     username: str
     password: str  # Secret reference e.g. ${env:PG_PASSWORD}
+    pool_min: int = Field(default=1, alias="pool_min")
+    pool_max: int = Field(default=5, alias="pool_max")
+    use_pgbouncer: bool = Field(default=False, alias="use_pgbouncer")
+    pgbouncer_port: int = Field(default=6432, alias="pgbouncer_port")
 
     @property
     def connector(self) -> str:
         return SOURCE_TO_CONNECTOR[self.type.value]
 
     @property
-    def dialect(self) -> str:
-        return SOURCE_TO_DIALECT[self.type.value]
+    def dialect(self) -> str | None:
+        """SQLGlot dialect name, or None for NoSQL sources."""
+        return SOURCE_TO_DIALECT.get(self.type.value)
 
     @property
     def catalog_name(self) -> str:
@@ -99,12 +131,16 @@ class Source(BaseModel):
             "postgresql": "jdbc:postgresql",
             "mysql": "jdbc:mysql",
             "sqlserver": "jdbc:sqlserver",
+            "oracle": "jdbc:oracle:thin",
+            "mariadb": "jdbc:mariadb",
         }
         p = prefix.get(self.type.value)
         if p is None:
             return ""
         if self.type == SourceType.sqlserver:
             return f"{p}://{self.host}:{self.port};databaseName={self.database}"
+        if self.type == SourceType.oracle:
+            return f"{p}:@{self.host}:{self.port}/{self.database}"
         return f"{p}://{self.host}:{self.port}/{self.database}"
 
 
@@ -122,9 +158,29 @@ class NamingConfig(BaseModel):
     rules: list[NamingRule] = Field(default_factory=list)
 
 
+class MaskingRuleConfig(BaseModel):
+    """Per-role masking rule for a column."""
+
+    type: str  # regex, constant, truncate
+    pattern: str | None = None
+    replace: str | None = None
+    value: object = None
+    precision: str | None = None
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        if v not in ("regex", "constant", "truncate"):
+            raise ValueError(f"Invalid masking type: {v!r}")
+        return v
+
+
 class Column(BaseModel):
     name: str
     visible_to: list[str]
+    masking: dict[str, MaskingRuleConfig] | None = None  # role_id → rule
+    alias: str | None = None  # GraphQL field name override
+    description: str | None = None  # GraphQL field description
 
 
 class Table(BaseModel):
@@ -136,6 +192,8 @@ class Table(BaseModel):
     table_name: str = Field(alias="table")
     governance: GovernanceLevel
     columns: list[Column]
+    alias: str | None = None  # GraphQL type/field name override
+    description: str | None = None  # GraphQL type description
 
 
 class Relationship(BaseModel):
@@ -145,6 +203,8 @@ class Relationship(BaseModel):
     source_column: str
     target_column: str
     cardinality: Cardinality
+    materialize: bool = False  # auto-create MV for cross-source joins
+    refresh_interval: int = 300  # MV refresh interval in seconds
 
 
 class Role(BaseModel):
@@ -159,6 +219,17 @@ class RLSRule(BaseModel):
     filter: str
 
 
+class AuthConfig(BaseModel):
+    provider: str = "none"  # none, firebase, keycloak, oauth, simple
+    firebase: dict | None = None
+    keycloak: dict | None = None
+    oauth: dict | None = None
+    simple: dict | None = None
+    superuser: dict | None = None
+    role_mapping: list[dict] = Field(default_factory=list)
+    default_role: str = "analyst"
+
+
 class ProvisaConfig(BaseModel):
     sources: list[Source]
     domains: list[Domain]
@@ -167,3 +238,4 @@ class ProvisaConfig(BaseModel):
     relationships: list[Relationship] = Field(default_factory=list)
     roles: list[Role]
     rls_rules: list[RLSRule] = Field(default_factory=list)
+    auth: AuthConfig = Field(default_factory=AuthConfig)

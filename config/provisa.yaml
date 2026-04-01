@@ -7,14 +7,31 @@ sources:
     database: provisa
     username: provisa
     password: ${env:PG_PASSWORD}
+  - id: analytics-pg
+    type: postgresql
+    host: postgres
+    port: 5432
+    database: provisa
+    username: provisa
+    password: ${env:PG_PASSWORD}
+  - id: reviews-mongo
+    type: mongodb
+    host: mongodb
+    port: 27017
+    database: provisa
+    username: ""
+    password: ""
 
 domains:
   - id: sales-analytics
     description: Sales operational and analytical data
   - id: product-catalog
     description: Product catalog data
+  - id: customer-insights
+    description: Customer segmentation and analytics
 
 naming:
+  domain_prefix: false  # when true, prepends domain_id__ to all GraphQL names
   rules:
     - pattern: "^prod_pg_"
       replace: ""
@@ -30,6 +47,8 @@ tables:
         visible_to: [admin, analyst]
       - name: customer_id
         visible_to: [admin, analyst]
+      - name: product_id
+        visible_to: [admin]
       - name: amount
         visible_to: [admin]
       - name: region
@@ -49,7 +68,12 @@ tables:
       - name: name
         visible_to: [admin, analyst]
       - name: email
-        visible_to: [admin]
+        visible_to: [admin, analyst]
+        masking:
+          analyst:
+            type: regex
+            pattern: "^(.{2}).*(@.*)$"
+            replace: "$1***$2"
       - name: region
         visible_to: [admin, analyst]
   - source_id: sales-pg
@@ -67,6 +91,39 @@ tables:
       - name: category
         visible_to: [admin, analyst]
 
+  - source_id: reviews-mongo
+    domain_id: product-catalog
+    schema: provisa
+    table: product_reviews
+    governance: pre-approved
+    description: "User-submitted product reviews from MongoDB"
+    columns:
+      - name: product_id
+        visible_to: [admin, analyst]
+        description: "FK to products table"
+      - name: reviewer
+        visible_to: [admin, analyst]
+        description: "Username of the reviewer"
+      - name: rating
+        visible_to: [admin, analyst]
+        description: "Rating from 1-5 stars"
+      - name: comment
+        visible_to: [admin]
+        description: "Free-text review comment"
+
+  - source_id: analytics-pg
+    domain_id: customer-insights
+    schema: analytics
+    table: customer_segments
+    governance: pre-approved
+    columns:
+      - name: customer_id
+        visible_to: [admin, analyst]
+      - name: segment
+        visible_to: [admin, analyst]
+      - name: score
+        visible_to: [admin]
+
 relationships:
   - id: orders-to-customers
     source_table_id: orders
@@ -74,6 +131,18 @@ relationships:
     source_column: customer_id
     target_column: id
     cardinality: many-to-one
+  - id: customers-to-segments
+    source_table_id: customers
+    target_table_id: customer_segments
+    source_column: id
+    target_column: customer_id
+    cardinality: one-to-many
+  - id: orders-to-reviews
+    source_table_id: orders
+    target_table_id: product_reviews
+    source_column: product_id
+    target_column: product_id
+    cardinality: one-to-many
 
 roles:
   - id: admin
@@ -91,6 +160,41 @@ roles:
       - query_development
     domain_access:
       - sales-analytics
+
+materialized_views:
+  - id: mv-orders-customers
+    source_tables: [orders, customers]
+    join_pattern:
+      left_table: orders
+      left_column: customer_id
+      right_table: customers
+      right_column: id
+      join_type: left
+    target_catalog: postgresql
+    target_schema: mv_cache
+    refresh_interval: 300
+    enabled: true
+
+cache:
+  enabled: true
+  redis_url: ${env:REDIS_URL}
+  default_ttl: 300
+
+# kafka_sources:
+#   - id: event-stream
+#     bootstrap_servers: kafka:9092
+#     schema_registry_url: http://schema-registry:8081
+#     topics:
+#       - id: order-events
+#         topic: orders.events.v1
+#         schema_source: registry
+#         value_format: avro
+#
+# kafka_sinks:
+#   - query_stable_id: "abc-123"
+#     topic: enriched-orders
+#     key_column: order_id
+#     value_format: json
 
 rls_rules:
   - table_id: orders

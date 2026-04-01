@@ -1,4 +1,6 @@
 -- Demo schema for Provisa development
+-- Two schemas: public (sales data) and analytics (reporting views)
+-- Used to test cross-source routing through Trino
 
 CREATE TABLE customers (
     id SERIAL PRIMARY KEY,
@@ -26,6 +28,26 @@ CREATE TABLE orders (
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- Table and column descriptions (sourced into GraphQL SDL)
+COMMENT ON TABLE customers IS 'Registered customer accounts';
+COMMENT ON COLUMN customers.id IS 'Unique customer identifier';
+COMMENT ON COLUMN customers.name IS 'Full name of the customer';
+COMMENT ON COLUMN customers.email IS 'Primary email address';
+COMMENT ON COLUMN customers.region IS 'Geographic region code (e.g., us-east, eu-west)';
+
+COMMENT ON TABLE products IS 'Product catalog';
+COMMENT ON COLUMN products.name IS 'Product display name';
+COMMENT ON COLUMN products.price IS 'Unit price in USD';
+COMMENT ON COLUMN products.category IS 'Product category (widgets, gadgets, etc.)';
+
+COMMENT ON TABLE orders IS 'Customer purchase orders';
+COMMENT ON COLUMN orders.customer_id IS 'FK to customers table';
+COMMENT ON COLUMN orders.product_id IS 'FK to products table';
+COMMENT ON COLUMN orders.amount IS 'Total order amount in USD';
+COMMENT ON COLUMN orders.quantity IS 'Number of units ordered';
+COMMENT ON COLUMN orders.region IS 'Region where the order was placed';
+COMMENT ON COLUMN orders.status IS 'Order status: pending, shipped, delivered, cancelled';
 
 -- Seed customers
 INSERT INTO customers (name, email, region) VALUES
@@ -95,3 +117,25 @@ INSERT INTO orders (customer_id, product_id, amount, quantity, region, status, c
     (18, 10, 149.99, 1, 'ap-south', 'completed', '2025-03-30 07:30:00'),
     (19, 5, 14.99, 1, 'us-east', 'completed', '2025-03-30 10:00:00'),
     (20, 6, 74.95, 3, 'us-west', 'pending', '2025-03-30 15:00:00');
+
+-- Second schema: analytics (simulates a separate data source)
+CREATE SCHEMA IF NOT EXISTS analytics;
+
+CREATE TABLE analytics.customer_segments (
+    customer_id INTEGER NOT NULL,
+    segment VARCHAR(50) NOT NULL,
+    score NUMERIC(5, 2) NOT NULL,
+    assigned_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO analytics.customer_segments (customer_id, segment, score) VALUES
+    (1, 'high-value', 92.5),
+    (2, 'medium-value', 65.0),
+    (3, 'high-value', 88.3),
+    (4, 'low-value', 32.1),
+    (5, 'medium-value', 55.7),
+    (6, 'high-value', 91.0),
+    (7, 'low-value', 28.4),
+    (8, 'medium-value', 60.2),
+    (9, 'high-value', 85.9),
+    (10, 'low-value', 30.0);

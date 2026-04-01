@@ -14,11 +14,26 @@ dependencies = [
     "sqlglot",
     "trino",
     "grpcio",
+    "grpcio-tools",
+    "grpcio-reflection",
     "pyarrow",
+    "adbc-driver-flightsql",
+    "adbc-driver-manager",
     "httpx",
+    "redis[hiredis]",
+    "anthropic",
+    "jsonpath-ng",
+    "PyJWT[crypto]",
+    "bcrypt",
 ]
 
 [project.optional-dependencies]
+mysql = ["aiomysql"]
+sqlserver = ["aioodbc"]
+oracle = ["oracledb"]
+duckdb = ["duckdb"]
+all-drivers = ["aiomysql", "aioodbc", "oracledb", "duckdb"]
+firebase = ["firebase-admin"]
 dev = [
     "pytest",
     "pytest-asyncio",
@@ -39,6 +54,10 @@ markers = [
     "integration: requires Docker Compose stack (PG + Trino)",
     "e2e: full HTTP pipeline tests against running app",
     "slow: long-running tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:pytest_asyncio",
+    "ignore:The HMAC key is:UserWarning",
 ]
 
 [tool.ruff]

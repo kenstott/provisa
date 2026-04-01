@@ -14,10 +14,12 @@ No third-party GraphQL framework (REQ-007). Uses graphql-core directly.
 Domain-scoped, per-role column filtering (REQ-008, REQ-021).
 """
 
+import re
 from dataclasses import dataclass, field
 
 from graphql import (
     GraphQLArgument,
+    GraphQLBoolean,
     GraphQLEnumType,
     GraphQLEnumValue,
     GraphQLField,
@@ -29,6 +31,7 @@ from graphql import (
     GraphQLObjectType,
     GraphQLScalarType,
     GraphQLSchema,
+    GraphQLString,
 )
 
 from provisa.compiler.introspect import ColumnMetadata
@@ -46,6 +49,8 @@ class SchemaInput:
     naming_rules: list[dict]  # [{pattern, replacement}]
     role: dict  # from role_repo.get()
     domains: list[dict]  # from domain_repo.list_all()
+    source_types: dict[str, str] | None = None  # source_id → type (for mutation eligibility)
+    domain_prefix: bool = False  # prepend domain_id__ to all names
 
 
 @dataclass
@@ -59,8 +64,10 @@ class _TableInfo:
     source_id: str
     schema_name: str
     table_name: str  # original DB table name
-    visible_columns: list[dict]  # [{column_name, visible_to}]
+    visible_columns: list[dict]  # [{column_name, visible_to, alias?, description?}]
     column_metadata: dict[str, ColumnMetadata]  # column_name → metadata
+    alias: str | None = None  # explicit GraphQL name override
+    description: str | None = None  # GraphQL type/field description
     gql_fields: dict[str, GraphQLField] = field(default_factory=dict)
 
 
@@ -110,12 +117,18 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
             table_name=table["table_name"],
             visible_columns=visible_cols,
             column_metadata=col_meta,
+            alias=table.get("alias"),
+            description=table.get("description"),
         ))
 
     return result
 
 
-def _assign_names(tables: list[_TableInfo], naming_rules: list[dict]) -> None:
+def _assign_names(
+    tables: list[_TableInfo],
+    naming_rules: list[dict],
+    domain_prefix: bool = False,
+) -> None:
     """Assign unique GraphQL names to each table."""
     # Group by domain for uniqueness scoping
     domain_groups: dict[str, list[_TableInfo]] = {}
@@ -124,11 +137,16 @@ def _assign_names(tables: list[_TableInfo], naming_rules: list[dict]) -> None:
 
     for domain_id, group in domain_groups.items():
         domain_table_names = [t.table_name for t in group]
+        # Normalize domain_id to snake_case for prefix
+        domain_snake = re.sub(r"[^a-zA-Z0-9]", "_", domain_id).strip("_")
         for t in group:
             t.field_name = generate_name(
                 t.table_name, t.schema_name, t.source_id,
                 domain_table_names, naming_rules,
+                alias=t.alias,
             )
+            if domain_prefix:
+                t.field_name = f"{domain_snake}__{t.field_name}"
             t.type_name = to_type_name(t.field_name)
 
 
@@ -146,7 +164,9 @@ def _build_column_fields(table: _TableInfo) -> dict[str, GraphQLField]:
         gql_type = trino_to_graphql(meta.data_type)
         if not meta.is_nullable and not isinstance(gql_type, GraphQLList):
             gql_type = GraphQLNonNull(gql_type)
-        fields[col_name] = GraphQLField(gql_type)
+        field_name = col.get("alias") or col_name
+        description = col.get("description")
+        fields[field_name] = GraphQLField(gql_type, description=description)
     return fields
 
 
@@ -210,10 +230,18 @@ def _build_order_by_input(
 def _can_see_relationship(
     rel: dict, table_lookup: dict[int, _TableInfo]
 ) -> bool:
-    """Check if both sides of a relationship are visible to the role."""
+    """Check if both sides of a relationship are visible to the role,
+    including the join columns themselves."""
+    src_id = rel["source_table_id"]
+    tgt_id = rel["target_table_id"]
+    if src_id not in table_lookup or tgt_id not in table_lookup:
+        return False
+    # Join columns must be visible — otherwise the relationship can't be queried
+    src_visible = {c["column_name"] for c in table_lookup[src_id].visible_columns}
+    tgt_visible = {c["column_name"] for c in table_lookup[tgt_id].visible_columns}
     return (
-        rel["source_table_id"] in table_lookup
-        and rel["target_table_id"] in table_lookup
+        rel["source_column"] in src_visible
+        and rel["target_column"] in tgt_visible
     )
 
 
@@ -232,7 +260,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             f"Check domain_access and column visibility."
         )
 
-    _assign_names(tables, si.naming_rules)
+    _assign_names(tables, si.naming_rules, domain_prefix=si.domain_prefix)
 
     # Build base column fields
     for t in tables:
@@ -270,7 +298,9 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
 
             return fields
 
-        gql_types[tid] = GraphQLObjectType(t.type_name, make_fields)
+        gql_types[tid] = GraphQLObjectType(
+            t.type_name, make_fields, description=t.description,
+        )
 
     # Build root query fields
     query_fields: dict[str, GraphQLField] = {}
@@ -296,4 +326,75 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         )
 
     query_type = GraphQLObjectType("Query", lambda: query_fields)
-    return GraphQLSchema(query=query_type)
+
+    # Build mutation types for RDBMS tables (REQ-031–REQ-037)
+    nosql_types = {"mongodb", "cassandra"}
+    mutation_fields: dict[str, GraphQLField] = {}
+
+    for t in tables:
+        # Skip NoSQL sources — no mutations
+        if si.source_types and si.source_types.get(t.source_id, "") in nosql_types:
+            continue
+
+        # Build input type for insert (all visible columns)
+        insert_fields: dict[str, GraphQLInputField] = {}
+        for col in t.visible_columns:
+            col_name = col["column_name"]
+            meta = t.column_metadata.get(col_name)
+            if meta is None:
+                continue
+            gql_type = trino_to_graphql(meta.data_type)
+            if isinstance(gql_type, GraphQLList):
+                gql_type = GraphQLString  # fallback for arrays in input
+            insert_fields[col_name] = GraphQLInputField(gql_type)
+
+        if not insert_fields:
+            continue
+
+        insert_input = GraphQLInputObjectType(
+            f"{t.type_name}InsertInput", lambda fields=insert_fields: fields,
+        )
+
+        # Build set input type for update (same columns)
+        set_input = GraphQLInputObjectType(
+            f"{t.type_name}SetInput", lambda fields=insert_fields: fields,
+        )
+
+        # Where input for update/delete (use mutation-specific name to avoid conflict)
+        where_input = _build_where_input(t, f"{t.type_name}Mutation")
+
+        # Mutation response type
+        response_type = GraphQLObjectType(
+            f"{t.type_name}MutationResponse",
+            lambda t=t: {
+                "affected_rows": GraphQLField(GraphQLNonNull(GraphQLInt)),
+            },
+        )
+
+        # insert_<table>(input: InsertInput!): MutationResponse!
+        mutation_fields[f"insert_{t.field_name}"] = GraphQLField(
+            GraphQLNonNull(response_type),
+            args={"input": GraphQLArgument(GraphQLNonNull(insert_input))},
+        )
+
+        # update_<table>(set: SetInput!, where: WhereInput!): MutationResponse!
+        if where_input:
+            mutation_fields[f"update_{t.field_name}"] = GraphQLField(
+                GraphQLNonNull(response_type),
+                args={
+                    "set": GraphQLArgument(GraphQLNonNull(set_input)),
+                    "where": GraphQLArgument(GraphQLNonNull(where_input)),
+                },
+            )
+
+            # delete_<table>(where: WhereInput!): MutationResponse!
+            mutation_fields[f"delete_{t.field_name}"] = GraphQLField(
+                GraphQLNonNull(response_type),
+                args={"where": GraphQLArgument(GraphQLNonNull(where_input))},
+            )
+
+    mutation_type = None
+    if mutation_fields:
+        mutation_type = GraphQLObjectType("Mutation", lambda: mutation_fields)
+
+    return GraphQLSchema(query=query_type, mutation=mutation_type)
