@@ -26,7 +26,7 @@ from provisa.executor.drivers.registry import has_driver
 
 class Route(str, Enum):
     DIRECT = "direct"
-    TRINO = "trino"
+    TRINO = "virtual"
 
 
 # Virtual sources — always route through Trino (no direct SQL driver)

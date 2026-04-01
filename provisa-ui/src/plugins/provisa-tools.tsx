@@ -43,7 +43,7 @@ function SqlPanel({ compiled }: { compiled: CompileResult }) {
     <div className="provisa-tools-sql">
       <div className="provisa-tools-meta">
         <div>
-          <strong>Route:</strong> {compiled.route === "trino" ? "virtual" : compiled.route}
+          <strong>Route:</strong> {compiled.route}
         </div>
         <div className="provisa-tools-reason">{compiled.route_reason}</div>
         <div>
