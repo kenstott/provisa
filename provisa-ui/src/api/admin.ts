@@ -269,6 +269,51 @@ export async function updateSettings(
   return resp.json();
 }
 
+// --- Views ---
+
+export interface ViewConfig {
+  id: string;
+  sql: string;
+  description?: string;
+  domain_id: string;
+  governance: string;
+  materialize: boolean;
+  refresh_interval?: number;
+  alias?: string;
+  columns: { name: string; visible_to: string[]; description?: string }[];
+}
+
+export async function fetchViews(): Promise<ViewConfig[]> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/views`);
+  if (!resp.ok) throw new Error(`Fetch views failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function saveView(view: ViewConfig): Promise<{ success: boolean; message: string }> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/views`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(view),
+  });
+  if (!resp.ok) throw new Error(`Save view failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function deleteView(id: string): Promise<{ success: boolean; message: string }> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/views/${id}`, { method: "DELETE" });
+  if (!resp.ok) throw new Error(`Delete view failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function sampleView(id: string): Promise<{ columns: string[]; rows: Record<string, unknown>[]; count: number }> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/views/${id}/sample`, { method: "POST" });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(body.detail || resp.statusText);
+  }
+  return resp.json();
+}
+
 // --- Query compilation and submission ---
 
 export async function compileQuery(
