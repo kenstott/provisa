@@ -1,4 +1,11 @@
 # Provisa
+
+Config-driven data virtualization platform, specifically designed to power a semantic layer from small teams to large enterprises. Unified GraphQL/gRPC/Arrow Flight API over heterogeneous data sources with governance, security, and performance optimization.
+
+The semantic layer distinction is important. Provisa uses GraphQL as a universal query language specifically because it can only composite existing semantics. To add to the semantic layer you must create new data sources or aggregates within the data virtualization layer. This creates a clean separation — no new additions to the semantics can be made outside the platform, enabling true data governance.
+
+Provisa is designed to be highly performant for operational needs and highly scalable for enterprise analytical needs. A single platform serves both without sacrificing speed or scalability.
+
 ## Design Specification
 
 ---
