@@ -17,6 +17,8 @@ Table aliases (t0, t1, ...) used when JOINs are present.
 
 from __future__ import annotations
 
+import re as _re
+
 from dataclasses import dataclass, field
 
 from graphql import (
@@ -225,6 +227,18 @@ def _q(name: str) -> str:
 # --- WHERE clause compilation ---
 
 
+_ISO_DATE_RE = _re.compile(
+    r"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$"
+)
+
+
+def _maybe_cast_timestamp(placeholder: str, val: object) -> str:
+    """Wrap a placeholder with CAST if the value looks like a timestamp."""
+    if isinstance(val, str) and _ISO_DATE_RE.match(val):
+        return f"CAST({placeholder} AS TIMESTAMP)"
+    return placeholder
+
+
 def _compile_where(
     where_obj: dict,
     collector: ParamCollector,
@@ -249,22 +263,22 @@ def _compile_where(
         for op, val in filter_obj.items():
             if op == "eq":
                 placeholder = collector.add(val)
-                parts.append(f"{col} = {placeholder}")
+                parts.append(f"{col} = {_maybe_cast_timestamp(placeholder, val)}")
             elif op == "neq":
                 placeholder = collector.add(val)
-                parts.append(f"{col} != {placeholder}")
+                parts.append(f"{col} != {_maybe_cast_timestamp(placeholder, val)}")
             elif op == "gt":
                 placeholder = collector.add(val)
-                parts.append(f"{col} > {placeholder}")
+                parts.append(f"{col} > {_maybe_cast_timestamp(placeholder, val)}")
             elif op == "gte":
                 placeholder = collector.add(val)
-                parts.append(f"{col} >= {placeholder}")
+                parts.append(f"{col} >= {_maybe_cast_timestamp(placeholder, val)}")
             elif op == "lt":
                 placeholder = collector.add(val)
-                parts.append(f"{col} < {placeholder}")
+                parts.append(f"{col} < {_maybe_cast_timestamp(placeholder, val)}")
             elif op == "lte":
                 placeholder = collector.add(val)
-                parts.append(f"{col} <= {placeholder}")
+                parts.append(f"{col} <= {_maybe_cast_timestamp(placeholder, val)}")
             elif op == "in":
                 placeholders = [collector.add(v) for v in val]
                 parts.append(f"{col} IN ({', '.join(placeholders)})")
