@@ -1,8 +1,8 @@
 /**
  * GraphiQL plugin: Provisa Tools
  *
- * Adds View SQL and Submit for Approval functionality inside GraphiQL.
- * Uses the GraphiQL editor state hooks to access the current query.
+ * Adds View SQL, Submit for Approval (with optional Kafka sink),
+ * inside GraphiQL's plugin panel.
  */
 
 import { useState, useCallback } from "react";
@@ -27,6 +27,12 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Sink options
+  const [showSink, setShowSink] = useState(false);
+  const [sinkTopic, setSinkTopic] = useState("");
+  const [sinkTrigger, setSinkTrigger] = useState("change_event");
+  const [sinkKeyColumn, setSinkKeyColumn] = useState("");
+
   const handleViewSql = useCallback(async () => {
     if (!query.trim()) return;
     setError("");
@@ -48,14 +54,25 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
     setSubmitMsg("");
     setLoading(true);
     try {
-      const result = await submitQuery(roleId, query);
-      setSubmitMsg(result.message);
+      const sink =
+        showSink && sinkTopic.trim()
+          ? {
+              topic: sinkTopic.trim(),
+              trigger: sinkTrigger,
+              key_column: sinkKeyColumn.trim() || undefined,
+            }
+          : undefined;
+      const result = await submitQuery(roleId, query, undefined, sink);
+      setSubmitMsg(
+        result.message +
+          (sink ? ` (sink → ${sink.topic}, trigger: ${sink.trigger})` : ""),
+      );
     } catch (e: any) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [roleId, query]);
+  }, [roleId, query, showSink, sinkTopic, sinkTrigger, sinkKeyColumn]);
 
   return (
     <div className="provisa-tools">
@@ -71,6 +88,47 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
           Submit for Approval
         </button>
       </div>
+
+      <label className="provisa-tools-sink-toggle">
+        <input
+          type="checkbox"
+          checked={showSink}
+          onChange={(e) => setShowSink(e.target.checked)}
+        />
+        Include Kafka sink
+      </label>
+
+      {showSink && (
+        <div className="provisa-tools-sink">
+          <label>
+            Topic
+            <input
+              value={sinkTopic}
+              onChange={(e) => setSinkTopic(e.target.value)}
+              placeholder="e.g., order-report-updates"
+            />
+          </label>
+          <label>
+            Trigger
+            <select
+              value={sinkTrigger}
+              onChange={(e) => setSinkTrigger(e.target.value)}
+            >
+              <option value="change_event">On data change</option>
+              <option value="schedule">On schedule</option>
+              <option value="manual">Manual</option>
+            </select>
+          </label>
+          <label>
+            Key Column <span style={{ fontWeight: "normal" }}>(optional)</span>
+            <input
+              value={sinkKeyColumn}
+              onChange={(e) => setSinkKeyColumn(e.target.value)}
+              placeholder="e.g., region"
+            />
+          </label>
+        </div>
+      )}
 
       {error && <div className="provisa-tools-error">{error}</div>}
       {submitMsg && <div className="provisa-tools-success">{submitMsg}</div>}

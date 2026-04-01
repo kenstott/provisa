@@ -349,14 +349,17 @@ export async function submitQuery(
   roleId: string,
   query: string,
   variables?: Record<string, unknown>,
+  sink?: { topic: string; trigger: string; key_column?: string },
 ): Promise<{ query_id: number; operation_name: string; message: string }> {
+  const body: Record<string, unknown> = { query, variables };
+  if (sink) body.sink = sink;
   const resp = await fetch(`${API_BASE_RAW}/data/submit`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-Provisa-Role": roleId,
     },
-    body: JSON.stringify({ query, variables }),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));

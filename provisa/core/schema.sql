@@ -151,9 +151,20 @@ CREATE TABLE IF NOT EXISTS persisted_queries (
     cache_ttl       INTEGER,            -- steward-specified cache TTL in seconds (Phase O)
     model_version   INTEGER NOT NULL DEFAULT 1,  -- registration model version
     deprecated_by   TEXT,               -- replacement stable_id (REQ-026)
+    sink_topic      TEXT,               -- Kafka sink topic (REQ-176)
+    sink_trigger    TEXT CHECK (sink_trigger IN ('change_event', 'schedule', 'manual')),
+    sink_key_column TEXT,               -- message key column
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Migration: add sink columns
+DO $$ BEGIN
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS sink_topic TEXT;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS sink_trigger TEXT;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS sink_key_column TEXT;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS approval_log (
     id              SERIAL PRIMARY KEY,

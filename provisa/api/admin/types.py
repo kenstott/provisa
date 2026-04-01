@@ -154,6 +154,9 @@ class PersistedQueryType:
     stable_id: str | None
     developer_id: str | None
     approved_by: str | None
+    sink_topic: str | None
+    sink_trigger: str | None
+    sink_key_column: str | None
 
 
 @strawberry.type

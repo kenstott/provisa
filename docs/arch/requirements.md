@@ -184,3 +184,17 @@
 - **REQ-169** (2026-04-01): Trino 480 with Iceberg results catalog (JDBC on PG, native S3 filesystem).
 - **REQ-170** (2026-04-01): `start-ui.sh --reset-volumes` for Docker crash recovery.
 - **REQ-171** (2026-04-01): MinIO results bucket auto-created at startup.
+
+## Dataset Change Events
+- **REQ-172** (2026-04-01): Mutations emit a dataset change event to a Kafka topic — no row-level detail, just `{table, source, timestamp}`.
+- **REQ-173** (2026-04-01): Change events fire on the same mutation hook that invalidates cache and marks MVs stale.
+- **REQ-174** (2026-04-01): Producers running complex ETL outside Provisa can signal changes via a trivial mutation (touch operation).
+- **REQ-175** (2026-04-01): Change event topic configurable via `PROVISA_CHANGE_EVENT_TOPIC` (default: `provisa.change-events`).
+
+## Kafka Sinks (Approved Query Publishing)
+- **REQ-176** (2026-04-01): Approved queries can optionally have a Kafka sink — results published to a topic on trigger.
+- **REQ-177** (2026-04-01): Sink triggers: `change_event` (re-run when source table changes), `schedule` (cron/interval), `manual` (on-demand).
+- **REQ-178** (2026-04-01): Sinks are opt-in per approved query, configured by the steward.
+- **REQ-179** (2026-04-01): Sink request can be included in the query submission — steward approves query and sink together.
+- **REQ-180** (2026-04-01): Sinks can also be added to an already-approved query independently.
+- **REQ-181** (2026-04-01): Sink output format is JSON (one message per row, keyed by optional column).

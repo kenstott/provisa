@@ -548,6 +548,14 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id):
                 await state.cache_store.invalidate_by_table(table_meta.table_id)
                 # Mark affected MVs as stale (REQ-084)
                 state.mv_registry.mark_stale(table_meta.table_name)
+                # Emit dataset change event (REQ-172)
+                from provisa.kafka.change_events import emit_change_event
+                emit_change_event(mutation.table_name, source_id)
+                # Trigger Kafka sinks for this table (REQ-176, fire-and-forget)
+                from provisa.kafka.sink_executor import trigger_sinks_for_table
+                asyncio.create_task(
+                    trigger_sinks_for_table(mutation.table_name, state),
+                )
         except Exception as e:
             log.exception("Mutation execution failed")
             raise HTTPException(status_code=500, detail=str(e))
@@ -563,10 +571,17 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id):
     return {"data": {mutation_name: results[0] if results else None}}
 
 
+class SinkRequest(BaseModel):
+    topic: str
+    trigger: str = "change_event"  # change_event, schedule, manual
+    key_column: str | None = None
+
+
 class SubmitRequest(BaseModel):
     query: str
     variables: dict | None = None
     role: str = "admin"
+    sink: SinkRequest | None = None  # optional Kafka sink request
 
 
 def _extract_operation_name(query_text: str) -> str | None:
@@ -711,6 +726,17 @@ async def submit_endpoint(
             target_tables=target_tables,
             developer_id=role_id,
         )
+
+        # Save sink request if provided
+        if request.sink:
+            await conn.execute(
+                "UPDATE persisted_queries SET sink_topic = $1, sink_trigger = $2, "
+                "sink_key_column = $3 WHERE id = $4",
+                request.sink.topic,
+                request.sink.trigger,
+                request.sink.key_column,
+                query_id,
+            )
 
     return {
         "query_id": query_id,

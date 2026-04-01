@@ -176,6 +176,9 @@ class Query:
                     status=r["status"], stable_id=r.get("stable_id"),
                     developer_id=r.get("developer_id"),
                     approved_by=r.get("approved_by"),
+                    sink_topic=r.get("sink_topic"),
+                    sink_trigger=r.get("sink_trigger"),
+                    sink_key_column=r.get("sink_key_column"),
                 )
                 for r in rows
             ]
