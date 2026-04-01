@@ -37,11 +37,7 @@ function SqlPanel({ compiled }: { compiled: CompileResult }) {
     });
   }, [formatted]);
 
-  const label = compiled.direct_sql
-    ? "Direct SQL"
-    : compiled.trino_sql
-      ? "Trino SQL"
-      : "Compiled SQL";
+  const label = "SQL";
 
   return (
     <div className="provisa-tools-sql">
