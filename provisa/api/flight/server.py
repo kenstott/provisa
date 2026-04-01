@@ -117,7 +117,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
             compiled_for_exec = apply_sampling(compiled_for_exec, get_sample_size())
         trino_sql = transpile_to_trino(compiled_for_exec.sql)
 
-        # Streaming path: Zaychik → Provisa → client (no materialization)
+        # Streaming via Zaychik (true end-to-end Arrow, no materialization)
         if self._state.flight_client is not None:
             from provisa.executor.trino_flight import execute_trino_flight_stream
             try:
@@ -126,9 +126,9 @@ class ProvisaFlightServer(flight.FlightServerBase):
                 )
                 return flight.GeneratorStream(arrow_schema, batch_gen)
             except Exception:
-                log.exception("Flight SQL streaming failed, falling back to REST")
+                log.warning("Flight SQL streaming failed, using REST path")
 
-        # Fallback: REST → materialize → stream
+        # REST path — execute via Trino REST, stream as Arrow batches
         result = execute_trino(
             self._state.trino_conn, trino_sql, compiled_for_exec.params,
         )

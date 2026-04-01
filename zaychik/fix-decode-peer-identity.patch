@@ -1,0 +1,10 @@
+--- a/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerHelper.java
++++ b/src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerHelper.java
+@@ -94,7 +94,8 @@
+   public ImmutablePair<String, String> decodePeerIdentity(String token) {
+     String[] parts =
+         new String(Base64.getDecoder().decode(token), StandardCharsets.UTF_8).split(":");
+-    return new ImmutablePair<>(parts[0], parts[1]);
++    String password = parts.length > 1 ? parts[1] : "";
++    return new ImmutablePair<>(parts[0], password);
+   }

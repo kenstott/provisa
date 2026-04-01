@@ -41,6 +41,7 @@ def create_flight_connection(
         uri=f"grpc://{host}:{port}",
         db_kwargs={
             "username": user,
+            "password": "",
             "adbc.flight.sql.client_option.authority": f"{host}:{port}",
         },
     )
@@ -90,6 +91,21 @@ def execute_trino_flight(
     return QueryResult(rows=rows, column_names=column_names)
 
 
+def _skip_prepare(cursor) -> None:
+    """Patch cursor to skip prepare() — Zaychik doesn't support it."""
+    import types
+
+    def _prepare_execute_no_prepare(self, operation, parameters=None):
+        self._results = None
+        if operation != self._last_query:
+            self._last_query = operation
+            self._stmt.set_sql_query(operation)
+
+    cursor._prepare_execute = types.MethodType(
+        _prepare_execute_no_prepare, cursor,
+    )
+
+
 def execute_trino_flight_arrow(
     conn,
     sql: str,
@@ -104,6 +120,7 @@ def execute_trino_flight_arrow(
     log.info("[EXEC TRINO FLIGHT] sql=%s", exec_sql[:200])
 
     cursor = conn.cursor()
+    _skip_prepare(cursor)
     cursor.execute(exec_sql)
     table = cursor.fetch_arrow_table()
     cursor.close()
@@ -129,6 +146,7 @@ def execute_trino_flight_stream(
     log.info("[EXEC TRINO FLIGHT STREAM] sql=%s", exec_sql[:200])
 
     cursor = conn.cursor()
+    _skip_prepare(cursor)
     cursor.execute(exec_sql)
     reader = cursor.fetch_record_batch()
     schema = reader.schema
