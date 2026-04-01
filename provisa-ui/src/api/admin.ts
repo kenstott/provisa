@@ -269,6 +269,57 @@ export async function updateSettings(
   return resp.json();
 }
 
+// --- Query compilation and submission ---
+
+export async function compileQuery(
+  roleId: string,
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<{
+  sql: string;
+  trino_sql: string | null;
+  direct_sql: string | null;
+  params: unknown[];
+  route: string;
+  route_reason: string;
+  sources: string[];
+  root_field: string;
+}> {
+  const resp = await fetch(`${API_BASE_RAW}/data/compile`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Provisa-Role": roleId,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(text);
+  }
+  return resp.json();
+}
+
+export async function submitQuery(
+  roleId: string,
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<{ query_id: number; operation_name: string; message: string }> {
+  const resp = await fetch(`${API_BASE_RAW}/data/submit`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Provisa-Role": roleId,
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(body.detail || resp.statusText);
+  }
+  return resp.json();
+}
+
 export async function executeQuery(
   roleId: string,
   query: string,

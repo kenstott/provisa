@@ -45,6 +45,8 @@ class SourceType(str, Enum):
     redis = "redis"
     kudu = "kudu"
     accumulo = "accumulo"
+    # Streaming
+    kafka = "kafka"
     # Other
     google_sheets = "google_sheets"
     prometheus = "prometheus"
@@ -181,6 +183,7 @@ class Column(BaseModel):
     masking: dict[str, MaskingRuleConfig] | None = None  # role_id → rule
     alias: str | None = None  # GraphQL field name override
     description: str | None = None  # GraphQL field description
+    path: str | None = None  # JSON extraction path (e.g. "payload.order_id")
 
 
 class Table(BaseModel):

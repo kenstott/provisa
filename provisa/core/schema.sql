@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS table_columns (
     visible_to  TEXT[] NOT NULL DEFAULT '{}',
     alias       TEXT,
     description TEXT,
+    path        TEXT,
     UNIQUE (table_id, column_name)
 );
 
@@ -51,6 +52,7 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS description TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS alias TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS description TEXT;
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS path TEXT;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

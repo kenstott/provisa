@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Kenneth Stott
+# Canary: 2ae8ef6d-2550-4cb3-bd42-e938c6f76e26
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -20,6 +21,7 @@ from provisa.api.admin.types import (
     DomainInput,
     DomainType,
     MutationResult,
+    PersistedQueryType,
     RegisteredTableType,
     RelationshipInput,
     RelationshipType,
@@ -161,6 +163,22 @@ class Query:
         async with pool.acquire() as conn:
             rows = await conn.fetch("SELECT * FROM rls_rules ORDER BY id")
             return [_rls_from_row(r) for r in rows]
+
+    @strawberry.field
+    async def persisted_queries(self) -> list[PersistedQueryType]:
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch("SELECT * FROM persisted_queries ORDER BY id")
+            return [
+                PersistedQueryType(
+                    id=r["id"], query_text=r["query_text"],
+                    compiled_sql=r["compiled_sql"] or "",
+                    status=r["status"], stable_id=r.get("stable_id"),
+                    developer_id=r.get("developer_id"),
+                    approved_by=r.get("approved_by"),
+                )
+                for r in rows
+            ]
 
     @strawberry.field
     async def available_schemas(self, source_id: str) -> list[str]:
@@ -384,6 +402,20 @@ class Mutation:
         if deleted:
             return MutationResult(success=True, message=f"Relationship {id!r} deleted")
         return MutationResult(success=False, message=f"Relationship {id!r} not found")
+
+    @strawberry.mutation
+    async def approve_query(self, query_id: int, approver_id: str = "admin") -> MutationResult:
+        from provisa.registry.store import approve
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            try:
+                stable_id = await approve(conn, query_id, approver_id)
+                return MutationResult(
+                    success=True,
+                    message=f"Query approved with stable ID: {stable_id}",
+                )
+            except Exception as e:
+                return MutationResult(success=False, message=str(e))
 
 
 admin_schema = strawberry.Schema(query=Query, mutation=Mutation)

@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Kenneth Stott
+# Canary: b80c814d-a7b3-4891-8338-5572e74a63d6
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -7,10 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Execute queries via Trino Arrow Flight SQL (REQ-045).
+"""Execute queries via Arrow Flight SQL through Zaychik proxy (REQ-045).
 
-Uses the ADBC Flight SQL driver to connect to Trino's Flight SQL endpoint,
-returning Arrow Tables directly without intermediate row-tuple conversion.
+Uses the ADBC Flight SQL driver to connect to the Zaychik Arrow Flight SQL
+proxy, which translates Flight SQL requests to Trino JDBC queries and streams
+results back as Arrow record batches.
 """
 
 from __future__ import annotations
@@ -29,7 +31,7 @@ def create_flight_connection(
     port: int = 8480,
     user: str = "provisa",
 ):
-    """Create an ADBC Flight SQL connection to Trino.
+    """Create an ADBC Flight SQL connection to the Zaychik proxy.
 
     Returns an adbc_driver_flightsql.dbapi.Connection.
     """
@@ -95,8 +97,8 @@ def execute_trino_flight_arrow(
 ) -> pa.Table:
     """Execute SQL via Flight SQL, returning a native Arrow Table.
 
-    Use this when the output format is Arrow, Parquet, or CSV to avoid
-    the round-trip through Python tuples.
+    Materializes the full result in memory. For unbounded streaming,
+    use execute_trino_flight_stream() instead.
     """
     exec_sql = _substitute_params(sql, params)
     log.info("[EXEC TRINO FLIGHT] sql=%s", exec_sql[:200])
@@ -108,3 +110,37 @@ def execute_trino_flight_arrow(
 
     log.info("[EXEC TRINO FLIGHT] rows=%d", table.num_rows)
     return table
+
+
+def execute_trino_flight_stream(
+    conn,
+    sql: str,
+    params: list | None = None,
+):
+    """Execute SQL via Flight SQL, returning a streaming RecordBatchReader.
+
+    Yields Arrow RecordBatches lazily — the full result is never held in
+    memory. Use this for the Provisa Arrow Flight server to stream results
+    to clients without materializing.
+
+    Returns (schema, generator) where generator yields pa.RecordBatch.
+    """
+    exec_sql = _substitute_params(sql, params)
+    log.info("[EXEC TRINO FLIGHT STREAM] sql=%s", exec_sql[:200])
+
+    cursor = conn.cursor()
+    cursor.execute(exec_sql)
+    reader = cursor.fetch_record_batch()
+    schema = reader.schema
+
+    def batch_generator():
+        try:
+            while True:
+                batch = reader.read_next_batch()
+                yield batch
+        except StopIteration:
+            pass
+        finally:
+            cursor.close()
+
+    return schema, batch_generator()

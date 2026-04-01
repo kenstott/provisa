@@ -172,12 +172,17 @@ import pyarrow.flight as flight
 
 client = flight.FlightClient("grpc://localhost:8815")
 ticket = flight.Ticket(b'{"query": "{ orders { id amount } }", "role": "admin"}')
-table = client.do_get(ticket).read_all()  # pyarrow.Table
+reader = client.do_get(ticket)
+# Stream batch-by-batch (no full materialization):
+for batch in reader:
+    process(batch.data)
+# Or read all at once for small results:
+table = client.do_get(ticket).read_all()
 ```
 
-The full security pipeline (RLS, masking, sampling) is applied. When Trino Flight SQL is available, data flows as native Arrow end-to-end with no serialization overhead.
+The full security pipeline (RLS, masking, sampling) is applied. When the Zaychik Flight SQL proxy is available (port 8480), Arrow record batches stream end-to-end from Trino through Provisa to the client without materializing the full result in memory.
 
-**Scalability:** Results are materialized in Provisa process memory as an Arrow Table before streaming to the client. For truly unbounded result sets, use Parquet/ORC redirect via the HTTP endpoint instead.
+**Scalability:** Unbounded when Zaychik is available (streaming). Falls back to materializing in memory via Trino REST if Zaychik is unavailable.
 
 ## Protobuf gRPC Endpoint
 
@@ -187,6 +192,72 @@ Port `50051`. Server reflection enabled.
 - Unary mutations: single response with `affected_rows`
 - Role from metadata key `x-provisa-role`
 - `.proto` schema available at `GET /data/proto/{role_id}`
+
+## JDBC Driver
+
+Provisa includes a JDBC driver (`provisa-jdbc-0.1.0.jar`) that exposes approved persisted queries as virtual tables for BI tools (Tableau, PowerBI, DBeaver, etc.).
+
+**Connection URL:** `jdbc:provisa://host:port`
+
+**Authentication:** Standard JDBC `user`/`password` properties. The driver authenticates against Provisa's auth endpoint and maps the user to a role.
+
+**Usage:**
+```java
+Properties props = new Properties();
+props.setProperty("user", "analyst");
+props.setProperty("password", "secret");
+
+Connection conn = DriverManager.getConnection("jdbc:provisa://localhost:8001", props);
+
+// List approved queries as tables
+ResultSet tables = conn.getMetaData().getTables(null, null, "%", null);
+
+// Execute an approved query by its stable ID
+Statement stmt = conn.createStatement();
+ResultSet rs = stmt.executeQuery("SELECT * FROM <stable_query_id>");
+while (rs.next()) {
+    System.out.println(rs.getString("name") + " = " + rs.getDouble("amount"));
+}
+```
+
+**How it works:**
+- `getTables()` returns approved persisted queries visible to the authenticated role
+- `getColumns()` introspects the approved query's compiled SQL for column metadata
+- `executeQuery()` parses minimal SQL (`SELECT * FROM <query_id> [WHERE ...]`), executes the approved query via Provisa's HTTP API, and returns results as a JDBC ResultSet
+- Full security pipeline (RLS, masking, sampling) applied at query time
+
+**SQL support:** The driver accepts `SELECT * FROM <stable_id>` with optional `WHERE col = 'value'` filters. It does not support arbitrary SQL — the query logic is defined in GraphQL and approved by a steward.
+
+**Streaming:** The driver requests Arrow IPC redirect by default. Results stream batch-by-batch via `ArrowStreamReader` — memory usage is bounded to one record batch at a time (typically 1K-10K rows), making it suitable for arbitrarily large result sets. Falls back to JSON (in-memory) if redirect is unavailable.
+
+### End-to-End Example
+
+```
+$ # 1. Submit a named query in GraphiQL
+query TopOrders {
+  orders(limit: 10) { id customer_id amount region status }
+}
+# → Click "Submit for Approval" in Provisa plugin
+
+$ # 2. Steward approves → stable ID assigned
+mutation { approveQuery(queryId: 3) { success message } }
+# → "Query approved with stable ID: bf02af78-..."
+
+$ # 3. BI tool connects via JDBC
+$ java -cp provisa-jdbc-0.1.0.jar:. JdbcTest
+
+=== Listing approved queries (getTables) ===
+  TABLE: bf02af78-...  (Approved query: TopOrders)
+
+=== Querying: bf02af78-... ===
+id              | customer_id     | amount          | region          | status
+-------------------------------------------------------------------------------
+1               | 1               | 19.99           | us-east         | completed
+2               | 1               | 99.98           | us-east         | completed
+3               | 2               | 29.99           | us-west         | completed
+...
+10 rows returned.
+```
 
 ## Authentication
 

@@ -58,6 +58,8 @@ class AppState:
     proto_files: dict[str, str] = {}  # role_id → .proto content
     _grpc_server: object | None = None
     _flight_server: object | None = None  # ProvisaFlightServer
+    kafka_windows: dict[str, str] = {}  # source_id → default_window (e.g. "1h")
+    kafka_table_configs: dict[str, object] = {}  # table_name → KafkaTableConfig
 
 
 state = AppState()
@@ -213,6 +215,26 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 use_pgbouncer=src.use_pgbouncer,
                 pgbouncer_port=src.pgbouncer_port,
             )
+
+    # Load Kafka source configs (windows + discriminators)
+    from provisa.kafka.window import KafkaTableConfig
+    for ks in raw_config.get("kafka_sources", []):
+        for topic in ks.get("topics", []):
+            table_name = topic.get("table_name") or topic["topic"].replace(".", "_").replace("-", "_")
+            window = topic.get("default_window", "1h")
+            disc = topic.get("discriminator")
+            disc_field = disc.get("field") if disc else None
+            disc_value = disc.get("value") if disc else None
+
+            state.kafka_table_configs[table_name] = KafkaTableConfig(
+                window=window,
+                discriminator_field=disc_field,
+                discriminator_value=disc_value,
+            )
+
+            # Also populate kafka_windows for backward compat
+            if window:
+                state.kafka_windows[ks["id"]] = window
 
     # Load materialized view definitions
     from provisa.mv.models import MVDefinition, JoinPattern
@@ -394,7 +416,7 @@ async def _fetch_tables(conn: asyncpg.Connection) -> list[dict]:
     for row in rows:
         table = dict(row)
         col_rows = await conn.fetch(
-            "SELECT column_name, visible_to, alias, description "
+            "SELECT column_name, visible_to, alias, description, path "
             "FROM table_columns WHERE table_id = $1 ORDER BY id",
             row["id"],
         )
@@ -404,6 +426,7 @@ async def _fetch_tables(conn: asyncpg.Connection) -> list[dict]:
                 "visible_to": list(r["visible_to"]),
                 "alias": r["alias"],
                 "description": r["description"],
+                "path": r["path"],
             }
             for r in col_rows
         ]

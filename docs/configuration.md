@@ -102,6 +102,29 @@ Table and column aliases override the default GraphQL name. Useful for:
 
 Table and column descriptions are included in the generated GraphQL SDL. They appear in GraphiQL's documentation explorer and introspection queries. Set them in config YAML or via the admin UI.
 
+### Path (Computed JSON Extraction)
+
+Columns can extract values from a JSON/JSONB source column using a dot-notation `path`. This is useful for semi-structured data in Kafka messages, MongoDB documents, or PostgreSQL JSONB columns.
+
+```yaml
+columns:
+  - name: payload
+    type: varchar
+    visible_to: []            # hide the raw JSON column
+  - name: order_id
+    type: integer
+    path: payload.order_id    # extracts from payload column
+    visible_to: [admin, analyst]
+  - name: customer_name
+    type: varchar
+    path: payload.customer.name
+    visible_to: [admin, analyst]
+```
+
+The path format is `source_column.key1.key2...`. The compiler generates `json_extract_scalar(source_column, '$.key1.key2')` in the SQL.
+
+**Routing impact:** Path columns use PostgreSQL JSON operators (`->>`), which are natively supported by direct PG routing. For non-PostgreSQL sources (MySQL, SQL Server, etc.), queries with path columns are automatically routed through Trino, where SQLGlot transpiles `->>'key'` to `json_extract_scalar`. Mutations are unaffected since path columns are read-only computed fields.
+
 ### Masking Types
 
 | Type | Fields | Description |
@@ -200,6 +223,64 @@ materialized_views:
     enabled: true
 ```
 
+## Kafka Sources
+
+```yaml
+kafka_sources:
+  - id: event-stream
+    bootstrap_servers: kafka:9092
+    schema_registry_url: http://schema-registry:8081  # optional
+    topics:
+      - id: order-created
+        topic: orders.events
+        default_window: 1h          # auto-injected time bound
+        schema_source: manual       # manual, registry, or sample
+        value_format: json
+        discriminator:              # filter shared topic by message type
+          field: event_type
+          value: OrderCreated
+        columns:
+          - name: event_type
+            type: varchar
+          - name: order_id
+            type: integer
+          - name: amount
+            type: double
+          - name: metadata
+            type: varchar           # raw JSON for complex nested data
+      - id: order-shipped
+        topic: orders.events        # same physical topic
+        default_window: 1h
+        discriminator:
+          field: event_type
+          value: OrderShipped
+        columns:
+          - name: event_type
+            type: varchar
+          - name: order_id
+            type: integer
+          - name: shipped_at
+            type: timestamp
+```
+
+### Time Window
+
+`default_window` bounds every query to a recent time period, preventing unbounded reads from high-volume topics. Format: `1h`, `30m`, `7d`, `60s`. Defaults to `1h`.
+
+The window is auto-injected as `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`. Clients can override with their own `_timestamp` filter in the GraphQL `where` argument.
+
+### Discriminator
+
+Multiple topic configs can point to the same physical Kafka topic with different `discriminator` values, producing separate GraphQL types. The discriminator is auto-injected as a WHERE clause.
+
+### Schema Source
+
+| Value | Behavior |
+|-------|----------|
+| `registry` | Fetch schema from Confluent Schema Registry |
+| `manual` | Define columns inline in config (no Schema Registry needed) |
+| `sample` | Auto-discover from sample messages |
+
 ## Cache
 
 ```yaml
@@ -242,10 +323,10 @@ auth:
 | `PG_USER` | `provisa` | PostgreSQL user |
 | `PG_PASSWORD` | `provisa` | PostgreSQL password |
 | `TRINO_HOST` | `localhost` | Trino host |
-| `TRINO_PORT` | `8080` | Trino port |
+| `TRINO_PORT` | `8080` | Trino HTTP port |
 | `REDIS_URL` | — | Redis connection URL |
 | `PROVISA_SAMPLE_SIZE` | `100` | Default sampling limit |
-| `TRINO_FLIGHT_PORT` | `8480` | Trino Arrow Flight SQL port |
+| `TRINO_FLIGHT_PORT` | `8480` | Zaychik Flight SQL proxy port |
 | `FLIGHT_PORT` | `8815` | Provisa Arrow Flight server port |
 | `GRPC_PORT` | `50051` | Provisa Protobuf gRPC server port |
 | `PROVISA_REDIRECT_ENABLED` | `false` | Enable server-side threshold redirect |

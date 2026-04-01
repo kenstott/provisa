@@ -44,14 +44,15 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
     for col in table.columns:
         await conn.execute(
             """
-            INSERT INTO table_columns (table_id, column_name, visible_to, alias, description)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO table_columns (table_id, column_name, visible_to, alias, description, path)
+            VALUES ($1, $2, $3, $4, $5, $6)
             """,
             table_id,
             col.name,
             col.visible_to,
             getattr(col, "alias", None),
             getattr(col, "description", None),
+            getattr(col, "path", None),
         )
         # Persist masking rules per (column, role)
         if col.masking:

@@ -63,6 +63,105 @@ body.graphiql-dark .graphiql-dialog {
 }
 
 
+/* Provisa Tools plugin panel */
+.provisa-tools {
+  padding: 12px;
+  font-size: 13px;
+  color: hsl(224, 10%, 75%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.provisa-tools-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.provisa-tools-actions button {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  background: hsl(224, 20%, 28%);
+  color: hsl(224, 10%, 85%);
+}
+
+.provisa-tools-actions button:hover {
+  background: hsl(224, 20%, 35%);
+}
+
+.provisa-tools-actions button.submit-btn {
+  background: hsl(239, 84%, 50%);
+  color: white;
+}
+
+.provisa-tools-actions button.submit-btn:hover {
+  background: hsl(239, 84%, 60%);
+}
+
+.provisa-tools-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.provisa-tools-error {
+  color: hsl(0, 84%, 60%);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.provisa-tools-success {
+  color: hsl(142, 71%, 45%);
+  font-size: 12px;
+}
+
+.provisa-tools-sql {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.provisa-tools-meta {
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.provisa-tools-reason {
+  color: hsl(224, 10%, 50%);
+  font-style: italic;
+}
+
+.provisa-tools-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(224, 10%, 50%);
+}
+
+.provisa-tools-code {
+  background: hsl(224, 20%, 12%);
+  padding: 10px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-y: auto;
+  max-height: 300px;
+  margin: 0;
+}
+
+.provisa-tools-params {
+  font-size: 12px;
+  color: hsl(224, 10%, 50%);
+}
+
 /* Hide GraphiQL branding */
 .graphiql-container .graphiql-logo {
   display: none;

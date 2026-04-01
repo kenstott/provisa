@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Kenneth Stott
+# Canary: 2f87c2de-a092-4613-b94c-3899f4b2b39a
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -10,11 +11,14 @@
 """gRPC Arrow Flight server for Provisa (REQ-045).
 
 Clients send a GraphQL query as the Flight ticket, receive Arrow record batches.
+When the Zaychik Flight SQL proxy is available, results stream end-to-end
+without materializing the full result in Provisa memory.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 
 import pyarrow as pa
 import pyarrow.flight as flight
@@ -25,11 +29,12 @@ from provisa.compiler.sampling import apply_sampling, get_sample_size
 from provisa.compiler.sql_gen import compile_query
 from provisa.executor.formats.arrow import rows_to_arrow_table
 from provisa.executor.trino import execute_trino
-from provisa.executor.trino_flight import execute_trino_flight_arrow  # noqa: F401
 from provisa.executor.direct import execute_direct
 from provisa.security.rights import Capability, has_capability
 from provisa.transpiler.router import Route, decide_route
 from provisa.transpiler.transpile import transpile, transpile_to_trino
+
+log = logging.getLogger(__name__)
 
 
 class ProvisaFlightServer(flight.FlightServerBase):
@@ -39,11 +44,10 @@ class ProvisaFlightServer(flight.FlightServerBase):
         super().__init__(location, **kwargs)
         self._state = state
 
-    def do_get(self, context, ticket):
-        """Execute a query from the ticket and return Arrow record batches."""
-        # Ticket is JSON: {"query": "...", "role": "admin", "variables": {...}}
+    def _compile_query(self, ticket_bytes):
+        """Parse ticket, compile GraphQL to SQL, apply security pipeline."""
         try:
-            request = json.loads(ticket.ticket.decode("utf-8"))
+            request = json.loads(ticket_bytes.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
             raise flight.FlightServerError(f"Invalid ticket: {e}")
 
@@ -75,13 +79,21 @@ class ProvisaFlightServer(flight.FlightServerBase):
             source_dialects=self._state.source_dialects,
         )
 
+        return document, ctx, rls, role, compiled, decision, variables
+
+    def do_get(self, context, ticket):
+        """Execute a query from the ticket and return Arrow record batches."""
+        document, ctx, rls, role, compiled, decision, variables = \
+            self._compile_query(ticket.ticket)
+
         compiled_for_exec = compiled
+        sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
+
         if decision.route == Route.DIRECT and decision.source_id:
             compiled_for_exec = inject_rls(compiled_for_exec, ctx, rls)
-            if not has_capability(role, Capability.FULL_RESULTS) if role else True:
+            if sampling:
                 compiled_for_exec = apply_sampling(compiled_for_exec, get_sample_size())
             target_sql = transpile(compiled_for_exec.sql, decision.dialect or "postgres")
-            # Arrow Flight is async context — use sync execution for now
             import asyncio
             loop = asyncio.new_event_loop()
             try:
@@ -93,25 +105,32 @@ class ProvisaFlightServer(flight.FlightServerBase):
                 )
             finally:
                 loop.close()
-        else:
-            compiled_for_exec = compile_query(
-                document, ctx, variables, use_catalog=True,
-            )[0]
-            compiled_for_exec = inject_rls(compiled_for_exec, ctx, rls)
-            if not has_capability(role, Capability.FULL_RESULTS) if role else True:
-                compiled_for_exec = apply_sampling(compiled_for_exec, get_sample_size())
-            trino_sql = transpile_to_trino(compiled_for_exec.sql)
+            table = rows_to_arrow_table(result.rows, compiled.columns)
+            return flight.RecordBatchStream(table)
 
-            # Use Flight SQL for native Arrow when available
-            if self._state.flight_client is not None:
-                table = execute_trino_flight_arrow(
+        # Trino path — recompile with catalog-qualified names
+        compiled_for_exec = compile_query(
+            document, ctx, variables, use_catalog=True,
+        )[0]
+        compiled_for_exec = inject_rls(compiled_for_exec, ctx, rls)
+        if sampling:
+            compiled_for_exec = apply_sampling(compiled_for_exec, get_sample_size())
+        trino_sql = transpile_to_trino(compiled_for_exec.sql)
+
+        # Streaming path: Zaychik → Provisa → client (no materialization)
+        if self._state.flight_client is not None:
+            from provisa.executor.trino_flight import execute_trino_flight_stream
+            try:
+                arrow_schema, batch_gen = execute_trino_flight_stream(
                     self._state.flight_client, trino_sql, compiled_for_exec.params,
                 )
-                return flight.RecordBatchStream(table)
+                return flight.GeneratorStream(arrow_schema, batch_gen)
+            except Exception:
+                log.exception("Flight SQL streaming failed, falling back to REST")
 
-            result = execute_trino(
-                self._state.trino_conn, trino_sql, compiled_for_exec.params,
-            )
-
+        # Fallback: REST → materialize → stream
+        result = execute_trino(
+            self._state.trino_conn, trino_sql, compiled_for_exec.params,
+        )
         table = rows_to_arrow_table(result.rows, compiled.columns)
         return flight.RecordBatchStream(table)

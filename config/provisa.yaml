@@ -22,6 +22,14 @@ sources:
     username: ""
     password: ""
 
+  - id: support-kafka
+    type: kafka
+    host: kafka
+    port: 29092
+    database: default
+    username: ""
+    password: ""
+
 domains:
   - id: sales-analytics
     description: Sales operational and analytical data
@@ -29,6 +37,8 @@ domains:
     description: Product catalog data
   - id: customer-insights
     description: Customer segmentation and analytics
+  - id: support
+    description: Customer support ticket events
 
 naming:
   domain_prefix: false  # when true, prepends domain_id__ to all GraphQL names
@@ -124,6 +134,43 @@ tables:
       - name: score
         visible_to: [admin]
 
+  - source_id: support-kafka
+    domain_id: support
+    schema: default
+    table: support_tickets
+    description: "Customer support events from Kafka (tickets + resolutions)"
+    governance: pre-approved
+    columns:
+      - name: event_type
+        visible_to: [admin, analyst]
+        description: "Event discriminator: TicketCreated or TicketResolved"
+      - name: ticket_id
+        visible_to: [admin, analyst]
+        description: "Unique ticket identifier"
+      - name: customer_id
+        visible_to: [admin, analyst]
+        description: "FK to customers table"
+      - name: category
+        visible_to: [admin, analyst]
+        description: "Ticket category (billing, technical, etc.)"
+      - name: priority
+        visible_to: [admin, analyst]
+        description: "Ticket priority level"
+      - name: subject
+        visible_to: [admin, analyst]
+      - name: agent
+        visible_to: [admin, analyst]
+        description: "Support agent who resolved the ticket"
+      - name: resolution
+        visible_to: [admin, analyst]
+        description: "Resolution type (fixed, workaround, etc.)"
+      - name: resolution_time_minutes
+        visible_to: [admin, analyst]
+      - name: created_at
+        visible_to: [admin, analyst]
+      - name: resolved_at
+        visible_to: [admin, analyst]
+
 relationships:
   - id: orders-to-customers
     source_table_id: orders
@@ -137,6 +184,12 @@ relationships:
     source_column: id
     target_column: customer_id
     cardinality: one-to-many
+  - id: tickets-to-customers
+    source_table_id: support_tickets
+    target_table_id: customers
+    source_column: customer_id
+    target_column: id
+    cardinality: many-to-one
   - id: orders-to-reviews
     source_table_id: orders
     target_table_id: product_reviews
@@ -180,21 +233,56 @@ cache:
   redis_url: ${env:REDIS_URL}
   default_ttl: 300
 
-# kafka_sources:
-#   - id: event-stream
-#     bootstrap_servers: kafka:9092
-#     schema_registry_url: http://schema-registry:8081
-#     topics:
-#       - id: order-events
-#         topic: orders.events.v1
-#         schema_source: registry
-#         value_format: avro
-#
-# kafka_sinks:
-#   - query_stable_id: "abc-123"
-#     topic: enriched-orders
-#     key_column: order_id
-#     value_format: json
+kafka_sources:
+  - id: support-kafka
+    bootstrap_servers: kafka:29092
+    topics:
+      - id: ticket-created
+        topic: support.tickets
+        default_window: 1h
+        schema_source: manual
+        value_format: json
+        discriminator:
+          field: event_type
+          value: TicketCreated
+        columns:
+          - name: event_type
+            type: varchar
+          - name: ticket_id
+            type: integer
+          - name: customer_id
+            type: integer
+          - name: category
+            type: varchar
+          - name: priority
+            type: varchar
+          - name: subject
+            type: varchar
+          - name: created_at
+            type: varchar
+      - id: ticket-resolved
+        topic: support.tickets
+        default_window: 1h
+        schema_source: manual
+        value_format: json
+        discriminator:
+          field: event_type
+          value: TicketResolved
+        columns:
+          - name: event_type
+            type: varchar
+          - name: ticket_id
+            type: integer
+          - name: customer_id
+            type: integer
+          - name: agent
+            type: varchar
+          - name: resolution
+            type: varchar
+          - name: resolution_time_minutes
+            type: integer
+          - name: resolved_at
+            type: varchar
 
 rls_rules:
   - table_id: orders

@@ -103,6 +103,65 @@ def _format_response(rows, columns, root_field, output_format):
     return serialize_rows(rows, columns, root_field)
 
 
+import re as _re
+
+def _inject_probe_limit(sql: str, limit: int) -> str:
+    """Inject or tighten a LIMIT clause for threshold probing.
+
+    If the query already has a LIMIT, use the smaller of the two.
+    """
+    limit_match = _re.search(r"\bLIMIT\s+(\d+)", sql, _re.IGNORECASE)
+    if limit_match:
+        existing = int(limit_match.group(1))
+        effective = min(existing, limit)
+        return sql[:limit_match.start()] + f"LIMIT {effective}" + sql[limit_match.end():]
+    return sql + f" LIMIT {limit}"
+
+
+async def _execute_ctas_redirect(
+    document, ctx, rls, state, variables, role_id,
+    fresh_mvs, sampling, output_format, redirect_config,
+):
+    """Execute a query via CTAS, writing directly to S3. Returns the redirect response."""
+    from provisa.executor.trino_write import (
+        execute_ctas_redirect, presign_ctas_result,
+        cleanup_result_table, schedule_s3_cleanup,
+    )
+
+    compiled = compile_query(document, ctx, variables, use_catalog=True)[0]
+    compiled = inject_rls(compiled, ctx, rls)
+    compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
+    compiled = rewrite_if_mv_match(compiled, fresh_mvs)
+    if sampling:
+        from provisa.compiler.sampling import apply_sampling, get_sample_size
+        compiled = apply_sampling(compiled, get_sample_size())
+    trino_sql = transpile_to_trino(compiled.sql)
+
+    ctas_result = execute_ctas_redirect(
+        state.trino_conn, trino_sql, output_format,
+    )
+    url = await presign_ctas_result(ctas_result["s3_prefix"], redirect_config)
+
+    cleanup_result_table(state.trino_conn, ctas_result["table_name"])
+    asyncio.create_task(
+        schedule_s3_cleanup(ctas_result["s3_prefix"], redirect_config),
+    )
+
+    content_type = {
+        "parquet": "application/vnd.apache.parquet",
+        "orc": "application/x-orc",
+    }.get(output_format, "application/octet-stream")
+
+    return {
+        "data": {compiled.root_field: None},
+        "redirect": {
+            "redirect_url": url,
+            "row_count": ctas_result["row_count"],
+            "expires_in": redirect_config.ttl,
+            "content_type": content_type,
+        },
+    }
+
 
 @router.post("/graphql")
 async def graphql_endpoint(
@@ -234,6 +293,13 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
         log.debug("[QUERY %s] No MV match, using original sources: %s",
                   compiled.root_field, compiled.sources)
 
+    # Inject Kafka time-window and discriminator filters
+    if hasattr(state, "kafka_table_configs") and state.kafka_table_configs:
+        from provisa.kafka.window import inject_kafka_filters
+        compiled = inject_kafka_filters(
+            compiled, ctx, state.source_types, state.kafka_table_configs,
+        )
+
     # Apply sampling unless role has full_results capability
     sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
     if sampling:
@@ -251,10 +317,12 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
         )
 
     # Route decision (after MV rewrite may have changed source set)
+    has_json_extract = "->>" in compiled.sql
     decision = decide_route(
         sources=compiled.sources,
         source_types=state.source_types,
         source_dialects=state.source_dialects,
+        has_json_extract=has_json_extract,
     )
     log.info(
         "[QUERY %s] Route: %s | source=%s | reason: %s%s",
@@ -286,57 +354,29 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
 
     effective_redirect_format = redirect_format or redirect_config.default_format or "parquet"
 
-    # --- CTAS path: Trino writes directly to S3 ---
-    # For Trino-native formats (Parquet, ORC), use CTAS so data never passes
-    # through Provisa. Force-redirect always takes this path; threshold-based
-    # redirect must execute first to check row count (handled below).
+    # --- CTAS path: force redirect with Trino-native format ---
     if (
         force_redirect
         and is_trino_native_format(effective_redirect_format)
         and state.trino_conn is not None
     ):
         try:
-            # Always route through Trino for CTAS — recompile with catalog names
-            compiled = compile_query(document, ctx, variables, use_catalog=True)[0]
-            compiled = inject_rls(compiled, ctx, rls)
-            compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
-            compiled = rewrite_if_mv_match(compiled, fresh_mvs)
-            if sampling:
-                compiled = apply_sampling(compiled, get_sample_size())
-            trino_sql = transpile_to_trino(compiled.sql)
-
-            from provisa.executor.trino_write import (
-                execute_ctas_redirect, presign_ctas_result,
-                cleanup_result_table, schedule_s3_cleanup,
+            redirect_response = await _execute_ctas_redirect(
+                document, ctx, rls, state, variables, role_id,
+                fresh_mvs, sampling, effective_redirect_format, redirect_config,
             )
-            ctas_result = execute_ctas_redirect(
-                state.trino_conn, trino_sql, effective_redirect_format,
-            )
-            url = await presign_ctas_result(ctas_result["s3_prefix"], redirect_config)
-
-            # Drop table metadata immediately; schedule S3 data cleanup after TTL
-            cleanup_result_table(state.trino_conn, ctas_result["table_name"])
-            import asyncio
-            asyncio.create_task(
-                schedule_s3_cleanup(ctas_result["s3_prefix"], redirect_config),
-            )
-
-            content_type = {
-                "parquet": "application/vnd.apache.parquet",
-                "orc": "application/x-orc",
-            }.get(effective_redirect_format, "application/octet-stream")
-
-            return {
-                "data": {compiled.root_field: None},
-                "redirect": {
-                    "redirect_url": url,
-                    "row_count": ctas_result["row_count"],
-                    "expires_in": redirect_config.ttl,
-                    "content_type": content_type,
-                },
-            }
+            return redirect_response
         except Exception as e:
             log.exception("CTAS redirect failed, falling back to standard execution")
+
+    # --- Determine if threshold-based redirect is possible ---
+    # If redirect is configured (not forced), use LIMIT threshold+1 probe
+    # to avoid executing the full query just to check row count.
+    from provisa.executor.redirect import RedirectConfig, should_redirect, upload_and_presign
+    from provisa.executor.trino_write import is_trino_native_format
+    probe_limit = None
+    if not force_redirect and redirect_config.enabled and redirect_config.threshold > 0:
+        probe_limit = redirect_config.threshold + 1
 
     # --- Standard execution path ---
     try:
@@ -346,12 +386,15 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
                     status_code=503,
                     detail=f"No connection pool for source {decision.source_id!r}",
                 )
-            target_sql = transpile(compiled.sql, decision.dialect or "postgres")
+            exec_sql = compiled.sql
+            if probe_limit is not None:
+                exec_sql = _inject_probe_limit(exec_sql, probe_limit)
+            target_sql = transpile(exec_sql, decision.dialect or "postgres")
             result = await execute_direct(
                 state.source_pools, decision.source_id, target_sql, compiled.params,
             )
         else:
-            # Recompile with catalog-qualified names for Trino if not already rewritten
+            # Recompile with catalog-qualified names for Trino
             if not fresh_mvs or compiled.sources == compile_query(document, ctx, variables)[0].sources:
                 compiled = compile_query(
                     document, ctx, variables, use_catalog=True,
@@ -363,9 +406,12 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
                     compiled = apply_sampling(compiled, get_sample_size())
             if state.trino_conn is None and state.flight_client is None:
                 raise HTTPException(status_code=503, detail="Trino not connected")
-            trino_sql = transpile_to_trino(compiled.sql)
 
-            # Use Arrow Flight SQL when available
+            exec_sql = compiled.sql
+            if probe_limit is not None:
+                exec_sql = _inject_probe_limit(exec_sql, probe_limit)
+            trino_sql = transpile_to_trino(exec_sql)
+
             if state.flight_client is not None:
                 from provisa.executor.trino_flight import execute_trino_flight
                 result = execute_trino_flight(
@@ -379,51 +425,54 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
         log.exception("Query execution failed")
         raise HTTPException(status_code=500, detail=str(e))
 
-    # --- Threshold-based redirect (after execution, check row count) ---
-    if should_redirect(result, redirect_config, force=force_redirect):
-        # For Trino-native formats, use CTAS even in threshold path
+    # --- Check if probe exceeded threshold → redirect ---
+    if probe_limit is not None and len(result.rows) >= probe_limit:
+        log.info(
+            "[QUERY %s] Probe returned %d rows (threshold %d) — redirecting",
+            compiled.root_field, len(result.rows), redirect_config.threshold,
+        )
+
+        # Trino-native formats: CTAS (full query, no probe limit)
         if is_trino_native_format(effective_redirect_format) and state.trino_conn is not None:
             try:
-                # Re-route through Trino via CTAS
-                compiled_for_ctas = compile_query(document, ctx, variables, use_catalog=True)[0]
-                compiled_for_ctas = inject_rls(compiled_for_ctas, ctx, rls)
-                compiled_for_ctas = inject_masking(compiled_for_ctas, ctx, state.masking_rules, role_id)
-                compiled_for_ctas = rewrite_if_mv_match(compiled_for_ctas, fresh_mvs)
-                if sampling:
-                    compiled_for_ctas = apply_sampling(compiled_for_ctas, get_sample_size())
-                ctas_sql = transpile_to_trino(compiled_for_ctas.sql)
-
-                from provisa.executor.trino_write import (
-                    execute_ctas_redirect, presign_ctas_result,
-                    cleanup_result_table, schedule_s3_cleanup,
+                redirect_response = await _execute_ctas_redirect(
+                    document, ctx, rls, state, variables, role_id,
+                    fresh_mvs, sampling, effective_redirect_format, redirect_config,
                 )
-                ctas_result = execute_ctas_redirect(
-                    state.trino_conn, ctas_sql, effective_redirect_format,
-                )
-                url = await presign_ctas_result(ctas_result["s3_prefix"], redirect_config)
-                cleanup_result_table(state.trino_conn, ctas_result["table_name"])
-                asyncio.create_task(
-                    schedule_s3_cleanup(ctas_result["s3_prefix"], redirect_config),
-                )
-
-                content_type = {
-                    "parquet": "application/vnd.apache.parquet",
-                    "orc": "application/x-orc",
-                }.get(effective_redirect_format, "application/octet-stream")
-
-                return {
-                    "data": {compiled.root_field: None},
-                    "redirect": {
-                        "redirect_url": url,
-                        "row_count": ctas_result["row_count"],
-                        "expires_in": redirect_config.ttl,
-                        "content_type": content_type,
-                    },
-                }
+                return redirect_response
             except Exception as e:
                 log.exception("CTAS redirect failed, falling back to Provisa upload")
 
-        # Non-native formats: Provisa serializes and uploads
+        # Non-native formats: re-execute without probe limit, serialize, upload
+        # (We can't use the probe result — it's truncated)
+        try:
+            # Re-execute without the probe limit
+            if decision.route == Route.DIRECT and decision.source_id:
+                target_sql = transpile(compiled.sql, decision.dialect or "postgres")
+                full_result = await execute_direct(
+                    state.source_pools, decision.source_id, target_sql, compiled.params,
+                )
+            else:
+                full_trino_sql = transpile_to_trino(compiled.sql)
+                if state.flight_client is not None:
+                    from provisa.executor.trino_flight import execute_trino_flight
+                    full_result = execute_trino_flight(
+                        state.flight_client, full_trino_sql, compiled.params,
+                    )
+                else:
+                    full_result = execute_trino(state.trino_conn, full_trino_sql, compiled.params)
+
+            redirect_result = await upload_and_presign(
+                full_result, redirect_config,
+                output_format=effective_redirect_format,
+                columns=compiled.columns,
+            )
+            return {"data": {compiled.root_field: None}, "redirect": redirect_result}
+        except Exception as e:
+            log.exception("Redirect upload failed, returning inline")
+
+    # Force redirect (non-threshold, non-CTAS)
+    if force_redirect:
         try:
             redirect_result = await upload_and_presign(
                 result, redirect_config,
@@ -512,6 +561,162 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id):
                 break
 
     return {"data": {mutation_name: results[0] if results else None}}
+
+
+class SubmitRequest(BaseModel):
+    query: str
+    variables: dict | None = None
+    role: str = "admin"
+
+
+def _extract_operation_name(query_text: str) -> str | None:
+    """Extract the operation name from a GraphQL query string."""
+    from graphql import parse as gql_parse
+    from graphql.language.ast import OperationDefinitionNode
+    try:
+        doc = gql_parse(query_text)
+        for defn in doc.definitions:
+            if isinstance(defn, OperationDefinitionNode) and defn.name:
+                return defn.name.value
+    except Exception:
+        pass
+    return None
+
+
+@router.post("/compile")
+async def compile_endpoint(
+    request: GraphQLRequest,
+    x_provisa_role: str | None = Header(None),
+):
+    """Compile a GraphQL query and return the SQL that would execute.
+
+    Shows the full compiled SQL with RLS, masking, and sampling applied.
+    Does not execute the query.
+    """
+    from provisa.api.app import state
+
+    role_id = x_provisa_role or request.role
+    if role_id not in state.schemas:
+        raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
+
+    schema = state.schemas[role_id]
+    ctx = state.contexts[role_id]
+    rls = state.rls_contexts.get(role_id, RLSContext.empty())
+    role = state.roles.get(role_id)
+
+    try:
+        document = parse_query(schema, request.query, request.variables)
+    except (GraphQLValidationError, GraphQLSyntaxError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    compiled_queries = compile_query(document, ctx, request.variables)
+    if not compiled_queries:
+        raise HTTPException(status_code=400, detail="No query fields found")
+
+    compiled = compiled_queries[0]
+    compiled = inject_rls(compiled, ctx, rls)
+    compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
+
+    fresh_mvs = state.mv_registry.get_fresh()
+    compiled = rewrite_if_mv_match(compiled, fresh_mvs)
+
+    if hasattr(state, "kafka_table_configs") and state.kafka_table_configs:
+        from provisa.kafka.window import inject_kafka_filters
+        compiled = inject_kafka_filters(
+            compiled, ctx, state.source_types, state.kafka_table_configs,
+        )
+
+    sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
+    if sampling:
+        compiled = apply_sampling(compiled, get_sample_size())
+
+    # Route decision for display
+    has_json_extract = "->>" in compiled.sql
+    decision = decide_route(
+        sources=compiled.sources,
+        source_types=state.source_types,
+        source_dialects=state.source_dialects,
+        has_json_extract=has_json_extract,
+    )
+
+    # Show both PG-style and Trino-transpiled SQL
+    trino_sql = transpile_to_trino(compiled.sql) if decision.route == Route.TRINO else None
+    direct_sql = None
+    if decision.route == Route.DIRECT and decision.dialect:
+        direct_sql = transpile(compiled.sql, decision.dialect)
+
+    return {
+        "sql": compiled.sql,
+        "trino_sql": trino_sql,
+        "direct_sql": direct_sql,
+        "params": compiled.params,
+        "route": decision.route.value,
+        "route_reason": decision.reason,
+        "sources": list(compiled.sources),
+        "root_field": compiled.root_field,
+    }
+
+
+@router.post("/submit")
+async def submit_endpoint(
+    request: SubmitRequest,
+    x_provisa_role: str | None = Header(None),
+):
+    """Submit a named GraphQL query for steward approval.
+
+    The query must have a named operation (e.g., 'query MyReport { ... }').
+    """
+    from provisa.api.app import state
+
+    role_id = x_provisa_role or request.role
+    if role_id not in state.schemas:
+        raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
+
+    # Require named query
+    op_name = _extract_operation_name(request.query)
+    if not op_name:
+        raise HTTPException(
+            status_code=400,
+            detail="Query must have a named operation (e.g., 'query MyReport { ... }').",
+        )
+
+    schema = state.schemas[role_id]
+    ctx = state.contexts[role_id]
+    rls = state.rls_contexts.get(role_id, RLSContext.empty())
+    role = state.roles.get(role_id)
+
+    try:
+        document = parse_query(schema, request.query, request.variables)
+    except (GraphQLValidationError, GraphQLSyntaxError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    compiled_queries = compile_query(document, ctx, request.variables)
+    if not compiled_queries:
+        raise HTTPException(status_code=400, detail="No query fields found")
+
+    compiled = compiled_queries[0]
+    compiled = inject_rls(compiled, ctx, rls)
+    compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
+
+    # Resolve target table IDs
+    root_table = ctx.tables.get(compiled.root_field)
+    target_tables = [root_table.table_id] if root_table else []
+
+    from provisa.registry.store import submit
+    async with state.pg_pool.acquire() as conn:
+        query_id = await submit(
+            conn,
+            query_text=request.query,
+            compiled_sql=compiled.sql,
+            target_tables=target_tables,
+            developer_id=role_id,
+        )
+
+    return {
+        "query_id": query_id,
+        "operation_name": op_name,
+        "message": f"Query '{op_name}' submitted for approval (id={query_id}).",
+    }
 
 
 @router.get("/proto/{role_id}")

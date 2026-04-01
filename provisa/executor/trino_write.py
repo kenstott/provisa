@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Kenneth Stott
+# Canary: 9fa82432-ea47-4f24-90c8-a4cd84b6386e
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -36,8 +37,8 @@ def is_trino_native_format(fmt: str) -> bool:
     return fmt.lower() in TRINO_NATIVE_FORMATS
 
 
-def _hive_format(fmt: str) -> str:
-    """Map output format name to Hive storage format."""
+def _iceberg_format(fmt: str) -> str:
+    """Map output format name to Iceberg storage format."""
     return fmt.upper()  # PARQUET, ORC
 
 
@@ -48,8 +49,12 @@ def ensure_results_schema(conn: trino.dbapi.Connection) -> None:
         f"WITH (location = 's3a://{RESULTS_BUCKET}/')"
     )
     cur = conn.cursor()
-    cur.execute(sql)
-    log.info("Ensured results schema %s.%s exists", RESULTS_CATALOG, RESULTS_SCHEMA)
+    try:
+        cur.execute(sql)
+        log.info("Ensured results schema %s.%s exists", RESULTS_CATALOG, RESULTS_SCHEMA)
+    except Exception as e:
+        # Schema may already exist
+        log.debug("Results schema creation: %s", e)
 
 
 def execute_ctas_redirect(
@@ -59,8 +64,10 @@ def execute_ctas_redirect(
 ) -> dict:
     """Execute a query via CTAS, writing results directly to S3.
 
+    Uses the Iceberg connector to write Parquet/ORC files to MinIO/S3.
+
     Args:
-        conn: Trino connection (REST or Flight SQL).
+        conn: Trino connection.
         select_sql: The SELECT query to execute (already transpiled to Trino SQL).
         output_format: Target format (parquet, orc).
 
@@ -70,15 +77,15 @@ def execute_ctas_redirect(
     result_id = uuid.uuid4().hex[:16]
     table_name = f"r_{result_id}"
     s3_prefix = f"s3a://{RESULTS_BUCKET}/results/{result_id}"
-    hive_fmt = _hive_format(output_format)
+    iceberg_fmt = _iceberg_format(output_format)
 
     ctas_sql = (
         f'CREATE TABLE {RESULTS_CATALOG}.{RESULTS_SCHEMA}."{table_name}" '
-        f"WITH (format = '{hive_fmt}', external_location = '{s3_prefix}') "
+        f"WITH (format = '{iceberg_fmt}', location = '{s3_prefix}') "
         f"AS {select_sql}"
     )
 
-    log.info("[CTAS REDIRECT] table=%s format=%s", table_name, hive_fmt)
+    log.info("[CTAS REDIRECT] table=%s format=%s", table_name, iceberg_fmt)
     log.debug("[CTAS REDIRECT] sql=%s", ctas_sql[:300])
 
     cur = conn.cursor()

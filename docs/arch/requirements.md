@@ -105,3 +105,23 @@
 - **REQ-072** (2026-03-30): Core product is open source: Docker Compose, Helm chart, UI, compiler, SQLGlot layer, registry, Trino backend.
 - **REQ-073** (2026-03-30): SaaS tier: hosted control plane with customer-hosted data plane option.
 - **REQ-074** (2026-03-30): Enterprise tier: SLA guarantees, dedicated support, advanced audit logging, compliance reporting.
+
+## JSONB & API Sources
+- **REQ-119** (2026-03-31): Stewards can promote specific nested fields from JSONB columns into native PostgreSQL generated columns (GENERATED ALWAYS AS ... STORED). Promoted columns are filterable, indexable, relationship-eligible, and auto-maintained by PostgreSQL. Supports dot-path extraction for nested fields. Part of Phase U (API Sources).
+
+## Authentication
+- **REQ-120** (2026-03-31): Pluggable auth provider interface — abstract AuthProvider producing AuthIdentity (user_id, email, roles, claims) mapped to Provisa roles. One provider at a time configured in YAML.
+- **REQ-121** (2026-03-31): Firebase Authentication — validates Firebase ID tokens via firebase-admin SDK. Supports all Firebase auth methods (email/password, Google, Apple, GitHub, phone, anonymous, SAML, OIDC).
+- **REQ-122** (2026-03-31): Keycloak OIDC — validates JWT access tokens from Keycloak via OIDC discovery + JWKS. Realm roles + client roles → Provisa role mapping.
+- **REQ-123** (2026-03-31): Generic OAuth 2.0 / OIDC — works with any OIDC-compliant provider (PingFederate, Okta, Azure AD, Auth0). OIDC discovery URL → JWKS → JWT validation. Configurable role claim mapping.
+- **REQ-124** (2026-03-31): Simple username/password auth for testing — users defined in config YAML with bcrypt hashed passwords. Issues short-lived JWT. NOT for production (requires allow_simple_auth: true flag).
+- **REQ-125** (2026-03-31): Superuser bootstrap access — superuser credentials in config (username + password from env secret). Always admin role + all capabilities regardless of auth provider. For initial setup.
+
+## JDBC/ODBC Integration
+- **REQ-126** (2026-04-01): JDBC driver that exposes approved persisted queries as virtual tables. Connection authenticates against Provisa, maps user to role.
+- **REQ-127** (2026-04-01): `getTables()` returns approved queries visible to the authenticated role. Each approved query appears as a table with the query's stable ID as the table name.
+- **REQ-128** (2026-04-01): `getColumns(tableName)` introspects the approved query's output schema — column names and types from the compiled query metadata.
+- **REQ-129** (2026-04-01): `executeQuery(sql)` parses the SQL to extract the query ID and optional WHERE filters, executes the approved query via Provisa's HTTP API with Parquet format, deserializes the result into a JDBC ResultSet.
+- **REQ-130** (2026-04-01): Full security pipeline (RLS, masking, sampling) applied at query time — not baked into views.
+- **REQ-131** (2026-04-01): Connection string format: `jdbc:provisa://host:port`. Authentication via standard JDBC username/password properties.
+- **REQ-132** (2026-04-01): The driver is a single JAR with no external dependencies beyond the JDK and Apache Arrow (for Parquet deserialization).

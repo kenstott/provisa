@@ -47,7 +47,13 @@ Native Arrow columnar transport over gRPC. Clients send a JSON ticket:
 ```json
 {"query": "{ customers { name email } }", "role": "analyst"}
 ```
-and receive Arrow RecordBatches. When Trino Flight SQL is available, data flows Arrow-native end-to-end (Trino → Provisa → client) with zero serialization overhead.
+and receive Arrow RecordBatches streamed lazily. When the Zaychik Flight SQL proxy is available, data flows as a stream of Arrow record batches end-to-end:
+
+```
+Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik ←(JDBC)← Trino
+```
+
+The full result is never materialized in Provisa memory — batches are forwarded as they arrive. This makes Arrow Flight an **unbounded** path suitable for arbitrarily large results.
 
 ### Protobuf gRPC (port 50051)
 
@@ -76,12 +82,25 @@ parse → compile → RLS inject → masking inject → MV rewrite → sampling
 
 ## Trino Execution Paths
 
-| Path | Transport | When used |
-|------|-----------|-----------|
-| REST | `trino` Python client (HTTP) | Default, always available |
-| Flight SQL | `adbc-driver-flightsql` (gRPC :8480) | When `TRINO_FLIGHT_PORT` is configured |
+| Path | Transport | Via | When used |
+|------|-----------|-----|-----------|
+| REST | `trino` Python client (HTTP :8080) | Direct to Trino | Default, always available |
+| Flight SQL | `adbc-driver-flightsql` (gRPC :8480) | Zaychik proxy → Trino JDBC | When Zaychik is running |
+| CTAS | `trino` Python client (HTTP :8080) | Direct to Trino, writes Iceberg to S3 | Parquet/ORC redirect |
 
-Flight SQL returns data as native Arrow Tables, avoiding JSON parsing overhead. When the Arrow Flight server (port 8815) is serving a request via Trino, data flows Arrow-native end-to-end.
+### Zaychik Arrow Flight SQL Proxy
+
+Trino does not natively support the Arrow Flight SQL protocol. [Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) is a Java proxy that implements the Arrow Flight SQL gRPC interface, translates requests to Trino JDBC queries, and streams results back as Arrow record batches.
+
+```
+ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Trino → results → Arrow batches → client
+```
+
+The Provisa Flight server (port 8815) connects to Zaychik as an ADBC client, enabling streaming Arrow end-to-end without materializing results.
+
+### Iceberg Results Catalog
+
+CTAS redirect uses an Iceberg connector (`results` catalog) backed by a JDBC catalog on the existing PostgreSQL instance. Iceberg writes Parquet/ORC files directly to MinIO/S3 via the native S3 filesystem (`fs.native-s3.enabled=true`).
 
 ## Large Result Redirect
 
@@ -133,6 +152,7 @@ For Trino-native formats, Provisa never handles the data — Trino workers write
 ```
 Multi-source query? → Trino
 NoSQL source (MongoDB, Cassandra)? → Trino
+Uses path columns on non-PG source? → Trino
 Single RDBMS with driver? → Direct (sub-100ms target)
 Single RDBMS without driver? → Trino
 Steward hint "trino"? → Trino (override)
@@ -216,14 +236,37 @@ All three query interfaces (HTTP, Flight, gRPC) enforce the same security pipeli
 
 ## Scalability Limits
 
-Any path where Provisa serializes data is bounded by Provisa process memory. Only the CTAS redirect path (Parquet/ORC) is truly unbounded — Trino workers write directly to S3 in parallel without data passing through Provisa.
+Provisa is a thin compilation and routing layer — it adds single-digit milliseconds to query latency. However, paths where Provisa serializes result data are bounded by process memory. Two paths are truly unbounded:
 
 | Path | Memory bound? | Suitable for |
 |------|--------------|-------------|
 | JSON inline (HTTP) | Yes | Small-medium results |
-| Arrow Flight inline (gRPC :8815) | Yes | Medium results, analytical tools |
+| **Arrow Flight streaming (gRPC :8815)** | **No** | **Unbounded — streaming via Zaychik** |
 | Protobuf gRPC inline (:50051) | Yes | Medium results, service-to-service |
 | Redirect: Provisa upload (JSON, CSV, NDJSON, Arrow IPC) | Yes | Medium results, file download |
-| **Redirect: CTAS (Parquet, ORC)** | **No** | **Large/unbounded results** |
+| **Redirect: CTAS (Parquet, ORC)** | **No** | **Unbounded — Trino writes to S3** |
 
-For large analytical exports, always use Parquet or ORC redirect. The data is written by Trino workers directly to S3 — Provisa only returns a presigned URL.
+### Threshold Probing
+
+For threshold-based redirect, Provisa injects `LIMIT threshold + 1` into the query as a probe. If the result has fewer rows, it returns inline (complete result, no wasted work). If the result hits the limit, the probe is discarded and the full query is re-executed via CTAS or Provisa upload. This avoids `SELECT COUNT(*)` (which some sources don't optimize) and works on every source.
+
+For large analytical workloads, use either:
+- **Arrow Flight** (port 8815) for streaming to data tools — batches flow through Provisa without materializing
+- **Parquet/ORC redirect** for file-based exports — Trino writes directly to S3, Provisa returns a presigned URL
+
+## Infrastructure
+
+| Service | Image | Port | Purpose |
+|---------|-------|------|---------|
+| Provisa API | (host process) | 8001 | HTTP/REST endpoint |
+| Provisa Flight | (host process) | 8815 | Arrow Flight gRPC server |
+| Provisa gRPC | (host process) | 50051 | Protobuf gRPC server |
+| Trino | `trinodb/trino:480` | 8080 | Query federation engine |
+| Zaychik | `provisa-zaychik` (built from source) | 8480 | Arrow Flight SQL proxy for Trino |
+| PostgreSQL | `postgres:16` | 5432 | Config metadata + Iceberg catalog |
+| MongoDB | `mongo:7` | 27017 | Demo NoSQL data source |
+| MinIO | `minio/minio` | 9000/9001 | S3-compatible object storage |
+| Redis | `redis:7-alpine` | 6379 | Query result cache |
+| PgBouncer | `edoburu/pgbouncer` | 6432 | Connection pooling for PG |
+| Kafka | `confluentinc/cp-kafka:7.6.0` | 9092 | Streaming data sources |
+| Schema Registry | `confluentinc/cp-schema-registry:7.6.0` | 8081 | Avro/Protobuf schema management |

@@ -8,6 +8,7 @@ import "@graphiql/plugin-doc-explorer/style.css";
 import "graphiql/graphiql.css";
 import "./QueryPage.css";
 import { useAuth } from "../context/AuthContext";
+import { provisaToolsPlugin } from "../plugins/provisa-tools";
 
 const explorer = explorerPlugin();
 
@@ -21,31 +22,22 @@ const REDIRECT_FORMAT_OPTIONS = [
 ] as const;
 
 interface RedirectSettings {
-  format: string; // mime type, empty = no redirect
-  threshold: string; // empty = force, number = conditional
+  format: string;
+  threshold: string;
 }
 
-/**
- * Wrap fetch to intercept redirect responses and non-JSON inline responses,
- * converting them into GraphQL-shaped JSON that GraphiQL can display.
- */
 function createProvisaFetch(
   settingsRef: React.RefObject<RedirectSettings>,
 ): typeof globalThis.fetch {
   return async (input, init) => {
     const settings = settingsRef.current;
     const headers = new Headers(init?.headers);
-
-    // Always request JSON inline
     headers.set("Accept", "application/json");
-
-    // Redirect headers
     if (settings.format) {
       headers.set("X-Provisa-Redirect-Format", settings.format);
       if (settings.threshold) {
         headers.set("X-Provisa-Redirect-Threshold", settings.threshold);
       }
-      // No threshold = force redirect (server infers this)
     }
 
     const res = await fetch(input, { ...init, headers });
@@ -53,7 +45,6 @@ function createProvisaFetch(
 
     if (contentType.includes("application/json")) {
       const body = await res.json();
-
       if (body.redirect) {
         const synthetic = {
           data: {
@@ -70,21 +61,15 @@ function createProvisaFetch(
           headers: { "content-type": "application/json" },
         });
       }
-
       return new Response(JSON.stringify(body), {
         status: res.status,
         headers: { "content-type": "application/json" },
       });
     }
 
-    // Shouldn't happen with Accept: application/json, but handle gracefully
     return new Response(
       JSON.stringify({
-        data: {
-          __error: {
-            message: `Unexpected content type: ${contentType}`,
-          },
-        },
+        data: { __error: { message: `Unexpected content type: ${contentType}` } },
       }),
       { status: 200, headers: { "content-type": "application/json" } },
     );
@@ -112,11 +97,14 @@ export function QueryPage() {
     if (!role) return null;
     return createGraphiQLFetcher({
       url: `/data/graphql`,
-      headers: {
-        "X-Provisa-Role": role.id,
-      },
+      headers: { "X-Provisa-Role": role.id },
       fetch: createProvisaFetch(settingsRef),
     });
+  }, [role?.id]);
+
+  const provisaPlugin = useMemo(() => {
+    if (!role) return null;
+    return provisaToolsPlugin(role.id);
   }, [role?.id]);
 
   const onFormatChange = useCallback(
@@ -130,7 +118,8 @@ export function QueryPage() {
     [],
   );
 
-  if (!role || !fetcher) return <div className="page">Select a role.</div>;
+  if (!role || !fetcher || !provisaPlugin)
+    return <div className="page">Select a role.</div>;
 
   return (
     <div className="query-page">
@@ -162,7 +151,11 @@ export function QueryPage() {
           <span className="query-hint">All results redirect to S3</span>
         )}
       </div>
-      <GraphiQL fetcher={fetcher} plugins={[explorer]} forcedTheme="dark" />
+      <GraphiQL
+        fetcher={fetcher}
+        plugins={[explorer, provisaPlugin]}
+        forcedTheme="dark"
+      />
     </div>
   );
 }

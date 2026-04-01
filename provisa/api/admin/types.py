@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Kenneth Stott
+# Canary: f60382a1-5df1-4ae3-aca5-e4e0d6139efc
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -142,6 +143,17 @@ class RLSRuleInput:
     table_id: str  # table name (resolved to ID)
     role_id: str
     filter_expr: str
+
+
+@strawberry.type
+class PersistedQueryType:
+    id: int
+    query_text: str
+    compiled_sql: str
+    status: str
+    stable_id: str | None
+    developer_id: str | None
+    approved_by: str | None
 
 
 @strawberry.type

@@ -46,6 +46,7 @@ class TableMeta:
     field_name: str  # snake_case GraphQL field name
     type_name: str  # PascalCase GraphQL type name
     source_id: str
+    catalog_name: str  # Trino catalog name (source_id with hyphens → underscores)
     schema_name: str
     table_name: str
 
@@ -56,6 +57,8 @@ class JoinMeta:
 
     source_column: str
     target_column: str
+    source_column_type: str  # Trino data type (e.g. "integer", "varchar")
+    target_column_type: str  # Trino data type on target side
     target: TableMeta
     cardinality: str  # "many-to-one" or "one-to-many"
 
@@ -68,6 +71,8 @@ class CompilationContext:
     tables: dict[str, TableMeta] = field(default_factory=dict)
     # (source_type_name, relationship_field_name) → JoinMeta
     joins: dict[tuple[str, str], JoinMeta] = field(default_factory=dict)
+    # (table_id, graphql_field_name) → path expression (e.g. "payload.order_id")
+    column_paths: dict[tuple[int, str], str] = field(default_factory=dict)
 
 
 # --- Compiled query result ---
@@ -97,6 +102,15 @@ class CompiledQuery:
 # --- Build CompilationContext from SchemaInput ---
 
 
+def _lookup_column_type(si: object, table_id: int, column_name: str) -> str:
+    """Look up a column's Trino data type from the SchemaInput."""
+    col_metas = si.column_types.get(table_id, [])
+    for meta in col_metas:
+        if meta.column_name == column_name:
+            return meta.data_type
+    return "varchar"  # safe fallback
+
+
 def build_context(si: object) -> CompilationContext:
     """Build CompilationContext from a SchemaInput.
 
@@ -113,7 +127,7 @@ def build_context(si: object) -> CompilationContext:
     if not tables:
         return ctx
 
-    _assign_names(tables, si.naming_rules)
+    _assign_names(tables, si.naming_rules, domain_prefix=si.domain_prefix)
 
     table_lookup = {t.table_id: t for t in tables}
 
@@ -123,10 +137,18 @@ def build_context(si: object) -> CompilationContext:
             field_name=t.field_name,
             type_name=t.type_name,
             source_id=t.source_id,
+            catalog_name=t.source_id.replace("-", "_"),
             schema_name=t.schema_name,
             table_name=t.table_name,
         )
         ctx.tables[t.field_name] = meta
+
+        # Populate column paths for JSON extraction
+        for col in t.visible_columns:
+            col_path = col.get("path")
+            if col_path:
+                gql_name = col.get("alias") or col["column_name"]
+                ctx.column_paths[(t.table_id, gql_name)] = col_path
 
     # Build join metadata from visible relationships
     for rel in si.relationships:
@@ -143,14 +165,21 @@ def build_context(si: object) -> CompilationContext:
             field_name=tgt_info.field_name,
             type_name=tgt_info.type_name,
             source_id=tgt_info.source_id,
+            catalog_name=tgt_info.source_id.replace("-", "_"),
             schema_name=tgt_info.schema_name,
             table_name=tgt_info.table_name,
         )
+
+        # Look up column types for the join columns
+        src_col_type = _lookup_column_type(si, src_id, rel["source_column"])
+        tgt_col_type = _lookup_column_type(si, tgt_id, rel["target_column"])
 
         # The relationship field on the source type uses target's field_name
         ctx.joins[(src_info.type_name, tgt_info.field_name)] = JoinMeta(
             source_column=rel["source_column"],
             target_column=rel["target_column"],
+            source_column_type=src_col_type,
+            target_column_type=tgt_col_type,
             target=tgt_meta,
             cardinality=rel["cardinality"],
         )
@@ -268,6 +297,60 @@ def _compile_order_by(
     return ", ".join(parts)
 
 
+# --- Type coercion for cross-source JOINs ---
+
+_NUMERIC_TYPES = {"tinyint", "smallint", "integer", "int", "bigint", "real", "double", "decimal", "numeric"}
+_STRING_TYPES = {"varchar", "char", "text", "varbinary", "uuid"}
+_TEMPORAL_TYPES = {"date", "time", "timestamp", "time with time zone", "timestamp with time zone"}
+
+
+def _base_type(trino_type: str) -> str:
+    """Normalize parameterized types: varchar(100) → varchar, decimal(10,2) → decimal."""
+    return trino_type.lower().split("(")[0].strip()
+
+
+def _types_compatible(type_a: str, type_b: str) -> bool:
+    """Check if two Trino types are implicitly coercible (no CAST needed)."""
+    a, b = _base_type(type_a), _base_type(type_b)
+    if a == b:
+        return True
+    for group in (_NUMERIC_TYPES, _STRING_TYPES, _TEMPORAL_TYPES):
+        if a in group and b in group:
+            return True
+    return False
+
+
+def _common_cast_type(type_a: str, type_b: str) -> str:
+    """Pick a common type to CAST both sides to when types are incompatible."""
+    a, b = _base_type(type_a), _base_type(type_b)
+    # If one side is string, cast the other to VARCHAR
+    if a in _STRING_TYPES:
+        return "VARCHAR"
+    if b in _STRING_TYPES:
+        return "VARCHAR"
+    # Numeric vs temporal — use VARCHAR as safe fallback
+    return "VARCHAR"
+
+
+def _join_column_expr(alias: str, column: str, my_type: str, other_type: str) -> str:
+    """Build a column expression, adding CAST only when types are incompatible."""
+    col = f'{_q(alias)}.{_q(column)}'
+    if _types_compatible(my_type, other_type):
+        return col
+    cast_type = _common_cast_type(my_type, other_type)
+    return f'CAST({col} AS {cast_type})'
+
+
+# --- Table reference helpers ---
+
+
+def _table_ref(meta: TableMeta, use_catalog: bool) -> str:
+    """Build a fully qualified table reference."""
+    if use_catalog:
+        return f'{_q(meta.catalog_name)}.{_q(meta.schema_name)}.{_q(meta.table_name)}'
+    return f'{_q(meta.schema_name)}.{_q(meta.table_name)}'
+
+
 # --- Main compilation ---
 
 
@@ -286,6 +369,7 @@ def _compile_root_field(
     field_node: FieldNode,
     ctx: CompilationContext,
     variables: dict | None,
+    use_catalog: bool = False,
 ) -> CompiledQuery:
     """Compile a single root query field to SQL."""
     root_name = field_node.name.value
@@ -316,11 +400,18 @@ def _compile_root_field(
             alias_counter += 1
             sources.add(join_meta.target.source_id)
 
+            src_expr = _join_column_expr(
+                root_alias, join_meta.source_column,
+                join_meta.source_column_type, join_meta.target_column_type,
+            )
+            tgt_expr = _join_column_expr(
+                join_alias, join_meta.target_column,
+                join_meta.target_column_type, join_meta.source_column_type,
+            )
             join_clauses.append(
-                f'LEFT JOIN {_q(join_meta.target.schema_name)}.{_q(join_meta.target.table_name)}'
+                f'LEFT JOIN {_table_ref(join_meta.target, use_catalog)}'
                 f' {_q(join_alias)}'
-                f' ON {_q(root_alias)}.{_q(join_meta.source_column)}'
-                f' = {_q(join_alias)}.{_q(join_meta.target_column)}'
+                f' ON {src_expr} = {tgt_expr}'
             )
 
             # Add nested columns
@@ -338,23 +429,41 @@ def _compile_root_field(
                             nested_in=sel_name,
                         ))
         else:
-            # Scalar field
-            if use_aliases:
+            # Scalar field — check for JSON path extraction
+            gql_field_name = sel_name
+            col_path = ctx.column_paths.get((table.table_id, gql_field_name))
+            if col_path:
+                # path is "source_col.key1.key2" → PG JSON extraction
+                # Emits PG syntax; SQLGlot transpiles to Trino json_extract_scalar
+                path_parts = col_path.split(".")
+                source_col = path_parts[0]
+                keys = path_parts[1:]
+                if use_aliases:
+                    expr = f'{_q(root_alias)}.{_q(source_col)}'
+                else:
+                    expr = _q(source_col)
+                # Navigate with -> for intermediate keys, ->> for final (text extract)
+                for i, key in enumerate(keys):
+                    op = "->>" if i == len(keys) - 1 else "->"
+                    expr = f"{expr}{op}'{key}'"
+                select_parts.append(expr)
+            elif use_aliases:
                 select_parts.append(f'{_q(root_alias)}.{_q(sel_name)}')
             else:
                 select_parts.append(_q(sel_name))
             columns.append(ColumnRef(
                 alias=root_alias,
                 column=sel_name,
-                field_name=sel_name,
+                field_name=gql_field_name,
                 nested_in=None,
             ))
 
     # FROM clause
+    ref = _table_ref(table, use_catalog)
     if use_aliases:
-        from_clause = f'{_q(table.schema_name)}.{_q(table.table_name)} {_q(root_alias)}'
+        from_clause = f'{ref} {_q(root_alias)}'
     else:
-        from_clause = f'{_q(table.schema_name)}.{_q(table.table_name)}'
+        from_clause = ref
 
     sql = f'SELECT {", ".join(select_parts)} FROM {from_clause}'
 
@@ -401,8 +510,15 @@ def compile_query(
     document: DocumentNode,
     ctx: CompilationContext,
     variables: dict | None = None,
+    use_catalog: bool = False,
 ) -> list[CompiledQuery]:
     """Compile a validated GraphQL document to SQL queries.
+
+    Args:
+        document: Validated GraphQL DocumentNode.
+        ctx: Compilation context mapping GraphQL names to physical metadata.
+        variables: Optional GraphQL variable values.
+        use_catalog: If True, emit catalog-qualified table names (for Trino).
 
     Returns one CompiledQuery per root query field in the document.
     """
@@ -417,6 +533,8 @@ def compile_query(
                     raise ValueError(
                         f"Unknown root query field: {sel.name.value!r}"
                     )
-                results.append(_compile_root_field(sel, ctx, variables))
+                results.append(
+                    _compile_root_field(sel, ctx, variables, use_catalog)
+                )
 
     return results
