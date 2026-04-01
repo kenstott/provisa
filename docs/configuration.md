@@ -223,6 +223,55 @@ materialized_views:
     enabled: true
 ```
 
+## Views (Governed Computed Datasets)
+
+Views are SQL-defined computed datasets with full column-level governance. They are the governed mechanism for adding aggregations, transformations, and derived metrics to the semantic layer.
+
+```yaml
+views:
+  - id: monthly-revenue
+    sql: |
+      SELECT DATE_TRUNC('month', created_at) AS month,
+             region,
+             SUM(amount) AS revenue,
+             COUNT(*) AS order_count
+      FROM orders
+      GROUP BY 1, 2
+    description: "Monthly revenue by region"
+    domain_id: sales-analytics
+    governance: registry-required
+    materialize: true
+    refresh_interval: 3600
+    columns:
+      - name: month
+        visible_to: [admin, analyst]
+      - name: region
+        visible_to: [admin, analyst]
+      - name: revenue
+        visible_to: [admin]
+      - name: order_count
+        visible_to: [admin, analyst]
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Unique view identifier |
+| `sql` | Yes | SQL SELECT statement defining the view |
+| `domain_id` | Yes | Domain for schema visibility |
+| `governance` | No | `pre-approved` (default) or `registry-required` |
+| `materialize` | No | `true` = periodic CTAS refresh, `false` = live Trino view |
+| `refresh_interval` | No | Seconds between refreshes (materialized only, default 300) |
+| `description` | No | Appears in GraphQL SDL |
+| `alias` | No | Override GraphQL name |
+| `columns` | Yes | Column definitions with visibility, masking, descriptions |
+
+### Materialized vs Live
+
+- **`materialize: true`**: Provisa creates a table via CTAS and refreshes it on a schedule. Faster queries but data may be stale by up to `refresh_interval` seconds.
+- **`materialize: false`**: Provisa creates a Trino view. Queries always return live data but may be slower for complex aggregations.
+
+Views go through the same governance pipeline as tables — RLS, masking, sampling, role-based visibility, approval workflow. This ensures no new semantics can be added to the platform without steward oversight.
+
 ## Kafka Sources
 
 ```yaml

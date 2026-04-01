@@ -125,3 +125,62 @@
 - **REQ-130** (2026-04-01): Full security pipeline (RLS, masking, sampling) applied at query time — not baked into views.
 - **REQ-131** (2026-04-01): Connection string format: `jdbc:provisa://host:port`. Authentication via standard JDBC username/password properties.
 - **REQ-132** (2026-04-01): The driver is a single JAR with no external dependencies beyond the JDK and Apache Arrow (for Parquet deserialization).
+
+## Views (Governed Computed Datasets)
+- **REQ-133** (2026-04-01): Views are SQL-defined computed datasets registered in the Provisa config with full column-level governance (visibility, masking, descriptions, aliases).
+- **REQ-134** (2026-04-01): Views go through the same governance pipeline as tables — RLS, masking, sampling, role-based schema visibility, approval workflow.
+- **REQ-135** (2026-04-01): Views with `materialize: true` are backed by a periodically refreshed MV (CTAS). Views without materialization run as live subqueries via Trino.
+- **REQ-136** (2026-04-01): Views are the governed mechanism for adding computed semantics (aggregations, transformations) to the platform. This preserves the GraphQL constraint that no new semantics can be added outside the platform.
+
+## Large Result Redirect & CTAS
+- **REQ-137** (2026-04-01): Client-controlled redirect via `X-Provisa-Redirect-Format` and `X-Provisa-Redirect-Threshold` headers. Format without threshold implies force redirect.
+- **REQ-138** (2026-04-01): Trino-native formats (Parquet, ORC) use CTAS — Trino writes directly to S3 via Iceberg, data never passes through Provisa.
+- **REQ-139** (2026-04-01): Non-native formats (JSON, NDJSON, CSV, Arrow IPC) serialized by Provisa and uploaded to S3 via boto3.
+- **REQ-140** (2026-04-01): Threshold-based redirect uses LIMIT threshold+1 probe — no COUNT(*), no double execution for inline results.
+- **REQ-141** (2026-04-01): S3 data cleanup scheduled after presigned URL TTL expires.
+- **REQ-142** (2026-04-01): Default redirect format configurable via `PROVISA_REDIRECT_FORMAT` (default: parquet).
+
+## Arrow Flight
+- **REQ-143** (2026-04-01): Arrow Flight server (port 8815) streams record batches via gRPC. Full security pipeline applied.
+- **REQ-144** (2026-04-01): Zaychik Arrow Flight SQL proxy translates between Flight SQL clients and Trino JDBC.
+- **REQ-145** (2026-04-01): Flight server streams batch-by-batch via GeneratorStream — full result never materialized in Provisa memory. Unbounded result support.
+- **REQ-146** (2026-04-01): Falls back to materializing via Trino REST if Zaychik unavailable.
+
+## Kafka Sources
+- **REQ-147** (2026-04-01): Kafka topics queryable via Trino Kafka connector. Routed through Trino (TRINO_ONLY source).
+- **REQ-148** (2026-04-01): Default time window (`default_window`) auto-injected as WHERE clause on `_timestamp`. Prevents unbounded reads.
+- **REQ-149** (2026-04-01): Discriminator filter for multi-type topics — multiple table configs on the same physical topic, each filtered by a discriminator field/value.
+- **REQ-150** (2026-04-01): Manual schema definition for topics without Schema Registry.
+
+## Column Path Extraction
+- **REQ-151** (2026-04-01): Columns with `path` extract values from JSON source columns using PG `>>` syntax. SQLGlot transpiles to `json_extract_scalar` for Trino.
+- **REQ-152** (2026-04-01): Path columns on PostgreSQL sources route direct. Non-PG sources force Trino routing.
+- **REQ-153** (2026-04-01): Path columns are read-only computed fields — mutations unaffected.
+
+## Naming & Schema
+- **REQ-154** (2026-04-01): Optional `domain_prefix` prepends `domain_id__` (double underscore) to all GraphQL names.
+- **REQ-155** (2026-04-01): Table and column `alias` fields override GraphQL names.
+- **REQ-156** (2026-04-01): Table and column `description` fields included in GraphQL SDL.
+- **REQ-157** (2026-04-01): Order-by enum values preserve original column case (not uppercased).
+
+## Auto-Materialized Relationships
+- **REQ-158** (2026-04-01): Cross-source relationships with `materialize: true` auto-generate MV definitions at startup.
+- **REQ-159** (2026-04-01): Only cross-source relationships generate MVs. Same-source relationships are already fast via direct routing.
+- **REQ-160** (2026-04-01): Auto-MVs start STALE and are populated by the background refresh loop.
+
+## Query Development Tools
+- **REQ-161** (2026-04-01): `POST /data/compile` returns compiled SQL with RLS/masking applied, route decision, and params without executing.
+- **REQ-162** (2026-04-01): `POST /data/submit` submits a named GraphQL query for steward approval. Requires named operation.
+- **REQ-163** (2026-04-01): GraphiQL Provisa plugin with View SQL and Submit for Approval.
+
+## Admin & Configuration
+- **REQ-164** (2026-04-01): `GET/PUT /admin/config` for config YAML download/upload with backup and reload.
+- **REQ-165** (2026-04-01): `GET/PUT /admin/settings` for runtime platform settings (redirect, sampling, cache).
+- **REQ-166** (2026-04-01): Editable relationships page with materialize toggle, delete, and add form.
+- **REQ-167** (2026-04-01): AI-suggested relationships via LLM discovery integration on relationships page.
+- **REQ-168** (2026-04-01): `approveQuery` mutation and `persistedQueries` query in admin GraphQL API.
+
+## Infrastructure
+- **REQ-169** (2026-04-01): Trino 480 with Iceberg results catalog (JDBC on PG, native S3 filesystem).
+- **REQ-170** (2026-04-01): `start-ui.sh --reset-volumes` for Docker crash recovery.
+- **REQ-171** (2026-04-01): MinIO results bucket auto-created at startup.

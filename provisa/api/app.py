@@ -264,6 +264,71 @@ async def _load_and_build(config_path: str | None = None) -> None:
         )
         state.mv_registry.register(mv)
 
+    # Process views — governed computed datasets
+    # Each view becomes a registered table (for governance) + MV (for execution)
+    views_config = raw_config.get("views", [])
+    if views_config:
+        import logging
+        _view_log = logging.getLogger(__name__)
+        for view_cfg in views_config:
+            view_id = view_cfg["id"]
+            view_sql = view_cfg["sql"]
+            materialize = view_cfg.get("materialize", False)
+            domain_id = view_cfg.get("domain_id", "default")
+            governance = view_cfg.get("governance", "pre-approved")
+            description = view_cfg.get("description")
+            refresh_interval = view_cfg.get("refresh_interval", 300)
+
+            # Determine the source — views run through Trino, backed by postgresql catalog
+            view_source_id = view_cfg.get("source_id", "postgresql")
+            view_table_name = f"view_{view_id.replace('-', '_')}"
+            view_schema = "mv_cache" if materialize else "public"
+
+            # Register the view as a table entry in the YAML tables list
+            # so it gets picked up by the normal table loading pipeline
+            view_table = {
+                "source_id": view_source_id,
+                "domain_id": domain_id,
+                "schema": view_schema,
+                "table": view_table_name,
+                "governance": governance,
+                "description": description,
+                "alias": view_cfg.get("alias"),
+                "columns": view_cfg.get("columns", []),
+            }
+            # Append to the tables list so it's processed during schema build
+            raw_config.setdefault("tables", []).append(view_table)
+
+            if materialize:
+                # Create a materialized MV
+                mv = MVDefinition(
+                    id=f"view-{view_id}",
+                    source_tables=[],  # SQL defines its own sources
+                    target_catalog="postgresql",
+                    target_schema="mv_cache",
+                    target_table=view_table_name,
+                    refresh_interval=refresh_interval,
+                    enabled=True,
+                    sql=view_sql,
+                    expose_in_sdl=False,  # Exposed via the registered table instead
+                )
+                state.mv_registry.register(mv)
+                _view_log.info("Registered materialized view: %s", view_id)
+            else:
+                # Create a live Trino view
+                if state.trino_conn is not None:
+                    try:
+                        catalog = view_source_id.replace("-", "_")
+                        cur = state.trino_conn.cursor()
+                        cur.execute(
+                            f'CREATE OR REPLACE VIEW {catalog}.{view_schema}."{view_table_name}" '
+                            f"AS {view_sql}"
+                        )
+                        _view_log.info("Created live Trino view: %s.%s.%s",
+                                       catalog, view_schema, view_table_name)
+                    except Exception as e:
+                        _view_log.warning("Failed to create Trino view %s: %s", view_id, e)
+
     # Auto-generate MVs from cross-source relationships with materialize=true
     _table_source_map: dict[str, str] = {}  # table_name → source_id
     for tbl_cfg in raw_config.get("tables", []):

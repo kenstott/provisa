@@ -171,6 +171,60 @@ tables:
       - name: resolved_at
         visible_to: [admin, analyst]
 
+views:
+  - id: monthly-revenue
+    sql: |
+      SELECT DATE_TRUNC('month', created_at) AS month,
+             region,
+             SUM(amount) AS revenue,
+             COUNT(*) AS order_count
+      FROM orders
+      GROUP BY 1, 2
+    description: "Monthly revenue by region — steward-approved aggregation"
+    domain_id: sales-analytics
+    governance: pre-approved
+    materialize: true
+    refresh_interval: 3600
+    columns:
+      - name: month
+        visible_to: [admin, analyst]
+        description: "Month (truncated to first day)"
+      - name: region
+        visible_to: [admin, analyst]
+        description: "Geographic region"
+      - name: revenue
+        visible_to: [admin]
+        description: "Total revenue in USD"
+      - name: order_count
+        visible_to: [admin, analyst]
+        description: "Number of orders"
+
+  - id: customer-order-summary
+    sql: |
+      SELECT c.id AS customer_id,
+             c.name AS customer_name,
+             c.region,
+             COUNT(o.id) AS total_orders,
+             SUM(o.amount) AS total_spent
+      FROM customers c
+      LEFT JOIN orders o ON c.id = o.customer_id
+      GROUP BY c.id, c.name, c.region
+    description: "Customer lifetime order summary"
+    domain_id: customer-insights
+    governance: registry-required
+    materialize: false
+    columns:
+      - name: customer_id
+        visible_to: [admin, analyst]
+      - name: customer_name
+        visible_to: [admin, analyst]
+      - name: region
+        visible_to: [admin, analyst]
+      - name: total_orders
+        visible_to: [admin, analyst]
+      - name: total_spent
+        visible_to: [admin]
+
 relationships:
   - id: orders-to-customers
     source_table_id: orders
