@@ -758,6 +758,15 @@ def create_app() -> FastAPI:
         from provisa.executor.redirect import RedirectConfig
         from provisa.compiler.sampling import get_sample_size
         rc = RedirectConfig.from_env()
+        # Read domain_prefix from config
+        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+        domain_prefix = False
+        try:
+            with open(config_path) as f:
+                cfg = yaml.safe_load(f)
+            domain_prefix = cfg.get("naming", {}).get("domain_prefix", False)
+        except Exception:
+            pass
         return {
             "redirect": {
                 "enabled": rc.enabled,
@@ -770,6 +779,9 @@ def create_app() -> FastAPI:
             },
             "cache": {
                 "default_ttl": state.cache_default_ttl,
+            },
+            "naming": {
+                "domain_prefix": domain_prefix,
             },
         }
 
@@ -805,6 +817,25 @@ def create_app() -> FastAPI:
             if "default_ttl" in c:
                 state.cache_default_ttl = int(c["default_ttl"])
                 updated.append("cache.default_ttl")
+
+        if "naming" in body:
+            n = body["naming"]
+            if "domain_prefix" in n:
+                # Write to config and reload
+                config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+                path = Path(config_path)
+                with open(path) as f:
+                    cfg = yaml.safe_load(f)
+                cfg.setdefault("naming", {})["domain_prefix"] = bool(n["domain_prefix"])
+                backup = path.with_suffix(".yaml.bak")
+                backup.write_text(path.read_text())
+                with open(path, "w") as f:
+                    yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+                try:
+                    await _load_and_build(config_path)
+                except Exception:
+                    pass
+                updated.append("naming.domain_prefix")
 
         return {"success": True, "updated": updated}
 

@@ -85,7 +85,7 @@ services:
       KAFKA_PROCESS_ROLES: broker,controller
       CLUSTER_ID: 3W4Vn7JTS4yUfx7dcvUlPg
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_LOG_RETENTION_HOURS: 1
+      KAFKA_LOG_RETENTION_HOURS: 168
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:

@@ -41,7 +41,7 @@ domains:
     description: Customer support ticket events
 
 naming:
-  domain_prefix: false  # when true, prepends domain_id__ to all GraphQL names
+  domain_prefix: true  # prepends domain_id__ to all GraphQL names
   rules:
     - pattern: "^prod_pg_"
       replace: ""

@@ -166,6 +166,22 @@ export function AdminPage() {
             </label>
           </div>
           <div className="settings-section">
+            <h4>Naming</h4>
+            <label>
+              <input
+                type="checkbox"
+                checked={settings.naming.domain_prefix}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    naming: { domain_prefix: e.target.checked },
+                  })
+                }
+              />
+              Domain prefix (domain_id__ prepended to all names)
+            </label>
+          </div>
+          <div className="settings-section">
             <h4>Sampling</h4>
             <label>
               Default Sample Size

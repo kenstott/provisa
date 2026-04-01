@@ -249,6 +249,9 @@ export interface PlatformSettings {
   cache: {
     default_ttl: number;
   };
+  naming: {
+    domain_prefix: boolean;
+  };
 }
 
 export async function fetchSettings(): Promise<PlatformSettings> {
