@@ -507,7 +507,13 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id):
     results = []
     for mutation in mutations:
         # Inject RLS into UPDATE/DELETE
+        # Look up by DB table name (ctx keys are GraphQL field names which may have domain prefix)
         table_meta = ctx.tables.get(mutation.table_name)
+        if table_meta is None:
+            for meta in ctx.tables.values():
+                if meta.table_name == mutation.table_name:
+                    table_meta = meta
+                    break
         if table_meta and rls.has_rules():
             mutation = inject_rls_into_mutation(
                 mutation, table_meta.table_id, rls.rules,

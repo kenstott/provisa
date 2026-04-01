@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Kenneth Stott
+# Canary: f2c393dd-e15a-4a02-acba-52a447da7207
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -29,7 +30,9 @@ class _Encoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, Decimal):
             return float(o)
-        return super().default(o)
+        if hasattr(o, 'isoformat'):
+            return o.isoformat()
+        return str(o)
 
 
 async def trigger_sinks_for_table(table_name: str, state) -> int:
