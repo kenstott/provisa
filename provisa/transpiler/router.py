@@ -29,15 +29,15 @@ class Route(str, Enum):
     TRINO = "trino"
 
 
-# Sources that always route to Trino (no native SQL or no direct driver possible)
-TRINO_ONLY_SOURCES: set[str] = {
+# Virtual sources — always route through Trino (no direct SQL driver)
+VIRTUAL_SOURCES: set[str] = {
     # NoSQL
     "mongodb", "cassandra", "redis", "kudu", "accumulo",
-    # Data Lake (no direct SQL interface)
+    # Data Lake
     "delta_lake", "iceberg", "hive",
-    # Non-SQL / specialized
+    # Specialized
     "google_sheets", "prometheus",
-    # API / Streaming (handled by separate execution paths)
+    # API / Streaming
     "openapi", "graphql_api", "grpc_api", "kafka",
 }
 
@@ -97,10 +97,10 @@ def decide_route(
     stype = source_types.get(sid, "")
 
     # Trino-only sources (NoSQL, data lake, non-SQL)
-    if stype in TRINO_ONLY_SOURCES:
+    if stype in VIRTUAL_SOURCES:
         return RouteDecision(
             route=Route.TRINO, source_id=None, dialect=None,
-            reason=f"trino-only source ({stype})",
+            reason=f"virtual source ({stype})",
         )
 
     # JSON path extraction — PG supports ->> natively; other dialects may not
