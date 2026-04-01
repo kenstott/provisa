@@ -5,7 +5,7 @@
  * inside GraphiQL's plugin panel.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useOperationsEditorState } from "@graphiql/react";
 import { compileQuery, submitQuery } from "../api/admin";
 import { format as formatSql } from "sql-formatter";
@@ -43,7 +43,7 @@ function SqlPanel({ compiled }: { compiled: CompileResult }) {
     <div className="provisa-tools-sql">
       <div className="provisa-tools-meta">
         <div>
-          <strong>Route:</strong> {compiled.route}
+          <strong>Route:</strong> {compiled.route === "trino" ? "virtual" : compiled.route}
         </div>
         <div className="provisa-tools-reason">{compiled.route_reason}</div>
         <div>
@@ -93,19 +93,24 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const [sinkTrigger, setSinkTrigger] = useState("change_event");
   const [sinkKeyColumn, setSinkKeyColumn] = useState("");
 
-  const handleViewSql = useCallback(async () => {
-    if (!query.trim()) return;
-    setError("");
-    setCompiled(null);
-    setLoading(true);
-    try {
-      const result = await compileQuery(roleId, query);
-      setCompiled(result);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
+  // Auto-compile on query change (debounced)
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => {
+    if (!query.trim()) {
+      setCompiled(null);
+      return;
     }
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const result = await compileQuery(roleId, query);
+        setCompiled(result);
+        setError("");
+      } catch {
+        setCompiled(null);
+      }
+    }, 600);
+    return () => clearTimeout(debounceRef.current);
   }, [roleId, query]);
 
   const handleSubmit = useCallback(async () => {
@@ -137,9 +142,6 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
   return (
     <div className="provisa-tools">
       <div className="provisa-tools-actions">
-        <button onClick={handleViewSql} disabled={loading || !query.trim()}>
-          View SQL
-        </button>
         <button
           onClick={handleSubmit}
           disabled={loading || !query.trim()}
