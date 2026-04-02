@@ -128,6 +128,7 @@ services:
       - ./trino/etc/node.properties:/etc/trino/node.properties:ro
       - ./trino/catalog:/etc/trino/catalog
       - ./trino/kafka:/etc/trino/kafka:ro
+      - trino_cache:/data/trino/cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -171,3 +172,4 @@ volumes:
   minio_data:
   redis_data:
   kafka_data:
+  trino_cache:
