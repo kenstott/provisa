@@ -232,11 +232,12 @@ _ISO_DATE_RE = _re.compile(
 )
 
 
-def _maybe_cast_timestamp(placeholder: str, val: object) -> str:
-    """Wrap a placeholder with CAST if the value looks like a timestamp."""
+def _timestamp_literal_or_param(val: object, collector) -> str:
+    """Return a TIMESTAMP literal if val is an ISO date, otherwise a parameter."""
     if isinstance(val, str) and _ISO_DATE_RE.match(val):
-        return f"CAST({placeholder} AS TIMESTAMP)"
-    return placeholder
+        normalized = val.replace("T", " ").rstrip("Z")
+        return f"TIMESTAMP '{normalized}'"
+    return collector.add(val)
 
 
 def _compile_where(
@@ -262,23 +263,23 @@ def _compile_where(
         filter_obj = value
         for op, val in filter_obj.items():
             if op == "eq":
-                placeholder = collector.add(val)
-                parts.append(f"{col} = {_maybe_cast_timestamp(placeholder, val)}")
+                rhs = _timestamp_literal_or_param(val, collector)
+                parts.append(f"{col} = {rhs}")
             elif op == "neq":
-                placeholder = collector.add(val)
-                parts.append(f"{col} != {_maybe_cast_timestamp(placeholder, val)}")
+                rhs = _timestamp_literal_or_param(val, collector)
+                parts.append(f"{col} != {rhs}")
             elif op == "gt":
-                placeholder = collector.add(val)
-                parts.append(f"{col} > {_maybe_cast_timestamp(placeholder, val)}")
+                rhs = _timestamp_literal_or_param(val, collector)
+                parts.append(f"{col} > {rhs}")
             elif op == "gte":
-                placeholder = collector.add(val)
-                parts.append(f"{col} >= {_maybe_cast_timestamp(placeholder, val)}")
+                rhs = _timestamp_literal_or_param(val, collector)
+                parts.append(f"{col} >= {rhs}")
             elif op == "lt":
-                placeholder = collector.add(val)
-                parts.append(f"{col} < {_maybe_cast_timestamp(placeholder, val)}")
+                rhs = _timestamp_literal_or_param(val, collector)
+                parts.append(f"{col} < {rhs}")
             elif op == "lte":
-                placeholder = collector.add(val)
-                parts.append(f"{col} <= {_maybe_cast_timestamp(placeholder, val)}")
+                rhs = _timestamp_literal_or_param(val, collector)
+                parts.append(f"{col} <= {rhs}")
             elif op == "in":
                 placeholders = [collector.add(v) for v in val]
                 parts.append(f"{col} IN ({', '.join(placeholders)})")
