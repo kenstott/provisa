@@ -48,6 +48,12 @@ cd "$SCRIPT_DIR"
 docker compose up -d --wait
 echo "Docker Compose services are healthy."
 
+# Seed Kafka with demo data
+if [ -f "$SCRIPT_DIR/scripts/seed-kafka.py" ]; then
+  echo "Seeding Kafka..."
+  .venv/bin/python "$SCRIPT_DIR/scripts/seed-kafka.py" 2>/dev/null || true
+fi
+
 # Kill any stale processes on our ports
 lsof -i :8001 -P -t 2>/dev/null | xargs kill 2>/dev/null || true
 lsof -i :3000 -P -t 2>/dev/null | xargs kill 2>/dev/null || true
