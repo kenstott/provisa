@@ -216,38 +216,62 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 pgbouncer_port=src.pgbouncer_port,
             )
 
-    # Load Kafka source configs (windows + discriminators)
-    # Discriminators only apply when multiple topic configs map to separate
-    # registered tables. If multiple configs share the same table_name,
-    # skip the discriminator (user filters manually via where clause).
+    # Load Kafka source configs and auto-register tables
+    # Each topic config with a discriminator becomes a separate table.
+    # The discriminator is injected as a WHERE clause at query time.
+    # Column definitions from the topic config define the GraphQL schema.
     from provisa.kafka.window import KafkaTableConfig
-    _kafka_table_count: dict[str, int] = {}
     for ks in raw_config.get("kafka_sources", []):
+        source_id = ks["id"]
         for topic in ks.get("topics", []):
-            tn = topic.get("table_name") or topic["topic"].replace(".", "_").replace("-", "_")
-            _kafka_table_count[tn] = _kafka_table_count.get(tn, 0) + 1
+            # Determine the GraphQL table name:
+            # - Use topic config's table_name if set
+            # - Otherwise derive from topic config id
+            topic_id = topic.get("id", "")
+            physical_table = topic.get("topic", "").replace(".", "_").replace("-", "_")
+            gql_table_name = topic.get("table_name") or topic_id.replace("-", "_")
 
-    for ks in raw_config.get("kafka_sources", []):
-        for topic in ks.get("topics", []):
-            table_name = topic.get("table_name") or topic["topic"].replace(".", "_").replace("-", "_")
             window = topic.get("default_window", "1h")
-
-            # Only apply discriminator if this table_name has a unique topic config
             disc = topic.get("discriminator")
-            if _kafka_table_count.get(table_name, 0) > 1:
-                disc = None  # Multiple configs share same table — no auto-discriminator
-
             disc_field = disc.get("field") if disc else None
             disc_value = disc.get("value") if disc else None
 
-            state.kafka_table_configs[table_name] = KafkaTableConfig(
+            # Register the Kafka table config for WHERE injection
+            state.kafka_table_configs[gql_table_name] = KafkaTableConfig(
                 window=window,
                 discriminator_field=disc_field,
                 discriminator_value=disc_value,
             )
 
             if window:
-                state.kafka_windows[ks["id"]] = window
+                state.kafka_windows[source_id] = window
+
+            # Auto-register as a Provisa table entry
+            # Use topic ID as table name (unique per registration),
+            # backed by the physical Trino table for introspection
+            topic_columns = topic.get("columns", [])
+            table_entry = {
+                "source_id": source_id,
+                "domain_id": topic.get("domain_id", "support"),
+                "schema": "default",
+                "table": gql_table_name,  # unique name per topic config
+                "description": topic.get("description", ""),
+                "governance": "pre-approved",
+                "columns": [
+                    {
+                        "name": col.get("name", col) if isinstance(col, dict) else col,
+                        "visible_to": col.get("visible_to", ["admin", "analyst"]) if isinstance(col, dict) else ["admin", "analyst"],
+                        "description": col.get("description", "") if isinstance(col, dict) else "",
+                    }
+                    for col in topic_columns
+                ],
+            }
+            raw_config.setdefault("tables", []).append(table_entry)
+
+            # Map the virtual table name to the physical Trino table
+            # so introspection and SQL compilation use the right table
+            state.kafka_table_physical = getattr(state, "kafka_table_physical", {})
+            state.kafka_table_physical[gql_table_name] = physical_table
 
     # Load materialized view definitions
     from provisa.mv.models import MVDefinition, JoinPattern
@@ -412,7 +436,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
         ]
 
         # Introspect Trino metadata
-        column_types = introspect_tables(state.trino_conn, tables, sources)
+        kafka_physical = getattr(state, "kafka_table_physical", {})
+        column_types = introspect_tables(state.trino_conn, tables, sources, kafka_physical)
         col_types_converted: dict[int, list[ColumnMetadata]] = column_types
 
         # Load RLS rules
@@ -464,6 +489,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 domains=domains,
                 source_types=state.source_types,
                 domain_prefix=raw_config.get("naming", {}).get("domain_prefix", False),
+                physical_table_map=kafka_physical or None,
             )
             try:
                 state.schemas[role["id"]] = generate_schema(si)

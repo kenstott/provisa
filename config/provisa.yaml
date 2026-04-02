@@ -134,46 +134,6 @@ tables:
       - name: score
         visible_to: [admin]
 
-  - source_id: support-kafka
-    domain_id: support
-    schema: default
-    table: support_tickets
-    description: "All support events from Kafka (filter by event_type)"
-    governance: pre-approved
-    columns:
-      - name: _timestamp
-        visible_to: [admin, analyst]
-        description: "Kafka message timestamp"
-      - name: event_type
-        visible_to: [admin, analyst]
-        description: "TicketCreated or TicketResolved"
-      - name: ticket_id
-        visible_to: [admin, analyst]
-        description: "Unique ticket identifier"
-      - name: customer_id
-        visible_to: [admin, analyst]
-        description: "FK to customers table"
-      - name: category
-        visible_to: [admin, analyst]
-        description: "Ticket category (billing, technical, etc.)"
-      - name: priority
-        visible_to: [admin, analyst]
-        description: "Ticket priority level"
-      - name: subject
-        visible_to: [admin, analyst]
-      - name: agent
-        visible_to: [admin, analyst]
-        description: "Support agent who resolved the ticket"
-      - name: resolution
-        visible_to: [admin, analyst]
-        description: "Resolution type (fixed, workaround, etc.)"
-      - name: resolution_time_minutes
-        visible_to: [admin, analyst]
-      - name: created_at
-        visible_to: [admin, analyst]
-      - name: resolved_at
-        visible_to: [admin, analyst]
-
 views:
   - id: monthly-revenue
     sql: |
@@ -201,57 +161,6 @@ views:
       - name: order_count
         visible_to: [admin, analyst]
         description: "Number of orders"
-
-  - id: tickets-created
-    sql: |
-      SELECT _timestamp, ticket_id, customer_id, category, priority, subject, created_at
-      FROM support_kafka.default.support_tickets
-      WHERE event_type = 'TicketCreated'
-    description: "Support tickets opened by customers"
-    domain_id: support
-    governance: pre-approved
-    materialize: false
-    columns:
-      - name: _timestamp
-        visible_to: [admin, analyst]
-      - name: ticket_id
-        visible_to: [admin, analyst]
-      - name: customer_id
-        visible_to: [admin, analyst]
-      - name: category
-        visible_to: [admin, analyst]
-      - name: priority
-        visible_to: [admin, analyst]
-      - name: subject
-        visible_to: [admin, analyst]
-      - name: created_at
-        visible_to: [admin, analyst]
-
-  - id: tickets-resolved
-    sql: |
-      SELECT _timestamp, ticket_id, customer_id, agent, resolution,
-             resolution_time_minutes, resolved_at
-      FROM support_kafka.default.support_tickets
-      WHERE event_type = 'TicketResolved'
-    description: "Support tickets that have been resolved"
-    domain_id: support
-    governance: pre-approved
-    materialize: false
-    columns:
-      - name: _timestamp
-        visible_to: [admin, analyst]
-      - name: ticket_id
-        visible_to: [admin, analyst]
-      - name: customer_id
-        visible_to: [admin, analyst]
-      - name: agent
-        visible_to: [admin, analyst]
-      - name: resolution
-        visible_to: [admin, analyst]
-      - name: resolution_time_minutes
-        visible_to: [admin, analyst]
-      - name: resolved_at
-        visible_to: [admin, analyst]
 
   - id: customer-order-summary
     sql: |
@@ -293,7 +202,7 @@ relationships:
     target_column: customer_id
     cardinality: one-to-many
   - id: tickets-to-customers
-    source_table_id: support_tickets
+    source_table_id: ticket_created
     target_table_id: customers
     source_column: customer_id
     target_column: id
@@ -345,52 +254,48 @@ kafka_sources:
   - id: support-kafka
     bootstrap_servers: kafka:29092
     topics:
-      - id: ticket-created
+      - id: ticket_created
         topic: support.tickets
         default_window: 1h
-        schema_source: manual
-        value_format: json
+        domain_id: support
+        description: "Support tickets opened by customers"
         discriminator:
           field: event_type
           value: TicketCreated
         columns:
-          - name: event_type
-            type: varchar
+          - name: _timestamp
+            description: "Kafka message timestamp"
           - name: ticket_id
-            type: integer
+            description: "Unique ticket identifier"
           - name: customer_id
-            type: integer
+            description: "FK to customers table"
           - name: category
-            type: varchar
+            description: "Ticket category"
           - name: priority
-            type: varchar
+            description: "Priority level"
           - name: subject
-            type: varchar
           - name: created_at
-            type: varchar
-      - id: ticket-resolved
+      - id: ticket_resolved
         topic: support.tickets
         default_window: 1h
-        schema_source: manual
-        value_format: json
+        domain_id: support
+        description: "Support tickets that have been resolved"
         discriminator:
           field: event_type
           value: TicketResolved
         columns:
-          - name: event_type
-            type: varchar
+          - name: _timestamp
+            description: "Kafka message timestamp"
           - name: ticket_id
-            type: integer
+            description: "Unique ticket identifier"
           - name: customer_id
-            type: integer
+            description: "FK to customers table"
           - name: agent
-            type: varchar
+            description: "Support agent who resolved"
           - name: resolution
-            type: varchar
+            description: "Resolution type"
           - name: resolution_time_minutes
-            type: integer
           - name: resolved_at
-            type: varchar
 
 rls_rules:
   - table_id: orders

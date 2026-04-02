@@ -51,6 +51,7 @@ class SchemaInput:
     domains: list[dict]  # from domain_repo.list_all()
     source_types: dict[str, str] | None = None  # source_id → type (for mutation eligibility)
     domain_prefix: bool = False  # prepend domain_id__ to all names
+    physical_table_map: dict[str, str] | None = None  # virtual → physical table name
 
 
 @dataclass

@@ -67,6 +67,7 @@ def introspect_tables(
     conn: trino.dbapi.Connection,
     registered_tables: list[dict],
     sources: dict[str, dict],
+    physical_table_map: dict[str, str] | None = None,
 ) -> dict[int, list[ColumnMetadata]]:
     """Bulk introspect all registered tables.
 
@@ -74,6 +75,8 @@ def introspect_tables(
         conn: Trino connection.
         registered_tables: list of dicts from table_repo.list_all().
         sources: {source_id: source_dict} for catalog name lookup.
+        physical_table_map: {virtual_table_name: physical_table_name} for
+            Kafka topics where multiple virtual tables map to one physical table.
 
     Returns:
         {table_id: [ColumnMetadata]}.
@@ -82,10 +85,21 @@ def introspect_tables(
     for table in registered_tables:
         source = sources[table["source_id"]]
         catalog_name = source["id"].replace("-", "_")
-        columns = introspect_table_columns(
-            conn, catalog_name, table["schema_name"], table["table_name"]
-        )
-        result[table["id"]] = columns
+        # Use physical table name if mapped (e.g., Kafka discriminated tables)
+        trino_table_name = table["table_name"]
+        if physical_table_map:
+            trino_table_name = physical_table_map.get(trino_table_name, trino_table_name)
+        try:
+            columns = introspect_table_columns(
+                conn, catalog_name, table["schema_name"], trino_table_name
+            )
+            result[table["id"]] = columns
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Failed to introspect %s.%s.%s: %s. Table will be skipped.",
+                catalog_name, table["schema_name"], trino_table_name, e,
+            )
     return result
 
 

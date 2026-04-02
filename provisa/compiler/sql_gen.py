@@ -133,7 +133,10 @@ def build_context(si: object) -> CompilationContext:
 
     table_lookup = {t.table_id: t for t in tables}
 
+    physical_map = getattr(si, "physical_table_map", None) or {}
+
     for t in tables:
+        physical_name = physical_map.get(t.table_name, t.table_name)
         meta = TableMeta(
             table_id=t.table_id,
             field_name=t.field_name,
@@ -141,7 +144,7 @@ def build_context(si: object) -> CompilationContext:
             source_id=t.source_id,
             catalog_name=t.source_id.replace("-", "_"),
             schema_name=t.schema_name,
-            table_name=t.table_name,
+            table_name=physical_name,
         )
         ctx.tables[t.field_name] = meta
 
