@@ -9,6 +9,7 @@ import "graphiql/graphiql.css";
 import "./QueryPage.css";
 import { useAuth } from "../context/AuthContext";
 import { provisaToolsPlugin } from "../plugins/provisa-tools";
+import { tableViewPlugin } from "../plugins/table-view";
 
 const explorer = explorerPlugin();
 
@@ -151,7 +152,7 @@ export function QueryPage() {
       </div>
       <GraphiQL
         fetcher={fetcher}
-        plugins={[explorer, provisaPlugin]}
+        plugins={[explorer, provisaPlugin, tableViewPlugin]}
         forcedTheme="dark"
       />
     </div>
