@@ -129,6 +129,9 @@ async def _execute_ctas_redirect(
     )
 
     compiled = compile_query(document, ctx, variables, use_catalog=True)[0]
+    if state.view_sql_map:
+        from provisa.compiler.view_expand import expand_views
+        compiled = expand_views(compiled, state.view_sql_map)
     compiled = inject_rls(compiled, ctx, rls)
     compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
     compiled = rewrite_if_mv_match(compiled, fresh_mvs)
@@ -275,6 +278,11 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
 
     compiled = compiled_queries[0]
 
+    # Inline-expand non-materialized views (subquery substitution)
+    if state.view_sql_map:
+        from provisa.compiler.view_expand import expand_views
+        compiled = expand_views(compiled, state.view_sql_map)
+
     # Apply RLS and masking (before MV rewrite — MV has unfiltered data)
     compiled = inject_rls(compiled, ctx, rls)
     compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
@@ -399,6 +407,9 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
                 compiled = compile_query(
                     document, ctx, variables, use_catalog=True,
                 )[0]
+                if state.view_sql_map:
+                    from provisa.compiler.view_expand import expand_views
+                    compiled = expand_views(compiled, state.view_sql_map)
                 compiled = inject_rls(compiled, ctx, rls)
                 compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
                 compiled = rewrite_if_mv_match(compiled, fresh_mvs)

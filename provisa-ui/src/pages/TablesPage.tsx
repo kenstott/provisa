@@ -1,8 +1,8 @@
 import { useState, useEffect, Fragment } from "react";
 import {
   fetchTables, fetchSources, fetchDomains,
-  fetchAvailableSchemas, fetchAvailableTables, fetchAvailableColumns,
-  registerTable, deleteTable,
+  fetchAvailableSchemas, fetchAvailableTables, fetchAvailableColumnsMetadata,
+  registerTable, deleteTable, updateTable,
 } from "../api/admin";
 import type { RegisteredTable, Source, Domain } from "../types/admin";
 
@@ -40,6 +40,10 @@ export function TablesPage() {
   const [loadingTables, setLoadingTables] = useState(false);
   const [loadingColumns, setLoadingColumns] = useState(false);
 
+  // Inline edit state for expanded table
+  const [editingTable, setEditingTable] = useState<RegisteredTable | null>(null);
+  const [saving, setSaving] = useState(false);
+
   const reload = () => {
     setLoading(true);
     Promise.all([fetchTables(), fetchSources(), fetchDomains()])
@@ -74,9 +78,15 @@ export function TablesPage() {
     setColumns([]);
     if (!sourceId || !schemaName || !tableName) return;
     setLoadingColumns(true);
-    fetchAvailableColumns(sourceId, schemaName, tableName)
+    fetchAvailableColumnsMetadata(sourceId, schemaName, tableName)
       .then((cols) =>
-        setColumns(cols.map((c) => ({ name: c, visibleTo: "", alias: "", description: "", selected: true })))
+        setColumns(cols.map((c) => ({
+          name: c.name,
+          visibleTo: "",
+          alias: "",
+          description: c.comment || "",
+          selected: true,
+        })))
       )
       .catch(() => setColumns([]))
       .finally(() => setLoadingColumns(false));
@@ -89,6 +99,8 @@ export function TablesPage() {
       .map((c) => ({
         name: c.name,
         visibleTo: c.visibleTo.trim() ? c.visibleTo.split(",").map((s) => s.trim()) : [],
+        alias: c.alias || undefined,
+        description: c.description || undefined,
       }));
     if (!sourceId || !domainId || !schemaName || !tableName) {
       setError("Source, domain, schema, and table name are required.");
@@ -101,6 +113,8 @@ export function TablesPage() {
     try {
       const result = await registerTable({
         sourceId, domainId, schemaName, tableName, governance,
+        alias: tableAlias || undefined,
+        description: tableDescription || undefined,
         columns: selectedCols,
       });
       if (!result.success) { setError(result.message); return; }
@@ -121,6 +135,49 @@ export function TablesPage() {
     const next = [...columns];
     next[i] = { ...next[i], [key]: value };
     setColumns(next);
+  };
+
+  const startEditing = (t: RegisteredTable) => {
+    setEditingTable(JSON.parse(JSON.stringify(t)));
+  };
+
+  const cancelEditing = () => {
+    setEditingTable(null);
+  };
+
+  const updateEditCol = (i: number, key: string, value: string) => {
+    if (!editingTable) return;
+    const next = { ...editingTable };
+    next.columns = [...next.columns];
+    next.columns[i] = { ...next.columns[i], [key]: value };
+    setEditingTable(next);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingTable) return;
+    setError(null);
+    setSaving(true);
+    try {
+      const result = await updateTable({
+        sourceId: editingTable.sourceId,
+        domainId: editingTable.domainId,
+        schemaName: editingTable.schemaName,
+        tableName: editingTable.tableName,
+        governance: editingTable.governance,
+        alias: editingTable.alias || undefined,
+        description: editingTable.description || undefined,
+        columns: editingTable.columns.map((c) => ({
+          name: c.columnName,
+          visibleTo: c.visibleTo,
+          alias: c.alias || undefined,
+          description: c.description || undefined,
+        })),
+      });
+      if (!result.success) { setError(result.message); return; }
+      setEditingTable(null);
+      reload();
+    } catch (e: any) { setError(e.message); }
+    finally { setSaving(false); }
   };
 
   if (loading) return <div className="page">Loading tables...</div>;
@@ -239,53 +296,126 @@ export function TablesPage() {
           </tr>
         </thead>
         <tbody>
-          {tables.map((t) => (
-            <Fragment key={t.id}>
-              <tr onClick={() => setExpanded(expanded === t.id ? null : t.id)} className="clickable">
-                <td>{t.id}</td>
-                <td>{t.sourceId}</td>
-                <td>{t.domainId}</td>
-                <td>{t.schemaName}</td>
-                <td>{t.tableName}</td>
-                <td>{t.alias || ""}</td>
-                <td className="reasoning-cell">{t.description || ""}</td>
-                <td>{t.governance}</td>
-                <td>{t.columns.length}</td>
-                <td>
-                  <button
-                    className="destructive"
-                    onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
-                    style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-              {expanded === t.id && (
-                <tr key={`${t.id}-cols`}>
-                  <td colSpan={10}>
-                    <table className="data-table" style={{ margin: "0.5rem 0" }}>
-                      <thead>
-                        <tr>
-                          <th>Column</th><th>Alias</th><th>Description</th><th>Visible To</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {t.columns.map((c) => (
-                          <tr key={c.id}>
-                            <td><code>{c.columnName}</code></td>
-                            <td>{c.alias || ""}</td>
-                            <td className="reasoning-cell">{c.description || ""}</td>
-                            <td>{c.visibleTo.length > 0 ? c.visibleTo.join(", ") : "all"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+          {tables.map((t) => {
+            const isEditing = editingTable?.id === t.id;
+            return (
+              <Fragment key={t.id}>
+                <tr onClick={() => { setExpanded(expanded === t.id ? null : t.id); if (expanded === t.id) cancelEditing(); }} className="clickable">
+                  <td>{t.id}</td>
+                  <td>{t.sourceId}</td>
+                  <td>{t.domainId}</td>
+                  <td>{t.schemaName}</td>
+                  <td>{t.tableName}</td>
+                  <td>{t.alias || ""}</td>
+                  <td className="reasoning-cell">{t.description || ""}</td>
+                  <td>{t.governance}</td>
+                  <td>{t.columns.length}</td>
+                  <td>
+                    <button
+                      className="destructive"
+                      onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
+                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                    >
+                      Delete
+                    </button>
                   </td>
                 </tr>
-              )}
-            </Fragment>
-          ))}
+                {expanded === t.id && (
+                  <tr key={`${t.id}-cols`}>
+                    <td colSpan={10}>
+                      {!isEditing ? (
+                        <>
+                          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); startEditing(t); }}
+                              style={{ padding: "0.25rem 0.75rem", fontSize: "0.8rem" }}
+                            >
+                              Edit
+                            </button>
+                          </div>
+                          <table className="data-table" style={{ margin: "0 0 0.5rem" }}>
+                            <thead>
+                              <tr>
+                                <th>Column</th><th>Alias</th><th>Description</th><th>Visible To</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {t.columns.map((c) => (
+                                <tr key={c.id}>
+                                  <td><code>{c.columnName}</code></td>
+                                  <td>{c.alias || ""}</td>
+                                  <td className="reasoning-cell">{c.description || ""}</td>
+                                  <td>{c.visibleTo.length > 0 ? c.visibleTo.join(", ") : "all"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginBottom: "0.75rem" }}>
+                            <label>
+                              Table Alias
+                              <input
+                                value={editingTable.alias || ""}
+                                onChange={(e) => setEditingTable({ ...editingTable, alias: e.target.value || null })}
+                                placeholder="GraphQL name override"
+                              />
+                            </label>
+                            <label>
+                              Table Description
+                              <input
+                                value={editingTable.description || ""}
+                                onChange={(e) => setEditingTable({ ...editingTable, description: e.target.value || null })}
+                                placeholder="Appears in SDL docs"
+                              />
+                            </label>
+                          </div>
+                          <table className="data-table" style={{ margin: "0 0 0.5rem" }}>
+                            <thead>
+                              <tr>
+                                <th>Column</th><th>Alias</th><th>Description</th><th>Visible To</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {editingTable.columns.map((c, i) => (
+                                <tr key={c.id}>
+                                  <td><code>{c.columnName}</code></td>
+                                  <td>
+                                    <input
+                                      value={c.alias || ""}
+                                      onChange={(e) => updateEditCol(i, "alias", e.target.value)}
+                                      placeholder="alias"
+                                      style={{ width: "100%", boxSizing: "border-box" }}
+                                    />
+                                  </td>
+                                  <td>
+                                    <input
+                                      value={c.description || ""}
+                                      onChange={(e) => updateEditCol(i, "description", e.target.value)}
+                                      placeholder="description"
+                                      style={{ width: "100%", boxSizing: "border-box" }}
+                                    />
+                                  </td>
+                                  <td>{c.visibleTo.length > 0 ? c.visibleTo.join(", ") : "all"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                            <button onClick={cancelEditing} style={{ padding: "0.25rem 0.75rem", fontSize: "0.8rem" }}>Cancel</button>
+                            <button onClick={handleSaveEdit} disabled={saving} style={{ padding: "0.25rem 0.75rem", fontSize: "0.8rem" }}>
+                              {saving ? "Saving..." : "Save"}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>

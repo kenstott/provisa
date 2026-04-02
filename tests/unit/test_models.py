@@ -63,7 +63,7 @@ class TestSource:
         with pytest.raises(ValidationError):
             Source(
                 id="bad",
-                type="oracle",
+                type="not_a_real_database",
                 host="h",
                 port=1521,
                 database="d",

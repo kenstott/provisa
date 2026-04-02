@@ -17,6 +17,7 @@ from typing import Optional
 import strawberry
 
 from provisa.api.admin.types import (
+    AvailableColumnType,
     ColumnInput,
     DomainInput,
     DomainType,
@@ -261,6 +262,29 @@ class Query:
         except Exception:
             return []
 
+    @strawberry.field
+    async def available_columns_metadata(
+        self, source_id: str, schema_name: str, table_name: str
+    ) -> list[AvailableColumnType]:
+        """List columns with data types and comments from the physical database."""
+        from provisa.api.app import state
+        catalog = source_id.replace("-", "_")
+        try:
+            cursor = state.trino_conn.cursor()
+            cursor.execute(
+                f"SELECT column_name, data_type, comment "
+                f"FROM \"{catalog}\".information_schema.columns "
+                f"WHERE table_schema = '{schema_name}' "
+                f"AND table_name = '{table_name}' "
+                f"ORDER BY ordinal_position"
+            )
+            return [
+                AvailableColumnType(name=row[0], data_type=row[1], comment=row[2])
+                for row in cursor.fetchall()
+            ]
+        except Exception:
+            return []
+
 
 @strawberry.type
 class Mutation:
@@ -333,7 +357,12 @@ class Mutation:
                 message=f"Invalid governance level: {input.governance!r}",
             )
         columns = [
-            ColumnModel(name=c.name, visible_to=c.visible_to)
+            ColumnModel(
+                name=c.name,
+                visible_to=c.visible_to,
+                alias=c.alias,
+                description=c.description,
+            )
             for c in input.columns
         ]
         model = TableModel(
@@ -342,6 +371,8 @@ class Mutation:
             schema_name=input.schema_name,
             table_name=input.table_name,
             governance=governance,
+            alias=input.alias,
+            description=input.description,
             columns=columns,
         )
         async with pool.acquire() as conn:
@@ -349,6 +380,50 @@ class Mutation:
         return MutationResult(
             success=True,
             message=f"Table {input.table_name!r} registered (id={table_id})",
+        )
+
+    @strawberry.mutation
+    async def update_table(self, input: TableInput) -> MutationResult:
+        """Update an existing table's alias, description, and column metadata."""
+        from provisa.core.models import (
+            Column as ColumnModel,
+            GovernanceLevel,
+            Table as TableModel,
+        )
+        from provisa.core.repositories import table as table_repo
+
+        pool = await _get_pool()
+        try:
+            governance = GovernanceLevel(input.governance)
+        except ValueError:
+            return MutationResult(
+                success=False,
+                message=f"Invalid governance level: {input.governance!r}",
+            )
+        columns = [
+            ColumnModel(
+                name=c.name,
+                visible_to=c.visible_to,
+                alias=c.alias,
+                description=c.description,
+            )
+            for c in input.columns
+        ]
+        model = TableModel(
+            source_id=input.source_id,
+            domain_id=input.domain_id,
+            schema_name=input.schema_name,
+            table_name=input.table_name,
+            governance=governance,
+            alias=input.alias,
+            description=input.description,
+            columns=columns,
+        )
+        async with pool.acquire() as conn:
+            table_id = await table_repo.upsert(conn, model)
+        return MutationResult(
+            success=True,
+            message=f"Table {input.table_name!r} updated (id={table_id})",
         )
 
     @strawberry.mutation

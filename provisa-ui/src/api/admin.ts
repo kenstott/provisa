@@ -114,13 +114,32 @@ export async function registerTable(input: {
   schemaName: string;
   tableName: string;
   governance: string;
-  columns: { name: string; visibleTo: string[] }[];
+  alias?: string;
+  description?: string;
+  columns: { name: string; visibleTo: string[]; alias?: string; description?: string }[];
 }): Promise<MutationResult> {
   const data = await gql<{ registerTable: MutationResult }>(
     `mutation($input: TableInput!) { registerTable(input: $input) { success message } }`,
     { input }
   );
   return data.registerTable;
+}
+
+export async function updateTable(input: {
+  sourceId: string;
+  domainId: string;
+  schemaName: string;
+  tableName: string;
+  governance: string;
+  alias?: string;
+  description?: string;
+  columns: { name: string; visibleTo: string[]; alias?: string; description?: string }[];
+}): Promise<MutationResult> {
+  const data = await gql<{ updateTable: MutationResult }>(
+    `mutation($input: TableInput!) { updateTable(input: $input) { success message } }`,
+    { input }
+  );
+  return data.updateTable;
 }
 
 export async function deleteTable(id: number): Promise<MutationResult> {
@@ -153,6 +172,28 @@ export async function fetchAvailableColumns(sourceId: string, schemaName: string
     { sourceId, schemaName, tableName }
   );
   return data.availableColumns;
+}
+
+export interface ColumnMetadata {
+  name: string;
+  dataType: string;
+  comment: string | null;
+}
+
+export async function fetchAvailableColumnsMetadata(
+  sourceId: string,
+  schemaName: string,
+  tableName: string,
+): Promise<ColumnMetadata[]> {
+  const data = await gql<{ availableColumnsMetadata: ColumnMetadata[] }>(
+    `query($sourceId: String!, $schemaName: String!, $tableName: String!) {
+      availableColumnsMetadata(sourceId: $sourceId, schemaName: $schemaName, tableName: $tableName) {
+        name dataType comment
+      }
+    }`,
+    { sourceId, schemaName, tableName }
+  );
+  return data.availableColumnsMetadata;
 }
 
 export async function deleteSource(id: string): Promise<MutationResult> {

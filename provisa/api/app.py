@@ -60,6 +60,7 @@ class AppState:
     _flight_server: object | None = None  # ProvisaFlightServer
     kafka_windows: dict[str, str] = {}  # source_id → default_window (e.g. "1h")
     kafka_table_configs: dict[str, object] = {}  # table_name → KafkaTableConfig
+    view_sql_map: dict[str, str] = {}  # view_table_name → SQL (for inline expansion)
 
 
 state = AppState()
@@ -178,48 +179,12 @@ async def _load_and_build(config_path: str | None = None) -> None:
             exc_info=True,
         )
 
-    # Load config into PG (and create Trino catalogs)
-    config = parse_config_dict(raw_config)
-
-    # Initialize cache store from config
-    cache_config = raw_config.get("cache", {})
-    if cache_config.get("enabled"):
-        redis_url = cache_config.get("redis_url", "")
-        if redis_url.startswith("${env:"):
-            env_key = redis_url[6:-1]
-            redis_url = os.environ.get(env_key, "")
-        if redis_url:
-            state.cache_store = RedisCacheStore(redis_url)
-        state.cache_default_ttl = cache_config.get("default_ttl", 300)
-
-    async with state.pg_pool.acquire() as conn:
-        await load_config(config, conn, state.trino_conn)
-
-    # Build source metadata and direct connection pools
-    from provisa.executor.drivers.registry import has_driver
-    for src in config.sources:
-        state.source_types[src.id] = src.type.value
-        state.source_dialects[src.id] = src.dialect or ""
-        if has_driver(src.type.value):
-            resolved_pw = resolve_secrets(src.password)
-            await state.source_pools.add(
-                source_id=src.id,
-                source_type=src.type.value,
-                host=src.host if src.host != "postgres" else os.environ.get("PG_HOST", "localhost"),
-                port=src.port,
-                database=src.database,
-                user=src.username,
-                password=resolved_pw,
-                min_size=src.pool_min,
-                max_size=src.pool_max,
-                use_pgbouncer=src.use_pgbouncer,
-                pgbouncer_port=src.pgbouncer_port,
-            )
-
     # Load Kafka source configs and auto-register tables
     # Each topic config with a discriminator becomes a separate table.
     # The discriminator is injected as a WHERE clause at query time.
     # Column definitions from the topic config define the GraphQL schema.
+    # NOTE: This must run BEFORE parse_config_dict / load_config so that
+    # Kafka-derived tables are present when relationships are validated.
     from provisa.kafka.window import KafkaTableConfig
     for ks in raw_config.get("kafka_sources", []):
         source_id = ks["id"]
@@ -272,6 +237,44 @@ async def _load_and_build(config_path: str | None = None) -> None:
             # so introspection and SQL compilation use the right table
             state.kafka_table_physical = getattr(state, "kafka_table_physical", {})
             state.kafka_table_physical[gql_table_name] = physical_table
+
+    # Load config into PG (and create Trino catalogs)
+    config = parse_config_dict(raw_config)
+
+    # Initialize cache store from config
+    cache_config = raw_config.get("cache", {})
+    if cache_config.get("enabled"):
+        redis_url = cache_config.get("redis_url", "")
+        if redis_url.startswith("${env:"):
+            env_key = redis_url[6:-1]
+            redis_url = os.environ.get(env_key, "")
+        if redis_url:
+            state.cache_store = RedisCacheStore(redis_url)
+        state.cache_default_ttl = cache_config.get("default_ttl", 300)
+
+    async with state.pg_pool.acquire() as conn:
+        await load_config(config, conn, state.trino_conn)
+
+    # Build source metadata and direct connection pools
+    from provisa.executor.drivers.registry import has_driver
+    for src in config.sources:
+        state.source_types[src.id] = src.type.value
+        state.source_dialects[src.id] = src.dialect or ""
+        if has_driver(src.type.value):
+            resolved_pw = resolve_secrets(src.password)
+            await state.source_pools.add(
+                source_id=src.id,
+                source_type=src.type.value,
+                host=src.host if src.host != "postgres" else os.environ.get("PG_HOST", "localhost"),
+                port=src.port,
+                database=src.database,
+                user=src.username,
+                password=resolved_pw,
+                min_size=src.pool_min,
+                max_size=src.pool_max,
+                use_pgbouncer=src.use_pgbouncer,
+                pgbouncer_port=src.pgbouncer_port,
+            )
 
     # Load materialized view definitions
     from provisa.mv.models import MVDefinition, JoinPattern
@@ -352,19 +355,9 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 state.mv_registry.register(mv)
                 _view_log.info("Registered materialized view: %s", view_id)
             else:
-                # Create a live Trino view
-                if state.trino_conn is not None:
-                    try:
-                        catalog = view_source_id.replace("-", "_")
-                        cur = state.trino_conn.cursor()
-                        cur.execute(
-                            f'CREATE OR REPLACE VIEW {catalog}.{view_schema}."{view_table_name}" '
-                            f"AS {view_sql}"
-                        )
-                        _view_log.info("Created live Trino view: %s.%s.%s",
-                                       catalog, view_schema, view_table_name)
-                    except Exception as e:
-                        _view_log.warning("Failed to create Trino view %s: %s", view_id, e)
+                # Store SQL for inline expansion at query time — no DDL needed
+                state.view_sql_map[view_table_name] = view_sql.strip()
+                _view_log.info("Registered inline view: %s", view_id)
 
     # Auto-generate MVs from cross-source relationships with materialize=true
     _table_source_map: dict[str, str] = {}  # table_name → source_id

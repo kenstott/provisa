@@ -1,16 +1,17 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
 import {
   fetchViews,
   fetchDomains,
+  fetchTables,
   saveView,
   deleteView,
   sampleView,
 } from "../api/admin";
 import type { ViewConfig } from "../api/admin";
-import type { Domain } from "../types/admin";
+import type { Domain, RegisteredTable } from "../types/admin";
 
 const EMPTY_VIEW: ViewConfig = {
   id: "",
@@ -26,6 +27,7 @@ const EMPTY_VIEW: ViewConfig = {
 export function ViewsPage() {
   const [views, setViews] = useState<ViewConfig[]>([]);
   const [domains, setDomains] = useState<Domain[]>([]);
+  const [tables, setTables] = useState<RegisteredTable[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<ViewConfig | null>(null);
   const [sampleData, setSampleData] = useState<{
@@ -38,11 +40,26 @@ export function ViewsPage() {
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
 
+  // Build CodeMirror schema map: { tableName: [col1, col2, ...] }
+  const sqlSchema = useMemo(() => {
+    const schema: Record<string, string[]> = {};
+    for (const t of tables) {
+      schema[t.tableName] = t.columns.map((c) => c.columnName);
+    }
+    return schema;
+  }, [tables]);
+
+  const sqlExtensions = useMemo(
+    () => [sql({ dialect: PostgreSQL, schema: sqlSchema })],
+    [sqlSchema],
+  );
+
   const load = useCallback(async () => {
     setLoading(true);
-    const [v, d] = await Promise.all([fetchViews(), fetchDomains()]);
+    const [v, d, t] = await Promise.all([fetchViews(), fetchDomains(), fetchTables()]);
     setViews(v);
     setDomains(d);
+    setTables(t);
     setLoading(false);
   }, []);
 
@@ -212,7 +229,7 @@ export function ViewsPage() {
                 value={editing.sql}
                 height="200px"
                 theme={oneDark}
-                extensions={[sql({ dialect: PostgreSQL })]}
+                extensions={sqlExtensions}
                 onChange={(value) => updateEditing("sql", value)}
               />
             </div>

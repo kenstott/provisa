@@ -55,6 +55,13 @@ class TableColumnType:
 
 
 @strawberry.type
+class AvailableColumnType:
+    name: str
+    data_type: str
+    comment: str | None
+
+
+@strawberry.type
 class RelationshipType:
     id: str
     source_table_id: int
@@ -107,6 +114,8 @@ class DomainInput:
 class ColumnInput:
     name: str
     visible_to: list[str]
+    alias: str | None = None
+    description: str | None = None
 
 
 @strawberry.input
@@ -117,6 +126,8 @@ class TableInput:
     table_name: str
     governance: str
     columns: list[ColumnInput]
+    alias: str | None = None
+    description: str | None = None
 
 
 @strawberry.input

@@ -1,4 +1,5 @@
 # Copyright (c) 2025 Kenneth Stott
+# Canary: 6babf68a-a16d-4c2d-a24f-3960beb27088
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -140,10 +141,25 @@ def _rewrite_to_mv(
     """Rewrite compiled SQL to read from MV target table instead of source tables.
 
     Removes JOINs, replaces FROM with MV target table, adjusts column refs.
-    All table-aliased column refs ("t0"."col", "t1"."col") become just "col"
-    since there's only one table now.
+    Left-table columns ("t0"."col") become just "col".
+    Right-table columns ("t1"."col") become "right_table__col" to match the
+    MV column naming convention from refresh.py.
     """
     sql = compiled.sql
+
+    # Build alias → table name mapping from the SQL
+    # FROM "schema"."table" "t0" → t0 = table
+    alias_to_table: dict[str, str] = {}
+    from_match = re.search(
+        r'FROM\s+"[^"]+"\."([^"]+)"\s+"(t\d+)"', sql, re.IGNORECASE,
+    )
+    if from_match:
+        alias_to_table[from_match.group(2)] = from_match.group(1)
+    for join in joins:
+        alias_to_table[join["right_alias"]] = join["right_table"]
+
+    # Determine which aliases are right-side (joined) tables
+    right_aliases = {j["right_alias"] for j in joins}
 
     # Remove all JOIN clauses: LEFT JOIN "schema"."table" "alias" ON "x"."col" = "y"."col"
     # Handle both plain and CAST(...) join conditions
@@ -165,8 +181,18 @@ def _rewrite_to_mv(
         flags=re.IGNORECASE,
     )
 
-    # Remove table aliases from column references: "t0"."col" → "col"
-    sql = re.sub(r'"t\d+"\.("(?:[^"]+)")', r'\1', sql)
+    # Rewrite column references:
+    # Right-table: "t1"."col" → "right_table__col"
+    # Left-table:  "t0"."col" → "col"
+    def _rewrite_col_ref(m: re.Match) -> str:
+        alias = m.group(1)
+        col = m.group(2)
+        if alias in right_aliases:
+            table_name = alias_to_table.get(alias, "")
+            return f'"{table_name}__{col}"'
+        return f'"{col}"'
+
+    sql = re.sub(r'"(t\d+)"\."([^"]+)"', _rewrite_col_ref, sql)
 
     # Update sources to reflect MV target source
     new_sources = {mv.target_catalog}
