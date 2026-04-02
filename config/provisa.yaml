@@ -138,7 +138,7 @@ tables:
     domain_id: support
     schema: default
     table: support_tickets
-    description: "Customer support events from Kafka (tickets + resolutions)"
+    description: "All support events from Kafka (filter by event_type)"
     governance: pre-approved
     columns:
       - name: _timestamp
@@ -146,7 +146,7 @@ tables:
         description: "Kafka message timestamp"
       - name: event_type
         visible_to: [admin, analyst]
-        description: "Event discriminator: TicketCreated or TicketResolved"
+        description: "TicketCreated or TicketResolved"
       - name: ticket_id
         visible_to: [admin, analyst]
         description: "Unique ticket identifier"
@@ -201,6 +201,57 @@ views:
       - name: order_count
         visible_to: [admin, analyst]
         description: "Number of orders"
+
+  - id: tickets-created
+    sql: |
+      SELECT _timestamp, ticket_id, customer_id, category, priority, subject, created_at
+      FROM support_kafka.default.support_tickets
+      WHERE event_type = 'TicketCreated'
+    description: "Support tickets opened by customers"
+    domain_id: support
+    governance: pre-approved
+    materialize: false
+    columns:
+      - name: _timestamp
+        visible_to: [admin, analyst]
+      - name: ticket_id
+        visible_to: [admin, analyst]
+      - name: customer_id
+        visible_to: [admin, analyst]
+      - name: category
+        visible_to: [admin, analyst]
+      - name: priority
+        visible_to: [admin, analyst]
+      - name: subject
+        visible_to: [admin, analyst]
+      - name: created_at
+        visible_to: [admin, analyst]
+
+  - id: tickets-resolved
+    sql: |
+      SELECT _timestamp, ticket_id, customer_id, agent, resolution,
+             resolution_time_minutes, resolved_at
+      FROM support_kafka.default.support_tickets
+      WHERE event_type = 'TicketResolved'
+    description: "Support tickets that have been resolved"
+    domain_id: support
+    governance: pre-approved
+    materialize: false
+    columns:
+      - name: _timestamp
+        visible_to: [admin, analyst]
+      - name: ticket_id
+        visible_to: [admin, analyst]
+      - name: customer_id
+        visible_to: [admin, analyst]
+      - name: agent
+        visible_to: [admin, analyst]
+      - name: resolution
+        visible_to: [admin, analyst]
+      - name: resolution_time_minutes
+        visible_to: [admin, analyst]
+      - name: resolved_at
+        visible_to: [admin, analyst]
 
   - id: customer-order-summary
     sql: |
