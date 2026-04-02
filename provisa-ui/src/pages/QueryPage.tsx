@@ -9,7 +9,7 @@ import "graphiql/graphiql.css";
 import "./QueryPage.css";
 import { useAuth } from "../context/AuthContext";
 import { provisaToolsPlugin } from "../plugins/provisa-tools";
-import { tableViewPlugin } from "../plugins/table-view";
+import { ResponseTableOverlay } from "../plugins/table-view";
 
 const explorer = explorerPlugin();
 
@@ -152,9 +152,13 @@ export function QueryPage() {
       </div>
       <GraphiQL
         fetcher={fetcher}
-        plugins={[explorer, provisaPlugin, tableViewPlugin]}
+        plugins={[explorer, provisaPlugin]}
         forcedTheme="dark"
-      />
+      >
+        <GraphiQL.Footer>
+          <ResponseTableOverlay />
+        </GraphiQL.Footer>
+      </GraphiQL>
     </div>
   );
 }

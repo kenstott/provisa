@@ -1,51 +1,12 @@
 /**
- * GraphiQL plugin: Table View
+ * GraphiQL Response Table View
  *
- * Renders query results as a sortable table instead of raw JSON.
- * Reads the response from GraphiQL's editor state.
+ * Overlays the response panel with a sortable table.
+ * Toggled via a button in the response toolbar area.
  */
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useEditorContext } from "@graphiql/react";
-import type { GraphiQLPlugin } from "graphiql";
-
-function flattenRows(data: unknown): { columns: string[]; rows: Record<string, unknown>[] } {
-  if (!data || typeof data !== "object") return { columns: [], rows: [] };
-
-  const obj = data as Record<string, unknown>;
-  const rootKey = Object.keys(obj).find((k) => !k.startsWith("__"));
-  if (!rootKey) return { columns: [], rows: [] };
-
-  const rootVal = obj[rootKey];
-  if (!Array.isArray(rootVal)) {
-    // Single object — wrap in array
-    if (rootVal && typeof rootVal === "object") {
-      return flattenSingle(rootVal as Record<string, unknown>);
-    }
-    return { columns: [], rows: [] };
-  }
-
-  if (rootVal.length === 0) return { columns: [], rows: [] };
-
-  // Flatten nested objects (relationships) into dot-notation columns
-  const allRows: Record<string, unknown>[] = [];
-  const columnSet = new Set<string>();
-
-  for (const row of rootVal) {
-    const flat: Record<string, unknown> = {};
-    flattenObject(row as Record<string, unknown>, "", flat);
-    for (const key of Object.keys(flat)) columnSet.add(key);
-    allRows.push(flat);
-  }
-
-  return { columns: Array.from(columnSet), rows: allRows };
-}
-
-function flattenSingle(obj: Record<string, unknown>): { columns: string[]; rows: Record<string, unknown>[] } {
-  const flat: Record<string, unknown> = {};
-  flattenObject(obj, "", flat);
-  return { columns: Object.keys(flat), rows: [flat] };
-}
 
 function flattenObject(obj: Record<string, unknown>, prefix: string, out: Record<string, unknown>) {
   for (const [key, val] of Object.entries(obj)) {
@@ -60,20 +21,45 @@ function flattenObject(obj: Record<string, unknown>, prefix: string, out: Record
   }
 }
 
-function TableViewContent() {
-  const editorContext = useEditorContext({ nonNull: true });
+function parseResponse(text: string): { columns: string[]; rows: Record<string, unknown>[] } {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed?.data) return { columns: [], rows: [] };
+    const data = parsed.data as Record<string, unknown>;
+    const rootKey = Object.keys(data).find((k) => !k.startsWith("__"));
+    if (!rootKey) return { columns: [], rows: [] };
+    const rootVal = data[rootKey];
+    const items = Array.isArray(rootVal) ? rootVal : rootVal ? [rootVal] : [];
+    if (items.length === 0) return { columns: [], rows: [] };
+
+    const allRows: Record<string, unknown>[] = [];
+    const columnSet = new Set<string>();
+    for (const item of items) {
+      const flat: Record<string, unknown> = {};
+      flattenObject(item as Record<string, unknown>, "", flat);
+      for (const key of Object.keys(flat)) columnSet.add(key);
+      allRows.push(flat);
+    }
+    return { columns: Array.from(columnSet), rows: allRows };
+  } catch {
+    return { columns: [], rows: [] };
+  }
+}
+
+export function ResponseTableOverlay() {
+  const [showTable, setShowTable] = useState(false);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const editorContext = useEditorContext({ nonNull: true });
 
   const responseText = editorContext.responseEditor?.getValue() ?? "";
 
-  const { columns, rows } = useMemo(() => {
-    try {
-      const parsed = JSON.parse(responseText);
-      if (parsed?.data) return flattenRows(parsed.data);
-    } catch {}
-    return { columns: [], rows: [] };
+  // Reset table view when response changes
+  useEffect(() => {
+    setSortCol(null);
   }, [responseText]);
+
+  const { columns, rows } = useMemo(() => parseResponse(responseText), [responseText]);
 
   const sortedRows = useMemo(() => {
     if (!sortCol) return rows;
@@ -83,84 +69,88 @@ function TableViewContent() {
       if (av == null && bv == null) return 0;
       if (av == null) return 1;
       if (bv == null) return -1;
-      if (typeof av === "number" && typeof bv === "number") {
+      if (typeof av === "number" && typeof bv === "number")
         return sortDir === "asc" ? av - bv : bv - av;
-      }
-      const sa = String(av);
-      const sb = String(bv);
-      return sortDir === "asc" ? sa.localeCompare(sb) : sb.localeCompare(sa);
+      return sortDir === "asc"
+        ? String(av).localeCompare(String(bv))
+        : String(bv).localeCompare(String(av));
     });
   }, [rows, sortCol, sortDir]);
 
-  const handleSort = (col: string) => {
-    if (sortCol === col) {
-      setSortDir(sortDir === "asc" ? "desc" : "asc");
-    } else {
-      setSortCol(col);
+  const handleSort = useCallback((col: string) => {
+    setSortCol((prev) => {
+      if (prev === col) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        return col;
+      }
       setSortDir("asc");
-    }
-  };
+      return col;
+    });
+  }, []);
 
-  if (columns.length === 0) {
-    return (
-      <div className="table-view-empty">
-        Run a query to see results as a table.
-      </div>
-    );
-  }
+  const hasData = columns.length > 0;
 
   return (
-    <div className="table-view">
-      <div className="table-view-info">
-        {rows.length} row{rows.length !== 1 ? "s" : ""}
+    <>
+      <div className="response-view-toggle">
+        <button
+          className={!showTable ? "active" : ""}
+          onClick={() => setShowTable(false)}
+          title="JSON"
+        >
+          {"{ }"}
+        </button>
+        <button
+          className={showTable ? "active" : ""}
+          onClick={() => setShowTable(true)}
+          disabled={!hasData}
+          title="Table"
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+            <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 0 0 1-1v-2zM10 4H6v3h4V4zm0 4H6v3h4V8zm0 4H6v3h4v-3zM5 4H1v3h4V4zm0 4H1v3h4V8zm0 4H1v2a1 1 0 0 0 1 1h3v-3z" />
+          </svg>
+        </button>
       </div>
-      <div className="table-view-scroll">
-        <table className="table-view-table">
-          <thead>
-            <tr>
-              {columns.map((col) => (
-                <th
-                  key={col}
-                  onClick={() => handleSort(col)}
-                  className={sortCol === col ? "sorted" : ""}
-                >
-                  {col}
-                  {sortCol === col && (
-                    <span className="sort-arrow">
-                      {sortDir === "asc" ? " \u25B2" : " \u25BC"}
-                    </span>
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sortedRows.map((row, i) => (
-              <tr key={i}>
-                {columns.map((col) => (
-                  <td key={col}>
-                    {row[col] != null ? String(row[col]) : ""}
-                  </td>
+      {showTable && hasData && (
+        <div className="response-table-overlay">
+          <div className="response-table-info">
+            {rows.length} row{rows.length !== 1 ? "s" : ""}
+          </div>
+          <div className="response-table-scroll">
+            <table className="response-table">
+              <thead>
+                <tr>
+                  {columns.map((col) => (
+                    <th
+                      key={col}
+                      onClick={() => handleSort(col)}
+                      className={sortCol === col ? "sorted" : ""}
+                    >
+                      {col}
+                      {sortCol === col && (
+                        <span className="sort-arrow">
+                          {sortDir === "asc" ? " \u25B2" : " \u25BC"}
+                        </span>
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedRows.map((row, i) => (
+                  <tr key={i}>
+                    {columns.map((col) => (
+                      <td key={col}>
+                        {row[col] != null ? String(row[col]) : ""}
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
-
-export const tableViewPlugin: GraphiQLPlugin = {
-  title: "Table",
-  icon: () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <line x1="3" y1="9" x2="21" y2="9" />
-      <line x1="3" y1="15" x2="21" y2="15" />
-      <line x1="9" y1="3" x2="9" y2="21" />
-      <line x1="15" y1="3" x2="15" y2="21" />
-    </svg>
-  ),
-  content: () => <TableViewContent />,
-};

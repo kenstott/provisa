@@ -290,44 +290,74 @@ body.graphiql-dark .graphiql-dialog {
   color: hsl(224, 10%, 50%);
 }
 
-/* Table View plugin */
-.table-view {
-  height: 100%;
+/* Response view toggle (JSON / Table) */
+.response-view-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 4px 8px;
+  background: hsl(224, 20%, 14%);
+}
+
+.response-view-toggle button {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: hsl(224, 10%, 50%);
+  cursor: pointer;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-family: monospace;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.response-view-toggle button:hover {
+  color: hsl(224, 10%, 80%);
+}
+
+.response-view-toggle button.active {
+  color: hsl(239, 84%, 67%);
+  border-color: hsl(239, 84%, 67%);
+}
+
+.response-view-toggle button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* Table overlay on response panel */
+.response-table-overlay {
+  background: hsl(224, 20%, 12%);
   display: flex;
   flex-direction: column;
+  max-height: 400px;
   font-size: 12px;
 }
 
-.table-view-empty {
-  padding: 20px 12px;
-  color: hsl(224, 10%, 50%);
-  font-size: 13px;
-}
-
-.table-view-info {
-  padding: 6px 12px;
+.response-table-info {
+  padding: 4px 10px;
   color: hsl(224, 10%, 50%);
   font-size: 11px;
-  border-bottom: 1px solid hsl(224, 15%, 24%);
   flex-shrink: 0;
 }
 
-.table-view-scroll {
+.response-table-scroll {
   flex: 1;
   overflow: auto;
 }
 
-.table-view-table {
+.response-table {
   width: 100%;
   border-collapse: collapse;
   white-space: nowrap;
 }
 
-.table-view-table th {
+.response-table th {
   position: sticky;
   top: 0;
   background: hsl(224, 20%, 18%);
-  padding: 6px 10px;
+  padding: 5px 10px;
   text-align: left;
   font-weight: 600;
   color: hsl(224, 10%, 65%);
@@ -336,20 +366,12 @@ body.graphiql-dark .graphiql-dialog {
   border-bottom: 1px solid hsl(224, 15%, 28%);
 }
 
-.table-view-table th:hover {
-  color: hsl(224, 10%, 85%);
-}
+.response-table th:hover { color: hsl(224, 10%, 85%); }
+.response-table th.sorted { color: hsl(239, 84%, 67%); }
+.sort-arrow { font-size: 9px; }
 
-.table-view-table th.sorted {
-  color: hsl(239, 84%, 67%);
-}
-
-.sort-arrow {
-  font-size: 9px;
-}
-
-.table-view-table td {
-  padding: 5px 10px;
+.response-table td {
+  padding: 4px 10px;
   color: hsl(224, 10%, 80%);
   border-bottom: 1px solid hsl(224, 15%, 20%);
   max-width: 300px;
@@ -357,7 +379,7 @@ body.graphiql-dark .graphiql-dialog {
   text-overflow: ellipsis;
 }
 
-.table-view-table tr:hover td {
+.response-table tr:hover td {
   background: hsl(224, 20%, 16%);
 }
 
