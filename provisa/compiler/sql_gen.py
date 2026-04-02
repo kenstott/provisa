@@ -233,9 +233,23 @@ _ISO_DATE_RE = _re.compile(
 
 
 def _timestamp_literal_or_param(val: object, collector) -> str:
-    """Return a TIMESTAMP literal if val is an ISO date, otherwise a parameter."""
+    """Return a TIMESTAMP literal if val is an ISO date, otherwise a parameter.
+
+    Accepts: 2000-01-01, 2000-01-01T00:00:00, 2000-01-01 00:00:00,
+             2000-01-01T00:00:00Z, 2000-01-01T00:00:00+05:30
+    With timezone → TIMESTAMP '...' WITH TIME ZONE
+    Without → TIMESTAMP '...'
+    """
     if isinstance(val, str) and _ISO_DATE_RE.match(val):
-        normalized = val.replace("T", " ").rstrip("Z")
+        normalized = val.replace("T", " ")
+        # Check for timezone suffix
+        tz_match = _re.search(r"(Z|[+-]\d{2}:?\d{2})$", normalized)
+        if tz_match:
+            tz = tz_match.group(1)
+            base = normalized[:tz_match.start()].strip()
+            if tz == "Z":
+                tz = "UTC"
+            return f"TIMESTAMP '{base} {tz}'"
         return f"TIMESTAMP '{normalized}'"
     return collector.add(val)
 
