@@ -449,6 +449,38 @@ class Mutation:
         return MutationResult(success=False, message=f"Role {id!r} not found")
 
     @strawberry.mutation
+    async def upsert_rls_rule(self, input: RLSRuleInput) -> MutationResult:
+        from provisa.core.models import RLSRule as RLSRuleModel
+        from provisa.core.repositories import rls as rls_repo
+
+        pool = await _get_pool()
+        model = RLSRuleModel(
+            table_id=input.table_id,
+            role_id=input.role_id,
+            filter=input.filter_expr,
+        )
+        try:
+            async with pool.acquire() as conn:
+                await rls_repo.upsert(conn, model)
+        except ValueError as e:
+            return MutationResult(success=False, message=str(e))
+        return MutationResult(
+            success=True,
+            message=f"RLS rule for table {input.table_id!r} / role {input.role_id!r} saved",
+        )
+
+    @strawberry.mutation
+    async def delete_rls_rule(self, table_id: int, role_id: str) -> MutationResult:
+        from provisa.core.repositories import rls as rls_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            deleted = await rls_repo.delete(conn, table_id, role_id)
+        if deleted:
+            return MutationResult(success=True, message="RLS rule deleted")
+        return MutationResult(success=False, message="RLS rule not found")
+
+    @strawberry.mutation
     async def upsert_relationship(self, input: RelationshipInput) -> MutationResult:
         from provisa.core.models import Relationship as RelModel, Cardinality
         from provisa.core.repositories import relationship as rel_repo

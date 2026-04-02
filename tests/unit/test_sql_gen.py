@@ -303,6 +303,109 @@ class TestNestedRelationship:
         assert nested_cols[0].field_name == "name"
 
 
+class TestJoinTypeCast:
+    """CAST is added to JOIN ON only when column types are incompatible."""
+
+    def test_no_cast_for_same_types(self, schema_and_ctx):
+        """integer = integer → no CAST."""
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders { id customers { name } } }")
+        results = compile_query(doc, ctx)
+        sql = results[0].sql
+        # Should be plain column refs, no CAST
+        assert "CAST" not in sql
+        assert '"t0"."customer_id" = "t1"."id"' in sql
+
+    def test_no_cast_for_compatible_numeric_types(self):
+        """integer JOIN bigint → no CAST (same numeric group)."""
+        tables = [
+            {
+                "id": 1, "source_id": "s1", "domain_id": "d",
+                "schema_name": "public", "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "product_id", "visible_to": ["admin"]},
+                ],
+            },
+            {
+                "id": 2, "source_id": "s2", "domain_id": "d",
+                "schema_name": "public", "table_name": "reviews",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "product_id", "visible_to": ["admin"]},
+                    {"column_name": "rating", "visible_to": ["admin"]},
+                ],
+            },
+        ]
+        rels = [{
+            "id": "r1", "source_table_id": 1, "target_table_id": 2,
+            "source_column": "product_id", "target_column": "product_id",
+            "cardinality": "many-to-one",
+        }]
+        col_types = {
+            1: [_col("id", "integer"), _col("product_id", "integer")],
+            2: [_col("product_id", "bigint"), _col("rating", "integer")],
+        }
+        si = SchemaInput(
+            tables=tables, relationships=rels, column_types=col_types,
+            naming_rules=[],
+            role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
+            domains=[{"id": "d", "description": "D"}],
+        )
+        schema = generate_schema(si)
+        ctx = build_context(si)
+        doc = parse("{ orders { id reviews { rating } } }")
+        results = compile_query(doc, ctx)
+        assert "CAST" not in results[0].sql
+
+    def test_cast_for_incompatible_types(self):
+        """varchar JOIN integer → CAST both to VARCHAR."""
+        tables = [
+            {
+                "id": 1, "source_id": "s1", "domain_id": "d",
+                "schema_name": "public", "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "ext_ref", "visible_to": ["admin"]},
+                ],
+            },
+            {
+                "id": 2, "source_id": "s2", "domain_id": "d",
+                "schema_name": "public", "table_name": "externals",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "ref_id", "visible_to": ["admin"]},
+                    {"column_name": "label", "visible_to": ["admin"]},
+                ],
+            },
+        ]
+        rels = [{
+            "id": "r1", "source_table_id": 1, "target_table_id": 2,
+            "source_column": "ext_ref", "target_column": "ref_id",
+            "cardinality": "many-to-one",
+        }]
+        col_types = {
+            1: [_col("id", "integer"), _col("ext_ref", "varchar(50)")],
+            2: [_col("ref_id", "integer"), _col("label", "varchar")],
+        }
+        si = SchemaInput(
+            tables=tables, relationships=rels, column_types=col_types,
+            naming_rules=[],
+            role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
+            domains=[{"id": "d", "description": "D"}],
+        )
+        schema = generate_schema(si)
+        ctx = build_context(si)
+        doc = parse("{ orders { id externals { label } } }")
+        results = compile_query(doc, ctx)
+        sql = results[0].sql
+        # varchar side stays as-is, integer side gets CAST
+        assert "CAST" in sql
+        assert "VARCHAR" in sql
+
+
 class TestVariables:
     def test_variable_in_where(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
@@ -338,3 +441,63 @@ class TestMultipleRootFields:
         assert len(results) == 2
         assert results[0].root_field == "orders"
         assert results[1].root_field == "customers"
+
+
+class TestRelationshipVisibility:
+    def test_relationship_hidden_when_join_column_not_visible(self):
+        """If the join column (customer_id) is not visible to a role,
+        the relationship should not appear in the schema."""
+        tables = [
+            {
+                "id": 1, "source_id": "pg", "domain_id": "d",
+                "schema_name": "public", "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin", "limited"]},
+                    {"column_name": "customer_id", "visible_to": ["admin"]},  # NOT visible to 'limited'
+                    {"column_name": "amount", "visible_to": ["admin", "limited"]},
+                ],
+            },
+            {
+                "id": 2, "source_id": "pg", "domain_id": "d",
+                "schema_name": "public", "table_name": "customers",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin", "limited"]},
+                    {"column_name": "name", "visible_to": ["admin", "limited"]},
+                ],
+            },
+        ]
+        rels = [{
+            "id": "r1", "source_table_id": 1, "target_table_id": 2,
+            "source_column": "customer_id", "target_column": "id",
+            "cardinality": "many-to-one",
+        }]
+        col_types = {
+            1: [_col("id", "integer"), _col("customer_id", "integer"), _col("amount", "decimal")],
+            2: [_col("id", "integer"), _col("name", "varchar")],
+        }
+
+        # Admin can see customer_id → relationship visible
+        si_admin = SchemaInput(
+            tables=tables, relationships=rels, column_types=col_types,
+            naming_rules=[],
+            role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
+            domains=[{"id": "d", "description": "D"}],
+        )
+        schema_admin = generate_schema(si_admin)
+        doc = parse("{ orders { id customers { name } } }")
+        errors = validate(schema_admin, doc)
+        assert not errors  # admin can traverse the relationship
+
+        # Limited cannot see customer_id → relationship hidden
+        si_limited = SchemaInput(
+            tables=tables, relationships=rels, column_types=col_types,
+            naming_rules=[],
+            role={"id": "limited", "capabilities": [], "domain_access": ["*"]},
+            domains=[{"id": "d", "description": "D"}],
+        )
+        schema_limited = generate_schema(si_limited)
+        doc2 = parse("{ orders { id customers { name } } }")
+        errors2 = validate(schema_limited, doc2)
+        assert errors2  # 'customers' field should not exist on Orders for limited role

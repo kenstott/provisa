@@ -290,12 +290,65 @@ body.graphiql-dark .graphiql-dialog {
   color: hsl(224, 10%, 50%);
 }
 
+/* Response panel layout for table/JSON toggle */
+.graphiql-container .graphiql-response {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.graphiql-container .graphiql-response > .graphiql-editor {
+  flex: 1;
+  min-height: 0;
+}
+
+.response-table-wrapper {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* When table is not active, wrapper should only show the toggle bar, no flex growth */
+.graphiql-response:not(.response-table-active) .response-table-wrapper {
+  flex-shrink: 0;
+}
+
+/* When table is active, wrapper fills the space */
+.graphiql-response.response-table-active .response-table-wrapper {
+  flex: 1;
+  min-height: 0;
+}
+
+/* When table is active, hide everything in response except our wrapper
+   and collapse the response section to only fit the wrapper */
+.graphiql-container .graphiql-response.response-table-active {
+  height: auto !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+}
+
+.graphiql-container .graphiql-response.response-table-active > *:not(.response-table-wrapper) {
+  display: none !important;
+}
+
+/* Also prevent the parent session/editors pane from growing beyond viewport */
+.graphiql-container .graphiql-response.response-table-active ~ *,
+.graphiql-container .graphiql-session {
+  min-height: 0;
+}
+
+/* Hide the default GraphiQL footer since we portal into the response section */
+.graphiql-container .graphiql-footer {
+  display: none;
+}
+
 /* Response view toggle (JSON / Table) */
 .response-view-toggle {
   display: flex;
   gap: 2px;
   padding: 4px 8px;
   background: hsl(224, 20%, 14%);
+  border-bottom: 1px solid hsl(224, 15%, 24%);
 }
 
 .response-view-toggle button {
@@ -326,12 +379,21 @@ body.graphiql-dark .graphiql-dialog {
   cursor: default;
 }
 
+.response-toggle-separator {
+  width: 1px;
+  align-self: stretch;
+  background: hsl(224, 15%, 28%);
+  margin: 2px 4px;
+}
+
 /* Table overlay on response panel */
 .response-table-overlay {
   background: hsl(224, 20%, 12%);
   display: flex;
   flex-direction: column;
-  max-height: 400px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   font-size: 12px;
 }
 

@@ -49,7 +49,7 @@ def serialize_rows(
     Returns:
         {"data": {root_field: [...]}}
     """
-    # Group columns by nesting
+    # Group columns by nesting path
     root_cols: list[tuple[int, ColumnRef]] = []
     nested_groups: dict[str, list[tuple[int, ColumnRef]]] = {}
 
@@ -68,17 +68,24 @@ def serialize_rows(
         for idx, col in root_cols:
             obj[col.field_name] = _convert_value(row[idx])
 
-        # Nested relationship fields
-        for nest_name, nest_cols in nested_groups.items():
-            # Check if all nested values are None (null relationship)
+        # Nested relationship fields — support dotted paths for deep nesting
+        for nest_path, nest_cols in nested_groups.items():
             all_none = all(row[idx] is None for idx, _ in nest_cols)
+            parts = nest_path.split(".")
+            # Walk down the object tree, creating intermediate dicts as needed
+            target = obj
+            for part in parts[:-1]:
+                if part not in target or target[part] is None:
+                    target[part] = {}
+                target = target[part]
+            leaf = parts[-1]
             if all_none:
-                obj[nest_name] = None
+                target[leaf] = None
             else:
                 nested_obj: dict = {}
                 for idx, col in nest_cols:
                     nested_obj[col.field_name] = _convert_value(row[idx])
-                obj[nest_name] = nested_obj
+                target[leaf] = nested_obj
 
         result_rows.append(obj)
 

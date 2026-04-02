@@ -40,17 +40,39 @@ export function ViewsPage() {
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
 
-  // Build CodeMirror schema map: { tableName: [col1, col2, ...] }
+  // Build CodeMirror schema map: { schemaName: { tableName: [cols] } }
   const sqlSchema = useMemo(() => {
-    const schema: Record<string, string[]> = {};
+    const schema: Record<string, Record<string, string[]> | string[]> = {};
     for (const t of tables) {
-      schema[t.tableName] = t.columns.map((c) => c.columnName);
+      const cols = t.columns.map((c) => c.columnName);
+      // Add bare table name for unqualified access
+      schema[t.tableName] = cols;
+      // Add alias as an additional table name if present
+      if (t.alias) schema[t.alias] = cols;
+      // Add schema-qualified: schemaName.tableName
+      if (t.schemaName) {
+        if (!schema[t.schemaName] || Array.isArray(schema[t.schemaName])) {
+          schema[t.schemaName] = {} as Record<string, string[]>;
+        }
+        (schema[t.schemaName] as Record<string, string[]>)[t.tableName] = cols;
+      }
     }
     return schema;
   }, [tables]);
 
   const sqlExtensions = useMemo(
-    () => [sql({ dialect: PostgreSQL, schema: sqlSchema })],
+    () => [
+      sql({
+        dialect: PostgreSQL,
+        schema: sqlSchema,
+        // Lower keyword priority so table/column names rank higher
+        keywordCompletion: (kw: string, type: string) => ({
+          label: kw,
+          type,
+          boost: -1,
+        }),
+      }),
+    ],
     [sqlSchema],
   );
 

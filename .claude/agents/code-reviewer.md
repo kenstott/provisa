@@ -76,9 +76,20 @@ Files: N | Critical: X | High: Y | Medium: Z
 Assessment: PASS / NEEDS ATTENTION / BLOCKING ISSUES
 ```
 
+## Prompt File Reviews
+
+When reviewing LLM prompts (system prompts, agent definitions):
+- **Goal: Information density, not just brevity** — don't flag concise-but-precise as "too long"
+- **Bloat check:** Flag restatement of foundational knowledge (API examples, textbook patterns), filler words, prose that could be bullets
+- **Position check:** Critical instructions should be at start and end, not buried in middle
+- **Token budget:** Prompts exceeding ~3,000 tokens warrant scrutiny. Estimate: chars / 4 = tokens.
+- **Separation:** Global instructions should be stable; turn-specific logic should be injected dynamically
+- **Don't over-compress:** Keep disambiguation context, task framing, and constraints that prevent failure modes
+
 ## Also Check
 
 - Unused imports/variables (ruff/flake8)
+- **Files >1000 lines — flag for splitting by separation of concerns**
 - Functions >50 lines, classes with too many responsibilities
 - `print()` that should be `logging`
 - `assert` for validation (use explicit checks)

@@ -25,10 +25,10 @@ export function NavBar() {
           <Link to="/security">Security</Link>
         </CapabilityGate>
         <CapabilityGate capability="query_development">
-          <Link to="/query">Query</Link>
+          <Link to="/schema">Schema Explorer</Link>
         </CapabilityGate>
         <CapabilityGate capability="query_development">
-          <Link to="/schema">Schema Explorer</Link>
+          <Link to="/query">Query</Link>
         </CapabilityGate>
         <CapabilityGate capability="query_approval">
           <Link to="/approvals">Approvals</Link>

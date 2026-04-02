@@ -1,0 +1,53 @@
+{{- if .Values.pgbouncer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-pgbouncer
+  labels:
+    app: pgbouncer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pgbouncer
+  template:
+    metadata:
+      labels:
+        app: pgbouncer
+    spec:
+      containers:
+        - name: pgbouncer
+          image: edoburu/pgbouncer:latest
+          ports:
+            - containerPort: 5432
+          env:
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.postgresql.username }}:{{ .Values.postgresql.password }}@{{ if .Values.postgresql.host }}{{ .Values.postgresql.host }}{{ else }}{{ .Release.Name }}-postgresql{{ end }}:{{ .Values.postgresql.port }}/{{ .Values.postgresql.database }}"
+            - name: POOL_MODE
+              value: "{{ .Values.pgbouncer.poolMode }}"
+            - name: MAX_CLIENT_CONN
+              value: "{{ .Values.pgbouncer.maxClientConn }}"
+            - name: DEFAULT_POOL_SIZE
+              value: "{{ .Values.pgbouncer.defaultPoolSize }}"
+            - name: AUTH_TYPE
+              value: scram-sha-256
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-pgbouncer
+spec:
+  selector:
+    app: pgbouncer
+  ports:
+    - port: {{ .Values.pgbouncer.port }}
+      targetPort: 5432
+  type: ClusterIP
+{{- end }}

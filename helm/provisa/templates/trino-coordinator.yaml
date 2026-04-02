@@ -1,0 +1,66 @@
+{{- if .Values.trino.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-trino-coordinator
+  labels:
+    app: trino
+    role: coordinator
+spec:
+  replicas: {{ .Values.trino.coordinator.replicaCount }}
+  serviceName: {{ .Release.Name }}-trino-coordinator
+  selector:
+    matchLabels:
+      app: trino
+      role: coordinator
+  template:
+    metadata:
+      labels:
+        app: trino
+        role: coordinator
+    spec:
+      containers:
+        - name: trino
+          image: "{{ .Values.trino.image.repository }}:{{ .Values.trino.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.trino.port }}
+          env:
+            - name: TRINO_NODE_TYPE
+              value: coordinator
+          volumeMounts:
+            - name: config
+              mountPath: /etc/trino/config.properties
+              subPath: coordinator-config.properties
+            {{- if .Values.postgresql.enabled }}
+            - name: config
+              mountPath: /etc/trino/catalog/sales_pg.properties
+              subPath: sales_pg.properties
+            - name: config
+              mountPath: /etc/trino/catalog/analytics_pg.properties
+              subPath: analytics_pg.properties
+            {{- end }}
+            {{- if .Values.mongodb.enabled }}
+            - name: config
+              mountPath: /etc/trino/catalog/reviews_mongo.properties
+              subPath: reviews_mongo.properties
+            {{- end }}
+          resources:
+            {{- toYaml .Values.trino.coordinator.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-trino-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-trino-coordinator
+spec:
+  selector:
+    app: trino
+    role: coordinator
+  ports:
+    - port: {{ .Values.trino.port }}
+      targetPort: {{ .Values.trino.port }}
+  type: ClusterIP
+{{- end }}

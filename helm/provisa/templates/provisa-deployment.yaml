@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-provisa
+  labels:
+    app: provisa
+spec:
+  replicas: {{ .Values.provisa.replicaCount }}
+  selector:
+    matchLabels:
+      app: provisa
+  template:
+    metadata:
+      labels:
+        app: provisa
+    spec:
+      containers:
+        - name: provisa
+          image: "{{ .Values.provisa.image.repository }}:{{ .Values.provisa.image.tag }}"
+          imagePullPolicy: {{ .Values.provisa.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.provisa.port }}
+          env:
+            - name: PG_HOST
+              value: {{ if .Values.postgresql.host }}{{ .Values.postgresql.host }}{{ else }}{{ .Release.Name }}-postgresql{{ end }}
+            - name: PG_PORT
+              value: {{ if .Values.pgbouncer.enabled }}"{{ .Values.pgbouncer.port }}"{{ else }}"{{ .Values.postgresql.port }}"{{ end }}
+            - name: PG_DATABASE
+              value: "{{ .Values.postgresql.database }}"
+            - name: PG_USER
+              value: "{{ .Values.postgresql.username }}"
+            - name: PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: pg-password
+            - name: TRINO_HOST
+              value: "{{ .Release.Name }}-trino-coordinator"
+            - name: TRINO_PORT
+              value: "{{ .Values.trino.port }}"
+            {{- range $key, $val := .Values.provisa.env }}
+            - name: {{ $key }}
+              value: "{{ $val }}"
+            {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+          resources:
+            {{- toYaml .Values.provisa.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.provisa.port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.provisa.port }}
+            initialDelaySeconds: 15
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-config

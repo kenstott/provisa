@@ -397,6 +397,78 @@ def _has_joins(field_node: FieldNode, ctx: CompilationContext, type_name: str) -
     return False
 
 
+def _collect_nested_columns(
+    selections,
+    parent_alias: str,
+    parent_type_name: str,
+    parent_table: TableMeta,
+    nesting_path: str,
+    ctx: CompilationContext,
+    select_parts: list[str],
+    columns: list[ColumnRef],
+    join_clauses: list[str],
+    sources: set[str],
+    alias_counter: int,
+    use_catalog: bool,
+) -> int:
+    """Recursively collect columns and JOINs from nested selections."""
+    for nested_sel in selections:
+        if not isinstance(nested_sel, FieldNode):
+            continue
+        nested_name = nested_sel.name.value
+        nested_join_key = (parent_type_name, nested_name)
+
+        if nested_join_key in ctx.joins:
+            # This nested field is itself a relationship → add another JOIN
+            nested_join_meta = ctx.joins[nested_join_key]
+            nested_alias = f"t{alias_counter}"
+            alias_counter += 1
+            sources.add(nested_join_meta.target.source_id)
+
+            src_expr = _join_column_expr(
+                parent_alias, nested_join_meta.source_column,
+                nested_join_meta.source_column_type, nested_join_meta.target_column_type,
+            )
+            tgt_expr = _join_column_expr(
+                nested_alias, nested_join_meta.target_column,
+                nested_join_meta.target_column_type, nested_join_meta.source_column_type,
+            )
+            join_clauses.append(
+                f'LEFT JOIN {_table_ref(nested_join_meta.target, use_catalog)}'
+                f' {_q(nested_alias)}'
+                f' ON {src_expr} = {tgt_expr}'
+            )
+
+            sub_path = f"{nesting_path}.{nested_name}"
+            if nested_sel.selection_set:
+                alias_counter = _collect_nested_columns(
+                    nested_sel.selection_set.selections,
+                    nested_alias,
+                    nested_join_meta.target.type_name,
+                    nested_join_meta.target,
+                    sub_path,
+                    ctx,
+                    select_parts,
+                    columns,
+                    join_clauses,
+                    sources,
+                    alias_counter,
+                    use_catalog,
+                )
+        else:
+            # Scalar column from the parent join
+            select_parts.append(
+                f'{_q(parent_alias)}.{_q(nested_name)}'
+            )
+            columns.append(ColumnRef(
+                alias=parent_alias,
+                column=nested_name,
+                field_name=nested_name,
+                nested_in=nesting_path,
+            ))
+    return alias_counter
+
+
 def _compile_root_field(
     field_node: FieldNode,
     ctx: CompilationContext,
@@ -446,20 +518,22 @@ def _compile_root_field(
                 f' ON {src_expr} = {tgt_expr}'
             )
 
-            # Add nested columns
+            # Add nested columns (recursively handle sub-relationships)
             if sel.selection_set:
-                for nested_sel in sel.selection_set.selections:
-                    if isinstance(nested_sel, FieldNode):
-                        nested_name = nested_sel.name.value
-                        select_parts.append(
-                            f'{_q(join_alias)}.{_q(nested_name)}'
-                        )
-                        columns.append(ColumnRef(
-                            alias=join_alias,
-                            column=nested_name,
-                            field_name=nested_name,
-                            nested_in=sel_name,
-                        ))
+                alias_counter = _collect_nested_columns(
+                    sel.selection_set.selections,
+                    join_alias,
+                    join_meta.target.type_name,
+                    join_meta.target,
+                    sel_name,
+                    ctx,
+                    select_parts,
+                    columns,
+                    join_clauses,
+                    sources,
+                    alias_counter,
+                    use_catalog,
+                )
         else:
             # Scalar field — check for JSON path extraction
             gql_field_name = sel_name

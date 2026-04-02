@@ -34,7 +34,7 @@ async def upsert(conn: asyncpg.Connection, source: Source) -> None:
         source.port,
         source.database,
         source.username,
-        source.dialect,
+        source.dialect or "",
     )
 
 

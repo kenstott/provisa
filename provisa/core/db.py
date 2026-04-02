@@ -10,6 +10,8 @@
 
 """asyncpg connection pool factory."""
 
+import asyncio
+
 import asyncpg
 
 
@@ -22,14 +24,17 @@ async def create_pool(
     min_size: int = 2,
     max_size: int = 10,
 ) -> asyncpg.Pool:
-    return await asyncpg.create_pool(
-        host=host,
-        port=port,
-        database=database,
-        user=user,
-        password=password,
-        min_size=min_size,
-        max_size=max_size,
+    return await asyncio.wait_for(
+        asyncpg.create_pool(
+            host=host,
+            port=port,
+            database=database,
+            user=user,
+            password=password,
+            min_size=min_size,
+            max_size=max_size,
+        ),
+        timeout=10,
     )
 
 

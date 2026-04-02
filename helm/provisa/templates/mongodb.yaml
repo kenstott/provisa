@@ -1,0 +1,90 @@
+{{- if .Values.mongodb.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-mongodb
+  labels:
+    app: mongodb
+spec:
+  replicas: 1
+  serviceName: {{ .Release.Name }}-mongodb
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:7
+          ports:
+            - containerPort: 27017
+          volumeMounts:
+            - name: mongo-data
+              mountPath: /data/db
+            - name: init-js
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            exec:
+              command: ["mongosh", "--eval", "db.adminCommand('ping')"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: init-js
+          configMap:
+            name: {{ .Release.Name }}-mongo-init
+  volumeClaimTemplates:
+    - metadata:
+        name: mongo-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-mongodb
+spec:
+  selector:
+    app: mongodb
+  ports:
+    - port: {{ .Values.mongodb.port }}
+      targetPort: 27017
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-mongo-init
+data:
+  mongo-init.js: |
+    db = db.getSiblingDB('provisa');
+    db.createCollection('product_reviews');
+    db.product_reviews.insertMany([
+        { product_id: 1, reviewer: "alice", rating: 5, comment: "Excellent", created_at: new Date() },
+        { product_id: 2, reviewer: "bob", rating: 4, comment: "Good", created_at: new Date() },
+        { product_id: 3, reviewer: "carol", rating: 3, comment: "Average", created_at: new Date() },
+    ]);
+    db.createCollection('_schema');
+    db.getCollection('_schema').insertOne({
+        table: 'product_reviews',
+        fields: [
+            { name: 'product_id', type: 'bigint', hidden: false },
+            { name: 'reviewer', type: 'varchar', hidden: false },
+            { name: 'rating', type: 'bigint', hidden: false },
+            { name: 'comment', type: 'varchar', hidden: false },
+            { name: 'created_at', type: 'date', hidden: false },
+        ]
+    });
+{{- end }}

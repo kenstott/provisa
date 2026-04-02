@@ -51,8 +51,11 @@ async def _load_config_in_txn(
     for src in config.sources:
         await source_repo.upsert(conn, src)
         if trino_conn is not None:
-            resolved_pw = resolve_secrets(src.password)
-            catalog.create_catalog(trino_conn, src, resolved_pw)
+            try:
+                resolved_pw = resolve_secrets(src.password)
+                catalog.create_catalog(trino_conn, src, resolved_pw)
+            except Exception:
+                pass  # catalog.create_catalog already logs warnings
 
     # 2. Domains
     for dom in config.domains:

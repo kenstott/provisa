@@ -1,0 +1,123 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-postgresql
+  labels:
+    app: postgresql
+spec:
+  replicas: 1
+  serviceName: {{ .Release.Name }}-postgresql
+  selector:
+    matchLabels:
+      app: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: "{{ .Values.postgresql.database }}"
+            - name: POSTGRES_USER
+              value: "{{ .Values.postgresql.username }}"
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: pg-password
+          volumeMounts:
+            - name: pg-data
+              mountPath: /var/lib/postgresql/data
+            - name: init-sql
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "{{ .Values.postgresql.username }}"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: init-sql
+          configMap:
+            name: {{ .Release.Name }}-init-sql
+  volumeClaimTemplates:
+    - metadata:
+        name: pg-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-postgresql
+spec:
+  selector:
+    app: postgresql
+  ports:
+    - port: {{ .Values.postgresql.port }}
+      targetPort: 5432
+  type: ClusterIP
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-init-sql
+data:
+  init.sql: |
+    CREATE TABLE IF NOT EXISTS customers (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        email VARCHAR(200) NOT NULL,
+        region VARCHAR(50) NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS products (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(200) NOT NULL,
+        price NUMERIC(10, 2) NOT NULL,
+        category VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS orders (
+        id SERIAL PRIMARY KEY,
+        customer_id INTEGER NOT NULL REFERENCES customers(id),
+        product_id INTEGER NOT NULL REFERENCES products(id),
+        amount NUMERIC(10, 2) NOT NULL,
+        quantity INTEGER NOT NULL DEFAULT 1,
+        region VARCHAR(50) NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    INSERT INTO customers (name, email, region) VALUES
+        ('Alice Johnson', 'alice@example.com', 'us-east'),
+        ('Bob Smith', 'bob@example.com', 'us-west'),
+        ('Carol White', 'carol@example.com', 'eu-west')
+    ON CONFLICT DO NOTHING;
+    INSERT INTO products (name, price, category) VALUES
+        ('Widget A', 19.99, 'widgets'),
+        ('Gadget X', 49.99, 'gadgets'),
+        ('Tool Alpha', 14.99, 'tools')
+    ON CONFLICT DO NOTHING;
+    CREATE SCHEMA IF NOT EXISTS analytics;
+    CREATE TABLE IF NOT EXISTS analytics.customer_segments (
+        customer_id INTEGER NOT NULL,
+        segment VARCHAR(50) NOT NULL,
+        score NUMERIC(5, 2) NOT NULL,
+        assigned_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+{{- end }}

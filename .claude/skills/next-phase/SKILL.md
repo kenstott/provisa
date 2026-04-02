@@ -10,7 +10,8 @@ Before implementing, perform a context reduction step:
    and completed phase output from active context.
 3. Implement the next phase
 4. Audit the implementation for correctness, completeness, and consistency 
-   with prior phases
+   with prior phases. For UI features, audit MUST include browser rendering 
+   and functionality testing (vitest for component tests, Playwright for e2e).
 5. Report: what was implemented, what was audited, any issues found
 ```
 

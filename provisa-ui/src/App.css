@@ -258,7 +258,8 @@ body {
   border-radius: 4px;
   font-size: 0.875rem;
 }
-.checkbox-label { flex-direction: row !important; align-items: center !important; gap: 0.5rem !important; }
+.checkbox-label { flex-direction: row !important; align-items: center !important; gap: 0.5rem !important; white-space: nowrap; }
+.checkbox-grid { display: grid; grid-template-columns: repeat(3, auto); gap: 0.5rem 1rem; margin-top: 0.25rem; justify-content: start; }
 
 /* Reasoning cell */
 .reasoning-cell { max-width: 300px; font-size: 0.8rem; color: var(--text-muted); }

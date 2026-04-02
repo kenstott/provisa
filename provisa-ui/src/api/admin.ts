@@ -92,6 +92,46 @@ export async function fetchRlsRules(): Promise<RLSRule[]> {
   return data.rlsRules;
 }
 
+export async function upsertRlsRule(input: {
+  tableId: string;
+  roleId: string;
+  filterExpr: string;
+}): Promise<MutationResult> {
+  const data = await gql<{ upsertRlsRule: MutationResult }>(
+    `mutation($input: RLSRuleInput!) { upsertRlsRule(input: $input) { success message } }`,
+    { input }
+  );
+  return data.upsertRlsRule;
+}
+
+export async function deleteRlsRule(tableId: number, roleId: string): Promise<MutationResult> {
+  const data = await gql<{ deleteRlsRule: MutationResult }>(
+    `mutation($tableId: Int!, $roleId: String!) { deleteRlsRule(tableId: $tableId, roleId: $roleId) { success message } }`,
+    { tableId, roleId }
+  );
+  return data.deleteRlsRule;
+}
+
+export async function upsertRole(input: {
+  id: string;
+  capabilities: string[];
+  domainAccess: string[];
+}): Promise<MutationResult> {
+  const data = await gql<{ createRole: MutationResult }>(
+    `mutation($input: RoleInput!) { createRole(input: $input) { success message } }`,
+    { input }
+  );
+  return data.createRole;
+}
+
+export async function deleteRole(id: string): Promise<MutationResult> {
+  const data = await gql<{ deleteRole: MutationResult }>(
+    `mutation($id: String!) { deleteRole(id: $id) { success message } }`,
+    { id }
+  );
+  return data.deleteRole;
+}
+
 export async function createSource(input: {
   id: string;
   type: string;

@@ -39,6 +39,7 @@ htmlcov/
 # Misc
 .DS_Store
 *.log
+logs/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -62,6 +63,9 @@ Screenshot*
 
 # Canary system
 .canary_registry.json
+
+# Node
+node_modules/
 
 # Claude Code
 .claude/scheduled_tasks.lock

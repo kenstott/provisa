@@ -1,6 +1,8 @@
 CRITICAL: Never add fallback values or silent error handling. Caused repeated production issues.
 CRITICAL: V1 development. Never add migrations.
 CRITICAL: Maximum brevity. No pleasantries. No explanations unless asked. Code and facts only.
+CRITICAL: Files must stay under 1000 lines. If a file approaches or exceeds this, split it by separation of concerns. This applies to all languages (Python, TypeScript, etc.).
+CRITICAL: "Audit" for UI features must include browser rendering and functionality testing (vitest + Playwright), not just code review.
 
 # Requirements Tracking
 On new requirement/constraint/feature/design decision: spawn background haiku agent to append to `docs/arch/requirements.md`. Agent reads `.claude/agents/requirements-tracker.md` for format, then current file, then appends. Silent. Skip implementation details, bugs, questions.

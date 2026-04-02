@@ -8,27 +8,36 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""SQLGlot-based SQL transpilation: PG SQL -> Trino SQL (REQ-066).
+"""SQLGlot-based SQL transpilation (REQ-066, REQ-068).
 
-Phase D: all queries route through Trino. Phase E adds target dialect routing.
+Supports PG SQL → Trino, and PG SQL → any target dialect for direct execution.
 """
 
 import sqlglot
 
 
+# Valid SQLGlot write dialects for target sources
+SUPPORTED_DIALECTS: set[str] = {
+    "trino", "postgres", "mysql", "tsql", "duckdb", "snowflake", "bigquery",
+}
+
+
 def transpile_to_trino(pg_sql: str) -> str:
-    """Transpile PostgreSQL-dialect SQL to Trino SQL.
+    """Transpile PostgreSQL-dialect SQL to Trino SQL."""
+    return transpile(pg_sql, "trino")
+
+
+def transpile(pg_sql: str, target_dialect: str) -> str:
+    """Transpile PostgreSQL-dialect SQL to a target dialect.
 
     Args:
         pg_sql: SQL string in PostgreSQL dialect with double-quoted identifiers.
+        target_dialect: SQLGlot dialect name (e.g. "trino", "postgres", "mysql").
 
     Returns:
-        SQL string in Trino dialect.
-
-    Raises:
-        sqlglot.errors.ParseError: If the SQL cannot be parsed.
+        SQL string in target dialect.
     """
-    results = sqlglot.transpile(pg_sql, read="postgres", write="trino")
+    results = sqlglot.transpile(pg_sql, read="postgres", write=target_dialect)
     if not results:
         raise ValueError(f"SQLGlot produced no output for: {pg_sql!r}")
     return results[0]

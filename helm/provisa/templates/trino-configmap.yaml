@@ -1,0 +1,36 @@
+{{- if .Values.trino.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-trino-config
+data:
+  coordinator-config.properties: |
+    coordinator=true
+    node-scheduler.include-coordinator=false
+    http-server.http.port={{ .Values.trino.port }}
+    discovery.uri=http://{{ .Release.Name }}-trino-coordinator:{{ .Values.trino.port }}
+  worker-config.properties: |
+    coordinator=false
+    http-server.http.port={{ .Values.trino.port }}
+    discovery.uri=http://{{ .Release.Name }}-trino-coordinator:{{ .Values.trino.port }}
+  # Static catalog properties — distributed to all nodes (coordinator + workers).
+  # Dynamic catalog creation (CREATE CATALOG) does not propagate to workers in cluster mode.
+  {{- if .Values.postgresql.enabled }}
+  sales_pg.properties: |
+    connector.name=postgresql
+    connection-url=jdbc:postgresql://{{ .Release.Name }}-postgresql:{{ .Values.postgresql.port }}/{{ .Values.postgresql.database }}
+    connection-user={{ .Values.postgresql.username }}
+    connection-password={{ .Values.postgresql.password }}
+  analytics_pg.properties: |
+    connector.name=postgresql
+    connection-url=jdbc:postgresql://{{ .Release.Name }}-postgresql:{{ .Values.postgresql.port }}/{{ .Values.postgresql.database }}
+    connection-user={{ .Values.postgresql.username }}
+    connection-password={{ .Values.postgresql.password }}
+  {{- end }}
+  {{- if .Values.mongodb.enabled }}
+  reviews_mongo.properties: |
+    connector.name=mongodb
+    mongodb.connection-url=mongodb://{{ .Release.Name }}-mongodb:{{ .Values.mongodb.port }}/
+    mongodb.schema-collection=_schema
+  {{- end }}
+{{- end }}

@@ -1,0 +1,156 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-config
+data:
+  provisa.yaml: |
+    sources:
+      - id: sales-pg
+        type: postgresql
+        host: {{ .Release.Name }}-postgresql
+        port: {{ .Values.postgresql.port }}
+        database: {{ .Values.postgresql.database }}
+        username: {{ .Values.postgresql.username }}
+        password: ${env:PG_PASSWORD}
+      - id: analytics-pg
+        type: postgresql
+        host: {{ .Release.Name }}-postgresql
+        port: {{ .Values.postgresql.port }}
+        database: {{ .Values.postgresql.database }}
+        username: {{ .Values.postgresql.username }}
+        password: ${env:PG_PASSWORD}
+      {{- if .Values.mongodb.enabled }}
+      - id: reviews-mongo
+        type: mongodb
+        host: {{ .Release.Name }}-mongodb
+        port: {{ .Values.mongodb.port }}
+        database: provisa
+        username: ""
+        password: ""
+      {{- end }}
+
+    domains:
+      - id: sales-analytics
+        description: Sales operational and analytical data
+      - id: product-catalog
+        description: Product catalog data
+      - id: customer-insights
+        description: Customer segmentation and analytics
+
+    naming:
+      rules:
+        - pattern: "^prod_pg_"
+          replace: ""
+
+    tables:
+      - source_id: sales-pg
+        domain_id: sales-analytics
+        schema: public
+        table: orders
+        governance: pre-approved
+        columns:
+          - name: id
+            visible_to: [admin, analyst]
+          - name: customer_id
+            visible_to: [admin, analyst]
+          - name: product_id
+            visible_to: [admin]
+          - name: amount
+            visible_to: [admin]
+          - name: region
+            visible_to: [admin, analyst]
+          - name: status
+            visible_to: [admin, analyst]
+          - name: created_at
+            visible_to: [admin, analyst]
+      - source_id: sales-pg
+        domain_id: sales-analytics
+        schema: public
+        table: customers
+        governance: pre-approved
+        columns:
+          - name: id
+            visible_to: [admin, analyst]
+          - name: name
+            visible_to: [admin, analyst]
+          - name: email
+            visible_to: [admin]
+          - name: region
+            visible_to: [admin, analyst]
+      - source_id: sales-pg
+        domain_id: product-catalog
+        schema: public
+        table: products
+        governance: registry-required
+        columns:
+          - name: id
+            visible_to: [admin, analyst]
+          - name: name
+            visible_to: [admin, analyst]
+          - name: price
+            visible_to: [admin]
+          - name: category
+            visible_to: [admin, analyst]
+      {{- if .Values.mongodb.enabled }}
+      - source_id: reviews-mongo
+        domain_id: product-catalog
+        schema: provisa
+        table: product_reviews
+        governance: pre-approved
+        columns:
+          - name: product_id
+            visible_to: [admin, analyst]
+          - name: reviewer
+            visible_to: [admin, analyst]
+          - name: rating
+            visible_to: [admin, analyst]
+          - name: comment
+            visible_to: [admin]
+      {{- end }}
+      - source_id: analytics-pg
+        domain_id: customer-insights
+        schema: analytics
+        table: customer_segments
+        governance: pre-approved
+        columns:
+          - name: customer_id
+            visible_to: [admin, analyst]
+          - name: segment
+            visible_to: [admin, analyst]
+          - name: score
+            visible_to: [admin]
+
+    relationships:
+      - id: orders-to-customers
+        source_table_id: orders
+        target_table_id: customers
+        source_column: customer_id
+        target_column: id
+        cardinality: many-to-one
+      - id: customers-to-segments
+        source_table_id: customers
+        target_table_id: customer_segments
+        source_column: id
+        target_column: customer_id
+        cardinality: one-to-many
+      {{- if .Values.mongodb.enabled }}
+      - id: orders-to-reviews
+        source_table_id: orders
+        target_table_id: product_reviews
+        source_column: product_id
+        target_column: product_id
+        cardinality: one-to-many
+      {{- end }}
+
+    roles:
+      - id: admin
+        capabilities: [source_registration, table_registration, relationship_registration, security_config, query_development, query_approval, full_results, admin]
+        domain_access: ["*"]
+      - id: analyst
+        capabilities: [query_development]
+        domain_access: [sales-analytics]
+
+    rls_rules:
+      - table_id: orders
+        role_id: analyst
+        filter: "region = current_setting('provisa.user_region')"

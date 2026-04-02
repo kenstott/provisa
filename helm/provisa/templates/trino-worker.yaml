@@ -1,0 +1,74 @@
+{{- if .Values.trino.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ .Release.Name }}-trino-worker
+  labels:
+    app: trino
+    role: worker
+spec:
+  replicas: {{ .Values.trino.worker.replicaCount }}
+  serviceName: {{ .Release.Name }}-trino-worker
+  selector:
+    matchLabels:
+      app: trino
+      role: worker
+  template:
+    metadata:
+      labels:
+        app: trino
+        role: worker
+    spec:
+      containers:
+        - name: trino
+          image: "{{ .Values.trino.image.repository }}:{{ .Values.trino.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.trino.port }}
+          env:
+            - name: TRINO_NODE_TYPE
+              value: worker
+          volumeMounts:
+            - name: config
+              mountPath: /etc/trino/config.properties
+              subPath: worker-config.properties
+            {{- if .Values.postgresql.enabled }}
+            - name: config
+              mountPath: /etc/trino/catalog/sales_pg.properties
+              subPath: sales_pg.properties
+            - name: config
+              mountPath: /etc/trino/catalog/analytics_pg.properties
+              subPath: analytics_pg.properties
+            {{- end }}
+            {{- if .Values.mongodb.enabled }}
+            - name: config
+              mountPath: /etc/trino/catalog/reviews_mongo.properties
+              subPath: reviews_mongo.properties
+            {{- end }}
+          resources:
+            {{- toYaml .Values.trino.worker.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-trino-config
+{{- if .Values.trino.worker.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ .Release.Name }}-trino-worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: {{ .Release.Name }}-trino-worker
+  minReplicas: {{ .Values.trino.worker.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.trino.worker.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.trino.worker.autoscaling.targetCPUUtilization }}
+{{- end }}
+{{- end }}

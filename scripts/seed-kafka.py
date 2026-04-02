@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# Copyright (c) 2025 Kenneth Stott
+# Canary: 21b63c0c-c9a3-49e4-91fc-e2d29c42355a
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Seed Kafka with support ticket and resolution events.
 
 Two message types on the same topic (support.tickets):

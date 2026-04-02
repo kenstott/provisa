@@ -8,11 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration tests for SQLGlot PG SQL → Trino SQL transpilation."""
+"""Integration tests for SQLGlot PG SQL → target dialect transpilation."""
 
 import pytest
 
-from provisa.transpiler.transpile import transpile_to_trino
+from provisa.transpiler.transpile import transpile, transpile_to_trino
 
 
 class TestTranspileToTrino:
@@ -80,3 +80,36 @@ class TestTranspileToTrino:
         assert "join" in lower
         assert "order by" in lower or "order" in lower
         assert "10" in trino_sql
+
+
+class TestMultiDialect:
+    """Test PG SQL → various target dialects (REQ-068)."""
+
+    PG_SQL = 'SELECT "id", "name" FROM "public"."orders" WHERE "id" = $1 LIMIT 10'
+
+    def test_to_postgres(self):
+        result = transpile(self.PG_SQL, "postgres")
+        assert "id" in result.lower()
+        assert "orders" in result.lower()
+
+    def test_to_mysql(self):
+        result = transpile(self.PG_SQL, "mysql")
+        assert "orders" in result.lower()
+        # MySQL uses backticks or no quotes
+        assert "10" in result
+
+    def test_to_tsql(self):
+        result = transpile(self.PG_SQL, "tsql")
+        assert "orders" in result.lower()
+
+    def test_to_duckdb(self):
+        result = transpile(self.PG_SQL, "duckdb")
+        assert "orders" in result.lower()
+
+    def test_to_snowflake(self):
+        result = transpile(self.PG_SQL, "snowflake")
+        assert "orders" in result.lower()
+
+    def test_to_bigquery(self):
+        result = transpile(self.PG_SQL, "bigquery")
+        assert "orders" in result.lower()

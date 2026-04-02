@@ -42,6 +42,7 @@ Replace `<generate unique uuid4>` with a freshly generated UUID4 value. Every fi
 
 ## Formatting
 - Line length: 100 (ruff + black)
+- Ruff rules: E, F, I, B, UP, ANN, S, A, C4, T20, PT, PTH, SIM, ARG
 - Target: Python 3.12+
 
 ## Docstrings
@@ -65,6 +66,11 @@ def func(x: int, y: str) -> bool:
 ## Logging
 - No `print()` in production code
 - Use `logger = logging.getLogger(__name__)` at module scope
+- Debug context tags: `[PARALLEL]`, `[COMPLEXITY]`, `[DYNAMIC_CONTEXT]`
+
+## File Size
+- **Max 1000 lines per file** — split by separation of concerns when approaching this limit
+- Group related functionality into focused modules
 
 ## General
 - Dataclasses/Pydantic for data structures (not plain dicts)

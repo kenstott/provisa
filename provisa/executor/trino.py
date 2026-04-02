@@ -15,9 +15,12 @@ Returns rows and column descriptions. Parameters substituted by Trino.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import trino
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -53,6 +56,7 @@ def execute_trino(
             exec_sql = exec_sql.replace(f"@{i}", "?")
             exec_sql = exec_sql.replace(f"${i}", "?")
 
+    log.info("[EXEC TRINO] sql=%s", exec_sql[:200])
     cur = conn.cursor()
     if params:
         cur.execute(exec_sql, params)
@@ -62,4 +66,5 @@ def execute_trino(
     rows = cur.fetchall()
     column_names = [desc[0] for desc in cur.description] if cur.description else []
 
+    log.info("[EXEC TRINO] rows=%d", len(rows))
     return QueryResult(rows=rows, column_names=column_names)

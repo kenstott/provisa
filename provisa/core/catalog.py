@@ -10,9 +10,13 @@
 
 """Trino dynamic catalog management via SQL CREATE/DROP CATALOG."""
 
+import logging
 import re
+import signal
 
 import trino
+
+log = logging.getLogger(__name__)
 
 from provisa.core.models import Source
 
@@ -36,6 +40,28 @@ def _to_catalog_name(source_id: str) -> str:
 
 def _build_catalog_properties(source: Source, resolved_password: str) -> dict[str, str]:
     """Build Trino connector properties from a source definition."""
+    stype = source.type.value
+
+    # MongoDB connector
+    if stype == "mongodb":
+        url = f"mongodb://{source.host}:{source.port}/"
+        if source.username:
+            url = f"mongodb://{source.username}:{resolved_password}@{source.host}:{source.port}/"
+        return {
+            "mongodb.connection-url": url,
+            "mongodb.schema-collection": "_schema",
+        }
+
+    # Cassandra connector
+    if stype == "cassandra":
+        return {
+            "cassandra.contact-points": source.host,
+            "cassandra.native-protocol-port": str(source.port),
+            "cassandra.load-policy.dc-aware.local-dc": "datacenter1",
+            "cassandra.consistency-level": "ONE",
+        }
+
+    # JDBC-based connectors (PG, MySQL, SQL Server, Oracle, etc.)
     props: dict[str, str] = {}
     jdbc_url = source.jdbc_url()
     if jdbc_url:
@@ -46,24 +72,38 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
 
 
 def create_catalog(conn: trino.dbapi.Connection, source: Source, resolved_password: str) -> None:
-    """Create a Trino dynamic catalog for a registered source."""
+    """Create a Trino dynamic catalog for a registered source.
+
+    Skips creation if the catalog already exists (e.g., from static catalog properties).
+    """
     catalog_name = _to_catalog_name(source.id)
+
+    # Skip if catalog already exists
+    if catalog_exists(conn, catalog_name):
+        return
+
     connector = _validate_identifier(source.connector)
     props = _build_catalog_properties(source, resolved_password)
 
     if not props:
-        raise ValueError(
-            f"Source type {source.type.value!r} has no JDBC connector properties; "
-            f"cannot create Trino catalog for source {source.id!r}"
-        )
+        # Some source types (e.g., DuckDB) don't have Trino connectors
+        return
 
     props_sql = ", ".join(
         f'"{k}" = \'{_escape_sql_string(v)}\'' for k, v in props.items()
     )
     sql = f"CREATE CATALOG IF NOT EXISTS {catalog_name} USING {connector} WITH ({props_sql})"
-    cur = conn.cursor()
-    cur.execute(sql)
-    cur.fetchall()
+
+    try:
+        cur = conn.cursor()
+        cur.execute(sql)
+        cur.fetchall()
+    except Exception as e:
+        log.warning(
+            "Catalog creation failed for %s (connector=%s): %s. "
+            "Source may need static catalog config or manual setup.",
+            catalog_name, connector, e,
+        )
 
 
 def drop_catalog(conn: trino.dbapi.Connection, source_id: str) -> None:

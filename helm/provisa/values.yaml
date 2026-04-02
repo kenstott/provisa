@@ -1,0 +1,87 @@
+# Provisa Helm chart values
+
+provisa:
+  replicaCount: 2
+  image:
+    repository: provisa
+    tag: latest
+    pullPolicy: IfNotPresent
+  port: 8000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  env:
+    PROVISA_MODE: production
+    PROVISA_CONFIG: /app/config/provisa.yaml
+  configMap: provisa-config
+
+trino:
+  enabled: true
+  coordinator:
+    replicaCount: 1
+    resources:
+      requests:
+        cpu: "1"
+        memory: 2Gi
+      limits:
+        cpu: "2"
+        memory: 4Gi
+  worker:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 10
+      targetCPUUtilization: 70
+    resources:
+      requests:
+        cpu: "1"
+        memory: 2Gi
+      limits:
+        cpu: "4"
+        memory: 8Gi
+  image:
+    repository: trinodb/trino
+    tag: "439"
+  port: 8080
+
+postgresql:
+  enabled: true
+  host: ""  # set if using external PG
+  port: 5432
+  database: provisa
+  username: provisa
+  password: provisa  # override via --set or secrets
+
+pgbouncer:
+  enabled: true
+  port: 6432
+  poolMode: transaction
+  defaultPoolSize: 20
+  maxClientConn: 200
+
+mongodb:
+  enabled: true
+  port: 27017
+
+minio:
+  enabled: true
+  accessKey: minioadmin
+  secretKey: minioadmin
+
+redis:
+  enabled: false
+  host: ""
+  port: 6379
+
+ingress:
+  enabled: false
+  className: nginx
+  host: provisa.example.com
+  tls:
+    enabled: false
+    secretName: provisa-tls
