@@ -1851,14 +1851,14 @@ For single-source (direct route) queries, the Flight server executes against the
   - Calls `doGet(ticket)` and returns a `FlightStream` wrapping the record batches
   - Connection pooling / channel reuse across statements
 - Update `ProvisaConnection.java`:
-  - Parse `transport=flight|http` from connection properties (default: flight)
-  - Parse `flightPort` property (default: 8815)
-  - Hold a shared `FlightClient` when transport=flight
+  - On connect: attempt Flight connection to `grpc://host:8815` (port derived from HTTP port + offset or default)
+  - If Flight connects: hold a shared `FlightClient` for the connection lifetime
+  - If Flight fails: log and proceed with HTTP-only (silent fallback, no error)
   - Close FlightClient on connection close
 - Update `ProvisaStatement.java`:
-  - When transport=flight: build ticket JSON, call FlightTransport, wrap result in `ArrowStreamResultSet`
-  - When transport=http: existing HTTP path (fallback)
-  - Automatic fallback: if Flight connection fails, fall back to HTTP with warning
+  - If FlightClient is available: build ticket JSON, call FlightTransport, wrap result in `ArrowStreamResultSet`
+  - If FlightClient is null: use existing HTTP path
+  - No user configuration — transport is an internal implementation detail
 - Update `ProvisaDatabaseMetaData.java`:
   - Metadata operations (getTables, getColumns, PK/FK) still use HTTP/GraphQL — Flight is for query data only
 - `FlightStreamResultSet.java` — Wraps `FlightStream` as a JDBC `ResultSet`:
@@ -1867,16 +1867,15 @@ For single-source (direct route) queries, the Flight server executes against the
 
 **Connection string examples:**
 ```
-jdbc:provisa://localhost:8001?transport=flight&flightPort=8815&mode=approved
-jdbc:provisa://localhost:8001?transport=http&mode=catalog
-jdbc:provisa://localhost:8001  (defaults: transport=flight, mode=approved)
+jdbc:provisa://localhost:8001?mode=approved
+jdbc:provisa://localhost:8001?mode=catalog
 ```
+Flight is used automatically — no transport property needed.
 
 **Verify:**
 - `mvn test` — unit tests with mocked FlightClient:
   - Flight ticket JSON construction
-  - Transport selection (flight vs http)
-  - Fallback from Flight to HTTP on connection failure
+  - Automatic fallback when Flight unavailable
   - FlightStreamResultSet batch navigation
 - `mvn verify` — integration tests against live backend:
   - Flight transport: connect, execute approved query, stream results
@@ -1892,7 +1891,7 @@ jdbc:provisa://localhost:8001  (defaults: transport=flight, mode=approved)
 | `jdbc-driver/src/main/java/io/provisa/jdbc/FlightStreamResultSet.java` | Create |
 | `jdbc-driver/src/main/java/io/provisa/jdbc/ProvisaConnection.java` | Modify (transport selection, FlightClient lifecycle) |
 | `jdbc-driver/src/main/java/io/provisa/jdbc/ProvisaStatement.java` | Modify (Flight execution path) |
-| `jdbc-driver/src/main/java/io/provisa/jdbc/ProvisaDriver.java` | Modify (transport/flightPort properties) |
+| `jdbc-driver/src/main/java/io/provisa/jdbc/ProvisaDriver.java` | Modify (version bump) |
 | `jdbc-driver/src/test/java/io/provisa/jdbc/FlightTransportTest.java` | Create |
 | `jdbc-driver/src/test/java/io/provisa/jdbc/FlightTransportIT.java` | Create |
 

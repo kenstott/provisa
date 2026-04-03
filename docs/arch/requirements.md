@@ -125,7 +125,7 @@
 - **REQ-130** (2026-04-01): Full security pipeline (RLS, masking, sampling) applied at query time — not baked into views.
 - **REQ-131** (2026-04-01): Connection string format: `jdbc:provisa://host:port`. Authentication via standard JDBC username/password properties.
 - **REQ-132** (2026-04-01): The driver is a single JAR with no external dependencies beyond the JDK and Apache Arrow (for Parquet deserialization).
-- **REQ-229** (2026-04-03): JDBC driver transport via Arrow Flight — connect to Provisa's existing Flight server (`grpc://host:8815`) for streaming query results instead of HTTP. Arrow record batches stream from the first row with backpressure, zero serialization overhead, and no full-result buffering. Connection property `transport=flight|http` selects transport; Flight is default when available, HTTP fallback. Both `mode=catalog` and `mode=approved` work over Flight. The Flight ticket carries the GraphQL query + role + variables as JSON.
+- **REQ-229** (2026-04-03): JDBC driver transport via Arrow Flight — connect to Provisa's existing Flight server (`grpc://host:8815`) for streaming query results. Arrow record batches stream from the first row with backpressure, zero serialization overhead, and no full-result buffering. Flight is used automatically when the server is reachable; falls back to HTTP silently if not. No user configuration required. Both `mode=catalog` and `mode=approved` work over Flight. The Flight ticket carries the GraphQL query + role + variables as JSON.
 
 ## Views (Governed Computed Datasets)
 - **REQ-133** (2026-04-01): Views are SQL-defined computed datasets registered in the Provisa config with full column-level governance (visibility, masking, descriptions, aliases).
