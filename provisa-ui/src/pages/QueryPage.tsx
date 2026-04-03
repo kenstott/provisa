@@ -46,15 +46,43 @@ function createProvisaFetch(
 
     if (contentType.includes("application/json")) {
       const body = await res.json();
+      // Single-field redirect
       if (body.redirect) {
         const synthetic = {
           data: {
+            ...body.data,
             __redirect: {
               url: body.redirect.redirect_url,
               row_count: body.redirect.row_count,
               expires_in: body.redirect.expires_in,
               content_type: body.redirect.content_type,
             },
+          },
+        };
+        return new Response(JSON.stringify(synthetic), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      // Multi-field redirects (some or all fields redirected)
+      if (body.redirects) {
+        const redirectEntries = Object.entries(body.redirects as Record<string, {
+          redirect_url: string; row_count: number; expires_in: number; content_type: string;
+        }>);
+        const redirectData: Record<string, unknown> = {};
+        for (const [field, info] of redirectEntries) {
+          redirectData[`__redirect_${field}`] = {
+            field,
+            url: info.redirect_url,
+            row_count: info.row_count,
+            expires_in: info.expires_in,
+            content_type: info.content_type,
+          };
+        }
+        const synthetic = {
+          data: {
+            ...body.data,
+            ...redirectData,
           },
         };
         return new Response(JSON.stringify(synthetic), {
@@ -108,6 +136,11 @@ export function QueryPage() {
     return provisaToolsPlugin(role.id);
   }, [role?.id]);
 
+  const plugins = useMemo(
+    () => (provisaPlugin ? [explorer, provisaPlugin] : null),
+    [provisaPlugin],
+  );
+
   const onFormatChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) =>
       setRedirectFormat(e.target.value),
@@ -119,7 +152,7 @@ export function QueryPage() {
     [],
   );
 
-  if (!role || !fetcher || !provisaPlugin)
+  if (!role || !fetcher || !plugins)
     return <div className="page">Select a role.</div>;
 
   return (
@@ -152,7 +185,7 @@ export function QueryPage() {
       </div>
       <GraphiQL
         fetcher={fetcher}
-        plugins={[explorer, provisaPlugin]}
+        plugins={plugins}
         forcedTheme="dark"
       >
         <GraphiQL.Footer>
