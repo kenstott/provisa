@@ -1834,6 +1834,70 @@ auth:
 
 ---
 
+## Phase X: JDBC Driver Arrow Flight Transport
+**Goal:** Wire the JDBC driver to use Arrow Flight (`grpc://host:8815`) for streaming query results instead of HTTP + JSON/Arrow file download. The Flight server already exists on the backend (`provisa/api/flight/server.py`) — this phase connects the JDBC client to it.
+**REQs:** REQ-229
+
+**Motivation:**
+The current JDBC driver executes queries over HTTP, buffering the full response before returning rows. The backend already has a Flight server that streams Arrow record batches with backpressure and zero serialization overhead. Connecting the two eliminates the HTTP round-trip bottleneck and enables true streaming from the first row.
+
+For single-source (direct route) queries, the Flight server executes against the source database and streams Arrow batches. For Trino-routed queries, the Flight server can use the Zaychik Flight SQL proxy for end-to-end Arrow streaming without materializing in Provisa memory.
+
+**Build:**
+- Add `org.apache.arrow:arrow-flight` and `org.apache.arrow:flight-core` dependencies to `jdbc-driver/pom.xml`
+- `jdbc-driver/src/main/java/io/provisa/jdbc/FlightTransport.java` — Arrow Flight client wrapper:
+  - Connects to `grpc://host:8815` (port from connection property or default)
+  - Builds Flight ticket as JSON: `{"query": queryText, "role": roleId, "variables": {...}}`
+  - Calls `doGet(ticket)` and returns a `FlightStream` wrapping the record batches
+  - Connection pooling / channel reuse across statements
+- Update `ProvisaConnection.java`:
+  - Parse `transport=flight|http` from connection properties (default: flight)
+  - Parse `flightPort` property (default: 8815)
+  - Hold a shared `FlightClient` when transport=flight
+  - Close FlightClient on connection close
+- Update `ProvisaStatement.java`:
+  - When transport=flight: build ticket JSON, call FlightTransport, wrap result in `ArrowStreamResultSet`
+  - When transport=http: existing HTTP path (fallback)
+  - Automatic fallback: if Flight connection fails, fall back to HTTP with warning
+- Update `ProvisaDatabaseMetaData.java`:
+  - Metadata operations (getTables, getColumns, PK/FK) still use HTTP/GraphQL — Flight is for query data only
+- `FlightStreamResultSet.java` — Wraps `FlightStream` as a JDBC `ResultSet`:
+  - Reuses `ArrowStreamResultSet` logic but reads from Flight stream instead of InputStream
+  - Batch-by-batch consumption with memory bounded to one batch at a time
+
+**Connection string examples:**
+```
+jdbc:provisa://localhost:8001?transport=flight&flightPort=8815&mode=approved
+jdbc:provisa://localhost:8001?transport=http&mode=catalog
+jdbc:provisa://localhost:8001  (defaults: transport=flight, mode=approved)
+```
+
+**Verify:**
+- `mvn test` — unit tests with mocked FlightClient:
+  - Flight ticket JSON construction
+  - Transport selection (flight vs http)
+  - Fallback from Flight to HTTP on connection failure
+  - FlightStreamResultSet batch navigation
+- `mvn verify` — integration tests against live backend:
+  - Flight transport: connect, execute approved query, stream results
+  - Verify row-level streaming (first row available before full result)
+  - HTTP fallback when Flight port is unavailable
+  - Both modes (approved, catalog) work with Flight transport
+
+**Files:**
+| File | Action |
+|---|---|
+| `jdbc-driver/pom.xml` | Modify (add arrow-flight dependencies) |
+| `jdbc-driver/src/main/java/io/provisa/jdbc/FlightTransport.java` | Create |
+| `jdbc-driver/src/main/java/io/provisa/jdbc/FlightStreamResultSet.java` | Create |
+| `jdbc-driver/src/main/java/io/provisa/jdbc/ProvisaConnection.java` | Modify (transport selection, FlightClient lifecycle) |
+| `jdbc-driver/src/main/java/io/provisa/jdbc/ProvisaStatement.java` | Modify (Flight execution path) |
+| `jdbc-driver/src/main/java/io/provisa/jdbc/ProvisaDriver.java` | Modify (transport/flightPort properties) |
+| `jdbc-driver/src/test/java/io/provisa/jdbc/FlightTransportTest.java` | Create |
+| `jdbc-driver/src/test/java/io/provisa/jdbc/FlightTransportIT.java` | Create |
+
+---
+
 ## Dependencies
 
 ```toml

@@ -125,6 +125,7 @@
 - **REQ-130** (2026-04-01): Full security pipeline (RLS, masking, sampling) applied at query time — not baked into views.
 - **REQ-131** (2026-04-01): Connection string format: `jdbc:provisa://host:port`. Authentication via standard JDBC username/password properties.
 - **REQ-132** (2026-04-01): The driver is a single JAR with no external dependencies beyond the JDK and Apache Arrow (for Parquet deserialization).
+- **REQ-229** (2026-04-03): JDBC driver transport via Arrow Flight — connect to Provisa's existing Flight server (`grpc://host:8815`) for streaming query results instead of HTTP. Arrow record batches stream from the first row with backpressure, zero serialization overhead, and no full-result buffering. Connection property `transport=flight|http` selects transport; Flight is default when available, HTTP fallback. Both `mode=catalog` and `mode=approved` work over Flight. The Flight ticket carries the GraphQL query + role + variables as JSON.
 
 ## Views (Governed Computed Datasets)
 - **REQ-133** (2026-04-01): Views are SQL-defined computed datasets registered in the Provisa config with full column-level governance (visibility, masking, descriptions, aliases).
@@ -221,7 +222,27 @@
 - **REQ-196** (2026-04-03): Auto-generated aggregate queries following Hasura v2 pattern. Every table gets a `<table>_aggregate` root field. Numeric columns get sum/avg/stddev/variance. All comparable columns get min/max. All columns get count. No configuration required for default behavior.
 - **REQ-197** (2026-04-03): Per-role aggregate gating via `allow_aggregations` (matching v2) or per-table `aggregates` config section for explicit override of auto-detected functions and role visibility.
 - **REQ-198** (2026-04-03): Aggregate MV routing -- when a query requests aggregates over a pattern already materialized in an MV, the compiler rewrites the query to use the MV. Requires aggregate catalog + query rewriter.
-- **REQ-199** (2026-04-03): View auto-materialization for aggregate optimization -- expensive views auto-materialized and registered in aggregate catalog instead of requiring bespoke `materialized_views` entries.
+- **REQ-199** (2026-04-03): View auto-materialization for aggregate optimization -- expensive views auto-materialized and registered in aggregate catalog instead of requiring bespoke `materialized_views` entries. Default TTL configurable globally via `materialized_views.default_ttl` (seconds, default: 3600). Individual views can override with `refresh_interval`. Stale MVs refreshed by background loop; queries against stale MVs fall back to live execution.
+
+## Materialized View Lifecycle
+- **REQ-234** (2026-04-03): Auto-materialized view storage reclamation -- when a view is removed from config, disabled, or its source table is unregistered, the backing MV table is dropped (Trino `DROP TABLE`). Background cleanup task runs on config reload and periodically (default: daily). Orphaned MV tables (present in target schema but not in MV registry) are flagged and optionally auto-dropped after a grace period.
+- **REQ-235** (2026-04-03): Auto-materialized aggregate views must have a size guard -- `materialized_views.max_rows` (default: 1,000,000). Views whose source query would produce more rows than the limit skip materialization and fall back to live execution. Size estimated via `SELECT COUNT(*)` probe before CTAS. Configurable per view to override the global default.
+
+## Hot Tables (Redis-Cached Lookups)
+- **REQ-230** (2026-04-03): Hot tables -- small lookup tables cached entirely in Redis for sub-millisecond reads. Config per table: `hot: true` with optional `max_rows` guard (default: 10,000) and `max_bytes` guard (default: 10MB). Tables exceeding either limit at load time emit warning and skip caching. Uses existing `cache.redis_url` config. Byte size measured after serialization to Redis format.
+- **REQ-231** (2026-04-03): Hot table refresh follows MV pattern: TTL-based via `refresh_interval` (default: `materialized_views.default_ttl`), background refresh loop, stale fallback to live query. Mutations to the source table trigger immediate invalidation + async reload.
+- **REQ-232** (2026-04-03): Hot table JOIN optimization -- when a query joins a hot table (e.g., `orders JOIN countries ON country_code`), the compiler injects the hot table data as constants into the SQL via a `VALUES`-based CTE. The DB engine sees literal rows, not a table reference. This eliminates the second table scan and works across sources (constants travel with the query to Trino/Snowflake/ClickHouse). SQLGlot transpiles the VALUES clause per dialect.
+- **REQ-233** (2026-04-03): Redis storage format: hash per row keyed by PK, plus a sorted set index for range queries. Full table also stored as a single serialized blob for bulk reads. Column governance (visibility, masking) still applied at query time -- Redis caches raw data, security enforced on read.
+
+## Warm Tables (Local SSD via Trino File Cache)
+- **REQ-238** (2026-04-03): Warm tables -- frequently queried RDBMS tables materialized into the Iceberg results catalog so Trino's built-in file system cache (`fs.cache.enabled=true`) caches the Parquet files on local SSD. Provides ~10-50ms reads vs 100ms+ network round-trip to remote source. Same TTL/refresh pattern as MVs.
+- **REQ-239** (2026-04-03): Warm table auto-promotion -- track query frequency per table (increment counter on each compiled query). Tables exceeding `warm_tables.query_threshold` (default: 100 queries per refresh interval) are auto-materialized into Iceberg. Tables falling below the threshold are demoted (backing table dropped) on next refresh cycle.
+- **REQ-240** (2026-04-03): Warm table config: `warm: true` to force, `warm: false` to opt out. Global `warm_tables.query_threshold`, `warm_tables.max_rows` (default: 10,000,000), `warm_tables.refresh_interval` (default: same as `materialized_views.default_ttl`). Trino file cache config (`fs.cache.enabled`, `fs.cache.directories`, `fs.cache.max-sizes`) managed in Trino catalog properties.
+- **REQ-241** (2026-04-03): Three-tier caching hierarchy: Hot (Redis, <1ms, tiny lookups) -> Warm (local SSD via Trino Iceberg cache, ~10-50ms, medium frequent tables) -> Cold (remote source, 100ms+, everything else). Tables can be in at most one tier. Hot takes precedence over warm. Tier assignment is automatic based on table size and query frequency, with manual override via config.
+
+## Hot Table Auto-Detection
+- **REQ-236** (2026-04-03): Auto-detect hot table candidates at schema build time. Criteria: (1) row count below `hot_tables.auto_threshold` (default: 10,000), measured via `SELECT COUNT(*)` during introspection, AND (2) table is the target side of at least one many-to-one relationship (i.e., it's a lookup table). Tables meeting both criteria are automatically cached in Redis without explicit `hot: true` config.
+- **REQ-237** (2026-04-03): Auto-hot tables can be opted out via `hot: false` on the table config. Explicit `hot: true` overrides the auto-detection criteria (forces caching regardless of row count or relationship status). Auto-detection runs on every schema rebuild; tables that grow beyond the threshold are automatically evicted from Redis on next rebuild.
 
 ## OrderBy Alignment
 - **REQ-200** (2026-04-03): GraphQL order_by schema must follow Hasura v2 convention: column-keyed input type `{column_name: direction}` instead of current `{field: ENUM, direction: ENUM}` struct.
@@ -270,9 +291,31 @@
 - **REQ-210** (2026-04-03): Webhook mutations support inline return type definitions (not backed by a registered table) for cases where the webhook returns a custom shape. Inline types define fields with names and GraphQL types.
 - **REQ-211** (2026-04-03): Function and webhook argument types map to GraphQL input types. Arguments are validated at parse time. SQL injection prevented via parameterized calls for DB functions and JSON serialization for webhooks.
 
+## Actions UI
+- **REQ-242** (2026-04-03): Admin UI "Actions" page listing all registered functions and webhooks. Grouped by type (DB Function / Webhook). Shows source, domain, exposed_as (mutation/query), governance level, return table, argument count.
+- **REQ-243** (2026-04-03): Add action form with type selector: DB Function (source, schema, function name, exposed_as, returns registered table, arguments, visible_to/writable_by) or Webhook (name, URL, method, timeout_ms, returns registered table or inline type, arguments, visible_to).
+- **REQ-244** (2026-04-03): Inline type builder for webhook return types — dynamic rows of field name + GraphQL type. Used when webhook returns a custom shape not backed by a registered table.
+- **REQ-245** (2026-04-03): Test action button — execute function/webhook with sample arguments, display result + governance pipeline applied (which columns masked, RLS filters, role). Same pattern as query test endpoint.
+
 ## ABAC Approval Hook
-- **REQ-203** (2026-04-03): Pluggable operation approval hook for enterprises with complex ABAC that can't be expressed as static RLS rules. Webhook/gRPC/local callable evaluated at query time. Request: user_id, roles, session_vars, tables, columns, operation. Response: approved/denied + optional additional filter. Position: after RLS injection, before execution.
-- **REQ-204** (2026-04-03): Approval hook config in `auth.approval_hook` with type (webhook/grpc/local), url, timeout_ms, and fallback policy (deny/allow on timeout).
+- **REQ-203** (2026-04-03): Pluggable operation approval hook for enterprises with complex ABAC that can't be expressed as static RLS rules. Evaluated at query time. Request: user_id, roles, session_vars, tables, columns, operation. Response: approved/denied + optional additional filter. Position: after RLS injection, before execution.
+- **REQ-204** (2026-04-03): Approval hook scoping — per-table (`approval_hook: true`), per-source (`approval_hook: true` on source config), or global (`auth.approval_hook`). Compiler checks at query time: if no table in the query has approval_hook enabled (directly, via source, or global), skip the call entirely. Zero overhead for unscoped tables.
+- **REQ-246** (2026-04-03): Approval hook protocols — three transport options, configured via `auth.approval_hook.type`:
+  - `webhook` (default): HTTP POST to URL. ~5-50ms. Simplest, works with any external ABAC service.
+  - `grpc`: gRPC with persistent connection + multiplexing. ~1-5ms. Binary protocol for high-volume same-datacenter deployments. Proto service definition shipped with Provisa.
+  - `unix_socket`: Unix domain socket for same-machine sidecars (e.g., OPA). <0.5ms. Path configured via `auth.approval_hook.socket_path`.
+- **REQ-247** (2026-04-03): Approval hook config:
+  ```yaml
+  auth:
+    approval_hook:
+      type: webhook          # webhook, grpc, unix_socket
+      url: https://authz.internal/approve   # for webhook/grpc
+      socket_path: /var/run/provisa-authz.sock  # for unix_socket
+      timeout_ms: 500
+      fallback: deny         # deny or allow on timeout
+      scope: all             # all, or omit for per-table/per-source scoping
+  ```
+  Per-table: `tables[].approval_hook: true`. Per-source: `sources[].approval_hook: true`. Global: `auth.approval_hook.scope: all`.
 
 ## Direct-Route Dialect Expansion
 - **REQ-229** (2026-04-03): For every source type, three things must be true for direct-route capability: (1) Trino connector is packaged in the Trino deployment, (2) SQLGlot has the dialect for transpilation, (3) `SOURCE_TO_DIALECT` and `SOURCE_TO_CONNECTOR` entries exist in Provisa config. New direct-route sources to add: clickhouse, mariadb, singlestore, redshift, databricks, hive, druid, exasol. Each must have all three verified.
