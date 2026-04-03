@@ -55,6 +55,16 @@ class ProvisaDriverIT {
         }
     }
 
+    /** Find a view whose name doesn't contain "__unknown" (has valid compile output). */
+    private String findValidView(Connection conn) throws SQLException {
+        ResultSet tables = conn.getMetaData().getTables(null, null, "%", null);
+        while (tables.next()) {
+            String name = tables.getString("TABLE_NAME");
+            if (!name.contains("__unknown")) return name;
+        }
+        return null;
+    }
+
     @Test
     @Order(3)
     void approvedMode_getColumnsForView() throws SQLException {
@@ -62,12 +72,11 @@ class ProvisaDriverIT {
         props.setProperty("user", USER);
         props.setProperty("password", "");
         try (Connection conn = DriverManager.getConnection(BASE_URL, props)) {
-            ResultSet tables = conn.getMetaData().getTables(null, null, "%", null);
-            if (!tables.next()) {
-                System.out.println("No approved queries — skipping column test");
+            String viewName = findValidView(conn);
+            if (viewName == null) {
+                System.out.println("No approved queries with valid GraphQL — skipping column test");
                 return;
             }
-            String viewName = tables.getString("TABLE_NAME");
 
             ResultSet cols = conn.getMetaData().getColumns(null, null, viewName, null);
             List<String> colNames = new ArrayList<>();
@@ -87,12 +96,11 @@ class ProvisaDriverIT {
         props.setProperty("user", USER);
         props.setProperty("password", "");
         try (Connection conn = DriverManager.getConnection(BASE_URL, props)) {
-            ResultSet tables = conn.getMetaData().getTables(null, null, "%", null);
-            if (!tables.next()) {
-                System.out.println("No approved queries — skipping execute test");
+            String viewName = findValidView(conn);
+            if (viewName == null) {
+                System.out.println("No approved queries with valid GraphQL — skipping execute test");
                 return;
             }
-            String viewName = tables.getString("TABLE_NAME");
 
             Statement stmt = conn.createStatement();
             ResultSet rs = stmt.executeQuery("SELECT * FROM " + viewName);
@@ -102,7 +110,6 @@ class ProvisaDriverIT {
             int rowCount = 0;
             while (rs.next()) {
                 rowCount++;
-                // Verify we can read at least the first column
                 assertNotNull(rs.getObject(1));
             }
             assertTrue(rowCount >= 0, "Query should execute successfully");
