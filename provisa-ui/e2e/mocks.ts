@@ -75,8 +75,8 @@ export const MOCK_CANDIDATES = [
 ];
 
 export const MOCK_PENDING_QUERIES = [
-  { id: 1, name: "GetOrders", query_text: "{ orders { id total } }", submitted_by: "dev@co.com", status: "submitted" },
-  { id: 2, name: "GetCustomers", query_text: "{ customers { id name } }", submitted_by: "dev@co.com", status: "submitted" },
+  { id: 1, queryText: "query GetOrders { orders { id total } }", developerId: "dev@co.com", status: "pending" },
+  { id: 2, queryText: "query GetCustomers { customers { id name } }", developerId: "dev@co.com", status: "pending" },
 ];
 
 export const MOCK_SCHEMAS = ["public", "analytics"];

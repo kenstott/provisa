@@ -5,9 +5,8 @@ const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8001";
 
 interface PendingQuery {
   id: number;
-  name: string;
-  query_text: string;
-  submitted_by: string;
+  queryText: string;
+  developerId: string | null;
   status: string;
 }
 
@@ -16,11 +15,12 @@ async function fetchPending(): Promise<PendingQuery[]> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      query: `{ persistedQueries(status: "submitted") { id name queryText submittedBy status } }`,
+      query: `{ persistedQueries { id queryText developerId status } }`,
     }),
   });
   const json = await resp.json();
-  return json.data?.persistedQueries ?? [];
+  const all: PendingQuery[] = json.data?.persistedQueries ?? [];
+  return all.filter((q) => q.status === "pending");
 }
 
 async function approveQuery(id: number): Promise<void> {
@@ -28,7 +28,7 @@ async function approveQuery(id: number): Promise<void> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      query: `mutation { approveQuery(id: ${id}) { success } }`,
+      query: `mutation { approveQuery(queryId: ${id}) { success } }`,
     }),
   });
 }
@@ -74,13 +74,16 @@ export function ApprovalsPage() {
         <p>No queries pending approval.</p>
       ) : (
         <div className="approval-list">
-          {queries.map((q) => (
+          {queries.map((q) => {
+            const nameMatch = q.queryText.match(/(?:query|mutation)\s+(\w+)/);
+            const displayName = nameMatch ? nameMatch[1] : `Query #${q.id}`;
+            return (
             <div key={q.id} className="approval-card">
               <div className="approval-header">
-                <h3>{q.name}</h3>
-                <span className="submitted-by">by {q.submitted_by}</span>
+                <h3>{displayName}</h3>
+                <span className="submitted-by">by {q.developerId || "unknown"}</span>
               </div>
-              <pre className="approval-query">{q.query_text}</pre>
+              <pre className="approval-query">{q.queryText}</pre>
               <div className="approval-actions">
                 <ConfirmDialog
                   title={`Approve query "${q.name}"?`}
@@ -117,7 +120,8 @@ export function ApprovalsPage() {
                 </div>
               )}
             </div>
-          ))}
+          );
+          })}
         </div>
       )}
     </div>
