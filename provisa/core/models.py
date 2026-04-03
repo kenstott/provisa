@@ -160,27 +160,16 @@ class NamingConfig(BaseModel):
     rules: list[NamingRule] = Field(default_factory=list)
 
 
-class MaskingRuleConfig(BaseModel):
-    """Per-role masking rule for a column."""
-
-    type: str  # regex, constant, truncate
-    pattern: str | None = None
-    replace: str | None = None
-    value: object = None
-    precision: str | None = None
-
-    @field_validator("type")
-    @classmethod
-    def validate_type(cls, v: str) -> str:
-        if v not in ("regex", "constant", "truncate"):
-            raise ValueError(f"Invalid masking type: {v!r}")
-        return v
-
-
 class Column(BaseModel):
     name: str
     visible_to: list[str]
-    masking: dict[str, MaskingRuleConfig] | None = None  # role_id → rule
+    writable_by: list[str] = []  # roles allowed to mutate this column
+    unmasked_to: list[str] = []  # roles that see unmasked data
+    mask_type: str | None = None  # regex, constant, truncate
+    mask_pattern: str | None = None  # regex pattern
+    mask_replace: str | None = None  # regex replacement
+    mask_value: str | None = None  # constant value
+    mask_precision: str | None = None  # truncate precision (year, month, day, etc.)
     alias: str | None = None  # GraphQL field name override
     description: str | None = None  # GraphQL field description
     path: str | None = None  # JSON extraction path (e.g. "payload.order_id")

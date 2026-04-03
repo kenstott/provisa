@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   fetchRoles,
   fetchRlsRules,
@@ -11,6 +12,80 @@ import {
 } from "../api/admin";
 import type { Role, Capability } from "../types/auth";
 import type { RLSRule, RegisteredTable, Domain } from "../types/admin";
+
+function MultiSelect({ options, value, onChange }: {
+  options: { id: string; label: string }[];
+  value: string[];
+  onChange: (selected: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const updatePos = () => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setPos({ top: rect.bottom + 2, left: rect.left, width: rect.width });
+    }
+  };
+
+  useLayoutEffect(() => { if (open) updatePos(); }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        triggerRef.current && !triggerRef.current.contains(target) &&
+        dropdownRef.current && !dropdownRef.current.contains(target)
+      ) setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    window.addEventListener("scroll", updatePos, true);
+    window.addEventListener("resize", updatePos);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("scroll", updatePos, true);
+      window.removeEventListener("resize", updatePos);
+    };
+  }, [open]);
+
+  const display = value.length > 0 ? value.join(", ") : "none";
+
+  return (
+    <div className="multiselect" ref={triggerRef}>
+      <div className="multiselect-trigger" onClick={() => setOpen(!open)}>
+        <span className="multiselect-text">{display}</span>
+        <span className="multiselect-arrow">{open ? "\u25B4" : "\u25BE"}</span>
+      </div>
+      {open && pos && createPortal(
+        <div
+          className="multiselect-dropdown"
+          ref={dropdownRef}
+          style={{ top: pos.top, left: pos.left, width: Math.max(pos.width, 180) }}
+        >
+          {options.map((opt) => (
+            <label key={opt.id} className="multiselect-option">
+              <input
+                type="checkbox"
+                checked={value.includes(opt.id)}
+                onChange={(e) => {
+                  const next = e.target.checked
+                    ? [...value, opt.id]
+                    : value.filter((v) => v !== opt.id);
+                  onChange(next);
+                }}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
 
 const ALL_CAPABILITIES: Capability[] = [
   "source_registration",
@@ -201,7 +276,7 @@ export function SecurityPage() {
 
       {showRoleForm && (
         <div className="form-card">
-          <div className="form-row">
+          <div className="form-row" style={{ alignSelf: "start" }}>
             <label>
               Role ID
               <input
@@ -229,24 +304,15 @@ export function SecurityPage() {
               </div>
             </label>
           </div>
-          <div className="form-row">
-            <label>
-              Domain Access
-              <div className="checkbox-grid">
-                {domains.map((d) => (
-                  <label key={d.id} className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={roleForm.domainAccess.includes(d.id)}
-                      onChange={() => toggleDomain(d.id)}
-                    />
-                    {d.id}
-                  </label>
-                ))}
-              </div>
-            </label>
-          </div>
-          <div className="form-row">
+          <label style={{ gridColumn: "1 / -1", display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.875rem", color: "var(--text-muted)" }}>
+            Domain Access
+            <MultiSelect
+              options={[{ id: "*", label: "All Domains" }, ...domains.map((d) => ({ id: d.id, label: d.id }))]}
+              value={roleForm.domainAccess}
+              onChange={(selected) => setRoleForm({ ...roleForm, domainAccess: selected })}
+            />
+          </label>
+          <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}>
             <button className="btn-primary" onClick={handleSaveRole} disabled={saving}>
               {saving ? "Saving..." : "Save"}
             </button>

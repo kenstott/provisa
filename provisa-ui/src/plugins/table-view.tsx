@@ -2,6 +2,7 @@
  * GraphiQL Response Table View
  *
  * Overlays the response panel with a sortable table.
+ * Supports multiple root fields with tabs.
  * Toggled via a button in the response toolbar area.
  */
 
@@ -22,37 +23,52 @@ function flattenObject(obj: Record<string, unknown>, prefix: string, out: Record
   }
 }
 
-function parseResponse(text: string): { columns: string[]; rows: Record<string, unknown>[] } {
+interface ParsedTable {
+  key: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+}
+
+function parseResponse(text: string): ParsedTable[] {
   try {
     const parsed = JSON.parse(text);
-    if (!parsed?.data) return { columns: [], rows: [] };
+    if (!parsed?.data) return [];
     const data = parsed.data as Record<string, unknown>;
-    const rootKey = Object.keys(data).find((k) => !k.startsWith("__"));
-    if (!rootKey) return { columns: [], rows: [] };
-    const rootVal = data[rootKey];
-    const items = Array.isArray(rootVal) ? rootVal : rootVal ? [rootVal] : [];
-    if (items.length === 0) return { columns: [], rows: [] };
+    const rootKeys = Object.keys(data).filter((k) => !k.startsWith("__"));
+    if (rootKeys.length === 0) return [];
 
-    const allRows: Record<string, unknown>[] = [];
-    const columnSet = new Set<string>();
-    for (const item of items) {
-      const flat: Record<string, unknown> = {};
-      flattenObject(item as Record<string, unknown>, "", flat);
-      for (const key of Object.keys(flat)) columnSet.add(key);
-      allRows.push(flat);
+    const tables: ParsedTable[] = [];
+    for (const rootKey of rootKeys) {
+      const rootVal = data[rootKey];
+      if (rootVal === null) continue; // redirected field
+      const items = Array.isArray(rootVal) ? rootVal : rootVal ? [rootVal] : [];
+      if (items.length === 0) {
+        tables.push({ key: rootKey, columns: [], rows: [] });
+        continue;
+      }
+
+      const allRows: Record<string, unknown>[] = [];
+      const columnSet = new Set<string>();
+      for (const item of items) {
+        const flat: Record<string, unknown> = {};
+        flattenObject(item as Record<string, unknown>, "", flat);
+        for (const key of Object.keys(flat)) columnSet.add(key);
+        allRows.push(flat);
+      }
+      const columns = Array.from(columnSet).filter(
+        (col) => !Array.from(columnSet).some((other) => other.startsWith(col + "."))
+      );
+      tables.push({ key: rootKey, columns, rows: allRows });
     }
-    // Remove parent keys that have child keys (e.g. "a.b" when "a.b.c" exists)
-    const columns = Array.from(columnSet).filter(
-      (col) => !Array.from(columnSet).some((other) => other.startsWith(col + "."))
-    );
-    return { columns, rows: allRows };
+    return tables;
   } catch {
-    return { columns: [], rows: [] };
+    return [];
   }
 }
 
 export function ResponseTableOverlay() {
   const [showTable, setShowTable] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [responseText, setResponseText] = useState("");
@@ -62,16 +78,13 @@ export function ResponseTableOverlay() {
   useEffect(() => {
     const editor = editorContext.responseEditor;
     if (!editor) return;
-    // Set initial value
     setResponseText(editor.getValue() ?? "");
-    // Listen for changes via CodeMirror's onDidChangeModelContent (Monaco) or onChange
     const cm = (editor as unknown as { editor?: { on?: (event: string, cb: () => void) => void; off?: (event: string, cb: () => void) => void } }).editor;
     const handler = () => setResponseText(editor.getValue() ?? "");
     if (cm?.on) {
       cm.on("change", handler);
       return () => cm.off?.("change", handler);
     }
-    // Fallback: poll for changes
     const interval = setInterval(() => {
       const val = editor.getValue() ?? "";
       setResponseText((prev) => (prev !== val ? val : prev));
@@ -79,12 +92,16 @@ export function ResponseTableOverlay() {
     return () => clearInterval(interval);
   }, [editorContext.responseEditor]);
 
-  // Reset sort when response changes
+  // Reset sort and tab when response changes
   useEffect(() => {
     setSortCol(null);
+    setActiveTab(0);
   }, [responseText]);
 
-  const { columns, rows } = useMemo(() => parseResponse(responseText), [responseText]);
+  const tables = useMemo(() => parseResponse(responseText), [responseText]);
+  const currentTable = tables[activeTab] ?? null;
+  const columns = currentTable?.columns ?? [];
+  const rows = currentTable?.rows ?? [];
 
   const sortedRows = useMemo(() => {
     if (!sortCol) return rows;
@@ -113,7 +130,7 @@ export function ResponseTableOverlay() {
     });
   }, []);
 
-  const hasData = columns.length > 0;
+  const hasData = tables.some((t) => t.columns.length > 0);
 
   const downloadFile = useCallback((content: string, filename: string, mime: string) => {
     const blob = new Blob([content], { type: mime });
@@ -131,27 +148,25 @@ export function ResponseTableOverlay() {
   }, [responseText, downloadFile]);
 
   const handleDownloadCSV = useCallback(() => {
-    if (!hasData) return;
+    if (!currentTable || currentTable.columns.length === 0) return;
     const escape = (v: unknown) => {
       const s = v != null ? String(v) : "";
       return s.includes(",") || s.includes('"') || s.includes("\n")
         ? `"${s.replace(/"/g, '""')}"`
         : s;
     };
-    const header = columns.map(escape).join(",");
-    const body = rows.map((row) => columns.map((col) => escape(row[col])).join(",")).join("\n");
-    downloadFile(`${header}\n${body}`, "response.csv", "text/csv");
-  }, [columns, rows, hasData, downloadFile]);
+    const header = currentTable.columns.map(escape).join(",");
+    const body = currentTable.rows.map((row) => currentTable.columns.map((col) => escape(row[col])).join(",")).join("\n");
+    const filename = tables.length > 1 ? `${currentTable.key}.csv` : "response.csv";
+    downloadFile(`${header}\n${body}`, filename, "text/csv");
+  }, [currentTable, tables, downloadFile]);
 
   const portalRef = useRef<HTMLElement | null>(null);
   const [portalReady, setPortalReady] = useState(false);
 
-  // Find the response section and inject our container at the top
   useEffect(() => {
     const responseSection = document.querySelector(".graphiql-response") as HTMLElement | null;
     if (!responseSection) return;
-
-    // Create a wrapper that sits at the top of the response section
     let wrapper = responseSection.querySelector(".response-table-wrapper") as HTMLElement | null;
     if (!wrapper) {
       wrapper = document.createElement("div");
@@ -162,14 +177,11 @@ export function ResponseTableOverlay() {
     setPortalReady(true);
   }, []);
 
-  // Toggle a class on the response section and constrain parent height
   useEffect(() => {
     const responseSection = document.querySelector(".graphiql-response") as HTMLElement | null;
     if (!responseSection) return;
     if (showTable && hasData) {
       responseSection.classList.add("response-table-active");
-      // Walk up the DOM and find the graphiql-session or editors container
-      // and ensure it doesn't overflow beyond the viewport
       let el: HTMLElement | null = responseSection.parentElement;
       while (el && !el.classList.contains("graphiql-container")) {
         el.style.overflow = "hidden";
@@ -233,8 +245,23 @@ export function ResponseTableOverlay() {
       </div>
       {showTable && hasData && (
         <div className="response-table-overlay">
+          {tables.length > 1 && (
+            <div className="response-table-tabs">
+              {tables.map((t, i) => (
+                <button
+                  key={t.key}
+                  className={`response-table-tab${i === activeTab ? " active" : ""}`}
+                  onClick={() => { setActiveTab(i); setSortCol(null); }}
+                >
+                  {t.key}
+                  <span className="response-table-tab-count">{t.rows.length}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="response-table-info">
             {rows.length} row{rows.length !== 1 ? "s" : ""}
+            {tables.length === 1 && currentTable ? ` in ${currentTable.key}` : ""}
           </div>
           <div className="response-table-scroll">
             <table className="response-table">

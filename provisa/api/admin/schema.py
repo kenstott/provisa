@@ -18,6 +18,7 @@ import strawberry
 
 from provisa.api.admin.types import (
     AvailableColumnType,
+    AvailableTableType,
     ColumnInput,
     DomainInput,
     DomainType,
@@ -84,13 +85,22 @@ def _rls_from_row(row) -> RLSRuleType:
 
 async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
     col_rows = await conn.fetch(
-        "SELECT id, column_name, visible_to, alias, description "
+        "SELECT id, column_name, visible_to, writable_by, unmasked_to, "
+        "mask_type, mask_pattern, mask_replace, mask_value, mask_precision, "
+        "alias, description "
         "FROM table_columns WHERE table_id = $1 ORDER BY id", row["id"],
     )
     columns = [
         TableColumnType(
             id=r["id"], column_name=r["column_name"],
             visible_to=list(r["visible_to"]),
+            writable_by=list(r.get("writable_by") or []),
+            unmasked_to=list(r.get("unmasked_to") or []),
+            mask_type=r.get("mask_type"),
+            mask_pattern=r.get("mask_pattern"),
+            mask_replace=r.get("mask_replace"),
+            mask_value=r.get("mask_value"),
+            mask_precision=r.get("mask_precision"),
             alias=r.get("alias"), description=r.get("description"),
         )
         for r in col_rows
@@ -212,9 +222,10 @@ class Query:
             return []
 
     @strawberry.field
-    async def available_tables(self, source_id: str, schema_name: str = "public") -> list[str]:
+    async def available_tables(self, source_id: str, schema_name: str = "public") -> list[AvailableTableType]:
         """List tables available in a source's Trino catalog (for registration UI).
 
+        Returns table names with comments from the physical database.
         Filters out Provisa admin/platform tables.
         """
         from provisa.api.app import state
@@ -231,13 +242,14 @@ class Query:
         try:
             cursor = state.trino_conn.cursor()
             cursor.execute(
-                f"SELECT table_name FROM \"{catalog}\".information_schema.tables "
+                f"SELECT table_name, comment FROM \"{catalog}\".information_schema.tables "
                 f"WHERE table_schema = '{schema_name}' "
                 f"AND table_type = 'BASE TABLE' "
                 f"ORDER BY table_name"
             )
             return [
-                row[0] for row in cursor.fetchall()
+                AvailableTableType(name=row[0], comment=row[1])
+                for row in cursor.fetchall()
                 if row[0] not in _ADMIN_TABLES
             ]
         except Exception:
@@ -360,6 +372,13 @@ class Mutation:
             ColumnModel(
                 name=c.name,
                 visible_to=c.visible_to,
+                writable_by=c.writable_by,
+                unmasked_to=c.unmasked_to,
+                mask_type=c.mask_type,
+                mask_pattern=c.mask_pattern,
+                mask_replace=c.mask_replace,
+                mask_value=c.mask_value,
+                mask_precision=c.mask_precision,
                 alias=c.alias,
                 description=c.description,
             )
@@ -404,6 +423,13 @@ class Mutation:
             ColumnModel(
                 name=c.name,
                 visible_to=c.visible_to,
+                writable_by=c.writable_by,
+                unmasked_to=c.unmasked_to,
+                mask_type=c.mask_type,
+                mask_pattern=c.mask_pattern,
+                mask_replace=c.mask_replace,
+                mask_value=c.mask_value,
+                mask_precision=c.mask_precision,
                 alias=c.alias,
                 description=c.description,
             )

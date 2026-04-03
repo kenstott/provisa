@@ -544,6 +544,24 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
     return JSONResponse(content=response, headers=headers)
 
 
+def _check_writable_by(table_meta, columns: list[str], role_id: str):
+    """Raise 403 if any column restricts write access and the role is not allowed."""
+    table_cols = {c["column_name"]: c for c in table_meta.columns} if hasattr(table_meta, "columns") else {}
+    if not table_cols:
+        # Fall back to dict-style access (from state.tables)
+        table_cols = {c.get("column_name", c.get("name", "")): c for c in getattr(table_meta, "columns", [])}
+    for col_name in columns:
+        col_meta = table_cols.get(col_name)
+        if not col_meta:
+            continue
+        writable_by = col_meta.get("writable_by", []) if isinstance(col_meta, dict) else getattr(col_meta, "writable_by", [])
+        if role_id not in writable_by:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Role {role_id!r} does not have write access to column {col_name!r}",
+            )
+
+
 async def _handle_mutation(document, ctx, rls, state, variables, role_id):
     """Handle a GraphQL mutation operation."""
     try:
@@ -558,7 +576,6 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id):
 
     results = []
     for mutation in mutations:
-        # Inject RLS into UPDATE/DELETE
         # Look up by DB table name (ctx keys are GraphQL field names which may have domain prefix)
         table_meta = ctx.tables.get(mutation.table_name)
         if table_meta is None:
@@ -566,6 +583,12 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id):
                 if meta.table_name == mutation.table_name:
                     table_meta = meta
                     break
+
+        # Enforce writable_by column permissions
+        if table_meta and mutation.mutation_type in ("insert", "update"):
+            _check_writable_by(table_meta, mutation.returning_columns, role_id)
+
+        # Inject RLS into UPDATE/DELETE
         if table_meta and rls.has_rules():
             mutation = inject_rls_into_mutation(
                 mutation, table_meta.table_id, rls.rules,

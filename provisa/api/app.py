@@ -226,6 +226,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
                     {
                         "name": col.get("name", col) if isinstance(col, dict) else col,
                         "visible_to": col.get("visible_to", ["admin", "analyst"]) if isinstance(col, dict) else ["admin", "analyst"],
+                        "writable_by": col.get("writable_by", []) if isinstance(col, dict) else [],
                         "description": col.get("description", "") if isinstance(col, dict) else "",
                     }
                     for col in topic_columns
@@ -440,23 +441,24 @@ async def _load_and_build(config_path: str | None = None) -> None:
             )
         ]
 
-        # Load masking rules
+        # Load masking rules from table_columns (inline masking)
         from provisa.security.masking import MaskingRule, MaskType, validate_masking_rule
         masking_rows = await conn.fetch(
-            "SELECT table_id, column_name, role_id, mask_type, pattern, "
-            "replace, value, precision FROM column_masking_rules"
+            "SELECT table_id, column_name, unmasked_to, mask_type, mask_pattern, "
+            "mask_replace, mask_value, mask_precision FROM table_columns "
+            "WHERE mask_type IS NOT NULL"
         )
         for mrow in masking_rows:
             mask_rule = MaskingRule(
                 mask_type=MaskType(mrow["mask_type"]),
-                pattern=mrow["pattern"],
-                replace=mrow["replace"],
-                value=_parse_mask_value(mrow["value"]),
-                precision=mrow["precision"],
+                pattern=mrow["mask_pattern"],
+                replace=mrow["mask_replace"],
+                value=_parse_mask_value(mrow["mask_value"]),
+                precision=mrow["mask_precision"],
             )
-            # Look up column data type for validation and expression generation
             table_id = mrow["table_id"]
             col_name = mrow["column_name"]
+            unmasked_to = list(mrow.get("unmasked_to") or [])
             col_metas = col_types_converted.get(table_id, [])
             data_type = "varchar"
             is_nullable = True
@@ -466,10 +468,14 @@ async def _load_and_build(config_path: str | None = None) -> None:
                     is_nullable = cm.is_nullable
                     break
             validate_masking_rule(mask_rule, col_name, data_type, is_nullable)
-            key = (table_id, mrow["role_id"])
-            if key not in state.masking_rules:
-                state.masking_rules[key] = {}
-            state.masking_rules[key][col_name] = (mask_rule, data_type)
+            # Build per-role masking entries for all roles NOT in unmasked_to
+            for role in roles:
+                if role["id"] in unmasked_to:
+                    continue
+                key = (table_id, role["id"])
+                if key not in state.masking_rules:
+                    state.masking_rules[key] = {}
+                state.masking_rules[key][col_name] = (mask_rule, data_type)
 
         for role in roles:
             state.roles[role["id"]] = role
@@ -513,7 +519,8 @@ async def _fetch_tables(conn: asyncpg.Connection) -> list[dict]:
     for row in rows:
         table = dict(row)
         col_rows = await conn.fetch(
-            "SELECT column_name, visible_to, alias, description, path "
+            "SELECT column_name, visible_to, writable_by, unmasked_to, "
+            "mask_type, alias, description, path "
             "FROM table_columns WHERE table_id = $1 ORDER BY id",
             row["id"],
         )
@@ -521,6 +528,9 @@ async def _fetch_tables(conn: asyncpg.Connection) -> list[dict]:
             {
                 "column_name": r["column_name"],
                 "visible_to": list(r["visible_to"]),
+                "writable_by": list(r.get("writable_by") or []),
+                "unmasked_to": list(r.get("unmasked_to") or []),
+                "mask_type": r.get("mask_type"),
                 "alias": r["alias"],
                 "description": r["description"],
                 "path": r["path"],

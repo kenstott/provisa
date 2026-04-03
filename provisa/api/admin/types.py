@@ -50,8 +50,21 @@ class TableColumnType:
     id: int
     column_name: str
     visible_to: list[str]
+    writable_by: list[str]
+    unmasked_to: list[str]
+    mask_type: str | None
+    mask_pattern: str | None
+    mask_replace: str | None
+    mask_value: str | None
+    mask_precision: str | None
     alias: str | None
     description: str | None
+
+
+@strawberry.type
+class AvailableTableType:
+    name: str
+    comment: str | None
 
 
 @strawberry.type
@@ -114,6 +127,13 @@ class DomainInput:
 class ColumnInput:
     name: str
     visible_to: list[str]
+    writable_by: list[str] = strawberry.field(default_factory=list)
+    unmasked_to: list[str] = strawberry.field(default_factory=list)
+    mask_type: str | None = None
+    mask_pattern: str | None = None
+    mask_replace: str | None = None
+    mask_value: str | None = None
+    mask_precision: str | None = None
     alias: str | None = None
     description: str | None = None
 

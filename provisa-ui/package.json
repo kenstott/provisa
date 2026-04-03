@@ -7,7 +7,13 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:unit": "vitest run --coverage",
+    "test:e2e": "npx playwright test",
+    "coverage:clean": "rm -rf .nyc_output .nyc_output_flat coverage",
+    "coverage:merge": "mkdir -p .nyc_output_flat && cp .nyc_output/vitest/coverage-final.json .nyc_output_flat/vitest.json && cp .nyc_output/playwright/*.json .nyc_output_flat/ && nyc merge .nyc_output_flat coverage/merged.json",
+    "coverage:report": "mkdir -p coverage/.nyc_output && cp coverage/merged.json coverage/.nyc_output/coverage-final.json && nyc report --temp-dir coverage/.nyc_output --reporter text --reporter html --report-dir coverage/html",
+    "coverage": "npm run coverage:clean && npm run test:unit && npm run test:e2e && npm run coverage:merge && npm run coverage:report"
   },
   "dependencies": {
     "@apollo/client": "^4.1.6",
@@ -31,16 +37,25 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@playwright/test": "^1.59.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^24.12.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^4.1.2",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "jsdom": "^29.0.1",
+    "nyc": "^18.0.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.57.0",
-    "vite": "^8.0.1"
+    "vite": "^8.0.1",
+    "vite-plugin-istanbul": "^8.0.0",
+    "vitest": "^4.1.2"
   }
 }

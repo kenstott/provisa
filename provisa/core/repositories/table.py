@@ -40,38 +40,28 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
 
     # Replace columns: delete existing, insert new
     await conn.execute("DELETE FROM table_columns WHERE table_id = $1", table_id)
-    await conn.execute("DELETE FROM column_masking_rules WHERE table_id = $1", table_id)
     for col in table.columns:
         await conn.execute(
             """
-            INSERT INTO table_columns (table_id, column_name, visible_to, alias, description, path)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO table_columns (table_id, column_name, visible_to, writable_by, unmasked_to,
+                mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
+                alias, description, path)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             """,
             table_id,
             col.name,
             col.visible_to,
+            getattr(col, "writable_by", []),
+            getattr(col, "unmasked_to", []),
+            getattr(col, "mask_type", None),
+            getattr(col, "mask_pattern", None),
+            getattr(col, "mask_replace", None),
+            getattr(col, "mask_value", None),
+            getattr(col, "mask_precision", None),
             getattr(col, "alias", None),
             getattr(col, "description", None),
             getattr(col, "path", None),
         )
-        # Persist masking rules per (column, role)
-        if col.masking:
-            for role_id, rule in col.masking.items():
-                await conn.execute(
-                    """
-                    INSERT INTO column_masking_rules
-                        (table_id, column_name, role_id, mask_type, pattern, replace, value, precision)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    """,
-                    table_id,
-                    col.name,
-                    role_id,
-                    rule.type,
-                    rule.pattern,
-                    rule.replace,
-                    str(rule.value) if rule.value is not None else None,
-                    rule.precision,
-                )
     return table_id
 
 
@@ -81,7 +71,7 @@ async def get(conn: asyncpg.Connection, table_id: int) -> dict | None:
         return None
     result = dict(row)
     cols = await conn.fetch(
-        "SELECT column_name, visible_to FROM table_columns WHERE table_id = $1 ORDER BY id",
+        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision FROM table_columns WHERE table_id = $1 ORDER BY id",
         table_id,
     )
     result["columns"] = [dict(c) for c in cols]
@@ -104,7 +94,7 @@ async def get_by_name(
         return None
     result = dict(row)
     cols = await conn.fetch(
-        "SELECT column_name, visible_to FROM table_columns WHERE table_id = $1 ORDER BY id",
+        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision FROM table_columns WHERE table_id = $1 ORDER BY id",
         result["id"],
     )
     result["columns"] = [dict(c) for c in cols]
@@ -136,7 +126,7 @@ async def list_all(conn: asyncpg.Connection) -> list[dict]:
     for row in rows:
         r = dict(row)
         cols = await conn.fetch(
-            "SELECT column_name, visible_to FROM table_columns WHERE table_id = $1 ORDER BY id",
+            "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision FROM table_columns WHERE table_id = $1 ORDER BY id",
             r["id"],
         )
         r["columns"] = [dict(c) for c in cols]

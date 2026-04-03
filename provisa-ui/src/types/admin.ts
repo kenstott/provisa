@@ -19,6 +19,13 @@ export interface TableColumn {
   id: number;
   columnName: string;
   visibleTo: string[];
+  writableBy: string[];
+  unmaskedTo: string[];
+  maskType: string | null;
+  maskPattern: string | null;
+  maskReplace: string | null;
+  maskValue: string | null;
+  maskPrecision: string | null;
   alias: string | null;
   description: string | null;
 }

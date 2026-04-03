@@ -48,7 +48,7 @@ export async function fetchDomains(): Promise<Domain[]> {
 
 export async function fetchTables(): Promise<RegisteredTable[]> {
   const data = await gql<{ tables: RegisteredTable[] }>(
-    `{ tables { id sourceId domainId schemaName tableName governance alias description columns { id columnName visibleTo alias description } } }`
+    `{ tables { id sourceId domainId schemaName tableName governance alias description columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description } } }`
   );
   return data.tables;
 }
@@ -156,7 +156,7 @@ export async function registerTable(input: {
   governance: string;
   alias?: string;
   description?: string;
-  columns: { name: string; visibleTo: string[]; alias?: string; description?: string }[];
+  columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string }[];
 }): Promise<MutationResult> {
   const data = await gql<{ registerTable: MutationResult }>(
     `mutation($input: TableInput!) { registerTable(input: $input) { success message } }`,
@@ -173,7 +173,7 @@ export async function updateTable(input: {
   governance: string;
   alias?: string;
   description?: string;
-  columns: { name: string; visibleTo: string[]; alias?: string; description?: string }[];
+  columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string }[];
 }): Promise<MutationResult> {
   const data = await gql<{ updateTable: MutationResult }>(
     `mutation($input: TableInput!) { updateTable(input: $input) { success message } }`,
@@ -198,9 +198,16 @@ export async function fetchAvailableSchemas(sourceId: string): Promise<string[]>
   return data.availableSchemas;
 }
 
-export async function fetchAvailableTables(sourceId: string, schemaName: string = "public"): Promise<string[]> {
-  const data = await gql<{ availableTables: string[] }>(
-    `query($sourceId: String!, $schemaName: String!) { availableTables(sourceId: $sourceId, schemaName: $schemaName) }`,
+export interface TableMetadata {
+  name: string;
+  comment: string | null;
+}
+
+export async function fetchAvailableTables(sourceId: string, schemaName: string = "public"): Promise<TableMetadata[]> {
+  const data = await gql<{ availableTables: TableMetadata[] }>(
+    `query($sourceId: String!, $schemaName: String!) {
+      availableTables(sourceId: $sourceId, schemaName: $schemaName) { name comment }
+    }`,
     { sourceId, schemaName }
   );
   return data.availableTables;

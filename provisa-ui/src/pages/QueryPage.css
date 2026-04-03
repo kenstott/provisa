@@ -397,6 +397,53 @@ body.graphiql-dark .graphiql-dialog {
   font-size: 12px;
 }
 
+.response-table-tabs {
+  display: flex;
+  gap: 0;
+  flex-shrink: 0;
+  border-bottom: 1px solid hsl(224, 15%, 22%);
+  background: hsl(224, 20%, 14%);
+  overflow-x: auto;
+}
+
+.response-table-tab {
+  padding: 5px 14px;
+  font-size: 11px;
+  font-weight: 500;
+  color: hsl(224, 10%, 55%);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.response-table-tab:hover {
+  color: hsl(224, 10%, 80%);
+  background: hsl(224, 20%, 16%);
+}
+
+.response-table-tab.active {
+  color: hsl(239, 84%, 67%);
+  border-bottom-color: hsl(239, 84%, 67%);
+}
+
+.response-table-tab-count {
+  font-size: 10px;
+  color: hsl(224, 10%, 45%);
+  background: hsl(224, 15%, 20%);
+  padding: 1px 5px;
+  border-radius: 8px;
+}
+
+.response-table-tab.active .response-table-tab-count {
+  color: hsl(239, 84%, 67%);
+  background: hsl(239, 84%, 20%);
+}
+
 .response-table-info {
   padding: 4px 10px;
   color: hsl(224, 10%, 50%);
@@ -450,7 +497,7 @@ body.graphiql-dark .graphiql-dialog {
   display: none;
 }
 
-/* Give the query name input extra room — the ch-based inline width is too tight */
+/* Domain Explorer: give the query name input extra room */
 .graphiql-explorer-root .graphiql-operation-title-bar input {
   width: auto !important;
   min-width: 8ch;
@@ -459,4 +506,12 @@ body.graphiql-dark .graphiql-dialog {
 /* Prevent the explorer title from being clipped */
 .graphiql-explorer-root > div:first-child {
   overflow: visible !important;
+}
+
+/* Domain folder styling */
+.graphiql-explorer-domain > summary::-webkit-details-marker {
+  display: none;
+}
+.graphiql-explorer-domain[open] > summary .graphiql-explorer-domain-arrow {
+  transform: rotate(90deg);
 }

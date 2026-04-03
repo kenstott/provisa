@@ -43,16 +43,30 @@ CREATE TABLE IF NOT EXISTS table_columns (
     alias       TEXT,
     description TEXT,
     path        TEXT,
+    writable_by  TEXT[] NOT NULL DEFAULT '{}',
+    unmasked_to  TEXT[] NOT NULL DEFAULT '{}',
+    mask_type    TEXT CHECK (mask_type IN ('regex', 'constant', 'truncate')),
+    mask_pattern TEXT,
+    mask_replace TEXT,
+    mask_value   TEXT,
+    mask_precision TEXT,
     UNIQUE (table_id, column_name)
 );
 
--- Migration: add alias/description columns if missing
+-- Migration: add alias/description/writable_by columns if missing
 DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS alias TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS description TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS alias TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS description TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS path TEXT;
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS writable_by TEXT[] NOT NULL DEFAULT '{}';
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS unmasked_to TEXT[] NOT NULL DEFAULT '{}';
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_type TEXT;
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_pattern TEXT;
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_replace TEXT;
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_value TEXT;
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_precision TEXT;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -119,19 +133,7 @@ CREATE TABLE IF NOT EXISTS mv_refresh_log (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Column-Level Masking (Phase Q)
-CREATE TABLE IF NOT EXISTS column_masking_rules (
-    id          SERIAL PRIMARY KEY,
-    table_id    INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
-    column_name TEXT NOT NULL,
-    role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-    mask_type   TEXT NOT NULL CHECK (mask_type IN ('regex', 'constant', 'truncate')),
-    pattern     TEXT,           -- regex pattern
-    replace     TEXT,           -- regex replacement
-    value       TEXT,           -- constant value (as string; NULL stored as SQL NULL)
-    precision   TEXT,           -- truncate precision (year, month, day, etc.)
-    UNIQUE (table_id, column_name, role_id)
-);
+-- Column-Level Masking (Phase Q) — masking rules are inline on table_columns.
 
 -- Persisted Query Registry (Phase H)
 CREATE TABLE IF NOT EXISTS persisted_queries (
