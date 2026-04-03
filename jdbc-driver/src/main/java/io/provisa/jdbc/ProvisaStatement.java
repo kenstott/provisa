@@ -15,7 +15,8 @@ import java.util.regex.*;
  * Executes approved queries via redirect to Arrow IPC, streaming results
  * batch-by-batch without loading the full result into memory.
  *
- * SQL format: SELECT * FROM <stable_id> [WHERE col = 'val' [AND ...]]
+ * SQL format: SELECT * FROM <stableId>__<rootField> [WHERE col = 'val' [AND ...]]
+ * Legacy format (single root): SELECT * FROM <stableId> [WHERE col = 'val']
  */
 public class ProvisaStatement extends AbstractStatement {
 
@@ -43,12 +44,25 @@ public class ProvisaStatement extends AbstractStatement {
         Matcher m = SQL_PATTERN.matcher(sql.trim());
         if (!m.matches()) {
             throw new SQLException(
-                "Unsupported SQL syntax. Use: SELECT * FROM <query_stable_id> [WHERE col = 'val']"
+                "Unsupported SQL syntax. Use: SELECT * FROM <stableId__rootField> [WHERE col = 'val']"
             );
         }
 
-        String stableId = m.group(2);
+        String viewName = m.group(2);
         String whereClause = m.group(3);
+
+        // Parse stableId and rootField from viewName
+        String stableId;
+        String targetRootField;
+        int sep = viewName.indexOf("__");
+        if (sep > 0) {
+            stableId = viewName.substring(0, sep);
+            targetRootField = viewName.substring(sep + 2);
+        } else {
+            // Legacy: single-root query without __rootField suffix
+            stableId = viewName;
+            targetRootField = null;
+        }
 
         Map<String, Object> variables = new HashMap<>();
         if (whereClause != null) {
@@ -75,10 +89,9 @@ public class ProvisaStatement extends AbstractStatement {
 
         // Try Arrow IPC redirect first, fall back to JSON
         try {
-            currentResultSet = executeWithArrowRedirect(match, variables);
+            currentResultSet = executeWithArrowRedirect(match, variables, targetRootField);
         } catch (Exception e) {
-            // Fall back to JSON inline
-            currentResultSet = executeWithJson(match, variables);
+            currentResultSet = executeWithJson(match, variables, targetRootField);
         }
 
         return currentResultSet;
@@ -88,9 +101,9 @@ public class ProvisaStatement extends AbstractStatement {
      * Execute via Arrow IPC redirect — streaming, unbounded.
      */
     private ResultSet executeWithArrowRedirect(
-        ProvisaConnection.ApprovedQuery query, Map<String, Object> variables
+        ProvisaConnection.ApprovedQuery query, Map<String, Object> variables,
+        String targetRootField
     ) throws Exception {
-        // Request redirect to Arrow IPC
         JsonObject body = new JsonObject();
         body.addProperty("query", query.queryText);
         if (variables != null && !variables.isEmpty()) {
@@ -118,31 +131,42 @@ public class ProvisaStatement extends AbstractStatement {
         String response = new String(http.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         JsonObject result = JsonParser.parseString(response).getAsJsonObject();
 
-        // Check for redirect URL
-        if (!result.has("redirect")) {
-            throw new Exception("No redirect — fall back to JSON");
+        // Check for single-field redirect
+        if (result.has("redirect")) {
+            String redirectUrl = result.getAsJsonObject("redirect")
+                .get("redirect_url").getAsString();
+            return streamArrow(redirectUrl);
         }
 
-        String redirectUrl = result.getAsJsonObject("redirect")
-            .get("redirect_url").getAsString();
+        // Check for multi-field redirects
+        if (result.has("redirects") && targetRootField != null) {
+            JsonObject redirects = result.getAsJsonObject("redirects");
+            if (redirects.has(targetRootField)) {
+                String redirectUrl = redirects.getAsJsonObject(targetRootField)
+                    .get("redirect_url").getAsString();
+                return streamArrow(redirectUrl);
+            }
+        }
 
-        // Open HTTP stream to the Arrow IPC file
+        throw new Exception("No redirect — fall back to JSON");
+    }
+
+    private ResultSet streamArrow(String redirectUrl) throws Exception {
         HttpURLConnection arrowConn = (HttpURLConnection) new URL(redirectUrl).openConnection();
         arrowConn.setRequestMethod("GET");
-
         if (arrowConn.getResponseCode() != 200) {
             throw new SQLException("Failed to fetch Arrow data: " + arrowConn.getResponseCode());
         }
-
-        InputStream arrowStream = arrowConn.getInputStream();
-        return new ArrowStreamResultSet(arrowStream);
+        return new ArrowStreamResultSet(arrowConn.getInputStream());
     }
 
     /**
      * Fallback: execute via JSON inline (loads full result into memory).
+     * Extracts the specific root field for multi-root queries.
      */
     private ResultSet executeWithJson(
-        ProvisaConnection.ApprovedQuery query, Map<String, Object> variables
+        ProvisaConnection.ApprovedQuery query, Map<String, Object> variables,
+        String targetRootField
     ) throws SQLException {
         JsonObject result = conn.executeApprovedQuery(query.stableId, variables);
         JsonObject data = result.getAsJsonObject("data");
@@ -150,9 +174,26 @@ public class ProvisaStatement extends AbstractStatement {
             throw new SQLException("No data in response");
         }
 
-        String rootField = data.keySet().iterator().next();
-        JsonElement rootData = data.get(rootField);
+        // Determine which root field to extract
+        String rootField;
+        if (targetRootField != null) {
+            rootField = targetRootField;
+        } else {
+            // Legacy: first non-__ field
+            rootField = null;
+            for (String key : data.keySet()) {
+                if (!key.startsWith("__")) {
+                    rootField = key;
+                    break;
+                }
+            }
+        }
 
+        if (rootField == null || !data.has(rootField)) {
+            return new ProvisaResultSet(new ArrayList<>(), new ArrayList<>());
+        }
+
+        JsonElement rootData = data.get(rootField);
         if (rootData == null || rootData.isJsonNull() || !rootData.isJsonArray()) {
             return new ProvisaResultSet(new ArrayList<>(), new ArrayList<>());
         }

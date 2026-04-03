@@ -53,7 +53,7 @@ public abstract class AbstractConnection implements Connection {
     @Override public Array createArrayOf(String typeName, Object[] elements) throws SQLException { throw new SQLFeatureNotSupportedException(); }
     @Override public Struct createStruct(String typeName, Object[] attributes) throws SQLException { throw new SQLFeatureNotSupportedException(); }
     @Override public void setSchema(String schema) {}
-    @Override public String getSchema() { return "approved"; }
+    @Override public String getSchema() { return null; } // overridden in ProvisaConnection
     @Override public void abort(Executor executor) {}
     @Override public void setNetworkTimeout(Executor executor, int milliseconds) {}
     @Override public int getNetworkTimeout() { return 0; }

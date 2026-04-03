@@ -11,20 +11,25 @@ import java.util.*;
 /**
  * Provisa JDBC Connection.
  *
- * Authenticates against Provisa, discovers approved queries as tables,
+ * Authenticates against Provisa, discovers approved queries or registered tables,
  * and executes them via the HTTP API.
+ *
+ * Modes:
+ *   approved — exposes approved queries as virtual views (default)
+ *   catalog  — exposes registered tables for schema discovery (no query execution)
  */
 public class ProvisaConnection extends AbstractConnection {
 
-    final String baseUrl;
-    final String role;
+    String baseUrl;
+    String role;
+    String mode; // "approved" or "catalog"
     String authToken;
     private boolean closed = false;
 
-    ProvisaConnection(String baseUrl, String user, String password) throws SQLException {
+    ProvisaConnection(String baseUrl, String user, String password, String mode) throws SQLException {
         this.baseUrl = baseUrl;
+        this.mode = mode != null ? mode : "approved";
 
-        // Authenticate to get role and token
         String resolvedRole = user;
         String resolvedToken = null;
         try {
@@ -57,6 +62,8 @@ public class ProvisaConnection extends AbstractConnection {
         return JsonParser.parseString(response).getAsJsonObject();
     }
 
+    // ── Approved queries (mode=approved) ──
+
     /**
      * Fetch approved queries visible to this role.
      */
@@ -87,10 +94,34 @@ public class ProvisaConnection extends AbstractConnection {
     }
 
     /**
+     * Resolve root field names for a query via /data/compile.
+     * Returns list of root field names (includes domain prefix).
+     */
+    List<String> resolveRootFields(String queryText) throws SQLException {
+        try {
+            JsonObject compiled = compileQuery(queryText);
+            List<String> fields = new ArrayList<>();
+
+            // Multi-root returns {"queries": [...]}
+            if (compiled.has("queries")) {
+                JsonArray queries = compiled.getAsJsonArray("queries");
+                for (JsonElement el : queries) {
+                    fields.add(el.getAsJsonObject().get("root_field").getAsString());
+                }
+            } else if (compiled.has("root_field")) {
+                // Single root
+                fields.add(compiled.get("root_field").getAsString());
+            }
+            return fields;
+        } catch (Exception e) {
+            throw new SQLException("Failed to resolve root fields: " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * Execute an approved query by stable ID, returning JSON results.
      */
     JsonObject executeApprovedQuery(String stableId, Map<String, Object> variables) throws SQLException {
-        // Look up the query text by stable ID
         List<ApprovedQuery> queries = fetchApprovedQueries();
         ApprovedQuery match = null;
         for (ApprovedQuery q : queries) {
@@ -115,8 +146,80 @@ public class ProvisaConnection extends AbstractConnection {
         }
     }
 
+    // ── Registered tables (mode=catalog) ──
+
     /**
-     * Compile a query to see its output columns (for metadata).
+     * Fetch registered tables with columns, aliases, and descriptions.
+     */
+    List<RegisteredTable> fetchRegisteredTables() throws SQLException {
+        try {
+            String gql = "{ tables { id sourceId domainId schemaName tableName governance " +
+                    "alias description columns { id columnName visibleTo writableBy " +
+                    "unmaskedTo maskType alias description } } }";
+            JsonObject result = executeGraphQL(baseUrl + "/admin/graphql", gql);
+            JsonArray tablesArr = result.getAsJsonObject("data").getAsJsonArray("tables");
+
+            List<RegisteredTable> tables = new ArrayList<>();
+            for (JsonElement el : tablesArr) {
+                JsonObject t = el.getAsJsonObject();
+                List<RegisteredColumn> cols = new ArrayList<>();
+                for (JsonElement colEl : t.getAsJsonArray("columns")) {
+                    JsonObject c = colEl.getAsJsonObject();
+                    cols.add(new RegisteredColumn(
+                        c.get("columnName").getAsString(),
+                        c.has("alias") && !c.get("alias").isJsonNull() ? c.get("alias").getAsString() : null,
+                        c.has("description") && !c.get("description").isJsonNull() ? c.get("description").getAsString() : null
+                    ));
+                }
+                tables.add(new RegisteredTable(
+                    t.get("id").getAsInt(),
+                    t.get("domainId").getAsString(),
+                    t.get("tableName").getAsString(),
+                    t.has("alias") && !t.get("alias").isJsonNull() ? t.get("alias").getAsString() : null,
+                    t.has("description") && !t.get("description").isJsonNull() ? t.get("description").getAsString() : null,
+                    cols
+                ));
+            }
+            return tables;
+        } catch (Exception e) {
+            throw new SQLException("Failed to fetch registered tables: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Fetch semantic relationships for PK/FK metadata.
+     */
+    List<Relationship> fetchRelationships() throws SQLException {
+        try {
+            String gql = "{ relationships { id sourceTableId targetTableId " +
+                    "sourceTableName targetTableName sourceColumn targetColumn cardinality } }";
+            JsonObject result = executeGraphQL(baseUrl + "/admin/graphql", gql);
+            JsonArray relsArr = result.getAsJsonObject("data").getAsJsonArray("relationships");
+
+            List<Relationship> rels = new ArrayList<>();
+            for (JsonElement el : relsArr) {
+                JsonObject r = el.getAsJsonObject();
+                rels.add(new Relationship(
+                    r.get("id").getAsString(),
+                    r.get("sourceTableId").getAsInt(),
+                    r.get("targetTableId").getAsInt(),
+                    r.get("sourceTableName").getAsString(),
+                    r.get("targetTableName").getAsString(),
+                    r.get("sourceColumn").getAsString(),
+                    r.get("targetColumn").getAsString(),
+                    r.get("cardinality").getAsString()
+                ));
+            }
+            return rels;
+        } catch (Exception e) {
+            throw new SQLException("Failed to fetch relationships: " + e.getMessage(), e);
+        }
+    }
+
+    // ── Compile ──
+
+    /**
+     * Compile a query to see its output columns and root fields.
      */
     JsonObject compileQuery(String queryText) throws SQLException {
         try {
@@ -139,6 +242,8 @@ public class ProvisaConnection extends AbstractConnection {
             throw new SQLException("Compile failed: " + e.getMessage(), e);
         }
     }
+
+    // ── HTTP helpers ──
 
     private JsonObject executeGraphQL(String endpoint, String query) throws Exception {
         JsonObject body = new JsonObject();
@@ -166,9 +271,14 @@ public class ProvisaConnection extends AbstractConnection {
         return JsonParser.parseString(response).getAsJsonObject();
     }
 
+    // ── Connection methods ──
+
     @Override
     public Statement createStatement() throws SQLException {
         checkClosed();
+        if ("catalog".equals(mode)) {
+            throw new SQLException("mode=catalog is metadata-only; query execution is not supported");
+        }
         return new ProvisaStatement(this);
     }
 
@@ -180,10 +290,13 @@ public class ProvisaConnection extends AbstractConnection {
 
     @Override public void close() { closed = true; }
     @Override public boolean isClosed() { return closed; }
+    @Override public String getSchema() { return mode; }
 
     void checkClosed() throws SQLException {
         if (closed) throw new SQLException("Connection is closed");
     }
+
+    // ── Data classes ──
 
     static class ApprovedQuery {
         final String stableId;
@@ -194,6 +307,67 @@ public class ProvisaConnection extends AbstractConnection {
             this.stableId = stableId;
             this.queryText = queryText;
             this.compiledSql = compiledSql;
+        }
+    }
+
+    static class RegisteredTable {
+        final int id;
+        final String domainId;
+        final String tableName;
+        final String alias;
+        final String description;
+        final List<RegisteredColumn> columns;
+
+        RegisteredTable(int id, String domainId, String tableName, String alias,
+                       String description, List<RegisteredColumn> columns) {
+            this.id = id;
+            this.domainId = domainId;
+            this.tableName = tableName;
+            this.alias = alias;
+            this.description = description;
+            this.columns = columns;
+        }
+
+        /** Display name: alias if set, otherwise raw table name. */
+        String displayName() { return alias != null ? alias : tableName; }
+    }
+
+    static class RegisteredColumn {
+        final String columnName;
+        final String alias;
+        final String description;
+
+        RegisteredColumn(String columnName, String alias, String description) {
+            this.columnName = columnName;
+            this.alias = alias;
+            this.description = description;
+        }
+
+        /** Display name: alias if set, otherwise raw column name. */
+        String displayName() { return alias != null ? alias : columnName; }
+    }
+
+    static class Relationship {
+        final String id;
+        final int sourceTableId;
+        final int targetTableId;
+        final String sourceTableName;
+        final String targetTableName;
+        final String sourceColumn;
+        final String targetColumn;
+        final String cardinality;
+
+        Relationship(String id, int sourceTableId, int targetTableId,
+                    String sourceTableName, String targetTableName,
+                    String sourceColumn, String targetColumn, String cardinality) {
+            this.id = id;
+            this.sourceTableId = sourceTableId;
+            this.targetTableId = targetTableId;
+            this.sourceTableName = sourceTableName;
+            this.targetTableName = targetTableName;
+            this.sourceColumn = sourceColumn;
+            this.targetColumn = targetColumn;
+            this.cardinality = cardinality;
         }
     }
 }
