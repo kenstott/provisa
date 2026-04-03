@@ -198,3 +198,104 @@
 - **REQ-179** (2026-04-01): Sink request can be included in the query submission — steward approves query and sink together.
 - **REQ-180** (2026-04-01): Sinks can also be added to an already-approved query independently.
 - **REQ-181** (2026-04-01): Sink output format is JSON (one message per row, keyed by optional column).
+
+## Hasura Migration Converters
+- **REQ-182** (2026-04-03): Hasura v2 metadata converter -- CLI tool that reads a Hasura v2 metadata export directory and emits valid Provisa YAML config. Converts tracked tables, relationships, permissions, roles, and auth.
+- **REQ-183** (2026-04-03): Hasura DDN (v3) HML converter -- CLI tool that reads a DDN supergraph project and emits valid Provisa YAML config. Converts ObjectTypes, Models, Relationships, TypePermissions, ModelPermissions, and DataConnectorLinks.
+- **REQ-184** (2026-04-03): Shared boolean expression-to-SQL converter for Hasura filter expressions. Supports `_eq`, `_neq`, `_gt`, `_gte`, `_lt`, `_lte`, `_in`, `_nin`, `_like`, `_ilike`, `_regex`, `_is_null`, `_and`, `_or`, `_not`. Session variable mapping: `X-Hasura-<Name>` -> `current_setting('provisa.<name>')`.
+- **REQ-185** (2026-04-03): v2 converter maps `select_permissions[].columns` per role -> Provisa column `visible_to`. `columns: "*"` means all columns visible to that role.
+- **REQ-186** (2026-04-03): v2 converter maps `insert/update_permissions[].columns` per role -> Provisa column `writable_by`.
+- **REQ-187** (2026-04-03): v2 converter maps `select_permissions[].filter` -> Provisa `rls_rules[]` via boolean expression-to-SQL conversion. `filter: {}` (empty) means no RLS filter.
+- **REQ-188** (2026-04-03): v2 converter maps `object_relationships` -> cardinality=many-to-one and `array_relationships` -> cardinality=one-to-many. Physical column names used directly (no GraphQL resolution needed).
+- **REQ-189** (2026-04-03): DDN converter resolves GraphQL field names to physical column names through `ObjectType.dataConnectorTypeMapping[].fieldMapping` for all field references in relationships, permissions, and column definitions.
+- **REQ-190** (2026-04-03): v2 auth conversion via optional `--auth-env-file` flag. JWT with `jwk_url` -> Provisa `provider: oauth`. JWT `claims_map` -> Provisa `role_mapping[]`. Admin secret -> Provisa `superuser`. Webhook auth emits warning (no Provisa equivalent).
+- **REQ-191** (2026-04-03): DDN AggregateExpression metadata preserved in sidecar `provisa-aggregates.yaml` and converted to Provisa aggregate config.
+- **REQ-192** (2026-04-03): Converters emit warnings for unmappable features (event_triggers, remote_schemas, cron_triggers, BooleanExpressionType) without failing conversion. v2 Actions and DDN Commands convert to Provisa `functions` config where backed by stored procedures; webhook-backed actions emit warning with handler URL.
+- **REQ-193** (2026-04-03): Both converters produce output that passes `ProvisaConfig.model_validate()` -- Pydantic-valid config or nothing.
+
+## Naming Convention
+- **REQ-194** (2026-04-03): `naming.convention` field supporting `snake_case` (default), `camelCase`, and `PascalCase`. Auto-generates column aliases from physical column names (e.g., `user_id` -> `userId` when `camelCase`). Explicit `column.alias` always takes precedence.
+- **REQ-195** (2026-04-03): Aligns with Hasura v2 `naming_convention` setting: `hasura-default` maps to `snake_case`, `graphql-default` maps to `camelCase`. DDN `namingConvention: graphql` maps to `camelCase`.
+
+## Aggregates
+- **REQ-196** (2026-04-03): Auto-generated aggregate queries following Hasura v2 pattern. Every table gets a `<table>_aggregate` root field. Numeric columns get sum/avg/stddev/variance. All comparable columns get min/max. All columns get count. No configuration required for default behavior.
+- **REQ-197** (2026-04-03): Per-role aggregate gating via `allow_aggregations` (matching v2) or per-table `aggregates` config section for explicit override of auto-detected functions and role visibility.
+- **REQ-198** (2026-04-03): Aggregate MV routing -- when a query requests aggregates over a pattern already materialized in an MV, the compiler rewrites the query to use the MV. Requires aggregate catalog + query rewriter.
+- **REQ-199** (2026-04-03): View auto-materialization for aggregate optimization -- expensive views auto-materialized and registered in aggregate catalog instead of requiring bespoke `materialized_views` entries.
+
+## OrderBy Alignment
+- **REQ-200** (2026-04-03): GraphQL order_by schema must follow Hasura v2 convention: column-keyed input type `{column_name: direction}` instead of current `{field: ENUM, direction: ENUM}` struct.
+- **REQ-201** (2026-04-03): OrderBy direction enum must include 6 values: `asc`, `asc_nulls_first`, `asc_nulls_last`, `desc`, `desc_nulls_first`, `desc_nulls_last`. SQL compiler maps to `ORDER BY col ASC NULLS FIRST`, etc.
+- **REQ-202** (2026-04-03): Relationship ordering -- order by related object fields (e.g., `order_by: {author: {name: asc}}`). Matches Hasura v2 default behavior.
+
+## Tracked Functions & Custom Mutations
+- **REQ-205** (2026-04-03): Database functions (stored procedures, UDFs) registered in Provisa config and exposed as GraphQL mutations or queries. VOLATILE functions exposed as mutations; STABLE/IMMUTABLE as queries. Follows Hasura v2's `pg_track_function` pattern.
+- **REQ-206** (2026-04-03): Function config section in `provisa.yaml`:
+  ```yaml
+  functions:
+    - source_id: sales-pg
+      schema: public
+      name: process_payment
+      exposed_as: mutation
+      domain_id: sales-analytics
+      governance: registry-required
+      arguments:
+        - name: user_id
+          type: integer
+        - name: amount
+          type: numeric
+      returns: orders              # registered table name for result mapping
+      visible_to: [admin]
+      writable_by: [admin]
+  ```
+- **REQ-207** (2026-04-03): Function return type MUST reference a registered table. The result set maps back to GraphQL using that table's type definition, column governance (visibility, masking), and RLS rules. This ensures function results go through the same security pipeline as direct queries.
+- **REQ-208** (2026-04-03): Functions execute via direct DB connection (same as mutations). Never routed through Trino.
+- **REQ-209** (2026-04-03): Webhook-backed mutations -- external HTTP endpoint called as a GraphQL mutation. Config:
+  ```yaml
+  webhooks:
+    - name: send_notification
+      url: https://api.internal/notify
+      method: POST
+      domain_id: support
+      governance: registry-required
+      arguments:
+        - name: user_id
+          type: String!
+        - name: message
+          type: String!
+      returns: notification_result  # registered table or inline type
+      visible_to: [admin]
+      timeout_ms: 5000
+  ```
+- **REQ-210** (2026-04-03): Webhook mutations support inline return type definitions (not backed by a registered table) for cases where the webhook returns a custom shape. Inline types define fields with names and GraphQL types.
+- **REQ-211** (2026-04-03): Function and webhook argument types map to GraphQL input types. Arguments are validated at parse time. SQL injection prevented via parameterized calls for DB functions and JSON serialization for webhooks.
+
+## ABAC Approval Hook
+- **REQ-203** (2026-04-03): Pluggable operation approval hook for enterprises with complex ABAC that can't be expressed as static RLS rules. Webhook/gRPC/local callable evaluated at query time. Request: user_id, roles, session_vars, tables, columns, operation. Response: approved/denied + optional additional filter. Position: after RLS injection, before execution.
+- **REQ-204** (2026-04-03): Approval hook config in `auth.approval_hook` with type (webhook/grpc/local), url, timeout_ms, and fallback policy (deny/allow on timeout).
+
+## Direct-Route Dialect Expansion
+- **REQ-229** (2026-04-03): For every source type, three things must be true for direct-route capability: (1) Trino connector is packaged in the Trino deployment, (2) SQLGlot has the dialect for transpilation, (3) `SOURCE_TO_DIALECT` and `SOURCE_TO_CONNECTOR` entries exist in Provisa config. New direct-route sources to add: clickhouse, mariadb, singlestore, redshift, databricks, hive, druid, exasol. Each must have all three verified.
+
+## Hasura v2 Parity: Low-Complexity Features
+- **REQ-212** (2026-04-03): Upsert mutations -- `INSERT ... ON CONFLICT ... DO UPDATE`. New `upsert_<table>` mutation field. Conflict columns inferred from primary key metadata. SQLGlot transpiles to dialect-specific syntax (MySQL `ON DUPLICATE KEY UPDATE`, etc.).
+- **REQ-213** (2026-04-03): `DISTINCT ON` query argument -- deduplicate results by specified columns. Added as `distinct_on` arg on root query fields. SQLGlot handles dialect differences (window function fallback for non-PG).
+- **REQ-214** (2026-04-03): Column presets -- auto-set column values on insert/update from session variables or built-in functions. Config per table: `column_presets: [{column: created_by, source: header, name: x_user_id}, {column: updated_at, source: now}]`. Preset columns removed from user input, injected before SQL generation.
+- **REQ-215** (2026-04-03): Inherited roles -- role hierarchy where child role inherits capabilities and domain_access from parent. Config: `parent_role_id` on role definition. Flattened at startup (merge capabilities/domain_access up the chain). Lookups remain O(1).
+- **REQ-216** (2026-04-03): Scheduled triggers -- time-based execution of registered webhooks or internal functions. APScheduler in-process, cron expression syntax. Config per trigger in `provisa.yaml`. Reuses existing async background task pattern.
+- **REQ-217** (2026-04-03): Batch mutations already supported by GraphQL spec -- multiple mutations in one request execute sequentially. Document existing behavior.
+
+## Hasura v2 Parity: Medium-Complexity Features
+- **REQ-218** (2026-04-03): Cursor-based pagination -- `first`, `after`, `last`, `before` args on root query fields. Returns `edges[{cursor, node}]` + `pageInfo{hasNextPage, hasPreviousPage, startCursor, endCursor}`. Cursor encoded as base64 of sort key values. Coexists with existing offset/limit.
+- **REQ-219** (2026-04-03): Subscriptions via Server-Sent Events (SSE) -- `GET /data/subscribe/<table>` endpoint using FastAPI StreamingResponse. PostgreSQL LISTEN/NOTIFY via asyncpg `.add_listener()` for change detection. No WebSocket complexity. Streams INSERT/UPDATE/DELETE events.
+- **REQ-220** (2026-04-03): Database event triggers -- table changes (insert/update/delete) fire webhooks. PostgreSQL trigger + `pg_notify()` -> asyncpg listener -> HTTP POST to configured URL. Config per table with operation filter and retry policy.
+- **REQ-221** (2026-04-03): Enum table auto-detection -- introspect `pg_enum` at schema build time, generate GraphQL enum types for columns using PostgreSQL user-defined enums. Map enum columns to GraphQL enum type instead of String.
+- **REQ-222** (2026-04-03): REST endpoint auto-generation -- for each root query field, generate `GET /data/rest/<table>` FastAPI endpoint. Map query args to URL query params (`?limit=10&where.id.eq=1`). Reuses GraphQL compilation pipeline internally.
+
+## Installer & Packaging
+- **REQ-223** (2026-04-03): Single-executable installer that bundles the Provisa platform into one download. Underlying technology (Python server, PostgreSQL admin DB, Trino query engine, React UI) is hidden from the user. Source datasets are NOT bundled -- they connect over the wire.
+- **REQ-224** (2026-04-03): Installer expands into a hidden directory (`~/.provisa/`) containing all services. User interacts via `provisa start`, `provisa stop`, `provisa status`, `provisa open` (opens browser).
+- **REQ-225** (2026-04-03): Default deployment uses embedded PostgreSQL (pgserver) for admin DB and bundled Trino for query federation. Vertical scaling by default -- single machine, increase resources as needed.
+- **REQ-226** (2026-04-03): Users can later connect their own Trino cluster, Spark, external auth provider, or external PostgreSQL for the admin DB via config. Pointing to an external Trino instance is the primary scale-out mechanism.
+- **REQ-227** (2026-04-03): Cross-platform support: macOS (.pkg with LaunchAgent), Linux (.deb with systemd), Windows (.msi). Each uses native service management to start/stop Provisa services transparently.
+- **REQ-228** (2026-04-03): Phase 1 (immediate): Shell script installer that bundles Docker Compose, hides behind `provisa` CLI wrapper, stores state in `~/.provisa/`. Requires Docker/OrbStack/Colima as prerequisite. Phase 2: Embedded pgserver + Nuitka-compiled Python binary, reduce Docker dependency to Trino only. Phase 3: Native OS packages with full service management.
