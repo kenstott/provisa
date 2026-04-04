@@ -8,14 +8,13 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""SSE subscription endpoint via PostgreSQL LISTEN/NOTIFY (REQ-AB2).
+"""SSE subscription endpoint via provider-based change notifications (REQ-AB2).
 
 GET /data/subscribe/{table} streams server-sent events for INSERT, UPDATE,
-and DELETE operations on the subscribed table.  Uses asyncpg `.add_listener()`
-on the channel ``provisa_{table}`` and emits JSON payloads.
+and DELETE operations on the subscribed table.  Resolves the appropriate
+NotificationProvider from the source type via the subscription registry.
 
-Requires a PostgreSQL trigger that calls ``pg_notify('provisa_<table>', payload)``
-on each DML event.  The payload is a JSON string with keys: op, row.
+Falls back to PostgreSQL LISTEN/NOTIFY when source type is ``postgresql``.
 """
 
 from __future__ import annotations
@@ -28,11 +27,86 @@ from typing import AsyncGenerator
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from provisa.subscriptions.base import ChangeEvent
+
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/data", tags=["data"])
 
 CHANNEL_PREFIX = "provisa_"
+
+
+def _resolve_table_source(table: str) -> tuple[str, str] | None:
+    """Return (source_id, source_type) for *table* if it exists in config.
+
+    Returns None if the table is not found in any role's schema.
+    """
+    from provisa.api.app import state
+
+    # Check contexts — each context has table metadata keyed by table name
+    for ctx in state.contexts.values():
+        tables = getattr(ctx, "tables", {})
+        if table in tables:
+            tbl = tables[table]
+            source_id = getattr(tbl, "source_id", None)
+            if source_id and source_id in state.source_types:
+                return source_id, state.source_types[source_id]
+
+    # Fallback: check source_types for a default postgresql source
+    for sid, stype in state.source_types.items():
+        return sid, stype
+
+    return None
+
+
+async def _provider_sse_generator(
+    table: str,
+    source_id: str,
+    source_type: str,
+    role_id: str | None,
+    rls_contexts: dict,
+    disconnect: asyncio.Event,
+) -> AsyncGenerator[str, None]:
+    """Yield SSE-formatted events from the appropriate subscription provider."""
+    from provisa.api.app import state
+    from provisa.subscriptions.registry import get_provider
+
+    provider_config: dict = {}
+    if source_type == "postgresql":
+        provider_config["pool"] = state.pg_pool
+    elif source_type == "mongodb":
+        source_pool = state.source_pools.get(source_id) if state.source_pools else None
+        provider_config["database"] = source_pool
+    elif source_type == "kafka":
+        ks = state.kafka_table_configs.get(table)
+        bootstrap = getattr(ks, "bootstrap_servers", "localhost:9092") if ks else "localhost:9092"
+        provider_config["bootstrap_servers"] = bootstrap
+    else:
+        provider_config["pool"] = state.pg_pool
+
+    provider = get_provider(source_type, provider_config)
+
+    yield ": connected\n\n"
+
+    try:
+        async for event in provider.watch(table):
+            if disconnect.is_set():
+                break
+
+            # RLS filtering
+            if role_id and rls_contexts:
+                rls_ctx = rls_contexts.get(role_id)
+                if rls_ctx and rls_ctx.has_rules():
+                    if not _rls_matches(event.row, rls_ctx, table):
+                        continue
+
+            payload = json.dumps({
+                "op": event.operation.upper(),
+                "row": event.row,
+            })
+            yield f"data: {payload}\n\n"
+    finally:
+        await provider.close()
 
 
 async def _sse_generator(
@@ -125,8 +199,8 @@ async def subscribe(
 ):
     """Stream SSE events for changes on *table*.
 
-    The endpoint opens a PostgreSQL LISTEN on ``provisa_{table}`` and
-    forwards each NOTIFY payload as an SSE ``data:`` frame.
+    Validates the table exists in the role's schema, resolves the
+    appropriate notification provider, and streams SSE events.
     """
     from provisa.api.app import state
 
@@ -136,10 +210,30 @@ async def subscribe(
     auth_role = getattr(request.state, "role", None)
     role_id = auth_role or x_provisa_role
 
+    # Validate table exists in role's schema
+    table_found = False
+    if role_id and role_id in state.contexts:
+        ctx = state.contexts[role_id]
+        tables = getattr(ctx, "tables", {})
+        if table in tables:
+            table_found = True
+    # If no role context, check all contexts
+    if not table_found:
+        for ctx in state.contexts.values():
+            tables = getattr(ctx, "tables", {})
+            if table in tables:
+                table_found = True
+                break
+
+    if state.contexts and not table_found:
+        raise HTTPException(status_code=404, detail=f"Table {table!r} not found")
+
+    # Resolve provider from source type
+    source_info = _resolve_table_source(table)
+
     disconnect = asyncio.Event()
 
     async def on_disconnect() -> None:
-        """Wait until the client drops the connection, then set the event."""
         while True:
             if await request.is_disconnected():
                 disconnect.set()
@@ -149,13 +243,24 @@ async def subscribe(
     async def wrapped_generator() -> AsyncGenerator[str, None]:
         task = asyncio.create_task(on_disconnect())
         try:
-            async for chunk in _sse_generator(
-                state.pg_pool,
-                table,
-                role_id,
-                state.rls_contexts,
-                disconnect,
-            ):
+            if source_info and source_info[1] != "postgresql":
+                gen = _provider_sse_generator(
+                    table,
+                    source_info[0],
+                    source_info[1],
+                    role_id,
+                    state.rls_contexts,
+                    disconnect,
+                )
+            else:
+                gen = _sse_generator(
+                    state.pg_pool,
+                    table,
+                    role_id,
+                    state.rls_contexts,
+                    disconnect,
+                )
+            async for chunk in gen:
                 yield chunk
         finally:
             task.cancel()
