@@ -30,6 +30,15 @@ router = APIRouter(prefix="/admin/schema-discovery", tags=["schema-discovery"])
 # Source types that do not support schema discovery
 _NO_DISCOVER = {"redis", "accumulo"}
 
+# Source types that require a live connection (in source_pools) for sampling
+_REQUIRES_LIVE_CONNECTION = {"mongodb"}
+
+
+def _get_source_pool():
+    """Return the current source_pools from app state."""
+    from provisa.api.app import state
+    return state.source_pools
+
 
 class DiscoveredColumn(BaseModel):
     name: str
@@ -116,14 +125,30 @@ async def discover_source_schema(source_id: str, body: DiscoverRequest | None = 
     )
 
 
+
 def _call_discover(adapter, source_type: str, row, hints: DiscoverRequest) -> list[dict]:
     """Dispatch to the correct adapter.discover_schema() signature."""
     if source_type == "mongodb":
-        # MongoDB discover_schema expects sample docs + collection name.
-        # In a real deployment this would connect and sample; here we
-        # return an empty result that the UI can populate via manual entry.
+        # MongoDB discover_schema requires sample documents from a live connection.
+        # Check source_pools for an active connection; raise 503 if none exists.
+        source_pools = _get_source_pool()
+        source_id = row["id"]
+        if not source_pools.has(source_id):
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    f"No live connection for source '{source_id}'. "
+                    "MongoDB schema discovery requires an active connection in the source pool. "
+                    "Verify the source is connected and the server is reachable."
+                ),
+            )
+        driver = source_pools.get(source_id)
         collection = hints.collection or "default"
-        return adapter.discover_schema([], collection)
+        sample_docs = driver.sample_documents(
+            collection=collection,
+            limit=hints.sample_limit,
+        )
+        return adapter.discover_schema(sample_docs, collection)
 
     if source_type == "elasticsearch":
         # ES discover_schema expects an index mapping dict.
