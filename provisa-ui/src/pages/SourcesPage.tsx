@@ -2,7 +2,16 @@ import { useState, useEffect } from "react";
 import { fetchSources, deleteSource, createSource, updateSourceCache, updateSourceNaming, fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { SchemaDiscovery } from "../components/SchemaDiscovery";
+import { TableMappingBuilder } from "../components/TableMappingBuilder";
+import type { TableMapping } from "../components/TableMappingBuilder";
 import type { Source } from "../types/admin";
+
+/** Source types that support schema discovery via adapter. */
+const DISCOVERABLE_TYPES = new Set(["mongodb", "elasticsearch", "cassandra", "prometheus"]);
+
+/** Source types that need a table mapping builder (NoSQL / non-relational). */
+const MAPPING_TYPES = new Set(["redis", "mongodb", "elasticsearch", "cassandra", "prometheus", "accumulo"]);
 
 const SOURCE_TYPES = [
   // RDBMS
@@ -119,6 +128,10 @@ export function SourcesPage() {
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [cacheEdits, setCacheEdits] = useState<Record<string, CacheEdit>>({});
+  const [discoverSourceId, setDiscoverSourceId] = useState<string | null>(null);
+  const [discoverSourceType, setDiscoverSourceType] = useState<string | null>(null);
+  const [mappingSourceId, setMappingSourceId] = useState<string | null>(null);
+  const [mappingSourceType, setMappingSourceType] = useState<string | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -536,7 +549,7 @@ export function SourcesPage() {
                   />
                 </td>
                 <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{getEffectiveTtl(s)}</td>
-                <td style={{ display: "flex", gap: "0.25rem" }}>
+                <td style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
                   {edit?.dirty && (
                     <button
                       onClick={() => handleSaveCache(s.id)}
@@ -544,6 +557,22 @@ export function SourcesPage() {
                       style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
                     >
                       {edit.saving ? "Saving..." : "Save Cache"}
+                    </button>
+                  )}
+                  {DISCOVERABLE_TYPES.has(s.type) && (
+                    <button
+                      onClick={() => { setDiscoverSourceId(s.id); setDiscoverSourceType(s.type); setMappingSourceId(null); }}
+                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                    >
+                      Discover
+                    </button>
+                  )}
+                  {MAPPING_TYPES.has(s.type) && (
+                    <button
+                      onClick={() => { setMappingSourceId(s.id); setMappingSourceType(s.type); setDiscoverSourceId(null); }}
+                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                    >
+                      Map Table
                     </button>
                   )}
                   <ConfirmDialog
@@ -559,6 +588,30 @@ export function SourcesPage() {
           })}
         </tbody>
       </table>
+
+      {discoverSourceId && discoverSourceType && (
+        <SchemaDiscovery
+          sourceId={discoverSourceId}
+          sourceType={discoverSourceType}
+          onClose={() => { setDiscoverSourceId(null); setDiscoverSourceType(null); }}
+          onRegistered={load}
+        />
+      )}
+
+      {mappingSourceId && mappingSourceType && (
+        <TableMappingBuilder
+          sourceType={mappingSourceType}
+          onCancel={() => { setMappingSourceId(null); setMappingSourceType(null); }}
+          onSave={(_mapping: TableMapping) => {
+            // TableMapping is saved via the mapping builder's onSave callback.
+            // In a full implementation this would call an API endpoint to persist
+            // the mapping configuration. For now, close the panel.
+            setMappingSourceId(null);
+            setMappingSourceType(null);
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }

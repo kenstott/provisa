@@ -838,6 +838,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.discovery import router as discovery_router
     app.include_router(discovery_router)
 
+    from provisa.api.admin.discovery_schema import router as schema_discovery_router
+    app.include_router(schema_discovery_router)
+
     @app.get("/admin/config")
     async def download_config():
         """Download the current config YAML."""

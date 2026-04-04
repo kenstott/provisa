@@ -359,6 +359,13 @@
 - **REQ-254** (2026-04-04): Integration tests must use Docker — spin up required containers (PG, Trino, Redis, etc.), install dependencies, run tests, and tear down containers. Tests must not assume a pre-existing Docker Compose stack.
 - **REQ-255** (2026-04-04): Unit tests must mock all external components (databases, Trino, Redis, HTTP endpoints, file system where applicable). No unit test should require a running external service.
 
+## Compiler & Schema
+- **REQ-259** (2026-04-04): Apollo Federation v2 subgraph support — when enabled, Provisa generates a Federation v2 compliant schema with @key directives on entity types (derived from primary keys), _service and _entities root fields, and batch entity resolution. Provisa can be composed into an Apollo Gateway/Router supergraph. Entity resolution respects RLS, masking, and role-based visibility. Disabled by default.
+
+## Subscriptions
+- **REQ-260** (2026-04-04): Polling-based subscription provider for sources without native CDC. Table must define an `updated_at` timestamp column (monotonic), table must use soft deletes (a `deleted_at` or `is_deleted` column) to capture deletes, and poll interval is configurable per table. Without these prerequisites, polling subscriptions are not available for the table.
+- **REQ-261** (2026-04-04): Debezium CDC subscription provider for non-PG RDBMS sources (MySQL, MariaDB, SQL Server, Oracle). Debezium captures changes from the source's transaction log and publishes to Kafka topics. Provisa's Kafka notification provider consumes these CDC events and streams them as SSE subscriptions. Requires Kafka + Debezium connector infrastructure.
+
 ## API & Integration
 - **REQ-256** (2026-04-04): Auto-generated plain REST endpoints for every registered table via `GET /data/rest/{table}` with query string mapping to GraphQL args (`?limit=10&where.id.eq=1`). Compiles and executes via existing pipeline (RLS, masking, routing) with same security as GraphQL.
 - **REQ-257** (2026-04-04): Auto-generated JSON:API compliant endpoints for every registered table via `GET /data/jsonapi/{table}` following spec (jsonapi.org): resource objects with type/id/attributes/relationships, sparse fieldsets (`?fields[orders]=amount`), inclusion of related resources (`?include=customer`), filtering (`?filter[region]=US`), sorting (`?sort=-created_at`), pagination (`?page[number]=2&page[size]=25`), compound documents. Compiles and executes via existing pipeline.

@@ -2279,15 +2279,17 @@ Add `first`, `after`, `last`, `before` args to root query fields alongside exist
 
 New `GET /data/subscribe/{table}` endpoint. FastAPI `StreamingResponse` with `text/event-stream`. Pluggable notification providers per source type:
 
-| Source Type | Mechanism | Library |
-|-------------|-----------|---------|
-| PostgreSQL | `LISTEN/NOTIFY` via `pg_notify()` | asyncpg `.add_listener()` |
-| MongoDB | Change Streams | motor `collection.watch()` |
-| Kafka | Consumer group on topic | aiokafka / confluent-kafka |
-| MySQL/MariaDB/SQL Server | Debezium CDC → Kafka → consumer | Debezium connector + aiokafka |
-| Other RDBMS | Debezium CDC or polling fallback | — |
+| Source Type | Mechanism | Library | Config Required |
+|-------------|-----------|---------|-----------------|
+| PostgreSQL | `LISTEN/NOTIFY` via `pg_notify()` | asyncpg `.add_listener()` | None (zero config) |
+| MongoDB | Change Streams | motor `collection.watch()` | None (built-in since 3.6+) |
+| Polling | Timestamp watermark + soft delete query | asyncpg/driver | Table must have `updated_at` + soft delete column |
+| Kafka | Consumer group on topic | aiokafka / confluent-kafka | Requires existing Kafka infrastructure |
+| Debezium CDC | Transaction log capture → Kafka | Debezium connector + aiokafka | Requires Kafka Connect cluster (documented, not first-class) |
 
-For non-PG RDBMS sources, Debezium captures change data from the source's transaction log (MySQL binlog, SQL Server CDC, Oracle LogMiner) and publishes to Kafka topics. Provisa's Kafka notification provider then consumes these CDC events and streams them as SSE. Debezium runs as a Kafka Connect connector — no Provisa code needed for the capture side, only for consuming the CDC topic.
+**Priority**: PG and MongoDB are zero-config and implemented first. Polling is the universal fallback for any RDBMS where the developer controls the schema. Kafka is used when the infrastructure already exists. Debezium is documented as an option but not a core implementation target — enterprise adoption is rare due to operational complexity.
+
+**Polling requirements**: Table must define an `updated_at` timestamp column (monotonic). Poll interval configurable per table. Without `updated_at`, polling is unavailable for that table. Soft deletes (`deleted_at` or `is_deleted` column) are strongly recommended but not required — without soft deletes, DELETE operations are invisible to the polling provider (a warning is emitted at config time). Append-only tables (logs, events, metrics) work correctly without soft deletes since there are no deletions to miss.
 
 Abstract `NotificationProvider` interface with `async watch(table, filter) -> AsyncGenerator[ChangeEvent]`. Subscribe endpoint resolves provider by table's source type. Schema validation ensures table exists and is visible to the requesting role. RLS filtering applied to change events.
 
@@ -2995,6 +2997,113 @@ The SourcesPage add-source form must render type-specific configuration fields f
 
 ---
 
+## Phase AJ: Apollo Federation Support
+
+### Goal
+
+Enable Provisa to act as an Apollo Federation subgraph, allowing it to be composed into a federated supergraph via Apollo Gateway or Apollo Router. Tables become federated entity types with `@key` directives, enabling cross-service JOINs at the gateway level.
+
+### Federation v2 Spec
+
+Provisa generates a Federation v2 compliant subgraph schema when federation is enabled:
+
+```yaml
+federation:
+  enabled: true
+  version: 2         # Federation v2 (default)
+  service_name: provisa
+```
+
+### Schema Additions
+
+For each registered table, the schema generator adds:
+
+```graphql
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.3", import: ["@key", "@shareable", "@external"])
+
+type Orders @key(fields: "id") {
+  id: Int!
+  customer_id: Int!
+  amount: Float!
+  customer: Customers  # relationship
+}
+
+type Customers @key(fields: "id") {
+  id: Int!
+  name: String!
+  email: String!
+}
+```
+
+### Required Federation Fields
+
+- `_service { sdl }` — returns the full SDL for schema composition
+- `_entities(representations: [_Any!]!) -> [_Entity]!` — resolves entity references from other subgraphs by primary key
+- `_Any` scalar — accepts JSON representations of entities
+- `_Entity` union — union of all entity types
+
+### Implementation
+
+1. **Config**: Add `federation` section to `ProvisaConfig` (enabled, version, service_name)
+
+2. **Schema generation** (`provisa/compiler/federation.py`):
+   - `build_federation_schema(base_schema, tables, relationships)` — wraps the existing schema with Federation directives
+   - Auto-detect `@key` from primary key columns (introspected via Trino metadata)
+   - Relationships become regular fields (not `@external`) — Provisa owns these entities
+   - Multi-key support: composite PKs become `@key(fields: "col1 col2")`
+
+3. **Entity resolution** (`provisa/api/data/federation.py`):
+   - `POST /data/graphql` handles `_entities` queries
+   - For each representation, compile `SELECT * FROM table WHERE pk = $1`
+   - Execute via existing pipeline (with RLS, masking applied)
+   - Batch entity resolution: group by type, single query per type with `WHERE pk IN (...)`
+
+4. **SDL endpoint** — modify `/data/sdl` to return Federation-annotated SDL when federation is enabled
+
+5. **Schema generation toggle** — when `federation.enabled`, `generate_schema()` calls `build_federation_schema()` as a post-processing step
+
+### Gateway Integration
+
+Provisa registers as a subgraph in Apollo Router's `supergraph.yaml`:
+
+```yaml
+subgraphs:
+  provisa:
+    routing_url: http://provisa:8001/data/graphql
+    schema:
+      subgraph_url: http://provisa:8001/data/sdl
+```
+
+Multiple Provisa instances can be composed (e.g., one per data domain), or Provisa can be composed with hand-written subgraphs for business logic.
+
+### Security
+
+- Entity resolution respects the same RLS, masking, and role-based visibility as regular queries
+- The `X-Provisa-Role` header (or auth token) must be forwarded from the gateway
+- Apollo Router supports header propagation natively
+
+### Phase AJ Gates
+
+**Verification**:
+- Federation SDL: `_service { sdl }` returns valid Federation v2 SDL with `@key` directives
+- Entity resolution: `_entities(representations: [{__typename: "Orders", id: 1}])` returns the correct order with RLS applied
+- Batch resolution: multiple representations in one query resolved efficiently (single SQL per type)
+- Composite key: table with multi-column PK correctly resolves with `@key(fields: "col1 col2")`
+- Gateway integration: Apollo Router composes Provisa subgraph, cross-subgraph query works
+- Security: entity resolution applies masking and column visibility per role
+- Disabled by default: federation features absent when `federation.enabled: false`
+
+**Documentation**:
+- `docs/configuration.md`: federation config section
+- `docs/api-reference.md`: Federation-specific query fields (`_service`, `_entities`)
+- `docs/federation.md`: Apollo Gateway/Router integration guide
+- `CHANGELOG.md` entry for Phase AJ
+
+**Files**: new `provisa/compiler/federation.py`, new `provisa/api/data/federation.py`, modify `provisa/compiler/schema_gen.py`, modify `provisa/api/data/sdl.py`, modify `provisa/core/models.py`
+**Effort**: ~500 lines
+
+---
+
 ## Parity Phase Summary
 
 | Phase | What | Effort | Dependencies |
@@ -3008,8 +3117,9 @@ The SourcesPage add-source form must render type-specific configuration fields f
 | AG | Hasura v2 converter | Medium | Phases AA-AD (features must exist) |
 | AH | DDN converter | Medium | Phase AG (shared infra) |
 | AI | NoSQL source mapping & managed catalog generation | Medium-High | Phase AA1 (dialect expansion) |
+| AJ | Apollo Federation v2 subgraph support | Medium | Phase C (schema gen) |
 
-Phases AA-AE are independent and can be parallelized. Phase AF1 (shell script) can start anytime. Phase AI can start after AA1.
+Phases AA-AE are independent and can be parallelized. Phase AF1 (shell script) can start anytime. Phase AI can start after AA1. Phase AJ can start anytime (only depends on core schema generation).
 
 ## Sample Hasura v2 Projects for End-to-End Testing
 
