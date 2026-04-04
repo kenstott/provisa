@@ -15,8 +15,27 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
+from datetime import date, datetime
+from decimal import Decimal
 
 log = logging.getLogger(__name__)
+
+
+class _HotEncoder(json.JSONEncoder):
+    """Handle Trino types that aren't natively JSON serializable."""
+
+    def default(self, o):
+        if isinstance(o, Decimal):
+            return float(o)
+        if isinstance(o, (datetime, date)):
+            return o.isoformat()
+        if isinstance(o, bytes):
+            return o.decode("utf-8", errors="replace")
+        return super().default(o)
+
+
+def _dumps(obj):
+    return json.dumps(obj, cls=_HotEncoder)
 
 HOT_PREFIX = "provisa:hot:"
 
@@ -88,11 +107,11 @@ class HotTableManager:
         pipe = self._redis.pipeline()
         # Delete existing keys first
         pipe.delete(blob_key)
-        pipe.set(blob_key, json.dumps(rows))
+        pipe.set(blob_key, _dumps(rows))
 
         for row in rows:
             pk_val = row.get(pk_column, "")
-            pipe.set(pk_key_prefix + str(pk_val), json.dumps(row))
+            pipe.set(pk_key_prefix + str(pk_val), _dumps(row))
 
         await pipe.execute()
 
