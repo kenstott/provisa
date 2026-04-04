@@ -342,3 +342,19 @@
 - **REQ-226** (2026-04-03): Users can later connect their own Trino cluster, Spark, external auth provider, or external PostgreSQL for the admin DB via config. Pointing to an external Trino instance is the primary scale-out mechanism.
 - **REQ-227** (2026-04-03): Cross-platform support: macOS (.pkg with LaunchAgent), Linux (.deb with systemd), Windows (.msi). Each uses native service management to start/stop Provisa services transparently.
 - **REQ-228** (2026-04-03): Phase 1 (immediate): Shell script installer that bundles Docker Compose, hides behind `provisa` CLI wrapper, stores state in `~/.provisa/`. Requires Docker/OrbStack/Colima as prerequisite. Phase 2: Embedded pgserver + Nuitka-compiled Python binary, reduce Docker dependency to Trino only. Phase 3: Native OS packages with full service management.
+
+## UI & Design Patterns
+- **REQ-248** (2026-04-04): GraphQL Voyager integration uses iframe with React 18 CDN standalone bundle (not a native React component fork). The iframe approach avoids MUI v5/React 19 incompatibility and provides reliable isolation. No component fork is planned.
+- **REQ-249** (2026-04-04): Column-level masking configuration stored as inline fields on ColumnConfig in models.py (mask_type, mask_pattern, etc.) — not as a separate MaskingRule Pydantic model or separate database table. Masking rules are loaded from table_columns DB rows at startup in app.py. This co-locates masking config with the column definition it applies to.
+
+## Registration & Governance
+- **REQ-250** (2026-04-04): All Trino catalog configuration must flow through Provisa's config YAML — users never manage Trino .properties files directly. Provisa generates catalog properties, table definition files, and auto-registers tables at runtime following the Kafka source config pattern as exemplar.
+- **REQ-251** (2026-04-04): Each NoSQL/non-relational source type requires a type-specific mapping DSL in the Provisa config to define how its native data structures map to relational tables. Examples: Redis key patterns → rows, hash fields → columns; Elasticsearch index patterns with nested field paths; Prometheus metric names with label-to-column mapping.
+
+## Compiler & Schema
+- **REQ-252** (2026-04-04): Schema inference must be supported where the Trino connector provides auto-discovery (MongoDB, Cassandra, Elasticsearch). Sources with inference support should offer a `discover: true` flag that introspects and generates a starting column list. Explicit column definitions always take precedence over inferred schemas. Sources without inference capability (Redis, Accumulo) require explicit column definitions.
+- **REQ-253** (2026-04-04): Naming convention changes (global, source, or table level) reflected immediately in GraphQL schema. Admin mutations trigger _rebuild_schemas() which regenerates in-memory graphql-core schema objects. GraphiQL and Voyager fetch fresh introspection on each page load. No client-side schema caching.
+
+## Testing & Quality
+- **REQ-254** (2026-04-04): Integration tests must use Docker — spin up required containers (PG, Trino, Redis, etc.), install dependencies, run tests, and tear down containers. Tests must not assume a pre-existing Docker Compose stack.
+- **REQ-255** (2026-04-04): Unit tests must mock all external components (databases, Trino, Redis, HTTP endpoints, file system where applicable). No unit test should require a running external service.

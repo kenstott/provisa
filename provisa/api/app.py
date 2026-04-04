@@ -61,6 +61,11 @@ class AppState:
     kafka_windows: dict[str, str] = {}  # source_id → default_window (e.g. "1h")
     kafka_table_configs: dict[str, object] = {}  # table_name → KafkaTableConfig
     view_sql_map: dict[str, str] = {}  # view_table_name → SQL (for inline expansion)
+    source_cache: dict[str, dict] = {}  # source_id → {cache_enabled, cache_ttl}
+    table_cache: dict[int, int | None] = {}  # table_id → cache_ttl
+    auth_config: dict | None = None  # auth section from provisa.yaml
+    api_endpoints: dict[str, object] = {}  # table_name → ApiEndpoint
+    api_sources: dict[str, object] = {}  # source_id → ApiSource
 
 
 state = AppState()
@@ -239,6 +244,9 @@ async def _load_and_build(config_path: str | None = None) -> None:
             state.kafka_table_physical = getattr(state, "kafka_table_physical", {})
             state.kafka_table_physical[gql_table_name] = physical_table
 
+    # Store auth config for middleware setup
+    state.auth_config = raw_config.get("auth")
+
     # Load config into PG (and create Trino catalogs)
     config = parse_config_dict(raw_config)
 
@@ -261,6 +269,10 @@ async def _load_and_build(config_path: str | None = None) -> None:
     for src in config.sources:
         state.source_types[src.id] = src.type.value
         state.source_dialects[src.id] = src.dialect or ""
+        state.source_cache[src.id] = {
+            "cache_enabled": src.cache_enabled,
+            "cache_ttl": src.cache_ttl,
+        }
         if has_driver(src.type.value):
             resolved_pw = resolve_secrets(src.password)
             await state.source_pools.add(
@@ -429,7 +441,33 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 rel_cfg["id"], src_source, src_table, tgt_source, tgt_table,
             )
 
-    # Introspect and build schemas per role
+    await _rebuild_schemas(raw_config)
+
+
+async def _rebuild_schemas(raw_config: dict | None = None) -> None:
+    """Re-introspect Trino and rebuild schemas for all roles from current DB state.
+
+    Called after _load_and_build() during startup, and independently after
+    admin mutations that change tables/relationships/roles.
+    """
+    if state.pg_pool is None or state.trino_conn is None:
+        return
+
+    kafka_physical = getattr(state, "kafka_table_physical", {})
+    domain_prefix = False
+    if raw_config:
+        domain_prefix = raw_config.get("naming", {}).get("domain_prefix", False)
+    else:
+        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+        path = Path(config_path)
+        if path.exists():
+            with open(path) as f:
+                raw_config = yaml.safe_load(f)
+            domain_prefix = raw_config.get("naming", {}).get("domain_prefix", False)
+
+    # Clear mutable state before rebuild
+    state.masking_rules = {}
+
     async with state.pg_pool.acquire() as conn:
         tables = await _fetch_tables(conn)
         relationships = await _fetch_relationships(conn)
@@ -438,6 +476,12 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 "SELECT pattern, replacement FROM naming_rules"
             )
         ]
+
+        # Load per-table cache TTLs
+        cache_rows = await conn.fetch(
+            "SELECT id, cache_ttl FROM registered_tables WHERE cache_ttl IS NOT NULL"
+        )
+        state.table_cache = {r["id"]: r["cache_ttl"] for r in cache_rows}
         domains = [
             dict(r) for r in await conn.fetch("SELECT id, description FROM domains")
         ]
@@ -450,10 +494,21 @@ async def _load_and_build(config_path: str | None = None) -> None:
             )
         ]
 
+        # Inject source-level naming convention into table dicts for hierarchical resolution
+        for tbl in tables:
+            src = sources.get(tbl["source_id"], {})
+            tbl["source_naming_convention"] = src.get("naming_convention")
+
         # Introspect Trino metadata
         kafka_physical = getattr(state, "kafka_table_physical", {})
         column_types = introspect_tables(state.trino_conn, tables, sources, kafka_physical)
         col_types_converted: dict[int, list[ColumnMetadata]] = column_types
+
+        # Load API sources and endpoints (Phase U)
+        from provisa.api_source.loader import load_api_sources
+        state.api_endpoints, state.api_sources = await load_api_sources(
+            conn, tables, col_types_converted, roles, state.source_types,
+        )
 
         # Load RLS rules
         rls_rules = [
@@ -508,8 +563,9 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 role=role,
                 domains=domains,
                 source_types=state.source_types,
-                domain_prefix=raw_config.get("naming", {}).get("domain_prefix", False),
+                domain_prefix=domain_prefix,
                 physical_table_map=kafka_physical or None,
+                naming_convention=raw_config.get("naming", {}).get("convention", "snake_case") if raw_config else "snake_case",
             )
             try:
                 state.schemas[role["id"]] = generate_schema(si)
@@ -669,6 +725,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Conditionally add auth middleware and routes
+    from provisa.auth.wiring import wire_auth
+    wire_auth(app, state.auth_config)
+
     app.include_router(data_router)
     app.include_router(sdl_router)
 
@@ -827,7 +887,9 @@ def create_app() -> FastAPI:
         try:
             with open(config_path) as f:
                 cfg = yaml.safe_load(f)
-            domain_prefix = cfg.get("naming", {}).get("domain_prefix", False)
+            naming_cfg = cfg.get("naming", {})
+            domain_prefix = naming_cfg.get("domain_prefix", False)
+            convention = naming_cfg.get("convention", "snake_case")
         except Exception:
             pass
         return {
@@ -845,6 +907,7 @@ def create_app() -> FastAPI:
             },
             "naming": {
                 "domain_prefix": domain_prefix,
+                "convention": convention,
             },
         }
 
@@ -883,13 +946,23 @@ def create_app() -> FastAPI:
 
         if "naming" in body:
             n = body["naming"]
+            needs_reload = False
+            config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+            path = Path(config_path)
+            with open(path) as f:
+                cfg = yaml.safe_load(f)
             if "domain_prefix" in n:
-                # Write to config and reload
-                config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-                path = Path(config_path)
-                with open(path) as f:
-                    cfg = yaml.safe_load(f)
                 cfg.setdefault("naming", {})["domain_prefix"] = bool(n["domain_prefix"])
+                updated.append("naming.domain_prefix")
+                needs_reload = True
+            if "convention" in n:
+                valid = ("none", "snake_case", "camelCase", "PascalCase")
+                if n["convention"] not in valid:
+                    return {"success": False, "message": f"Invalid convention: {n['convention']!r}"}
+                cfg.setdefault("naming", {})["convention"] = n["convention"]
+                updated.append("naming.convention")
+                needs_reload = True
+            if needs_reload:
                 backup = path.with_suffix(".yaml.bak")
                 backup.write_text(path.read_text())
                 with open(path, "w") as f:
@@ -898,7 +971,6 @@ def create_app() -> FastAPI:
                     await _load_and_build(config_path)
                 except Exception:
                     pass
-                updated.append("naming.domain_prefix")
 
         return {"success": True, "updated": updated}
 

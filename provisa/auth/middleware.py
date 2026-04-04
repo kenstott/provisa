@@ -19,7 +19,7 @@ from starlette.responses import JSONResponse
 from provisa.auth.models import AuthIdentity, AuthProvider
 from provisa.auth.role_mapping import resolve_role
 
-_SKIP_PATHS = {"/health", "/docs", "/openapi.json"}
+_SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/auth/login"}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

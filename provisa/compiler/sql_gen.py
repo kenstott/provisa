@@ -315,17 +315,34 @@ def _compile_where(
 # --- ORDER BY compilation ---
 
 
+_DIRECTION_SQL = {
+    "asc": "ASC",
+    "desc": "DESC",
+    "asc_nulls_first": "ASC NULLS FIRST",
+    "asc_nulls_last": "ASC NULLS LAST",
+    "desc_nulls_first": "DESC NULLS FIRST",
+    "desc_nulls_last": "DESC NULLS LAST",
+}
+
+
 def _compile_order_by(
     order_by_list: list[dict],
     alias: str | None,
 ) -> str:
-    """Compile order_by input list to SQL ORDER BY clause."""
+    """Compile order_by input list to SQL ORDER BY clause.
+
+    Hasura v2 format: each item is {column_name: direction} where direction
+    is one of: asc, desc, asc_nulls_first, asc_nulls_last, desc_nulls_first,
+    desc_nulls_last.
+    """
     parts: list[str] = []
     for item in order_by_list:
-        field_name = item["field"]
-        direction = item.get("direction", "ASC")
-        col = _q(field_name) if alias is None else f"{_q(alias)}.{_q(field_name)}"
-        parts.append(f"{col} {direction}")
+        for col_name, direction in item.items():
+            sql_dir = _DIRECTION_SQL.get(direction)
+            if sql_dir is None:
+                raise ValueError(f"Unknown order direction: {direction!r}")
+            col = _q(col_name) if alias is None else f"{_q(alias)}.{_q(col_name)}"
+            parts.append(f"{col} {sql_dir}")
     return ", ".join(parts)
 
 

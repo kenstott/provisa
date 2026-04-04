@@ -19,7 +19,7 @@ import pytest
 
 from provisa.executor.pool import SourcePool
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 PGBOUNCER_PORT = int(os.environ.get("PGBOUNCER_PORT", "6432"))
 

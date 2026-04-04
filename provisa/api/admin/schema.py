@@ -33,6 +33,7 @@ from provisa.api.admin.types import (
     RLSRuleType,
     RoleInput,
     RoleType,
+    ScheduledTaskType,
     SourceInput,
     SourceType,
     SystemHealthType,
@@ -46,6 +47,11 @@ async def _get_pool():
     return state.pg_pool
 
 
+async def _rebuild_schemas():
+    from provisa.api.app import _rebuild_schemas as rebuild
+    await rebuild()
+
+
 def _source_from_row(row) -> SourceType:
     return SourceType(
         id=row["id"], type=row["type"], host=row["host"],
@@ -53,6 +59,7 @@ def _source_from_row(row) -> SourceType:
         username=row["username"], dialect=row["dialect"],
         cache_enabled=row.get("cache_enabled", True),
         cache_ttl=row.get("cache_ttl"),
+        naming_convention=row.get("naming_convention"),
     )
 
 
@@ -116,6 +123,7 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         table_name=row["table_name"], governance=row["governance"],
         alias=row.get("alias"), description=row.get("description"),
         cache_ttl=row.get("cache_ttl"),
+        naming_convention=row.get("naming_convention"),
         columns=columns,
     )
 
@@ -388,6 +396,56 @@ class Query:
         )
 
 
+    # ── Admin: Scheduled Tasks ──
+
+    @strawberry.field
+    async def scheduled_tasks(self) -> list[ScheduledTaskType]:
+        """List scheduled triggers from config with runtime state."""
+        import os
+        from pathlib import Path
+
+        import yaml
+
+        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+        path = Path(config_path)
+        if not path.exists():
+            return []
+
+        with open(path) as f:
+            cfg = yaml.safe_load(f)
+
+        triggers = cfg.get("scheduled_triggers", [])
+
+        # Try to get runtime info from the APScheduler instance
+        job_map: dict[str, object] = {}
+        try:
+            from provisa.api.app import state
+            scheduler = getattr(state, "scheduler", None)
+            if scheduler is not None:
+                for job in scheduler.get_jobs():
+                    job_map[job.id] = job
+        except Exception:
+            pass
+
+        result = []
+        for t in triggers:
+            tid = t["id"]
+            job = job_map.get(tid)
+            next_run = None
+            if job is not None and job.next_run_time is not None:
+                next_run = job.next_run_time.isoformat()
+            result.append(ScheduledTaskType(
+                id=tid,
+                name=t.get("name", tid),
+                cron_expression=t["cron"],
+                webhook_url=t.get("url"),
+                enabled=t.get("enabled", True),
+                last_run_at=None,
+                next_run_at=next_run,
+            ))
+        return result
+
+
 @strawberry.type
 class Mutation:
     @strawberry.mutation
@@ -486,6 +544,7 @@ class Mutation:
         )
         async with pool.acquire() as conn:
             table_id = await table_repo.upsert(conn, model)
+        await _rebuild_schemas()
         return MutationResult(
             success=True,
             message=f"Table {input.table_name!r} registered (id={table_id})",
@@ -537,6 +596,7 @@ class Mutation:
         )
         async with pool.acquire() as conn:
             table_id = await table_repo.upsert(conn, model)
+        await _rebuild_schemas()
         return MutationResult(
             success=True,
             message=f"Table {input.table_name!r} updated (id={table_id})",
@@ -550,6 +610,7 @@ class Mutation:
         async with pool.acquire() as conn:
             deleted = await table_repo.delete(conn, id)
         if deleted:
+            await _rebuild_schemas()
             return MutationResult(success=True, message=f"Table {id} deleted")
         return MutationResult(success=False, message=f"Table {id} not found")
 
@@ -621,6 +682,7 @@ class Mutation:
         )
         async with pool.acquire() as conn:
             await rel_repo.upsert(conn, model)
+        await _rebuild_schemas()
         return MutationResult(
             success=True, message=f"Relationship {input.id!r} saved",
         )
@@ -633,6 +695,7 @@ class Mutation:
         async with pool.acquire() as conn:
             deleted = await rel_repo.delete(conn, id)
         if deleted:
+            await _rebuild_schemas()
             return MutationResult(success=True, message=f"Relationship {id!r} deleted")
         return MutationResult(success=False, message=f"Relationship {id!r} not found")
 
@@ -678,6 +741,36 @@ class Mutation:
             if result == "UPDATE 0":
                 return MutationResult(success=False, message=f"Table {table_id} not found")
         return MutationResult(success=True, message=f"Cache TTL updated for table {table_id}")
+
+    # ── Admin: Naming Convention ──
+
+    @strawberry.mutation
+    async def update_source_naming(self, source_id: str, naming_convention: Optional[str] = None) -> MutationResult:
+        """Update naming convention for a source."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE sources SET naming_convention = $1 WHERE id = $2",
+                naming_convention, source_id,
+            )
+            if result == "UPDATE 0":
+                return MutationResult(success=False, message=f"Source {source_id!r} not found")
+        await _rebuild_schemas()
+        return MutationResult(success=True, message=f"Naming convention updated for source {source_id!r}")
+
+    @strawberry.mutation
+    async def update_table_naming(self, table_id: int, naming_convention: Optional[str] = None) -> MutationResult:
+        """Update naming convention for a registered table."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE registered_tables SET naming_convention = $1 WHERE id = $2",
+                naming_convention, table_id,
+            )
+            if result == "UPDATE 0":
+                return MutationResult(success=False, message=f"Table {table_id} not found")
+        await _rebuild_schemas()
+        return MutationResult(success=True, message=f"Naming convention updated for table {table_id}")
 
     # ── Admin: MV Management ──
 
@@ -731,6 +824,44 @@ class Mutation:
             return MutationResult(success=True, message=f"Purged {count} cache entries for table {table_id}")
         except Exception as e:
             return MutationResult(success=False, message=str(e))
+
+
+    # ── Admin: Scheduled Task Management ──
+
+    @strawberry.mutation
+    async def toggle_scheduled_task(self, task_id: str, enabled: bool) -> MutationResult:
+        """Enable or disable a scheduled trigger in the config."""
+        import os
+        from pathlib import Path
+
+        import yaml
+
+        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+        path = Path(config_path)
+        if not path.exists():
+            return MutationResult(success=False, message="Config file not found")
+
+        with open(path) as f:
+            cfg = yaml.safe_load(f)
+
+        triggers = cfg.get("scheduled_triggers", [])
+        found = False
+        for t in triggers:
+            if t["id"] == task_id:
+                t["enabled"] = enabled
+                found = True
+                break
+
+        if not found:
+            return MutationResult(success=False, message=f"Task {task_id!r} not found")
+
+        with open(path, "w") as f:
+            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+
+        return MutationResult(
+            success=True,
+            message=f"Task {task_id!r} {'enabled' if enabled else 'disabled'}",
+        )
 
 
 admin_schema = strawberry.Schema(query=Query, mutation=Mutation)

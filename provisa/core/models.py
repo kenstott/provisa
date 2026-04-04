@@ -35,6 +35,7 @@ class SourceType(str, Enum):
     elasticsearch = "elasticsearch"
     pinot = "pinot"
     druid = "druid"
+    exasol = "exasol"
     # Data Lake
     delta_lake = "delta_lake"
     iceberg = "iceberg"
@@ -131,6 +132,7 @@ class Source(BaseModel):
     pgbouncer_port: int = Field(default=6432, alias="pgbouncer_port")
     cache_enabled: bool = True
     cache_ttl: int | None = None  # overrides global default; None = inherit
+    naming_convention: str | None = None  # overrides global; None = inherit
 
     @property
     def connector(self) -> str:
@@ -175,6 +177,7 @@ class NamingRule(BaseModel):
 
 
 class NamingConfig(BaseModel):
+    convention: str = "snake_case"  # none, snake_case, camelCase, PascalCase
     rules: list[NamingRule] = Field(default_factory=list)
 
 
@@ -215,6 +218,7 @@ class Table(BaseModel):
     alias: str | None = None  # GraphQL type/field name override
     description: str | None = None  # GraphQL type description
     cache_ttl: int | None = None  # overrides source-level; None = inherit
+    naming_convention: str | None = None  # overrides source; None = inherit
 
 
 class Relationship(BaseModel):

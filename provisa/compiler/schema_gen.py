@@ -35,7 +35,7 @@ from graphql import (
 )
 
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.naming import generate_name, to_type_name
+from provisa.compiler.naming import apply_convention, generate_name, to_type_name
 from provisa.compiler.type_map import FILTER_TYPE_MAP, trino_to_graphql
 
 
@@ -52,6 +52,7 @@ class SchemaInput:
     source_types: dict[str, str] | None = None  # source_id → type (for mutation eligibility)
     domain_prefix: bool = False  # prepend domain_id__ to all names
     physical_table_map: dict[str, str] | None = None  # virtual → physical table name
+    naming_convention: str = "snake_case"  # none, snake_case, camelCase, PascalCase
 
 
 @dataclass
@@ -69,14 +70,22 @@ class _TableInfo:
     column_metadata: dict[str, ColumnMetadata]  # column_name → metadata
     alias: str | None = None  # explicit GraphQL name override
     description: str | None = None  # GraphQL type/field description
+    naming_convention: str = "snake_case"  # resolved convention for this table
     gql_fields: dict[str, GraphQLField] = field(default_factory=dict)
 
 
 # --- GraphQL enum for ORDER BY direction ---
 
 OrderDirection = GraphQLEnumType(
-    "OrderDirection",
-    {"ASC": GraphQLEnumValue("ASC"), "DESC": GraphQLEnumValue("DESC")},
+    "order_by",
+    {
+        "asc": GraphQLEnumValue("asc"),
+        "desc": GraphQLEnumValue("desc"),
+        "asc_nulls_first": GraphQLEnumValue("asc_nulls_first"),
+        "asc_nulls_last": GraphQLEnumValue("asc_nulls_last"),
+        "desc_nulls_first": GraphQLEnumValue("desc_nulls_first"),
+        "desc_nulls_last": GraphQLEnumValue("desc_nulls_last"),
+    },
 )
 
 
@@ -108,6 +117,11 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
         if not visible_cols:
             continue
 
+        # Resolve naming convention: table → source → global
+        table_conv = table.get("naming_convention")
+        source_conv = table.get("source_naming_convention")
+        resolved_conv = table_conv or source_conv or si.naming_convention
+
         result.append(_TableInfo(
             table_id=table_id,
             field_name="",  # set after naming
@@ -120,6 +134,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
             column_metadata=col_meta,
             alias=table.get("alias"),
             description=table.get("description"),
+            naming_convention=resolved_conv,
         ))
 
     return result
@@ -151,8 +166,14 @@ def _assign_names(
             t.type_name = to_type_name(t.field_name)
 
 
-def _build_column_fields(table: _TableInfo) -> dict[str, GraphQLField]:
-    """Build GraphQL fields for visible columns."""
+def _build_column_fields(
+    table: _TableInfo,
+    convention: str = "snake_case",
+) -> dict[str, GraphQLField]:
+    """Build GraphQL fields for visible columns.
+
+    Naming priority: explicit alias > convention-based alias > raw column name.
+    """
     fields: dict[str, GraphQLField] = {}
     for col in table.visible_columns:
         col_name = col["column_name"]
@@ -165,7 +186,13 @@ def _build_column_fields(table: _TableInfo) -> dict[str, GraphQLField]:
         gql_type = trino_to_graphql(meta.data_type)
         if not meta.is_nullable and not isinstance(gql_type, GraphQLList):
             gql_type = GraphQLNonNull(gql_type)
-        field_name = col.get("alias") or col_name
+        # Naming priority: explicit alias > convention > raw name
+        explicit_alias = col.get("alias")
+        if explicit_alias:
+            field_name = explicit_alias
+        else:
+            conv_alias = apply_convention(col_name, convention)
+            field_name = conv_alias if conv_alias else col_name
         description = col.get("description")
         fields[field_name] = GraphQLField(gql_type, description=description)
     return fields
@@ -203,29 +230,47 @@ def _build_where_input(
     return where_input
 
 
-def _build_order_by_input(
-    table: _TableInfo, type_name: str
-) -> GraphQLInputObjectType | None:
-    """Build ORDER BY input type with field enum + direction."""
-    visible_col_names = [
-        c["column_name"] for c in table.visible_columns
-        if c["column_name"] in table.column_metadata
-    ]
-    if not visible_col_names:
-        return None
+def _build_order_by_inputs(
+    tables: list[_TableInfo],
+    visible_rels: list[dict],
+    table_lookup: dict[int, _TableInfo],
+) -> dict[int, GraphQLInputObjectType]:
+    """Build ORDER BY input types using Hasura v2 pattern: {column: direction}.
 
-    field_enum = GraphQLEnumType(
-        f"{type_name}OrderByField",
-        {name: GraphQLEnumValue(name) for name in visible_col_names},
-    )
+    Each visible column becomes a field with OrderDirection type.
+    Relationship fields become nested order_by input references via thunks.
+    Returns table_id → OrderBy input type mapping.
+    """
+    order_by_types: dict[int, GraphQLInputObjectType] = {}
 
-    return GraphQLInputObjectType(
-        f"{type_name}OrderBy",
-        {
-            "field": GraphQLInputField(GraphQLNonNull(field_enum)),
-            "direction": GraphQLInputField(OrderDirection),
-        },
-    )
+    for t in tables:
+        visible_col_names = [
+            c["column_name"] for c in t.visible_columns
+            if c["column_name"] in t.column_metadata
+        ]
+        if not visible_col_names:
+            continue
+
+        # Capture t in closure for the thunk
+        def make_fields(table=t, cols=visible_col_names):
+            fields: dict[str, GraphQLInputField] = {
+                name: GraphQLInputField(OrderDirection) for name in cols
+            }
+            # Add nested relationship ordering
+            for rel in visible_rels:
+                if rel["source_table_id"] == table.table_id:
+                    tgt_id = rel["target_table_id"]
+                    if tgt_id in order_by_types:
+                        target = table_lookup[tgt_id]
+                        fields[target.field_name] = GraphQLInputField(
+                            order_by_types[tgt_id],
+                        )
+            return fields
+
+        ob_type = GraphQLInputObjectType(f"{t.type_name}OrderBy", make_fields)
+        order_by_types[t.table_id] = ob_type
+
+    return order_by_types
 
 
 def _can_see_relationship(
@@ -265,7 +310,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
 
     # Build base column fields
     for t in tables:
-        t.gql_fields = _build_column_fields(t)
+        t.gql_fields = _build_column_fields(t, convention=t.naming_convention)
 
     table_lookup: dict[int, _TableInfo] = {t.table_id: t for t in tables}
 
@@ -303,6 +348,9 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             t.type_name, make_fields, description=t.description,
         )
 
+    # Pre-build all ORDER BY input types (shared across root fields)
+    order_by_types = _build_order_by_inputs(tables, visible_rels, table_lookup)
+
     # Build root query fields
     query_fields: dict[str, GraphQLField] = {}
 
@@ -317,7 +365,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         if where_input:
             args["where"] = GraphQLArgument(where_input)
 
-        order_by_input = _build_order_by_input(t, t.type_name)
+        order_by_input = order_by_types.get(t.table_id)
         if order_by_input:
             args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(order_by_input)))
 

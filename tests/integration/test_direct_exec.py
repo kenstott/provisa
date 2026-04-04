@@ -13,14 +13,15 @@
 import os
 
 import pytest
+import pytest_asyncio
 
 from provisa.executor.direct import execute_direct
 from provisa.executor.pool import SourcePool
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def source_pool():
     sp = SourcePool()
     await sp.add(

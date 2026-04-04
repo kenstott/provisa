@@ -26,6 +26,7 @@ class SourceType:
     dialect: str
     cache_enabled: bool
     cache_ttl: int | None
+    naming_convention: str | None
 
 
 @strawberry.type
@@ -45,6 +46,7 @@ class RegisteredTableType:
     alias: str | None
     description: str | None
     cache_ttl: int | None
+    naming_convention: str | None
     columns: list[TableColumnType]
 
 
@@ -229,6 +231,17 @@ class SystemHealthType:
     cache_connected: bool
     flight_server_running: bool
     mv_refresh_loop_running: bool
+
+
+@strawberry.type
+class ScheduledTaskType:
+    id: str
+    name: str
+    cron_expression: str
+    webhook_url: str | None
+    enabled: bool
+    last_run_at: str | None
+    next_run_at: str | None
 
 
 @strawberry.type

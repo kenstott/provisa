@@ -17,7 +17,7 @@ import pytest
 from provisa.core.catalog import catalog_exists, create_catalog, drop_catalog
 from provisa.core.models import Source
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 
 @pytest.fixture

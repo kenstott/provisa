@@ -3,8 +3,10 @@ import { createPortal } from "react-dom";
 import {
   fetchTables, fetchSources, fetchDomains, fetchRoles,
   fetchAvailableSchemas, fetchAvailableTables, fetchAvailableColumnsMetadata,
-  registerTable, deleteTable, updateTable,
+  registerTable, deleteTable, updateTable, updateTableCache, updateTableNaming,
+  purgeCacheByTable, fetchSettings,
 } from "../api/admin";
+import type { PlatformSettings } from "../api/admin";
 import type { TableMetadata } from "../api/admin";
 import type { RegisteredTable, Source, Domain } from "../types/admin";
 import type { Role } from "../types/auth";
@@ -85,6 +87,14 @@ function MultiSelect({ options, value, onChange }: {
   );
 }
 
+const NAMING_CONVENTIONS = [
+  { value: "", label: "Inherit (source)" },
+  { value: "none", label: "none" },
+  { value: "snake_case", label: "snake_case" },
+  { value: "camelCase", label: "camelCase" },
+  { value: "PascalCase", label: "PascalCase" },
+];
+
 interface ColumnForm {
   name: string;
   visibleTo: string;
@@ -131,11 +141,72 @@ export function TablesPage() {
   const [editingTable, setEditingTable] = useState<RegisteredTable | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Cache state
+  const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const [cacheTtlEdits, setCacheTtlEdits] = useState<Record<number, { value: string; dirty: boolean; saving: boolean }>>({});
+  const [purging, setPurging] = useState<Record<number, boolean>>({});
+
   const reload = () => {
     setLoading(true);
-    Promise.all([fetchTables(), fetchSources(), fetchDomains(), fetchRoles()])
-      .then(([t, s, d, r]) => { setTables(t); setSources(s); setDomains(d); setRoles(r); })
+    Promise.all([fetchTables(), fetchSources(), fetchDomains(), fetchRoles(), fetchSettings()])
+      .then(([t, s, d, r, st]) => {
+        setTables(t); setSources(s); setDomains(d); setRoles(r); setSettings(st);
+        const edits: Record<number, { value: string; dirty: boolean; saving: boolean }> = {};
+        for (const tbl of t) {
+          edits[tbl.id] = { value: tbl.cacheTtl != null ? String(tbl.cacheTtl) : "", dirty: false, saving: false };
+        }
+        setCacheTtlEdits(edits);
+      })
       .finally(() => setLoading(false));
+  };
+
+  const getEffectiveTableTtl = (t: RegisteredTable): string => {
+    if (t.cacheTtl != null) return `${t.cacheTtl}s (custom)`;
+    const source = sources.find((s) => s.id === t.sourceId);
+    if (source?.cacheTtl != null) return `${source.cacheTtl}s (from source)`;
+    if (settings) return `${settings.cache.default_ttl}s (global)`;
+    return "default";
+  };
+
+  const handleSaveTableCache = async (tableId: number) => {
+    const edit = cacheTtlEdits[tableId];
+    setCacheTtlEdits((prev) => ({ ...prev, [tableId]: { ...prev[tableId], saving: true } }));
+    setError(null);
+    try {
+      const ttlValue = edit.value.trim() === "" ? null : parseInt(edit.value, 10);
+      if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
+      const result = await updateTableCache(tableId, ttlValue);
+      if (!result.success) throw new Error(result.message);
+      setCacheTtlEdits((prev) => ({ ...prev, [tableId]: { ...prev[tableId], dirty: false, saving: false } }));
+      reload();
+    } catch (e: any) {
+      setError(e.message);
+      setCacheTtlEdits((prev) => ({ ...prev, [tableId]: { ...prev[tableId], saving: false } }));
+    }
+  };
+
+  const handlePurgeTableCache = async (tableId: number) => {
+    setPurging((prev) => ({ ...prev, [tableId]: true }));
+    setError(null);
+    try {
+      const result = await purgeCacheByTable(tableId);
+      if (!result.success) throw new Error(result.message);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setPurging((prev) => ({ ...prev, [tableId]: false }));
+    }
+  };
+
+  const handleNamingChange = async (tableId: number, value: string) => {
+    setError(null);
+    try {
+      const result = await updateTableNaming(tableId, value === "" ? null : value);
+      if (!result.success) throw new Error(result.message);
+      reload();
+    } catch (e: any) {
+      setError(e.message);
+    }
   };
 
   useEffect(reload, []);
@@ -484,7 +555,7 @@ export function TablesPage() {
           <tr>
             <th>ID</th><th>Source</th><th>Domain</th><th>Schema</th>
             <th>Table</th><th>Alias</th><th>Description</th>
-            <th>Governance</th><th>Cache TTL</th><th>Cols</th><th></th>
+            <th>Governance</th><th>Naming</th><th>Cache TTL</th><th>Effective TTL</th><th>Cols</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -501,12 +572,51 @@ export function TablesPage() {
                   <td>{t.alias || ""}</td>
                   <td className="reasoning-cell">{t.description || ""}</td>
                   <td>{t.governance}</td>
-                  <td>{t.cacheTtl != null ? `${t.cacheTtl}s` : "default"}</td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <select
+                      value={t.namingConvention ?? ""}
+                      onChange={(e) => handleNamingChange(t.id, e.target.value)}
+                      style={{ fontSize: "0.85rem" }}
+                    >
+                      {NAMING_CONVENTIONS.map((nc) => (
+                        <option key={nc.value} value={nc.value}>{nc.label}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <div style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
+                      <input
+                        type="number"
+                        min={0}
+                        value={cacheTtlEdits[t.id]?.value ?? (t.cacheTtl != null ? String(t.cacheTtl) : "")}
+                        onChange={(e) => setCacheTtlEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], value: e.target.value, dirty: true } }))}
+                        placeholder="inherit"
+                        style={{ width: "5rem" }}
+                      />
+                      {cacheTtlEdits[t.id]?.dirty && (
+                        <button
+                          onClick={() => handleSaveTableCache(t.id)}
+                          disabled={cacheTtlEdits[t.id]?.saving}
+                          style={{ padding: "0.15rem 0.4rem", fontSize: "0.7rem" }}
+                        >
+                          {cacheTtlEdits[t.id]?.saving ? "..." : "Save"}
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                  <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{getEffectiveTableTtl(t)}</td>
                   <td>{t.columns.length}</td>
-                  <td>
+                  <td onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "0.25rem" }}>
+                    <button
+                      onClick={() => handlePurgeTableCache(t.id)}
+                      disabled={purging[t.id]}
+                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                    >
+                      {purging[t.id] ? "Purging..." : "Invalidate Cache"}
+                    </button>
                     <button
                       className="destructive"
-                      onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
+                      onClick={() => handleDelete(t.id)}
                       style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
                     >
                       Delete
@@ -515,7 +625,7 @@ export function TablesPage() {
                 </tr>
                 {expanded === t.id && (
                   <tr key={`${t.id}-cols`}>
-                    <td colSpan={10}>
+                    <td colSpan={13}>
                       {!isEditing ? (
                         <>
                           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>

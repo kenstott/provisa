@@ -11,14 +11,15 @@
 """Integration tests for persisted query registry — store/retrieve/approve/deprecate in PG."""
 
 import pytest
+import pytest_asyncio
 
 from provisa.registry import store
 from provisa.registry.approval import flag_queries_for_table
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def conn(pg_pool):
     async with pg_pool.acquire() as c:
         # Ensure schema exists

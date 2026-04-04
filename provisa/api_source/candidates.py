@@ -33,7 +33,7 @@ async def store_candidates(
             INSERT INTO api_endpoint_candidates (source_id, path, method, table_name, columns, status)
             VALUES ($1, $2, $3, $4, $5::jsonb, 'discovered')
             ON CONFLICT (source_id, path, method) DO UPDATE
-                SET columns = EXCLUDED.columns, status = 'discovered'
+                SET table_name = EXCLUDED.table_name, columns = EXCLUDED.columns, status = 'discovered'
             RETURNING id
             """,
             source_id, c.path, c.method, c.table_name, columns_json,

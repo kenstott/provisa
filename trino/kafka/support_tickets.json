@@ -7,8 +7,7 @@
     "fields": [
       {
         "name": "customer_key",
-        "type": "VARCHAR",
-        "mapping": ""
+        "type": "VARCHAR"
       }
     ]
   },

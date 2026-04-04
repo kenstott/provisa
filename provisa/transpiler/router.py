@@ -27,7 +27,11 @@ from provisa.executor.drivers.registry import has_driver
 class Route(str, Enum):
     DIRECT = "direct"
     TRINO = "virtual"
+    API = "api"
 
+
+# API sources — route through API caller pipeline
+API_SOURCES: set[str] = {"openapi", "graphql_api", "grpc_api"}
 
 # Virtual sources — always route through Trino (no direct SQL driver)
 VIRTUAL_SOURCES: set[str] = {
@@ -37,8 +41,8 @@ VIRTUAL_SOURCES: set[str] = {
     "delta_lake", "iceberg", "hive",
     # Specialized
     "google_sheets", "prometheus",
-    # API / Streaming
-    "openapi", "graphql_api", "grpc_api", "kafka",
+    # Streaming
+    "kafka",
 }
 
 
@@ -57,6 +61,7 @@ def decide_route(
     steward_hint: str | None = None,
     *,
     has_json_extract: bool = False,
+    is_mutation: bool = False,
 ) -> RouteDecision:
     """Decide whether to route a query direct or through Trino.
 
@@ -66,10 +71,20 @@ def decide_route(
         source_dialects: {source_id: sqlglot_dialect} e.g. {"sales-pg": "postgres"}.
         steward_hint: Optional "direct" or "trino" override from steward.
         has_json_extract: Query uses json_extract_scalar (path columns).
+        is_mutation: True for mutations — always route direct (never Trino).
 
     Returns:
         RouteDecision with route, target source (if direct), and reason.
     """
+    # Mutations always route direct — Trino doesn't support writes
+    if is_mutation and len(sources) >= 1:
+        sid = next(iter(sources))
+        return RouteDecision(
+            route=Route.DIRECT, source_id=sid,
+            dialect=source_dialects.get(sid),
+            reason="mutation (always direct)",
+        )
+
     # Steward override
     if steward_hint == "trino":
         return RouteDecision(
@@ -95,6 +110,13 @@ def decide_route(
 
     sid = next(iter(sources))
     stype = source_types.get(sid, "")
+
+    # API sources — route through API caller, not Trino
+    if stype in API_SOURCES:
+        return RouteDecision(
+            route=Route.API, source_id=sid, dialect=None,
+            reason=f"api source ({stype})",
+        )
 
     # Trino-only sources (NoSQL, data lake, non-SQL)
     if stype in VIRTUAL_SOURCES:

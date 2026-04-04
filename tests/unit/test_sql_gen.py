@@ -200,22 +200,59 @@ class TestPagination:
 
     def test_order_by(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders(order_by: [{ field: CREATED_AT, direction: DESC }]) { id } }")
+        doc = parse("{ orders(order_by: [{ created_at: desc }]) { id } }")
         results = compile_query(doc, ctx)
-        # Enum value resolves to column name (may be uppercase from enum definition)
         sql = results[0].sql
         assert "ORDER BY" in sql
-        assert "DESC" in sql
+        assert '"created_at" DESC' in sql
+
+    def test_order_by_asc(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders(order_by: [{ id: asc }]) { id } }")
+        results = compile_query(doc, ctx)
+        assert '"id" ASC' in results[0].sql
+
+    def test_order_by_nulls_first(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders(order_by: [{ amount: asc_nulls_first }]) { id } }")
+        results = compile_query(doc, ctx)
+        assert '"amount" ASC NULLS FIRST' in results[0].sql
+
+    def test_order_by_nulls_last(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders(order_by: [{ amount: desc_nulls_last }]) { id } }")
+        results = compile_query(doc, ctx)
+        assert '"amount" DESC NULLS LAST' in results[0].sql
+
+    def test_order_by_desc_nulls_first(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders(order_by: [{ region: desc_nulls_first }]) { id } }")
+        results = compile_query(doc, ctx)
+        assert '"region" DESC NULLS FIRST' in results[0].sql
+
+    def test_order_by_asc_nulls_last(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders(order_by: [{ status: asc_nulls_last }]) { id } }")
+        results = compile_query(doc, ctx)
+        assert '"status" ASC NULLS LAST' in results[0].sql
+
+    def test_order_by_multiple_columns(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders(order_by: [{ region: asc }, { amount: desc }]) { id } }")
+        results = compile_query(doc, ctx)
+        sql = results[0].sql
+        assert '"region" ASC' in sql
+        assert '"amount" DESC' in sql
 
     def test_full_pagination(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
         doc = parse(
-            "{ orders(order_by: [{ field: ID, direction: ASC }], limit: 5, offset: 10) { id amount } }"
+            "{ orders(order_by: [{ id: asc }], limit: 5, offset: 10) { id amount } }"
         )
         results = compile_query(doc, ctx)
         sql = results[0].sql
         assert "ORDER BY" in sql
-        assert "ASC" in sql
+        assert '"id" ASC' in sql
         assert "LIMIT 5" in sql
         assert "OFFSET 10" in sql
 
@@ -243,7 +280,7 @@ class TestDistinctOn:
         doc = parse("""
             { orders(
                 distinct_on: [customer_id]
-                order_by: [{ field: customer_id, direction: ASC }]
+                order_by: [{ customer_id: asc }]
             ) { id customer_id } }
         """)
         results = compile_query(doc, ctx)

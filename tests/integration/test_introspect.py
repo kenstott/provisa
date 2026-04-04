@@ -18,7 +18,7 @@ from provisa.compiler.introspect import (
     introspect_table_columns,
 )
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 
 class TestIntrospectTableColumns:

@@ -15,9 +15,10 @@ import type { PlatformSettings } from "../api/admin";
 import { MVManager } from "../components/admin/MVManager";
 import { CacheManager } from "../components/admin/CacheManager";
 import { SystemHealth } from "../components/admin/SystemHealth";
+import { ScheduledTasks } from "../components/admin/ScheduledTasks";
 
 const FORMAT_OPTIONS = ["parquet", "orc", "json", "ndjson", "csv", "arrow"];
-const TABS = ["Overview", "Materialized Views", "Cache", "System Health"] as const;
+const TABS = ["Overview", "Materialized Views", "Cache", "Scheduled Tasks", "System Health"] as const;
 type Tab = typeof TABS[number];
 
 /** Admin overview page — dashboard, config management, platform settings. */
@@ -201,6 +202,26 @@ export function AdminPage() {
                   />
                   Domain prefix (domain_id__ prepended to all names)
                 </label>
+                <label>
+                  Naming Convention
+                  <select
+                    value={settings.naming.convention || "snake_case"}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        naming: {
+                          ...settings.naming,
+                          convention: e.target.value,
+                        },
+                      })
+                    }
+                  >
+                    <option value="none">None (raw DB names)</option>
+                    <option value="snake_case">snake_case</option>
+                    <option value="camelCase">camelCase</option>
+                    <option value="PascalCase">PascalCase</option>
+                  </select>
+                </label>
               </div>
               <div className="settings-section">
                 <h4>Sampling</h4>
@@ -286,6 +307,7 @@ export function AdminPage() {
 
       {activeTab === "Materialized Views" && <MVManager />}
       {activeTab === "Cache" && <CacheManager />}
+      {activeTab === "Scheduled Tasks" && <ScheduledTasks />}
       {activeTab === "System Health" && <SystemHealth />}
     </div>
   );

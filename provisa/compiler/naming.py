@@ -22,9 +22,35 @@ def _to_pascal_case(name: str) -> str:
     return "".join(p.capitalize() for p in parts if p)
 
 
+def _to_camel_case(name: str) -> str:
+    """Convert snake_case or kebab-case to camelCase."""
+    pascal = _to_pascal_case(name)
+    if not pascal:
+        return pascal
+    return pascal[0].lower() + pascal[1:]
+
+
 def _to_field_name(name: str) -> str:
     """Convert to valid GraphQL field name (snake_case, no hyphens)."""
     return re.sub(r"[^a-zA-Z0-9_]", "_", name).strip("_")
+
+
+def apply_convention(name: str, convention: str) -> str | None:
+    """Apply a naming convention to produce an alias.
+
+    Returns None if convention is 'none' or 'snake_case' (no alias needed,
+    since DB names are typically already snake_case).
+    Returns the aliased name for camelCase or PascalCase.
+    """
+    if convention in ("none", "snake_case"):
+        return None
+    if convention == "camelCase":
+        result = _to_camel_case(name)
+        return result if result != name else None
+    if convention == "PascalCase":
+        result = _to_pascal_case(name)
+        return result if result != name else None
+    return None
 
 
 def _apply_naming_rules(name: str, rules: list[dict]) -> str:

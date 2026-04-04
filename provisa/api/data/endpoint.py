@@ -21,7 +21,7 @@ import asyncio
 import json
 import logging
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from graphql import GraphQLSyntaxError, OperationType
 from pydantic import BaseModel
@@ -120,6 +120,7 @@ def _inject_probe_limit(sql: str, limit: int) -> str:
 
 @router.post("/graphql")
 async def graphql_endpoint(
+    raw_request: Request,
     request: GraphQLRequest,
     x_provisa_role: str | None = Header(None),
     accept: str | None = Header(None),
@@ -141,7 +142,9 @@ async def graphql_endpoint(
     """
     from provisa.api.app import state
 
-    role_id = x_provisa_role or request.role
+    # Auth middleware role takes precedence, then header, then request body
+    auth_role = getattr(raw_request.state, "role", None)
+    role_id = auth_role or x_provisa_role or request.role
 
     if role_id not in state.schemas:
         raise HTTPException(
@@ -252,6 +255,85 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
     return compiled, mv_used
 
 
+async def _execute_api_source(compiled, state, source_id, root_field, ck, output_format):
+    """Execute a query against an API source via the api_source pipeline.
+
+    Looks up the endpoint by root_field table name, calls handle_api_query
+    (which uses its own cache layer), and returns formatted rows.
+    """
+    from provisa.api_source.router_integration import handle_api_query
+
+    # Find the API endpoint matching this query's table
+    table_meta = None
+    for meta in state.contexts.values():
+        tm = meta.tables.get(root_field)
+        if tm:
+            table_meta = tm
+            break
+
+    table_name = table_meta.table_name if table_meta else root_field
+    endpoint = state.api_endpoints.get(table_name)
+    if endpoint is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No API endpoint registered for table {table_name!r}",
+        )
+
+    api_source = state.api_sources.get(source_id)
+
+    # Extract WHERE params from compiled SQL params (positional → named)
+    # API sources use param names from column definitions
+    params: dict = {}
+    if compiled.params:
+        # Map positional params to endpoint column param_names
+        filterable_cols = [
+            c for c in endpoint.columns
+            if c.param_name is not None
+        ]
+        for i, val in enumerate(compiled.params):
+            if i < len(filterable_cols):
+                params[filterable_cols[i].param_name] = val
+
+    # Use PG pool connection for cache operations
+    conn = None
+    if state.pg_pool is not None:
+        conn = await state.pg_pool.acquire()
+
+    try:
+        result = await handle_api_query(
+            endpoint=endpoint,
+            params=params,
+            conn=conn,
+            source=api_source,
+            source_ttl=state.source_cache.get(source_id, {}).get("cache_ttl"),
+            global_ttl=state.cache_default_ttl,
+        )
+    finally:
+        if conn is not None:
+            await state.pg_pool.release(conn)
+
+    rows = result.rows
+    log.info(
+        "[QUERY %s] API source returned %d rows (cached=%s)",
+        root_field, len(rows), result.from_cache,
+    )
+
+    # Build column refs for serialization
+    from provisa.compiler.sql_gen import ColumnRef
+    columns = [
+        ColumnRef(alias=None, column=c.name, field_name=c.name, nested_in=None)
+        for c in endpoint.columns
+    ]
+
+    response_data = _format_response(rows, columns, root_field, output_format)
+    if isinstance(response_data, dict):
+        field_rows = response_data.get("data", {}).get(root_field, [])
+    else:
+        field_rows = response_data
+
+    return field_rows, response_data
+
+
 async def _execute_one_field(
     compiled, ctx, rls, state, variables, role, role_id,
     document, fresh_mvs, output_format,
@@ -292,6 +374,14 @@ async def _execute_one_field(
         root_field, decision.route.value,
         decision.source_id or "(trino)", decision.reason,
     )
+
+    # --- API source path: fetch from external API via router_integration ---
+    if decision.route == Route.API and decision.source_id:
+        field_rows, response_data = await _execute_api_source(
+            compiled, state, decision.source_id, root_field, ck, output_format,
+        )
+
+        return root_field, field_rows, None, ck, None
 
     # --- CTAS path: force redirect with Trino-native format ---
     if (
@@ -412,16 +502,31 @@ async def _execute_one_field(
         # Binary format (parquet/arrow/csv) — can't merge, return as-is
         field_rows = response_data
 
-    # Cache store
+    # Cache store with hierarchical TTL resolution
     if isinstance(response_data, dict):
         table_ids = {
             meta.table_id for meta in ctx.tables.values()
             if meta.field_name == root_field
         }
-        await store_result(
-            state.cache_store, ck, response_data,
-            ttl=state.cache_default_ttl, table_ids=table_ids,
+        # Resolve per-source/per-table cache policy
+        from provisa.cache.policy import resolve_policy, CachePolicy
+        source_id = next(iter(compiled.sources), None)
+        src_cache = state.source_cache.get(source_id, {}) if source_id else {}
+        table_id = next(iter(table_ids), None)
+        tbl_cache_ttl = state.table_cache.get(table_id) if table_id else None
+        _policy, resolved_ttl = resolve_policy(
+            stable_id=None,  # ad-hoc queries still cached in test mode
+            cache_ttl=None,
+            default_ttl=state.cache_default_ttl,
+            source_cache_enabled=src_cache.get("cache_enabled", True),
+            source_cache_ttl=src_cache.get("cache_ttl"),
+            table_cache_ttl=tbl_cache_ttl,
         )
+        if resolved_ttl > 0:
+            await store_result(
+                state.cache_store, ck, response_data,
+                ttl=resolved_ttl, table_ids=table_ids,
+            )
 
     return root_field, field_rows, None, ck, None
 
@@ -676,6 +781,7 @@ def _extract_operation_name(query_text: str) -> str | None:
 
 @router.post("/compile")
 async def compile_endpoint(
+    raw_request: Request,
     request: GraphQLRequest,
     x_provisa_role: str | None = Header(None),
 ):
@@ -686,7 +792,8 @@ async def compile_endpoint(
     """
     from provisa.api.app import state
 
-    role_id = x_provisa_role or request.role
+    auth_role = getattr(raw_request.state, "role", None)
+    role_id = auth_role or x_provisa_role or request.role
     if role_id not in state.schemas:
         raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
 
@@ -755,6 +862,7 @@ async def compile_endpoint(
 
 @router.post("/submit")
 async def submit_endpoint(
+    raw_request: Request,
     request: SubmitRequest,
     x_provisa_role: str | None = Header(None),
 ):
@@ -764,7 +872,8 @@ async def submit_endpoint(
     """
     from provisa.api.app import state
 
-    role_id = x_provisa_role or request.role
+    auth_role = getattr(raw_request.state, "role", None)
+    role_id = auth_role or x_provisa_role or request.role
     if role_id not in state.schemas:
         raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
 

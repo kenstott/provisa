@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS sources (
     username      TEXT NOT NULL,
     dialect       TEXT NOT NULL DEFAULT '',
     cache_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-    cache_ttl     INTEGER
+    cache_ttl     INTEGER,
+    naming_convention TEXT
     -- password never stored; resolved at runtime via secrets provider
 
 );
@@ -35,6 +36,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     alias       TEXT,
     description TEXT,
     cache_ttl   INTEGER,
+    naming_convention TEXT,
     UNIQUE (source_id, schema_name, table_name)
 );
 

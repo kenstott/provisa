@@ -17,7 +17,7 @@ import os
 
 import pytest
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 
 @pytest.fixture(scope="module")
@@ -39,8 +39,8 @@ class TestKafkaTopicRead:
 
     def test_kafka_topic_readable_as_table(self, trino_conn):
         """Read from a Kafka topic table via Trino."""
-        cursor = trino_conn.cursor()
         try:
+            cursor = trino_conn.cursor()
             cursor.execute("SHOW TABLES FROM support_kafka.default")
             tables = [row[0] for row in cursor.fetchall()]
         except Exception as e:
@@ -52,8 +52,9 @@ class TestKafkaTopicRead:
         # Query the first available topic table
         table = tables[0]
         try:
-            cursor.execute(f'SELECT * FROM support_kafka."default"."{table}" LIMIT 5')
-            rows = cursor.fetchall()
+            cursor2 = trino_conn.cursor()
+            cursor2.execute(f'SELECT * FROM support_kafka."default"."{table}" LIMIT 5')
+            rows = cursor2.fetchall()
             # Should return rows (may be empty if no messages yet)
             assert isinstance(rows, list)
         except Exception as e:

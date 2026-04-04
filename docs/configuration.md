@@ -19,7 +19,7 @@ sources:
     pgbouncer_port: 6432
 ```
 
-Supported source types: `postgresql`, `mysql`, `sqlserver`, `oracle`, `duckdb`, `snowflake`, `bigquery`, `mongodb`, `cassandra`.
+Supported source types: `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `snowflake`, `bigquery`, `redshift`, `databricks`, `clickhouse`, `druid`, `exasol`, `hive`, `elasticsearch`, `pinot`, `delta_lake`, `iceberg`, `mongodb`, `cassandra`, `redis`, `kudu`, `accumulo`, `kafka`, `google_sheets`, `prometheus`.
 
 ## Domains
 
@@ -33,10 +33,39 @@ domains:
 
 ```yaml
 naming:
-  domain_prefix: true  # prepend domain_id__ to all GraphQL names
+  convention: camelCase   # none, snake_case (default), camelCase, PascalCase
+  domain_prefix: true     # prepend domain_id__ to all GraphQL names
   rules:
     - pattern: "^prod_pg_"
       replace: ""
+```
+
+### Naming Convention
+
+Controls how database column names are auto-aliased in the GraphQL schema. Configurable at three levels (most specific wins): table → source → global.
+
+| Convention | DB Column `user_id` | DB Column `created_at` |
+|------------|--------------------|-----------------------|
+| `none` | `user_id` (no alias) | `created_at` |
+| `snake_case` | `user_id` (no alias) | `created_at` |
+| `camelCase` | `userId` | `createdAt` |
+| `PascalCase` | `UserId` | `CreatedAt` |
+
+Explicit `column.alias` always takes precedence over convention.
+
+Per-source override:
+```yaml
+sources:
+  - id: legacy-db
+    naming_convention: camelCase  # overrides global for this source
+```
+
+Per-table override:
+```yaml
+tables:
+  - source_id: legacy-db
+    table: orders
+    naming_convention: PascalCase  # overrides source for this table
 ```
 
 ### Domain Prefix

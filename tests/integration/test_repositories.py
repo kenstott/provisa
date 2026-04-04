@@ -10,10 +10,10 @@
 
 """Integration tests for CRUD repositories against real PG."""
 
-import asyncio
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 
 from provisa.core.db import init_schema
 from provisa.core.models import (
@@ -36,26 +36,24 @@ from provisa.core.repositories import (
     table as table_repo,
 )
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 SCHEMA_SQL = (Path(__file__).parent.parent.parent / "provisa" / "core" / "schema.sql").read_text()
 
 
-@pytest.fixture(scope="module")
-def _init_schema(pg_pool, event_loop):
-    event_loop.run_until_complete(init_schema(pg_pool, SCHEMA_SQL))
+@pytest_asyncio.fixture(scope="module", loop_scope="session")
+async def _init_schema(pg_pool):
+    await init_schema(pg_pool, SCHEMA_SQL)
 
 
-@pytest.fixture(autouse=True)
-def _clean(pg_pool, _init_schema, event_loop):
-    async def _truncate():
-        async with pg_pool.acquire() as conn:
-            await conn.execute("""
-                TRUNCATE rls_rules, relationships, table_columns,
-                         registered_tables, naming_rules, roles, domains, sources
-                CASCADE
-            """)
-    event_loop.run_until_complete(_truncate())
+@pytest_asyncio.fixture(autouse=True)
+async def _clean(pg_pool, _init_schema):
+    async with pg_pool.acquire() as conn:
+        await conn.execute("""
+            TRUNCATE rls_rules, relationships, table_columns,
+                     registered_tables, naming_rules, roles, domains, sources
+            CASCADE
+        """)
 
 
 def _make_source(**kwargs) -> Source:
@@ -100,193 +98,159 @@ async def _setup_source_domain_tables(conn):
 
 
 class TestSourceRepo:
-    def test_upsert_and_get(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                src = _make_source()
-                await source_repo.upsert(conn, src)
-                result = await source_repo.get(conn, "test-pg")
-                assert result is not None
-                assert result["type"] == "postgresql"
-                assert result["dialect"] == "postgres"
-        event_loop.run_until_complete(_run())
+    async def test_upsert_and_get(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            src = _make_source()
+            await source_repo.upsert(conn, src)
+            result = await source_repo.get(conn, "test-pg")
+            assert result is not None
+            assert result["type"] == "postgresql"
+            assert result["dialect"] == "postgres"
 
-    def test_upsert_updates_existing(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await source_repo.upsert(conn, _make_source(host="host1"))
-                await source_repo.upsert(conn, _make_source(host="host2"))
-                result = await source_repo.get(conn, "test-pg")
-                assert result["host"] == "host2"
-        event_loop.run_until_complete(_run())
+    async def test_upsert_updates_existing(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await source_repo.upsert(conn, _make_source(host="host1"))
+            await source_repo.upsert(conn, _make_source(host="host2"))
+            result = await source_repo.get(conn, "test-pg")
+            assert result["host"] == "host2"
 
-    def test_list_all(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await source_repo.upsert(conn, _make_source(id="a"))
-                await source_repo.upsert(conn, _make_source(id="b"))
-                result = await source_repo.list_all(conn)
-                assert len(result) == 2
-        event_loop.run_until_complete(_run())
+    async def test_list_all(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await source_repo.upsert(conn, _make_source(id="a"))
+            await source_repo.upsert(conn, _make_source(id="b"))
+            result = await source_repo.list_all(conn)
+            assert len(result) == 2
 
-    def test_delete(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await source_repo.upsert(conn, _make_source())
-                deleted = await source_repo.delete(conn, "test-pg")
-                assert deleted is True
-                assert await source_repo.get(conn, "test-pg") is None
-        event_loop.run_until_complete(_run())
+    async def test_delete(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await source_repo.upsert(conn, _make_source())
+            deleted = await source_repo.delete(conn, "test-pg")
+            assert deleted is True
+            assert await source_repo.get(conn, "test-pg") is None
 
-    def test_get_nonexistent(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                assert await source_repo.get(conn, "nope") is None
-        event_loop.run_until_complete(_run())
+    async def test_get_nonexistent(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            assert await source_repo.get(conn, "nope") is None
 
 
 class TestDomainRepo:
-    def test_upsert_and_get(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await domain_repo.upsert(conn, _make_domain())
-                result = await domain_repo.get(conn, "test-domain")
-                assert result["description"] == "Test"
-        event_loop.run_until_complete(_run())
+    async def test_upsert_and_get(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await domain_repo.upsert(conn, _make_domain())
+            result = await domain_repo.get(conn, "test-domain")
+            assert result["description"] == "Test"
 
-    def test_delete(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await domain_repo.upsert(conn, _make_domain())
-                assert await domain_repo.delete(conn, "test-domain") is True
-                assert await domain_repo.get(conn, "test-domain") is None
-        event_loop.run_until_complete(_run())
+    async def test_delete(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await domain_repo.upsert(conn, _make_domain())
+            assert await domain_repo.delete(conn, "test-domain") is True
+            assert await domain_repo.get(conn, "test-domain") is None
 
 
 class TestRoleRepo:
-    def test_upsert_and_get(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await role_repo.upsert(conn, _make_role())
-                result = await role_repo.get(conn, "tester")
-                assert result["capabilities"] == ["query_development"]
-        event_loop.run_until_complete(_run())
+    async def test_upsert_and_get(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await role_repo.upsert(conn, _make_role())
+            result = await role_repo.get(conn, "tester")
+            assert result["capabilities"] == ["query_development"]
 
 
 class TestTableRepo:
-    def test_upsert_and_get(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await _setup_source_domain(conn)
-                tbl = _make_table()
-                table_id = await table_repo.upsert(conn, tbl)
-                result = await table_repo.get(conn, table_id)
-                assert result["table_name"] == "test_table"
-                assert result["governance"] == "pre-approved"
-                assert len(result["columns"]) == 1
-                assert result["columns"][0]["column_name"] == "id"
-        event_loop.run_until_complete(_run())
+    async def test_upsert_and_get(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await _setup_source_domain(conn)
+            tbl = _make_table()
+            table_id = await table_repo.upsert(conn, tbl)
+            result = await table_repo.get(conn, table_id)
+            assert result["table_name"] == "test_table"
+            assert result["governance"] == "pre-approved"
+            assert len(result["columns"]) == 1
+            assert result["columns"][0]["column_name"] == "id"
 
-    def test_upsert_replaces_columns(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await _setup_source_domain(conn)
-                tbl1 = _make_table(columns=[{"name": "a", "visible_to": ["tester"]}])
-                await table_repo.upsert(conn, tbl1)
-                tbl2 = _make_table(columns=[
-                    {"name": "b", "visible_to": ["tester"]},
-                    {"name": "c", "visible_to": ["tester"]},
-                ])
-                table_id = await table_repo.upsert(conn, tbl2)
-                result = await table_repo.get(conn, table_id)
-                assert len(result["columns"]) == 2
-                names = {c["column_name"] for c in result["columns"]}
-                assert names == {"b", "c"}
-        event_loop.run_until_complete(_run())
+    async def test_upsert_replaces_columns(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await _setup_source_domain(conn)
+            tbl1 = _make_table(columns=[{"name": "a", "visible_to": ["tester"]}])
+            await table_repo.upsert(conn, tbl1)
+            tbl2 = _make_table(columns=[
+                {"name": "b", "visible_to": ["tester"]},
+                {"name": "c", "visible_to": ["tester"]},
+            ])
+            table_id = await table_repo.upsert(conn, tbl2)
+            result = await table_repo.get(conn, table_id)
+            assert len(result["columns"]) == 2
+            names = {c["column_name"] for c in result["columns"]}
+            assert names == {"b", "c"}
 
-    def test_get_by_name(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await _setup_source_domain(conn)
-                await table_repo.upsert(conn, _make_table())
-                result = await table_repo.get_by_name(conn, "test-pg", "public", "test_table")
-                assert result is not None
-                assert result["table_name"] == "test_table"
-        event_loop.run_until_complete(_run())
+    async def test_get_by_name(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await _setup_source_domain(conn)
+            await table_repo.upsert(conn, _make_table())
+            result = await table_repo.get_by_name(conn, "test-pg", "public", "test_table")
+            assert result is not None
+            assert result["table_name"] == "test_table"
 
-    def test_find_by_table_name(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await _setup_source_domain(conn)
-                await table_repo.upsert(conn, _make_table())
-                result = await table_repo.find_by_table_name(conn, "test_table")
-                assert result is not None
-        event_loop.run_until_complete(_run())
+    async def test_find_by_table_name(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await _setup_source_domain(conn)
+            await table_repo.upsert(conn, _make_table())
+            result = await table_repo.find_by_table_name(conn, "test_table")
+            assert result is not None
 
-    def test_cascade_delete_on_source(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await _setup_source_domain(conn)
-                await table_repo.upsert(conn, _make_table())
-                await source_repo.delete(conn, "test-pg")
-                tables = await table_repo.list_all(conn)
-                assert len(tables) == 0
-        event_loop.run_until_complete(_run())
+    async def test_cascade_delete_on_source(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await _setup_source_domain(conn)
+            await table_repo.upsert(conn, _make_table())
+            await source_repo.delete(conn, "test-pg")
+            tables = await table_repo.list_all(conn)
+            assert len(tables) == 0
 
 
 class TestRelationshipRepo:
-    def test_upsert_and_get(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await _setup_source_domain_tables(conn)
-                rel = Relationship(
-                    id="o2c", source_table_id="orders",
-                    target_table_id="customers",
-                    source_column="customer_id", target_column="id",
-                    cardinality="many-to-one",
-                )
-                await rel_repo.upsert(conn, rel)
-                result = await rel_repo.get(conn, "o2c")
-                assert result is not None
-                assert result["cardinality"] == "many-to-one"
-        event_loop.run_until_complete(_run())
+    async def test_upsert_and_get(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await _setup_source_domain_tables(conn)
+            rel = Relationship(
+                id="o2c", source_table_id="orders",
+                target_table_id="customers",
+                source_column="customer_id", target_column="id",
+                cardinality="many-to-one",
+            )
+            await rel_repo.upsert(conn, rel)
+            result = await rel_repo.get(conn, "o2c")
+            assert result is not None
+            assert result["cardinality"] == "many-to-one"
 
-    def test_upsert_rejects_unregistered_table(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await _setup_source_domain_tables(conn)
-                rel = Relationship(
-                    id="bad", source_table_id="nonexistent",
-                    target_table_id="customers",
-                    source_column="x", target_column="id",
-                    cardinality="many-to-one",
-                )
-                with pytest.raises(ValueError, match="not registered"):
-                    await rel_repo.upsert(conn, rel)
-        event_loop.run_until_complete(_run())
+    async def test_upsert_rejects_unregistered_table(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await _setup_source_domain_tables(conn)
+            rel = Relationship(
+                id="bad", source_table_id="nonexistent",
+                target_table_id="customers",
+                source_column="x", target_column="id",
+                cardinality="many-to-one",
+            )
+            with pytest.raises(ValueError, match="not registered"):
+                await rel_repo.upsert(conn, rel)
 
 
 class TestRLSRepo:
-    def test_upsert_and_get(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await _setup_source_domain(conn)
-                await role_repo.upsert(conn, _make_role())
-                await table_repo.upsert(conn, _make_table(**{"table": "orders"}))
-                rule = RLSRule(table_id="orders", role_id="tester", filter="region = 'us'")
-                await rls_repo.upsert(conn, rule)
-                tbl = await table_repo.find_by_table_name(conn, "orders")
-                result = await rls_repo.get_for_table_role(conn, tbl["id"], "tester")
-                assert result is not None
-                assert result["filter_expr"] == "region = 'us'"
-        event_loop.run_until_complete(_run())
+    async def test_upsert_and_get(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await _setup_source_domain(conn)
+            await role_repo.upsert(conn, _make_role())
+            await table_repo.upsert(conn, _make_table(**{"table": "orders"}))
+            rule = RLSRule(table_id="orders", role_id="tester", filter="region = 'us'")
+            await rls_repo.upsert(conn, rule)
+            tbl = await table_repo.find_by_table_name(conn, "orders")
+            result = await rls_repo.get_for_table_role(conn, tbl["id"], "tester")
+            assert result is not None
+            assert result["filter_expr"] == "region = 'us'"
 
-    def test_upsert_rejects_unregistered_table(self, pg_pool, event_loop):
-        async def _run():
-            async with pg_pool.acquire() as conn:
-                await _setup_source_domain(conn)
-                await role_repo.upsert(conn, _make_role())
-                rule = RLSRule(table_id="ghost", role_id="tester", filter="1=1")
-                with pytest.raises(ValueError, match="not registered"):
-                    await rls_repo.upsert(conn, rule)
-        event_loop.run_until_complete(_run())
+    async def test_upsert_rejects_unregistered_table(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            await _setup_source_domain(conn)
+            await role_repo.upsert(conn, _make_role())
+            rule = RLSRule(table_id="ghost", role_id="tester", filter="1=1")
+            with pytest.raises(ValueError, match="not registered"):
+                await rls_repo.upsert(conn, rule)

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { fetchSources, deleteSource, createSource } from "../api/admin";
+import { fetchSources, deleteSource, createSource, updateSourceCache, updateSourceNaming, fetchSettings } from "../api/admin";
+import type { PlatformSettings } from "../api/admin";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import type { Source } from "../types/admin";
 
@@ -59,6 +60,14 @@ const KAFKA_AUTH_TYPES = [
   { value: "sasl_scram_512", label: "SASL/SCRAM-SHA-512" },
 ];
 
+const NAMING_CONVENTIONS = [
+  { value: "", label: "Inherit (global)" },
+  { value: "none", label: "none" },
+  { value: "snake_case", label: "snake_case" },
+  { value: "camelCase", label: "camelCase" },
+  { value: "PascalCase", label: "PascalCase" },
+];
+
 const CATEGORIES = [...new Set(SOURCE_TYPES.map((s) => s.category))];
 
 function getCategory(type: string) {
@@ -90,6 +99,13 @@ function AuthUserPass({ authFields, setAuthFields }: {
   );
 }
 
+interface CacheEdit {
+  cacheEnabled: boolean;
+  cacheTtl: string;
+  dirty: boolean;
+  saving: boolean;
+}
+
 export function SourcesPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,13 +117,72 @@ export function SourcesPage() {
   });
   const [authType, setAuthType] = useState("none");
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
+  const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const [cacheEdits, setCacheEdits] = useState<Record<string, CacheEdit>>({});
 
   const load = () => {
     setLoading(true);
     setError(null);
-    fetchSources().then(setSources).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    Promise.all([fetchSources(), fetchSettings()])
+      .then(([s, st]) => {
+        setSources(s);
+        setSettings(st);
+        const edits: Record<string, CacheEdit> = {};
+        for (const src of s) {
+          edits[src.id] = {
+            cacheEnabled: src.cacheEnabled,
+            cacheTtl: src.cacheTtl != null ? String(src.cacheTtl) : "",
+            dirty: false,
+            saving: false,
+          };
+        }
+        setCacheEdits(edits);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   };
   useEffect(load, []);
+
+  const updateCacheEdit = (sourceId: string, patch: Partial<CacheEdit>) => {
+    setCacheEdits((prev) => ({
+      ...prev,
+      [sourceId]: { ...prev[sourceId], ...patch, dirty: true },
+    }));
+  };
+
+  const handleSaveCache = async (sourceId: string) => {
+    const edit = cacheEdits[sourceId];
+    setCacheEdits((prev) => ({ ...prev, [sourceId]: { ...prev[sourceId], saving: true } }));
+    setError(null);
+    try {
+      const ttlValue = edit.cacheTtl.trim() === "" ? null : parseInt(edit.cacheTtl, 10);
+      if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
+      const result = await updateSourceCache(sourceId, edit.cacheEnabled, ttlValue);
+      if (!result.success) throw new Error(result.message);
+      setCacheEdits((prev) => ({ ...prev, [sourceId]: { ...prev[sourceId], dirty: false, saving: false } }));
+      load();
+    } catch (e: any) {
+      setError(e.message);
+      setCacheEdits((prev) => ({ ...prev, [sourceId]: { ...prev[sourceId], saving: false } }));
+    }
+  };
+
+  const handleNamingChange = async (sourceId: string, value: string) => {
+    setError(null);
+    try {
+      const result = await updateSourceNaming(sourceId, value === "" ? null : value);
+      if (!result.success) throw new Error(result.message);
+      load();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  const getEffectiveTtl = (source: Source): string => {
+    if (source.cacheTtl != null) return `${source.cacheTtl}s (custom)`;
+    if (settings) return `${settings.cache.default_ttl}s (global)`;
+    return "default";
+  };
 
   const handleTypeChange = (type: string) => {
     setForm({ ...form, type, port: getDefaultPort(type) });
@@ -420,29 +495,68 @@ export function SourcesPage() {
 
       <table className="data-table">
         <thead>
-          <tr><th>ID</th><th>Type</th><th>Host</th><th>Port</th><th>Database</th><th>Cache</th><th>TTL</th><th>Actions</th></tr>
+          <tr><th>ID</th><th>Type</th><th>Host</th><th>Port</th><th>Database</th><th>Naming</th><th>Cache Enabled</th><th>Cache TTL</th><th>Effective TTL</th><th>Actions</th></tr>
         </thead>
         <tbody>
-          {sources.map((s) => (
-            <tr key={s.id}>
-              <td>{s.id}</td>
-              <td>{SOURCE_TYPES.find((t) => t.value === s.type)?.label ?? s.type}</td>
-              <td>{s.host}</td>
-              <td>{s.port || "—"}</td>
-              <td>{s.database || "—"}</td>
-              <td>{s.cacheEnabled ? "on" : "off"}</td>
-              <td>{s.cacheTtl != null ? `${s.cacheTtl}s` : "default"}</td>
-              <td>
-                <ConfirmDialog
-                  title={`Delete source "${s.id}"?`}
-                  consequence={`This will remove the data source "${s.id}" and may break tables that reference it.`}
-                  onConfirm={async () => { await deleteSource(s.id); load(); }}
-                >
-                  {(open) => <button className="destructive" onClick={open}>Delete</button>}
-                </ConfirmDialog>
-              </td>
-            </tr>
-          ))}
+          {sources.map((s) => {
+            const edit = cacheEdits[s.id];
+            return (
+              <tr key={s.id}>
+                <td>{s.id}</td>
+                <td>{SOURCE_TYPES.find((t) => t.value === s.type)?.label ?? s.type}</td>
+                <td>{s.host}</td>
+                <td>{s.port || "—"}</td>
+                <td>{s.database || "—"}</td>
+                <td>
+                  <select
+                    value={s.namingConvention ?? ""}
+                    onChange={(e) => handleNamingChange(s.id, e.target.value)}
+                    style={{ fontSize: "0.85rem" }}
+                  >
+                    {NAMING_CONVENTIONS.map((nc) => (
+                      <option key={nc.value} value={nc.value}>{nc.label}</option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={edit?.cacheEnabled ?? s.cacheEnabled}
+                    onChange={(e) => updateCacheEdit(s.id, { cacheEnabled: e.target.checked })}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    min={0}
+                    value={edit?.cacheTtl ?? (s.cacheTtl != null ? String(s.cacheTtl) : "")}
+                    onChange={(e) => updateCacheEdit(s.id, { cacheTtl: e.target.value })}
+                    placeholder="inherit"
+                    style={{ width: "5rem" }}
+                  />
+                </td>
+                <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{getEffectiveTtl(s)}</td>
+                <td style={{ display: "flex", gap: "0.25rem" }}>
+                  {edit?.dirty && (
+                    <button
+                      onClick={() => handleSaveCache(s.id)}
+                      disabled={edit.saving}
+                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                    >
+                      {edit.saving ? "Saving..." : "Save Cache"}
+                    </button>
+                  )}
+                  <ConfirmDialog
+                    title={`Delete source "${s.id}"?`}
+                    consequence={`This will remove the data source "${s.id}" and may break tables that reference it.`}
+                    onConfirm={async () => { await deleteSource(s.id); load(); }}
+                  >
+                    {(open) => <button className="destructive" onClick={open}>Delete</button>}
+                  </ConfirmDialog>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

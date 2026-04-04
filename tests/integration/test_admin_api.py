@@ -13,12 +13,13 @@
 import os
 
 import pytest
+import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
 

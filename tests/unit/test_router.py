@@ -98,6 +98,20 @@ class TestStewardOverride:
         assert d.route == Route.TRINO
 
 
+class TestMutationRouting:
+    def test_mutation_always_routes_direct(self):
+        d = decide_route({"pg1"}, TYPES, DIALECTS, is_mutation=True)
+        assert d.route == Route.DIRECT
+        assert d.source_id == "pg1"
+        assert "mutation" in d.reason
+
+    def test_mutation_overrides_nosql(self):
+        """Mutations to NoSQL sources still route direct (write to source)."""
+        d = decide_route({"mongo1"}, TYPES, DIALECTS, is_mutation=True)
+        assert d.route == Route.DIRECT
+        assert d.source_id == "mongo1"
+
+
 class TestReasonProvided:
     def test_reason_populated(self):
         d = decide_route({"pg1"}, TYPES, DIALECTS)

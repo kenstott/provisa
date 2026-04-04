@@ -36,7 +36,7 @@ export async function fetchRoles(): Promise<Role[]> {
 
 export async function fetchSources(): Promise<Source[]> {
   const data = await gql<{ sources: Source[] }>(
-    `{ sources { id type host port database username dialect cacheEnabled cacheTtl } }`
+    `{ sources { id type host port database username dialect cacheEnabled cacheTtl namingConvention } }`
   );
   return data.sources;
 }
@@ -48,7 +48,7 @@ export async function fetchDomains(): Promise<Domain[]> {
 
 export async function fetchTables(): Promise<RegisteredTable[]> {
   const data = await gql<{ tables: RegisteredTable[] }>(
-    `{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description } } }`
+    `{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description } } }`
   );
   return data.tables;
 }
@@ -339,6 +339,7 @@ export interface PlatformSettings {
   };
   naming: {
     domain_prefix: boolean;
+    convention: string;
   };
 }
 
@@ -582,6 +583,49 @@ export async function updateTableCache(tableId: number, cacheTtl: number | null)
     { tableId, cacheTtl }
   );
   return data.updateTableCache;
+}
+
+export async function updateSourceNaming(sourceId: string, namingConvention: string | null): Promise<MutationResult> {
+  const data = await gql<{ updateSourceNaming: MutationResult }>(
+    `mutation($sourceId: String!, $namingConvention: String) { updateSourceNaming(sourceId: $sourceId, namingConvention: $namingConvention) { success message } }`,
+    { sourceId, namingConvention }
+  );
+  return data.updateSourceNaming;
+}
+
+export async function updateTableNaming(tableId: number, namingConvention: string | null): Promise<MutationResult> {
+  const data = await gql<{ updateTableNaming: MutationResult }>(
+    `mutation($tableId: Int!, $namingConvention: String) { updateTableNaming(tableId: $tableId, namingConvention: $namingConvention) { success message } }`,
+    { tableId, namingConvention }
+  );
+  return data.updateTableNaming;
+}
+
+// --- Admin: Scheduled Tasks ---
+
+export interface ScheduledTask {
+  id: string;
+  name: string;
+  cronExpression: string;
+  webhookUrl: string | null;
+  enabled: boolean;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+}
+
+export async function fetchScheduledTasks(): Promise<ScheduledTask[]> {
+  const data = await gql<{ scheduledTasks: ScheduledTask[] }>(
+    `{ scheduledTasks { id name cronExpression webhookUrl enabled lastRunAt nextRunAt } }`
+  );
+  return data.scheduledTasks;
+}
+
+export async function toggleScheduledTask(taskId: string, enabled: boolean): Promise<MutationResult> {
+  const data = await gql<{ toggleScheduledTask: MutationResult }>(
+    `mutation($taskId: String!, $enabled: Boolean!) { toggleScheduledTask(taskId: $taskId, enabled: $enabled) { success message } }`,
+    { taskId, enabled }
+  );
+  return data.toggleScheduledTask;
 }
 
 export async function purgeCacheByTable(tableId: number): Promise<MutationResult> {

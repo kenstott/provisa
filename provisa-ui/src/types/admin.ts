@@ -10,6 +10,7 @@ export interface Source {
   dialect: string | null;
   cacheEnabled: boolean;
   cacheTtl: number | null;
+  namingConvention: string | null;
 }
 
 export interface Domain {
@@ -42,6 +43,7 @@ export interface RegisteredTable {
   alias: string | null;
   description: string | null;
   cacheTtl: number | null;
+  namingConvention: string | null;
   columns: TableColumn[];
 }
 

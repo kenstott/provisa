@@ -23,6 +23,8 @@ import pytest
 from provisa.discovery.analyzer import RelationshipCandidate
 from provisa.discovery.candidates import accept, list_pending, reject, store_candidates
 
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+
 
 def _candidate(
     src_table=1, src_col="customer_id",
@@ -43,7 +45,6 @@ def _candidate(
 
 
 class TestStoreCandidates:
-    @pytest.mark.asyncio
     async def test_store_single_candidate(self):
         conn = AsyncMock()
         conn.fetchval.return_value = 1
@@ -57,7 +58,6 @@ class TestStoreCandidates:
         assert "INSERT INTO relationship_candidates" in sql
         assert "ON CONFLICT" in sql
 
-    @pytest.mark.asyncio
     async def test_store_multiple_candidates(self):
         conn = AsyncMock()
         conn.fetchval.side_effect = [1, 2, 3]
@@ -70,7 +70,6 @@ class TestStoreCandidates:
         assert ids == [1, 2, 3]
         assert conn.fetchval.call_count == 3
 
-    @pytest.mark.asyncio
     async def test_store_passes_scope(self):
         conn = AsyncMock()
         conn.fetchval.return_value = 1
@@ -80,7 +79,6 @@ class TestStoreCandidates:
         # scope is the 8th positional arg
         assert call_args[0][8] == "cross-domain"
 
-    @pytest.mark.asyncio
     async def test_store_empty_list(self):
         conn = AsyncMock()
         ids = await store_candidates(conn, [], "table")
@@ -89,7 +87,6 @@ class TestStoreCandidates:
 
 
 class TestListPending:
-    @pytest.mark.asyncio
     async def test_list_returns_suggested_candidates(self):
         mock_row1 = {"id": 1, "source_table_id": 1, "confidence": 0.95, "status": "suggested"}
         mock_row2 = {"id": 2, "source_table_id": 1, "confidence": 0.8, "status": "suggested"}
@@ -104,7 +101,6 @@ class TestListPending:
         assert "status = 'suggested'" in sql
         assert "ORDER BY confidence DESC" in sql
 
-    @pytest.mark.asyncio
     async def test_list_empty(self):
         conn = AsyncMock()
         conn.fetch.return_value = []
@@ -113,7 +109,6 @@ class TestListPending:
 
 
 class TestAcceptCandidate:
-    @pytest.mark.asyncio
     async def test_accept_creates_relationship(self):
         row = MockRecord({
             "id": 1,
@@ -142,7 +137,6 @@ class TestAcceptCandidate:
         assert result["target_column"] == "id"
         assert "relationship_id" in result
 
-    @pytest.mark.asyncio
     async def test_accept_nonexistent_raises(self):
         conn = AsyncMock()
         conn.fetchrow.return_value = None
@@ -151,7 +145,6 @@ class TestAcceptCandidate:
 
 
 class TestRejectCandidate:
-    @pytest.mark.asyncio
     async def test_reject_records_reason(self):
         conn = AsyncMock()
         conn.execute.return_value = "UPDATE 1"
@@ -162,7 +155,6 @@ class TestRejectCandidate:
         assert "rejection_reason" in sql
         assert conn.execute.call_args[0][2] == "Not a real FK"
 
-    @pytest.mark.asyncio
     async def test_reject_nonexistent_raises(self):
         conn = AsyncMock()
         conn.execute.return_value = "UPDATE 0"

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from "react";
 import type { Capability, Role, AuthState } from "../types/auth";
 import { fetchRoles } from "../api/admin";
 
@@ -12,16 +12,34 @@ const DEFAULT_ADMIN_ROLE: Role = {
   domain_access: ["*"],
 };
 
+function unionCapabilities(roles: Role[]): Capability[] {
+  const set = new Set<Capability>();
+  for (const r of roles) {
+    for (const c of r.capabilities) set.add(c);
+  }
+  return [...set];
+}
+
+function unionDomainAccess(roles: Role[]): string[] {
+  const set = new Set<string>();
+  for (const r of roles) {
+    for (const d of r.domain_access) set.add(d);
+  }
+  return [...set];
+}
+
 interface AuthContextValue extends AuthState {
-  setRole: (role: Role | null) => void;
-  roles: Role[];
+  /** Toggle a role on/off. At least one role must remain selected. */
+  toggleRole: (role: Role) => void;
+  /** All available roles. */
+  availableRoles: Role[];
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [role, setRole] = useState<Role | null>(null);
-  const [roles, setRoles] = useState<Role[]>([]);
+  const [selectedRoles, setSelectedRoles] = useState<Role[]>([]);
+  const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,24 +47,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fetchRoles()
       .then((r) => {
         if (r.length > 0) {
-          setRoles(r);
-          setRole(r[0]);
+          setAvailableRoles(r);
+          setSelectedRoles([r[0]]);
         } else {
-          // No roles configured — assume admin with full access
-          setRoles([DEFAULT_ADMIN_ROLE]);
-          setRole(DEFAULT_ADMIN_ROLE);
+          setAvailableRoles([DEFAULT_ADMIN_ROLE]);
+          setSelectedRoles([DEFAULT_ADMIN_ROLE]);
         }
       })
       .catch(() => {
-        // Backend unavailable or no security — assume admin
-        setRoles([DEFAULT_ADMIN_ROLE]);
-        setRole(DEFAULT_ADMIN_ROLE);
+        setAvailableRoles([DEFAULT_ADMIN_ROLE]);
+        setSelectedRoles([DEFAULT_ADMIN_ROLE]);
       })
       .finally(() => setLoading(false));
   }, []);
 
+  const capabilities = useMemo(() => unionCapabilities(selectedRoles), [selectedRoles]);
+  const domainAccess = useMemo(() => unionDomainAccess(selectedRoles), [selectedRoles]);
+  const role = selectedRoles.length > 0 ? selectedRoles[0] : null;
+
+  const toggleRole = (r: Role) => {
+    setSelectedRoles((prev) => {
+      const isSelected = prev.some((p) => p.id === r.id);
+      if (isSelected) {
+        // Don't allow deselecting the last role
+        if (prev.length <= 1) return prev;
+        return prev.filter((p) => p.id !== r.id);
+      }
+      return [...prev, r];
+    });
+  };
+
   return (
-    <AuthContext.Provider value={{ role, setRole, roles, loading, error }}>
+    <AuthContext.Provider value={{
+      role, selectedRoles, capabilities, domainAccess,
+      toggleRole, availableRoles, loading, error,
+    }}>
       {children}
     </AuthContext.Provider>
   );

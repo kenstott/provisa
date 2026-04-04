@@ -61,7 +61,7 @@ NESTED_RELATIONSHIP = {
 PAGINATED_SELECT = {
     "graphql": """
         {
-            orders(limit: 10, offset: 20, order_by: [{ field: CREATED_AT, direction: DESC }]) {
+            orders(limit: 10, offset: 20, order_by: [{ created_at: desc }]) {
                 id
                 amount
             }

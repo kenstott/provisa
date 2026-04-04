@@ -16,7 +16,14 @@ export interface Role {
 }
 
 export interface AuthState {
+  /** First selected role — used for API headers that require a single role. */
   role: Role | null;
+  /** All currently selected roles. */
+  selectedRoles: Role[];
+  /** Unioned capabilities across all selected roles. */
+  capabilities: Capability[];
+  /** Unioned domain_access across all selected roles. */
+  domainAccess: string[];
   loading: boolean;
   error: string | null;
 }

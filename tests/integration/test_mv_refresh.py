@@ -24,6 +24,8 @@ from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
 from provisa.mv.refresh import _build_refresh_sql, _target_ref, refresh_mv
 from provisa.mv.registry import MVRegistry
 
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+
 
 def _jp_mv(mv_id="mv-orders-customers"):
     return MVDefinition(
@@ -114,7 +116,6 @@ class TestTargetRef:
 
 
 class TestRefreshMV:
-    @pytest.mark.asyncio
     async def test_first_refresh_creates_table(self):
         mv = _jp_mv()
         registry = MVRegistry()
@@ -141,7 +142,6 @@ class TestRefreshMV:
         assert mv.status == MVStatus.FRESH
         assert mv.row_count == 42
 
-    @pytest.mark.asyncio
     async def test_subsequent_refresh_deletes_and_inserts(self):
         mv = _jp_mv()
         registry = MVRegistry()
@@ -161,7 +161,6 @@ class TestRefreshMV:
         assert mv.status == MVStatus.FRESH
         assert mv.row_count == 100
 
-    @pytest.mark.asyncio
     async def test_refresh_failure_marks_stale(self):
         mv = _jp_mv()
         registry = MVRegistry()
@@ -177,7 +176,6 @@ class TestRefreshMV:
         assert mv.status == MVStatus.STALE
         assert mv.last_error == "connection lost"
 
-    @pytest.mark.asyncio
     async def test_refresh_marks_refreshing_during_execution(self):
         mv = _jp_mv()
         registry = MVRegistry()

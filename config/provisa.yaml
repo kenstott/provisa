@@ -297,6 +297,17 @@ kafka_sources:
           - name: resolution_time_minutes
           - name: resolved_at
 
+# auth:
+#   provider: simple  # simple, firebase, keycloak, oauth
+#   jwt_secret: ${env:JWT_SECRET}
+#   role_mapping: []  # list of {claim, value, role, type} rules
+#   default_role: analyst
+#   simple:
+#     users:
+#       - username: admin
+#         password_hash: "$2b$12$..."  # bcrypt hash
+#         roles: [admin]
+
 discovery:
   sample_size: 20          # rows to sample per table for LLM analysis
   min_confidence: 0.7      # minimum confidence threshold for candidates

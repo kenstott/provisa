@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from graphql import print_schema
 
@@ -20,11 +20,17 @@ router = APIRouter()
 
 
 @router.get("/data/sdl", response_class=PlainTextResponse)
-async def get_sdl(x_role: str = Header(..., alias="X-Role")):
+async def get_sdl(request: Request, x_role: str = Header(None, alias="X-Role")):
     """Return the GraphQL SDL for the requesting role's schema."""
     from provisa.api.app import state
 
-    schema = state.schemas.get(x_role)
+    # Auth middleware role takes precedence over header
+    auth_role = getattr(request.state, "role", None)
+    role = auth_role or x_role
+    if role is None:
+        raise HTTPException(status_code=400, detail="Missing X-Role header")
+
+    schema = state.schemas.get(role)
     if schema is None:
-        raise HTTPException(status_code=404, detail=f"No schema for role {x_role!r}")
+        raise HTTPException(status_code=404, detail=f"No schema for role {role!r}")
     return print_schema(schema)

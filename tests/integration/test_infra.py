@@ -12,68 +12,37 @@
 
 import pytest
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 
 class TestPostgresConnectivity:
-    def test_pg_connects(self, pg_pool):
-        import asyncio
-
-        async def _query():
-            async with pg_pool.acquire() as conn:
-                return await conn.fetchval("SELECT 1")
-
-        result = asyncio.get_event_loop().run_until_complete(_query())
+    async def test_pg_connects(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            result = await conn.fetchval("SELECT 1")
         assert result == 1
 
-    def test_customers_table_exists(self, pg_pool):
-        import asyncio
-
-        async def _query():
-            async with pg_pool.acquire() as conn:
-                return await conn.fetchval(
-                    "SELECT COUNT(*) FROM customers"
-                )
-
-        count = asyncio.get_event_loop().run_until_complete(_query())
+    async def test_customers_table_exists(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            count = await conn.fetchval("SELECT COUNT(*) FROM customers")
         assert count == 20
 
-    def test_products_table_exists(self, pg_pool):
-        import asyncio
-
-        async def _query():
-            async with pg_pool.acquire() as conn:
-                return await conn.fetchval(
-                    "SELECT COUNT(*) FROM products"
-                )
-
-        count = asyncio.get_event_loop().run_until_complete(_query())
+    async def test_products_table_exists(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            count = await conn.fetchval("SELECT COUNT(*) FROM products")
         assert count == 15
 
-    def test_orders_table_exists(self, pg_pool):
-        import asyncio
-
-        async def _query():
-            async with pg_pool.acquire() as conn:
-                return await conn.fetchval(
-                    "SELECT COUNT(*) FROM orders"
-                )
-
-        count = asyncio.get_event_loop().run_until_complete(_query())
+    async def test_orders_table_exists(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            count = await conn.fetchval("SELECT COUNT(*) FROM orders")
         assert count == 25
 
-    def test_orders_fk_to_customers(self, pg_pool):
-        import asyncio
-
-        async def _query():
-            async with pg_pool.acquire() as conn:
-                return await conn.fetchval("""
-                    SELECT COUNT(*)
-                    FROM orders o
-                    JOIN customers c ON o.customer_id = c.id
-                """)
-
-        count = asyncio.get_event_loop().run_until_complete(_query())
+    async def test_orders_fk_to_customers(self, pg_pool):
+        async with pg_pool.acquire() as conn:
+            count = await conn.fetchval("""
+                SELECT COUNT(*)
+                FROM orders o
+                JOIN customers c ON o.customer_id = c.id
+            """)
         assert count == 25
 
 

@@ -10,10 +10,10 @@
 
 """Integration tests for GraphQL schema generation from real Trino metadata."""
 
-import asyncio
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from graphql import (
     GraphQLEnumType,
     GraphQLField,
@@ -37,51 +37,43 @@ from provisa.core.repositories import (
     table as table_repo,
 )
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
 SCHEMA_SQL = (Path(__file__).parent.parent.parent / "provisa" / "core" / "schema.sql").read_text()
 FIXTURE_CONFIG = Path(__file__).parent.parent / "fixtures" / "sample_config.yaml"
 
 
-@pytest.fixture(scope="module")
-def _init_schema(pg_pool, event_loop):
-    event_loop.run_until_complete(init_schema(pg_pool, SCHEMA_SQL))
+@pytest_asyncio.fixture(scope="module", loop_scope="session")
+async def _init_schema(pg_pool):
+    await init_schema(pg_pool, SCHEMA_SQL)
 
 
-@pytest.fixture(scope="module")
-def _load_config(pg_pool, _init_schema, event_loop):
+@pytest_asyncio.fixture(scope="module", loop_scope="session")
+async def _load_config(pg_pool, _init_schema):
     """Load sample config into PG once per module."""
-    async def _load():
-        async with pg_pool.acquire() as conn:
-            # Clean first
-            await conn.execute("""
-                TRUNCATE rls_rules, relationships, table_columns,
-                         registered_tables, naming_rules, roles, domains, sources
-                CASCADE
-            """)
-            config = parse_config(FIXTURE_CONFIG)
-            await load_config(config, conn)
-    event_loop.run_until_complete(_load())
+    async with pg_pool.acquire() as conn:
+        # Clean first
+        await conn.execute("""
+            TRUNCATE rls_rules, relationships, table_columns,
+                     registered_tables, naming_rules, roles, domains, sources
+            CASCADE
+        """)
+        config = parse_config(FIXTURE_CONFIG)
+        await load_config(config, conn)
 
 
-@pytest.fixture(scope="module")
-def schema_input(pg_pool, trino_conn, _load_config, event_loop) -> dict:
+@pytest_asyncio.fixture(scope="module", loop_scope="session")
+async def schema_input(pg_pool, trino_conn, _load_config) -> dict:
     """Build SchemaInput from loaded config + real Trino metadata."""
-    async def _build():
-        async with pg_pool.acquire() as conn:
-            tables = await table_repo.list_all(conn)
-            rels = await rel_repo.list_all(conn)
-            roles = await role_repo.list_all(conn)
-            domains = await domain_repo.list_all(conn)
-            sources = await source_repo.list_all(conn)
-            naming_rules = [
-                dict(r) for r in await conn.fetch("SELECT pattern, replacement FROM naming_rules")
-            ]
-            return tables, rels, roles, domains, sources, naming_rules
-
-    tables, rels, roles, domains, sources, naming_rules = (
-        event_loop.run_until_complete(_build())
-    )
+    async with pg_pool.acquire() as conn:
+        tables = await table_repo.list_all(conn)
+        rels = await rel_repo.list_all(conn)
+        roles = await role_repo.list_all(conn)
+        domains = await domain_repo.list_all(conn)
+        sources = await source_repo.list_all(conn)
+        naming_rules = [
+            dict(r) for r in await conn.fetch("SELECT pattern, replacement FROM naming_rules")
+        ]
 
     # Introspect column types from Trino (using static 'postgresql' catalog)
     column_types = {}
@@ -262,18 +254,25 @@ class TestSchemaGenQueryArgs:
         orders_field = schema.query_type.fields["orders"]
         assert "order_by" in orders_field.args
 
-    def test_order_by_has_field_enum(self, schema_input):
+    def test_order_by_has_column_fields(self, schema_input):
+        """Hasura v2 pattern: each column is a field with OrderDirection type."""
         si = _make_schema_input(schema_input, "admin")
         schema = generate_schema(si)
         orders_field = schema.query_type.fields["orders"]
         order_by_list_type = orders_field.args["order_by"].type
         # List(NonNull(OrdersOrderBy))
         order_by_type = order_by_list_type.of_type.of_type
-        assert "field" in order_by_type.fields
-        field_type = order_by_type.fields["field"].type
-        # NonNull(Enum)
-        enum_type = field_type.of_type if isinstance(field_type, GraphQLNonNull) else field_type
-        assert isinstance(enum_type, GraphQLEnumType)
+        # At least one column field should exist with OrderDirection enum type
+        assert len(order_by_type.fields) > 0
+        enum_fields = [
+            (name, f) for name, f in order_by_type.fields.items()
+            if isinstance(f.type, GraphQLEnumType)
+        ]
+        assert len(enum_fields) > 0
+        for field_name, field_def in enum_fields:
+            assert "asc" in field_def.type.values
+            assert "desc" in field_def.type.values
+            assert "asc_nulls_first" in field_def.type.values
 
 
 class TestSchemaGenNaming:

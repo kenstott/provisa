@@ -8,19 +8,12 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-import asyncio
 import os
 
 import asyncpg
 import pytest
+import pytest_asyncio
 import trino
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
 
 
 @pytest.fixture(scope="session")
@@ -34,13 +27,14 @@ def pg_dsn() -> str:
     )
 
 
-@pytest.fixture(scope="session")
-def pg_pool(pg_dsn, event_loop):
-    pool = event_loop.run_until_complete(
-        asyncpg.create_pool(pg_dsn, min_size=1, max_size=3)
+@pytest_asyncio.fixture(scope="session")
+async def pg_pool(pg_dsn):
+    pool = await asyncpg.create_pool(
+        pg_dsn, min_size=2, max_size=10,
+        command_timeout=30,
     )
     yield pool
-    event_loop.run_until_complete(pool.close())
+    await pool.close()
 
 
 @pytest.fixture(scope="session")
