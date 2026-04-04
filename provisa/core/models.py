@@ -219,6 +219,12 @@ class Table(BaseModel):
     description: str | None = None  # GraphQL type description
     cache_ttl: int | None = None  # overrides source-level; None = inherit
     naming_convention: str | None = None  # overrides source; None = inherit
+    hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
+
+
+class HotTablesConfig(BaseModel):
+    auto_threshold: int = 10_000  # max rows for auto-detection
+    refresh_interval: int = 300  # seconds between refreshes
 
 
 class Relationship(BaseModel):
@@ -309,3 +315,4 @@ class ProvisaConfig(BaseModel):
     rls_rules: list[RLSRule] = Field(default_factory=list)
     scheduled_triggers: list[ScheduledTrigger] = Field(default_factory=list)
     auth: AuthConfig = Field(default_factory=AuthConfig)
+    hot_tables: HotTablesConfig = Field(default_factory=HotTablesConfig)

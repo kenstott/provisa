@@ -33,6 +33,9 @@ class MVRegistry:
     def register(self, mv: MVDefinition) -> None:
         self._mvs[mv.id] = mv
 
+    def unregister(self, mv_id: str) -> None:
+        self._mvs.pop(mv_id, None)
+
     def get(self, mv_id: str) -> MVDefinition | None:
         return self._mvs.get(mv_id)
 

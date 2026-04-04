@@ -34,7 +34,12 @@ from graphql import (
     VariableNode,
 )
 
+from provisa.compiler.aggregate_gen import _is_comparable, _is_numeric
 from provisa.compiler.params import ParamCollector
+from provisa.cache.warm_tables import QueryCounter
+
+# Module-level query counter for warm-table tracking (REQ-AD5)
+query_counter = QueryCounter()
 
 
 # --- Compilation context (built from SchemaInput alongside schema) ---
@@ -75,6 +80,8 @@ class CompilationContext:
     joins: dict[tuple[str, str], JoinMeta] = field(default_factory=dict)
     # (table_id, graphql_field_name) → path expression (e.g. "payload.order_id")
     column_paths: dict[tuple[int, str], str] = field(default_factory=dict)
+    # table_id → [(col_name, trino_type)] for aggregate column metadata
+    aggregate_columns: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
 
 
 # --- Compiled query result ---
@@ -147,6 +154,17 @@ def build_context(si: object) -> CompilationContext:
             table_name=physical_name,
         )
         ctx.tables[t.field_name] = meta
+        # Register aggregate variant pointing to same TableMeta
+        ctx.tables[f"{t.field_name}_aggregate"] = meta
+
+        # Store column metadata for aggregate compilation
+        col_info = []
+        for col in t.visible_columns:
+            col_name = col["column_name"]
+            col_meta = t.column_metadata.get(col_name)
+            if col_meta:
+                col_info.append((col_name, col_meta.data_type))
+        ctx.aggregate_columns[t.table_id] = col_info
 
         # Populate column paths for JSON extraction
         for col in t.visible_columns:
@@ -641,6 +659,207 @@ def _compile_root_field(
     )
 
 
+def _collect_requested_agg_funcs(
+    field_node: FieldNode,
+) -> tuple[bool, list[str], list[str], list[str], list[str], bool]:
+    """Parse the aggregate selection set to find which functions are requested.
+
+    Returns: (has_count, sum_cols, avg_cols, min_cols, max_cols, has_nodes)
+    """
+    has_count = False
+    sum_cols: list[str] = []
+    avg_cols: list[str] = []
+    min_cols: list[str] = []
+    max_cols: list[str] = []
+    has_nodes = False
+
+    if not field_node.selection_set:
+        return has_count, sum_cols, avg_cols, min_cols, max_cols, has_nodes
+
+    for sel in field_node.selection_set.selections:
+        if not isinstance(sel, FieldNode):
+            continue
+        name = sel.name.value
+        if name == "nodes":
+            has_nodes = True
+        elif name == "aggregate" and sel.selection_set:
+            for agg_sel in sel.selection_set.selections:
+                if not isinstance(agg_sel, FieldNode):
+                    continue
+                agg_name = agg_sel.name.value
+                if agg_name == "count":
+                    has_count = True
+                elif agg_name in ("sum", "avg", "min", "max") and agg_sel.selection_set:
+                    cols = [
+                        s.name.value
+                        for s in agg_sel.selection_set.selections
+                        if isinstance(s, FieldNode)
+                    ]
+                    if agg_name == "sum":
+                        sum_cols = cols
+                    elif agg_name == "avg":
+                        avg_cols = cols
+                    elif agg_name == "min":
+                        min_cols = cols
+                    elif agg_name == "max":
+                        max_cols = cols
+
+    return has_count, sum_cols, avg_cols, min_cols, max_cols, has_nodes
+
+
+def _compile_aggregate_field(
+    field_node: FieldNode,
+    ctx: CompilationContext,
+    variables: dict | None,
+    use_catalog: bool = False,
+) -> CompiledQuery:
+    """Compile an _aggregate root query field to SQL."""
+    root_name = field_node.name.value
+    table = ctx.tables[root_name]
+    collector = ParamCollector()
+    sources: set[str] = {table.source_id}
+
+    has_count, sum_cols, avg_cols, min_cols, max_cols, has_nodes = (
+        _collect_requested_agg_funcs(field_node)
+    )
+
+    # Build SELECT parts for aggregate functions
+    select_parts: list[str] = []
+    columns: list[ColumnRef] = []
+
+    if has_count:
+        select_parts.append("COUNT(*)")
+        columns.append(ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregate"))
+
+    for col_name in sum_cols:
+        select_parts.append(f'SUM({_q(col_name)})')
+        columns.append(ColumnRef(alias=None, column=col_name, field_name=col_name, nested_in="aggregate.sum"))
+
+    for col_name in avg_cols:
+        select_parts.append(f'AVG({_q(col_name)})')
+        columns.append(ColumnRef(alias=None, column=col_name, field_name=col_name, nested_in="aggregate.avg"))
+
+    for col_name in min_cols:
+        select_parts.append(f'MIN({_q(col_name)})')
+        columns.append(ColumnRef(alias=None, column=col_name, field_name=col_name, nested_in="aggregate.min"))
+
+    for col_name in max_cols:
+        select_parts.append(f'MAX({_q(col_name)})')
+        columns.append(ColumnRef(alias=None, column=col_name, field_name=col_name, nested_in="aggregate.max"))
+
+    if not select_parts:
+        select_parts.append("1")
+
+    ref = _table_ref(table, use_catalog)
+    sql = f'SELECT {", ".join(select_parts)} FROM {ref}'
+
+    # Process arguments (where)
+    args = {}
+    if field_node.arguments:
+        for arg in field_node.arguments:
+            args[arg.name.value] = _extract_value(arg.value, variables)
+
+    if "where" in args:
+        where_sql = _compile_where(args["where"], collector, None)
+        sql += f" WHERE {where_sql}"
+
+    return CompiledQuery(
+        sql=sql,
+        params=collector.params,
+        root_field=root_name,
+        columns=columns,
+        sources=sources,
+    )
+
+
+def _sql_literal(val: object) -> str:
+    """Convert a Python value to a SQL literal for VALUES injection."""
+    if val is None:
+        return "NULL"
+    if isinstance(val, bool):
+        return "TRUE" if val else "FALSE"
+    if isinstance(val, int):
+        return str(val)
+    if isinstance(val, float):
+        return str(val)
+    if isinstance(val, str):
+        escaped = val.replace("'", "''")
+        return f"'{escaped}'"
+    return f"'{val!s}'"
+
+
+def rewrite_hot_joins(compiled: CompiledQuery, hot_manager: object) -> CompiledQuery:
+    """Rewrite JOINs targeting hot tables to use VALUES-based CTEs.
+
+    When a LEFT JOIN target is a hot-cached table, replace the table reference
+    with a CTE containing the cached rows as VALUES. This works cross-source
+    since the data travels as constants in the query.
+    """
+    from provisa.cache.hot_tables import HotTableManager
+    assert isinstance(hot_manager, HotTableManager)
+
+    sql = compiled.sql
+    ctes: list[str] = []
+
+    # Match LEFT JOIN patterns: LEFT JOIN "schema"."table" "alias" ON ...
+    # or LEFT JOIN "catalog"."schema"."table" "alias" ON ...
+    join_pattern = _re.compile(
+        r'LEFT JOIN\s+'
+        r'(?:"[^"]+"\.)?' r'"[^"]+"\.' r'"([^"]+)"'  # table name in last segment
+        r'\s+"([^"]+)"'  # alias
+        r'\s+ON\s+(.+?)(?=\s+(?:LEFT JOIN|WHERE|ORDER BY|LIMIT|OFFSET)\b|\Z)',
+        _re.IGNORECASE,
+    )
+
+    for match in reversed(list(join_pattern.finditer(sql))):
+        table_name = match.group(1)
+        alias = match.group(2)
+        on_clause = match.group(3)
+
+        if not hot_manager.is_hot(table_name):
+            continue
+
+        entry = hot_manager.get_entry(table_name)
+        if entry is None or not entry.rows:
+            continue
+
+        # Build VALUES rows
+        cte_name = f"_hot_{table_name}"
+        col_names = entry.column_names
+
+        value_rows = []
+        for row in entry.rows:
+            vals = [_sql_literal(row.get(c)) for c in col_names]
+            value_rows.append(f"({', '.join(vals)})")
+
+        col_defs = ", ".join(f'"{c}"' for c in col_names)
+        cte_sql = (
+            f"{cte_name}({col_defs}) AS "
+            f"(VALUES {', '.join(value_rows)})"
+        )
+        ctes.append(cte_sql)
+
+        # Replace the JOIN target with the CTE name
+        new_join = (
+            f'LEFT JOIN "{cte_name}" "{alias}" ON {on_clause}'
+        )
+        sql = sql[:match.start()] + new_join + sql[match.end():]
+
+    if ctes:
+        with_clause = "WITH " + ", ".join(ctes) + " "
+        sql = with_clause + sql
+
+    if sql != compiled.sql:
+        return CompiledQuery(
+            sql=sql,
+            params=compiled.params,
+            root_field=compiled.root_field,
+            columns=compiled.columns,
+            sources=compiled.sources,
+        )
+    return compiled
+
+
 def compile_query(
     document: DocumentNode,
     ctx: CompilationContext,
@@ -664,12 +883,28 @@ def compile_query(
             continue
         for sel in definition.selection_set.selections:
             if isinstance(sel, FieldNode):
-                if sel.name.value not in ctx.tables:
+                field_name = sel.name.value
+                if field_name not in ctx.tables:
                     raise ValueError(
-                        f"Unknown root query field: {sel.name.value!r}"
+                        f"Unknown root query field: {field_name!r}"
                     )
-                results.append(
-                    _compile_root_field(sel, ctx, variables, use_catalog)
-                )
+                if field_name.endswith("_aggregate"):
+                    compiled = _compile_aggregate_field(
+                        sel, ctx, variables, use_catalog,
+                    )
+                else:
+                    compiled = _compile_root_field(
+                        sel, ctx, variables, use_catalog,
+                    )
+                # Track source tables for warm-table promotion (REQ-AD5)
+                table_meta = ctx.tables.get(field_name)
+                if table_meta:
+                    fqn = (
+                        f'"{table_meta.catalog_name}"'
+                        f'."{table_meta.schema_name}"'
+                        f'."{table_meta.table_name}"'
+                    )
+                    query_counter.increment(fqn)
+                results.append(compiled)
 
     return results

@@ -730,6 +730,26 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id):
                 asyncio.create_task(
                     trigger_sinks_for_table(mutation.table_name, state),
                 )
+                # Invalidate and reload hot table if applicable (Phase AD6)
+                if state.hot_manager is not None:
+                    from provisa.cache.hot_tables import HotTableManager
+                    hot_mgr = state.hot_manager
+                    assert isinstance(hot_mgr, HotTableManager)
+                    if hot_mgr.is_hot(table_meta.table_name):
+                        await hot_mgr.invalidate(table_meta.table_name)
+                        entry = hot_mgr.get_entry(table_meta.table_name)
+                        if entry is None:
+                            # Find table config for reload
+                            _tbl_schema = table_meta.schema_name
+                            _tbl_catalog = table_meta.catalog_name
+                            _pk = "id"  # default PK
+                            await hot_mgr.load_table(
+                                state.trino_conn,
+                                table_meta.table_name,
+                                _tbl_schema,
+                                _tbl_catalog,
+                                _pk,
+                            )
         except Exception as e:
             log.exception("Mutation execution failed")
             raise HTTPException(status_code=500, detail=str(e))

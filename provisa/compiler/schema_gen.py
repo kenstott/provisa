@@ -34,6 +34,7 @@ from graphql import (
     GraphQLString,
 )
 
+from provisa.compiler.aggregate_gen import build_aggregate_types
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import apply_convention, generate_name, to_type_name
 from provisa.compiler.type_map import FILTER_TYPE_MAP, trino_to_graphql
@@ -387,6 +388,20 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             GraphQLList(GraphQLNonNull(gql_type)),
             args=args,
         )
+
+        # Aggregate field: <table>_aggregate
+        agg_type = build_aggregate_types(
+            t.type_name, t.visible_columns, t.column_metadata, gql_type,
+        )
+        if agg_type:
+            agg_args: dict[str, GraphQLArgument] = {}
+            agg_where = _build_where_input(t, f"{t.type_name}Agg")
+            if agg_where:
+                agg_args["where"] = GraphQLArgument(agg_where)
+            query_fields[f"{t.field_name}_aggregate"] = GraphQLField(
+                agg_type,
+                args=agg_args,
+            )
 
     query_type = GraphQLObjectType("Query", lambda: query_fields)
 

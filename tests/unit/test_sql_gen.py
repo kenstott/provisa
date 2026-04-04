@@ -570,3 +570,152 @@ class TestRelationshipVisibility:
         doc2 = parse("{ orders { id customers { name } } }")
         errors2 = validate(schema_limited, doc2)
         assert errors2  # 'customers' field should not exist on Orders for limited role
+
+
+class TestAggregate:
+    def test_aggregate_schema_generated(self, schema_and_ctx):
+        """orders_aggregate root field exists in the schema."""
+        schema, ctx = schema_and_ctx
+        query_type = schema.query_type
+        assert "orders_aggregate" in query_type.fields
+
+    def test_aggregate_count_compiles(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("""
+            { orders_aggregate {
+                aggregate { count }
+            } }
+        """)
+        errors = validate(schema, doc)
+        assert not errors
+        results = compile_query(doc, ctx)
+        assert len(results) == 1
+        q = results[0]
+        assert q.root_field == "orders_aggregate"
+        assert "COUNT(*)" in q.sql
+        assert 'FROM "public"."orders"' in q.sql
+
+    def test_aggregate_sum_only_numeric(self, schema_and_ctx):
+        """sum fields should only include numeric columns (amount), not varchar (region)."""
+        schema, ctx = schema_and_ctx
+        agg_type = schema.query_type.fields["orders_aggregate"].type
+        agg_fields_type = agg_type.fields["aggregate"].type
+        sum_type = agg_fields_type.fields["sum"].type
+        sum_field_names = set(sum_type.fields.keys())
+        # amount (decimal) and id/customer_id (integer) are numeric
+        assert "amount" in sum_field_names
+        assert "id" in sum_field_names
+        # region and status are varchar — should NOT be in sum
+        assert "region" not in sum_field_names
+        assert "status" not in sum_field_names
+
+    def test_aggregate_avg_only_numeric(self, schema_and_ctx):
+        """avg fields should only include numeric columns."""
+        schema, ctx = schema_and_ctx
+        agg_type = schema.query_type.fields["orders_aggregate"].type
+        agg_fields_type = agg_type.fields["aggregate"].type
+        avg_type = agg_fields_type.fields["avg"].type
+        avg_field_names = set(avg_type.fields.keys())
+        assert "amount" in avg_field_names
+        assert "region" not in avg_field_names
+
+    def test_aggregate_min_max_include_comparable(self, schema_and_ctx):
+        """min/max fields include numeric + varchar + timestamp columns."""
+        schema, ctx = schema_and_ctx
+        agg_type = schema.query_type.fields["orders_aggregate"].type
+        agg_fields_type = agg_type.fields["aggregate"].type
+        min_type = agg_fields_type.fields["min"].type
+        min_field_names = set(min_type.fields.keys())
+        assert "amount" in min_field_names  # numeric
+        assert "region" in min_field_names  # varchar — comparable
+        assert "created_at" in min_field_names  # timestamp — comparable
+
+    def test_aggregate_sum_avg_sql(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("""
+            { orders_aggregate {
+                aggregate {
+                    count
+                    sum { amount }
+                    avg { amount }
+                }
+            } }
+        """)
+        errors = validate(schema, doc)
+        assert not errors
+        results = compile_query(doc, ctx)
+        q = results[0]
+        assert "COUNT(*)" in q.sql
+        assert 'SUM("amount")' in q.sql
+        assert 'AVG("amount")' in q.sql
+
+    def test_aggregate_min_max_sql(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("""
+            { orders_aggregate {
+                aggregate {
+                    min { amount region }
+                    max { amount region }
+                }
+            } }
+        """)
+        errors = validate(schema, doc)
+        assert not errors
+        results = compile_query(doc, ctx)
+        q = results[0]
+        assert 'MIN("amount")' in q.sql
+        assert 'MIN("region")' in q.sql
+        assert 'MAX("amount")' in q.sql
+        assert 'MAX("region")' in q.sql
+
+    def test_aggregate_where_clause(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("""
+            { orders_aggregate(where: { region: { eq: "us-east" } }) {
+                aggregate { count }
+            } }
+        """)
+        errors = validate(schema, doc)
+        assert not errors
+        results = compile_query(doc, ctx)
+        q = results[0]
+        assert "COUNT(*)" in q.sql
+        assert 'WHERE "region" = $1' in q.sql
+        assert q.params == ["us-east"]
+
+    def test_aggregate_nodes_field(self, schema_and_ctx):
+        """nodes field exists on the aggregate type."""
+        schema, ctx = schema_and_ctx
+        agg_type = schema.query_type.fields["orders_aggregate"].type
+        assert "nodes" in agg_type.fields
+
+    def test_aggregate_role_gating(self):
+        """Aggregate fields only show columns visible to the role."""
+        tables = [
+            {
+                "id": 1, "source_id": "pg", "domain_id": "d",
+                "schema_name": "public", "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin", "limited"]},
+                    {"column_name": "amount", "visible_to": ["admin"]},  # NOT visible to limited
+                    {"column_name": "status", "visible_to": ["admin", "limited"]},
+                ],
+            },
+        ]
+        col_types = {
+            1: [_col("id", "integer"), _col("amount", "decimal(10,2)"), _col("status", "varchar")],
+        }
+        si = SchemaInput(
+            tables=tables, relationships=[], column_types=col_types,
+            naming_rules=[],
+            role={"id": "limited", "capabilities": [], "domain_access": ["*"]},
+            domains=[{"id": "d", "description": "D"}],
+        )
+        schema = generate_schema(si)
+        agg_type = schema.query_type.fields["orders_aggregate"].type
+        agg_fields_type = agg_type.fields["aggregate"].type
+        # limited role cannot see "amount", so sum should only have "id"
+        sum_type = agg_fields_type.fields["sum"].type
+        assert "id" in sum_type.fields
+        assert "amount" not in sum_type.fields

@@ -208,9 +208,11 @@ Returns the GraphQL SDL for a role.
 
 ### `GET /data/proto/{role_id}`
 
-Returns the `.proto` file for gRPC client code generation.
+Returns the auto-generated `.proto` file for gRPC client code generation. The proto is role-specific: only visible tables and columns appear.
 
 **Response:** `text/plain` protobuf schema.
+
+Each registered table produces a protobuf `message`. Relationships produce nested message fields. Root service contains query RPCs (server-streaming) and mutation RPCs (unary). Type mapping: integer to int32, bigint to int64, varchar to string, decimal to double, boolean to bool, timestamp to `google.protobuf.Timestamp`.
 
 ## Admin API
 
@@ -264,6 +266,20 @@ Returns `{"status": "ok"}`.
 ## Arrow Flight Endpoint
 
 Port `8815`. Native Arrow columnar transport over gRPC.
+
+### Flight SQL Modes
+
+The Flight SQL endpoint supports three connection modes, specified as a connection property in the handshake or JDBC connection string:
+
+| Mode | Schema | Shows | Query Execution |
+|------|--------|-------|----------------|
+| `catalog` | Domain IDs | Registered tables with aliases and descriptions | No (metadata only) |
+| `approved` | `approved` | Approved persisted queries as virtual views | Yes |
+| Default (no mode) | N/A | Full query execution through governance pipeline | Yes |
+
+`mode=catalog` exposes the user's visible semantic layer as a read-only JDBC catalog. Domains map to JDBC schemas, registered tables map to JDBC tables, columns include types and descriptions. Useful for external tools (Collibra, Alation, reasoning agents) that need schema discovery without query execution.
+
+`mode=approved` exposes each approved persisted query as one or more views named `{stableId}__{rootField}`. Multi-root queries produce multiple views.
 
 **Ticket format** (JSON):
 ```json
@@ -389,6 +405,59 @@ id              | customer_id     | amount          | region          | status
 ...
 10 rows returned.
 ```
+
+## Subscriptions (Planned)
+
+### `GET /data/subscribe/{table}`
+
+**Status: Not yet implemented.**
+
+Server-Sent Events (SSE) endpoint for real-time change notifications. Will use PostgreSQL `LISTEN/NOTIFY` via asyncpg. Planned for Phase AB.
+
+## Admin Mutations
+
+The following mutations are available via `POST /admin/graphql`:
+
+### Cache Management
+
+```graphql
+mutation { update_source_cache(source_id: "sales-pg", enabled: true, ttl: 600) { success } }
+mutation { update_table_cache(table_id: 1, ttl: 60) { success } }
+```
+
+- `update_source_cache(source_id, enabled, ttl)` -- Set cache enabled/disabled and TTL override for a source.
+- `update_table_cache(table_id, ttl)` -- Set cache TTL override for a specific table. Pass `null` to inherit from source/global.
+
+### Naming Convention Management
+
+```graphql
+mutation { update_source_naming(source_id: "legacy-db", convention: "camelCase") { success } }
+mutation { update_table_naming(table_id: 1, convention: "PascalCase") { success } }
+```
+
+- `update_source_naming(source_id, convention)` -- Set naming convention override for a source.
+- `update_table_naming(table_id, convention)` -- Set naming convention override for a table.
+
+### Scheduled Task Management
+
+```graphql
+mutation { toggle_scheduled_task(name: "daily-report", enabled: false) { success } }
+```
+
+- `toggle_scheduled_task(name, enabled)` -- Enable or disable a scheduled trigger by name.
+
+### OrderBy Input Format
+
+The `order_by` argument uses `{column: direction}` objects with a 6-value direction enum:
+
+```json
+{
+  "query": "{ orders(order_by: [{created_at: desc_nulls_last}]) { id created_at } }",
+  "role": "admin"
+}
+```
+
+Supported directions: `asc`, `desc`, `asc_nulls_first`, `asc_nulls_last`, `desc_nulls_first`, `desc_nulls_last`.
 
 ## Authentication
 

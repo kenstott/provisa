@@ -381,6 +381,32 @@ cache:
   default_ttl: 300
 ```
 
+### Cache Hierarchy
+
+TTL resolution order (most specific wins): **table** > **source** > **global default**. First non-null value is used.
+
+```yaml
+cache:
+  enabled: true
+  redis_url: ${env:REDIS_URL}
+  default_ttl: 300              # global fallback: 5 minutes
+
+sources:
+  - id: sales-pg
+    cache_enabled: true          # toggle caching for all tables in this source
+    cache_ttl: 600               # source override: 10 minutes
+
+tables:
+  - source_id: sales-pg
+    table: orders
+    cache_ttl: 60                # table override: 1 minute (frequently changing)
+  - source_id: sales-pg
+    table: customers
+    # no cache_ttl → inherits source TTL (600s)
+```
+
+Setting `cache_enabled: false` on a source disables caching for all tables in that source, regardless of table-level TTL. Cache keys always include `role_id` + RLS context values for security partitioning.
+
 ## Authentication
 
 ```yaml
@@ -401,6 +427,188 @@ auth:
       contains: data-analysts
       provisa_role: analyst
     default_role: analyst
+```
+
+### Auth Provider Types
+
+| Provider | Use Case | Token Validation |
+|----------|----------|-----------------|
+| `none` | No auth (default). All requests treated as admin. | N/A |
+| `simple` | Local dev/testing. Users defined in YAML. | JWT signed with `PROVISA_JWT_SECRET` |
+| `firebase` | Firebase Authentication (all methods). | `firebase-admin` SDK `verify_id_token()` |
+| `keycloak` | Keycloak OIDC. Realm/client roles mapped. | JWKS-based JWT validation |
+| `oauth` | Generic OIDC (Okta, Azure AD, Auth0, PingFederate). | JWKS from discovery URL |
+
+Superuser credentials (`superuser` block) work with any provider and always resolve to admin role with all capabilities. Used for initial setup before external auth is configured.
+
+### Full Auth Config Example (commented out)
+
+```yaml
+# auth:
+#   provider: firebase
+#
+#   superuser:
+#     username: admin
+#     password: ${env:PROVISA_SUPERUSER_PASSWORD}
+#
+#   firebase:
+#     project_id: ${env:FIREBASE_PROJECT_ID}
+#     service_account_key: ${env:FIREBASE_SERVICE_ACCOUNT}
+#
+#   # keycloak:
+#   #   server_url: https://keycloak.example.com
+#   #   realm: provisa
+#   #   client_id: provisa-app
+#   #   client_secret: ${env:KEYCLOAK_CLIENT_SECRET}
+#
+#   # oauth:
+#   #   discovery_url: https://login.example.com/.well-known/openid-configuration
+#   #   client_id: provisa
+#   #   client_secret: ${env:OAUTH_CLIENT_SECRET}
+#   #   role_claim: groups
+#   #   audience: provisa-api
+#
+#   role_mapping:
+#     - claim: custom_claims.role
+#       value: admin
+#       provisa_role: admin
+#     - claim: groups
+#       contains: data-analysts
+#       provisa_role: analyst
+#     default_role: analyst
+```
+
+## Upsert Mutations
+
+For tables with a primary key, Provisa auto-generates `upsert_<table>` mutation fields. These compile to `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`. SQLGlot transpiles to the target dialect (e.g., MySQL `ON DUPLICATE KEY UPDATE`).
+
+```graphql
+mutation {
+  upsert_orders(objects: [{id: 1, amount: 150.00, region: "us"}]) {
+    affected_rows
+  }
+}
+```
+
+Conflict columns are derived from PK metadata. All column visibility and write permission rules apply.
+
+## Distinct On
+
+The `distinct_on` argument selects the first row for each distinct value of the specified columns. Available on root query fields.
+
+```graphql
+{
+  orders(distinct_on: [region], order_by: [{region: asc, created_at: desc}]) {
+    region
+    amount
+    created_at
+  }
+}
+```
+
+Compiles to `SELECT DISTINCT ON (region) ...` in PostgreSQL. For non-PG dialects, SQLGlot provides a window function fallback.
+
+## Column Presets
+
+Auto-inject values into columns on insert/update. Defined per table in config.
+
+```yaml
+tables:
+  - source_id: sales-pg
+    table: orders
+    column_presets:
+      - column: created_by
+        source: header           # from request header
+        name: X-User-ID
+      - column: updated_at
+        source: now              # current timestamp
+      - column: source_system
+        source: literal          # constant value
+        value: "provisa"
+```
+
+| Source | Behavior |
+|--------|----------|
+| `header` | Injects value from the named HTTP request header |
+| `now` | Injects `NOW()` (current timestamp) |
+| `literal` | Injects a constant value |
+
+Preset columns are injected during mutation compilation before SQL generation. They are not visible in the mutation input type.
+
+## Inherited Roles
+
+Roles can inherit capabilities and domain access from a parent role via `parent_role_id`. The hierarchy is flattened at startup.
+
+```yaml
+roles:
+  - id: admin
+    capabilities: [admin]
+    domain_access: ["*"]
+  - id: analyst
+    capabilities: [query_development]
+    domain_access: [sales-analytics]
+  - id: junior_analyst
+    capabilities: []
+    domain_access: []
+    parent_role_id: analyst      # inherits query_development + sales-analytics
+  - id: intern
+    capabilities: []
+    domain_access: []
+    parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
+```
+
+Multi-level inheritance is supported. Cycles are rejected at config load time. The child role's explicit capabilities and domain_access are merged with the parent's.
+
+## Scheduled Triggers
+
+Cron-based triggers that call a webhook URL on schedule. Uses APScheduler.
+
+```yaml
+scheduled_triggers:
+  - name: daily-report
+    cron: "0 8 * * *"           # 8:00 AM daily
+    webhook_url: https://hooks.example.com/daily-report
+    enabled: true
+  - name: hourly-sync
+    cron: "0 * * * *"           # every hour
+    webhook_url: https://hooks.example.com/sync
+    enabled: false
+```
+
+Scheduled tasks are managed via the admin UI (enable/disable toggle) or the `toggle_scheduled_task` admin mutation.
+
+## OrderBy Format
+
+OrderBy uses the `{column: direction}` format with a 6-value direction enum:
+
+```graphql
+{
+  orders(order_by: [{created_at: desc_nulls_last}, {amount: asc}]) {
+    id
+    created_at
+    amount
+  }
+}
+```
+
+| Direction | SQL |
+|-----------|-----|
+| `asc` | `ASC` |
+| `desc` | `DESC` |
+| `asc_nulls_first` | `ASC NULLS FIRST` |
+| `asc_nulls_last` | `ASC NULLS LAST` |
+| `desc_nulls_first` | `DESC NULLS FIRST` |
+| `desc_nulls_last` | `DESC NULLS LAST` |
+
+Relationship ordering is supported via nested objects:
+
+```graphql
+{
+  orders(order_by: [{customers: {name: asc}}]) {
+    id
+    customers { name }
+  }
+}
 ```
 
 ## Environment Variables

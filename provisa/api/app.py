@@ -35,6 +35,7 @@ from provisa.executor.pool import SourcePool
 from provisa.compiler.mask_inject import MaskingRules
 from provisa.cache.store import CacheStore, NoopCacheStore, RedisCacheStore
 from provisa.mv.registry import MVRegistry
+from provisa.cache.warm_tables import WarmTableManager
 
 
 class AppState:
@@ -66,6 +67,10 @@ class AppState:
     auth_config: dict | None = None  # auth section from provisa.yaml
     api_endpoints: dict[str, object] = {}  # table_name → ApiEndpoint
     api_sources: dict[str, object] = {}  # source_id → ApiSource
+    hot_manager: object | None = None  # HotTableManager
+    _hot_refresh_task: asyncio.Task | None = None
+    warm_manager: WarmTableManager = WarmTableManager()
+    _warm_task: asyncio.Task | None = None
 
 
 state = AppState()
@@ -443,6 +448,12 @@ async def _load_and_build(config_path: str | None = None) -> None:
 
     await _rebuild_schemas(raw_config)
 
+    # Initialize hot tables (Phase AD6)
+    from provisa.cache.hot_tables import init_hot_tables
+    hot_mgr = await init_hot_tables(raw_config, state.trino_conn)
+    if hot_mgr is not None:
+        state.hot_manager = hot_mgr
+
 
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     """Re-introspect Trino and rebuild schemas for all roles from current DB state.
@@ -645,6 +656,53 @@ async def lifespan(app: FastAPI):
             refresh_loop(state.trino_conn, state.mv_registry),
         )
 
+    # Start warm-table background task (REQ-AD5)
+    if state.trino_conn:
+        from provisa.cache.warm_tables import QueryCounter as _QC
+        from provisa.compiler.sql_gen import query_counter as _qc
+
+        async def _warm_loop() -> None:
+            while True:
+                try:
+                    state.warm_manager.check_promotions(_qc, state.trino_conn)
+                    state.warm_manager.check_demotions(_qc, state.trino_conn)
+                except Exception:
+                    _log.exception("Error in warm-table loop")
+                await asyncio.sleep(60)
+
+        state._warm_task = asyncio.create_task(_warm_loop())
+
+    # Start hot-table periodic refresh (Phase AD6)
+    if state.hot_manager is not None and state.trino_conn:
+        from provisa.cache.hot_tables import HotTableManager
+        hot_mgr = state.hot_manager
+        assert isinstance(hot_mgr, HotTableManager)
+
+        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+        _hot_path = Path(config_path)
+        _hot_interval = 300
+        if _hot_path.exists():
+            with open(_hot_path) as _hf:
+                _hot_cfg = yaml.safe_load(_hf)
+            _hot_interval = _hot_cfg.get("hot_tables", {}).get("refresh_interval", 300)
+
+        async def _hot_refresh_loop() -> None:
+            while True:
+                await asyncio.sleep(_hot_interval)
+                for entry in list(hot_mgr._hot_tables.values()):
+                    try:
+                        await hot_mgr.load_table(
+                            state.trino_conn,
+                            entry.table_name,
+                            entry.schema,
+                            entry.catalog,
+                            entry.pk_column,
+                        )
+                    except Exception:
+                        _log.exception("Hot table refresh failed: %s", entry.table_name)
+
+        state._hot_refresh_task = asyncio.create_task(_hot_refresh_loop())
+
     # Start gRPC server if protos were generated
     if state.proto_files:
         try:
@@ -690,6 +748,26 @@ async def lifespan(app: FastAPI):
     # Stop gRPC server
     if state._grpc_server:
         await state._grpc_server.stop(grace=5)
+
+    # Cancel warm-table task
+    if state._warm_task:
+        state._warm_task.cancel()
+        try:
+            await state._warm_task
+        except asyncio.CancelledError:
+            pass
+
+    # Cancel hot-table refresh task (Phase AD6)
+    if state._hot_refresh_task:
+        state._hot_refresh_task.cancel()
+        try:
+            await state._hot_refresh_task
+        except asyncio.CancelledError:
+            pass
+    if state.hot_manager is not None:
+        from provisa.cache.hot_tables import HotTableManager
+        assert isinstance(state.hot_manager, HotTableManager)
+        await state.hot_manager.close()
 
     # Cancel MV refresh task
     if state._mv_refresh_task:
@@ -772,108 +850,8 @@ def create_app() -> FastAPI:
         except Exception as e:
             return {"success": False, "message": str(e)}
 
-    @app.get("/admin/views")
-    async def list_views():
-        """List all configured views."""
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-        path = Path(config_path)
-        if not path.exists():
-            return []
-        with open(path) as f:
-            cfg = yaml.safe_load(f)
-        return cfg.get("views", [])
-
-    @app.post("/admin/views")
-    async def save_view(request):
-        """Add or update a view in the config and reload."""
-        view = await request.json()
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-        path = Path(config_path)
-        with open(path) as f:
-            cfg = yaml.safe_load(f)
-
-        views = cfg.setdefault("views", [])
-        # Replace if exists, otherwise append
-        replaced = False
-        for i, v in enumerate(views):
-            if v["id"] == view["id"]:
-                views[i] = view
-                replaced = True
-                break
-        if not replaced:
-            views.append(view)
-
-        # Write backup and save
-        backup = path.with_suffix(".yaml.bak")
-        backup.write_text(path.read_text())
-        with open(path, "w") as f:
-            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
-
-        try:
-            await _load_and_build(config_path)
-            return {"success": True, "message": f"View '{view['id']}' saved and reloaded"}
-        except Exception as e:
-            return {"success": False, "message": str(e)}
-
-    @app.delete("/admin/views/{view_id}")
-    async def delete_view(view_id: str):
-        """Delete a view from the config and reload."""
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-        path = Path(config_path)
-        with open(path) as f:
-            cfg = yaml.safe_load(f)
-
-        views = cfg.get("views", [])
-        cfg["views"] = [v for v in views if v["id"] != view_id]
-
-        backup = path.with_suffix(".yaml.bak")
-        backup.write_text(path.read_text())
-        with open(path, "w") as f:
-            yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
-
-        try:
-            await _load_and_build(config_path)
-            return {"success": True, "message": f"View '{view_id}' deleted"}
-        except Exception as e:
-            return {"success": False, "message": str(e)}
-
-    @app.post("/admin/views/{view_id}/sample")
-    async def sample_view(view_id: str):
-        """Execute a view's SQL with LIMIT 20 and return sample rows."""
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-        path = Path(config_path)
-        with open(path) as f:
-            cfg = yaml.safe_load(f)
-
-        view = None
-        for v in cfg.get("views", []):
-            if v["id"] == view_id:
-                view = v
-                break
-        if not view:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=404, detail=f"View '{view_id}' not found")
-
-        sql = view["sql"].strip().rstrip(";")
-        sample_sql = f"SELECT * FROM ({sql}) _v LIMIT 20"
-
-        if state.trino_conn is None:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=503, detail="Trino not connected")
-
-        try:
-            cur = state.trino_conn.cursor()
-            cur.execute(sample_sql)
-            rows = cur.fetchall()
-            columns = [desc[0] for desc in cur.description] if cur.description else []
-            return {
-                "columns": columns,
-                "rows": [dict(zip(columns, row)) for row in rows],
-                "count": len(rows),
-            }
-        except Exception as e:
-            from fastapi import HTTPException
-            raise HTTPException(status_code=500, detail=str(e))
+    from provisa.api.admin.views import router as views_router
+    app.include_router(views_router)
 
     @app.get("/admin/settings")
     async def get_settings():

@@ -21,6 +21,7 @@ class MVStatus(str, Enum):
     STALE = "stale"
     REFRESHING = "refreshing"
     DISABLED = "disabled"
+    SKIPPED_SIZE = "skipped_size"
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,10 @@ class MVDefinition:
     sql: str | None = None
     expose_in_sdl: bool = False
     sdl_config: SDLConfig | None = None
+
+    # Lifecycle guards
+    max_rows: int = 1_000_000
+    orphan_grace_period: int = 86400  # 24h in seconds
 
     # Runtime state
     status: MVStatus = MVStatus.STALE
