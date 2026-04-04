@@ -24,6 +24,7 @@ public class ProvisaConnection extends AbstractConnection {
     String role;
     String mode; // "approved" or "catalog"
     String authToken;
+    FlightTransport flightTransport; // null if Flight unavailable
     private boolean closed = false;
 
     ProvisaConnection(String baseUrl, String user, String password, String mode) throws SQLException {
@@ -41,6 +42,14 @@ public class ProvisaConnection extends AbstractConnection {
         }
         this.role = resolvedRole;
         this.authToken = resolvedToken;
+
+        // Attempt Flight connection (silent fallback to HTTP if unavailable)
+        String host = baseUrl.replaceFirst("^https?://", "").split(":")[0];
+        int port = 8001;
+        try {
+            port = Integer.parseInt(baseUrl.replaceFirst("^https?://", "").split(":")[1].split("/")[0]);
+        } catch (Exception ignored) {}
+        this.flightTransport = FlightTransport.tryConnect(host, port, this.role);
     }
 
     private JsonObject authenticate(String user, String password) throws Exception {
@@ -288,7 +297,13 @@ public class ProvisaConnection extends AbstractConnection {
         return new ProvisaDatabaseMetaData(this);
     }
 
-    @Override public void close() { closed = true; }
+    @Override public void close() {
+        closed = true;
+        if (flightTransport != null) {
+            flightTransport.close();
+            flightTransport = null;
+        }
+    }
     @Override public boolean isClosed() { return closed; }
     @Override public String getSchema() { return mode; }
 

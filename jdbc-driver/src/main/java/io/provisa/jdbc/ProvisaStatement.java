@@ -87,7 +87,15 @@ public class ProvisaStatement extends AbstractStatement {
             throw new SQLException("Approved query not found: " + stableId);
         }
 
-        // Try Arrow IPC redirect first, fall back to JSON
+        // Try Flight → Arrow IPC redirect → JSON fallback
+        if (conn.flightTransport != null) {
+            try {
+                currentResultSet = conn.flightTransport.execute(match.queryText, variables);
+                return currentResultSet;
+            } catch (Exception e) {
+                // Flight failed — fall through to HTTP paths
+            }
+        }
         try {
             currentResultSet = executeWithArrowRedirect(match, variables, targetRootField);
         } catch (Exception e) {
