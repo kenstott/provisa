@@ -89,6 +89,41 @@ OrderDirection = GraphQLEnumType(
     },
 )
 
+# --- Relay-style connection types for cursor pagination (REQ-218) ---
+
+PageInfoType = GraphQLObjectType(
+    "PageInfo",
+    lambda: {
+        "hasNextPage": GraphQLField(GraphQLNonNull(GraphQLBoolean)),
+        "hasPreviousPage": GraphQLField(GraphQLNonNull(GraphQLBoolean)),
+        "startCursor": GraphQLField(GraphQLString),
+        "endCursor": GraphQLField(GraphQLString),
+    },
+)
+
+
+def _build_connection_types(
+    type_name: str, node_type: GraphQLObjectType,
+) -> tuple[GraphQLObjectType, GraphQLObjectType]:
+    """Build Edge and Connection types for cursor pagination."""
+    edge_type = GraphQLObjectType(
+        f"{type_name}Edge",
+        lambda node_type=node_type: {
+            "cursor": GraphQLField(GraphQLNonNull(GraphQLString)),
+            "node": GraphQLField(GraphQLNonNull(node_type)),
+        },
+    )
+    connection_type = GraphQLObjectType(
+        f"{type_name}Connection",
+        lambda edge_type=edge_type: {
+            "edges": GraphQLField(
+                GraphQLNonNull(GraphQLList(GraphQLNonNull(edge_type)))
+            ),
+            "pageInfo": GraphQLField(GraphQLNonNull(PageInfoType)),
+        },
+    )
+    return edge_type, connection_type
+
 
 def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
     """Filter tables by role's domain access. Build per-table metadata."""
@@ -402,6 +437,24 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
                 agg_type,
                 args=agg_args,
             )
+
+        # Connection field: <table>_connection (cursor pagination, REQ-218)
+        _edge_type, conn_type = _build_connection_types(t.type_name, gql_type)
+        conn_args: dict[str, GraphQLArgument] = {
+            "first": GraphQLArgument(GraphQLInt),
+            "after": GraphQLArgument(GraphQLString),
+            "last": GraphQLArgument(GraphQLInt),
+            "before": GraphQLArgument(GraphQLString),
+        }
+        conn_where = _build_where_input(t, f"{t.type_name}Conn")
+        if conn_where:
+            conn_args["where"] = GraphQLArgument(conn_where)
+        conn_ob = order_by_types.get(t.table_id)
+        if conn_ob:
+            conn_args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(conn_ob)))
+        query_fields[f"{t.field_name}_connection"] = GraphQLField(
+            conn_type, args=conn_args,
+        )
 
     query_type = GraphQLObjectType("Query", lambda: query_fields)
 

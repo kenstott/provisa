@@ -34,6 +34,9 @@ export function NavBar() {
           <Link to="/approvals">Approvals</Link>
         </CapabilityGate>
         <CapabilityGate capability="admin">
+          <Link to="/actions">Actions</Link>
+        </CapabilityGate>
+        <CapabilityGate capability="admin">
           <Link to="/admin">Admin</Link>
         </CapabilityGate>
       </div>

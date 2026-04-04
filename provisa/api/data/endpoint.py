@@ -228,6 +228,25 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
         compiled = expand_views(compiled, state.view_sql_map)
 
     compiled = inject_rls(compiled, ctx, rls)
+
+    # ABAC approval hook (Phase AE) — after RLS, before execution
+    if hasattr(state, "approval_hook") and state.approval_hook is not None:
+        from provisa.auth.approval_hook import ApprovalRequest, should_check
+        table_ids = {m.table_id for m in ctx.tables.values() if m.field_name == compiled.root_field}
+        source_ids = compiled.sources
+        hook_config = state.approval_hook_config
+        table_hooks = getattr(state, "table_approval_hooks", {})
+        source_hooks = getattr(state, "source_approval_hooks", {})
+        if should_check(table_ids, source_ids, hook_config, table_hooks, source_hooks):
+            req = ApprovalRequest(
+                user=role_id, roles=[role_id] if role_id else [],
+                tables=list(compiled.sources), columns=compiled.columns,
+                operation="query",
+            )
+            resp = await state.approval_hook.evaluate(req)
+            if not resp.approved:
+                raise HTTPException(status_code=403, detail=f"Approval denied: {resp.reason}")
+
     compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
 
     original_sources = set(compiled.sources)

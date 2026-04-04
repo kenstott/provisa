@@ -19,7 +19,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from provisa.compiler.sql_gen import ColumnRef
+from provisa.compiler.cursor import encode_cursor
+from provisa.compiler.sql_gen import ColumnRef, CompiledQuery
 
 
 def _convert_value(val: object) -> object:
@@ -90,3 +91,54 @@ def serialize_rows(
         result_rows.append(obj)
 
     return {"data": {root_field: result_rows}}
+
+
+def serialize_connection(
+    rows: list[tuple],
+    compiled: CompiledQuery,
+) -> dict:
+    """Serialize flat SQL rows into Relay-style connection format."""
+    columns = compiled.columns
+    sort_columns = compiled.sort_columns
+    page_size = compiled.page_size
+    is_backward = compiled.is_backward
+
+    has_more = False
+    if page_size is not None and len(rows) > page_size:
+        has_more = True
+        rows = rows[:page_size]
+
+    if is_backward:
+        rows = list(reversed(rows))
+
+    col_index = {col.field_name: i for i, col in enumerate(columns)}
+
+    edges = []
+    for row in rows:
+        node: dict = {}
+        for i, col in enumerate(columns):
+            node[col.field_name] = _convert_value(row[i])
+
+        cursor_vals = []
+        for sc in sort_columns:
+            idx = col_index.get(sc)
+            if idx is not None:
+                cursor_vals.append(_convert_value(row[idx]))
+        cursor = encode_cursor(cursor_vals)
+        edges.append({"cursor": cursor, "node": node})
+
+    if not is_backward:
+        has_next = has_more
+        has_prev = compiled.has_cursor
+    else:
+        has_next = compiled.has_cursor
+        has_prev = has_more
+
+    page_info = {
+        "hasNextPage": has_next,
+        "hasPreviousPage": has_prev,
+        "startCursor": edges[0]["cursor"] if edges else None,
+        "endCursor": edges[-1]["cursor"] if edges else None,
+    }
+
+    return {"data": {compiled.root_field: {"edges": edges, "pageInfo": page_info}}}

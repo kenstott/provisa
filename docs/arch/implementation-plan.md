@@ -2277,10 +2277,22 @@ Add `first`, `after`, `last`, `before` args to root query fields alongside exist
 
 ### AB2. Subscriptions via SSE (REQ-219)
 
-New `GET /data/subscribe/{table}` endpoint. FastAPI `StreamingResponse` with `text/event-stream`. PostgreSQL `LISTEN/NOTIFY` via asyncpg `.add_listener()`. No WebSocket, no new library.
+New `GET /data/subscribe/{table}` endpoint. FastAPI `StreamingResponse` with `text/event-stream`. Pluggable notification providers per source type:
 
-**Files**: new `provisa/api/data/subscribe.py`, `provisa/api/app.py` (route)
-**Effort**: ~200 lines
+| Source Type | Mechanism | Library |
+|-------------|-----------|---------|
+| PostgreSQL | `LISTEN/NOTIFY` via `pg_notify()` | asyncpg `.add_listener()` |
+| MongoDB | Change Streams | motor `collection.watch()` |
+| Kafka | Consumer group on topic | aiokafka / confluent-kafka |
+| MySQL/MariaDB/SQL Server | Debezium CDC → Kafka → consumer | Debezium connector + aiokafka |
+| Other RDBMS | Debezium CDC or polling fallback | — |
+
+For non-PG RDBMS sources, Debezium captures change data from the source's transaction log (MySQL binlog, SQL Server CDC, Oracle LogMiner) and publishes to Kafka topics. Provisa's Kafka notification provider then consumes these CDC events and streams them as SSE. Debezium runs as a Kafka Connect connector — no Provisa code needed for the capture side, only for consuming the CDC topic.
+
+Abstract `NotificationProvider` interface with `async watch(table, filter) -> AsyncGenerator[ChangeEvent]`. Subscribe endpoint resolves provider by table's source type. Schema validation ensures table exists and is visible to the requesting role. RLS filtering applied to change events.
+
+**Files**: new `provisa/api/data/subscribe.py`, new `provisa/subscriptions/` module (providers), `provisa/api/app.py` (route)
+**Effort**: ~350 lines
 
 ### AB3. Database Event Triggers (REQ-220)
 
@@ -2300,8 +2312,61 @@ Introspect `pg_enum` + `pg_type` at schema build time. Generate `GraphQLEnumType
 
 For each root query field in compiled schema, generate `GET /data/rest/{table}` FastAPI endpoint. Map `?limit=10&where.id.eq=1` to GraphQL args. Compile and execute via existing pipeline.
 
+**Query string mapping:**
+- `?limit=10&offset=20` → pagination
+- `?where.amount.gt=100&where.region.eq=US` → WHERE clause
+- `?order_by.created_at=desc` → ORDER BY
+- `?fields=id,amount,created_at` → field selection (sparse fieldset)
+
 **Files**: new `provisa/api/rest/generator.py`, `provisa/api/app.py` (mount routes)
 **Effort**: ~300 lines
+
+### AB6. JSON:API Endpoint Auto-Generation
+
+For each root query field, generate JSON:API compliant `GET /data/jsonapi/{table}` endpoints following the [JSON:API specification](https://jsonapi.org/).
+
+**Response format:**
+```json
+{
+  "data": [
+    {
+      "type": "orders",
+      "id": "42",
+      "attributes": {"amount": 99.50, "region": "US", "created_at": "2025-03-31"},
+      "relationships": {
+        "customer": {"data": {"type": "customers", "id": "7"}}
+      }
+    }
+  ],
+  "included": [
+    {"type": "customers", "id": "7", "attributes": {"name": "Alice", "email": "alice@example.com"}}
+  ],
+  "meta": {"total": 1250},
+  "links": {"self": "/data/jsonapi/orders?page[number]=1", "next": "/data/jsonapi/orders?page[number]=2"}
+}
+```
+
+**JSON:API features:**
+- Resource objects: `type` (table name), `id` (PK), `attributes` (non-FK columns), `relationships` (FK references)
+- Sparse fieldsets: `?fields[orders]=amount,created_at` → only return specified attributes
+- Inclusion: `?include=customer` → sideload related resources in `included` array
+- Filtering: `?filter[region]=US&filter[amount][gt]=100` → WHERE clause
+- Sorting: `?sort=-created_at,amount` → ORDER BY (prefix `-` = desc)
+- Pagination: `?page[number]=2&page[size]=25` (offset-based) or `?page[after]=cursor` (cursor-based)
+- Compound documents: related resources included once, referenced by type+id
+- Error objects: JSON:API error format with `status`, `title`, `detail`, `source.pointer`
+- Content negotiation: `Accept: application/vnd.api+json` required, `Content-Type: application/vnd.api+json` on responses
+
+**Implementation:**
+- `provisa/api/jsonapi/generator.py` — route generation per table, query string → GraphQL args translation
+- `provisa/api/jsonapi/serializer.py` — row data → JSON:API resource objects, relationship extraction, compound document assembly
+- `provisa/api/jsonapi/pagination.py` — page number/size to limit/offset, link generation
+- `provisa/api/jsonapi/errors.py` — JSON:API error object formatting
+- Pipeline: parse JSON:API params → translate to GraphQL args → compile → RLS → masking → execute → serialize to JSON:API format
+- Same security as GraphQL — RLS, masking, role-based column visibility all apply
+
+**Files**: new `provisa/api/jsonapi/` module (4 files), `provisa/api/app.py` (mount routes)
+**Effort**: ~500 lines
 
 ### Phase AB Gates
 
@@ -2311,11 +2376,19 @@ For each root query field in compiled schema, generate `GET /data/rest/{table}` 
 - Event triggers: insert/update/delete on table, verify webhook called with correct payload
 - Enum detection: create PG enum, verify GraphQL schema contains enum type with correct values
 - REST: `GET /data/rest/{table}?limit=5` returns same data as equivalent GraphQL query
+- JSON:API: `GET /data/jsonapi/orders` returns valid JSON:API document with type/id/attributes
+- JSON:API sparse fieldsets: `?fields[orders]=amount` returns only `amount` in attributes
+- JSON:API include: `?include=customer` returns customer in `included` array
+- JSON:API filtering: `?filter[region]=US` returns only US orders
+- JSON:API sorting: `?sort=-created_at` returns newest first
+- JSON:API pagination: `?page[number]=2&page[size]=10` returns correct page with `links.next`/`links.prev`
+- JSON:API errors: invalid filter returns JSON:API error object with correct structure
+- JSON:API content negotiation: request without `Accept: application/vnd.api+json` returns 406
 
 **Documentation**:
 - `docs/configuration.md`: event_triggers, scheduled_triggers config
-- `docs/api-reference.md`: cursor pagination args, SSE endpoint, REST endpoints
-- `docs/security.md`: SSE auth, REST auth (same pipeline as GraphQL)
+- `docs/api-reference.md`: cursor pagination args, SSE endpoint, REST endpoints, JSON:API endpoints
+- `docs/security.md`: SSE auth, REST auth, JSON:API auth (same pipeline as GraphQL)
 - `CHANGELOG.md` entry for Phase AB
 
 ---
@@ -2927,7 +3000,7 @@ The SourcesPage add-source form must render type-specific configuration fields f
 | Phase | What | Effort | Dependencies |
 |-------|------|--------|-------------|
 | AA | Quick wins: dialect expansion, upsert, distinct_on, presets, inherited roles, cron | Low | None |
-| AB | Cursor pagination, SSE subscriptions, event triggers, enums, REST auto-gen | Medium | None |
+| AB | Cursor pagination, SSE subscriptions, event triggers, enums, REST + JSON:API auto-gen | Medium | None |
 | AC | Tracked functions & webhook mutations | Medium | None |
 | AD | Naming convention, orderBy alignment, aggregates, MV lifecycle, warm/hot tables | Medium | None |
 | AE | ABAC approval hook | Medium | None |

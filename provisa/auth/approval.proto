@@ -1,0 +1,28 @@
+// Copyright (c) 2025 Kenneth Stott
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+
+syntax = "proto3";
+
+package provisa.auth;
+
+option java_package = "com.provisa.auth";
+option go_package = "provisa/auth";
+
+service ApprovalService {
+  rpc Evaluate (ApprovalRequest) returns (ApprovalResponse);
+}
+
+message ApprovalRequest {
+  string user = 1;
+  repeated string roles = 2;
+  repeated string tables = 3;
+  repeated string columns = 4;
+  string operation = 5;
+}
+
+message ApprovalResponse {
+  bool approved = 1;
+  string reason = 2;
+}

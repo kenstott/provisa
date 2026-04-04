@@ -106,6 +106,12 @@ class CompiledQuery:
     root_field: str  # GraphQL root field name (e.g., "orders")
     columns: list[ColumnRef]
     sources: set[str]  # source_ids involved (for routing)
+    # Cursor pagination fields (connection queries only)
+    is_connection: bool = False
+    is_backward: bool = False
+    sort_columns: list[str] = field(default_factory=list)
+    page_size: int | None = None
+    has_cursor: bool = False
 
 
 # --- Build CompilationContext from SchemaInput ---
@@ -156,6 +162,8 @@ def build_context(si: object) -> CompilationContext:
         ctx.tables[t.field_name] = meta
         # Register aggregate variant pointing to same TableMeta
         ctx.tables[f"{t.field_name}_aggregate"] = meta
+        # Register connection variant for cursor pagination
+        ctx.tables[f"{t.field_name}_connection"] = meta
 
         # Store column metadata for aggregate compilation
         col_info = []
@@ -860,6 +868,102 @@ def rewrite_hot_joins(compiled: CompiledQuery, hot_manager: object) -> CompiledQ
     return compiled
 
 
+def _extract_node_selections(field_node: FieldNode) -> list:
+    """Extract selections from edges.node in a connection field."""
+    if not field_node.selection_set:
+        return []
+    for sel in field_node.selection_set.selections:
+        if isinstance(sel, FieldNode) and sel.name.value == "edges":
+            if sel.selection_set:
+                for edge_sel in sel.selection_set.selections:
+                    if isinstance(edge_sel, FieldNode) and edge_sel.name.value == "node":
+                        if edge_sel.selection_set:
+                            return list(edge_sel.selection_set.selections)
+    return []
+
+
+def _compile_connection_field(
+    field_node: FieldNode,
+    ctx: CompilationContext,
+    variables: dict | None,
+    use_catalog: bool = False,
+) -> CompiledQuery:
+    """Compile a _connection root query field to SQL with cursor pagination."""
+    from provisa.compiler.cursor import apply_cursor_pagination, extract_sort_columns, reverse_order
+
+    root_name = field_node.name.value
+    table = ctx.tables[root_name]
+    collector = ParamCollector()
+    sources: set[str] = {table.source_id}
+
+    select_parts: list[str] = []
+    columns: list[ColumnRef] = []
+    for sel in _extract_node_selections(field_node):
+        if not isinstance(sel, FieldNode):
+            continue
+        sel_name = sel.name.value
+        select_parts.append(_q(sel_name))
+        columns.append(ColumnRef(None, sel_name, sel_name, None))
+
+    if not select_parts:
+        select_parts.append("1")
+
+    ref = _table_ref(table, use_catalog)
+    args = {}
+    if field_node.arguments:
+        for arg in field_node.arguments:
+            args[arg.name.value] = _extract_value(arg.value, variables)
+
+    sort_columns = extract_sort_columns(args)
+    for sc in sort_columns:
+        if sc not in [c.field_name for c in columns]:
+            select_parts.append(_q(sc))
+            columns.append(ColumnRef(None, sc, sc, None))
+
+    sql = f'SELECT {", ".join(select_parts)} FROM {ref}'
+
+    where_parts: list[str] = []
+    if "where" in args:
+        where_parts.append(_compile_where(args["where"], collector, None))
+
+    cursor_where, effective_limit, is_backward = apply_cursor_pagination(
+        args, sort_columns, collector, None,
+    )
+    if cursor_where:
+        where_parts.append(cursor_where)
+    if where_parts:
+        sql += f" WHERE {' AND '.join(where_parts)}"
+
+    if "order_by" in args:
+        order_by_val = args["order_by"]
+        if isinstance(order_by_val, dict):
+            order_by_val = [order_by_val]
+        order_sql = _compile_order_by(order_by_val, None)
+        if is_backward:
+            order_sql = reverse_order(order_sql)
+        sql += f" ORDER BY {order_sql}"
+    else:
+        direction = "DESC" if is_backward else "ASC"
+        sql += f' ORDER BY "id" {direction}'
+
+    page_size = args.get("first") or args.get("last")
+    if effective_limit is not None:
+        sql += f" LIMIT {effective_limit}"
+
+    return CompiledQuery(
+        sql=sql,
+        params=collector.params,
+        root_field=root_name,
+        columns=columns,
+        sources=sources,
+        is_connection=True,
+        is_backward=is_backward,
+        sort_columns=sort_columns,
+        page_size=int(page_size) if page_size is not None else None,
+        has_cursor=("after" in args or "before" in args),
+    )
+
+
 def compile_query(
     document: DocumentNode,
     ctx: CompilationContext,
@@ -890,6 +994,10 @@ def compile_query(
                     )
                 if field_name.endswith("_aggregate"):
                     compiled = _compile_aggregate_field(
+                        sel, ctx, variables, use_catalog,
+                    )
+                elif field_name.endswith("_connection"):
+                    compiled = _compile_connection_field(
                         sel, ctx, variables, use_catalog,
                     )
                 else:

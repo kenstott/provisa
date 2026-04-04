@@ -810,6 +810,27 @@ def create_app() -> FastAPI:
     app.include_router(data_router)
     app.include_router(sdl_router)
 
+    # SSE subscription endpoint (Phase AB2)
+    try:
+        from provisa.api.data.subscribe import router as subscribe_router
+        app.include_router(subscribe_router)
+    except ImportError:
+        pass
+
+    # REST auto-generated endpoints (Phase AB5)
+    try:
+        from provisa.api.rest.generator import create_rest_router
+        app.include_router(create_rest_router(state))
+    except ImportError:
+        pass
+
+    # JSON:API auto-generated endpoints (Phase AB6)
+    try:
+        from provisa.api.jsonapi.generator import create_jsonapi_router
+        app.include_router(create_jsonapi_router(state))
+    except ImportError:
+        pass
+
     # Admin GraphQL API (Strawberry) at /admin/graphql
     admin_router = GraphQLRouter(admin_schema)
     app.include_router(admin_router, prefix="/admin/graphql")

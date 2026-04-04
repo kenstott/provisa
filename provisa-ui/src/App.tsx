@@ -11,6 +11,7 @@ import { QueryPage } from "./pages/QueryPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { AdminPage } from "./pages/AdminPage";
 import { ViewsPage } from "./pages/ViewsPage";
+import { ActionsPage } from "./pages/ActionsPage";
 import { LoginPage } from "./pages/LoginPage";
 import "./App.css";
 
@@ -121,6 +122,14 @@ function App() {
                 element={
                   <CapabilityGate capability="query_approval" fallback={<NotAuthorized />}>
                     <ApprovalsPage />
+                  </CapabilityGate>
+                }
+              />
+              <Route
+                path="/actions"
+                element={
+                  <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
+                    <ActionsPage />
                   </CapabilityGate>
                 }
               />

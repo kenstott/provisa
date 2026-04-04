@@ -358,3 +358,8 @@
 ## Testing & Quality
 - **REQ-254** (2026-04-04): Integration tests must use Docker — spin up required containers (PG, Trino, Redis, etc.), install dependencies, run tests, and tear down containers. Tests must not assume a pre-existing Docker Compose stack.
 - **REQ-255** (2026-04-04): Unit tests must mock all external components (databases, Trino, Redis, HTTP endpoints, file system where applicable). No unit test should require a running external service.
+
+## API & Integration
+- **REQ-256** (2026-04-04): Auto-generated plain REST endpoints for every registered table via `GET /data/rest/{table}` with query string mapping to GraphQL args (`?limit=10&where.id.eq=1`). Compiles and executes via existing pipeline (RLS, masking, routing) with same security as GraphQL.
+- **REQ-257** (2026-04-04): Auto-generated JSON:API compliant endpoints for every registered table via `GET /data/jsonapi/{table}` following spec (jsonapi.org): resource objects with type/id/attributes/relationships, sparse fieldsets (`?fields[orders]=amount`), inclusion of related resources (`?include=customer`), filtering (`?filter[region]=US`), sorting (`?sort=-created_at`), pagination (`?page[number]=2&page[size]=25`), compound documents. Compiles and executes via existing pipeline.
+- **REQ-258** (2026-04-04): SSE subscriptions via `GET /data/subscribe/{table}` with pluggable notification providers per source type. PostgreSQL uses LISTEN/NOTIFY via asyncpg, MongoDB uses Change Streams via motor collection.watch(), Kafka uses consumer groups. Each provider implements a common async watch() interface returning change events. RLS filtering and schema validation apply regardless of provider.

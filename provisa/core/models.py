@@ -284,6 +284,63 @@ class RLSRule(BaseModel):
     filter: str
 
 
+class EventTrigger(BaseModel):
+    """Database event trigger: PG LISTEN/NOTIFY → webhook POST."""
+
+    table_id: str  # table name or schema.table
+    operations: list[str] = Field(default_factory=lambda: ["insert", "update", "delete"])
+    webhook_url: str
+    retry_max: int = 3  # max retry attempts
+    retry_delay: float = 1.0  # base delay in seconds (exponential backoff)
+    enabled: bool = True
+
+
+class FunctionArgument(BaseModel):
+    """Argument definition for a tracked DB function."""
+
+    name: str
+    type: str  # GraphQL scalar type name: String, Int, Float, Boolean, DateTime
+
+
+class InlineType(BaseModel):
+    """Inline return type field for webhooks (no registered table)."""
+
+    name: str
+    type: str  # GraphQL scalar type name
+
+
+class Function(BaseModel):
+    """Tracked DB function exposed as a GraphQL mutation."""
+
+    name: str  # exposed mutation name
+    source_id: str
+    schema_name: str = Field(alias="schema", default="public")
+    function_name: str
+    returns: str  # registered table id (source_id.schema.table)
+    arguments: list[FunctionArgument] = Field(default_factory=list)
+    visible_to: list[str] = Field(default_factory=list)
+    writable_by: list[str] = Field(default_factory=list)
+    domain_id: str = ""
+    description: str | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class Webhook(BaseModel):
+    """External HTTP webhook exposed as a GraphQL mutation."""
+
+    name: str  # exposed mutation name
+    url: str
+    method: str = "POST"
+    timeout_ms: int = 5000
+    returns: str | None = None  # registered table id, or None for inline type
+    inline_return_type: list[InlineType] = Field(default_factory=list)
+    arguments: list[FunctionArgument] = Field(default_factory=list)
+    visible_to: list[str] = Field(default_factory=list)
+    domain_id: str = ""
+    description: str | None = None
+
+
 class ScheduledTrigger(BaseModel):
     """Time-based trigger for webhooks or internal functions."""
 
@@ -313,6 +370,9 @@ class ProvisaConfig(BaseModel):
     relationships: list[Relationship] = Field(default_factory=list)
     roles: list[Role]
     rls_rules: list[RLSRule] = Field(default_factory=list)
+    event_triggers: list[EventTrigger] = Field(default_factory=list)
     scheduled_triggers: list[ScheduledTrigger] = Field(default_factory=list)
+    functions: list[Function] = Field(default_factory=list)
+    webhooks: list[Webhook] = Field(default_factory=list)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     hot_tables: HotTablesConfig = Field(default_factory=HotTablesConfig)
