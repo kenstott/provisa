@@ -53,6 +53,16 @@ Every REQ is assigned to a phase. Cross-cutting requirements (REQ-064, REQ-065, 
 | U: API Sources (REST, GraphQL, gRPC) | REQ-104, REQ-105, REQ-106, REQ-107, REQ-108, REQ-109, REQ-110, REQ-111, REQ-112, REQ-113, REQ-119 |
 | V: Kafka Sources & Sink | REQ-114, REQ-115, REQ-116, REQ-117 |
 | W: Authentication | REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125 |
+| AA: Quick Wins | REQ-212, REQ-213, REQ-214, REQ-215, REQ-216, REQ-217, REQ-229 |
+| AB: Medium-Complexity Parity | REQ-218, REQ-219, REQ-220, REQ-221, REQ-222, REQ-256, REQ-257, REQ-258, REQ-260, REQ-261 |
+| AC: Tracked Functions & Webhooks | REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-210, REQ-211, REQ-242, REQ-243, REQ-244, REQ-245 |
+| AD: Schema Alignment | REQ-194, REQ-195, REQ-196, REQ-197, REQ-198, REQ-199, REQ-200, REQ-201, REQ-202, REQ-230, REQ-231, REQ-232, REQ-233, REQ-234, REQ-235, REQ-236, REQ-237, REQ-238, REQ-239, REQ-240, REQ-241 |
+| AE: ABAC Approval Hook | REQ-203, REQ-204, REQ-246, REQ-247 |
+| AF: Installer & Packaging | REQ-223, REQ-224, REQ-225, REQ-226, REQ-227, REQ-228 |
+| AG: Hasura v2 Converter | REQ-182, REQ-184, REQ-185, REQ-186, REQ-187, REQ-188, REQ-190, REQ-192, REQ-193 |
+| AH: DDN Converter | REQ-183, REQ-189, REQ-191 |
+| AI: NoSQL Source Mapping | REQ-250, REQ-251, REQ-252, REQ-253 |
+| AJ: Apollo Federation | REQ-259 |
 | Dropped | REQ-017 (NoSQL Parquet materialization — Trino native connectors handle this) |
 | Not implementation | REQ-072, REQ-073, REQ-074 (commercial positioning) |
 
