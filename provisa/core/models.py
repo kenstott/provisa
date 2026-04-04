@@ -179,6 +179,7 @@ class NamingRule(BaseModel):
 class NamingConfig(BaseModel):
     convention: str = "snake_case"  # none, snake_case, camelCase, PascalCase
     rules: list[NamingRule] = Field(default_factory=list)
+    relay_pagination: bool = False  # opt-in: generate _connection fields + Edge/PageInfo types
 
 
 class Column(BaseModel):
@@ -220,6 +221,7 @@ class Table(BaseModel):
     cache_ttl: int | None = None  # overrides source-level; None = inherit
     naming_convention: str | None = None  # overrides source; None = inherit
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
+    relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
 
 
 class HotTablesConfig(BaseModel):

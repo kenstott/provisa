@@ -630,6 +630,29 @@ class TestMapper:
         assert config.auth.firebase is not None
         assert config.auth.firebase["project_id"] == "my-project"
 
+    def test_relay_pagination_defaults_false(self):
+        metadata = self._build_metadata()
+        config = convert_metadata(metadata)
+        assert config.naming.relay_pagination is False
+
+    def test_relay_pagination_enabled_via_graphql_engine(self):
+        metadata = self._build_metadata()
+        metadata.graphql_engine = {"enable_relay": True}
+        config = convert_metadata(metadata)
+        assert config.naming.relay_pagination is True
+
+    def test_relay_pagination_disabled_when_graphql_engine_false(self):
+        metadata = self._build_metadata()
+        metadata.graphql_engine = {"enable_relay": False}
+        config = convert_metadata(metadata)
+        assert config.naming.relay_pagination is False
+
+    def test_relay_pagination_absent_graphql_engine_key_defaults_false(self):
+        metadata = self._build_metadata()
+        metadata.graphql_engine = {"some_other_key": "value"}
+        config = convert_metadata(metadata)
+        assert config.naming.relay_pagination is False
+
 
 # ---------------------------------------------------------------------------
 # CLI tests

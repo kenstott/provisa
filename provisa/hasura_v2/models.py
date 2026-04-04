@@ -133,3 +133,4 @@ class HasuraMetadata:
     cron_triggers: list[HasuraCronTrigger] = field(default_factory=list)
     inherited_roles: list[HasuraInheritedRole] = field(default_factory=list)
     remote_schemas: list[HasuraRemoteSchema] = field(default_factory=list)
+    graphql_engine: dict = field(default_factory=dict)  # e.g. {"enable_relay": true}

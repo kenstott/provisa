@@ -54,6 +54,7 @@ class SchemaInput:
     domain_prefix: bool = False  # prepend domain_id__ to all names
     physical_table_map: dict[str, str] | None = None  # virtual → physical table name
     naming_convention: str = "snake_case"  # none, snake_case, camelCase, PascalCase
+    relay_pagination: bool = False  # global opt-in for _connection fields
 
 
 @dataclass
@@ -72,6 +73,7 @@ class _TableInfo:
     alias: str | None = None  # explicit GraphQL name override
     description: str | None = None  # GraphQL type/field description
     naming_convention: str = "snake_case"  # resolved convention for this table
+    relay_pagination: bool = False  # resolved relay flag for this table
     gql_fields: dict[str, GraphQLField] = field(default_factory=dict)
 
 
@@ -158,6 +160,16 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
         source_conv = table.get("source_naming_convention")
         resolved_conv = table_conv or source_conv or si.naming_convention
 
+        # Resolve relay_pagination: table → source → global (None = inherit)
+        table_relay = table.get("relay_pagination")
+        source_relay = table.get("source_relay_pagination")
+        if table_relay is not None:
+            resolved_relay = bool(table_relay)
+        elif source_relay is not None:
+            resolved_relay = bool(source_relay)
+        else:
+            resolved_relay = si.relay_pagination
+
         result.append(_TableInfo(
             table_id=table_id,
             field_name="",  # set after naming
@@ -171,6 +183,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
             alias=table.get("alias"),
             description=table.get("description"),
             naming_convention=resolved_conv,
+            relay_pagination=resolved_relay,
         ))
 
     return result
@@ -438,23 +451,24 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
                 args=agg_args,
             )
 
-        # Connection field: <table>_connection (cursor pagination, REQ-218)
-        _edge_type, conn_type = _build_connection_types(t.type_name, gql_type)
-        conn_args: dict[str, GraphQLArgument] = {
-            "first": GraphQLArgument(GraphQLInt),
-            "after": GraphQLArgument(GraphQLString),
-            "last": GraphQLArgument(GraphQLInt),
-            "before": GraphQLArgument(GraphQLString),
-        }
-        conn_where = _build_where_input(t, f"{t.type_name}Conn")
-        if conn_where:
-            conn_args["where"] = GraphQLArgument(conn_where)
-        conn_ob = order_by_types.get(t.table_id)
-        if conn_ob:
-            conn_args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(conn_ob)))
-        query_fields[f"{t.field_name}_connection"] = GraphQLField(
-            conn_type, args=conn_args,
-        )
+        # Connection field: <table>_connection (cursor pagination, REQ-218) — opt-in only
+        if t.relay_pagination:
+            _edge_type, conn_type = _build_connection_types(t.type_name, gql_type)
+            conn_args: dict[str, GraphQLArgument] = {
+                "first": GraphQLArgument(GraphQLInt),
+                "after": GraphQLArgument(GraphQLString),
+                "last": GraphQLArgument(GraphQLInt),
+                "before": GraphQLArgument(GraphQLString),
+            }
+            conn_where = _build_where_input(t, f"{t.type_name}Conn")
+            if conn_where:
+                conn_args["where"] = GraphQLArgument(conn_where)
+            conn_ob = order_by_types.get(t.table_id)
+            if conn_ob:
+                conn_args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(conn_ob)))
+            query_fields[f"{t.field_name}_connection"] = GraphQLField(
+                conn_type, args=conn_args,
+            )
 
     query_type = GraphQLObjectType("Query", lambda: query_fields)
 

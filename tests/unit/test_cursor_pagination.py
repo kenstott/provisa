@@ -61,7 +61,7 @@ def _build_schema_and_ctx():
     domains = [{"id": "sales", "description": "Sales"}]
     si = SchemaInput(
         tables=tables, relationships=[], column_types=column_types,
-        naming_rules=[], role=role, domains=domains,
+        naming_rules=[], role=role, domains=domains, relay_pagination=True,
     )
     schema = generate_schema(si)
     ctx = build_context(si)
@@ -322,3 +322,100 @@ class TestConnectionSerialization:
         assert data["edges"] == []
         assert data["pageInfo"]["startCursor"] is None
         assert data["pageInfo"]["hasNextPage"] is False
+
+
+def _base_tables():
+    return [
+        {
+            "id": 1,
+            "source_id": "sales-pg",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": "orders",
+            "governance": "pre-approved",
+            "columns": [
+                {"column_name": "id", "visible_to": ["admin"]},
+                {"column_name": "amount", "visible_to": ["admin"]},
+            ],
+        },
+    ]
+
+
+def _base_column_types():
+    return {
+        1: [
+            _col("id", "integer"),
+            _col("amount", "decimal(10,2)"),
+        ],
+    }
+
+
+def _base_role():
+    return {"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]}
+
+
+def _base_domains():
+    return [{"id": "sales", "description": "Sales"}]
+
+
+class TestRelayPaginationOptIn:
+    """relay_pagination=False (default) suppresses _connection fields."""
+
+    def test_no_connection_field_by_default(self):
+        si = SchemaInput(
+            tables=_base_tables(), relationships=[], column_types=_base_column_types(),
+            naming_rules=[], role=_base_role(), domains=_base_domains(),
+            # relay_pagination defaults to False
+        )
+        schema = generate_schema(si)
+        assert "orders_connection" not in schema.query_type.fields
+
+    def test_no_connection_field_when_false(self):
+        si = SchemaInput(
+            tables=_base_tables(), relationships=[], column_types=_base_column_types(),
+            naming_rules=[], role=_base_role(), domains=_base_domains(),
+            relay_pagination=False,
+        )
+        schema = generate_schema(si)
+        assert "orders_connection" not in schema.query_type.fields
+
+    def test_connection_field_present_when_true(self):
+        si = SchemaInput(
+            tables=_base_tables(), relationships=[], column_types=_base_column_types(),
+            naming_rules=[], role=_base_role(), domains=_base_domains(),
+            relay_pagination=True,
+        )
+        schema = generate_schema(si)
+        assert "orders_connection" in schema.query_type.fields
+
+    def test_table_level_relay_overrides_global_false(self):
+        tables = _base_tables()
+        tables[0]["relay_pagination"] = True  # table-level override
+        si = SchemaInput(
+            tables=tables, relationships=[], column_types=_base_column_types(),
+            naming_rules=[], role=_base_role(), domains=_base_domains(),
+            relay_pagination=False,  # global is False
+        )
+        schema = generate_schema(si)
+        assert "orders_connection" in schema.query_type.fields
+
+    def test_table_level_relay_false_overrides_global_true(self):
+        tables = _base_tables()
+        tables[0]["relay_pagination"] = False  # table-level opt-out
+        si = SchemaInput(
+            tables=tables, relationships=[], column_types=_base_column_types(),
+            naming_rules=[], role=_base_role(), domains=_base_domains(),
+            relay_pagination=True,  # global is True
+        )
+        schema = generate_schema(si)
+        assert "orders_connection" not in schema.query_type.fields
+
+    def test_regular_fields_present_regardless_of_relay(self):
+        si = SchemaInput(
+            tables=_base_tables(), relationships=[], column_types=_base_column_types(),
+            naming_rules=[], role=_base_role(), domains=_base_domains(),
+            relay_pagination=False,
+        )
+        schema = generate_schema(si)
+        assert "orders" in schema.query_type.fields
+        assert "orders_aggregate" in schema.query_type.fields

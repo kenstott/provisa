@@ -488,8 +488,9 @@ def convert_metadata(
                 "realm": auth_env.get("KEYCLOAK_REALM", ""),
             }
 
-    # Naming config
-    naming = NamingConfig()
+    # Naming config — read enable_relay from graphql_engine config
+    enable_relay = bool(metadata.graphql_engine.get("enable_relay", False))
+    naming = NamingConfig(relay_pagination=enable_relay)
 
     # Domains — collect unique domain_ids
     domain_ids = {t.domain_id for t in tables} | {"default"}
