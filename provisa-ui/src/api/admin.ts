@@ -36,7 +36,7 @@ export async function fetchRoles(): Promise<Role[]> {
 
 export async function fetchSources(): Promise<Source[]> {
   const data = await gql<{ sources: Source[] }>(
-    `{ sources { id type host port database username dialect } }`
+    `{ sources { id type host port database username dialect cacheEnabled cacheTtl } }`
   );
   return data.sources;
 }
@@ -48,7 +48,7 @@ export async function fetchDomains(): Promise<Domain[]> {
 
 export async function fetchTables(): Promise<RegisteredTable[]> {
   const data = await gql<{ tables: RegisteredTable[] }>(
-    `{ tables { id sourceId domainId schemaName tableName governance alias description columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description } } }`
+    `{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description } } }`
   );
   return data.tables;
 }
@@ -566,6 +566,22 @@ export async function purgeCache(): Promise<MutationResult> {
     `mutation { purgeCache { success message } }`
   );
   return data.purgeCache;
+}
+
+export async function updateSourceCache(sourceId: string, cacheEnabled: boolean, cacheTtl: number | null): Promise<MutationResult> {
+  const data = await gql<{ updateSourceCache: MutationResult }>(
+    `mutation($sourceId: String!, $cacheEnabled: Boolean!, $cacheTtl: Int) { updateSourceCache(sourceId: $sourceId, cacheEnabled: $cacheEnabled, cacheTtl: $cacheTtl) { success message } }`,
+    { sourceId, cacheEnabled, cacheTtl }
+  );
+  return data.updateSourceCache;
+}
+
+export async function updateTableCache(tableId: number, cacheTtl: number | null): Promise<MutationResult> {
+  const data = await gql<{ updateTableCache: MutationResult }>(
+    `mutation($tableId: Int!, $cacheTtl: Int) { updateTableCache(tableId: $tableId, cacheTtl: $cacheTtl) { success message } }`,
+    { tableId, cacheTtl }
+  );
+  return data.updateTableCache;
 }
 
 export async function purgeCacheByTable(tableId: number): Promise<MutationResult> {

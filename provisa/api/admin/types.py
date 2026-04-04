@@ -24,6 +24,8 @@ class SourceType:
     database: str
     username: str
     dialect: str
+    cache_enabled: bool
+    cache_ttl: int | None
 
 
 @strawberry.type
@@ -42,6 +44,7 @@ class RegisteredTableType:
     governance: str
     alias: str | None
     description: str | None
+    cache_ttl: int | None
     columns: list[TableColumnType]
 
 

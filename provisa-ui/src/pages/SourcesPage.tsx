@@ -420,7 +420,7 @@ export function SourcesPage() {
 
       <table className="data-table">
         <thead>
-          <tr><th>ID</th><th>Type</th><th>Host</th><th>Port</th><th>Database</th><th>Actions</th></tr>
+          <tr><th>ID</th><th>Type</th><th>Host</th><th>Port</th><th>Database</th><th>Cache</th><th>TTL</th><th>Actions</th></tr>
         </thead>
         <tbody>
           {sources.map((s) => (
@@ -430,6 +430,8 @@ export function SourcesPage() {
               <td>{s.host}</td>
               <td>{s.port || "—"}</td>
               <td>{s.database || "—"}</td>
+              <td>{s.cacheEnabled ? "on" : "off"}</td>
+              <td>{s.cacheTtl != null ? `${s.cacheTtl}s` : "default"}</td>
               <td>
                 <ConfirmDialog
                   title={`Delete source "${s.id}"?`}

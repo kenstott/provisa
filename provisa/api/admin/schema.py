@@ -51,6 +51,8 @@ def _source_from_row(row) -> SourceType:
         id=row["id"], type=row["type"], host=row["host"],
         port=row["port"], database=row["database"],
         username=row["username"], dialect=row["dialect"],
+        cache_enabled=row.get("cache_enabled", True),
+        cache_ttl=row.get("cache_ttl"),
     )
 
 
@@ -113,6 +115,7 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         domain_id=row["domain_id"], schema_name=row["schema_name"],
         table_name=row["table_name"], governance=row["governance"],
         alias=row.get("alias"), description=row.get("description"),
+        cache_ttl=row.get("cache_ttl"),
         columns=columns,
     )
 
@@ -647,6 +650,34 @@ class Mutation:
             except Exception as e:
                 return MutationResult(success=False, message=str(e))
 
+
+    # ── Admin: Cache Configuration ──
+
+    @strawberry.mutation
+    async def update_source_cache(self, source_id: str, cache_enabled: bool, cache_ttl: int | None = None) -> MutationResult:
+        """Update cache settings for a source."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE sources SET cache_enabled = $1, cache_ttl = $2 WHERE id = $3",
+                cache_enabled, cache_ttl, source_id,
+            )
+            if result == "UPDATE 0":
+                return MutationResult(success=False, message=f"Source {source_id!r} not found")
+        return MutationResult(success=True, message=f"Cache settings updated for source {source_id!r}")
+
+    @strawberry.mutation
+    async def update_table_cache(self, table_id: int, cache_ttl: int | None = None) -> MutationResult:
+        """Update cache TTL for a registered table."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE registered_tables SET cache_ttl = $1 WHERE id = $2",
+                cache_ttl, table_id,
+            )
+            if result == "UPDATE 0":
+                return MutationResult(success=False, message=f"Table {table_id} not found")
+        return MutationResult(success=True, message=f"Cache TTL updated for table {table_id}")
 
     # ── Admin: MV Management ──
 

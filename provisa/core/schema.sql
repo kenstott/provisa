@@ -1,13 +1,15 @@
 -- Provisa config DB schema. V1: no migrations, this file is source of truth.
 
 CREATE TABLE IF NOT EXISTS sources (
-    id          TEXT PRIMARY KEY,
-    type        TEXT NOT NULL,
-    host        TEXT NOT NULL,
-    port        INTEGER NOT NULL,
-    database    TEXT NOT NULL,
-    username    TEXT NOT NULL,
-    dialect     TEXT NOT NULL DEFAULT ''
+    id            TEXT PRIMARY KEY,
+    type          TEXT NOT NULL,
+    host          TEXT NOT NULL,
+    port          INTEGER NOT NULL,
+    database      TEXT NOT NULL,
+    username      TEXT NOT NULL,
+    dialect       TEXT NOT NULL DEFAULT '',
+    cache_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    cache_ttl     INTEGER
     -- password never stored; resolved at runtime via secrets provider
 
 );
@@ -32,6 +34,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     governance  TEXT NOT NULL CHECK (governance IN ('pre-approved', 'registry-required')),
     alias       TEXT,
     description TEXT,
+    cache_ttl   INTEGER,
     UNIQUE (source_id, schema_name, table_name)
 );
 
@@ -67,6 +70,9 @@ DO $$ BEGIN
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_replace TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_value TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_precision TEXT;
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -89,10 +95,17 @@ EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
 CREATE TABLE IF NOT EXISTS roles (
-    id            TEXT PRIMARY KEY,
-    capabilities  TEXT[] NOT NULL DEFAULT '{}',
-    domain_access TEXT[] NOT NULL DEFAULT '{}'
+    id              TEXT PRIMARY KEY,
+    capabilities    TEXT[] NOT NULL DEFAULT '{}',
+    domain_access   TEXT[] NOT NULL DEFAULT '{}',
+    parent_role_id  TEXT REFERENCES roles(id)
 );
+
+-- Migration: add parent_role_id if missing
+DO $$ BEGIN
+    ALTER TABLE roles ADD COLUMN IF NOT EXISTS parent_role_id TEXT REFERENCES roles(id);
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS rls_rules (
     id          SERIAL PRIMARY KEY,

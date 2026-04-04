@@ -3,8 +3,8 @@ import type { Page } from "@playwright/test";
 // ── Mock Data ──
 
 export const MOCK_SOURCES = [
-  { id: "sales-pg", type: "postgresql", host: "localhost", port: 5432, database: "sales", username: "admin", dialect: "postgresql" },
-  { id: "analytics-sf", type: "snowflake", host: "org.snowflakecomputing.com", port: 443, database: "ANALYTICS", username: "svc", dialect: "snowflake" },
+  { id: "sales-pg", type: "postgresql", host: "localhost", port: 5432, database: "sales", username: "admin", dialect: "postgresql", cacheEnabled: true, cacheTtl: 600 },
+  { id: "analytics-sf", type: "snowflake", host: "org.snowflakecomputing.com", port: 443, database: "ANALYTICS", username: "svc", dialect: "snowflake", cacheEnabled: true, cacheTtl: null },
 ];
 
 export const MOCK_DOMAINS = [
@@ -15,7 +15,7 @@ export const MOCK_DOMAINS = [
 export const MOCK_TABLES = [
   {
     id: 1, sourceId: "sales-pg", domainId: "sales", schemaName: "public", tableName: "orders",
-    governance: "open", alias: null, description: "Customer orders",
+    governance: "open", alias: null, description: "Customer orders", cacheTtl: 60,
     columns: [
       { id: 1, columnName: "id", visibleTo: [], writableBy: [], unmaskedTo: [], maskType: null, maskPattern: null, maskReplace: null, maskValue: null, maskPrecision: null, alias: null, description: "Primary key" },
       { id: 2, columnName: "customer_id", visibleTo: [], writableBy: [], unmaskedTo: [], maskType: null, maskPattern: null, maskReplace: null, maskValue: null, maskPrecision: null, alias: null, description: "FK to customers" },
@@ -24,7 +24,7 @@ export const MOCK_TABLES = [
   },
   {
     id: 2, sourceId: "sales-pg", domainId: "sales", schemaName: "public", tableName: "customers",
-    governance: "restricted", alias: "clients", description: null,
+    governance: "restricted", alias: "clients", description: null, cacheTtl: null,
     columns: [
       { id: 4, columnName: "id", visibleTo: [], writableBy: [], unmaskedTo: [], maskType: null, maskPattern: null, maskReplace: null, maskValue: null, maskPrecision: null, alias: null, description: null },
       { id: 5, columnName: "name", visibleTo: [], writableBy: [], unmaskedTo: [], maskType: null, maskPattern: null, maskReplace: null, maskValue: null, maskPrecision: null, alias: null, description: null },

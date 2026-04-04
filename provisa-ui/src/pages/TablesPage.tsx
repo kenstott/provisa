@@ -484,7 +484,7 @@ export function TablesPage() {
           <tr>
             <th>ID</th><th>Source</th><th>Domain</th><th>Schema</th>
             <th>Table</th><th>Alias</th><th>Description</th>
-            <th>Governance</th><th>Cols</th><th></th>
+            <th>Governance</th><th>Cache TTL</th><th>Cols</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -501,6 +501,7 @@ export function TablesPage() {
                   <td>{t.alias || ""}</td>
                   <td className="reasoning-cell">{t.description || ""}</td>
                   <td>{t.governance}</td>
+                  <td>{t.cacheTtl != null ? `${t.cacheTtl}s` : "default"}</td>
                   <td>{t.columns.length}</td>
                   <td>
                     <button

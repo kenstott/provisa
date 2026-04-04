@@ -66,6 +66,8 @@ class Cardinality(str, Enum):
 SOURCE_TO_CONNECTOR: dict[str, str] = {
     "postgresql": "postgresql",
     "mysql": "mysql",
+    "mariadb": "mariadb",
+    "singlestore": "singlestore",
     "sqlserver": "sqlserver",
     "oracle": "oracle",
     "mongodb": "mongodb",
@@ -73,17 +75,31 @@ SOURCE_TO_CONNECTOR: dict[str, str] = {
     "duckdb": "memory",
     "snowflake": "snowflake",
     "bigquery": "bigquery",
+    "clickhouse": "clickhouse",
+    "redshift": "redshift",
+    "databricks": "delta_lake",
+    "hive": "hive",
+    "druid": "druid",
+    "exasol": "exasol",
 }
 
-# Map source types to SQLGlot dialect names
+# Map source types to SQLGlot dialect names (enables direct-route single-source queries)
 SOURCE_TO_DIALECT: dict[str, str] = {
     "postgresql": "postgres",
     "mysql": "mysql",
+    "mariadb": "mysql",
+    "singlestore": "singlestore",
     "sqlserver": "tsql",
     "oracle": "oracle",
     "duckdb": "duckdb",
     "snowflake": "snowflake",
     "bigquery": "bigquery",
+    "clickhouse": "clickhouse",
+    "redshift": "redshift",
+    "databricks": "databricks",
+    "hive": "hive",
+    "druid": "druid",
+    "exasol": "exasol",
 }
 
 
@@ -113,6 +129,8 @@ class Source(BaseModel):
     pool_max: int = Field(default=5, alias="pool_max")
     use_pgbouncer: bool = Field(default=False, alias="use_pgbouncer")
     pgbouncer_port: int = Field(default=6432, alias="pgbouncer_port")
+    cache_enabled: bool = True
+    cache_ttl: int | None = None  # overrides global default; None = inherit
 
     @property
     def connector(self) -> str:
@@ -175,6 +193,15 @@ class Column(BaseModel):
     path: str | None = None  # JSON extraction path (e.g. "payload.order_id")
 
 
+class ColumnPreset(BaseModel):
+    """Auto-set a column value on insert/update from session or built-in source."""
+
+    column: str
+    source: str  # "header", "now", "literal"
+    name: str | None = None  # header name (for source=header)
+    value: str | None = None  # literal value (for source=literal)
+
+
 class Table(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -184,8 +211,10 @@ class Table(BaseModel):
     table_name: str = Field(alias="table")
     governance: GovernanceLevel
     columns: list[Column]
+    column_presets: list[ColumnPreset] = Field(default_factory=list)
     alias: str | None = None  # GraphQL type/field name override
     description: str | None = None  # GraphQL type description
+    cache_ttl: int | None = None  # overrides source-level; None = inherit
 
 
 class Relationship(BaseModel):
@@ -203,12 +232,56 @@ class Role(BaseModel):
     id: str
     capabilities: list[str]
     domain_access: list[str]
+    parent_role_id: str | None = None  # inherit capabilities + domain_access from parent
+
+
+def flatten_roles(roles: list[Role]) -> list[Role]:
+    """Flatten inherited role hierarchy: merge parent capabilities + domain_access.
+
+    Returns new Role objects with inherited permissions merged in.
+    """
+    by_id = {r.id: r for r in roles}
+    cache: dict[str, tuple[set[str], set[str]]] = {}
+
+    def _resolve(role_id: str) -> tuple[set[str], set[str]]:
+        if role_id in cache:
+            return cache[role_id]
+        role = by_id[role_id]
+        caps = set(role.capabilities)
+        domains = set(role.domain_access)
+        if role.parent_role_id and role.parent_role_id in by_id:
+            p_caps, p_domains = _resolve(role.parent_role_id)
+            caps.update(p_caps)
+            domains.update(p_domains)
+        cache[role_id] = (caps, domains)
+        return caps, domains
+
+    result: list[Role] = []
+    for r in roles:
+        caps, domains = _resolve(r.id)
+        result.append(Role(
+            id=r.id,
+            capabilities=sorted(caps),
+            domain_access=["*"] if "*" in domains else sorted(domains),
+            parent_role_id=r.parent_role_id,
+        ))
+    return result
 
 
 class RLSRule(BaseModel):
     table_id: str
     role_id: str
     filter: str
+
+
+class ScheduledTrigger(BaseModel):
+    """Time-based trigger for webhooks or internal functions."""
+
+    id: str
+    cron: str  # cron expression (e.g. "0 * * * *" for hourly)
+    url: str | None = None  # webhook URL (mutually exclusive with function)
+    function: str | None = None  # internal function name
+    enabled: bool = True
 
 
 class AuthConfig(BaseModel):
@@ -230,4 +303,5 @@ class ProvisaConfig(BaseModel):
     relationships: list[Relationship] = Field(default_factory=list)
     roles: list[Role]
     rls_rules: list[RLSRule] = Field(default_factory=list)
+    scheduled_triggers: list[ScheduledTrigger] = Field(default_factory=list)
     auth: AuthConfig = Field(default_factory=AuthConfig)

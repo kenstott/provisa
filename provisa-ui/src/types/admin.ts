@@ -8,6 +8,8 @@ export interface Source {
   database: string;
   username: string;
   dialect: string | null;
+  cacheEnabled: boolean;
+  cacheTtl: number | null;
 }
 
 export interface Domain {
@@ -39,6 +41,7 @@ export interface RegisteredTable {
   governance: string;
   alias: string | null;
   description: string | null;
+  cacheTtl: number | null;
   columns: TableColumn[];
 }
 
