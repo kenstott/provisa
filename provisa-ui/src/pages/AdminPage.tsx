@@ -12,11 +12,17 @@ import {
   updateSettings,
 } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
+import { MVManager } from "../components/admin/MVManager";
+import { CacheManager } from "../components/admin/CacheManager";
+import { SystemHealth } from "../components/admin/SystemHealth";
 
 const FORMAT_OPTIONS = ["parquet", "orc", "json", "ndjson", "csv", "arrow"];
+const TABS = ["Overview", "Materialized Views", "Cache", "System Health"] as const;
+type Tab = typeof TABS[number];
 
 /** Admin overview page — dashboard, config management, platform settings. */
 export function AdminPage() {
+  const [activeTab, setActiveTab] = useState<Tab>("Overview");
   const [stats, setStats] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [configYaml, setConfigYaml] = useState<string | null>(null);
@@ -107,159 +113,180 @@ export function AdminPage() {
   return (
     <div className="page">
       <h2>Admin Dashboard</h2>
-      <div className="stats-grid">
-        {Object.entries(stats).map(([label, count]) => (
-          <div key={label} className="stat-card">
-            <div className="stat-count">{count}</div>
-            <div className="stat-label">{label}</div>
-          </div>
+
+      <div className="admin-tabs">
+        {TABS.map((tab) => (
+          <button
+            key={tab}
+            className={`admin-tab${activeTab === tab ? " active" : ""}`}
+            onClick={() => setActiveTab(tab)}
+          >
+            {tab}
+          </button>
         ))}
       </div>
 
-      <h3>Platform Settings</h3>
-      {settings && (
-        <div className="settings-grid">
-          <div className="settings-section">
-            <h4>Redirect</h4>
-            <label>
-              <input
-                type="checkbox"
-                checked={settings.redirect.enabled}
-                onChange={(e) => updateRedirect("enabled", e.target.checked)}
-              />
-              Enabled
-            </label>
-            <label>
-              Default Threshold (rows)
-              <input
-                type="number"
-                value={settings.redirect.threshold}
-                onChange={(e) =>
-                  updateRedirect("threshold", parseInt(e.target.value) || 0)
-                }
-              />
-            </label>
-            <label>
-              Default Format
-              <select
-                value={settings.redirect.default_format}
-                onChange={(e) =>
-                  updateRedirect("default_format", e.target.value)
-                }
-              >
-                {FORMAT_OPTIONS.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Presigned URL TTL (seconds)
-              <input
-                type="number"
-                value={settings.redirect.ttl}
-                onChange={(e) =>
-                  updateRedirect("ttl", parseInt(e.target.value) || 0)
-                }
-              />
-            </label>
+      {activeTab === "Overview" && (
+        <>
+          <div className="stats-grid">
+            {Object.entries(stats).map(([label, count]) => (
+              <div key={label} className="stat-card">
+                <div className="stat-count">{count}</div>
+                <div className="stat-label">{label}</div>
+              </div>
+            ))}
           </div>
-          <div className="settings-section">
-            <h4>Naming</h4>
-            <label>
-              <input
-                type="checkbox"
-                checked={settings.naming.domain_prefix}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    naming: { domain_prefix: e.target.checked },
-                  })
-                }
-              />
-              Domain prefix (domain_id__ prepended to all names)
-            </label>
-          </div>
-          <div className="settings-section">
-            <h4>Sampling</h4>
-            <label>
-              Default Sample Size
-              <input
-                type="number"
-                value={settings.sampling.default_sample_size}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    sampling: {
-                      default_sample_size: parseInt(e.target.value) || 0,
-                    },
-                  })
-                }
-              />
-            </label>
-          </div>
-          <div className="settings-section">
-            <h4>Cache</h4>
-            <label>
-              Default TTL (seconds)
-              <input
-                type="number"
-                value={settings.cache.default_ttl}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    cache: {
-                      default_ttl: parseInt(e.target.value) || 0,
-                    },
-                  })
-                }
-              />
-            </label>
-          </div>
-          <div className="settings-actions">
+
+          <h3>Platform Settings</h3>
+          {settings && (
+            <div className="settings-grid">
+              <div className="settings-section">
+                <h4>Redirect</h4>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.redirect.enabled}
+                    onChange={(e) => updateRedirect("enabled", e.target.checked)}
+                  />
+                  Enabled
+                </label>
+                <label>
+                  Default Threshold (rows)
+                  <input
+                    type="number"
+                    value={settings.redirect.threshold}
+                    onChange={(e) =>
+                      updateRedirect("threshold", parseInt(e.target.value) || 0)
+                    }
+                  />
+                </label>
+                <label>
+                  Default Format
+                  <select
+                    value={settings.redirect.default_format}
+                    onChange={(e) =>
+                      updateRedirect("default_format", e.target.value)
+                    }
+                  >
+                    {FORMAT_OPTIONS.map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Presigned URL TTL (seconds)
+                  <input
+                    type="number"
+                    value={settings.redirect.ttl}
+                    onChange={(e) =>
+                      updateRedirect("ttl", parseInt(e.target.value) || 0)
+                    }
+                  />
+                </label>
+              </div>
+              <div className="settings-section">
+                <h4>Naming</h4>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.naming.domain_prefix}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        naming: { domain_prefix: e.target.checked },
+                      })
+                    }
+                  />
+                  Domain prefix (domain_id__ prepended to all names)
+                </label>
+              </div>
+              <div className="settings-section">
+                <h4>Sampling</h4>
+                <label>
+                  Default Sample Size
+                  <input
+                    type="number"
+                    value={settings.sampling.default_sample_size}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        sampling: {
+                          default_sample_size: parseInt(e.target.value) || 0,
+                        },
+                      })
+                    }
+                  />
+                </label>
+              </div>
+              <div className="settings-section">
+                <h4>Cache</h4>
+                <label>
+                  Default TTL (seconds)
+                  <input
+                    type="number"
+                    value={settings.cache.default_ttl}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        cache: {
+                          default_ttl: parseInt(e.target.value) || 0,
+                        },
+                      })
+                    }
+                  />
+                </label>
+              </div>
+              <div className="settings-actions">
+                <button
+                  className="btn-primary"
+                  onClick={saveSettings}
+                  disabled={settingsSaving}
+                >
+                  {settingsSaving ? "Saving..." : "Save Settings"}
+                </button>
+                {settingsMsg && (
+                  <span className="upload-msg">{settingsMsg}</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          <h3>Configuration File</h3>
+          <div className="config-actions">
+            <button className="btn-secondary" onClick={handleDownload}>
+              Download
+            </button>
+            <button className="btn-secondary" onClick={handleViewConfig}>
+              {configYaml !== null ? "Hide" : "View"}
+            </button>
             <button
               className="btn-primary"
-              onClick={saveSettings}
-              disabled={settingsSaving}
+              onClick={handleUploadClick}
+              disabled={uploading}
             >
-              {settingsSaving ? "Saving..." : "Save Settings"}
+              {uploading ? "Uploading..." : "Upload"}
             </button>
-            {settingsMsg && (
-              <span className="upload-msg">{settingsMsg}</span>
-            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".yaml,.yml"
+              style={{ display: "none" }}
+              onChange={handleFileChange}
+            />
+            {uploadMsg && <span className="upload-msg">{uploadMsg}</span>}
           </div>
-        </div>
+
+          {configYaml !== null && (
+            <pre className="config-preview">{configYaml}</pre>
+          )}
+        </>
       )}
 
-      <h3>Configuration File</h3>
-      <div className="config-actions">
-        <button className="btn-secondary" onClick={handleDownload}>
-          Download
-        </button>
-        <button className="btn-secondary" onClick={handleViewConfig}>
-          {configYaml !== null ? "Hide" : "View"}
-        </button>
-        <button
-          className="btn-primary"
-          onClick={handleUploadClick}
-          disabled={uploading}
-        >
-          {uploading ? "Uploading..." : "Upload"}
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".yaml,.yml"
-          style={{ display: "none" }}
-          onChange={handleFileChange}
-        />
-        {uploadMsg && <span className="upload-msg">{uploadMsg}</span>}
-      </div>
-
-      {configYaml !== null && (
-        <pre className="config-preview">{configYaml}</pre>
-      )}
+      {activeTab === "Materialized Views" && <MVManager />}
+      {activeTab === "Cache" && <CacheManager />}
+      {activeTab === "System Health" && <SystemHealth />}
     </div>
   );
 }

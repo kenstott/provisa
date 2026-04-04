@@ -141,6 +141,11 @@ export async function setupMocks(page: Page, overrides?: Partial<{
     if (query.includes("availableSchemas")) data.availableSchemas = schemas;
     if (query.includes("availableTables")) data.availableTables = availableTables;
     if (query.includes("availableColumns")) data.availableColumnsMetadata = columnsMeta;
+    if (query.includes("mvList")) data.mvList = [
+      { id: "mv-orders-customers", sourceTables: ["orders", "customers"], targetTable: "mv_orders_customers", refreshInterval: 300, enabled: true, status: "fresh", lastRefreshAt: Date.now() / 1000, rowCount: 1500, lastError: null },
+    ];
+    if (query.includes("cacheStats")) data.cacheStats = { totalKeys: 42, hitCount: 350, missCount: 50, storeType: "redis" };
+    if (query.includes("systemHealth")) data.systemHealth = { trinoConnected: true, pgPoolSize: 5, pgPoolFree: 3, cacheConnected: true, flightServerRunning: false, mvRefreshLoopRunning: true };
 
     // Mutations
     if (query.includes("mutation")) {
@@ -157,6 +162,10 @@ export async function setupMocks(page: Page, overrides?: Partial<{
       if (query.includes("deleteRelationship")) data.deleteRelationship = { success: true, message: "Deleted" };
       if (query.includes("approveQuery")) data.approveQuery = { success: true };
       if (query.includes("rejectQuery")) data.rejectQuery = { success: true };
+      if (query.includes("refreshMv")) data.refreshMv = { success: true, message: "MV refreshed" };
+      if (query.includes("toggleMv")) data.toggleMv = { success: true, message: "MV toggled" };
+      if (query.includes("purgeCache")) data.purgeCache = { success: true, message: "Purged 42 entries" };
+      if (query.includes("purgeCacheByTable")) data.purgeCacheByTable = { success: true, message: "Purged 5 entries" };
     }
 
     await route.fulfill({ json: { data } });

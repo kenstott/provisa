@@ -19,10 +19,12 @@ import strawberry
 from provisa.api.admin.types import (
     AvailableColumnType,
     AvailableTableType,
+    CacheStatsType,
     ColumnInput,
     DomainInput,
     DomainType,
     MutationResult,
+    MVType,
     PersistedQueryType,
     RegisteredTableType,
     RelationshipInput,
@@ -33,6 +35,7 @@ from provisa.api.admin.types import (
     RoleType,
     SourceInput,
     SourceType,
+    SystemHealthType,
     TableColumnType,
     TableInput,
 )
@@ -297,6 +300,90 @@ class Query:
         except Exception:
             return []
 
+    # ── Admin: Materialized Views ──
+
+    @strawberry.field
+    async def mv_list(self) -> list[MVType]:
+        """List all materialized views with status."""
+        from provisa.api.app import state
+        return [
+            MVType(
+                id=mv.id,
+                source_tables=mv.source_tables,
+                target_table=mv.target_table or "",
+                refresh_interval=mv.refresh_interval,
+                enabled=mv.enabled,
+                status=mv.status.value,
+                last_refresh_at=mv.last_refresh_at,
+                row_count=mv.row_count,
+                last_error=mv.last_error,
+            )
+            for mv in state.mv_registry._mvs.values()
+        ]
+
+    # ── Admin: Cache Stats ──
+
+    @strawberry.field
+    async def cache_stats(self) -> CacheStatsType:
+        """Return cache statistics."""
+        from provisa.api.app import state
+        from provisa.cache.store import RedisCacheStore
+        store = state.cache_store
+        if isinstance(store, RedisCacheStore):
+            try:
+                info = await store._redis.info("stats")
+                return CacheStatsType(
+                    total_keys=await store._redis.dbsize(),
+                    hit_count=info.get("keyspace_hits", 0),
+                    miss_count=info.get("keyspace_misses", 0),
+                    store_type="redis",
+                )
+            except Exception:
+                pass
+        return CacheStatsType(total_keys=0, hit_count=0, miss_count=0, store_type="noop")
+
+    # ── Admin: System Health ──
+
+    @strawberry.field
+    async def system_health(self) -> SystemHealthType:
+        """Return system component health status."""
+        from provisa.api.app import state
+        from provisa.cache.store import RedisCacheStore
+
+        trino_ok = False
+        if state.trino_conn is not None:
+            try:
+                cursor = state.trino_conn.cursor()
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+                trino_ok = True
+            except Exception:
+                pass
+
+        pg_size, pg_free = 0, 0
+        if state.pg_pool is not None:
+            pg_size = state.pg_pool.get_size()
+            pg_free = state.pg_pool.get_idle_size()
+
+        cache_ok = False
+        if isinstance(state.cache_store, RedisCacheStore):
+            try:
+                await state.cache_store._redis.ping()
+                cache_ok = True
+            except Exception:
+                pass
+
+        flight_ok = state.flight_server is not None if hasattr(state, "flight_server") else False
+
+        return SystemHealthType(
+            trino_connected=trino_ok,
+            pg_pool_size=pg_size,
+            pg_pool_free=pg_free,
+            cache_connected=cache_ok,
+            flight_server_running=flight_ok,
+            mv_refresh_loop_running=hasattr(state, "_mv_task") and state._mv_task is not None,
+        )
+
 
 @strawberry.type
 class Mutation:
@@ -559,6 +646,60 @@ class Mutation:
                 )
             except Exception as e:
                 return MutationResult(success=False, message=str(e))
+
+
+    # ── Admin: MV Management ──
+
+    @strawberry.mutation
+    async def refresh_mv(self, mv_id: str) -> MutationResult:
+        """Trigger a manual refresh of a materialized view."""
+        from provisa.api.app import state
+        mv = state.mv_registry.get(mv_id)
+        if mv is None:
+            return MutationResult(success=False, message=f"MV {mv_id!r} not found")
+        try:
+            from provisa.mv.refresh import refresh_mv
+            await refresh_mv(mv, state)
+            return MutationResult(success=True, message=f"MV {mv_id!r} refreshed")
+        except Exception as e:
+            return MutationResult(success=False, message=str(e))
+
+    @strawberry.mutation
+    async def toggle_mv(self, mv_id: str, enabled: bool) -> MutationResult:
+        """Enable or disable a materialized view."""
+        from provisa.api.app import state
+        from provisa.mv.models import MVStatus
+        mv = state.mv_registry.get(mv_id)
+        if mv is None:
+            return MutationResult(success=False, message=f"MV {mv_id!r} not found")
+        mv.enabled = enabled
+        if not enabled:
+            mv.status = MVStatus.DISABLED
+        elif mv.status == MVStatus.DISABLED:
+            mv.status = MVStatus.STALE
+        return MutationResult(success=True, message=f"MV {mv_id!r} {'enabled' if enabled else 'disabled'}")
+
+    # ── Admin: Cache Management ──
+
+    @strawberry.mutation
+    async def purge_cache(self) -> MutationResult:
+        """Purge all cached query results."""
+        from provisa.api.app import state
+        try:
+            count = await state.cache_store.invalidate_by_pattern("provisa:cache:*")
+            return MutationResult(success=True, message=f"Purged {count} cache entries")
+        except Exception as e:
+            return MutationResult(success=False, message=str(e))
+
+    @strawberry.mutation
+    async def purge_cache_by_table(self, table_id: int) -> MutationResult:
+        """Purge cached results for a specific table."""
+        from provisa.api.app import state
+        try:
+            count = await state.cache_store.invalidate_by_table(table_id)
+            return MutationResult(success=True, message=f"Purged {count} cache entries for table {table_id}")
+        except Exception as e:
+            return MutationResult(success=False, message=str(e))
 
 
 admin_schema = strawberry.Schema(query=Query, mutation=Mutation)

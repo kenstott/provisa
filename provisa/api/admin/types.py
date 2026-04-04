@@ -198,6 +198,37 @@ class PersistedQueryType:
 
 
 @strawberry.type
+class MVType:
+    id: str
+    source_tables: list[str]
+    target_table: str
+    refresh_interval: int
+    enabled: bool
+    status: str
+    last_refresh_at: float | None
+    row_count: int | None
+    last_error: str | None
+
+
+@strawberry.type
+class CacheStatsType:
+    total_keys: int
+    hit_count: int
+    miss_count: int
+    store_type: str
+
+
+@strawberry.type
+class SystemHealthType:
+    trino_connected: bool
+    pg_pool_size: int
+    pg_pool_free: int
+    cache_connected: bool
+    flight_server_running: bool
+    mv_refresh_loop_running: bool
+
+
+@strawberry.type
 class MutationResult:
     success: bool
     message: str

@@ -493,3 +493,85 @@ export async function executeQuery(
   });
   return resp.json();
 }
+
+// --- Admin: MV, Cache, Health ---
+
+export interface MVInfo {
+  id: string;
+  sourceTables: string[];
+  targetTable: string;
+  refreshInterval: number;
+  enabled: boolean;
+  status: string;
+  lastRefreshAt: number | null;
+  rowCount: number | null;
+  lastError: string | null;
+}
+
+export interface CacheStats {
+  totalKeys: number;
+  hitCount: number;
+  missCount: number;
+  storeType: string;
+}
+
+export interface SystemHealth {
+  trinoConnected: boolean;
+  pgPoolSize: number;
+  pgPoolFree: number;
+  cacheConnected: boolean;
+  flightServerRunning: boolean;
+  mvRefreshLoopRunning: boolean;
+}
+
+export async function fetchMVList(): Promise<MVInfo[]> {
+  const data = await gql<{ mvList: MVInfo[] }>(
+    `{ mvList { id sourceTables targetTable refreshInterval enabled status lastRefreshAt rowCount lastError } }`
+  );
+  return data.mvList;
+}
+
+export async function fetchCacheStats(): Promise<CacheStats> {
+  const data = await gql<{ cacheStats: CacheStats }>(
+    `{ cacheStats { totalKeys hitCount missCount storeType } }`
+  );
+  return data.cacheStats;
+}
+
+export async function fetchSystemHealth(): Promise<SystemHealth> {
+  const data = await gql<{ systemHealth: SystemHealth }>(
+    `{ systemHealth { trinoConnected pgPoolSize pgPoolFree cacheConnected flightServerRunning mvRefreshLoopRunning } }`
+  );
+  return data.systemHealth;
+}
+
+export async function refreshMV(mvId: string): Promise<MutationResult> {
+  const data = await gql<{ refreshMv: MutationResult }>(
+    `mutation($mvId: String!) { refreshMv(mvId: $mvId) { success message } }`,
+    { mvId }
+  );
+  return data.refreshMv;
+}
+
+export async function toggleMV(mvId: string, enabled: boolean): Promise<MutationResult> {
+  const data = await gql<{ toggleMv: MutationResult }>(
+    `mutation($mvId: String!, $enabled: Boolean!) { toggleMv(mvId: $mvId, enabled: $enabled) { success message } }`,
+    { mvId, enabled }
+  );
+  return data.toggleMv;
+}
+
+export async function purgeCache(): Promise<MutationResult> {
+  const data = await gql<{ purgeCache: MutationResult }>(
+    `mutation { purgeCache { success message } }`
+  );
+  return data.purgeCache;
+}
+
+export async function purgeCacheByTable(tableId: number): Promise<MutationResult> {
+  const data = await gql<{ purgeCacheByTable: MutationResult }>(
+    `mutation($tableId: Int!) { purgeCacheByTable(tableId: $tableId) { success message } }`,
+    { tableId }
+  );
+  return data.purgeCacheByTable;
+}
