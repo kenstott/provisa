@@ -10,6 +10,12 @@ vi.mock("../../api/admin", () => ({
   ]),
   fetchDomains: vi.fn().mockResolvedValue([{ id: "sales", description: "Sales data" }]),
   fetchRoles: vi.fn().mockResolvedValue([{ id: "admin", capabilities: ["admin"], domainAccess: ["*"] }]),
+  fetchSettings: vi.fn().mockResolvedValue({
+    redirect: { enabled: false, threshold: 10000, default_format: "json", ttl: 3600 },
+    sampling: { default_sample_size: 1000 },
+    cache: { default_ttl: 300 },
+    naming: { domain_prefix: false, convention: "none" },
+  }),
   fetchAvailableSchemas: vi.fn().mockResolvedValue(["public"]),
   fetchAvailableTables: vi.fn().mockResolvedValue([
     { name: "customers", comment: "Registered customer accounts" },

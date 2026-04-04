@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { fetchSources, deleteSource, createSource, updateSourceCache, updateSourceNaming, fetchSettings } from "../api/admin";
+import { fetchSources, deleteSource, createSource, updateSource, updateSourceCache, updateSourceNaming, fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SchemaDiscovery } from "../components/SchemaDiscovery";
@@ -119,6 +119,7 @@ export function SourcesPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
     id: "", type: "postgresql", host: "", port: 5432,
@@ -203,15 +204,41 @@ export function SourcesPage() {
     setAuthFields({});
   };
 
+  const handleEdit = (s: Source) => {
+    setForm({
+      id: s.id,
+      type: s.type,
+      host: s.host ?? "",
+      port: s.port ?? getDefaultPort(s.type),
+      database: s.database ?? "",
+      username: s.username ?? "",
+      password: "",
+    });
+    setAuthType("none");
+    setAuthFields({});
+    setEditingSourceId(s.id);
+    setShowForm(true);
+  };
+
+  const handleCancelForm = () => {
+    setShowForm(false);
+    setEditingSourceId(null);
+    setForm({ id: "", type: "postgresql", host: "", port: 5432, database: "", username: "", password: "" });
+    setAuthType("none");
+    setAuthFields({});
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     try {
-      await createSource(form);
-      setShowForm(false);
-      setForm({ id: "", type: "postgresql", host: "", port: 5432, database: "", username: "", password: "" });
-      setAuthType("none");
-      setAuthFields({});
+      if (editingSourceId) {
+        const result = await updateSource(form);
+        if (!result.success) throw new Error(result.message);
+      } else {
+        await createSource(form);
+      }
+      handleCancelForm();
       load();
     } catch (err: any) {
       setError(err.message);
@@ -230,14 +257,14 @@ export function SourcesPage() {
     <div className="page">
       <div className="page-header">
         <h2>Data Sources</h2>
-        <button onClick={() => setShowForm(!showForm)}>{showForm ? "Cancel" : "Add Source"}</button>
+        <button onClick={() => { if (showForm) { handleCancelForm(); } else { setShowForm(true); } }}>{showForm ? "Cancel" : "Add Source"}</button>
       </div>
 
       {error && <div className="error">{error}</div>}
 
       {showForm && (
         <form className="form-card" onSubmit={handleCreate}>
-          <label>ID <input required value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="e.g. sales-pg" /></label>
+          <label>ID <input required value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="e.g. sales-pg" disabled={!!editingSourceId} /></label>
           <label>Type
             <select value={form.type} onChange={(e) => handleTypeChange(e.target.value)}>
               {CATEGORIES.map((cat) => (
@@ -502,7 +529,8 @@ export function SourcesPage() {
             </>
           )}
 
-          <button type="submit">Create</button>
+          <button type="submit">{editingSourceId ? "Save" : "Create"}</button>
+          {editingSourceId && <button type="button" onClick={handleCancelForm}>Cancel</button>}
         </form>
       )}
 
@@ -575,6 +603,12 @@ export function SourcesPage() {
                       Map Table
                     </button>
                   )}
+                  <button
+                    onClick={() => handleEdit(s)}
+                    style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                  >
+                    Edit
+                  </button>
                   <ConfirmDialog
                     title={`Delete source "${s.id}"?`}
                     consequence={`This will remove the data source "${s.id}" and may break tables that reference it.`}

@@ -464,6 +464,24 @@ class Mutation:
         return MutationResult(success=True, message=f"Source {input.id!r} created")
 
     @strawberry.mutation
+    async def update_source(self, input: SourceInput) -> MutationResult:
+        from provisa.core.models import Source as SourceModel
+        from provisa.core.repositories import source as source_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            existing = await source_repo.get(conn, input.id)
+            if existing is None:
+                return MutationResult(success=False, message=f"Source {input.id!r} not found")
+            model = SourceModel(
+                id=input.id, type=input.type, host=input.host,
+                port=input.port, database=input.database,
+                username=input.username, password=input.password,
+            )
+            await source_repo.upsert(conn, model)
+        return MutationResult(success=True, message=f"Source {input.id!r} updated")
+
+    @strawberry.mutation
     async def delete_source(self, id: str) -> MutationResult:
         from provisa.core.repositories import source as source_repo
 

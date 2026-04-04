@@ -243,6 +243,22 @@ export async function fetchAvailableColumnsMetadata(
   return data.availableColumnsMetadata;
 }
 
+export async function updateSource(input: {
+  id: string;
+  type: string;
+  host: string;
+  port: number;
+  database: string;
+  username: string;
+  password: string;
+}): Promise<MutationResult> {
+  const data = await gql<{ updateSource: MutationResult }>(
+    `mutation($input: SourceInput!) { updateSource(input: $input) { success message } }`,
+    { input }
+  );
+  return data.updateSource;
+}
+
 export async function deleteSource(id: string): Promise<MutationResult> {
   const data = await gql<{ deleteSource: MutationResult }>(
     `mutation($id: String!) { deleteSource(id: $id) { success message } }`,
@@ -302,6 +318,45 @@ export async function rejectCandidate(id: number, reason: string): Promise<void>
     body: JSON.stringify({ reason }),
   });
   if (!resp.ok) throw new Error(`Reject failed: ${resp.status}`);
+}
+
+// --- Schema Discovery ---
+
+export interface DiscoveredColumn {
+  name: string;
+  type: string;
+  nullable: boolean;
+  description: string;
+  source_path: string;
+}
+
+export interface DiscoverSchemaResponse {
+  source_id: string;
+  source_type: string;
+  columns: DiscoveredColumn[];
+}
+
+export async function discoverSourceSchema(
+  sourceId: string,
+  hints?: {
+    collection?: string;
+    index?: string;
+    keyspace?: string;
+    table?: string;
+    metric?: string;
+    sample_limit?: number;
+  },
+): Promise<DiscoverSchemaResponse> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/schema-discovery/discover/${sourceId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(hints ?? {}),
+  });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(body.detail || resp.statusText);
+  }
+  return resp.json();
 }
 
 // --- Config ---
