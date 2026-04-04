@@ -19,6 +19,7 @@ vi.mock("@graphiql/react", async (importOriginal) => {
       run: vi.fn(),
     })),
     useOperationsEditorState: vi.fn(() => [mockLiveQuery, vi.fn()]),
+    useOptimisticState: vi.fn((state: [string, (v: string) => void]) => state),
   };
 });
 

@@ -13,6 +13,7 @@ import {
   useGraphiQL,
   useGraphiQLActions,
   useOperationsEditorState,
+  useOptimisticState,
 } from "@graphiql/react";
 // @ts-ignore — CJS fork, no type declarations
 import { Explorer } from "graphiql-explorer";
@@ -63,7 +64,7 @@ export function SyncedExplorerContent() {
   const { setOperationName, run } = useGraphiQLActions();
   const schema = useGraphiQL((s) => s.schema);
   const initialQuery = useGraphiQL((s) => s.initialQuery);
-  const [liveQuery, setQuery] = useOperationsEditorState();
+  const [liveQuery, setQuery] = useOptimisticState(useOperationsEditorState());
   // Use the live (Monaco) query when available; fall back to the pre-Monaco initialQuery.
   const query = liveQuery || initialQuery || "";
 
