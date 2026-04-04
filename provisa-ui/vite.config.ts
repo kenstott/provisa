@@ -24,6 +24,9 @@ export default defineConfig(({ mode }) => ({
       ),
     },
   },
+  optimizeDeps: {
+    include: ['graphiql-explorer'],
+  },
   server: {
     port: 3000,
     proxy: {
