@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Phase AF2a — Provisa.app launcher.
+# Handles first-launch setup then delegates to the provisa CLI.
+set -euo pipefail
+
+CONTENTS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MACOS_DIR="${CONTENTS}/MacOS"
+FIRST_LAUNCH_SCRIPT="${MACOS_DIR}/first-launch.sh"
+PROVISA_CLI="${CONTENTS}/Resources/provisa-cli"
+SENTINEL="${HOME}/.provisa/.first-launch-complete"
+
+ARCH="$(uname -m)"
+case "$ARCH" in
+  arm64)  BIN_ARCH="arm64" ;;
+  x86_64) BIN_ARCH="x86_64" ;;
+  *)
+    printf "[provisa] Unsupported architecture: %s\n" "$ARCH" >&2
+    exit 1
+    ;;
+esac
+
+export PATH="${MACOS_DIR}/bin/${BIN_ARCH}:${PATH}"
+
+# ── First launch ──────────────────────────────────────────────────────────────
+if [ ! -f "$SENTINEL" ]; then
+  if [ ! -x "$FIRST_LAUNCH_SCRIPT" ]; then
+    printf "[provisa] first-launch.sh not found or not executable.\n" >&2
+    exit 1
+  fi
+  exec "$FIRST_LAUNCH_SCRIPT"
+fi
+
+# ── Delegate to provisa CLI ───────────────────────────────────────────────────
+if [ -x "/usr/local/bin/provisa" ]; then
+  exec /usr/local/bin/provisa "$@"
+elif [ -x "$PROVISA_CLI" ]; then
+  exec "$PROVISA_CLI" "$@"
+else
+  printf "[provisa] provisa CLI not found. Re-run the app to complete setup.\n" >&2
+  exit 1
+fi
