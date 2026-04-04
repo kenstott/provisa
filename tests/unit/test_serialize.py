@@ -13,7 +13,7 @@
 from decimal import Decimal
 
 from provisa.compiler.sql_gen import ColumnRef
-from provisa.executor.serialize import serialize_rows
+from provisa.executor.serialize import serialize_rows, serialize_aggregate
 
 
 def _make_columns(specs: list[tuple[str, str | None]]) -> list[ColumnRef]:
@@ -97,3 +97,70 @@ class TestSerializeNestedRows:
         row = result["data"]["orders"][0]
         assert row["customer"] == {"name": "Alice"}
         assert row["product"] == {"name": "Widget"}
+
+
+class TestSerializeAggregate:
+    def test_aggregate_with_nodes(self):
+        """serialize_aggregate merges aggregate row and nodes rows into correct shape."""
+        agg_columns = [
+            ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregate"),
+        ]
+        nodes_columns = [
+            ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
+            ColumnRef(alias=None, column="amount", field_name="amount", nested_in=None),
+        ]
+        agg_rows = [(Decimal("3"),)]
+        nodes_rows = [(1, Decimal("10.00")), (2, Decimal("20.00")), (3, Decimal("30.00"))]
+
+        result = serialize_aggregate(
+            agg_rows=agg_rows,
+            agg_columns=agg_columns,
+            nodes_rows=nodes_rows,
+            nodes_columns=nodes_columns,
+            root_field="orders_aggregate",
+        )
+        data = result["data"]["orders_aggregate"]
+        assert data["aggregate"]["count"] == 3
+        assert len(data["nodes"]) == 3
+        assert data["nodes"][0] == {"id": 1, "amount": 10.0}
+        assert data["nodes"][2] == {"id": 3, "amount": 30.0}
+
+    def test_aggregate_without_nodes(self):
+        """serialize_aggregate with no nodes rows returns empty nodes list."""
+        agg_columns = [
+            ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregate"),
+        ]
+        agg_rows = [(Decimal("5"),)]
+        result = serialize_aggregate(
+            agg_rows=agg_rows,
+            agg_columns=agg_columns,
+            nodes_rows=None,
+            nodes_columns=None,
+            root_field="orders_aggregate",
+        )
+        data = result["data"]["orders_aggregate"]
+        assert data["aggregate"]["count"] == 5
+        assert "nodes" not in data
+
+    def test_aggregate_sum_nested(self):
+        """serialize_aggregate handles nested aggregate paths like aggregate.sum."""
+        agg_columns = [
+            ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregate"),
+            ColumnRef(alias=None, column="amount", field_name="amount", nested_in="aggregate.sum"),
+        ]
+        nodes_columns = [
+            ColumnRef(alias=None, column="id", field_name="id", nested_in=None),
+        ]
+        agg_rows = [(Decimal("2"), Decimal("50.00"))]
+        nodes_rows = [(1,), (2,)]
+        result = serialize_aggregate(
+            agg_rows=agg_rows,
+            agg_columns=agg_columns,
+            nodes_rows=nodes_rows,
+            nodes_columns=nodes_columns,
+            root_field="orders_aggregate",
+        )
+        data = result["data"]["orders_aggregate"]
+        assert data["aggregate"]["count"] == 2
+        assert data["aggregate"]["sum"]["amount"] == 50.0
+        assert len(data["nodes"]) == 2

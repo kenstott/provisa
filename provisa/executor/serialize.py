@@ -93,6 +93,60 @@ def serialize_rows(
     return {"data": {root_field: result_rows}}
 
 
+def serialize_aggregate(
+    agg_rows: list[tuple],
+    agg_columns: list[ColumnRef],
+    nodes_rows: list[tuple] | None,
+    nodes_columns: list[ColumnRef] | None,
+    root_field: str,
+) -> dict:
+    """Serialize aggregate query result (with optional nodes) into GraphQL JSON.
+
+    Column nested_in paths use "aggregate" as prefix, e.g.:
+      "aggregate"      → aggregate.count
+      "aggregate.sum"  → aggregate.sum.amount
+
+    Returns:
+        {"data": {root_field: {"aggregate": {...}, "nodes": [...]}}}
+        "nodes" key is present only when nodes_rows is not None.
+    """
+    # Build aggregate inner object from first (only) row.
+    # Strip the leading "aggregate" prefix from each nested_in path, then
+    # reconstruct the sub-structure (sum, avg, min, max).
+    agg_inner: dict = {}
+    if agg_rows:
+        row = agg_rows[0]
+        for i, col in enumerate(agg_columns):
+            path = col.nested_in or "aggregate"
+            # Strip mandatory "aggregate" prefix
+            if path == "aggregate":
+                sub_path: list[str] = []
+            elif path.startswith("aggregate."):
+                sub_path = path[len("aggregate."):].split(".")
+            else:
+                sub_path = path.split(".")
+
+            target = agg_inner
+            for part in sub_path:
+                if part not in target or not isinstance(target[part], dict):
+                    target[part] = {}
+                target = target[part]
+            target[col.field_name] = _convert_value(row[i])
+
+    payload: dict = {"aggregate": agg_inner}
+
+    if nodes_rows is not None and nodes_columns is not None:
+        node_list: list[dict] = []
+        for row in nodes_rows:
+            node: dict = {}
+            for i, col in enumerate(nodes_columns):
+                node[col.field_name] = _convert_value(row[i])
+            node_list.append(node)
+        payload["nodes"] = node_list
+
+    return {"data": {root_field: payload}}
+
+
 def serialize_connection(
     rows: list[tuple],
     compiled: CompiledQuery,

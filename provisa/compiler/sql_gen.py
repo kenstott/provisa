@@ -112,6 +112,10 @@ class CompiledQuery:
     sort_columns: list[str] = field(default_factory=list)
     page_size: int | None = None
     has_cursor: bool = False
+    # Aggregate + nodes: plain SELECT for nodes field (issue #12)
+    nodes_sql: str | None = None
+    nodes_columns: list[ColumnRef] | None = None
+    nodes_params: list = field(default_factory=list)
 
 
 # --- Build CompilationContext from SchemaInput ---
@@ -771,12 +775,44 @@ def _compile_aggregate_field(
         where_sql = _compile_where(args["where"], collector, None)
         sql += f" WHERE {where_sql}"
 
+    # Build nodes SQL: plain SELECT with same WHERE, no aggregate functions
+    nodes_sql: str | None = None
+    nodes_columns: list[ColumnRef] | None = None
+    nodes_params: list = []
+    if has_nodes:
+        nodes_select_parts: list[str] = []
+        nodes_cols: list[ColumnRef] = []
+        for sel in field_node.selection_set.selections:
+            if not isinstance(sel, FieldNode) or sel.name.value != "nodes":
+                continue
+            if sel.selection_set:
+                for node_sel in sel.selection_set.selections:
+                    if not isinstance(node_sel, FieldNode):
+                        continue
+                    col_name = node_sel.name.value
+                    nodes_select_parts.append(_q(col_name))
+                    nodes_cols.append(ColumnRef(
+                        alias=None, column=col_name,
+                        field_name=col_name, nested_in=None,
+                    ))
+        if nodes_select_parts:
+            nodes_sql = f'SELECT {", ".join(nodes_select_parts)} FROM {ref}'
+            if "where" in args:
+                nodes_collector = ParamCollector()
+                nodes_where_sql = _compile_where(args["where"], nodes_collector, None)
+                nodes_sql += f" WHERE {nodes_where_sql}"
+                nodes_params = nodes_collector.params
+            nodes_columns = nodes_cols
+
     return CompiledQuery(
         sql=sql,
         params=collector.params,
         root_field=root_name,
         columns=columns,
         sources=sources,
+        nodes_sql=nodes_sql,
+        nodes_columns=nodes_columns,
+        nodes_params=nodes_params,
     )
 
 

@@ -872,6 +872,60 @@ class TestAggregate:
         assert "customer_id" in sum_field_names
         assert "amount" in sum_field_names
 
+    def test_aggregate_nodes_compiles_plain_select(self, schema_and_ctx):
+        """When nodes is requested, compile_query produces a nodes_sql plain SELECT."""
+        schema, ctx = schema_and_ctx
+        doc = parse("""
+            { orders_aggregate {
+                aggregate { count max { rating: amount } }
+                nodes { id amount region }
+            } }
+        """)
+        errors = validate(schema, doc)
+        assert not errors
+        results = compile_query(doc, ctx)
+        q = results[0]
+        # nodes_sql must be a plain SELECT (not an aggregate SELECT)
+        assert q.nodes_sql is not None
+        assert "COUNT(*)" not in q.nodes_sql
+        assert 'SELECT' in q.nodes_sql
+        assert 'FROM "public"."orders"' in q.nodes_sql
+        # nodes columns should include the fields requested under nodes
+        assert q.nodes_columns is not None
+        node_field_names = {c.field_name for c in q.nodes_columns}
+        assert "id" in node_field_names
+        assert "amount" in node_field_names
+        assert "region" in node_field_names
+
+    def test_aggregate_nodes_sql_respects_where_filter(self, schema_and_ctx):
+        """nodes_sql applies the same WHERE predicate as the aggregate query."""
+        schema, ctx = schema_and_ctx
+        doc = parse("""
+            { orders_aggregate(where: { region: { eq: "us-east" } }) {
+                aggregate { count }
+                nodes { id region }
+            } }
+        """)
+        errors = validate(schema, doc)
+        assert not errors
+        results = compile_query(doc, ctx)
+        q = results[0]
+        assert q.nodes_sql is not None
+        assert 'WHERE "region" = $' in q.nodes_sql
+
+    def test_aggregate_only_no_nodes_sql(self, schema_and_ctx):
+        """Without nodes field, nodes_sql stays None."""
+        schema, ctx = schema_and_ctx
+        doc = parse("""
+            { orders_aggregate {
+                aggregate { count }
+            } }
+        """)
+        results = compile_query(doc, ctx)
+        q = results[0]
+        assert q.nodes_sql is None
+        assert q.nodes_columns is None
+
     def test_aggregate_per_role_gating_admin_vs_analyst(self):
         """Admin sees more aggregate columns than analyst."""
         tables = [
