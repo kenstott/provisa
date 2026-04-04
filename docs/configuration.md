@@ -68,27 +68,34 @@ tables:
     columns:
       - name: id
         visible_to: [admin, analyst]
+        writable_by: []           # read-only (empty = no writes)
       - name: email
         visible_to: [admin, analyst]
-        alias: email_address   # optional: override GraphQL field name
+        writable_by: [admin]      # only admin can mutate
+        unmasked_to: [admin]      # admin sees raw, analyst sees masked
+        mask_type: regex
+        mask_pattern: "^(.{2}).*(@.*)$"
+        mask_replace: "$1***$2"
+        alias: email_address      # optional: override GraphQL field name
         description: "Primary email address"  # optional: appears in SDL
-        masking:
-          analyst:
-            type: regex
-            pattern: "^(.{2}).*(@.*)$"
-            replace: "$1***$2"
       - name: amount
         visible_to: [admin]
-        masking:
-          masked_viewer:
-            type: constant
-            value: 0
+        writable_by: [admin]
+        unmasked_to: [admin]
+        mask_type: constant
+        mask_value: "0"
       - name: created_at
         visible_to: [admin, analyst]
-        masking:
-          analyst:
-            type: truncate
-            precision: month
+        writable_by: []           # nobody can write
+        unmasked_to: [admin]
+        mask_type: truncate
+        mask_precision: month
+    column_presets:               # auto-set values on insert/update
+      - column: created_by
+        source: header            # from request header
+        name: X-User-ID
+      - column: updated_at
+        source: now               # current timestamp
 ```
 
 ### Aliases
@@ -181,7 +188,13 @@ roles:
   - id: analyst
     capabilities: [query_development]
     domain_access: [sales-analytics]
+  - id: junior_analyst
+    capabilities: []
+    domain_access: [sales-analytics]
+    parent_role_id: analyst      # inherits query_development + sales-analytics
 ```
+
+Roles with `parent_role_id` inherit capabilities and domain access from the parent. The hierarchy is flattened at startup.
 
 ### Capabilities
 

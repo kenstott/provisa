@@ -35,7 +35,7 @@ Execute a GraphQL query or mutation.
 }
 ```
 
-**Response (redirect):**
+**Response (single-field redirect):**
 ```json
 {
   "data": {"orders": null},
@@ -47,6 +47,26 @@ Execute a GraphQL query or mutation.
   }
 }
 ```
+
+**Response (multi-field — some inline, some redirected):**
+```json
+{
+  "data": {
+    "orders": [{"id": 1, "amount": 99.99}],
+    "customers": null
+  },
+  "redirects": {
+    "customers": {
+      "redirect_url": "https://...",
+      "row_count": 10000,
+      "expires_in": 3600,
+      "content_type": "application/vnd.apache.parquet"
+    }
+  }
+}
+```
+
+Multi-root queries (multiple root fields in one GraphQL operation) are executed independently and merged. Fields below the redirect threshold are returned inline; fields above are redirected. The `redirects` key (plural) maps field names to their redirect info.
 
 **Cache headers:**
 - `X-Provisa-Cache: HIT|MISS`
@@ -88,6 +108,90 @@ Conditional redirect (only if over 1000 rows):
 ```
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
 X-Provisa-Redirect-Threshold: 1000
+```
+
+## Submit Endpoint
+
+### `POST /data/submit`
+
+Submit a named query for approval. The query enters the persisted query registry with status `pending`.
+
+**Headers:** `X-Role: <role_id>` (required)
+
+**Request:**
+```json
+{
+  "query": "query TopOrders { orders(limit: 100) { id amount region } }",
+  "operation_name": "TopOrders",
+  "developer_id": "analyst@company.com",
+  "business_purpose": "Weekly revenue reporting dashboard",
+  "use_cases": "json, parquet",
+  "data_sensitivity": "internal",
+  "refresh_frequency": "daily",
+  "expected_row_count": "1K-100K",
+  "owner_team": "Data Engineering",
+  "sink": {
+    "topic": "order-updates",
+    "trigger": "change_event",
+    "key_column": "region"
+  }
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `query` | Yes | Named GraphQL query (`query Name { ... }`) |
+| `operation_name` | Yes | Operation name (must match query) |
+| `developer_id` | Yes | Who submitted |
+| `business_purpose` | No | Why this query is needed |
+| `use_cases` | No | Expected consumers (dashboards, APIs) |
+| `data_sensitivity` | No | `public`, `internal`, `confidential`, `restricted` |
+| `refresh_frequency` | No | `real-time`, `hourly`, `daily`, `weekly`, `ad-hoc` |
+| `expected_row_count` | No | `<1K`, `1K-100K`, `100K+` |
+| `owner_team` | No | Team responsible |
+| `sink` | No | Kafka sink config (topic, trigger, key_column) |
+
+**Response:**
+```json
+{
+  "query_id": 42,
+  "operation_name": "TopOrders",
+  "message": "Query 'TopOrders' submitted for approval (id=42)."
+}
+```
+
+## Compile Endpoint
+
+### `POST /data/compile`
+
+Compile a GraphQL query to SQL without executing it. Returns routing decision and SQL for each root field.
+
+**Headers:** `X-Role: <role_id>` (required)
+
+**Request:** `{"query": "{ orders { id amount } }"}`
+
+**Response (single root field):**
+```json
+{
+  "sql": "SELECT \"id\", \"amount\" FROM orders",
+  "trino_sql": null,
+  "direct_sql": "SELECT \"id\", \"amount\" FROM orders",
+  "params": [],
+  "route": "direct",
+  "route_reason": "single source",
+  "sources": ["sales-pg"],
+  "root_field": "orders"
+}
+```
+
+**Response (multiple root fields):**
+```json
+{
+  "queries": [
+    {"sql": "...", "root_field": "orders", "route": "direct", ...},
+    {"sql": "...", "root_field": "customers", "route": "direct", ...}
+  ]
+}
 ```
 
 ## SDL Endpoint
@@ -197,38 +301,65 @@ Port `50051`. Server reflection enabled.
 
 Provisa includes a JDBC driver (`provisa-jdbc-0.1.0.jar`) that exposes approved persisted queries as virtual tables for BI tools (Tableau, PowerBI, DBeaver, etc.).
 
-**Connection URL:** `jdbc:provisa://host:port`
+**Connection URL:** `jdbc:provisa://host:port[?mode=approved|catalog]`
 
 **Authentication:** Standard JDBC `user`/`password` properties. The driver authenticates against Provisa's auth endpoint and maps the user to a role.
 
-**Usage:**
-```java
-Properties props = new Properties();
-props.setProperty("user", "analyst");
-props.setProperty("password", "secret");
+### Connection Modes
 
+| Mode | Schema | Shows | Query Execution |
+|------|--------|-------|----------------|
+| `approved` (default) | `approved` | Approved queries as views | Yes |
+| `catalog` | Domain IDs | Registered tables with aliases | No (metadata only) |
+
+### mode=approved (default)
+
+Each approved query is exposed as one or more views named `{stableId}__{rootField}`. Multi-root queries produce multiple views. The root field name includes the domain prefix.
+
+```java
 Connection conn = DriverManager.getConnection("jdbc:provisa://localhost:8001", props);
 
-// List approved queries as tables
+// List approved query views
 ResultSet tables = conn.getMetaData().getTables(null, null, "%", null);
+// → bf02af78__sales_analytics__orders (VIEW)
+// → bf02af78__sales_analytics__customers (VIEW)
 
-// Execute an approved query by its stable ID
-Statement stmt = conn.createStatement();
-ResultSet rs = stmt.executeQuery("SELECT * FROM <stable_query_id>");
-while (rs.next()) {
-    System.out.println(rs.getString("name") + " = " + rs.getDouble("amount"));
-}
+// Execute
+ResultSet rs = stmt.executeQuery("SELECT * FROM bf02af78__sales_analytics__orders");
 ```
 
-**How it works:**
-- `getTables()` returns approved persisted queries visible to the authenticated role
-- `getColumns()` introspects the approved query's compiled SQL for column metadata
-- `executeQuery()` parses minimal SQL (`SELECT * FROM <query_id> [WHERE ...]`), executes the approved query via Provisa's HTTP API, and returns results as a JDBC ResultSet
-- Full security pipeline (RLS, masking, sampling) applied at query time
+### mode=catalog
 
-**SQL support:** The driver accepts `SELECT * FROM <stable_id>` with optional `WHERE col = 'value'` filters. It does not support arbitrary SQL — the query logic is defined in GraphQL and approved by a steward.
+Schema discovery for catalog tools (Collibra, Alation). Tables are registered tables with curated aliases and descriptions. Domains are exposed as JDBC schemas.
 
-**Streaming:** The driver requests Arrow IPC redirect by default. Results stream batch-by-batch via `ArrowStreamReader` — memory usage is bounded to one record batch at a time (typically 1K-10K rows), making it suitable for arbitrarily large result sets. Falls back to JSON (in-memory) if redirect is unavailable.
+```java
+Connection conn = DriverManager.getConnection(
+    "jdbc:provisa://localhost:8001?mode=catalog", props);
+
+// Tables use aliases, schemas are domains
+ResultSet tables = conn.getMetaData().getTables(null, null, "%", null);
+// → sales (schema) / clients (TABLE) — "Customer accounts"
+
+// Columns use aliases and descriptions
+ResultSet cols = conn.getMetaData().getColumns(null, null, "clients", null);
+// → cust_id (REMARKS: "FK to customers")
+```
+
+### PK/FK Relationships
+
+Both modes expose semantic relationships via standard JDBC metadata:
+- `getPrimaryKeys()` — derived from the target side of many-to-one relationships
+- `getImportedKeys()` / `getExportedKeys()` / `getCrossReference()` — foreign key metadata
+
+### Column Metadata
+
+- `COLUMN_NAME`: Uses registered column alias when set, falls back to raw name
+- `REMARKS`: Column description from registration
+- `TYPE_NAME`: Column data type
+
+**SQL support:** `SELECT * FROM <viewName> [WHERE col = 'value']`. Query logic is defined in GraphQL and approved by a steward.
+
+**Streaming:** The driver requests Arrow IPC redirect by default. Results stream batch-by-batch via `ArrowStreamReader` — memory bounded to one record batch. Falls back to JSON if redirect is unavailable.
 
 ### End-to-End Example
 

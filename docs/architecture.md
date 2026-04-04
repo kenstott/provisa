@@ -84,6 +84,13 @@ parse → compile → RLS inject → masking inject → MV rewrite → sampling
 12. **Serialize**: Flat SQL rows → nested GraphQL JSON (or Arrow pass-through)
 13. **Format/Redirect**: Inline response or S3 redirect (see below)
 
+### Multi-Root Queries
+
+GraphQL queries with multiple root fields (e.g., `{ orders { id } customers { name } }`) are compiled into separate SQL queries and executed independently. Results are merged into a single response:
+- Fields below the redirect threshold are returned inline in `data`
+- Fields above the threshold are redirected, with per-field entries in `redirects`
+- Binary formats (Parquet, Arrow) are only supported for single-root queries
+
 ## Trino Execution Paths
 
 | Path | Transport | Via | When used |

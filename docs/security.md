@@ -2,7 +2,7 @@
 
 ## Rights Model
 
-8 capabilities, no role hierarchy. `admin` grants all.
+8 capabilities with optional role hierarchy via `parent_role_id`. `admin` grants all.
 
 | Capability | Description |
 |-----------|-------------|
@@ -15,12 +15,76 @@
 | `full_results` | Bypass sampling limits |
 | `admin` | Superuser — grants all |
 
+### Role Inheritance
+
+Roles can inherit capabilities and domain access from a parent role via `parent_role_id`. The hierarchy is flattened at startup — child roles merge their parent's capabilities and domain access with their own.
+
+```yaml
+roles:
+  - id: basic_user
+    capabilities: [query_development]
+    domain_access: [public]
+  - id: analyst
+    capabilities: [full_results]
+    domain_access: [sales, analytics]
+    parent_role_id: basic_user   # inherits query_development + public domain
+```
+
+## Column Permission Model
+
+Each column has a four-field permission model controlling read, write, and masking access per role.
+
+### Three-Tier Visibility
+
+| Tier | Condition | Result |
+|------|-----------|--------|
+| **Hidden** | Role not in `visible_to` | Column absent from GraphQL SDL |
+| **Masked** | Role in `visible_to`, has masking rule, role not in `unmasked_to` | Column visible but data masked in SQL |
+| **Unmasked** | Role in `visible_to` AND role in `unmasked_to` (or no masking rule) | Full read access |
+
+### Write Permissions
+
+| Field | Empty means | Purpose |
+|-------|------------|---------|
+| `visible_to` | All roles can read | Controls who sees the column (masked or unmasked) |
+| `unmasked_to` | No role sees unmasked | Controls who bypasses masking |
+| `writable_by` | No role can write | Controls who can mutate (INSERT/UPDATE) |
+
+Write permission is enforced in the mutation pipeline. A role not in `writable_by` receives a 403 error when attempting to write to a restricted column.
+
+### Example
+
+```yaml
+columns:
+  - name: email
+    visible_to: [admin, analyst, viewer]
+    writable_by: [admin]
+    unmasked_to: [admin]
+    mask_type: regex
+    mask_pattern: "(.).*@"
+    mask_replace: "$1***@"
+  - name: salary
+    visible_to: [admin, hr]
+    writable_by: [hr]
+    unmasked_to: [admin, hr]
+    mask_type: constant
+    mask_value: "0"
+  - name: created_at
+    visible_to: []           # all can read
+    writable_by: []          # nobody can write (auto-set)
+```
+
+In this example:
+- `email`: admin sees `alice@example.com` and can edit; analyst/viewer see `a***@example.com`
+- `salary`: admin and hr see the real value; hr can edit; all other roles don't see the column at all
+- `created_at`: everyone can read, nobody can write
+
 ## Schema Visibility
 
 Per-role GraphQL schemas hide unauthorized content:
 - **Domain access**: Role sees tables only in its `domain_access` domains (`"*"` = all)
-- **Column visibility**: Each column lists which roles can see it via `visible_to`
-- Unauthorized tables/columns do not appear in the SDL
+- **Column visibility**: Columns not in `visible_to` for a role are omitted from the SDL
+- Unauthorized tables/columns do not appear in the schema
 
 ## Row-Level Security (RLS)
 
@@ -37,15 +101,15 @@ The filter is ANDed into the query's WHERE clause. Works for both queries and mu
 
 ## Column-Level Masking
 
-Per-column, per-role data transformation at the SQL level.
+Masking is defined once per column — it is a property of the column, not the role. The `unmasked_to` field controls which roles bypass it.
 
-| Mask Type | Supported Types | Example |
-|-----------|----------------|---------|
-| `regex` | String (varchar, char, text) | `al***@example.com` |
-| `constant` | Any | `0`, `NULL`, `MAX` |
-| `truncate` | Date/Timestamp | `2025-03-01` (from `2025-03-31`) |
+| Mask Type | Supported Types | SQL Expression |
+|-----------|----------------|----------------|
+| `regex` | String (varchar, char, text) | `REGEXP_REPLACE(col, pattern, replace)` |
+| `constant` | Any | Literal value (NULL, 0, custom) |
+| `truncate` | Date/Timestamp | `DATE_TRUNC(precision, col)` |
 
-Masking is applied in the SELECT projection. WHERE clauses use raw values (users can filter but not see unmasked data).
+Masking is pushed into the SQL SELECT projection — the database returns masked data. Unmasked data never crosses the wire for masked roles. WHERE clauses use raw values (users can filter but not see unmasked data).
 
 ## Sampling
 

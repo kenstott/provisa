@@ -13,7 +13,8 @@ Furthermore, Provisa is designed to be highly performant for operational needs a
 - **gRPC endpoint**: Auto-generated .proto files from registration model, streaming responses
 - **Smart routing**: Single-source → direct driver (sub-100ms); multi-source → Trino federation
 - **Row-level security**: Per-table, per-role WHERE clause injection
-- **Column masking**: Per-column, per-role data transformation (regex, constant, truncate)
+- **Column masking**: Per-column data masking (regex, constant, truncate) with role-based bypass
+- **Write permissions**: Per-column mutation access control (`writable_by`)
 - **Query caching**: Redis-backed with role+RLS-partitioned keys
 - **Materialized views**: Transparent SQL rewriting for JOIN optimization
 - **Output formats**: JSON, NDJSON, CSV, Parquet, Apache Arrow
@@ -21,6 +22,8 @@ Furthermore, Provisa is designed to be highly performant for operational needs a
 - **API sources**: Register REST/GraphQL/gRPC endpoints as queryable tables
 - **Kafka integration**: Topics as read-only tables, query results as Kafka sink
 - **LLM relationship discovery**: Claude-powered FK candidate suggestion
+- **Arrow Flight**: gRPC streaming endpoint for high-throughput Arrow columnar delivery
+- **JDBC driver**: BI tool integration (Tableau, PowerBI, DBeaver) with two modes — `approved` (governed queries as views) and `catalog` (schema discovery for Collibra)
 - **Pluggable auth**: Firebase, Keycloak, OAuth 2.0, simple (testing)
 
 ## Quick Start

@@ -6,17 +6,25 @@
 |------------|--------------|-----------------|-----------------|-----------|
 | `postgresql` | asyncpg | postgresql | postgres | Yes |
 | `mysql` | aiomysql | mysql | mysql | Yes |
+| `mariadb` | aiomysql | mariadb | mysql | Yes |
+| `singlestore` | — | singlestore | singlestore | Via Trino |
 | `sqlserver` | aioodbc | sqlserver | tsql | Yes |
 | `oracle` | oracledb | oracle | oracle | Yes |
 | `duckdb` | duckdb | memory | duckdb | Yes |
 | `snowflake` | — | snowflake | snowflake | Via Trino |
 | `bigquery` | — | bigquery | bigquery | Via Trino |
+| `clickhouse` | — | clickhouse | clickhouse | Via Trino |
+| `redshift` | — | redshift | redshift | Via Trino |
+| `databricks` | — | delta_lake | databricks | Via Trino |
+| `hive` | — | hive | hive | No |
+| `druid` | — | druid | druid | No |
+| `exasol` | — | exasol | exasol | No |
 | `mongodb` | — | mongodb | — | No |
 | `cassandra` | — | cassandra | — | No |
 
-**Direct execution**: Single-source RDBMS queries route to the native driver for sub-100ms latency.
+**Direct execution**: Single-source RDBMS queries route to the native driver for sub-100ms latency. Sources with a direct driver and SQLGlot dialect support this path.
 
-**Trino federation**: Multi-source queries and NoSQL sources route through Trino for cross-source JOINs.
+**Trino federation**: Multi-source queries, NoSQL sources, and cloud warehouses route through Trino for cross-source JOINs.
 
 **NoSQL limitations**: MongoDB and Cassandra are read-only via Trino. No mutations, no direct execution.
 
@@ -55,6 +63,17 @@ Kafka topics as read-only tables via the Trino Kafka connector.
   database: provisa
   username: provisa
   password: ${env:PG_PASSWORD}
+```
+
+### Snowflake
+```yaml
+- id: analytics-sf
+  type: snowflake
+  host: org.snowflakecomputing.com
+  port: 443
+  database: ANALYTICS
+  username: svc_provisa
+  password: ${env:SNOWFLAKE_PASSWORD}
 ```
 
 ### MongoDB
