@@ -719,3 +719,213 @@ class TestAggregate:
         sum_type = agg_fields_type.fields["sum"].type
         assert "id" in sum_type.fields
         assert "amount" not in sum_type.fields
+
+    def test_aggregate_where_compiles_correct_sql(self, schema_and_ctx):
+        """WHERE clause on aggregate produces correct SQL with params."""
+        schema, ctx = schema_and_ctx
+        doc = parse("""
+            { orders_aggregate(where: { status: { eq: "shipped" }, region: { eq: "eu" } }) {
+                aggregate { count sum { amount } }
+            } }
+        """)
+        errors = validate(schema, doc)
+        assert not errors
+        results = compile_query(doc, ctx)
+        q = results[0]
+        assert "COUNT(*)" in q.sql
+        assert 'SUM("amount")' in q.sql
+        assert "$1" in q.sql
+        assert "$2" in q.sql
+        assert len(q.params) == 2
+        assert "shipped" in q.params
+        assert "eu" in q.params
+
+    def test_aggregate_no_numeric_columns_only_count(self):
+        """Table with only varchar columns should still expose count but no sum/avg."""
+        tables = [
+            {
+                "id": 1, "source_id": "pg", "domain_id": "d",
+                "schema_name": "public", "table_name": "tags",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "name", "visible_to": ["admin"]},
+                    {"column_name": "category", "visible_to": ["admin"]},
+                ],
+            },
+        ]
+        col_types = {
+            1: [_col("name", "varchar(50)"), _col("category", "varchar(50)")],
+        }
+        si = SchemaInput(
+            tables=tables, relationships=[], column_types=col_types,
+            naming_rules=[],
+            role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
+            domains=[{"id": "d", "description": "D"}],
+        )
+        schema = generate_schema(si)
+        agg_type = schema.query_type.fields["tags_aggregate"].type
+        agg_fields_type = agg_type.fields["aggregate"].type
+        assert "count" in agg_fields_type.fields
+        assert "sum" not in agg_fields_type.fields
+        assert "avg" not in agg_fields_type.fields
+        # min/max should still exist for varchar (comparable)
+        assert "min" in agg_fields_type.fields
+        assert "max" in agg_fields_type.fields
+        # Compile count-only query
+        ctx = build_context(si)
+        doc = parse("{ tags_aggregate { aggregate { count } } }")
+        errors = validate(schema, doc)
+        assert not errors
+        results = compile_query(doc, ctx)
+        assert "COUNT(*)" in results[0].sql
+
+    def test_aggregate_nodes_returns_rows_alongside_aggregate(self, schema_and_ctx):
+        """Querying nodes alongside aggregate compiles without error and tracks columns."""
+        schema, ctx = schema_and_ctx
+        doc = parse("""
+            { orders_aggregate {
+                aggregate { count sum { amount } }
+                nodes { id amount region }
+            } }
+        """)
+        errors = validate(schema, doc)
+        assert not errors
+        results = compile_query(doc, ctx)
+        q = results[0]
+        assert "COUNT(*)" in q.sql
+        assert 'SUM("amount")' in q.sql
+        # columns metadata should include aggregate refs
+        agg_cols = [c for c in q.columns if c.nested_in and c.nested_in.startswith("aggregate")]
+        assert len(agg_cols) >= 2  # count + sum.amount
+
+    def test_aggregate_multiple_functions_in_one_query(self, schema_and_ctx):
+        """count + sum + avg all appear in a single compiled SQL statement."""
+        schema, ctx = schema_and_ctx
+        doc = parse("""
+            { orders_aggregate {
+                aggregate {
+                    count
+                    sum { amount id }
+                    avg { amount }
+                }
+            } }
+        """)
+        errors = validate(schema, doc)
+        assert not errors
+        results = compile_query(doc, ctx)
+        q = results[0]
+        assert "COUNT(*)" in q.sql
+        assert 'SUM("amount")' in q.sql
+        assert 'SUM("id")' in q.sql
+        assert 'AVG("amount")' in q.sql
+        # All four expressions in one SELECT
+        select_part = q.sql.split("FROM")[0]
+        assert select_part.count(",") >= 3  # at least 4 items separated by commas
+
+    def test_aggregate_excludes_relationship_fields_from_sum_avg(self):
+        """Relationship fields (virtual joins) should not appear in sum/avg types."""
+        tables = [
+            {
+                "id": 1, "source_id": "pg", "domain_id": "d",
+                "schema_name": "public", "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "customer_id", "visible_to": ["admin"]},
+                    {"column_name": "amount", "visible_to": ["admin"]},
+                ],
+            },
+            {
+                "id": 2, "source_id": "pg", "domain_id": "d",
+                "schema_name": "public", "table_name": "customers",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "name", "visible_to": ["admin"]},
+                ],
+            },
+        ]
+        rels = [{
+            "id": "r1", "source_table_id": 1, "target_table_id": 2,
+            "source_column": "customer_id", "target_column": "id",
+            "cardinality": "many-to-one",
+        }]
+        col_types = {
+            1: [_col("id", "integer"), _col("customer_id", "integer"), _col("amount", "decimal(10,2)")],
+            2: [_col("id", "integer"), _col("name", "varchar")],
+        }
+        si = SchemaInput(
+            tables=tables, relationships=rels, column_types=col_types,
+            naming_rules=[],
+            role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
+            domains=[{"id": "d", "description": "D"}],
+        )
+        schema = generate_schema(si)
+        agg_type = schema.query_type.fields["orders_aggregate"].type
+        agg_fields_type = agg_type.fields["aggregate"].type
+        sum_type = agg_fields_type.fields["sum"].type
+        sum_field_names = set(sum_type.fields.keys())
+        # "customers" (relationship) should NOT appear as a sum field
+        assert "customers" not in sum_field_names
+        # Only actual numeric columns
+        assert "id" in sum_field_names
+        assert "customer_id" in sum_field_names
+        assert "amount" in sum_field_names
+
+    def test_aggregate_per_role_gating_admin_vs_analyst(self):
+        """Admin sees more aggregate columns than analyst."""
+        tables = [
+            {
+                "id": 1, "source_id": "pg", "domain_id": "d",
+                "schema_name": "public", "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin", "analyst"]},
+                    {"column_name": "amount", "visible_to": ["admin"]},
+                    {"column_name": "cost", "visible_to": ["admin"]},
+                    {"column_name": "region", "visible_to": ["admin", "analyst"]},
+                ],
+            },
+        ]
+        col_types = {
+            1: [
+                _col("id", "integer"),
+                _col("amount", "decimal(10,2)"),
+                _col("cost", "decimal(10,2)"),
+                _col("region", "varchar(50)"),
+            ],
+        }
+
+        # Admin schema — sees all numeric columns in sum
+        si_admin = SchemaInput(
+            tables=tables, relationships=[], column_types=col_types,
+            naming_rules=[],
+            role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
+            domains=[{"id": "d", "description": "D"}],
+        )
+        schema_admin = generate_schema(si_admin)
+        agg_admin = schema_admin.query_type.fields["orders_aggregate"].type
+        sum_admin = agg_admin.fields["aggregate"].type.fields["sum"].type
+        admin_sum_fields = set(sum_admin.fields.keys())
+        assert "id" in admin_sum_fields
+        assert "amount" in admin_sum_fields
+        assert "cost" in admin_sum_fields
+
+        # Analyst schema — cannot see amount or cost
+        si_analyst = SchemaInput(
+            tables=tables, relationships=[], column_types=col_types,
+            naming_rules=[],
+            role={"id": "analyst", "capabilities": [], "domain_access": ["*"]},
+            domains=[{"id": "d", "description": "D"}],
+        )
+        schema_analyst = generate_schema(si_analyst)
+        agg_analyst = schema_analyst.query_type.fields["orders_aggregate"].type
+        agg_fields_analyst = agg_analyst.fields["aggregate"].type
+        # Analyst only sees id (integer) as numeric — sum should exist with just id
+        sum_analyst = agg_fields_analyst.fields["sum"].type
+        analyst_sum_fields = set(sum_analyst.fields.keys())
+        assert "id" in analyst_sum_fields
+        assert "amount" not in analyst_sum_fields
+        assert "cost" not in analyst_sum_fields
+        # Analyst sees fewer fields than admin
+        assert len(analyst_sum_fields) < len(admin_sum_fields)
