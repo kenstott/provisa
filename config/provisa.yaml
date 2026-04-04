@@ -297,6 +297,11 @@ kafka_sources:
           - name: resolution_time_minutes
           - name: resolved_at
 
+discovery:
+  sample_size: 20          # rows to sample per table for LLM analysis
+  min_confidence: 0.7      # minimum confidence threshold for candidates
+  api_key: ${env:ANTHROPIC_API_KEY}
+
 rls_rules:
   - table_id: orders
     role_id: analyst

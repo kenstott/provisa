@@ -20,12 +20,38 @@ from dataclasses import dataclass
 
 from graphql import DocumentNode, FieldNode
 
+from datetime import datetime, timezone
+
 from provisa.compiler.params import ParamCollector
 from provisa.compiler.sql_gen import CompilationContext, TableMeta, _q, _extract_value
 
 
 # NoSQL source types — mutations not supported
 NOSQL_TYPES: set[str] = {"mongodb", "cassandra"}
+
+
+def apply_column_presets(
+    input_data: dict,
+    presets: list[dict],
+    headers: dict[str, str] | None = None,
+) -> dict:
+    """Inject column preset values into mutation input data.
+
+    Preset columns override any user-supplied values (security enforcement).
+    """
+    result = dict(input_data)
+    for preset in presets:
+        col = preset["column"]
+        source = preset["source"]
+        if source == "now":
+            result[col] = datetime.now(timezone.utc).isoformat()
+        elif source == "header":
+            header_name = preset.get("name", "")
+            if headers and header_name in headers:
+                result[col] = headers[header_name]
+        elif source == "literal":
+            result[col] = preset.get("value", "")
+    return result
 
 
 @dataclass
@@ -47,13 +73,68 @@ def _get_mutation_meta(
 
     Mutation fields are named: insert_<table>, update_<table>, delete_<table>.
     """
-    for prefix in ("insert_", "update_", "delete_"):
+    for prefix in ("upsert_", "insert_", "update_", "delete_"):
         if field_name.startswith(prefix):
             op = prefix.rstrip("_")
             table_field = field_name[len(prefix):]
             if table_field in ctx.tables:
                 return op, table_field, ctx.tables[table_field]
     raise ValueError(f"Unknown mutation field: {field_name!r}")
+
+
+def compile_upsert(
+    field_node: FieldNode,
+    table: TableMeta,
+    variables: dict | None,
+) -> MutationResult:
+    """Compile an upsert mutation to INSERT ... ON CONFLICT ... DO UPDATE SQL."""
+    collector = ParamCollector()
+    args = {}
+    if field_node.arguments:
+        for arg in field_node.arguments:
+            args[arg.name.value] = _extract_value(arg.value, variables)
+
+    input_data = args.get("input", {})
+    if not input_data:
+        raise ValueError("upsert mutation requires 'input' argument")
+
+    on_conflict_cols = args.get("on_conflict", [])
+    if not on_conflict_cols:
+        raise ValueError("upsert mutation requires 'on_conflict' argument (list of conflict columns)")
+    if isinstance(on_conflict_cols, str):
+        on_conflict_cols = [on_conflict_cols]
+
+    columns = list(input_data.keys())
+    placeholders = [collector.add(input_data[col]) for col in columns]
+    cols_sql = ", ".join(_q(c) for c in columns)
+    vals_sql = ", ".join(placeholders)
+    conflict_sql = ", ".join(_q(c) for c in on_conflict_cols)
+
+    # UPDATE all non-conflict columns on conflict
+    update_cols = [c for c in columns if c not in on_conflict_cols]
+    if update_cols:
+        set_parts = [f'{_q(c)} = EXCLUDED.{_q(c)}' for c in update_cols]
+        do_clause = f'DO UPDATE SET {", ".join(set_parts)}'
+    else:
+        do_clause = "DO NOTHING"
+
+    returning = ", ".join(_q(c) for c in columns)
+
+    sql = (
+        f'INSERT INTO {_q(table.schema_name)}.{_q(table.table_name)}'
+        f' ({cols_sql}) VALUES ({vals_sql})'
+        f' ON CONFLICT ({conflict_sql}) {do_clause}'
+        f' RETURNING {returning}'
+    )
+
+    return MutationResult(
+        sql=sql,
+        params=collector.params,
+        mutation_type="upsert",
+        table_name=table.table_name,
+        source_id=table.source_id,
+        returning_columns=columns,
+    )
 
 
 def compile_insert(
@@ -223,7 +304,9 @@ def compile_mutation(
                     f"{table.source_id!r} (type: {stype})"
                 )
 
-            if op == "insert":
+            if op == "upsert":
+                results.append(compile_upsert(sel, table, variables))
+            elif op == "insert":
                 results.append(compile_insert(sel, table, variables))
             elif op == "update":
                 results.append(compile_update(sel, table, variables))

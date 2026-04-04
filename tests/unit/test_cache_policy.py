@@ -1,3 +1,13 @@
+# Copyright (c) 2025 Kenneth Stott
+# Canary: 4ef13187-873b-46ac-bcf2-e5f036173aa4
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Unit tests for hierarchical cache policy resolution."""
 
 from provisa.cache.policy import CachePolicy, resolve_policy

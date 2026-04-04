@@ -15,6 +15,7 @@ from graphql import parse, validate
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.mutation_gen import (
+    apply_column_presets,
     compile_mutation,
     inject_rls_into_mutation,
 )
@@ -154,3 +155,103 @@ class TestRLSOnMutation:
         original_sql = m.sql
         m = inject_rls_into_mutation(m, 1, {})  # no rules
         assert m.sql == original_sql
+
+
+class TestUpsertMutation:
+    def test_basic_upsert(self):
+        schema, ctx = _build()
+        doc = parse("""
+            mutation {
+                upsert_orders(
+                    input: { id: 1, amount: 42.0, region: "us-east" }
+                    on_conflict: [id]
+                ) { affected_rows }
+            }
+        """)
+        assert not validate(schema, doc)
+        results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
+        assert len(results) == 1
+        m = results[0]
+        assert m.mutation_type == "upsert"
+        assert "INSERT INTO" in m.sql
+        assert "ON CONFLICT" in m.sql
+        assert '"id"' in m.sql
+        assert "EXCLUDED" in m.sql
+        assert "RETURNING" in m.sql
+
+    def test_upsert_do_nothing_when_all_conflict(self):
+        """When all input columns are conflict columns, emit DO NOTHING."""
+        schema, ctx = _build()
+        doc = parse("""
+            mutation {
+                upsert_orders(
+                    input: { id: 1 }
+                    on_conflict: [id]
+                ) { affected_rows }
+            }
+        """)
+        results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
+        m = results[0]
+        assert "DO NOTHING" in m.sql
+
+    def test_upsert_source_id(self):
+        schema, ctx = _build()
+        doc = parse("""
+            mutation {
+                upsert_orders(
+                    input: { id: 1, region: "x" }
+                    on_conflict: [id]
+                ) { affected_rows }
+            }
+        """)
+        results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
+        assert results[0].source_id == "sales-pg"
+
+    def test_upsert_params(self):
+        schema, ctx = _build()
+        doc = parse("""
+            mutation {
+                upsert_orders(
+                    input: { id: 5, amount: 99.9, region: "eu" }
+                    on_conflict: [id]
+                ) { affected_rows }
+            }
+        """)
+        results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
+        m = results[0]
+        assert m.params == [5, 99.9, "eu"]
+
+
+class TestColumnPresets:
+    def test_now_preset(self):
+        presets = [{"column": "created_at", "source": "now"}]
+        result = apply_column_presets({"name": "test"}, presets)
+        assert "created_at" in result
+        assert "name" in result
+        # Value should be an ISO timestamp string
+        assert "T" in result["created_at"]
+
+    def test_header_preset(self):
+        presets = [{"column": "created_by", "source": "header", "name": "x-user-id"}]
+        headers = {"x-user-id": "user-42"}
+        result = apply_column_presets({"name": "test"}, presets, headers=headers)
+        assert result["created_by"] == "user-42"
+
+    def test_literal_preset(self):
+        presets = [{"column": "status", "source": "literal", "value": "active"}]
+        result = apply_column_presets({"name": "test"}, presets)
+        assert result["status"] == "active"
+
+    def test_preset_overrides_user_input(self):
+        """Preset columns override user-supplied values (security enforcement)."""
+        presets = [{"column": "created_by", "source": "literal", "value": "system"}]
+        result = apply_column_presets(
+            {"name": "test", "created_by": "hacker"}, presets
+        )
+        assert result["created_by"] == "system"
+
+    def test_header_preset_missing_header(self):
+        """Missing header skips the preset (no injection)."""
+        presets = [{"column": "created_by", "source": "header", "name": "x-user-id"}]
+        result = apply_column_presets({"name": "test"}, presets, headers={})
+        assert "created_by" not in result

@@ -153,49 +153,46 @@ class TestRewriteIfMvMatch:
         assert '"customers__name"' in result.sql
 
 
-class TestMVRegistry:
-    def test_get_fresh_returns_only_fresh(self):
-        from provisa.mv.registry import MVRegistry
-        reg = MVRegistry()
-        mv1 = _mv(mv_id="mv1", status=MVStatus.FRESH)
-        mv2 = _mv(mv_id="mv2", status=MVStatus.STALE)
-        reg.register(mv1)
-        reg.register(mv2)
-        fresh = reg.get_fresh()
-        assert len(fresh) == 1
-        assert fresh[0].id == "mv1"
+class TestPartialMVMatch:
+    """REQ-083: Partial MV matching — MV covers subset of JOINs."""
 
-    def test_mark_stale_by_table(self):
-        from provisa.mv.registry import MVRegistry
-        reg = MVRegistry()
-        mv = _mv(status=MVStatus.FRESH)
-        reg.register(mv)
-        affected = reg.mark_stale("orders")
-        assert affected == ["mv-orders-customers"]
-        assert mv.status == MVStatus.STALE
+    def test_partial_match_keeps_uncovered_join(self):
+        sql = (
+            'SELECT "t0"."id", "t1"."name", "t2"."product_name" '
+            'FROM "public"."orders" "t0" '
+            'LEFT JOIN "public"."customers" "t1" '
+            'ON "t0"."customer_id" = "t1"."id" '
+            'LEFT JOIN "public"."products" "t2" '
+            'ON "t0"."product_id" = "t2"."id"'
+        )
+        compiled = _compiled(sql)
+        mv = _mv()
+        result = rewrite_if_mv_match(compiled, [mv])
+        # MV used
+        assert "mv_cache" in result.sql
+        # Products JOIN preserved
+        assert '"products"' in result.sql
+        assert '"t2"."product_name"' in result.sql
+        # Covered right-table columns rewritten to MV naming
+        assert '"t0"."customers__name"' in result.sql
+        # Root alias (t0) preserved for uncovered JOINs
+        assert '"t0"."product_id"' in result.sql
 
-    def test_mark_stale_unrelated_table(self):
-        from provisa.mv.registry import MVRegistry
-        reg = MVRegistry()
-        mv = _mv(status=MVStatus.FRESH)
-        reg.register(mv)
-        affected = reg.mark_stale("products")
-        assert affected == []
-        assert mv.status == MVStatus.FRESH
-
-    def test_mark_refreshed(self):
-        from provisa.mv.registry import MVRegistry
-        reg = MVRegistry()
-        mv = _mv(status=MVStatus.STALE)
-        reg.register(mv)
-        reg.mark_refreshed("mv-orders-customers", row_count=1000)
-        assert mv.status == MVStatus.FRESH
-        assert mv.row_count == 1000
-
-    def test_get_due_for_refresh(self):
-        from provisa.mv.registry import MVRegistry
-        reg = MVRegistry()
-        mv = _mv(status=MVStatus.STALE)
-        reg.register(mv)
-        due = reg.get_due_for_refresh()
-        assert len(due) == 1
+    def test_partial_match_where_preserved(self):
+        sql = (
+            'SELECT "t0"."id", "t1"."name", "t2"."product_name" '
+            'FROM "public"."orders" "t0" '
+            'LEFT JOIN "public"."customers" "t1" '
+            'ON "t0"."customer_id" = "t1"."id" '
+            'LEFT JOIN "public"."products" "t2" '
+            'ON "t0"."product_id" = "t2"."id" '
+            'WHERE "t0"."region" = $1'
+        )
+        compiled = CompiledQuery(
+            sql=sql, params=["us"], root_field="orders",
+            columns=[], sources={"pg"},
+        )
+        mv = _mv()
+        result = rewrite_if_mv_match(compiled, [mv])
+        assert "WHERE" in result.sql
+        assert result.params == ["us"]

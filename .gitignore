@@ -69,3 +69,4 @@ node_modules/
 
 # Claude Code
 .claude/scheduled_tasks.lock
+/jdbc-driver/target/

@@ -1897,6 +1897,125 @@ Flight is used automatically — no transport property needed.
 
 ---
 
+## Phase Y: Admin Page Global Features
+**Goal:** Expand the admin page with platform-wide management surfaces: MV lifecycle, global cache controls, system health, and scheduled task overview.
+**REQs:** REQ-081 (MV admin), REQ-077 (cache admin)
+
+**Build:**
+- `provisa-ui/src/components/admin/MVManager.tsx` — MV management panel:
+  - List all MVs with status (fresh/stale/refreshing/disabled), last refresh time, row count
+  - Enable/disable toggle per MV
+  - Manual refresh button (POST `/admin/mv/{id}/refresh`)
+  - Last error display for failed refreshes
+- `provisa-ui/src/components/admin/CacheManager.tsx` — Global cache controls:
+  - Display cache stats: total keys, memory usage, hit/miss ratio (from Redis INFO)
+  - Purge all cache button (POST `/admin/cache/purge`)
+  - Purge by table button (POST `/admin/cache/purge/{table_id}`)
+  - Global default TTL editor (already exists in Platform Settings, link here)
+- `provisa-ui/src/components/admin/SystemHealth.tsx` — System health panel:
+  - Trino connection status and uptime
+  - PG pool stats (active/idle/waiting connections)
+  - Redis connection status
+  - Background task status (MV refresh loop, scheduled triggers)
+- `provisa-ui/src/components/admin/ScheduledTasks.tsx` — Scheduled task overview:
+  - List cron-scheduled tasks (triggers, MV refreshes) with next run time
+  - Last run status per task
+  - Enable/disable toggle
+- Backend endpoints:
+  - `provisa/api/admin/schema.py` — Add Strawberry mutations: `refreshMV(id)`, `toggleMV(id, enabled)`, `purgeCache()`, `purgeCacheByTable(tableId)`
+  - `provisa/api/admin/schema.py` — Add Strawberry queries: `mvList`, `cacheStats`, `systemHealth`, `scheduledTasks`
+- `provisa-ui/src/pages/AdminPage.tsx` — Add tabs/sections for MV Manager, Cache Manager, System Health, Scheduled Tasks
+
+**Verify:**
+- `npx vitest run` — component unit tests for each admin panel
+- `npx playwright test` — E2E:
+  - Admin page loads all new sections
+  - MV list shows correct status, enable/disable toggles work
+  - Manual MV refresh triggers and updates status
+  - Cache purge clears entries, stats update
+  - System health shows live connection statuses
+- `python -m pytest tests/unit/test_admin_mv.py -x -q` — MV admin mutations
+- `python -m pytest tests/e2e/test_admin_flow.py -x -q` — full admin workflow
+
+**Files:**
+| File | Action |
+|---|---|
+| `provisa-ui/src/components/admin/MVManager.tsx` | Create |
+| `provisa-ui/src/components/admin/CacheManager.tsx` | Create |
+| `provisa-ui/src/components/admin/SystemHealth.tsx` | Create |
+| `provisa-ui/src/components/admin/ScheduledTasks.tsx` | Create |
+| `provisa-ui/src/pages/AdminPage.tsx` | Modify (add new sections) |
+| `provisa/api/admin/schema.py` | Modify (add MV/cache/health queries+mutations) |
+| `tests/unit/test_admin_mv.py` | Create |
+
+---
+
+## Phase Z: Per-Source & Per-Table Cache Configuration
+**Goal:** Granular cache control at the source and table level, exposed in both backend config and UI. Overrides the global default TTL with source-level and table-level specificity.
+**REQs:** REQ-077 (cache control), REQ-078 (security partitioning)
+
+**Build:**
+- `provisa/core/models.py` — Extend models:
+  - `Source`: add `cache_enabled: bool = True`, `cache_ttl: int | None = None` (overrides global default)
+  - `Table` (table config): add `cache_ttl: int | None = None` (overrides source-level)
+- `provisa/cache/policy.py` — Update `resolve_policy()` to check table TTL → source TTL → global default (most specific wins)
+- `provisa/core/schema.sql` — Add `cache_enabled BOOLEAN DEFAULT TRUE` and `cache_ttl INTEGER` columns to `sources` and `tables` tables
+- `config/provisa.yaml` — Add cache fields to source and table config examples:
+  ```yaml
+  sources:
+    - id: sales-pg
+      cache_enabled: true
+      cache_ttl: 600  # 10 min override for this source
+  tables:
+    - source_id: sales-pg
+      table: orders
+      cache_ttl: 60   # 1 min for frequently-changing table
+  ```
+- `provisa-ui/src/pages/SourcesPage.tsx` — Add cache options to source detail/edit:
+  - Cache enabled toggle
+  - Cache TTL override input (blank = inherit global)
+  - Display effective TTL (resolved: table → source → global)
+- `provisa-ui/src/pages/TablesPage.tsx` — Add cache options to table detail/edit:
+  - Cache TTL override input (blank = inherit source/global)
+  - Manual cache invalidation button per table (POST `/admin/cache/purge/{table_id}`)
+  - Display effective TTL with inheritance chain shown
+- `provisa/api/admin/schema.py` — Add `updateSourceCache(sourceId, enabled, ttl)` and `updateTableCache(tableId, ttl)` mutations
+- `provisa/api/app.py` — Load source/table cache config into state during startup
+
+**Key behaviors:**
+- TTL resolution order: table-level → source-level → global default. First non-null wins.
+- `cache_enabled: false` on a source disables caching for ALL tables in that source regardless of table-level TTL.
+- Cache keys still include role_id + RLS context (REQ-078) — this phase only adds TTL granularity.
+- UI shows the effective (resolved) TTL alongside any override, so stewards understand the inheritance.
+
+**Verify:**
+- `python -m pytest tests/unit/test_cache_policy.py -x -q`:
+  - Table TTL overrides source TTL
+  - Source TTL overrides global TTL
+  - Source cache_enabled=false → no caching regardless of TTLs
+  - No overrides → global default used
+- `npx vitest run` — component tests for cache UI on source/table pages
+- `npx playwright test` — E2E:
+  - Set source cache TTL → queries against that source use it
+  - Set table cache TTL → overrides source TTL
+  - Disable cache on source → no caching for its tables
+  - Manual invalidation button clears table cache
+
+**Files:**
+| File | Action |
+|---|---|
+| `provisa/core/models.py` | Modify (add cache fields to Source, Table) |
+| `provisa/cache/policy.py` | Modify (hierarchical TTL resolution) |
+| `provisa/core/schema.sql` | Modify (add cache columns) |
+| `config/provisa.yaml` | Modify (add cache config examples) |
+| `provisa-ui/src/pages/SourcesPage.tsx` | Modify (add cache options) |
+| `provisa-ui/src/pages/TablesPage.tsx` | Modify (add cache options) |
+| `provisa/api/admin/schema.py` | Modify (add cache mutations) |
+| `provisa/api/app.py` | Modify (load cache config) |
+| `tests/unit/test_cache_policy.py` | Modify (add hierarchical TTL tests) |
+
+---
+
 ## Dependencies
 
 ```toml

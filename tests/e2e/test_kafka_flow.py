@@ -1,3 +1,13 @@
+# Copyright (c) 2025 Kenneth Stott
+# Canary: e2c9a483-a714-4bce-b0c1-df3b390df90a
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """E2E tests for Kafka sink flow: approved query → result published to topic.
 
 Requires: docker-compose up (Kafka + Provisa backend)

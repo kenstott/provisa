@@ -220,6 +220,38 @@ class TestPagination:
         assert "OFFSET 10" in sql
 
 
+class TestDistinctOn:
+    def test_distinct_on_single_column(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders(distinct_on: [customer_id]) { id customer_id amount } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx)
+        sql = results[0].sql
+        assert sql.startswith('SELECT DISTINCT ON ("customer_id")')
+        assert '"id"' in sql
+        assert '"amount"' in sql
+
+    def test_distinct_on_multiple_columns(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders(distinct_on: [customer_id, region]) { id customer_id region } }")
+        results = compile_query(doc, ctx)
+        sql = results[0].sql
+        assert 'DISTINCT ON ("customer_id", "region")' in sql
+
+    def test_distinct_on_with_order_by(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("""
+            { orders(
+                distinct_on: [customer_id]
+                order_by: [{ field: customer_id, direction: ASC }]
+            ) { id customer_id } }
+        """)
+        results = compile_query(doc, ctx)
+        sql = results[0].sql
+        assert "DISTINCT ON" in sql
+        assert "ORDER BY" in sql
+
+
 class TestNestedRelationship:
     def test_many_to_one_join(self, schema_and_ctx):
         schema, ctx = schema_and_ctx

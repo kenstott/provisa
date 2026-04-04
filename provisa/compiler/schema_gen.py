@@ -321,6 +321,20 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         if order_by_input:
             args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(order_by_input)))
 
+        # distinct_on: deduplicate by specified columns
+        visible_col_names = [
+            c["column_name"] for c in t.visible_columns
+            if c["column_name"] in t.column_metadata
+        ]
+        if visible_col_names:
+            distinct_enum = GraphQLEnumType(
+                f"{t.type_name}DistinctOnColumn",
+                {name: GraphQLEnumValue(name) for name in visible_col_names},
+            )
+            args["distinct_on"] = GraphQLArgument(
+                GraphQLList(GraphQLNonNull(distinct_enum))
+            )
+
         query_fields[t.field_name] = GraphQLField(
             GraphQLList(GraphQLNonNull(gql_type)),
             args=args,
@@ -372,10 +386,27 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             },
         )
 
+        # On-conflict column list for upsert
+        conflict_col_enum = GraphQLEnumType(
+            f"{t.type_name}ConflictColumn",
+            {name: GraphQLEnumValue(name) for name in insert_fields},
+        )
+
         # insert_<table>(input: InsertInput!): MutationResponse!
         mutation_fields[f"insert_{t.field_name}"] = GraphQLField(
             GraphQLNonNull(response_type),
             args={"input": GraphQLArgument(GraphQLNonNull(insert_input))},
+        )
+
+        # upsert_<table>(input: InsertInput!, on_conflict: [ConflictColumn!]!): MutationResponse!
+        mutation_fields[f"upsert_{t.field_name}"] = GraphQLField(
+            GraphQLNonNull(response_type),
+            args={
+                "input": GraphQLArgument(GraphQLNonNull(insert_input)),
+                "on_conflict": GraphQLArgument(
+                    GraphQLNonNull(GraphQLList(GraphQLNonNull(conflict_col_enum)))
+                ),
+            },
         )
 
         # update_<table>(set: SetInput!, where: WhereInput!): MutationResponse!

@@ -583,6 +583,18 @@ def _compile_root_field(
         for arg in field_node.arguments:
             args[arg.name.value] = _extract_value(arg.value, variables)
 
+    # DISTINCT ON — inject after SELECT keyword
+    if "distinct_on" in args:
+        distinct_cols = args["distinct_on"]
+        if isinstance(distinct_cols, str):
+            distinct_cols = [distinct_cols]
+        parts_d = [
+            _q(c) if root_alias is None else f"{_q(root_alias)}.{_q(c)}"
+            for c in distinct_cols
+        ]
+        distinct_prefix = f"DISTINCT ON ({', '.join(parts_d)}) "
+        sql = f"SELECT {distinct_prefix}{sql[len('SELECT '):]}"
+
     # WHERE
     if "where" in args:
         where_sql = _compile_where(args["where"], collector, root_alias)

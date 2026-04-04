@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+/.nyc_output/
+/.nyc_output_flat/
+/coverage/
+/test-results/

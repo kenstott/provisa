@@ -278,7 +278,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
             )
 
     # Load materialized view definitions
-    from provisa.mv.models import MVDefinition, JoinPattern
+    from provisa.mv.models import MVDefinition, JoinPattern, SDLConfig
     mv_configs = raw_config.get("materialized_views", [])
     for mvc in mv_configs:
         jp = None
@@ -291,6 +291,14 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 right_column=jp_cfg["right_column"],
                 join_type=jp_cfg.get("join_type", "left"),
             )
+        sdl_cfg = None
+        if "sdl_config" in mvc:
+            sc = mvc["sdl_config"]
+            sdl_cfg = SDLConfig(
+                domain_id=sc["domain_id"],
+                governance=sc.get("governance", "pre-approved"),
+                columns=sc.get("columns"),
+            )
         mv = MVDefinition(
             id=mvc["id"],
             source_tables=mvc.get("source_tables", []),
@@ -302,8 +310,21 @@ async def _load_and_build(config_path: str | None = None) -> None:
             join_pattern=jp,
             sql=mvc.get("sql"),
             expose_in_sdl=mvc.get("expose_in_sdl", False),
+            sdl_config=sdl_cfg,
         )
         state.mv_registry.register(mv)
+
+        # REQ-086: Expose MV as queryable table in schema
+        if mv.expose_in_sdl and sdl_cfg:
+            mv_table = {
+                "source_id": mvc.get("target_catalog", "postgresql"),
+                "domain_id": sdl_cfg.domain_id,
+                "schema": mvc.get("target_schema", "mv_cache"),
+                "table": mv.target_table,
+                "governance": sdl_cfg.governance,
+                "columns": sdl_cfg.columns or [],
+            }
+            raw_config.setdefault("tables", []).append(mv_table)
 
     # Process views — governed computed datasets
     # Each view becomes a registered table (for governance) + MV (for execution)
