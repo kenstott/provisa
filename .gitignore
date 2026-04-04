@@ -39,7 +39,7 @@ htmlcov/
 # Misc
 .DS_Store
 *.log
-logs/
+.logs/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -70,3 +70,4 @@ node_modules/
 # Claude Code
 .claude/scheduled_tasks.lock
 /jdbc-driver/target/
+/.wrangler/cache/pages.json

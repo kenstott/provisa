@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Start Provisa UI (frontend) and backend API server
-# Backend logs go to ./logs/server.log
+# Backend logs go to ./.logs/server.log
 
 set -euo pipefail
 
@@ -13,7 +13,7 @@ for arg in "$@"; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-LOG_DIR="$SCRIPT_DIR/logs"
+LOG_DIR="$SCRIPT_DIR/.logs"
 mkdir -p "$LOG_DIR"
 
 # Load .env if present

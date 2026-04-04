@@ -70,7 +70,7 @@ main() {
     # 3. Create ~/.provisa/
     info "Creating ${PROVISA_HOME}..."
     mkdir -p "${PROVISA_HOME}/data"
-    mkdir -p "${PROVISA_HOME}/logs"
+    mkdir -p "${PROVISA_HOME}/.logs"
 
     # 4. Write default config
     if [ ! -f "${PROVISA_HOME}/config.yaml" ]; then

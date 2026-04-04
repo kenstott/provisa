@@ -63,7 +63,7 @@ INSTALL_OUTPUT="$("$PATCHED_INSTALLER" 2>&1 || true)"
 
 assert_dir_exists "$FAKE_HOME/.provisa" "~/.provisa/ created"
 assert_dir_exists "$FAKE_HOME/.provisa/data" "~/.provisa/data/ created"
-assert_dir_exists "$FAKE_HOME/.provisa/logs" "~/.provisa/logs/ created"
+assert_dir_exists "$FAKE_HOME/.provisa/.logs" "~/.provisa/.logs/ created"
 assert_file_exists "$FAKE_HOME/.provisa/config.yaml" "config.yaml created"
 
 # ── Test 3: Config content ──────────────────────────────────────────────────
