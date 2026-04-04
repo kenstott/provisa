@@ -15,6 +15,8 @@ import {
   useOperationsEditorState,
   useOptimisticState,
 } from "@graphiql/react";
+
+const GRAPHIQL_QUERY_KEY = "graphiql:query";
 // @ts-ignore — CJS fork, no type declarations
 import { Explorer } from "graphiql-explorer";
 
@@ -59,14 +61,14 @@ const explorerStyles = {
   actionButtonStyle: {},
 };
 
-/** Custom ExplorerPlugin that seeds the query from initialQuery before Monaco loads. */
+/** Custom ExplorerPlugin that seeds the query from localStorage before Monaco loads. */
 export function SyncedExplorerContent() {
   const { setOperationName, run } = useGraphiQLActions();
   const schema = useGraphiQL((s) => s.schema);
-  const initialQuery = useGraphiQL((s) => s.initialQuery);
   const [liveQuery, setQuery] = useOptimisticState(useOperationsEditorState());
-  // Use the live (Monaco) query when available; fall back to the pre-Monaco initialQuery.
-  const query = liveQuery || initialQuery || "";
+  // Read the localStorage-persisted query as a fallback before Monaco initializes.
+  const storedQuery = useMemo(() => localStorage.getItem(GRAPHIQL_QUERY_KEY) ?? "", []);
+  const query = liveQuery || storedQuery;
 
   const handleRunOperation = useCallback(
     (operationName?: string) => {

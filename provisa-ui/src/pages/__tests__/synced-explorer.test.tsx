@@ -4,7 +4,6 @@ import { render } from "@testing-library/react";
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 let mockLiveQuery = "";
-let mockInitialQuery = "";
 let mockSchema: unknown = null;
 
 vi.mock("@graphiql/react", async (importOriginal) => {
@@ -12,7 +11,7 @@ vi.mock("@graphiql/react", async (importOriginal) => {
   return {
     ...actual,
     useGraphiQL: vi.fn((selector: (s: Record<string, unknown>) => unknown) =>
-      selector({ schema: mockSchema, initialQuery: mockInitialQuery }),
+      selector({ schema: mockSchema }),
     ),
     useGraphiQLActions: vi.fn(() => ({
       setOperationName: vi.fn(),
@@ -42,40 +41,39 @@ describe("SyncedExplorerContent — query fallback logic", () => {
   beforeEach(() => {
     lastExplorerQuery = undefined;
     mockLiveQuery = "";
-    mockInitialQuery = "";
     mockSchema = null;
+    localStorage.clear();
   });
 
   it("passes liveQuery to Explorer when Monaco is ready", () => {
     mockLiveQuery = "{ orders { id } }";
-    mockInitialQuery = "{ products { sku } }";
+    localStorage.setItem("graphiql:query", "{ products { sku } }");
 
     render(<SyncedExplorerContent />);
 
     expect(lastExplorerQuery).toBe("{ orders { id } }");
   });
 
-  it("falls back to initialQuery when liveQuery is empty (pre-Monaco)", () => {
+  it("falls back to localStorage query when liveQuery is empty (pre-Monaco)", () => {
     mockLiveQuery = "";
-    mockInitialQuery = "{ customers { name } }";
+    localStorage.setItem("graphiql:query", "{ customers { name } }");
 
     render(<SyncedExplorerContent />);
 
     expect(lastExplorerQuery).toBe("{ customers { name } }");
   });
 
-  it("passes empty string when both liveQuery and initialQuery are empty", () => {
+  it("passes empty string when both liveQuery and localStorage are empty", () => {
     mockLiveQuery = "";
-    mockInitialQuery = "";
 
     render(<SyncedExplorerContent />);
 
     expect(lastExplorerQuery).toBe("");
   });
 
-  it("prefers liveQuery over initialQuery even when initialQuery is non-empty", () => {
+  it("prefers liveQuery over localStorage query", () => {
     mockLiveQuery = "{ live }";
-    mockInitialQuery = "{ initial }";
+    localStorage.setItem("graphiql:query", "{ stored }");
 
     render(<SyncedExplorerContent />);
 
