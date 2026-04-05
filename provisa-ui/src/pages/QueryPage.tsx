@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useState, useEffect, useMemo } from "react";
 import { GraphiQL } from "graphiql";
 import { createGraphiQLFetcher } from "@graphiql/toolkit";
 import "@graphiql/react/style.css";
@@ -18,6 +18,7 @@ import {
 
 // @ts-ignore — CJS fork, no type declarations
 import { Explorer } from "graphiql-explorer";
+import { initializeMode } from 'monaco-graphql/esm/initialize'
 
 const colors = {
   keyword: "hsl(var(--color-primary))",
@@ -34,24 +35,29 @@ const colors = {
 };
 
 const arrowOpen = (
-  <svg
-    width={5} height={8} viewBox="0 0 5 8" fill="currentColor"
-    style={{ width: "var(--px-16)", transform: "rotate(90deg)" }}
-  />
+  <svg width={5} height={8} viewBox="0 0 5 8" fill="currentColor"
+    style={{ width: "var(--px-16)", transform: "rotate(90deg)" }}>
+    <path d="M0 0L5 4L0 8Z" />
+  </svg>
 );
 const arrowClosed = (
-  <svg
-    width={5} height={8} viewBox="0 0 5 8" fill="currentColor"
-    style={{ width: "var(--px-16)" }}
-  />
+  <svg width={5} height={8} viewBox="0 0 5 8" fill="currentColor"
+    style={{ width: "var(--px-16)" }}>
+    <path d="M0 0L5 4L0 8Z" />
+  </svg>
 );
 const checkboxUnchecked = (
   <svg width={15} height={15} viewBox="0 0 15 15" stroke="currentColor" fill="none"
-    style={{ marginRight: "var(--px-4)" }} />
+    style={{ marginRight: "var(--px-4)" }}>
+    <rect x="1.5" y="1.5" width="12" height="12" rx="1.5" strokeWidth="1.5" />
+  </svg>
 );
 const checkboxChecked = (
   <svg width={15} height={15} viewBox="0 0 15 15" fill="currentColor"
-    style={{ fill: "hsl(var(--color-info))", marginRight: "var(--px-4)" }} />
+    style={{ fill: "hsl(var(--color-info))", marginRight: "var(--px-4)" }}>
+    <rect x="1.5" y="1.5" width="12" height="12" rx="1.5" />
+    <path d="M4.5 7.5L6.5 9.5L10.5 5.5" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
 );
 
 const explorerStyles = {
@@ -69,6 +75,11 @@ export function SyncedExplorerContent() {
   // Use it as fallback before Monaco populates liveQuery.
   const initialQuery = useGraphiQL((s) => s.initialQuery);
   const query = liveQuery || initialQuery;
+
+  useEffect(() => {
+    if (!schema) return
+    initializeMode().setSchemaConfig([{ schema }])
+  }, [schema])
 
   const handleRunOperation = useCallback(
     (operationName?: string) => {

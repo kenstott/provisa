@@ -74,6 +74,7 @@ Approach code with healthy paranoia. If something can go wrong, you want a test 
 - Over-mocking (tests that test nothing)
 - Happy path only (no error/edge coverage)
 - Missing assertions (run code but verify nothing)
+- Playwright specs importing from `@playwright/test` directly instead of `./coverage` — the base fixture in `e2e/coverage.ts` attaches a `pageerror` listener that fails tests on uncaught browser exceptions (broken imports, runtime crashes). Bypassing it silently misses whole-page failures.
 
 ## Output Format
 

@@ -10,10 +10,27 @@ const COV_DIR = path.resolve(__dirname, "../.nyc_output/playwright");
 /**
  * Extended test fixture that collects Istanbul coverage from the browser
  * after each test and writes it to .nyc_output/playwright/.
+ *
+ * Also fails any test that triggers an uncaught browser exception (pageerror),
+ * e.g. broken ES module imports, runtime crashes. This catches errors that
+ * console.error listeners miss.
  */
 export const test = base.extend({
   page: async ({ page }, use) => {
+    const pageErrors: Error[] = [];
+    page.on("pageerror", (err) => pageErrors.push(err));
+
     await use(page);
+
+    // Filter Monaco/GraphQL worker false positives: these workers sometimes throw
+    // bare Event objects (message === "Event") during initialization, which are not
+    // real application errors.
+    const realErrors = pageErrors.filter((e) => e.message !== "Event");
+    if (realErrors.length > 0) {
+      throw new Error(
+        `Uncaught browser exception(s):\n${realErrors.map((e) => e.message).join("\n")}`
+      );
+    }
 
     // Collect __coverage__ from the browser (injected by vite-plugin-istanbul)
     const coverage = await page

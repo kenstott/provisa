@@ -38,7 +38,7 @@ from provisa.compiler.rls import RLSContext, inject_rls
 from provisa.compiler.sampling import apply_sampling, get_sample_size
 from provisa.compiler.sql_gen import compile_query
 from provisa.executor.direct import execute_direct
-from provisa.executor.serialize import serialize_rows
+from provisa.executor.serialize import serialize_aggregate, serialize_rows
 from provisa.executor.trino import execute_trino
 from provisa.mv.rewriter import rewrite_if_mv_match
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability, has_capability
@@ -512,7 +512,28 @@ async def _execute_one_field(
             log.exception("Redirect upload failed for %s, returning inline", root_field)
 
     # --- Inline result ---
-    response_data = _format_response(result.rows, compiled.columns, root_field, output_format)
+    # Aggregate queries with nodes: execute the plain-SELECT nodes query and
+    # merge it with the aggregate result via serialize_aggregate.
+    if compiled.nodes_sql is not None:
+        try:
+            if decision.route == Route.DIRECT and decision.source_id:
+                nodes_target_sql = transpile(compiled.nodes_sql, decision.dialect or "postgres")
+                nodes_result = await execute_direct(
+                    state.source_pools, decision.source_id, nodes_target_sql, compiled.nodes_params,
+                )
+            else:
+                nodes_trino_sql = transpile_to_trino(compiled.nodes_sql)
+                nodes_result = execute_trino(state.trino_conn, nodes_trino_sql, compiled.nodes_params)
+        except Exception as e:
+            log.exception("Nodes query execution failed for %s", root_field)
+            raise HTTPException(status_code=500, detail=str(e))
+        response_data = serialize_aggregate(
+            result.rows, compiled.columns,
+            nodes_result.rows, compiled.nodes_columns,
+            root_field,
+        )
+    else:
+        response_data = _format_response(result.rows, compiled.columns, root_field, output_format)
 
     # Extract rows from serialized response for merging
     if isinstance(response_data, dict):

@@ -3,6 +3,7 @@ CRITICAL: V1 development. Never add migrations.
 CRITICAL: Maximum brevity. No pleasantries. No explanations unless asked. Code and facts only.
 CRITICAL: Files must stay under 1000 lines. If a file approaches or exceeds this, split it by separation of concerns. This applies to all languages (Python, TypeScript, etc.).
 CRITICAL: "Audit" for UI features must include browser rendering and functionality testing (vitest + Playwright), not just code review.
+CRITICAL: All Playwright tests must catch uncaught browser exceptions (pageerror). The base fixture in `provisa-ui/e2e/coverage.ts` handles this automatically — all specs must import `test` from `./coverage`, never directly from `@playwright/test`.
 CRITICAL: Test errors must be resolved whether they are preexisting or not. Never skip or ignore failing tests.
 
 # Code Audits

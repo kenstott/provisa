@@ -1,0 +1,14 @@
+{
+  "all": true,
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": [
+    "node_modules",
+    "e2e",
+    "src/plugins/graphiql-explorer-fork.cjs",
+    "src/plugins/table-view.tsx",
+    "**/*.test.*",
+    "**/*.spec.*"
+  ],
+  "report-dir": "coverage",
+  "reporter": ["text", "html", "json"]
+}

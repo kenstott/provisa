@@ -19,11 +19,8 @@ CONTAINERD_VERSION="1.7.19"
 # Service images from docker-compose (use digest-pinning in production)
 IMAGES=(
   "postgres:16"
-  "mongo:7"
   "edoburu/pgbouncer:latest"
   "minio/minio:latest"
-  "confluentinc/cp-kafka:7.6.0"
-  "confluentinc/cp-schema-registry:7.6.0"
   "redis:7-alpine"
   "trinodb/trino:480"
 )

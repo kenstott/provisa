@@ -2619,20 +2619,37 @@ Abstract `ApprovalHook` interface with three implementations:
 - All service names branded "Provisa" (no docker/trino/pg visible in logs)
 - **Effort**: ~500 lines shell script
 
-### AF2: Embedded Binary (Medium-term)
-- Compile Python backend with Nuitka -> native binary
-- Embed pgserver for admin DB (pip-installable embedded PostgreSQL)
-- Bundle Trino binary (downloaded on first run, cached in `~/.provisa/`)
-- Bundle React UI build as static assets
-- Docker dependency eliminated except for optional Trino
-- **Effort**: Significant (Nuitka build pipeline, pgserver integration)
+### AF2: Airgapped Native App Bundle (phased by OS)
 
-### AF3: Native OS Packages (Long-term)
-- macOS: `.pkg` with LaunchAgent for service management
-- Linux: `.deb` with systemd unit files
-- Windows: `.msi` via WiX with Windows Service registration
-- Each bundles all services, uses native OS service lifecycle
-- **Effort**: Per-platform installer build
+Common to all phases:
+- All Provisa service images (postgres, trino, redis, pgbouncer, provisa-api, provisa-ui) exported via `docker save` at build time and bundled as `.tar` archives
+- On first launch: runtime starts silently, images loaded from bundle — zero network required
+- `docker-compose.yml` references images by digest (not tag) to prevent any remote resolution
+- `provisa` CLI talks to bundled runtime socket, not system Docker socket
+- Fully airgap-capable: no outbound network at install or runtime
+- Full app re-download per release (~4 GB) — no delta update requirement
+
+#### AF2a: macOS (immediate — primary dev environment)
+- Embed **Lima + containerd** binaries for arm64 and x86_64
+- Package as signed + notarized `.dmg`
+- Sign via `codesign` + `xcrun notarytool` (requires Apple Developer account)
+- **Effort**: ~1 week
+
+#### AF2b: Linux (follow-on)
+- Lima or native containerd (no VM needed on Linux)
+- Package as `.AppImage` (runs on Ubuntu 20.04+, RHEL 8+ without install)
+- **Effort**: ~3–4 days once AF2a build pipeline exists
+
+#### AF2c: Windows (follow-on)
+- WSL2 + containerd as the runtime layer
+- Package as signed `.exe` installer (NSIS or WiX)
+- Sign via `signtool`
+- **Effort**: ~1 week (WSL2 automation is the tricky part)
+
+- **Supersedes AF3** — a signed native app bundle provides a better experience than OS package managers and covers the same platforms
+
+### ~~AF3: Native OS Packages~~ (superseded by AF2)
+- Superseded by AF2. A bundled native app with embedded runtime is a superior distribution mechanism that covers all target platforms without requiring Docker as a visible dependency.
 
 ### Phase AF Gates
 

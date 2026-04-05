@@ -6,11 +6,6 @@
     "MAX_THINKING_TOKENS": "8000",
     "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "50"
   },
-  "skills": {
-    "loop": {
-      "enabled": true
-    }
-  },
   "permissions": {
     "allow": [
       "mcp__ide__getDiagnostics",
@@ -23,9 +18,30 @@
       "Bash(git stash *)",
       "Bash(ls *)",
       "Bash(pip install *)",
+      "Bash(*)",
       "Read",
       "Edit",
-      "Write"
+      "Write",
+      "mcp__github__create_issue",
+      "mcp__filesystem__directory_tree",
+      "mcp__sequentialthinking__sequentialthinking",
+      "mcp__github__update_issue",
+      "mcp__github__list_issues",
+      "mcp__github__get_issue"
     ]
+  },
+  "enabledMcpjsonServers": [
+    "sequentialthinking",
+    "filesystem",
+    "docker",
+    "memory",
+    "puppeteer",
+    "github",
+    "fetch"
+  ],
+  "skills": {
+    "loop": {
+      "enabled": true
+    }
   }
 }

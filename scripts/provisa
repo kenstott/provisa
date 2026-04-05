@@ -86,14 +86,25 @@ brand_service_name() {
 
 # ── Output filter — replaces docker/trino/pg references ────────────────────
 filter_output() {
-    sed \
-        -e 's/postgres\b/provisa-db/g' \
-        -e 's/postgresql\b/provisa-db/g' \
-        -e 's/pgbouncer\b/provisa-pool/g' \
-        -e 's/trino\b/provisa-query/g' \
-        -e 's/trinodb\/trino/provisa-query-engine/g' \
-        -e 's/docker/provisa/g' \
-        -e 's/Docker/Provisa/g'
+    if command -v gsed &>/dev/null; then
+        gsed \
+            -e 's/\bpostgres\b/provisa-db/g' \
+            -e 's/\bpostgresql\b/provisa-db/g' \
+            -e 's/\bpgbouncer\b/provisa-pool/g' \
+            -e 's/\btrino\b/provisa-query/g' \
+            -e 's/trinodb\/trino/provisa-query-engine/g' \
+            -e 's/\bdocker\b/provisa/g' \
+            -e 's/\bDocker\b/Provisa/g'
+    else
+        sed \
+            -e 's/postgresql/provisa-db/g' \
+            -e 's/postgres/provisa-db/g' \
+            -e 's/pgbouncer/provisa-pool/g' \
+            -e 's/trinodb\/trino/provisa-query-engine/g' \
+            -e 's/trino/provisa-query/g' \
+            -e 's/Docker/Provisa/g' \
+            -e 's/docker/provisa/g'
+    fi
 }
 
 # ── Health check helpers ────────────────────────────────────────────────────
