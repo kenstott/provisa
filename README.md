@@ -46,20 +46,31 @@ GraphQL is used as the universal query language specifically because it can only
 ## Quick Start
 
 ### macOS
-
 1. Download the DMG from the [releases page](https://github.com/kenstott/provisa/releases/latest)
 2. Drag **Provisa.app** to `/Applications` and double-click to launch
-3. First launch runs a one-time setup (~2 min): stages bundled images, creates a Lima VM, installs the `provisa` CLI — no internet required
+3. First launch runs a one-time setup (~2 min): imports bundled images into a Lima VM, installs the `provisa` CLI — no internet required
 4. Open Terminal:
-
 ```bash
 provisa start   # start all services
 provisa open    # open the UI in your browser
 ```
 
-### Linux / Windows
+### Linux
+1. Download `Provisa-<version>-linux-x86_64.AppImage` from the [releases page](https://github.com/kenstott/provisa/releases/latest)
+2. Make it executable and run it — first launch loads bundled Docker images (no internet required, requires Docker Engine):
+```bash
+chmod +x Provisa-*-linux-x86_64.AppImage
+./Provisa-*-linux-x86_64.AppImage
+provisa start && provisa open
+```
 
-Download the AppImage (Linux) or `.exe` installer (Windows) from the [releases page](https://github.com/kenstott/provisa/releases/latest).
+### Windows
+1. Download `Provisa-<version>-windows-x64.exe` from the [releases page](https://github.com/kenstott/provisa/releases/latest)
+2. Run as Administrator — installs to `C:\Program Files\Provisa\` and adds `provisa` to your PATH (requires Docker Desktop)
+3. Open a new terminal:
+```
+provisa start
+```
 
 ### From Source
 
