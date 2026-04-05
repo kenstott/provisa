@@ -6,9 +6,39 @@ on:
       - 'v*'
 
 jobs:
+  metadata:
+    name: Resolve release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+      channel: ${{ steps.meta.outputs.channel }}
+      dmg_name: ${{ steps.meta.outputs.dmg_name }}
+    steps:
+      - name: Resolve channel from tag
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$TAG" =~ -alpha(\.|$) ]]; then
+            CHANNEL=alpha
+            IS_PRERELEASE=true
+          elif [[ "$TAG" =~ -beta(\.|$) ]]; then
+            CHANNEL=beta
+            IS_PRERELEASE=true
+          elif [[ "$TAG" =~ -rc(\.|$) ]]; then
+            CHANNEL=rc
+            IS_PRERELEASE=true
+          else
+            CHANNEL=stable
+            IS_PRERELEASE=false
+          fi
+          echo "is_prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL"             >> "$GITHUB_OUTPUT"
+          echo "dmg_name=Provisa-${TAG}-macOS.dmg" >> "$GITHUB_OUTPUT"
+
   build-dmg:
-    name: Build airgapped macOS DMG
+    name: Build airgapped macOS DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-14
+    needs: metadata
 
     permissions:
       contents: write
@@ -19,8 +49,8 @@ jobs:
 
       - name: Set up Docker (colima)
         run: |
-          brew install colima docker docker-compose
-          colima start --cpu 4 --memory 8
+          brew install colima docker
+          colima start --cpu 4 --memory 8 --disk 60
 
       - name: Build DMG
         env:
@@ -32,9 +62,30 @@ jobs:
           chmod +x packaging/macos/build-dmg.sh
           packaging/macos/build-dmg.sh
 
-      - name: Upload DMG as release asset
+      - name: Rename DMG with version + channel
+        run: |
+          mv packaging/macos/dist/Provisa.dmg \
+             "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: packaging/macos/dist/Provisa.dmg
+          name: "${{ github.ref_name }}"
+          prerelease: ${{ needs.metadata.outputs.is_prerelease }}
+          generate_release_notes: true
+          files: "packaging/macos/dist/${{ needs.metadata.outputs.dmg_name }}"
+          body: |
+            ## Channel: `${{ needs.metadata.outputs.channel }}`
+
+            | Asset | Platform |
+            |-------|----------|
+            | `${{ needs.metadata.outputs.dmg_name }}` | macOS (Apple Silicon + Intel, airgapped) |
+
+            ### Install
+            1. Download the DMG and drag **Provisa.app** to `/Applications`
+            2. Double-click to run first-launch setup (~2 min)
+            3. `provisa start && provisa open`
+
+            See [deployment docs](https://github.com/${{ github.repository }}/blob/main/docs/deployment.md) for details.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

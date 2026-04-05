@@ -13,8 +13,8 @@ DMG_NAME="Provisa.dmg"
 DMG_PATH="${OUT_DIR}/${DMG_NAME}"
 
 # Lima + containerd versions
-LIMA_VERSION="0.22.0"
-CONTAINERD_VERSION="1.7.19"
+LIMA_VERSION="2.1.1"
+CONTAINERD_VERSION="2.2.2"
 
 # Service images from docker-compose (use digest-pinning in production)
 IMAGES=(
@@ -45,8 +45,8 @@ check_prereqs() {
 download_lima() {
   info "Downloading Lima ${LIMA_VERSION}..."
   local base_url="https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}"
-  local arm64_tar="lima-${LIMA_VERSION}-macOS-arm64.tar.gz"
-  local x86_tar="lima-${LIMA_VERSION}-macOS-x86_64.tar.gz"
+  local arm64_tar="lima-${LIMA_VERSION}-Darwin-arm64.tar.gz"
+  local x86_tar="lima-${LIMA_VERSION}-Darwin-x86_64.tar.gz"
   local tmp="${SCRIPT_DIR}/tmp-lima"
   mkdir -p "${tmp}/arm64" "${tmp}/x86_64" "${BIN_DIR}/arm64" "${BIN_DIR}/x86_64"
 
@@ -76,7 +76,7 @@ download_containerd() {
     local tar_name="containerd-${CONTAINERD_VERSION}-linux-${carch}.tar.gz"
     curl -fsSL "${base_url}/${tar_name}" -o "${tmp}/containerd-${arch}.tar.gz"
     mkdir -p "${tmp}/${arch}"
-    tar -xzf "${tmp}/containerd-${arch}.tar.gz" -C "${tmp}/${arch}" --strip-components=1
+    tar -xzf "${tmp}/containerd-${arch}.tar.gz" -C "${tmp}/${arch}"
     cp "${tmp}/${arch}/bin/ctr" "${BIN_DIR}/${arch}/ctr"
     chmod +x "${BIN_DIR}/${arch}/ctr"
   done
@@ -127,8 +127,6 @@ embed_compose() {
 embed_scripts() {
   cp "${SCRIPT_DIR}/first-launch.sh" "${APP_BUNDLE}/Contents/MacOS/first-launch.sh"
   chmod +x "${APP_BUNDLE}/Contents/MacOS/first-launch.sh"
-  cp "${SCRIPT_DIR}/Provisa.app/Contents/MacOS/provisa-launcher" \
-     "${APP_BUNDLE}/Contents/MacOS/provisa-launcher"
   chmod +x "${APP_BUNDLE}/Contents/MacOS/provisa-launcher"
   ok "Scripts embedded."
 }

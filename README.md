@@ -1,71 +1,100 @@
 # Provisa
 
-Config-driven data virtualization platform, specifically to power a semantic layer from small teams to large enterprises. Unified GraphQL/gRPC API over heterogeneous data sources with governance, security, and performance optimization.
+Config-driven data virtualization platform — a semantic layer from small teams to large enterprises. Unified GraphQL/gRPC API over heterogeneous data sources with governance, security, and performance optimization.
 
-The semantic layer distinction is important. We use GraphQL as a universal query language for this purpose, specifically because it can only composite existing semantics. To add to the semantic layer you must create new data sources or aggregates within the data virtualization layer. This creates a clean separation, so no new additions to the semantics can be added outside the platform, allowing for true data governance.
-
-Furthermore, Provisa is designed to be highly performant for operational needs and highly scalable for enterprise analytical needs. You can use a single platform for both without sacrificing speed or scalability.
+GraphQL is used as the universal query language specifically because it can only composite existing semantics. New data can only enter the semantic layer via registered sources or aggregates inside Provisa — nothing bypasses governance.
 
 ## Features
 
-- **Multi-source federation**: Query PostgreSQL, MySQL, MongoDB, and more through a single API
-- **GraphQL API**: Per-role schemas with field-level visibility, filtering, pagination, relationships
-- **gRPC endpoint**: Auto-generated .proto files from registration model, streaming responses
-- **Smart routing**: Single-source → direct driver (sub-100ms); multi-source → Trino federation
-- **Row-level security**: Per-table, per-role WHERE clause injection
-- **Column masking**: Per-column data masking (regex, constant, truncate) with role-based bypass
-- **Write permissions**: Per-column mutation access control (`writable_by`)
-- **Query caching**: Redis-backed with role+RLS-partitioned keys
-- **Materialized views**: Transparent SQL rewriting for JOIN optimization
-- **Output formats**: JSON, NDJSON, CSV, Parquet, Apache Arrow
-- **Persisted query registry**: Approval workflow, governance, ceiling enforcement
-- **API sources**: Register REST/GraphQL/gRPC endpoints as queryable tables
-- **Kafka integration**: Topics as read-only tables, query results as Kafka sink
-- **LLM relationship discovery**: Claude-powered FK candidate suggestion
-- **Arrow Flight**: gRPC streaming endpoint for high-throughput Arrow columnar delivery
-- **JDBC driver**: BI tool integration (Tableau, PowerBI, DBeaver) with two modes — `approved` (governed queries as views) and `catalog` (schema discovery for Collibra)
-- **Pluggable auth**: Firebase, Keycloak, OAuth 2.0, simple (testing)
+### Query & API
+- **GraphQL API** — Per-role schemas with field-level visibility, filtering, pagination, relationships
+- **gRPC endpoint** — Auto-generated `.proto` from registration model, streaming responses
+- **REST endpoints** — Auto-generated REST routes from approved queries
+- **JSON:API endpoints** — Auto-generated JSON:API routes with pagination, relationships, error objects
+- **SSE subscriptions** — Real-time push via PostgreSQL LISTEN/NOTIFY, polling, or Debezium CDC
+
+### Data Sources
+- **Multi-source federation** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, and more through a single API
+- **Smart routing** — Single-source → direct driver (sub-100ms); multi-source → Trino federation
+- **API sources** — Register REST/GraphQL/gRPC endpoints as queryable tables
+- **Kafka integration** — Topics as read-only tables, query results as Kafka sinks
+
+### Security & Governance
+- **Row-level security** — Per-table, per-role WHERE clause injection
+- **Column masking** — Per-column data masking (regex, constant, truncate) with role-based bypass
+- **Write permissions** — Per-column mutation access control (`writable_by`)
+- **Webhook mutations** — Database function tracking and outbound webhook-backed mutations
+- **Persisted query registry** — Approval workflow, governance, ceiling enforcement
+- **Pluggable auth** — Firebase, Keycloak, OAuth 2.0, simple (testing)
+
+### Delivery & Performance
+- **Output formats** — JSON, NDJSON, CSV, Parquet, Apache Arrow
+- **Arrow Flight** — gRPC streaming for high-throughput columnar delivery (unbounded, no materialization)
+- **Query caching** — Redis-backed with role+RLS-partitioned keys
+- **Materialized views** — Transparent SQL rewriting for JOIN optimization
+- **Large result redirect** — Threshold-based S3 redirect; Trino writes Parquet/ORC directly
+
+### Administration & Integration
+- **Admin API** — Strawberry GraphQL at `/admin/graphql` — config upload/download, relationship editing, AI-assisted FK suggestions, query approval
+- **LLM relationship discovery** — Claude-powered FK candidate suggestion
+- **JDBC driver** — BI tool integration (Tableau, PowerBI, DBeaver): `approved` and `catalog` modes
+- **Hasura v2 import** — Convert Hasura v2 metadata YAML to Provisa config
+- **DDN import** — Convert Hasura DDN supergraph metadata to Provisa config
+- **Apollo Federation** — Expose Provisa as an Apollo Federation v2 subgraph
 
 ## Quick Start
 
+### macOS
+
+1. Download the DMG from the [releases page](https://github.com/kenstott/provisa/releases/latest)
+2. Drag **Provisa.app** to `/Applications` and double-click to launch
+3. First launch runs a one-time setup (~2 min): stages bundled images, creates a Lima VM, installs the `provisa` CLI — no internet required
+4. Open Terminal:
+
 ```bash
-# Start infrastructure
+provisa start   # start all services
+provisa open    # open the UI in your browser
+```
+
+### Linux / Windows
+
+Download the AppImage (Linux) or `.exe` installer (Windows) from the [releases page](https://github.com/kenstott/provisa/releases/latest).
+
+### From Source
+
+```bash
 docker compose up -d
-
-# Install
 pip install -e ".[dev]"
-
-# Configure
 export PG_PASSWORD=provisa
-
-# Run
 uvicorn main:app --reload --port 8001
+```
 
-# Query
+### First Query
+
+```bash
 curl -X POST http://localhost:8001/data/graphql \
   -H "Content-Type: application/json" \
   -d '{"query": "{ orders { id amount region } }", "role": "admin"}'
 ```
 
-## Configuration
+See [docs/quickstart.md](docs/quickstart.md) for a step-by-step walkthrough.
 
-See [docs/configuration.md](docs/configuration.md) for the full YAML reference.
+## Documentation
 
-## API
-
-See [docs/api-reference.md](docs/api-reference.md) for endpoint documentation.
-
-## Architecture
-
-See [docs/architecture.md](docs/architecture.md) for the system design.
-
-## Security
-
-See [docs/security.md](docs/security.md) for the security model.
-
-## Supported Sources
-
-See [docs/sources.md](docs/sources.md) for source type details.
+| Topic | Doc |
+|-------|-----|
+| Step-by-step getting started | [docs/quickstart.md](docs/quickstart.md) |
+| Full YAML configuration reference | [docs/configuration.md](docs/configuration.md) |
+| Endpoint reference (GraphQL, REST, Flight, gRPC) | [docs/api-reference.md](docs/api-reference.md) |
+| System design and component map | [docs/architecture.md](docs/architecture.md) |
+| Security model (RLS, masking, auth) | [docs/security.md](docs/security.md) |
+| Supported source types | [docs/sources.md](docs/sources.md) |
+| SSE subscriptions | [docs/subscriptions.md](docs/subscriptions.md) |
+| JDBC, BI tools, Arrow Flight clients, Apollo Federation | [docs/integrations.md](docs/integrations.md) |
+| Admin API | [docs/admin.md](docs/admin.md) |
+| Deployment (Docker Compose, Kubernetes, macOS) | [docs/deployment.md](docs/deployment.md) |
+| Hasura v2 / DDN import | [docs/import.md](docs/import.md) |
+| Release workflow (alpha/beta/stable tags) | [docs/releasing.md](docs/releasing.md) |
 
 ## Development
 

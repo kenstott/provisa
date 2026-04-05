@@ -13,14 +13,44 @@ When asked to audit code against a spec, requirements, or standards: spawn paral
 On new requirement/constraint/feature/design decision: spawn background haiku agent to append to `docs/arch/requirements.md`. Agent reads `.claude/agents/requirements-tracker.md` for format, then current file, then appends. Silent. Skip implementation details, bugs, questions.
 
 # Architecture
+## Entry point
+`main.py` → `provisa/api/app.py` (FastAPI factory, lifespan, middleware)
+
 ## Backend (`provisa/`)
 | Module | Purpose |
 |--------|---------|
-| `api/` | FastAPI app factory, routers |
-| `core/` | Config, models, types |
-| `server/` | Entry point, middleware |
+| `api/` | FastAPI app, routers, middleware |
+| `api/admin/` | Strawberry GraphQL admin API |
+| `api/rest/` | Auto-generated REST endpoints |
+| `api/jsonapi/` | Auto-generated JSON:API endpoints |
+| `api/flight/` | Arrow Flight server (port 8815) |
+| `compiler/` | GraphQL → SQL, RLS, masking, sampling, federation |
+| `transpiler/` | SQLGlot transpilation, routing |
+| `executor/` | Trino/direct execution, output formats, redirect |
+| `registry/` | Persisted query store, approval, governance |
+| `security/` | Visibility, rights, column masking |
+| `cache/` | Redis query result cache |
+| `mv/` | Materialized view registry, refresh, rewriter |
+| `events/` | Dataset change event dispatch |
+| `webhooks/` | Outbound webhook execution |
+| `scheduler/` | Background job scheduling |
+| `subscriptions/` | SSE subscription state and delivery |
+| `discovery/` | LLM relationship discovery |
+| `grpc/` | Proto generation, gRPC server |
+| `api_source/` | External API sources (REST/GraphQL/gRPC) |
+| `kafka/` | Kafka topic sources and sinks |
+| `auth/` | Auth providers, middleware, role mapping |
+| `core/` | Config, models, DB, repositories, secrets |
+| `hasura_v2/` | Hasura v2 metadata converter |
+| `ddn/` | Hasura DDN converter |
+| `mongodb/` | MongoDB connector |
+| `elasticsearch/` | Elasticsearch connector |
+| `cassandra/` | Cassandra connector |
+| `accumulo/` | Accumulo connector |
+| `prometheus/` | Prometheus connector |
+| `source_adapters/` | Generic source adapter layer |
 
-Patterns: FastAPI async handlers, Pydantic validation. Storage TBD.
+Patterns: FastAPI async handlers, Pydantic validation.
 
 # Verification
 - Tests: `python -m pytest tests/ -x -q`

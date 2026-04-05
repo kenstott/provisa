@@ -71,3 +71,11 @@ node_modules/
 .claude/scheduled_tasks.lock
 /jdbc-driver/target/
 /.wrangler/cache/pages.json
+
+# DMG build artifacts
+/packaging/macos/dist/
+/packaging/macos/images/
+/packaging/macos/Provisa.app/Contents/MacOS/bin/
+/packaging/macos/Provisa.app/Contents/MacOS/first-launch.sh
+/packaging/macos/Provisa.app/Contents/Resources/
+/packaging/macos/Provisa.app/Contents/_CodeSignature/

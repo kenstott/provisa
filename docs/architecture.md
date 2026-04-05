@@ -215,9 +215,14 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 
 | Module | Purpose |
 |--------|---------|
-| `api/` | FastAPI app, routers, middleware |
+| `api/` | FastAPI app, routers, middleware, lifespan management |
 | `api/flight/` | Arrow Flight server (gRPC, port 8815) |
+| `api/admin/` | Strawberry GraphQL admin API — config, discovery, approval, views |
+| `api/rest/` | Auto-generated REST endpoints from approved queries |
+| `api/jsonapi/` | Auto-generated JSON:API endpoints with pagination and error handling |
+| `api/data/subscribe.py` | SSE subscriptions — LISTEN/NOTIFY, polling, Debezium CDC |
 | `compiler/` | GraphQL parser, SQL generator, RLS, masking, sampling |
+| `compiler/federation.py` | Apollo Federation v2 subgraph support |
 | `transpiler/` | SQLGlot transpilation, routing logic |
 | `executor/` | Trino/direct execution, serialization, output formats |
 | `executor/trino_flight.py` | ADBC Flight SQL client for Trino |
@@ -225,14 +230,108 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `executor/redirect.py` | S3 redirect logic, Provisa-side upload |
 | `registry/` | Persisted query store, approval, governance |
 | `security/` | Visibility, rights, column masking |
-| `cache/` | Redis-backed query result caching |
+| `cache/` | Redis-backed query result caching (hot tier) |
 | `mv/` | Materialized view registry, refresh, SQL rewriter |
+| `events/` | Dataset change events and trigger dispatch |
+| `webhooks/` | Outbound webhook execution for mutations and events |
+| `scheduler/` | APScheduler-based background job management |
+| `subscriptions/` | SSE subscription state and delivery |
 | `discovery/` | LLM relationship discovery (Claude API) |
 | `grpc/` | Proto generation, gRPC server, reflection |
 | `api_source/` | REST/GraphQL/gRPC API sources with PG cache |
 | `kafka/` | Kafka topic sources, sink, Schema Registry |
 | `auth/` | Pluggable auth providers, middleware, role mapping |
 | `core/` | Config, models, DB, repositories, secrets |
+| `hasura_v2/` | Hasura v2 metadata → Provisa config converter |
+| `ddn/` | Hasura DDN supergraph → Provisa config converter |
+| `mongodb/` | MongoDB source connector |
+| `elasticsearch/` | Elasticsearch source connector |
+| `cassandra/` | Cassandra source connector |
+| `accumulo/` | Apache Accumulo source connector |
+| `prometheus/` | Prometheus metrics source connector |
+| `source_adapters/` | Generic adapter layer for source connections |
+
+## Admin API
+
+The admin Strawberry GraphQL API is mounted at `/admin/graphql` (HTTP port 8001). It is separate from the data GraphQL endpoint and requires superuser or admin role.
+
+| Capability | Description |
+|-----------|-------------|
+| Config download/upload | Export or replace the full Provisa YAML config |
+| Relationship editor | Create, update, delete relationship definitions |
+| AI FK discovery | Trigger Claude-powered FK candidate analysis |
+| Query approval | Approve, reject, or deprecate persisted queries |
+| Schema introspection | Browse published tables, columns, and roles |
+| View management | Register and manage materialized view definitions |
+
+## Auto-Generated REST & JSON:API Endpoints
+
+Approved persisted queries are optionally exposed as REST and JSON:API endpoints alongside the GraphQL interface.
+
+| Interface | Mount path | Spec |
+|-----------|-----------|------|
+| REST | `/rest/<query-id>` | Simple GET/POST with query parameters |
+| JSON:API | `/jsonapi/<query-id>` | [jsonapi.org](https://jsonapi.org) compliant — pagination, relationships, error objects |
+
+These endpoints apply the same security pipeline (RLS, masking, role checks) as the GraphQL endpoint.
+
+## Subscriptions
+
+SSE subscriptions are served at `POST /data/subscribe`. Three delivery modes:
+
+| Mode | Mechanism | When used |
+|------|-----------|-----------|
+| **LISTEN/NOTIFY** | PostgreSQL `LISTEN` on a channel | PG sources with mutation activity |
+| **Polling** | Re-execute query on interval | Non-PG sources, or when CDC unavailable |
+| **Debezium CDC** | Kafka topic from Debezium connector | High-frequency change streams |
+
+The client receives `text/event-stream` with one JSON event per changed row or diff.
+
+## Event & Webhook System
+
+Database mutations (INSERT/UPDATE/DELETE) can trigger outbound events via the `events/` and `webhooks/` modules.
+
+```
+Mutation executed → EventDispatcher → match event trigger rules
+                                          ↓
+                               WebhookExecutor → HTTP POST to configured URL
+```
+
+Event triggers are defined in config and matched on table, operation type, and optional row filter. Webhook payloads include the operation type, changed row, and role context.
+
+## Background Services
+
+Four background loops start during app lifespan (`api/app.py`):
+
+| Service | Interval | Purpose |
+|---------|----------|---------|
+| MV refresh loop | 30 s | Polls `get_due_for_refresh()`, executes CTAS or DELETE+INSERT on stale MVs |
+| Warm table manager | Configurable | Promotes frequently-queried tables to Trino Iceberg local SSD cache |
+| Hot table loader | Configurable | Loads small reference tables into in-memory cache for sub-millisecond access |
+| API source poller | Per-source interval | Re-fetches and re-caches remote REST/GraphQL/gRPC sources |
+
+### Hot/Warm Table Caching Tiers
+
+| Tier | Storage | Promotion criteria | Access latency |
+|------|---------|-------------------|----------------|
+| Hot | In-process memory | Row count < threshold, or is a relationship target | <1 ms |
+| Warm | Trino Iceberg on local SSD | Query frequency threshold exceeded | ~5–20 ms |
+| Cold | Remote source | Default | 50–500 ms |
+
+## Metadata Import (Hasura v2 / DDN)
+
+Existing Hasura deployments can be converted to Provisa config without manual rewriting.
+
+| Module | Input | Output |
+|--------|-------|--------|
+| `hasura_v2/` | Hasura v2 `metadata.yaml` | Provisa `config.yaml` |
+| `ddn/` | Hasura DDN supergraph JSON | Provisa `config.yaml` |
+
+Both converters map tracked tables, relationships, permissions, and remote schemas. The result is a complete Provisa config ready for deployment.
+
+## Apollo Federation
+
+`compiler/federation.py` exposes Provisa as an Apollo Federation v2 subgraph. The subgraph SDL is auto-generated from the published schema with `@key` directives on primary-key columns and `@external`/`@provides` annotations on cross-subgraph relationships. Provisa responds to `_entities` and `_service` queries required by the federation gateway.
 
 ## Security Enforcement Order
 
