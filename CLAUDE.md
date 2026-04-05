@@ -52,8 +52,20 @@ On new requirement/constraint/feature/design decision: spawn background haiku ag
 
 Patterns: FastAPI async handlers, Pydantic validation.
 
+## Python Client (`provisa-client/`)
+
+Standalone package published to PyPI as `provisa-client`. Independent of the server — its own `pyproject.toml`, tests, and release artifact.
+
+| File | Purpose |
+|------|---------|
+| `provisa_client/client.py` | `ProvisaClient` — GraphQL (sync/async) and Arrow Flight methods |
+| `tests/test_client.py` | Unit tests (respx mocks for HTTP; ticket encoding tests for Flight) |
+
+Verification: `python -m pytest provisa-client/tests/ -x -q`
+
 # Verification
 - Tests: `python -m pytest tests/ -x -q`
+- Client tests: `python -m pytest provisa-client/tests/ -x -q`
 - Server: `uvicorn main:app --reload`
 
 # Module Boundaries

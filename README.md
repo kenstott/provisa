@@ -38,6 +38,7 @@ GraphQL is used as the universal query language specifically because it can only
 - **Admin API** — Strawberry GraphQL at `/admin/graphql` — config upload/download, relationship editing, AI-assisted FK suggestions, query approval
 - **LLM relationship discovery** — Claude-powered FK candidate suggestion
 - **JDBC driver** — BI tool integration (Tableau, PowerBI, DBeaver): `approved` and `catalog` modes
+- **Python client** — `pip install provisa-client`; GraphQL queries → DataFrames, Arrow Flight → pyarrow Tables
 - **Hasura v2 import** — Convert Hasura v2 metadata YAML to Provisa config
 - **DDN import** — Convert Hasura DDN supergraph metadata to Provisa config
 - **Apollo Federation** — Expose Provisa as an Apollo Federation v2 subgraph
@@ -77,6 +78,24 @@ curl -X POST http://localhost:8001/data/graphql \
   -d '{"query": "{ orders { id amount region } }", "role": "admin"}'
 ```
 
+### Python Client
+
+```bash
+pip install provisa-client
+```
+
+```python
+from provisa_client import ProvisaClient
+
+client = ProvisaClient("http://localhost:8001", role="admin")
+
+# GraphQL → DataFrame
+df = client.query_df("{ orders { id amount region } }")
+
+# Arrow Flight → pyarrow Table (high-throughput)
+table = client.flight("{ orders { id amount region } }")
+```
+
 See [docs/quickstart.md](docs/quickstart.md) for a step-by-step walkthrough.
 
 ## Documentation
@@ -91,6 +110,7 @@ See [docs/quickstart.md](docs/quickstart.md) for a step-by-step walkthrough.
 | Supported source types | [docs/sources.md](docs/sources.md) |
 | SSE subscriptions | [docs/subscriptions.md](docs/subscriptions.md) |
 | JDBC, BI tools, Arrow Flight clients, Apollo Federation | [docs/integrations.md](docs/integrations.md) |
+| Python client (`provisa-client`) | [docs/python-client.md](docs/python-client.md) |
 | Admin API | [docs/admin.md](docs/admin.md) |
 | Deployment (Docker Compose, Kubernetes, macOS) | [docs/deployment.md](docs/deployment.md) |
 | Hasura v2 / DDN import | [docs/import.md](docs/import.md) |

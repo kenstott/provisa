@@ -34,6 +34,33 @@ The CI workflow (`build-dmg.yml`) triggers on any `v*` tag and:
 4. Uploads `Provisa-<tag>-macOS.dmg` as the release asset
 5. Auto-generates release notes from commits since the previous tag
 
+## Release Assets
+
+Each release publishes three assets:
+
+| Asset | Where |
+|-------|-------|
+| `Provisa-<tag>-macOS.dmg` | GitHub Release |
+| `provisa-jdbc-<tag>.jar` | GitHub Release |
+| `provisa_client-<pep440>-py3-none-any.whl` | GitHub Release + PyPI |
+
+The Python client version is automatically converted to PEP 440 format:
+`v0.1.0-alpha.1` → `0.1.0a1`, `v0.1.0-beta.1` → `0.1.0b1`, `v0.1.0-rc.1` → `0.1.0rc1`.
+
+## PyPI Publishing Setup (one-time)
+
+The workflow uses OIDC Trusted Publishers — no API key required.
+
+1. Create a PyPI account and the `provisa-client` project (first publish creates it)
+2. Go to PyPI → Account Settings → Publishing → Add a new publisher:
+   - Owner: `kenstott`
+   - Repository: `provisa`
+   - Workflow: `build-dmg.yml`
+   - Environment: `pypi`
+3. In the GitHub repo, create an environment named `pypi` under Settings → Environments
+
+The `publish-pypi` job will then publish automatically on every tag.
+
 ## Required Repository Secrets
 
 Configure these under **Settings → Secrets → Actions**:
