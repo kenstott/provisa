@@ -15,6 +15,60 @@ info() { printf "${CYAN}[provisa]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[provisa]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[provisa]${NC} %s\n" "$*" >&2; }
 
+# ── Derive Trino worker count from RAM budget ─────────────────────────────────
+_workers_from_budget() {
+  local gb="$1"
+  if   [ "$gb" -ge 96 ]; then echo 4
+  elif [ "$gb" -ge 48 ]; then echo 2
+  elif [ "$gb" -ge 24 ]; then echo 1
+  else echo 0
+  fi
+}
+
+# ── Ask RAM budget at first launch ────────────────────────────────────────────
+# Sets global: TRINO_WORKERS
+ask_ram_budget() {
+  local total_gb
+  total_gb="$(awk '/MemTotal/ {printf "%d", $2/1024/1024}' /proc/meminfo)"
+
+  printf "\n${BOLD}RAM Budget${NC}\n"
+  printf "How much RAM should Provisa use? (host total: %dGB)\n\n" "$total_gb"
+
+  local options=()
+  for size in 4 8 16 32 64 128; do
+    [ "$size" -le "$total_gb" ] && options+=("${size}GB")
+  done
+  options+=("All (${total_gb}GB)")
+
+  local i=1
+  for opt in "${options[@]}"; do
+    printf "  [%d] %s\n" "$i" "$opt"
+    i=$((i + 1))
+  done
+  printf "\n"
+
+  local choice
+  while true; do
+    printf "Enter choice [1-%d]: " "${#options[@]}"
+    read -r choice
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#options[@]}" ]; then
+      break
+    fi
+    printf "Invalid choice. Try again.\n"
+  done
+
+  local selected="${options[$((choice - 1))]}"
+  local budget_gb
+  if [[ "$selected" == All* ]]; then
+    budget_gb="$total_gb"
+  else
+    budget_gb="${selected%GB}"
+  fi
+
+  TRINO_WORKERS="$(_workers_from_budget "$budget_gb")"
+  ok "RAM budget: ${budget_gb}GB → Trino workers: ${TRINO_WORKERS}"
+}
+
 # ── Check Docker ───────────────────────────────────────────────────────────────
 check_docker() {
   if ! docker info &>/dev/null; then
@@ -50,6 +104,7 @@ ui_port: 3000
 api_port: 8000
 auto_open_browser: true
 runtime: docker
+federation_workers: ${TRINO_WORKERS}
 YAML
   ok "Config written to ${PROVISA_HOME}/config.yaml"
 }
@@ -73,11 +128,14 @@ install_cli() {
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 main() {
+  TRINO_WORKERS=0
+
   printf "\n${BOLD}Provisa — First Launch Setup${NC}\n"
   printf "═══════════════════════════════════════════\n\n"
   info "Setting up Provisa (no internet required)..."
 
   check_docker
+  ask_ram_budget
   load_images
   write_config
   install_cli

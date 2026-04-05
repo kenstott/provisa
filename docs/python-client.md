@@ -20,8 +20,8 @@ from provisa_client import ProvisaClient
 
 client = ProvisaClient(
     "http://localhost:8001",
-    token="your-bearer-token",   # omit for open/simple auth
-    role="analyst",
+    username="alice",
+    password="secret",
 )
 ```
 

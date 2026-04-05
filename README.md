@@ -104,7 +104,7 @@ pip install provisa-client
 ```python
 from provisa_client import ProvisaClient
 
-client = ProvisaClient("http://localhost:8001", role="admin")
+client = ProvisaClient("http://localhost:8001", username="alice", password="secret")
 
 # GraphQL → DataFrame
 df = client.query_df("{ orders { id amount region } }")
@@ -133,19 +133,26 @@ See [docs/quickstart.md](docs/quickstart.md) for a step-by-step walkthrough.
 | Hasura v2 / DDN import | [docs/import.md](docs/import.md) |
 | Release workflow (alpha/beta/stable tags) | [docs/releasing.md](docs/releasing.md) |
 
-## Development
+## Sizing
 
-```bash
-# Install dev dependencies
-pip install -e ".[dev]"
+Provisa includes a built-in federation engine for multi-source queries. At first launch you choose a RAM budget; Provisa derives the number of local federation workers automatically.
 
-# Run tests
-python -m pytest tests/unit/ -x -q       # unit tests
-python -m pytest tests/ -x -q -m e2e     # e2e tests (needs services running)
+| Host RAM | Workers | Typical workload |
+|----------|---------|-----------------|
+| < 24 GB  | 0       | Development, single-source queries, small teams |
+| 24–47 GB | 1       | Small team, moderate cross-source queries |
+| 48–95 GB | 2       | Departmental deployment, mixed BI + notebook usage |
+| 96 GB+   | 4       | Large department, heavy concurrent federation |
 
-# Start UI
-cd provisa-ui && npm install && npm run dev
-```
+Worker count can be changed at any time by editing `~/.provisa/config.yaml` (`federation_workers: N`) and running `provisa restart`. Set to `0` to run coordination-only (single-node).
+
+### Scaling beyond a single box
+
+**Horizontal scale-out** — Run multiple Provisa instances behind a load balancer. Each instance is a fully functioning system. All instances must point at the same config DB (set `CONFIG_DB_HOST` on secondary boxes) and optionally a shared Redis instance (`REDIS_URL`) for a unified cache. Most queries distribute transparently; very large cross-source joins may exceed the resources of a single instance and require a larger box or BYO Trino.
+
+**Shared Redis** — Set `REDIS_URL` on each instance to point at an external Redis. Shared Redis means cache entries from one instance are available to all, improving hit rates across the cluster.
+
+**BYO Trino** — Point Provisa at an existing Trino cluster by setting `TRINO_HOST` and `TRINO_PORT`. The embedded workers are not started. Recommended for large-scale or cloud deployments.
 
 ## License
 

@@ -170,6 +170,22 @@ services:
       retries: 5
       start_period: 15s
 
+  trino-worker:
+    image: trinodb/trino:480
+    entrypoint: ["/etc/trino/worker/entrypoint.sh"]
+    volumes:
+      - ./trino/etc/worker/config.properties:/etc/trino/config.properties:ro
+      - ./trino/etc/jvm.config:/etc/trino/jvm.config:ro
+      - ./trino/etc/worker/entrypoint.sh:/etc/trino/worker/entrypoint.sh:ro
+      - ./trino/catalog:/etc/trino/catalog
+      - ./trino/kafka:/etc/trino/kafka:ro
+      - trino_worker_cache:/data/trino/cache
+    depends_on:
+      trino:
+        condition: service_healthy
+    deploy:
+      replicas: 0
+
 volumes:
   pg_data:
   mongo_data:
@@ -177,3 +193,4 @@ volumes:
   redis_data:
   kafka_data:
   trino_cache:
+  trino_worker_cache:

@@ -14,6 +14,53 @@ function Write-Info  { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor 
 function Write-Ok    { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Green }
 function Write-Err   { param($Msg) Write-Host "[provisa] $Msg" -ForegroundColor Red }
 
+# ── Derive Trino worker count from RAM budget ─────────────────────────────────
+function Get-WorkersFromBudget {
+  param([int]$Gb)
+  if ($Gb -ge 96) { return 4 }
+  if ($Gb -ge 48) { return 2 }
+  if ($Gb -ge 24) { return 1 }
+  return 0
+}
+
+# ── Ask RAM budget at first launch ────────────────────────────────────────────
+function Ask-RamBudget {
+  $totalBytes = (Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory
+  $totalGb = [int][Math]::Floor($totalBytes / 1GB)
+
+  Write-Host ""
+  Write-Host "RAM Budget" -ForegroundColor White
+  Write-Host "How much RAM should Provisa use? (host total: ${totalGb}GB)"
+  Write-Host ""
+
+  $options = @()
+  foreach ($size in @(4, 8, 16, 32, 64, 128)) {
+    if ($size -le $totalGb) { $options += "${size}GB" }
+  }
+  $options += "All (${totalGb}GB)"
+
+  for ($i = 0; $i -lt $options.Count; $i++) {
+    Write-Host "  [$($i+1)] $($options[$i])"
+  }
+  Write-Host ""
+
+  do {
+    $input = Read-Host "Enter choice [1-$($options.Count)]"
+    $valid = $input -match '^\d+$' -and [int]$input -ge 1 -and [int]$input -le $options.Count
+    if (-not $valid) { Write-Host "Invalid choice. Try again." }
+  } while (-not $valid)
+
+  $selected = $options[[int]$input - 1]
+  if ($selected -like 'All*') {
+    $budgetGb = $totalGb
+  } else {
+    $budgetGb = [int]($selected -replace 'GB', '')
+  }
+
+  $script:TrinoWorkers = Get-WorkersFromBudget -Gb $budgetGb
+  Write-Ok "RAM budget: ${budgetGb}GB → Trino workers: $($script:TrinoWorkers)"
+}
+
 # ── Check Docker ───────────────────────────────────────────────────────────────
 function Check-Docker {
   $result = docker info 2>&1
@@ -55,12 +102,15 @@ ui_port: 3000
 api_port: 8000
 auto_open_browser: true
 runtime: docker
+federation_workers: $($script:TrinoWorkers)
 "@
   Set-Content -Path $configPath -Value $content -Encoding UTF8
   Write-Ok "Config written to $configPath"
 }
 
 # ── Main ───────────────────────────────────────────────────────────────────────
+$script:TrinoWorkers = 0
+
 Write-Host ""
 Write-Host "Provisa — First Launch Setup" -ForegroundColor White
 Write-Host "===========================================" -ForegroundColor White
@@ -68,6 +118,7 @@ Write-Host ""
 Write-Info 'Setting up Provisa (no internet required)...'
 
 Check-Docker
+Ask-RamBudget
 Load-Images
 Write-Config
 

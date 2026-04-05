@@ -27,7 +27,8 @@
       "mcp__sequentialthinking__sequentialthinking",
       "mcp__github__update_issue",
       "mcp__github__list_issues",
-      "mcp__github__get_issue"
+      "mcp__github__get_issue",
+      "mcp__filesystem__list_directory"
     ]
   },
   "enabledMcpjsonServers": [

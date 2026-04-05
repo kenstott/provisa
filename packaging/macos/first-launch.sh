@@ -29,18 +29,74 @@ info() { printf "${CYAN}[provisa]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[provisa]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[provisa]${NC} %s\n" "$*" >&2; }
 
+# ── Derive Trino worker count from RAM budget ─────────────────────────────────
+_workers_from_budget() {
+  local gb="$1"
+  if   [ "$gb" -ge 96 ]; then echo 4
+  elif [ "$gb" -ge 48 ]; then echo 2
+  elif [ "$gb" -ge 24 ]; then echo 1
+  else echo 0
+  fi
+}
+
+# ── Ask RAM budget at first launch ───────────────────────────────────────────
+# Sets globals: BUDGET_GB, TRINO_WORKERS, LIMA_MEMORY
+ask_ram_budget() {
+  local total_gb
+  total_gb="$(sysctl -n hw.memsize | awk '{printf "%d", $1/1024/1024/1024}')"
+
+  printf "\n${BOLD}RAM Budget${NC}\n"
+  printf "How much RAM should Provisa use? (host total: %dGB)\n\n" "$total_gb"
+
+  # Build option list: powers of 2 up to total, then All
+  local options=()
+  for size in 4 8 16 32 64 128; do
+    [ "$size" -le "$total_gb" ] && options+=("${size}GB")
+  done
+  options+=("All (${total_gb}GB)")
+
+  local i=1
+  for opt in "${options[@]}"; do
+    printf "  [%d] %s\n" "$i" "$opt"
+    i=$((i + 1))
+  done
+  printf "\n"
+
+  local choice
+  while true; do
+    printf "Enter choice [1-%d]: " "${#options[@]}"
+    read -r choice
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#options[@]}" ]; then
+      break
+    fi
+    printf "Invalid choice. Try again.\n"
+  done
+
+  local selected="${options[$((choice - 1))]}"
+  if [[ "$selected" == All* ]]; then
+    BUDGET_GB="$total_gb"
+  else
+    BUDGET_GB="${selected%GB}"
+  fi
+
+  TRINO_WORKERS="$(_workers_from_budget "$BUDGET_GB")"
+  LIMA_MEMORY="${BUDGET_GB}GiB"
+
+  ok "RAM budget: ${BUDGET_GB}GB → Trino workers: ${TRINO_WORKERS}"
+}
+
 # ── Write Lima VM config if not present ──────────────────────────────────────
 write_lima_config() {
   if [ -f "$LIMA_YAML" ]; then
     return
   fi
-  cat > "$LIMA_YAML" <<'YAML'
+  cat > "$LIMA_YAML" <<YAML
 # Provisa Lima VM — airgapped, no network pull required
 vmType: vz
 os: Linux
 arch: host
 cpus: 4
-memory: "8GiB"
+memory: "${LIMA_MEMORY}"
 disk: "60GiB"
 rosetta:
   enabled: true
@@ -126,6 +182,7 @@ api_port: 8000
 auto_open_browser: true
 runtime: lima
 lima_vm: ${LIMA_VM_NAME}
+federation_workers: ${TRINO_WORKERS}
 YAML
   ok "Config written to ${PROVISA_HOME}/config.yaml"
 }
@@ -153,11 +210,17 @@ main() {
     exit 0
   fi
 
+  # Globals set by ask_ram_budget
+  BUDGET_GB=8
+  TRINO_WORKERS=0
+  LIMA_MEMORY="8GiB"
+
   printf "\n${BOLD}Provisa — First Launch Setup${NC}\n"
   printf "═══════════════════════════════════════════\n\n"
   info "Setting up Provisa (no internet required)..."
 
   mkdir -p "$PROVISA_HOME"
+  ask_ram_budget
   write_config
   stage_images
   start_lima

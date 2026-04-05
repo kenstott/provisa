@@ -63,6 +63,7 @@ Every REQ is assigned to a phase. Cross-cutting requirements (REQ-064, REQ-065, 
 | AH: DDN Converter | REQ-183, REQ-189, REQ-191 |
 | AI: NoSQL Source Mapping | REQ-250, REQ-251, REQ-252, REQ-253 |
 | AJ: Apollo Federation | REQ-259 |
+| AK: Two-Stage Compiler & Multi-Protocol Clients | REQ-262, REQ-263, REQ-264, REQ-265, REQ-266, REQ-267, REQ-268, REQ-269, REQ-270, REQ-271, REQ-272, REQ-273, REQ-274 |
 | Dropped | REQ-017 (NoSQL Parquet materialization — Trino native connectors handle this) |
 | Not implementation | REQ-072, REQ-073, REQ-074 (commercial positioning) |
 
@@ -3156,3 +3157,120 @@ Phases AA-AE are independent and can be parallelized. Phase AF1 (shell script) c
 | realtime-poll | `hasura/sample-apps/realtime-poll` | Simpler structure, subscriptions |
 | demo-apps | `hasura/demo-apps` | Multiple configs, Docker Compose, roles |
 | metadata-api-example (Chinook) | `hasura/metadata-api-example` | Chinook DB, relationships |
+
+---
+
+## Phase AK: Two-Stage Compiler & Multi-Protocol Clients
+**Goal:** Refactor the compiler into two explicit stages; expose raw SQL as a first-class entry point; add Python DB-API 2.0, SQLAlchemy dialect, and ADBC interfaces to `provisa-client`; update the JDBC driver to enforce governance in catalog mode.
+**REQs:** REQ-262, REQ-263, REQ-264, REQ-265, REQ-266, REQ-267, REQ-268, REQ-269, REQ-270, REQ-271, REQ-272, REQ-273, REQ-274
+
+### AK1: Two-Stage Compiler Refactor
+
+**Build:**
+- `provisa/compiler/stage1.py` — extract existing GQL→SQL logic from compiler into Stage 1. Input: validated GraphQL AST + registration model. Output: plain PG-style SQL with all aliases explicit (physical names preserved, AS aliases for every selected column).
+- `provisa/compiler/stage2.py` — new standalone SQL governance transformer. Input: SQL string + role + registration model. Output: governed SQL. Uses SQLGlot to parse SQL AST, walk all table references, inject: RLS WHERE predicates, column masking expressions, column visibility (remove/NULL invisible columns), LIMIT ceiling, TABLESAMPLE/random sampling. Handles subqueries, CTEs, JOINs, UNION, SELECT *.
+- `provisa/compiler/pipeline.py` — assembles Stage 1 + Stage 2 for the existing GraphQL path. Replaces the current monolithic compiler call sites.
+- `provisa/api/data/endpoint.py` — add `POST /data/sql` endpoint. Accepts `{sql, variables}`. Authenticates via existing auth middleware (role from token). Passes SQL directly to Stage 2, then routes and executes.
+
+**Verify:**
+- `python -m pytest tests/unit/test_stage2.py -x -q`:
+  - RLS WHERE injected for every table reference including subqueries and CTEs
+  - Masked columns wrapped in masking expression
+  - Invisible columns removed from SELECT list
+  - LIMIT injected when ceiling exceeded
+  - SELECT * expanded and filtered
+  - UNION branches each governed independently
+- `python -m pytest tests/e2e/test_sql_endpoint.py -x -q` — `/data/sql` returns governed results matching equivalent GraphQL query
+
+**Files:**
+| File | Action |
+|------|--------|
+| `provisa/compiler/stage1.py` | Create (extract from existing compiler) |
+| `provisa/compiler/stage2.py` | Create |
+| `provisa/compiler/pipeline.py` | Create |
+| `provisa/api/data/endpoint.py` | Modify (add /data/sql, wire stage2) |
+| `tests/unit/test_stage2.py` | Create |
+| `tests/e2e/test_sql_endpoint.py` | Create |
+
+---
+
+### AK2: JDBC Catalog Mode Governance
+
+**Build:**
+- Update `ProvisaConnection.java` — in catalog mode, pass arbitrary SQL through `/data/sql` endpoint (Stage 2 governed) instead of executing directly. Remove the current direct execution path for catalog mode.
+- Update `FlightTransport.java` — catalog mode Flight tickets route through Stage 2 on the server side (no client change needed; server-side enforcement).
+
+**Verify:**
+- `mvn -f jdbc-driver/pom.xml test` — catalog mode queries return governed results (RLS applied, masked columns masked)
+- Integration test: catalog mode query as restricted role does not return rows excluded by RLS
+
+**Files:**
+| File | Action |
+|------|--------|
+| `jdbc-driver/src/main/java/io/provisa/jdbc/ProvisaConnection.java` | Modify |
+| `jdbc-driver/src/test/java/io/provisa/jdbc/ProvisaDriverIT.java` | Modify |
+
+---
+
+### AK3: Python DB-API 2.0
+
+**Build:**
+- `provisa_client/dbapi.py` — PEP 249 `connect()`, `Connection`, `Cursor`. `cursor.execute(query)` detects GraphQL vs SQL by leading `{` or `query`/`mutation` keyword. GraphQL path: calls existing `ProvisaClient.query()`. SQL path: calls `/data/sql`. `fetchall()`, `fetchone()`, `fetchmany()`. `description` attribute returns column metadata. `mode` kwarg on `connect()` (default: `approved`).
+- `provisa_client/__init__.py` — export `connect` from `dbapi`.
+
+**Verify:**
+- `python -m pytest provisa-client/tests/test_dbapi.py -x -q`:
+  - `connect()` authenticates and assigns role
+  - `execute()` with GraphQL string returns correct rows
+  - `execute()` with SQL string returns correct rows
+  - `fetchall()`, `fetchone()`, `fetchmany()` work correctly
+  - `description` returns correct column names and types
+  - `mode=catalog` exposes registered tables
+
+**Files:**
+| File | Action |
+|------|--------|
+| `provisa_client/dbapi.py` | Create |
+| `provisa_client/__init__.py` | Modify (export connect) |
+| `provisa-client/tests/test_dbapi.py` | Create |
+
+---
+
+### AK4: SQLAlchemy Dialect
+
+**Build:**
+- `provisa_client/sqlalchemy_dialect.py` — SQLAlchemy `CreateEnginePlugin` and dialect class. URL scheme `provisa+http://` and `provisa+https://`. Dialect wraps DB-API 2.0 connection. Implements `get_table_names()` (approved mode: stable IDs; catalog mode: registered table names), `get_columns(table_name)` (introspects via `/admin/graphql`). Registers dialect entry point in `pyproject.toml` as `provisa.dialects = provisa_client.sqlalchemy_dialect:ProvisaDialect`.
+
+**Verify:**
+- `python -m pytest provisa-client/tests/test_sqlalchemy.py -x -q`:
+  - `create_engine("provisa+http://user:pass@localhost:8001")` connects
+  - `pd.read_sql("SELECT * FROM monthly_revenue", engine)` returns DataFrame
+  - `inspector.get_table_names()` returns approved query stable IDs
+  - `inspector.get_columns("monthly_revenue")` returns correct schema
+
+**Files:**
+| File | Action |
+|------|--------|
+| `provisa_client/sqlalchemy_dialect.py` | Create |
+| `provisa-client/pyproject.toml` | Modify (add entry_points for dialect) |
+| `provisa-client/tests/test_sqlalchemy.py` | Create |
+
+---
+
+### AK5: ADBC Interface
+
+**Build:**
+- `provisa_client/adbc.py` — `adbc_connect(url, user, password, mode="approved")` returns an ADBC-compatible connection backed by Provisa's Arrow Flight endpoint. Authenticates via `/auth/login`, uses returned token as Flight bearer auth. Results stream as Arrow RecordBatches. Compatible with `adbc_driver_manager.AdbcConnection` interface. Optional dependency: `pyarrow`, `adbc-driver-manager`.
+
+**Verify:**
+- `python -m pytest provisa-client/tests/test_adbc.py -x -q`:
+  - `adbc_connect()` authenticates
+  - Query returns Arrow Table with correct schema and data
+  - Results stream (no full materialization)
+
+**Files:**
+| File | Action |
+|------|--------|
+| `provisa_client/adbc.py` | Create |
+| `provisa-client/pyproject.toml` | Modify (add adbc optional dependency group) |
+| `provisa-client/tests/test_adbc.py` | Create |

@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Kenneth Stott
+# Copyright (c) 2026 Kenneth Stott
 # Canary: 8f8ec523-0921-4866-889d-9a3f38256e46
 #
 # This source code is licensed under the Business Source License 1.1
@@ -255,13 +255,15 @@ async def _load_and_build(config_path: str | None = None) -> None:
     # Load config into PG (and create Trino catalogs)
     config = parse_config_dict(raw_config)
 
-    # Initialize cache store from config
+    # Initialize cache store — REDIS_URL env var overrides config
     cache_config = raw_config.get("cache", {})
     if cache_config.get("enabled"):
-        redis_url = cache_config.get("redis_url", "")
-        if redis_url.startswith("${env:"):
-            env_key = redis_url[6:-1]
-            redis_url = os.environ.get(env_key, "")
+        redis_url = os.environ.get("REDIS_URL", "")
+        if not redis_url:
+            redis_url = cache_config.get("redis_url", "")
+            if redis_url.startswith("${env:"):
+                env_key = redis_url[6:-1]
+                redis_url = os.environ.get(env_key, "")
         if redis_url:
             state.cache_store = RedisCacheStore(redis_url)
         state.cache_default_ttl = cache_config.get("default_ttl", 300)

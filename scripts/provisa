@@ -34,6 +34,7 @@ PROJECT_DIR="$(read_config project_dir "")"
 UI_PORT="$(read_config ui_port 3000)"
 API_PORT="$(read_config api_port 8000)"
 AUTO_OPEN="$(read_config auto_open_browser true)"
+TRINO_WORKERS="$(read_config federation_workers 0)"
 
 # ── Validation ──────────────────────────────────────────────────────────────
 if [ -z "$PROJECT_DIR" ] || [ ! -d "$PROJECT_DIR" ]; then
@@ -72,6 +73,7 @@ brand_service_name() {
         postgres)        echo "Provisa Database" ;;
         pgbouncer)       echo "Provisa Connection Pool" ;;
         trino)           echo "Provisa Query Engine" ;;
+        trino-worker)    echo "Provisa Query Worker" ;;
         provisa)         echo "Provisa API Server" ;;
         mongodb)         echo "Provisa Document Store" ;;
         minio)           echo "Provisa Object Storage" ;;
@@ -155,8 +157,14 @@ cmd_start() {
     printf "${CYAN}${BOLD}Starting Provisa...${NC}\n"
     mkdir -p "$LOG_DIR"
 
+    local scale_arg=""
+    if [ "${TRINO_WORKERS:-0}" -gt 0 ] 2>/dev/null; then
+        scale_arg="--scale trino-worker=${TRINO_WORKERS}"
+        info "Starting ${TRINO_WORKERS} Trino worker(s)..."
+    fi
+
     # shellcheck disable=SC2086
-    $(get_compose) $COMPOSE_FILES up -d 2>&1 | filter_output
+    $(get_compose) $COMPOSE_FILES up -d $scale_arg 2>&1 | filter_output
 
     if wait_for_healthy 120; then
         printf "\n${GREEN}${BOLD}Provisa is running.${NC}\n"

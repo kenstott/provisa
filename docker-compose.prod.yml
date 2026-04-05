@@ -1,18 +1,30 @@
 # Production override: adds Provisa container.
 # Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up
+#
+# External config DB:  set CONFIG_DB_HOST, CONFIG_DB_PORT, CONFIG_DB_USER,
+#                      CONFIG_DB_PASSWORD, CONFIG_DB_NAME to point at an
+#                      existing Postgres instance on another box.
+#
+# External Redis:      set REDIS_URL (e.g. redis://192.168.1.5:6379) to use a
+#                      shared Redis instance instead of the bundled one.
 services:
+  postgres:
+    ports:
+      - "${CONFIG_DB_BIND:-127.0.0.1}:5432:5432"
+
   provisa:
     build: .
     ports:
       - "8000:8000"
     environment:
-      PG_HOST: postgres
-      PG_PORT: 5432
-      PG_DATABASE: provisa
-      PG_USER: provisa
-      PG_PASSWORD: provisa
+      PG_HOST: "${CONFIG_DB_HOST:-postgres}"
+      PG_PORT: "${CONFIG_DB_PORT:-5432}"
+      PG_DATABASE: "${CONFIG_DB_NAME:-provisa}"
+      PG_USER: "${CONFIG_DB_USER:-provisa}"
+      PG_PASSWORD: "${CONFIG_DB_PASSWORD:-provisa}"
       TRINO_HOST: trino
       TRINO_PORT: 8080
+      REDIS_URL: "${REDIS_URL:-redis://redis:6379}"
     depends_on:
       postgres:
         condition: service_healthy

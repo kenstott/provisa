@@ -58,7 +58,7 @@ pip install provisa-client
 ```python
 from provisa_client import ProvisaClient
 
-client = ProvisaClient("http://localhost:8001", role="analyst")
+client = ProvisaClient("http://localhost:8001", username="alice", password="secret")
 
 # Arrow Flight → pyarrow Table (high-throughput, streaming)
 table = client.flight("{ orders { id amount } }")

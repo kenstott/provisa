@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Kenneth Stott
+# Copyright (c) 2026 Kenneth Stott
 # Canary: 1d956ef4-7a36-43aa-a44c-c1308c5ad84f
 # Canary: placeholder
 #
