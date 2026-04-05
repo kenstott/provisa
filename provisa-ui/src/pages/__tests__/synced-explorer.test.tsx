@@ -3,6 +3,10 @@ import { render } from "@testing-library/react";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
+vi.mock("monaco-graphql/esm/initialize", () => ({
+  initializeMode: vi.fn(() => ({ setSchemaConfig: vi.fn() })),
+}));
+
 let mockLiveQuery = "";
 let mockSchema: unknown = null;
 let mockInitialQuery = "";

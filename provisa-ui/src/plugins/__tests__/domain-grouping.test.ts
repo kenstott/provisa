@@ -110,4 +110,45 @@ describe('_renderGroupedFields', () => {
     expect(result).toHaveLength(2)
     expect(calledFieldNames()).toEqual(['sales__orders', '__internal'])
   })
+
+  it('opens domain folder when a field in that domain is selected', () => {
+    const fields: Record<string, unknown> = {
+      sales__orders: {},
+      sales__returns: {},
+      product__items: {},
+    }
+    const selections = [{ name: { value: 'sales__orders' } }]
+
+    const result = _renderGroupedFields(fields, renderField, selections)
+
+    // sales folder should be open, product should not
+    const salesFolder = result.find((r: { props?: { open?: boolean; className?: string } }) => r?.props?.className === 'graphiql-explorer-domain' && r?.props?.open === true)
+    const productFolder = result.find((r: { props?: { open?: boolean; className?: string } }) => r?.props?.className === 'graphiql-explorer-domain' && r?.props?.open === false)
+    expect(salesFolder).toBeDefined()
+    expect(productFolder).toBeDefined()
+  })
+
+  it('all folders closed when no selections provided', () => {
+    const fields: Record<string, unknown> = {
+      sales__orders: {},
+      product__items: {},
+    }
+
+    const result = _renderGroupedFields(fields, renderField)
+
+    const openFolders = result.filter((r: { props?: { open?: boolean; className?: string } }) => r?.props?.className === 'graphiql-explorer-domain' && r?.props?.open === true)
+    expect(openFolders).toHaveLength(0)
+  })
+
+  it('opens domain folder when any field in it is selected', () => {
+    const fields: Record<string, unknown> = {
+      crm__contacts: {},
+      crm__accounts: {},
+    }
+    const selections = [{ name: { value: 'crm__accounts' } }]
+
+    const result = _renderGroupedFields(fields, renderField, selections)
+
+    expect(result[0]?.props?.open).toBe(true)
+  })
 })

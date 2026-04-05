@@ -1840,8 +1840,18 @@ var defaultStyles = {
  * expand/collapse to avoid React state interfering with the
  * Explorer's query manipulation.
  */
-function _renderGroupedFields(fields, renderField) {
+function _renderGroupedFields(fields, renderField, selections) {
   var fieldNames = Object.keys(fields).sort();
+
+  // Build set of currently-selected top-level field names from AST selections
+  var selectedFieldNames = {};
+  if (Array.isArray(selections)) {
+    selections.forEach(function (sel) {
+      if (sel && sel.name && sel.name.value) {
+        selectedFieldNames[sel.name.value] = true;
+      }
+    });
+  }
 
   // Group by domain
   var domains = {};
@@ -1868,12 +1878,14 @@ function _renderGroupedFields(fields, renderField) {
 
   // Render domain folders using native <details>/<summary>
   domainKeys.forEach(function (domain) {
+    var domainOpen = domains[domain].some(function (f) { return selectedFieldNames[f]; });
     result.push(
       React.createElement(
         'details',
         {
           key: '__domain__' + domain,
           className: 'graphiql-explorer-domain',
+          open: domainOpen,
         },
         React.createElement(
           'summary',
@@ -2119,7 +2131,7 @@ var RootView = function (_React$PureComponent8) {
             definition: _this13.props.definition,
             availableFragments: _this13.props.availableFragments
           });
-        })
+        }, selections)
       );
     }
   }]);
