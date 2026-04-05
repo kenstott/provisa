@@ -204,6 +204,11 @@ jobs:
           mv packaging/macos/dist/Provisa.dmg \
              "release-assets/${{ needs.metadata.outputs.dmg_name }}"
 
+      - name: Delete existing release if present
+        run: gh release delete "${{ github.ref_name }}" --yes || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
