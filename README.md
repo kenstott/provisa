@@ -1,6 +1,6 @@
 # Provisa
 
-Config-driven data virtualization platform — a semantic layer from small teams to large enterprises. Unified GraphQL/gRPC API over heterogeneous data sources with governance, security, and performance optimization.
+Config-driven data virtualization platform — a semantic layer from small teams to large enterprises. Unified GraphQL/gRPC/SQL API over heterogeneous data sources with governance, security, and performance optimization.
 
 GraphQL is used as the universal query language specifically because it can only composite existing semantics. New data can only enter the semantic layer via registered sources or aggregates inside Provisa — nothing bypasses governance.
 
