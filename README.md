@@ -72,13 +72,6 @@ provisa start && provisa open
 provisa start
 ```
 
-### From Source
-
-```bash
-pip install -e ".[dev]"
-uvicorn main:app --reload --port 8001
-```
-
 ### First Query
 
 ```bash
