@@ -1,0 +1,90 @@
+Business Source License 1.1 (BSL 1.1)
+
+License text Copyright (c) 2026 Kenneth Stott
+
+Licensor: Kenneth Stott
+Licensed Work: Provisa (this repository and any accompanying code, data, or
+assets)
+Additional Use Grant: In addition to non-production use, production use by
+individuals and organizations with fewer than 100 total employees and
+contractors and with less than 1,000,000 USD (or equivalent) total revenue in
+the prior tax year is permitted. Any production use by larger organizations
+requires a separate commercial license.
+Change Date: 2029-01-21
+Change License: Apache License, Version 2.0
+
+The Licensed Work is provided under the Business Source License 1.1 ("BSL").
+The BSL is an "eventually open" source-available license created by MariaDB
+Corporation Ab. On the Change Date, the terms of the Change License will apply
+to the Licensed Work.
+
+Terms
+
+1. License Grant
+   Subject to the conditions set forth in this license, Licensor grants you a
+   non-exclusive, worldwide, non-transferable, non-sublicensable, royalty-free
+   license to use, copy, create derivative works of, and modify the Licensed
+   Work for any non-production purpose. The Additional Use Grant above extends
+   this license to the extent stated.
+
+2. Restrictions
+   Except as expressly permitted by this license or applicable law, you may not
+   (a) use the Licensed Work for a purpose prohibited by the "Prohibited Uses"
+   section below, (b) provide the Licensed Work to third parties as a managed
+   service or SaaS if doing so would allow them to avoid obtaining a license
+   for the Licensed Work, or (c) remove or alter any notices in the Licensed
+   Work.
+
+3. Prohibited Uses — Anti‑AI Training Restriction
+   3.1. Definitions
+       "Restricted AI Use" means using the Licensed Work, or any portion of it,
+       to train, fine‑tune, instruct, or otherwise improve (directly or
+       indirectly) any machine learning, foundation, or generative AI models;
+       to compute gradients, embeddings, weights, or parameters; or to create
+       datasets for such purposes. Restricted AI Use also includes using
+       outputs of the Licensed Work primarily to improve the performance,
+       accuracy, or generality of any such models.
+
+   3.2. Prohibition
+       Restricted AI Use is not permitted under this license. Any party wishing
+       to engage in Restricted AI Use must obtain a separate commercial license
+       from the Licensor.
+
+4. Change Date and Change License
+   On the Change Date, the Licensed Work will automatically be made available
+   under the Change License stated above. Prior to the Change Date, the
+   Licensed Work is licensed only under the terms of this BSL 1.1.
+
+5. Patent Use
+   This license includes a patent license to make, use, and sell the Licensed
+   Work as provided under the BSL 1.1 standard text.
+
+6. Notice
+   You must keep all copyright, patent, trademark, and attribution notices
+   intact in the Licensed Work and in any copies or substantial portions of it.
+   If you distribute any portion of the Licensed Work, you must include a copy
+   of this license.
+
+7. No Warranty
+   THE LICENSED WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+   FROM, OUT OF OR IN CONNECTION WITH THE LICENSED WORK OR THE USE OR OTHER
+   DEALINGS IN THE LICENSED WORK.
+
+8. Termination
+   If you breach the terms of this license, your rights under this license
+   terminate automatically. Your rights may be reinstated only by express
+   written permission of the Licensor.
+
+Notes
+- This license incorporates the Business Source License 1.1 concept and
+  structure. For reference to the canonical text, see
+  https://mariadb.com/bsl11/.
+- For commercial licensing (including production use above the Additional Use
+  Grant thresholds or for any Restricted AI Use), contact:
+  kennethstott@gmail.com
+
+Required Notice: Copyright 2026 Kenneth Stott

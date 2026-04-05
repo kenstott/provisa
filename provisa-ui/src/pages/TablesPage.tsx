@@ -1,3 +1,13 @@
+// Copyright (c) 2025 Kenneth Stott
+// Canary: e1499f85-6ff4-44b7-aad6-327499acea72
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 import { useState, useEffect, useRef, useLayoutEffect, Fragment } from "react";
 import { createPortal } from "react-dom";
 import {

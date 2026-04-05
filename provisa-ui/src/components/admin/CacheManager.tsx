@@ -1,3 +1,13 @@
+// Copyright (c) 2025 Kenneth Stott
+// Canary: a8e46a16-e119-41fb-96ab-bdbd3e691995
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 import { useState, useEffect } from "react";
 import { fetchCacheStats, purgeCache, purgeCacheByTable, fetchTables } from "../../api/admin";
 import type { CacheStats } from "../../api/admin";

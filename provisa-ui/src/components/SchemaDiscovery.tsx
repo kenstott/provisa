@@ -1,3 +1,13 @@
+// Copyright (c) 2025 Kenneth Stott
+// Canary: a03f3a03-b6a1-4788-99c9-ce711ccd8264
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 import { useState } from "react";
 import { discoverSourceSchema, registerTable } from "../api/admin";
 import type { DiscoveredColumn } from "../api/admin";

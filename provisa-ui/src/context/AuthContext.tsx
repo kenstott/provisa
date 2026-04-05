@@ -1,3 +1,13 @@
+// Copyright (c) 2025 Kenneth Stott
+// Canary: d193460f-9c5e-4775-99e0-f8d6840808bb
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from "react";
 import type { Capability, Role, AuthState } from "../types/auth";
 import { fetchRoles } from "../api/admin";
