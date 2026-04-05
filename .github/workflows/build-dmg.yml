@@ -49,7 +49,7 @@ jobs:
 
       - name: Set up Docker
         run: |
-          brew install docker colima
+          brew install docker colima qemu
           colima start --cpu 4 --memory 8 --disk 60 --vm-type qemu
 
       - name: Build DMG
