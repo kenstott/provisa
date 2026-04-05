@@ -507,13 +507,16 @@ def _collect_nested_columns(
                 )
         else:
             # Scalar column from the parent join
-            select_parts.append(
-                f'{_q(parent_alias)}.{_q(nested_name)}'
-            )
+            nested_response_key = nested_sel.alias.value if nested_sel.alias else nested_name
+            col_expr = f'{_q(parent_alias)}.{_q(nested_name)}'
+            if nested_sel.alias:
+                select_parts.append(f'{col_expr} AS {_q(nested_response_key)}')
+            else:
+                select_parts.append(col_expr)
             columns.append(ColumnRef(
                 alias=parent_alias,
                 column=nested_name,
-                field_name=nested_name,
+                field_name=nested_response_key,
                 nested_in=nesting_path,
             ))
     return alias_counter
@@ -586,8 +589,9 @@ def _compile_root_field(
                 )
         else:
             # Scalar field — check for JSON path extraction
-            gql_field_name = sel_name
-            col_path = ctx.column_paths.get((table.table_id, gql_field_name))
+            response_key = sel.alias.value if sel.alias else sel_name
+            gql_field_name = response_key
+            col_path = ctx.column_paths.get((table.table_id, sel_name))
             if col_path:
                 # path is "source_col.key1.key2" → PG JSON extraction
                 # Emits PG syntax; SQLGlot transpiles to Trino json_extract_scalar
@@ -602,11 +606,20 @@ def _compile_root_field(
                 for i, key in enumerate(keys):
                     op = "->>" if i == len(keys) - 1 else "->"
                     expr = f"{expr}{op}'{key}'"
+                if sel.alias:
+                    expr = f'{expr} AS {_q(response_key)}'
                 select_parts.append(expr)
             elif use_aliases:
-                select_parts.append(f'{_q(root_alias)}.{_q(sel_name)}')
+                col_expr = f'{_q(root_alias)}.{_q(sel_name)}'
+                if sel.alias:
+                    select_parts.append(f'{col_expr} AS {_q(response_key)}')
+                else:
+                    select_parts.append(col_expr)
             else:
-                select_parts.append(_q(sel_name))
+                if sel.alias:
+                    select_parts.append(f'{_q(sel_name)} AS {_q(response_key)}')
+                else:
+                    select_parts.append(_q(sel_name))
             columns.append(ColumnRef(
                 alias=root_alias,
                 column=sel_name,

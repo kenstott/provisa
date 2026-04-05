@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Kenneth Stott
+# Copyright (c) 2026 Kenneth Stott
 # Canary: 6befc172-96f9-4237-be6b-e5f8a2849346
 #
 # This source code is licensed under the Business Source License 1.1
@@ -570,5 +570,45 @@ class TestRelationshipVisibility:
         doc2 = parse("{ orders { id customers { name } } }")
         errors2 = validate(schema_limited, doc2)
         assert errors2  # 'customers' field should not exist on Orders for limited role
+
+class TestColumnAlias:
+    """GraphQL field aliases on scalar columns → SQL AS + response key."""
+
+    def test_simple_alias_in_sql(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders { q: amount status } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx)
+        q = results[0]
+        assert '"amount" AS "q"' in q.sql
+        assert '"status"' in q.sql
+
+    def test_alias_field_name_in_columns(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders { q: amount } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx)
+        col = results[0].columns[0]
+        assert col.column == "amount"
+        assert col.field_name == "q"
+
+    def test_no_alias_unchanged(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders { amount } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx)
+        q = results[0]
+        assert '"amount"' in q.sql
+        assert "AS" not in q.sql
+        assert results[0].columns[0].field_name == "amount"
+
+    def test_alias_with_join(self, schema_and_ctx):
+        # alias on a scalar when JOINs are present (use_aliases=True path)
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders { q: amount customers { name } } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx)
+        q = results[0]
+        assert '"amount" AS "q"' in q.sql
 
 # Aggregate and alias tests moved to test_sql_gen_aggregate.py
