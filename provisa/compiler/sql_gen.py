@@ -103,9 +103,10 @@ class CompiledQuery:
 
     sql: str
     params: list
-    root_field: str  # GraphQL root field name (e.g., "orders")
+    root_field: str  # GraphQL root field name (alias if present, else schema name)
     columns: list[ColumnRef]
     sources: set[str]  # source_ids involved (for routing)
+    canonical_field: str = ""  # original schema field name before alias substitution
     # Cursor pagination fields (connection queries only)
     is_connection: bool = False
     is_backward: bool = False
@@ -116,6 +117,8 @@ class CompiledQuery:
     nodes_sql: str | None = None
     nodes_columns: list[ColumnRef] | None = None
     nodes_params: list = field(default_factory=list)
+    # Alias for the "aggregate" response key (e.g. "derived: aggregate" → "derived")
+    agg_alias: str = "aggregate"
 
 
 # --- Build CompilationContext from SchemaInput ---
@@ -523,8 +526,8 @@ def _compile_root_field(
     use_catalog: bool = False,
 ) -> CompiledQuery:
     """Compile a single root query field to SQL."""
-    root_name = field_node.name.value
-    table = ctx.tables[root_name]
+    root_name = field_node.alias.value if field_node.alias else field_node.name.value
+    table = ctx.tables[field_node.name.value]
     collector = ParamCollector()
     sources: set[str] = {table.source_id}
 
@@ -666,6 +669,7 @@ def _compile_root_field(
         sql=sql,
         params=collector.params,
         root_field=root_name,
+        canonical_field=field_node.name.value,
         columns=columns,
         sources=sources,
     )
@@ -726,8 +730,8 @@ def _compile_aggregate_field(
     use_catalog: bool = False,
 ) -> CompiledQuery:
     """Compile an _aggregate root query field to SQL."""
-    root_name = field_node.name.value
-    table = ctx.tables[root_name]
+    root_name = field_node.alias.value if field_node.alias else field_node.name.value
+    table = ctx.tables[field_node.name.value]
     collector = ParamCollector()
     sources: set[str] = {table.source_id}
 
@@ -735,29 +739,61 @@ def _compile_aggregate_field(
         _collect_requested_agg_funcs(field_node)
     )
 
+    # Collect aliases for aggregate sub-fields
+    agg_key = "aggregate"
+    func_aliases: dict[str, str] = {}
+    col_aliases: dict[str, dict[str, str]] = {}
+    if field_node.selection_set:
+        for sel in field_node.selection_set.selections:
+            if not isinstance(sel, FieldNode) or sel.name.value != "aggregate":
+                continue
+            if sel.alias:
+                agg_key = sel.alias.value
+            if not sel.selection_set:
+                continue
+            for agg_sel in sel.selection_set.selections:
+                if not isinstance(agg_sel, FieldNode):
+                    continue
+                func = agg_sel.name.value
+                if agg_sel.alias:
+                    func_aliases[func] = agg_sel.alias.value
+                if agg_sel.selection_set:
+                    col_aliases[func] = {}
+                    for col_sel in agg_sel.selection_set.selections:
+                        if isinstance(col_sel, FieldNode) and col_sel.alias:
+                            col_aliases[func][col_sel.name.value] = col_sel.alias.value
+
     # Build SELECT parts for aggregate functions
     select_parts: list[str] = []
     columns: list[ColumnRef] = []
 
     if has_count:
         select_parts.append("COUNT(*)")
-        columns.append(ColumnRef(alias=None, column="count", field_name="count", nested_in="aggregate"))
+        columns.append(ColumnRef(alias=None, column="count", field_name="count", nested_in=agg_key))
 
     for col_name in sum_cols:
         select_parts.append(f'SUM({_q(col_name)})')
-        columns.append(ColumnRef(alias=None, column=col_name, field_name=col_name, nested_in="aggregate.sum"))
+        fn_key = func_aliases.get("sum", "sum")
+        field_name = col_aliases.get("sum", {}).get(col_name, col_name)
+        columns.append(ColumnRef(alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"))
 
     for col_name in avg_cols:
         select_parts.append(f'AVG({_q(col_name)})')
-        columns.append(ColumnRef(alias=None, column=col_name, field_name=col_name, nested_in="aggregate.avg"))
+        fn_key = func_aliases.get("avg", "avg")
+        field_name = col_aliases.get("avg", {}).get(col_name, col_name)
+        columns.append(ColumnRef(alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"))
 
     for col_name in min_cols:
         select_parts.append(f'MIN({_q(col_name)})')
-        columns.append(ColumnRef(alias=None, column=col_name, field_name=col_name, nested_in="aggregate.min"))
+        fn_key = func_aliases.get("min", "min")
+        field_name = col_aliases.get("min", {}).get(col_name, col_name)
+        columns.append(ColumnRef(alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"))
 
     for col_name in max_cols:
         select_parts.append(f'MAX({_q(col_name)})')
-        columns.append(ColumnRef(alias=None, column=col_name, field_name=col_name, nested_in="aggregate.max"))
+        fn_key = func_aliases.get("max", "max")
+        field_name = col_aliases.get("max", {}).get(col_name, col_name)
+        columns.append(ColumnRef(alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"))
 
     if not select_parts:
         select_parts.append("1")
@@ -808,11 +844,13 @@ def _compile_aggregate_field(
         sql=sql,
         params=collector.params,
         root_field=root_name,
+        canonical_field=field_node.name.value,
         columns=columns,
         sources=sources,
         nodes_sql=nodes_sql,
         nodes_columns=nodes_columns,
         nodes_params=nodes_params,
+        agg_alias=agg_key,
     )
 
 
@@ -898,6 +936,7 @@ def rewrite_hot_joins(compiled: CompiledQuery, hot_manager: object) -> CompiledQ
             sql=sql,
             params=compiled.params,
             root_field=compiled.root_field,
+            canonical_field=compiled.canonical_field,
             columns=compiled.columns,
             sources=compiled.sources,
         )
@@ -927,8 +966,8 @@ def _compile_connection_field(
     """Compile a _connection root query field to SQL with cursor pagination."""
     from provisa.compiler.cursor import apply_cursor_pagination, extract_sort_columns, reverse_order
 
-    root_name = field_node.name.value
-    table = ctx.tables[root_name]
+    root_name = field_node.alias.value if field_node.alias else field_node.name.value
+    table = ctx.tables[field_node.name.value]
     collector = ParamCollector()
     sources: set[str] = {table.source_id}
 
@@ -990,6 +1029,7 @@ def _compile_connection_field(
         sql=sql,
         params=collector.params,
         root_field=root_name,
+        canonical_field=field_node.name.value,
         columns=columns,
         sources=sources,
         is_connection=True,

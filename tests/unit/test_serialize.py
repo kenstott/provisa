@@ -164,3 +164,24 @@ class TestSerializeAggregate:
         assert data["aggregate"]["count"] == 2
         assert data["aggregate"]["sum"]["amount"] == 50.0
         assert len(data["nodes"]) == 2
+
+    def test_aggregate_aliases_at_all_levels(self):
+        """Aliases on aggregate/func/column keys appear in the serialized response."""
+        agg_columns = [
+            # derived: aggregate / total: sum / tickets: ticket_id
+            ColumnRef(alias=None, column="ticket_id", field_name="tickets", nested_in="derived.total"),
+            ColumnRef(alias=None, column="customer_id", field_name="customers", nested_in="derived.total"),
+        ]
+        agg_rows = [(42, 7)]
+        result = serialize_aggregate(
+            agg_rows=agg_rows,
+            agg_columns=agg_columns,
+            nodes_rows=None,
+            nodes_columns=None,
+            root_field="test",
+            agg_alias="derived",
+        )
+        data = result["data"]["test"]
+        assert "derived" in data
+        assert data["derived"]["total"]["tickets"] == 42
+        assert data["derived"]["total"]["customers"] == 7

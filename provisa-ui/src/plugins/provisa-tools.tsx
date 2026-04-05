@@ -8,18 +8,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useOperationsEditorState } from "@graphiql/react";
 import { compileQuery, submitQuery } from "../api/admin";
+import type { CompileResult } from "../api/admin";
 import { format as formatSql } from "sql-formatter";
 import type { GraphiQLPlugin } from "graphiql";
-
-interface CompileResult {
-  sql: string;
-  trino_sql: string | null;
-  direct_sql: string | null;
-  route: string;
-  route_reason: string;
-  sources: string[];
-  params: unknown[];
-}
 
 function SqlPanel({ compiled }: { compiled: CompileResult }) {
   const [copied, setCopied] = useState(false);
@@ -42,11 +33,25 @@ function SqlPanel({ compiled }: { compiled: CompileResult }) {
     });
   }, [formatted]);
 
-  const label = "SQL";
+  const isAliased = compiled.root_field && compiled.canonical_field &&
+    compiled.root_field !== compiled.canonical_field;
 
   return (
     <div className="provisa-tools-sql">
       <div className="provisa-tools-meta">
+        {compiled.root_field && (
+          <div>
+            <strong>Field:</strong> {compiled.root_field}
+            {isAliased && (
+              <span className="provisa-tools-alias"> (alias for <em>{compiled.canonical_field}</em>)</span>
+            )}
+          </div>
+        )}
+        {isAliased && (
+          <div className="provisa-tools-alias-warn">
+            Warning: field alias adds semantic complexity — not recommended for sanctioned queries.
+          </div>
+        )}
         <div>
           <strong>Route:</strong> {compiled.route}
         </div>
@@ -56,7 +61,7 @@ function SqlPanel({ compiled }: { compiled: CompileResult }) {
         </div>
       </div>
       <div className="provisa-tools-code-header">
-        <span className="provisa-tools-label">{label}</span>
+        <span className="provisa-tools-label">SQL</span>
         <button
           className="provisa-tools-copy"
           onClick={handleCopy}
@@ -87,7 +92,7 @@ function SqlPanel({ compiled }: { compiled: CompileResult }) {
 
 function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const [query] = useOperationsEditorState();
-  const [compiled, setCompiled] = useState<CompileResult | null>(null);
+  const [compiled, setCompiled] = useState<CompileResult[] | null>(null);
   const [submitMsg, setSubmitMsg] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -117,8 +122,14 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const result = await compileQuery(roleId, query);
-        setCompiled(result);
+        const raw = await compileQuery(roleId, query);
+        // Normalize: single result or multi-root { queries: [...] }
+        const results: CompileResult[] = Array.isArray(raw)
+          ? raw
+          : raw.queries
+          ? raw.queries
+          : [raw];
+        setCompiled(results);
         setError("");
       } catch {
         setCompiled(null);
@@ -314,9 +325,9 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
       {error && <div className="provisa-tools-error">{error}</div>}
       {submitMsg && <div className="provisa-tools-success">{submitMsg}</div>}
 
-      {compiled && (
-        <SqlPanel compiled={compiled} />
-      )}
+      {compiled && compiled.map((c, i) => (
+        <SqlPanel key={c.root_field ?? i} compiled={c} />
+      ))}
     </div>
   );
 }

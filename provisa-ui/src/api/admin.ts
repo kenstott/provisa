@@ -463,11 +463,7 @@ export async function sampleView(id: string): Promise<{ columns: string[]; rows:
 
 // --- Query compilation and submission ---
 
-export async function compileQuery(
-  roleId: string,
-  query: string,
-  variables?: Record<string, unknown>,
-): Promise<{
+export interface CompileResult {
   sql: string;
   trino_sql: string | null;
   direct_sql: string | null;
@@ -476,7 +472,14 @@ export async function compileQuery(
   route_reason: string;
   sources: string[];
   root_field: string;
-}> {
+  canonical_field: string;
+}
+
+export async function compileQuery(
+  roleId: string,
+  query: string,
+  variables?: Record<string, unknown>,
+): Promise<CompileResult | { queries: CompileResult[] }> {
   const resp = await fetch(`${API_BASE_RAW}/data/compile`, {
     method: "POST",
     headers: {

@@ -531,6 +531,7 @@ async def _execute_one_field(
             result.rows, compiled.columns,
             nodes_result.rows, compiled.nodes_columns,
             root_field,
+            agg_alias=compiled.agg_alias,
         )
     else:
         response_data = _format_response(result.rows, compiled.columns, root_field, output_format)
@@ -912,6 +913,7 @@ async def compile_endpoint(
             "route_reason": decision.reason,
             "sources": list(compiled.sources),
             "root_field": compiled.root_field,
+            "canonical_field": compiled.canonical_field or compiled.root_field,
         })
 
     # Single field: return flat for backward compatibility
