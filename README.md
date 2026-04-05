@@ -85,8 +85,10 @@ curl -X POST http://localhost:8001/data/graphql \
 Download `provisa-jdbc-<version>.jar` from the [releases page](https://github.com/kenstott/provisa/releases/latest) and add it to your BI tool's driver path.
 
 ```
-jdbc:provisa://localhost:8815?mode=approved&role=analyst
+jdbc:provisa://localhost:8815?mode=approved
 ```
+
+Authenticate with your Provisa username and password — the server assigns your role.
 
 - **`approved` mode** — approved queries appear as virtual tables with governed columns and RLS enforced
 - **`catalog` mode** — full schema visible; use with catalog tools (Collibra, Atlan, DBeaver)

@@ -10,26 +10,28 @@ Download `provisa-jdbc-<version>.jar` from the [releases page](https://github.co
 
 JDBC URL:
 ```
-jdbc:provisa://<host>:8815?mode=approved&role=analyst
+jdbc:provisa://<host>:8815?mode=approved
 ```
 
 | Parameter | Values | Description |
 |-----------|--------|-------------|
 | `mode` | `approved` \| `catalog` | `approved`: only governed queries appear as virtual tables; `catalog`: full schema discovery for Collibra and similar tools |
-| `role` | any role id | The Provisa role to authenticate as |
-| `token` | string | Bearer token for authentication |
+
+Authentication uses standard JDBC `user` / `password` properties. Provisa authenticates the credentials against the configured auth provider and assigns the role — the client does not choose its own role.
 
 ### BI Tool Setup
 
 **Tableau**
 1. Manage → Drivers → Install Provisa JDBC
 2. Connect → Other Databases (JDBC)
-3. URL: `jdbc:provisa://localhost:8815?mode=approved&role=analyst`
+3. URL: `jdbc:provisa://localhost:8815?mode=approved`
+4. Enter your username and password when prompted
 
 **DBeaver**
 1. Database → New Connection → JDBC
 2. Driver: add `provisa-jdbc.jar`
-3. URL: `jdbc:provisa://localhost:8815?mode=catalog&role=admin`
+3. URL: `jdbc:provisa://localhost:8815?mode=catalog`
+4. Enter your username and password in the Authentication tab
 
 **Power BI** — use the ODBC gateway with the Provisa JDBC-ODBC bridge (included in the installer).
 
