@@ -4,6 +4,8 @@ Config-driven data virtualization platform — a semantic layer from small teams
 
 GraphQL is used as the universal query language specifically because it can only composite existing semantics. New data can only enter the semantic layer via registered sources or aggregates inside Provisa — everything passing through Provisa is governed, which argues for deploying it as close to the data consumer as practical.
 
+**Operational performance** — Single-source queries bypass federation entirely and execute directly against the source driver (target: sub-100ms). Smart routing decides at compile time. Multi-source queries use federation. Result caching, materialized view rewriting, and Arrow Flight columnar streaming are available at all scales.
+
 ## Features
 
 ### Query & API
