@@ -15,7 +15,7 @@ GraphQL is used as the universal query language specifically because it can only
 
 ### Data Sources
 - **Multi-source federation** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, and more through a single API
-- **Smart routing** — Single-source queries execute directly (sub-100ms); multi-source queries federate transparently
+- **Smart routing** — Single-source queries execute directly (sub-100ms); multi-source queries federate transparently via Trino-compatible federation — bring your own Trino or Trino-compatible cluster to scale out
 - **API sources** — Register REST/GraphQL/gRPC endpoints as queryable tables
 - **Kafka integration** — Topics as read-only tables, query results as Kafka sinks
 
