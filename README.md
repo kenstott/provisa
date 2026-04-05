@@ -85,7 +85,7 @@ curl -X POST http://localhost:8001/data/graphql \
 Download `provisa-jdbc-<version>.jar` from the [releases page](https://github.com/kenstott/provisa/releases/latest) and add it to your BI tool's driver path.
 
 ```
-jdbc:provisa://localhost:8815?mode=approved
+jdbc:provisa://localhost:8815
 ```
 
 Authenticate with your Provisa username and password — the server assigns your role.

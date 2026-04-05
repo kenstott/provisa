@@ -10,12 +10,12 @@ Download `provisa-jdbc-<version>.jar` from the [releases page](https://github.co
 
 JDBC URL:
 ```
-jdbc:provisa://<host>:8815?mode=approved
+jdbc:provisa://<host>:8815
 ```
 
-| Parameter | Values | Description |
-|-----------|--------|-------------|
-| `mode` | `approved` \| `catalog` | `approved`: only governed queries appear as virtual tables; `catalog`: full schema discovery for Collibra and similar tools |
+| Parameter | Default | Values | Description |
+|-----------|---------|--------|-------------|
+| `mode` | `approved` | `approved` \| `catalog` | `approved`: only governed queries appear as virtual tables; `catalog`: full schema discovery for Collibra and similar tools |
 
 Authentication uses standard JDBC `user` / `password` properties. Provisa authenticates the credentials against the configured auth provider and assigns the role — the client does not choose its own role.
 
@@ -24,7 +24,7 @@ Authentication uses standard JDBC `user` / `password` properties. Provisa authen
 **Tableau**
 1. Manage → Drivers → Install Provisa JDBC
 2. Connect → Other Databases (JDBC)
-3. URL: `jdbc:provisa://localhost:8815?mode=approved`
+3. URL: `jdbc:provisa://localhost:8815`
 4. Enter your username and password when prompted
 
 **DBeaver**
