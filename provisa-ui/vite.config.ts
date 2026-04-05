@@ -25,6 +25,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   optimizeDeps: {
+    // graphiql-explorer is aliased to src/plugins/graphiql-explorer-fork.cjs (CJS → needs pre-bundle)
     include: ['graphiql-explorer', 'picomatch-browser'],
   },
   server: {
