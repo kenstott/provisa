@@ -25,7 +25,7 @@ export default defineConfig(({ mode }) => ({
     },
   },
   optimizeDeps: {
-    include: ['graphiql-explorer'],
+    include: ['graphiql-explorer', 'picomatch-browser'],
   },
   server: {
     port: 3000,
