@@ -32,7 +32,7 @@ err()  { printf "${RED}[build-dmg]${NC} %s\n" "$*" >&2; }
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 check_prereqs() {
-  for cmd in docker curl hdiutil codesign; do
+  for cmd in curl hdiutil codesign; do
     if ! command -v "$cmd" &>/dev/null; then
       err "Required tool not found: ${cmd}"
       exit 1
@@ -86,8 +86,18 @@ download_containerd() {
 
 # ── Save service images as tarballs ──────────────────────────────────────────
 save_images() {
-  info "Saving service images..."
   mkdir -p "$IMAGES_DIR"
+  local count
+  count=$(ls "${IMAGES_DIR}"/*.tar 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$count" -ge 6 ]; then
+    info "Images pre-populated (${count} tarballs) — skipping docker pull."
+    return
+  fi
+  if ! command -v docker &>/dev/null; then
+    err "docker not found and images not pre-populated in ${IMAGES_DIR}"
+    exit 1
+  fi
+  info "Saving service images..."
   for img in "${IMAGES[@]}"; do
     local tag="${img##*/}"
     tag="${tag//:/-}"

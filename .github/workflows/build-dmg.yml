@@ -35,10 +35,43 @@ jobs:
           echo "channel=$CHANNEL"             >> "$GITHUB_OUTPUT"
           echo "dmg_name=Provisa-${TAG}-macOS.dmg" >> "$GITHUB_OUTPUT"
 
+  pull-images:
+    name: Pull and save Docker images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pull service images and build zaychik
+        run: |
+          mkdir -p images
+          for img in \
+            "postgres:16" \
+            "edoburu/pgbouncer:latest" \
+            "minio/minio:latest" \
+            "redis:7-alpine" \
+            "trinodb/trino:480"; do
+            tag="${img##*/}"
+            tag="${tag//:/-}"
+            tag="${tag//\//-}"
+            docker pull "$img"
+            docker save "$img" -o "images/${tag}.tar"
+          done
+          docker build -t provisa/zaychik:local ./zaychik
+          docker save provisa/zaychik:local -o images/zaychik-local.tar
+
+      - name: Upload image tarballs
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-images
+          path: images/
+          retention-days: 1
+          compression-level: 0
+
   build-dmg:
     name: Build airgapped macOS DMG (${{ needs.metadata.outputs.channel }})
     runs-on: macos-14
-    needs: metadata
+    needs: [metadata, pull-images]
 
     permissions:
       contents: write
@@ -47,10 +80,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker
-        run: |
-          brew install docker colima qemu
-          colima start --cpu 4 --memory 8 --disk 60 --vm-type qemu
+      - name: Download image tarballs
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+          path: packaging/macos/images/
 
       - name: Build DMG
         env:
