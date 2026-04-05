@@ -14,8 +14,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U provisa"]
       interval: 5s
-      timeout: 3s
-      retries: 5
+      timeout: 5s
+      retries: 15
+      start_period: 30s
 
   mongodb:
     image: mongo:7
@@ -27,8 +28,9 @@ services:
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
-      timeout: 3s
-      retries: 5
+      timeout: 5s
+      retries: 15
+      start_period: 30s
 
   pgbouncer:
     image: edoburu/pgbouncer:latest
@@ -67,8 +69,9 @@ services:
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
-      timeout: 3s
-      retries: 5
+      timeout: 5s
+      retries: 15
+      start_period: 30s
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
@@ -115,8 +118,9 @@ services:
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
-      timeout: 3s
-      retries: 5
+      timeout: 5s
+      retries: 15
+      start_period: 30s
 
   trino:
     image: trinodb/trino:480
