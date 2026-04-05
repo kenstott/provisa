@@ -142,9 +142,6 @@ jobs:
     name: Publish Python client to PyPI
     runs-on: ubuntu-latest
     needs: build-python-client
-    environment: pypi
-    permissions:
-      id-token: write
     steps:
       - name: Download dist
         uses: actions/download-artifact@v4
@@ -156,6 +153,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+          password: ${{ secrets.PYPI_API_TOKEN }}
 
   build-dmg:
     name: Build airgapped macOS DMG (${{ needs.metadata.outputs.channel }})

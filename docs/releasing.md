@@ -49,15 +49,8 @@ The Python client version is automatically converted to PEP 440 format:
 
 ## PyPI Publishing Setup (one-time)
 
-The workflow uses OIDC Trusted Publishers — no API key required.
-
-1. Create a PyPI account and the `provisa-client` project (first publish creates it)
-2. Go to PyPI → Account Settings → Publishing → Add a new publisher:
-   - Owner: `kenstott`
-   - Repository: `provisa`
-   - Workflow: `build-dmg.yml`
-   - Environment: `pypi`
-3. In the GitHub repo, create an environment named `pypi` under Settings → Environments
+1. Copy your API token from `~/.pypirc` (the `pypi-...` value for `pypi.org`)
+2. Add it as a repository secret named `PYPI_API_TOKEN` under **Settings → Secrets → Actions**
 
 The `publish-pypi` job will then publish automatically on every tag.
 
@@ -67,6 +60,7 @@ Configure these under **Settings → Secrets → Actions**:
 
 | Secret | Required for | Description |
 |--------|-------------|-------------|
+| `PYPI_API_TOKEN` | PyPI publishing | API token from `~/.pypirc` (starts with `pypi-`) |
 | `APPLE_DEVELOPER_ID` | Signed builds | Full cert name: `Developer ID Application: Your Name (TEAMID)` |
 | `APPLE_NOTARYTOOL_APPLE_ID` | Notarized builds | Apple ID email |
 | `APPLE_NOTARYTOOL_PASSWORD` | Notarized builds | App-specific password |
