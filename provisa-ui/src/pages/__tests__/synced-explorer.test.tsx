@@ -31,6 +31,7 @@ vi.mock("graphiql-explorer", () => ({
   }),
 }));
 
+
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 import { SyncedExplorerContent } from "../QueryPage";
