@@ -6,7 +6,7 @@ The Provisa JDBC driver allows BI tools to connect directly without writing Grap
 
 ### Connection
 
-Download `provisa-jdbc.jar` from the releases page and add it to your tool's driver path.
+Download `provisa-jdbc-<version>.jar` from the [releases page](https://github.com/kenstott/provisa/releases/latest) and add it to your tool's driver path.
 
 JDBC URL:
 ```
@@ -45,17 +45,41 @@ jdbc:provisa://<host>:8815?mode=approved&role=analyst
 
 Arrow Flight (port 8815) is the recommended path for data tools that support it. Results stream as Arrow RecordBatches without materializing in Provisa memory.
 
-### Python (PyArrow / pandas)
+### Python (`provisa-client`)
+
+The recommended Python path — wraps both GraphQL and Arrow Flight:
+
+```bash
+pip install provisa-client
+```
+
+```python
+from provisa_client import ProvisaClient
+
+client = ProvisaClient("http://localhost:8001", role="analyst")
+
+# Arrow Flight → pyarrow Table (high-throughput, streaming)
+table = client.flight("{ orders { id amount } }")
+
+# Arrow Flight → pandas DataFrame
+df = client.flight_df("{ orders { id amount } }")
+
+# GraphQL → DataFrame
+df = client.query_df("{ orders { id amount } }")
+```
+
+See [docs/python-client.md](python-client.md) for the full reference.
+
+### Python (raw PyArrow)
+
+For tools that manage Flight connections directly:
 
 ```python
 import pyarrow.flight as flight
-import pandas as pd
 
 client = flight.connect("grpc://localhost:8815")
-
 ticket = flight.Ticket(b'{"query": "{ orders { id amount } }", "role": "analyst"}')
-reader = client.do_get(ticket)
-df = reader.read_all().to_pandas()
+df = client.do_get(ticket).read_all().to_pandas()
 ```
 
 ### DuckDB
