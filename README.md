@@ -11,11 +11,11 @@ GraphQL is used as the universal query language specifically because it can only
 - **gRPC endpoint** — Auto-generated `.proto` from registration model, streaming responses
 - **REST endpoints** — Auto-generated REST routes from approved queries
 - **JSON:API endpoints** — Auto-generated JSON:API routes with pagination, relationships, error objects
-- **SSE subscriptions** — Real-time push via PostgreSQL LISTEN/NOTIFY, polling, or Debezium CDC
+- **SSE subscriptions** — Real-time push via pluggable providers (change events, polling)
 
 ### Data Sources
 - **Multi-source federation** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, and more through a single API
-- **Smart routing** — Single-source → direct driver (sub-100ms); multi-source → Trino federation
+- **Smart routing** — Single-source queries execute directly (sub-100ms); multi-source queries federate transparently
 - **API sources** — Register REST/GraphQL/gRPC endpoints as queryable tables
 - **Kafka integration** — Topics as read-only tables, query results as Kafka sinks
 
@@ -30,9 +30,9 @@ GraphQL is used as the universal query language specifically because it can only
 ### Delivery & Performance
 - **Output formats** — JSON, NDJSON, CSV, Parquet, Apache Arrow
 - **Arrow Flight** — gRPC streaming for high-throughput columnar delivery (unbounded, no materialization)
-- **Query caching** — Redis-backed with role+RLS-partitioned keys
+- **Query caching** — Role+RLS-partitioned result caching
 - **Materialized views** — Transparent SQL rewriting for JOIN optimization
-- **Large result redirect** — Threshold-based S3 redirect; Trino writes Parquet/ORC directly
+- **Large result redirect** — Threshold-based S3 redirect for large result sets
 
 ### Administration & Integration
 - **Admin API** — Strawberry GraphQL at `/admin/graphql` — config upload/download, relationship editing, AI-assisted FK suggestions, query approval
@@ -57,7 +57,7 @@ provisa open    # open the UI in your browser
 
 ### Linux
 1. Download `Provisa-<version>-linux-x86_64.AppImage` from the [releases page](https://github.com/kenstott/provisa/releases/latest)
-2. Make it executable and run it — first launch loads bundled Docker images (no internet required, requires Docker Engine):
+2. Make it executable and run it — first launch sets up bundled services (no internet required):
 ```bash
 chmod +x Provisa-*-linux-x86_64.AppImage
 ./Provisa-*-linux-x86_64.AppImage
@@ -66,7 +66,7 @@ provisa start && provisa open
 
 ### Windows
 1. Download `Provisa-<version>-windows-x64.exe` from the [releases page](https://github.com/kenstott/provisa/releases/latest)
-2. Run as Administrator — installs to `C:\Program Files\Provisa\` and adds `provisa` to your PATH (requires Docker Desktop)
+2. Run as Administrator — installs to `C:\Program Files\Provisa\` and adds `provisa` to your PATH
 3. Open a new terminal:
 ```
 provisa start
@@ -75,9 +75,7 @@ provisa start
 ### From Source
 
 ```bash
-docker compose up -d
 pip install -e ".[dev]"
-export PG_PASSWORD=provisa
 uvicorn main:app --reload --port 8001
 ```
 
@@ -135,7 +133,7 @@ pip install -e ".[dev]"
 
 # Run tests
 python -m pytest tests/unit/ -x -q       # unit tests
-python -m pytest tests/ -x -q -m e2e     # e2e tests (needs docker compose)
+python -m pytest tests/ -x -q -m e2e     # e2e tests (needs services running)
 
 # Start UI
 cd provisa-ui && npm install && npm run dev
