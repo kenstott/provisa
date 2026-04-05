@@ -47,10 +47,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker (colima)
-        run: |
-          brew install colima docker
-          colima start --cpu 4 --memory 8 --disk 60
+      - name: Set up Docker
+        uses: crazy-max/ghaction-setup-docker@v3
 
       - name: Build DMG
         env:
