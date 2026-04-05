@@ -1,4 +1,4 @@
-import { useMemo, useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useState } from "react";
 import { GraphiQL } from "graphiql";
 import { createGraphiQLFetcher } from "@graphiql/toolkit";
 import "@graphiql/react/style.css";
@@ -16,7 +16,6 @@ import {
   useOptimisticState,
 } from "@graphiql/react";
 
-const GRAPHIQL_QUERY_KEY = "graphiql:query";
 // @ts-ignore — CJS fork, no type declarations
 import { Explorer } from "graphiql-explorer";
 
@@ -66,9 +65,10 @@ export function SyncedExplorerContent() {
   const { setOperationName, run } = useGraphiQLActions();
   const schema = useGraphiQL((s) => s.schema);
   const [liveQuery, setQuery] = useOptimisticState(useOperationsEditorState());
-  // Read the localStorage-persisted query as a fallback before Monaco initializes.
-  const storedQuery = useMemo(() => localStorage.getItem(GRAPHIQL_QUERY_KEY) ?? "", []);
-  const query = liveQuery || storedQuery;
+  // initialQuery is set from storage (graphiql:query or tabState) during provider init.
+  // Use it as fallback before Monaco populates liveQuery.
+  const initialQuery = useGraphiQL((s) => s.initialQuery);
+  const query = liveQuery || initialQuery;
 
   const handleRunOperation = useCallback(
     (operationName?: string) => {

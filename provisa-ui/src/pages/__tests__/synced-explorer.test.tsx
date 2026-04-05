@@ -5,13 +5,14 @@ import { render } from "@testing-library/react";
 
 let mockLiveQuery = "";
 let mockSchema: unknown = null;
+let mockInitialQuery = "";
 
 vi.mock("@graphiql/react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@graphiql/react")>();
   return {
     ...actual,
     useGraphiQL: vi.fn((selector: (s: Record<string, unknown>) => unknown) =>
-      selector({ schema: mockSchema }),
+      selector({ schema: mockSchema, initialQuery: mockInitialQuery }),
     ),
     useGraphiQLActions: vi.fn(() => ({
       setOperationName: vi.fn(),
@@ -31,7 +32,6 @@ vi.mock("graphiql-explorer", () => ({
   }),
 }));
 
-
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 import { SyncedExplorerContent } from "../QueryPage";
@@ -43,38 +43,39 @@ describe("SyncedExplorerContent — query fallback logic", () => {
     lastExplorerQuery = undefined;
     mockLiveQuery = "";
     mockSchema = null;
-    localStorage.clear();
+    mockInitialQuery = "";
   });
 
   it("passes liveQuery to Explorer when Monaco is ready", () => {
     mockLiveQuery = "{ orders { id } }";
-    localStorage.setItem("graphiql:query", "{ products { sku } }");
+    mockInitialQuery = "{ products { sku } }";
 
     render(<SyncedExplorerContent />);
 
     expect(lastExplorerQuery).toBe("{ orders { id } }");
   });
 
-  it("falls back to localStorage query when liveQuery is empty (pre-Monaco)", () => {
+  it("falls back to initialQuery when liveQuery is empty (pre-Monaco)", () => {
     mockLiveQuery = "";
-    localStorage.setItem("graphiql:query", "{ customers { name } }");
+    mockInitialQuery = "{ customers { name } }";
 
     render(<SyncedExplorerContent />);
 
     expect(lastExplorerQuery).toBe("{ customers { name } }");
   });
 
-  it("passes empty string when both liveQuery and localStorage are empty", () => {
+  it("passes empty string when both liveQuery and initialQuery are empty", () => {
     mockLiveQuery = "";
+    mockInitialQuery = "";
 
     render(<SyncedExplorerContent />);
 
     expect(lastExplorerQuery).toBe("");
   });
 
-  it("prefers liveQuery over localStorage query", () => {
+  it("prefers liveQuery over initialQuery", () => {
     mockLiveQuery = "{ live }";
-    localStorage.setItem("graphiql:query", "{ stored }");
+    mockInitialQuery = "{ stored }";
 
     render(<SyncedExplorerContent />);
 
