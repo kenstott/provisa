@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Kenneth Stott
+// Copyright (c) 2026 Kenneth Stott
 // Canary: bc6c6a9c-f45b-4e42-abb3-e0266cb692c4
 //
 // This source code is licensed under the Business Source License 1.1
@@ -27,6 +27,8 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test-setup.ts'],
     exclude: ['e2e/**', 'node_modules/**'],
+    pool: 'vmThreads',
+    fileParallelism: false,
     coverage: {
       provider: 'v8',
       reporter: ['json'],

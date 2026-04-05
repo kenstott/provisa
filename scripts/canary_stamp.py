@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2025 Kenneth Stott
+# Copyright (c) 2026 Kenneth Stott
 # Canary: 6599f636-5133-4daa-bb12-def828c1b6a4
 #
 # This source code is licensed under the Business Source License 1.1
@@ -27,7 +27,7 @@ EXCLUDE_DIRS = {".venv", "venv", ".git", ".eggs", "canary-site", "__pycache__", 
 
 # Python/shell style
 PY_COPYRIGHT_HEADER = """\
-# Copyright (c) 2025 Kenneth Stott
+# Copyright (c) 2026 Kenneth Stott
 # Canary: {uuid}
 #
 # This source code is licensed under the Business Source License 1.1
@@ -40,7 +40,7 @@ PY_COPYRIGHT_HEADER = """\
 
 # TypeScript/JavaScript style
 TS_COPYRIGHT_HEADER = """\
-// Copyright (c) 2025 Kenneth Stott
+// Copyright (c) 2026 Kenneth Stott
 // Canary: {uuid}
 //
 // This source code is licensed under the Business Source License 1.1

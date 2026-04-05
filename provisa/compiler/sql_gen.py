@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Kenneth Stott
+# Copyright (c) 2026 Kenneth Stott
 # Canary: a06089bd-b453-4daa-8692-7fcbd909b7b1
 #
 # This source code is licensed under the Business Source License 1.1
@@ -772,27 +772,39 @@ def _compile_aggregate_field(
         columns.append(ColumnRef(alias=None, column="count", field_name="count", nested_in=agg_key))
 
     for col_name in sum_cols:
-        select_parts.append(f'SUM({_q(col_name)})')
         fn_key = func_aliases.get("sum", "sum")
         field_name = col_aliases.get("sum", {}).get(col_name, col_name)
+        expr = f'SUM({_q(col_name)})'
+        if field_name != col_name:
+            expr += f' AS {_q(field_name)}'
+        select_parts.append(expr)
         columns.append(ColumnRef(alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"))
 
     for col_name in avg_cols:
-        select_parts.append(f'AVG({_q(col_name)})')
         fn_key = func_aliases.get("avg", "avg")
         field_name = col_aliases.get("avg", {}).get(col_name, col_name)
+        expr = f'AVG({_q(col_name)})'
+        if field_name != col_name:
+            expr += f' AS {_q(field_name)}'
+        select_parts.append(expr)
         columns.append(ColumnRef(alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"))
 
     for col_name in min_cols:
-        select_parts.append(f'MIN({_q(col_name)})')
         fn_key = func_aliases.get("min", "min")
         field_name = col_aliases.get("min", {}).get(col_name, col_name)
+        expr = f'MIN({_q(col_name)})'
+        if field_name != col_name:
+            expr += f' AS {_q(field_name)}'
+        select_parts.append(expr)
         columns.append(ColumnRef(alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"))
 
     for col_name in max_cols:
-        select_parts.append(f'MAX({_q(col_name)})')
         fn_key = func_aliases.get("max", "max")
         field_name = col_aliases.get("max", {}).get(col_name, col_name)
+        expr = f'MAX({_q(col_name)})'
+        if field_name != col_name:
+            expr += f' AS {_q(field_name)}'
+        select_parts.append(expr)
         columns.append(ColumnRef(alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"))
 
     if not select_parts:

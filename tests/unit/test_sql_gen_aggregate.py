@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Kenneth Stott
+# Copyright (c) 2026 Kenneth Stott
 # Canary: 6befc172-96f9-4237-be6b-e5f8a2849346
 #
 # This source code is licensed under the Business Source License 1.1
@@ -489,6 +489,63 @@ class TestAggregate:
         assert "amount" not in analyst_sum_fields
         assert "cost" not in analyst_sum_fields
         assert len(analyst_sum_fields) < len(admin_sum_fields)
+
+
+def test_canonical_field_no_alias():
+    """canonical_field equals root_field when no alias is used."""
+    schema, ctx = _build_schema_and_ctx()
+    doc = parse("{ orders { id } }")
+    results = compile_query(doc, ctx)
+    q = results[0]
+    assert q.root_field == "orders"
+    assert q.canonical_field == "orders"
+
+
+def test_canonical_field_with_alias():
+    """canonical_field is the schema name; root_field is the alias."""
+    schema, ctx = _build_schema_and_ctx()
+    doc = parse("{ my_alias: orders { id } }")
+    results = compile_query(doc, ctx)
+    q = results[0]
+    assert q.root_field == "my_alias"
+    assert q.canonical_field == "orders"
+
+
+def test_canonical_field_aggregate_with_alias():
+    """canonical_field is the schema name on aggregate queries."""
+    schema, ctx = _build_schema_and_ctx()
+    doc = parse("{ my_agg: orders_aggregate { aggregate { count } } }")
+    results = compile_query(doc, ctx)
+    q = results[0]
+    assert q.root_field == "my_agg"
+    assert q.canonical_field == "orders_aggregate"
+
+
+def test_aggregate_column_alias_appears_as_sql_alias():
+    """SUM col alias produces AS in the SQL."""
+    schema, ctx = _build_schema_and_ctx()
+    doc = parse("""
+        {
+            orders_aggregate {
+                aggregate {
+                    total: sum { rev: amount }
+                }
+            }
+        }
+    """)
+    results = compile_query(doc, ctx)
+    q = results[0]
+    assert 'SUM("amount") AS "rev"' in q.sql
+
+
+def test_aggregate_unaliased_column_no_sql_alias():
+    """Unaliased column produces no AS in the SQL."""
+    schema, ctx = _build_schema_and_ctx()
+    doc = parse('{ orders_aggregate { aggregate { sum { amount } } } }')
+    results = compile_query(doc, ctx)
+    q = results[0]
+    assert 'SUM("amount")' in q.sql
+    assert 'AS' not in q.sql
 
 
 def test_field_alias_used_as_response_key():
