@@ -80,6 +80,19 @@ curl -X POST http://localhost:8001/data/graphql \
   -d '{"query": "{ orders { id amount region } }", "role": "admin"}'
 ```
 
+### JDBC (Tableau, DBeaver, Power BI)
+
+Download `provisa-jdbc-<version>.jar` from the [releases page](https://github.com/kenstott/provisa/releases/latest) and add it to your BI tool's driver path.
+
+```
+jdbc:provisa://localhost:8815?mode=approved&role=analyst
+```
+
+- **`approved` mode** — approved queries appear as virtual tables with governed columns and RLS enforced
+- **`catalog` mode** — full schema visible; use with catalog tools (Collibra, Atlan, DBeaver)
+
+See [docs/integrations.md](docs/integrations.md) for Tableau and Power BI setup steps.
+
 ### Python Client
 
 ```bash
