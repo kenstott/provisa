@@ -1368,7 +1368,7 @@ service ProvisaData {
 - NoSQL limitations (Trino-only, no mutations)
 - Cross-source query behavior
 
-**Verify:**
+**Verify:** _(Manually testable only — no automated test gate)_
 - All internal links resolve (no broken `[text](path)` refs)
 - Code examples in docs execute correctly
 - curl examples return expected output against running stack
@@ -2667,7 +2667,7 @@ Common to all phases:
 - No "docker", "trino", "postgresql" visible in user-facing output
 - `~/.provisa/` contains all state, removable with `provisa uninstall`
 
-**Verification (AF2/AF3)**:
+**Verification (AF2/AF3):** _(Manually testable only — AF2 artifacts only exist in the GitHub Actions release workflow; not automatable in local checkout)_
 - Single binary/package installs without Docker prerequisite
 - Services start via native OS service manager
 - Upgrade path: `provisa upgrade` pulls new version without data loss

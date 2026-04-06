@@ -60,6 +60,10 @@ markers = [
     "integration: requires Docker Compose stack (PG + Trino)",
     "e2e: full HTTP pipeline tests against running app",
     "slow: long-running tests",
+    "requires_neo4j: requires Neo4j service (docker compose up neo4j)",
+    "requires_sparql: requires SPARQL endpoint service (docker compose up fuseki)",
+    "requires_elasticsearch: requires Elasticsearch service (docker compose up elasticsearch)",
+    "requires_provisa_server: requires running Provisa server at localhost:8001",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:pytest_asyncio",

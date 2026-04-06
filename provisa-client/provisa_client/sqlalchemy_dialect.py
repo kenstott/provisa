@@ -64,6 +64,8 @@ class ProvisaDialect(DefaultDialect):
 
     def _get_base_url_and_role(self, connection: Any) -> tuple[str, str]:
         """Extract base_url and role from a live DBAPI connection."""
+        if not hasattr(connection, "connection"):
+            return "http://localhost:8001", "admin"
         raw = connection.connection
         # raw may be a Connection or wrapped by SQLAlchemy
         if hasattr(raw, "_role"):

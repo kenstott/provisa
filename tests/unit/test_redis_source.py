@@ -202,6 +202,11 @@ class TestGenerateTableDefinitions:
         defs = generate_table_definitions(cfg)
         assert defs[0]["value"]["dataFormat"] == "json"
 
+    def test_value_type_list_produces_data_format_json(self):
+        cfg = _config_with_tables(_hash_table(value_type=ValueType.LIST))
+        defs = generate_table_definitions(cfg)
+        assert defs[0]["value"]["dataFormat"] == "json"
+
     def test_empty_columns_key_field_only_in_value_section(self):
         cfg = _config_with_tables(_hash_table(columns=[]))
         defs = generate_table_definitions(cfg)

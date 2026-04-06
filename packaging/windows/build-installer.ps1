@@ -60,4 +60,36 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host '[build-installer] Installer created.' -ForegroundColor Green
-Write-Host "Output: $(Join-Path $DistDir 'Provisa-Setup.exe')"
+
+# ── Code signing ───────────────────────────────────────────────────────────────
+$ExePath = Join-Path $DistDir 'Provisa-Setup.exe'
+if ($env:WINDOWS_CERT_PFX_BASE64) {
+    Write-Host '[build-installer] Signing installer...' -ForegroundColor Cyan
+    $PfxPath = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'provisa-signing.pfx')
+    try {
+        [System.Convert]::FromBase64String($env:WINDOWS_CERT_PFX_BASE64) `
+            | Set-Content -Path $PfxPath -AsByteStream
+        $TimestampUrl = if ($env:WINDOWS_CERT_TIMESTAMP_URL) {
+            $env:WINDOWS_CERT_TIMESTAMP_URL
+        } else {
+            'http://timestamp.digicert.com'
+        }
+        & signtool sign `
+            /f  $PfxPath `
+            /p  $env:WINDOWS_CERT_PFX_PASSWORD `
+            /tr $TimestampUrl `
+            /td sha256 `
+            /fd sha256 `
+            $ExePath
+        if ($LASTEXITCODE -ne 0) {
+            throw "signtool failed with exit code $LASTEXITCODE"
+        }
+        Write-Host '[build-installer] Installer signed.' -ForegroundColor Green
+    } finally {
+        Remove-Item -Path $PfxPath -Force -ErrorAction SilentlyContinue
+    }
+} else {
+    Write-Host '[build-installer] WINDOWS_CERT_PFX_BASE64 not set — skipping signing.' -ForegroundColor Yellow
+}
+
+Write-Host "Output: $ExePath"
