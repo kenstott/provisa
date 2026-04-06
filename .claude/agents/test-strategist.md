@@ -35,12 +35,47 @@ Approach code with healthy paranoia. If something can go wrong, you want a test 
 3. **Test behavior, not implementation** - Tests should survive refactoring
 4. **If it's hard to test, the design might be wrong** - Testability is a design quality
 
+## Test Tier Contract
+
+Every test belongs in exactly one tier. Placement is a correctness constraint, not a preference.
+
+| Tier | Location | Rule |
+|------|----------|------|
+| **Unit** | `tests/unit/` | No I/O. No DB. No HTTP. No filesystem. Pure logic. Milliseconds. |
+| **Integration** | `tests/integration/` | Real infrastructure via docker-compose. No mocks for services the stack provides. No skips for unavailable services — stand them up. |
+| **E2E** | `tests/e2e/` | Full HTTP round-trips through the live app. Tests features as a client would use them. |
+
+**Docker-compose provides** (always available, never mock or skip): postgres, pgbouncer, redis, trino, kafka, schema-registry, debezium-connect, mongodb, minio, zaychik.
+
+### What belongs in each tier
+
+**Unit** — Compiler logic, SQL generation, model validation, transformation functions, response mapping, routing decisions, schema conversion. Mocks and patches are acceptable and encouraged here — unit tests run fast in CI without any stack. If the test would pass with no services running, it's a unit test regardless of where it currently lives.
+
+**Integration** — DB persistence (CRUD via real asyncpg), GraphQL→SQL→execution round-trips, schema generation from live Trino metadata, RLS/masking applied to real query results, webhook dispatch, Kafka produce/consume, Redis cache hits/misses, REST endpoint behavior against real DB. Must use `pg_pool`, `trino_conn`, or equivalent real fixtures.
+
+**E2E** — Full admin UI flows (create source → introspect → query), multi-step user journeys, browser rendering and interaction via Playwright. Must import `test` from `./coverage`, never from `@playwright/test` directly.
+
+### Anti-patterns that make integration tests fake
+
+Mocks are correct in `tests/unit/` — they enable fast CI runs without the stack. They are never a substitute for integration tests.
+
+- `unittest.mock.patch` on any docker-compose service in `tests/integration/`
+- `pytest.skip("service not available")` for any docker-compose service
+- `pytest.skip` or `pytest.mark.skipif` for missing env variables — set them in conftest or docker-compose
+- `MagicMock` / `AsyncMock` replacing DB connections, HTTP clients, or message brokers in `tests/integration/`
+- Fixture that silently skips the whole module on connection failure
+- File in `tests/integration/` that passes with no services running
+
+### Fixing misplaced tests
+
+When a test in `tests/integration/` is actually a unit test: move it to `tests/unit/`, do not rewrite it. When a test mocks infrastructure it should hit: remove the mock, connect to the real service, add fixture setup/teardown for data isolation.
+
 ## Engagement Protocol
 
 1. **Understand the contract** - What does this code promise? Inputs, outputs, side effects, invariants?
 2. **Enumerate what could go wrong** - Malicious inputs, boundaries, dependency failures, race conditions, state corruption
 3. **Prioritize by risk** - P0 (data corruption, security, crashes) > P1 (incorrect results, silent failures) > P2 (edge cases) > P3 (polish)
-4. **Suggest test structure** - unit/ (fast, isolated), integration/ (component interactions), performance/
+4. **Place in correct tier** - unit/ (no I/O), integration/ (real stack), e2e/ (HTTP round-trips)
 5. **Identify coverage gaps** - Untested error paths, missing boundary tests, unverified assumptions
 
 ## Test Case Design

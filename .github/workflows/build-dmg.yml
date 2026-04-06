@@ -240,8 +240,13 @@ jobs:
           name: docker-images
           path: packaging/windows/images/
 
+      - name: Install NSIS
+        run: choco install nsis --no-progress -y
+
       - name: Build installer
         shell: pwsh
+        env:
+          VERSION: ${{ github.ref_name }}
         run: packaging/windows/build-installer.ps1
 
       - name: Rename installer

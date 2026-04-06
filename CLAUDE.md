@@ -5,6 +5,8 @@ CRITICAL: Files must stay under 1000 lines. If a file approaches or exceeds this
 CRITICAL: "Audit" for UI features must include browser rendering and functionality testing (vitest + Playwright), not just code review.
 CRITICAL: All Playwright tests must catch uncaught browser exceptions (pageerror). The base fixture in `provisa-ui/e2e/coverage.ts` handles this automatically — all specs must import `test` from `./coverage`, never directly from `@playwright/test`.
 CRITICAL: Test errors must be resolved whether they are preexisting or not. Never skip or ignore failing tests.
+CRITICAL: Tests belong in exactly one tier — unit/ (no I/O, pure logic), integration/ (real stack, requires docker-compose), e2e/ (HTTP round-trips through the live app). Misplacement is a bug.
+CRITICAL: Integration tests must use real infrastructure. pytest.skip for any service in docker-compose.yml or for missing env variables is not acceptable. Mocking a service that docker-compose can provide is not acceptable in integration tests — mocks belong in unit tests.
 
 # Code Audits
 When asked to audit code against a spec, requirements, or standards: spawn parallel Explore subagents (split by phase/module range) to compare implementation against the spec. Gather results, then synthesize into a single report categorized as: completed to spec, not added, added but incomplete, added but not to spec.

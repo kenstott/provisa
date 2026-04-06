@@ -37,7 +37,8 @@ New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 # ── Run NSIS ───────────────────────────────────────────────────────────────────
 Write-Host '[build-installer] Running makensis...' -ForegroundColor Cyan
 $NsiScript = Join-Path $ScriptDir 'installer.nsi'
-& makensis /DVERSION=dev $NsiScript
+$Version = if ($env:VERSION) { $env:VERSION } else { 'dev' }
+& makensis /DVERSION=$Version $NsiScript
 if ($LASTEXITCODE -ne 0) {
   throw "makensis failed with exit code $LASTEXITCODE"
 }
