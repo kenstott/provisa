@@ -68,6 +68,7 @@ Every REQ is assigned to a phase. Cross-cutting requirements (REQ-064, REQ-065, 
 | AL: Federation Performance | REQ-275, REQ-276, REQ-277, REQ-278, REQ-279, REQ-280, REQ-281 |
 | AM: Live Query Engine | REQ-260, REQ-282, REQ-283, REQ-284, REQ-285, REQ-286, REQ-287 |
 | AN: Automatic Persisted Queries (APQ) | REQ-288, REQ-289, REQ-290, REQ-291, REQ-292 |
+| AO: Query-API Sources (Neo4j & SPARQL) | REQ-295, REQ-296, REQ-297, REQ-298, REQ-299 |
 | Dropped | REQ-017 (NoSQL Parquet materialization — Trino native connectors handle this) |
 | Not implementation | REQ-072, REQ-073, REQ-074 (commercial positioning) |
 
@@ -3533,3 +3534,119 @@ Governed Queries are executed by developer-chosen name — no hash involved. The
 | `provisa/apq/cache.py` | Create |
 | `provisa/api/data/endpoint.py` | Modify (APQ and queryId branches) |
 | `tests/unit/test_apq.py` | Create |
+
+---
+
+## Phase AO: Query-API Sources (Neo4j & SPARQL)
+**Goal:** Add Neo4j and SPARQL as first-class non-Trino sources riding the existing API source pipeline (Phase U). Two targeted enhancements to the pipeline — HTTP POST body support and a named response normalizer hook — enable both connectors and establish a pattern for future query-API sources. Neo4j uses Cypher queries POSTed to the Neo4j HTTP API; the steward authors the query to return flat scalar projections and a preview step enforces this. SPARQL supports any SPARQL 1.1 compliant triplestore; the `sparql_bindings` normalizer unwraps the standard bindings envelope transparently.
+**REQs:** REQ-295, REQ-296, REQ-297, REQ-298, REQ-299
+**Depends on:** Phase U (API Sources — REST, GraphQL, gRPC)
+
+### API Source Pipeline Enhancements (REQ-298, REQ-299)
+
+Prerequisites for both connectors. Build first.
+
+- `provisa/api_source/models.py` — add `response_normalizer: str | None = None` to `ApiEndpoint`
+- `provisa/api_source/normalizers.py` — normalizer registry:
+  - `NORMALIZERS: dict[str, Callable[[Any], list[dict]]]`
+  - `neo4j_tabular(response)`: navigates `response["data"]`, zips `fields[]` with each entry in `values[][]` → `[{field: value, ...}]`
+  - `sparql_bindings(response)`: extracts `response["results"]["bindings"]`, maps each `{var: {"type": ..., "value": v}}` → `{var: v}`
+  - `get_normalizer(name) -> Callable` — raises `ValueError` on unknown name (caught at registration time)
+- `provisa/api_source/flattener.py` — apply normalizer before `response_root` navigation:
+  ```python
+  if endpoint.response_normalizer:
+      raw = get_normalizer(endpoint.response_normalizer)(raw)
+  ```
+- `provisa/api_source/caller.py` — POST body support (REQ-298):
+  - Extend `_build_request()` to transmit body when `method == "POST"`
+  - Neo4j: `json={"statement": query_text}` with `Content-Type: application/json`
+  - SPARQL: `data={"query": query_text}` with `Content-Type: application/x-www-form-urlencoded`
+  - Body type determined by new `body_encoding: Literal["json", "form"] | None` field on `ApiEndpoint`
+  - Existing GET endpoints: no change
+
+### Neo4j Connector (REQ-295, REQ-296)
+
+- `provisa/core/models.py` — add `NEO4J = "neo4j"` to `SourceType` enum
+- `provisa/neo4j/__init__.py`
+- `provisa/neo4j/source.py` — `Neo4jSource`:
+  - Builds `ApiSource` config: `type=NEO4J`, `base_url=http(s)://{host}:{port}`
+  - Builds `ApiEndpoint` per registered table: `method="POST"`, `path="/db/{database}/query/v2"`, `body_encoding="json"`, `response_normalizer="neo4j_tabular"`
+  - Steward-supplied Cypher stored as a `query_template` field on the endpoint config
+  - Column definitions: steward-declared, matching `RETURN` aliases in the Cypher
+- `provisa/neo4j/preview.py` — query preview (REQ-296):
+  - `preview_query(source, cypher) -> list[dict]`: appends `LIMIT 5` to steward's Cypher, calls Neo4j HTTP API, runs normalizer, returns rows
+  - `validate_shape(rows, columns)`: checks that returned keys are all scalar types (str/int/float/bool/None); raises `Neo4jNodeObjectError` if any value is a dict/list (indicates node object returned)
+  - Registration endpoint calls `preview_query` + `validate_shape` before persisting the endpoint; returns validation error to UI if shape is wrong
+- `provisa/api/admin/neo4j_router.py` — admin endpoints:
+  - `POST /admin/sources/neo4j` — register Neo4j source
+  - `POST /admin/sources/neo4j/{source_id}/preview` — preview Cypher query (returns sample rows or shape error)
+  - `POST /admin/sources/neo4j/{source_id}/tables` — register table (runs preview+validate internally)
+
+**Registration flow:**
+```
+1. Steward registers Neo4j source: host, port, database, auth
+2. Steward authors a Cypher query (RETURN scalar projections only)
+3. UI calls /preview → shows sample rows; blocks if node objects detected
+4. Steward confirms columns (names derived from RETURN aliases) + sets TTL
+5. Table registered → appears in GraphQL schema via existing api_source/schema_integration.py
+6. Queries: cache hit → direct PG read; cache miss → POST Cypher → neo4j_tabular normalizer → flattener → PG cache write
+```
+
+### SPARQL Connector (REQ-297)
+
+- `provisa/core/models.py` — add `SPARQL = "sparql"` to `SourceType` enum
+- `provisa/sparql/__init__.py`
+- `provisa/sparql/source.py` — `SparqlSource`:
+  - Builds `ApiSource` config: `type=SPARQL`, `base_url={endpoint_url}`
+  - Builds `ApiEndpoint` per registered table: `method="POST"`, `path=""` (base URL is the SPARQL endpoint), `body_encoding="form"`, `response_normalizer="sparql_bindings"`
+  - Steward-supplied SPARQL SELECT stored as `query_template`
+  - Optional `default_graph_uri` injected as `default-graph-uri` form parameter per SPARQL 1.1 protocol
+  - Column names inferred from SPARQL SELECT variable names at registration time (parsed from `SELECT ?var1 ?var2` clause); steward can override
+- `provisa/api/admin/sparql_router.py` — admin endpoints:
+  - `POST /admin/sources/sparql` — register SPARQL source
+  - `POST /admin/sources/sparql/{source_id}/tables` — register table (executes `SELECT ... LIMIT 5` probe to validate endpoint reachability and infer column names)
+
+**Registration flow:**
+```
+1. Steward registers SPARQL source: endpoint URL, auth, optional default graph URI
+2. Steward authors a SPARQL SELECT query
+3. Provisa executes SELECT ... LIMIT 5 probe: validates endpoint + infers column names from SELECT variables
+4. Steward confirms columns + sets TTL
+5. Table registered → appears in GraphQL schema
+6. Queries: cache hit → direct PG read; cache miss → POST SPARQL → sparql_bindings normalizer → flattener → PG cache write
+```
+
+**Verify:**
+- `python -m pytest tests/unit/test_normalizers.py -x -q`:
+  - `neo4j_tabular`: zips fields/values correctly; single row; multi-row; empty values
+  - `sparql_bindings`: unwraps bindings envelope; mixed types (literal/uri/bnode → string value); empty bindings
+  - Unknown normalizer name → `ValueError` at registration
+- `python -m pytest tests/unit/test_neo4j_preview.py -x -q`:
+  - Flat scalar Cypher → preview returns rows, validation passes
+  - Node object in response → `Neo4jNodeObjectError` raised, registration blocked
+  - LIMIT 5 appended even when steward omits it; not doubled if steward includes it
+- `python -m pytest tests/integration/test_neo4j_source.py -x -q` (requires Neo4j container):
+  - Source registration → table registration → query → cache miss → API call → rows returned
+  - Second query → cache hit → no API call
+- `python -m pytest tests/integration/test_sparql_source.py -x -q` (requires Fuseki container):
+  - Source registration → table registration → query → cache miss → SPARQL POST → rows returned
+
+**Files:**
+| File | Action |
+|------|--------|
+| `provisa/core/models.py` | Modify (add `NEO4J`, `SPARQL` to `SourceType`) |
+| `provisa/api_source/models.py` | Modify (add `response_normalizer`, `body_encoding` to `ApiEndpoint`) |
+| `provisa/api_source/normalizers.py` | Create |
+| `provisa/api_source/flattener.py` | Modify (apply normalizer before root navigation) |
+| `provisa/api_source/caller.py` | Modify (POST body support) |
+| `provisa/neo4j/__init__.py` | Create |
+| `provisa/neo4j/source.py` | Create |
+| `provisa/neo4j/preview.py` | Create |
+| `provisa/sparql/__init__.py` | Create |
+| `provisa/sparql/source.py` | Create |
+| `provisa/api/admin/neo4j_router.py` | Create |
+| `provisa/api/admin/sparql_router.py` | Create |
+| `tests/unit/test_normalizers.py` | Create |
+| `tests/unit/test_neo4j_preview.py` | Create |
+| `tests/integration/test_neo4j_source.py` | Create |
+| `tests/integration/test_sparql_source.py` | Create |
