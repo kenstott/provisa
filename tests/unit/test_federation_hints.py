@@ -76,3 +76,46 @@ class TestExtractHints:
         cleaned, props = extract_hints(sql)
         assert "regular comment" in cleaned
         assert props == {}
+
+
+class TestExecuteTrinoSessionHints:
+    """Verify that session_hints are injected as SET SESSION before the main query."""
+
+    def test_session_hints_trigger_set_session(self):
+        from unittest.mock import MagicMock
+        from provisa.executor.trino import execute_trino
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.description = [("id",)]
+        mock_cursor.fetchall.return_value = [(1,)]
+        mock_conn.cursor.return_value = mock_cursor
+
+        execute_trino(
+            mock_conn,
+            "SELECT id FROM orders",
+            session_hints={"join_distribution_type": "BROADCAST"},
+        )
+
+        # cursor().execute should have been called for SET SESSION + main query
+        calls = [c.args[0] for c in mock_cursor.execute.call_args_list]
+        set_calls = [c for c in calls if c.startswith("SET SESSION")]
+        assert len(set_calls) == 1
+        assert "join_distribution_type" in set_calls[0]
+        assert "BROADCAST" in set_calls[0]
+
+    def test_no_session_hints_no_set_session(self):
+        from unittest.mock import MagicMock
+        from provisa.executor.trino import execute_trino
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.description = [("id",)]
+        mock_cursor.fetchall.return_value = [(1,)]
+        mock_conn.cursor.return_value = mock_cursor
+
+        execute_trino(mock_conn, "SELECT id FROM orders")
+
+        calls = [c.args[0] for c in mock_cursor.execute.call_args_list]
+        set_calls = [c for c in calls if c.startswith("SET SESSION")]
+        assert set_calls == []

@@ -461,6 +461,27 @@ class Mutation:
         )
         async with pool.acquire() as conn:
             await source_repo.upsert(conn, model)
+
+        # AL1: fire ANALYZE on all registered tables for this source (errors swallowed)
+        from provisa.api.app import state
+        if state.trino_conn is not None:
+            from provisa.core.catalog import analyze_source_tables
+
+            class _TblRef:
+                def __init__(self, source_id, schema_name, table_name):
+                    self.source_id = source_id
+                    self.schema_name = schema_name
+                    self.table_name = table_name
+
+            async with pool.acquire() as _conn:
+                rows = await _conn.fetch(
+                    "SELECT schema_name, table_name FROM registered_tables WHERE source_id = $1",
+                    input.id,
+                )
+            table_refs = [_TblRef(input.id, r["schema_name"], r["table_name"]) for r in rows]
+            if table_refs:
+                analyze_source_tables(state.trino_conn, model, table_refs)
+
         return MutationResult(success=True, message=f"Source {input.id!r} created")
 
     @strawberry.mutation

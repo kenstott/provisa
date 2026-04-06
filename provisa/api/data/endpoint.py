@@ -204,14 +204,12 @@ async def graphql_endpoint(
             role=request.role,
         )
     elif apq_hash and request.query:
-        # Hash + query: validate hash then cache
+        # Hash + query: validate hash only here; cache AFTER successful execution (REQ-291)
         from provisa.apq.cache import compute_apq_hash
         expected = compute_apq_hash(request.query)
         if expected != apq_hash:
             raise HTTPException(status_code=400, detail="APQ hash mismatch")
-        apq_cache = getattr(state, "apq_cache", None)
-        if apq_cache:
-            await apq_cache.set(apq_hash, request.query)
+        # apq_hash is preserved; we store after execution succeeds (see bottom of handler)
 
     if not request.query:
         raise HTTPException(status_code=400, detail="query is required")
@@ -266,15 +264,24 @@ async def graphql_endpoint(
         force_redirect = True
 
     if is_mut:
-        return await _handle_mutation(
+        response = await _handle_mutation(
             document, ctx, rls, state, request.variables, role_id,
         )
-    return await _handle_query(
-        document, ctx, rls, state, request.variables, role, output_format, role_id,
-        force_redirect=force_redirect,
-        redirect_threshold=x_provisa_redirect_threshold,
-        redirect_format=redirect_format,
-    )
+    else:
+        response = await _handle_query(
+            document, ctx, rls, state, request.variables, role, output_format, role_id,
+            force_redirect=force_redirect,
+            redirect_threshold=x_provisa_redirect_threshold,
+            redirect_format=redirect_format,
+        )
+
+    # AN (REQ-291): store APQ hash only after successful execution — never cache rejected queries
+    if apq_hash and request.query and response is not None:
+        apq_cache = getattr(state, "apq_cache", None)
+        if apq_cache:
+            await apq_cache.set(apq_hash, request.query)
+
+    return response
 
 
 async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs):
@@ -521,8 +528,21 @@ async def _execute_one_field(
             exec_sql = catalog_compiled.sql
             if probe_limit is not None:
                 exec_sql = _inject_probe_limit(exec_sql, probe_limit)
+
+            # AL5: extract comment hints from SQL; AL3: merge source-level federation_hints
+            from provisa.compiler.hints import extract_hints
+            exec_sql, comment_hints = extract_hints(exec_sql)
+            session_hints: dict[str, str] = {}
+            for sid in catalog_compiled.sources:
+                src_hints = getattr(state, "source_federation_hints", {}).get(sid, {})
+                session_hints.update(src_hints)
+            session_hints.update(comment_hints)  # comment hints take precedence
+
             trino_sql = transpile_to_trino(exec_sql)
-            result = execute_trino(state.trino_conn, trino_sql, catalog_compiled.params)
+            result = execute_trino(
+                state.trino_conn, trino_sql, catalog_compiled.params,
+                session_hints=session_hints or None,
+            )
             compiled = catalog_compiled  # use catalog columns for serialization
     except HTTPException:
         raise
@@ -545,7 +565,10 @@ async def _execute_one_field(
                 )
             else:
                 full_trino_sql = transpile_to_trino(compiled.sql)
-                full_result = execute_trino(state.trino_conn, full_trino_sql, compiled.params)
+                full_result = execute_trino(
+                    state.trino_conn, full_trino_sql, compiled.params,
+                    session_hints=session_hints or None,
+                )
             redirect_info = await upload_and_presign(
                 full_result, redirect_config,
                 output_format=effective_redirect_format,

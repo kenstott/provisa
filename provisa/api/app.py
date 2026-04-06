@@ -76,6 +76,7 @@ class AppState:
     apq_cache: APQCache = NoopAPQCache()  # Phase AN: Automatic Persisted Queries
     live_engine: object | None = None  # Phase AM: LiveEngine instance
     hostname: str = "localhost"  # publicly reachable hostname (PROVISA_HOSTNAME)
+    source_federation_hints: dict[str, dict[str, str]] = {}  # source_id → Trino session props (AL3)
 
 
 state = AppState()
@@ -292,6 +293,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
             "cache_enabled": src.cache_enabled,
             "cache_ttl": src.cache_ttl,
         }
+        if src.federation_hints:
+            state.source_federation_hints[src.id] = dict(src.federation_hints)
         if has_driver(src.type.value):
             resolved_pw = resolve_secrets(src.password)
             await state.source_pools.add(

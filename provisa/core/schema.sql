@@ -294,4 +294,11 @@ CREATE TABLE IF NOT EXISTS api_endpoint_candidates (
     UNIQUE (source_id, path, method)
 );
 
+-- Live Query Engine watermark state (Phase AM)
+CREATE TABLE IF NOT EXISTS live_query_state (
+    query_id    TEXT PRIMARY KEY,       -- stable_id of the approved persisted query
+    watermark   TEXT,                   -- last-seen watermark column value (serialized as text)
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- No auth tables needed — auth is config-driven, not DB-driven
