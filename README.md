@@ -1,10 +1,8 @@
 # Provisa
 
-Config-driven data virtualization platform — a semantic layer from small teams to large enterprises. Unified GraphQL/gRPC/SQL API over heterogeneous data sources with governance, security, and performance optimization.
+Config-driven data virtualization platform. A single governed GraphQL/gRPC/SQL API over heterogeneous data sources — with row-level security, column masking, query approval, and performance optimization built in. Deploy close to your consumers; everything that passes through Provisa is governed.
 
-GraphQL is used as the universal query language specifically because it can only composite existing semantics. New data can only enter the semantic layer via registered sources or aggregates inside Provisa — everything passing through Provisa is governed, which argues for deploying it as close to the data consumer as practical.
-
-**Operational performance** — Single-source queries bypass federation entirely and execute directly against the source driver (target: sub-100ms). Smart routing decides at compile time. Multi-source queries use federation. Result caching, materialized view rewriting, and Arrow Flight columnar streaming are available at all scales.
+**Operational performance** — Single-source queries execute directly against the source driver (target: sub-100ms). Multi-source queries federate transparently. Result caching, materialized view rewriting, and Arrow Flight columnar streaming scale with your workload.
 
 ## Features
 
@@ -12,7 +10,7 @@ GraphQL is used as the universal query language specifically because it can only
 - **GraphQL API** — Per-role schemas with field-level visibility, filtering, pagination, relationships
 - **Cursor-based pagination** — Relay-style `first`/`after`/`last`/`before` arguments on all list queries; returns `pageInfo` with `hasNextPage`, `hasPreviousPage`, `startCursor`, `endCursor`
 - **Aggregate queries** — Auto-generated `{table}_aggregate` types with `count`, `sum`, `avg`, `min`, `max` per numeric column and filtered `nodes` access
-- **Automatic Persisted Queries (APQ)** — Apollo APQ wire protocol support; Redis-backed, governance-gated; Apollo Client users get automatic query deduplication via `extensions.persistedQuery`
+- **Apollo APQ** — Apollo Automatic Persisted Queries wire protocol; Redis-backed hash→query cache; Apollo Client gets automatic deduplication via `extensions.persistedQuery` with no code changes
 - **Enum auto-detection** — Small lookup tables (≤ configured threshold rows) are automatically exposed as GraphQL enum types rather than string scalars
 - **gRPC endpoint** — Auto-generated `.proto` from registration model, streaming responses
 - **REST endpoints** — Auto-generated REST routes from approved queries
@@ -33,7 +31,7 @@ GraphQL is used as the universal query language specifically because it can only
 - **Column presets** — Server-side preset values (static or session variable references) applied automatically on insert/update without exposing them in the mutation input type
 - **Write permissions** — Per-column mutation access control (`writable_by`)
 - **Webhook mutations** — Database function tracking and outbound webhook-backed mutations
-- **Persisted query registry** — Approval workflow, governance, ceiling enforcement
+- **Governed query registry** — Pre-approved named queries with approval workflow, role-scoped execution, and ceiling enforcement; distinct from Apollo APQ
 - **Inherited roles** — Roles can inherit from a parent role, recursively inheriting RLS rules, column visibility, and masking policies; avoids duplicating permission sets across similar roles
 - **ABAC approval hook** — Pluggable external authorization hook called before query execution; supports webhook, gRPC, and unix_socket transports; scoped per-table, per-source, or globally; configurable fallback policy when hook is unavailable
 - **Pluggable auth** — Firebase, Keycloak, OAuth 2.0, simple (testing)
