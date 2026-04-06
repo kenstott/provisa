@@ -86,19 +86,27 @@ provisa start
 
 ### First Query
 
-```bash
-# Ad-hoc GraphQL
-curl -X POST http://localhost:8001/data/graphql \
-  -H "Content-Type: application/json" \
-  -d '{"query": "{ orders { id amount region } }", "role": "admin"}'
+In local development (`PROVISA_MODE=test`), no credentials are required. In production, authenticate with a Bearer token — the role is extracted from it automatically.
 
-# Ad-hoc SQL
+```bash
+# Local dev — no auth required, role defaults to admin
 curl -X POST http://localhost:8001/data/graphql \
   -H "Content-Type: application/json" \
-  -d '{"query": "SELECT id, amount, region FROM orders", "role": "admin"}'
+  -d '{"query": "{ orders { id amount region } }"}'
+
+# Ad-hoc SQL works the same way
+curl -X POST http://localhost:8001/data/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query": "SELECT id, amount, region FROM orders"}'
 
 # Execute a governed query by name — GET is cacheable by CDN/proxies
-curl "http://localhost:8001/data/graphql?queryId=monthly-revenue-by-region&role=analyst"
+curl "http://localhost:8001/data/graphql?queryId=monthly-revenue-by-region"
+
+# Production — authenticate with a Bearer token; role is derived from the token
+curl -X POST https://provisa.example.com/data/graphql \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "{ orders { id amount region } }"}'
 ```
 
 ### JDBC (Tableau, DBeaver, Power BI)
