@@ -26,7 +26,7 @@ RequestExecutionLevel admin
   Push "${REPLACE}"
   Push "${SEARCH}"
   Push "${NEEDLE}"
-  Call StrRep
+  Call un.StrRep
   Pop "${OUTPUT}"
 !macroend
 !define StrRep "!insertmacro _StrRep"
@@ -87,8 +87,8 @@ Section "Uninstall"
   SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 SectionEnd
 
-; ── StrRep function ───────────────────────────────────────────────────────────
-Function StrRep
+; ── StrRep function (un. prefix required for use in Uninstall section) ────────
+Function un.StrRep
   Exch $R0  ; needle
   Exch
   Exch $R1  ; search
