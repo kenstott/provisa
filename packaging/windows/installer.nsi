@@ -44,8 +44,7 @@ Section "Provisa" SecMain
   CreateDirectory "$SMPROGRAMS\Provisa"
   CreateShortcut "$SMPROGRAMS\Provisa\Provisa First Launch.lnk" \
     "powershell.exe" \
-    "-ExecutionPolicy Bypass -File `"$INSTDIR\first-launch.ps1`"" \
-    "$INSTDIR\first-launch.ps1" 0
+    "-ExecutionPolicy Bypass -File `"$INSTDIR\first-launch.ps1`""
 
   ; Add $INSTDIR to system PATH
   ReadRegStr $0 HKLM \
