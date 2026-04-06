@@ -1,12 +1,13 @@
 # Provisa
 
-Config-driven data virtualization platform. A single governed GraphQL/gRPC/SQL API over heterogeneous data sources — with row-level security, column masking, query approval, and performance optimization built in. Deploy close to your consumers; everything that passes through Provisa is governed.
+Config-driven data virtualization platform. A single governed API over heterogeneous data sources — query it with **GraphQL or SQL**, consume it over gRPC, REST, Arrow Flight, or JDBC. Row-level security, column masking, and query approval apply regardless of which query language you use.
 
 **Operational performance** — Single-source queries execute directly against the source driver (target: sub-100ms). Multi-source queries federate transparently. Result caching, materialized view rewriting, and Arrow Flight columnar streaming scale with your workload.
 
 ## Features
 
 ### Query & API
+- **GraphQL and SQL** — Both are first-class query languages; governance, RLS, and column masking apply to both; detected automatically by all client interfaces
 - **GraphQL API** — Per-role schemas with field-level visibility, filtering, pagination, relationships
 - **Cursor-based pagination** — Relay-style `first`/`after`/`last`/`before` arguments on all list queries; returns `pageInfo` with `hasNextPage`, `hasPreviousPage`, `startCursor`, `endCursor`
 - **Aggregate queries** — Auto-generated `{table}_aggregate` types with `count`, `sum`, `avg`, `min`, `max` per numeric column and filtered `nodes` access
