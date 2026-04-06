@@ -89,30 +89,70 @@ Trino scales independently via its own Helm chart. Add worker nodes to increase 
 
 ---
 
-## macOS (Desktop Installer)
+## Desktop Installers
 
-The macOS DMG installer packages Provisa as a self-contained desktop app with no external dependencies. It uses Lima VM + containerd to run all services in an airgapped environment — Docker is not required on the user machine.
+All three desktop installers are fully airgapped — no internet connection required after download, and no prerequisites to install.
 
-### Install
+---
 
-1. Download `Provisa-<version>.dmg` from the releases page
+## macOS
+
+1. Download `Provisa-<version>-macOS.dmg` from the releases page
 2. Open the DMG and drag **Provisa.app** to `/Applications`
-3. Double-click Provisa.app to trigger first-launch setup (one-time, ~2 minutes):
-   - Stages bundled container image tarballs to `~/.provisa/images/`
-   - Creates and starts a Lima VM named `provisa` (uses Virtualization.framework on Apple Silicon)
-   - Imports all images into containerd inside the VM
-   - Writes a default `~/.provisa/config.yaml`
-   - Installs the `provisa` CLI at `/usr/local/bin/provisa` (prompts for password once)
-4. Open Terminal and start services:
+3. Double-click Provisa.app — first-launch setup runs once (~2 minutes)
+4. Open Terminal:
 
 ```bash
 provisa start
 provisa open    # opens the UI in your browser
 ```
 
-All service images are bundled in the DMG — no internet connection required at install or runtime.
+### Data Persistence
 
-### CLI Commands
+All data is stored in `~/.provisa/`. Use `provisa uninstall` to remove everything.
+
+---
+
+## Linux
+
+1. Download `Provisa-<version>-linux-x86_64.AppImage` from the releases page
+2. Make it executable and run it — first-launch setup runs once (no internet required):
+
+```bash
+chmod +x Provisa-*-linux-x86_64.AppImage
+./Provisa-*-linux-x86_64.AppImage
+```
+
+3. Open a terminal:
+
+```bash
+provisa start && provisa open
+```
+
+### Data Persistence
+
+All data is stored in `~/.provisa/`.
+
+---
+
+## Windows
+
+1. Download `Provisa-<version>-windows-x64.exe` from the releases page
+2. Run the installer — no admin rights required; installs to `%LOCALAPPDATA%\Programs\Provisa\`
+3. Open **Provisa First Launch** from the Start Menu — first-launch setup runs once (~5 minutes)
+4. Open a new terminal:
+
+```
+provisa start
+```
+
+### Data Persistence
+
+All data is stored in `%USERPROFILE%\.provisa\`.
+
+---
+
+## CLI Commands (all platforms)
 
 ```bash
 provisa start       # Start all services
@@ -121,17 +161,7 @@ provisa restart     # Restart
 provisa status      # Show service health
 provisa open        # Open the UI in the browser
 provisa logs        # Tail service logs
-provisa upgrade     # Pull latest Provisa image
-provisa uninstall   # Remove Lima VM and all data
 ```
-
-### Data Persistence
-
-All data is stored in `~/.provisa/`. The Lima VM disk image persists between restarts. Use `provisa uninstall` to remove everything.
-
-### Airgap Notes
-
-The installer bundles all required container images. After the initial download, Provisa runs fully offline. The `provisa upgrade` command requires internet access.
 
 ---
 

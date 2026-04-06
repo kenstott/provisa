@@ -27,20 +27,28 @@ git tag v1.2.3-rc.1 && git push origin v1.2.3-rc.1
 git tag v1.2.3 && git push origin v1.2.3
 ```
 
-The CI workflow (`build-dmg.yml`) triggers on any `v*` tag and:
-1. Detects the channel from the tag suffix
-2. Builds the airgapped macOS DMG on `macos-14` (arm64)
-3. Creates a GitHub Release — pre-release flag set for alpha/beta/rc, latest for stable
-4. Uploads `Provisa-<tag>-macOS.dmg` as the release asset
-5. Auto-generates release notes from commits since the previous tag
+The CI workflow (`build-dmg.yml`) triggers on any `v*` tag and runs these jobs in parallel:
+
+1. **Resolve release metadata** — detects channel from tag suffix, derives PEP 440 version
+2. **Build Provisa runtime VM (OVA)** — builds an Alpine Linux + dockerd VM image used by the Windows installer
+3. **Pull and save Docker images** — saves all service image tarballs for bundling
+4. **Build airgapped macOS DMG** — runs on `macos-14` (Apple Silicon)
+5. **Build airgapped Linux AppImage** — bundles static rootless dockerd + all images
+6. **Build airgapped Windows installer** — bundles VirtualBox + OVA + all images
+7. **Build JDBC driver** — Maven shaded JAR
+8. **Build and test Python client** — tests then builds wheel
+9. **Publish Python client to PyPI**
+10. **Publish GitHub Release** — uploads all assets, sets pre-release flag for alpha/beta/rc
 
 ## Release Assets
 
-Each release publishes three assets:
+Each release publishes five assets:
 
 | Asset | Where |
 |-------|-------|
 | `Provisa-<tag>-macOS.dmg` | GitHub Release |
+| `Provisa-<tag>-linux-x86_64.AppImage` | GitHub Release |
+| `Provisa-<tag>-windows-x64.exe` | GitHub Release |
 | `provisa-jdbc-<tag>.jar` | GitHub Release |
 | `provisa_client-<pep440>-py3-none-any.whl` | GitHub Release + PyPI |
 
