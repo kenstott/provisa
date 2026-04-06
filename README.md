@@ -87,9 +87,20 @@ provisa start
 ### First Query
 
 ```bash
+# Ad-hoc GraphQL
 curl -X POST http://localhost:8001/data/graphql \
   -H "Content-Type: application/json" \
   -d '{"query": "{ orders { id amount region } }", "role": "admin"}'
+
+# Ad-hoc SQL
+curl -X POST http://localhost:8001/data/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"query": "SELECT id, amount, region FROM orders", "role": "admin"}'
+
+# Execute a governed query by name (stable_id)
+curl -X POST http://localhost:8001/data/graphql \
+  -H "Content-Type: application/json" \
+  -d '{"queryId": "monthly-revenue-by-region", "role": "analyst"}'
 ```
 
 ### JDBC (Tableau, DBeaver, Power BI)
@@ -122,6 +133,16 @@ from provisa_client import ProvisaClient, connect
 # GraphQL → DataFrame
 client = ProvisaClient("http://localhost:8001", username="alice", password="secret")
 df = client.query_df("{ orders { id amount region } }")
+
+# SQL → DataFrame
+df = client.query_df("SELECT id, amount, region FROM orders WHERE region = 'west'")
+
+# Execute a governed query by name (via DB-API approved mode)
+with connect("http://localhost:8001", username="alice", password="secret",
+             mode="approved") as conn:
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM monthly-revenue-by-region")
+    rows = cur.fetchall()
 
 # Arrow Flight → pyarrow Table (high-throughput columnar)
 table = client.flight("{ orders { id amount region } }")
