@@ -100,6 +100,31 @@ services:
       kafka:
         condition: service_healthy
 
+  debezium-connect:
+    image: debezium/connect:2.7
+    ports:
+      - "8083:8083"
+    environment:
+      BOOTSTRAP_SERVERS: kafka:29092
+      GROUP_ID: debezium-connect
+      CONFIG_STORAGE_TOPIC: debezium_connect_configs
+      OFFSET_STORAGE_TOPIC: debezium_connect_offsets
+      STATUS_STORAGE_TOPIC: debezium_connect_statuses
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/connectors || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+
   redis:
     image: redis:7-alpine
     ports:
