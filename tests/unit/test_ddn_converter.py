@@ -35,7 +35,7 @@ from provisa.ddn.models import (
 from provisa.ddn.parser import parse_hml_dir
 from provisa.import_shared.warnings import WarningCollector
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
 # ---------------------------------------------------------------------------
@@ -216,8 +216,7 @@ def _minimal_metadata() -> DDNMetadata:
                 field_mappings=[
                     DDNFieldMapping(graphql_field="customerId", column="customer_id"),
                     DDNFieldMapping(graphql_field="totalAmount", column="total_amount"),
-                    DDNFieldMapping(graphql_field="id", column="id"),
-                ],
+                    DDNFieldMapping(graphql_field="id", column="id")],
             )
         ],
     )

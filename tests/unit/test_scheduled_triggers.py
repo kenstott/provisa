@@ -20,7 +20,7 @@ import pytest
 from provisa.core.models import ScheduledTrigger
 from provisa.scheduler.jobs import _execute_webhook, build_scheduler
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
 # ---------------------------------------------------------------------------
@@ -114,8 +114,7 @@ class TestScheduledTriggers:
         triggers = [
             _make_trigger(id="t1", cron="0 * * * *", url="https://example.com/t1"),
             _make_trigger(id="t2", cron="30 * * * *", url="https://example.com/t2"),
-            _make_trigger(id="t3", cron="0 0 * * *", enabled=False, url="https://example.com/t3"),
-        ]
+            _make_trigger(id="t3", cron="0 0 * * *", enabled=False, url="https://example.com/t3")]
         scheduler = build_scheduler(triggers)
         assert scheduler is not None
         job_ids = {j.id for j in scheduler.get_jobs()}

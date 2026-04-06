@@ -24,7 +24,7 @@ from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
 from provisa.mv.refresh import _build_refresh_sql, _target_ref, refresh_mv
 from provisa.mv.registry import MVRegistry
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
 def _jp_mv(mv_id="mv-orders-customers"):

@@ -23,7 +23,7 @@ import pytest
 from provisa.executor.drivers.registry import has_driver
 from provisa.transpiler.router import Route, RouteDecision, decide_route
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 # ---------------------------------------------------------------------------
 # Shared source type / dialect fixtures
@@ -149,8 +149,7 @@ class TestRoutingDecisions:
             {"pg-main"},
             {"pg-main", "pg-secondary"},
             {"mongo-events"},
-            {"kafka-stream"},
-        ]:
+            {"kafka-stream"}]:
             d = decide_route(source_set, _TYPES, _DIALECTS)
             assert d.reason, f"Empty reason for sources={source_set}"
             assert isinstance(d.reason, str)

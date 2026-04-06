@@ -410,48 +410,49 @@ class TestJsonapiEndpointsHTTP:
         from provisa.api.app import AppState
         from provisa.compiler.rls import RLSContext
         from fastapi import FastAPI
-        from graphql import (
-            GraphQLField,
-            GraphQLInt,
-            GraphQLList,
-            GraphQLNonNull,
-            GraphQLObjectType,
-            GraphQLSchema,
-            GraphQLString,
-        )
-
-        order_type = GraphQLObjectType(
-            "Order",
-            lambda: {
-                "id": GraphQLField(GraphQLNonNull(GraphQLInt)),
-                "region": GraphQLField(GraphQLString),
-                "amount": GraphQLField(GraphQLInt),
-            },
-        )
-        query_type = GraphQLObjectType(
-            "Query",
-            {"orders": GraphQLField(GraphQLList(order_type))},
-        )
-        schema = GraphQLSchema(query=query_type)
 
         try:
-            from provisa.compiler.sql_gen import CompilationContext, TableMeta
-            ctx = CompilationContext(
-                tables={
-                    "orders": TableMeta(
-                        table_id=1,
-                        field_name="orders",
-                        type_name="Order",
-                        source_id="test-pg",
-                        catalog_name="postgresql",
-                        schema_name="public",
-                        table_name="orders",
-                        domain_id="default",
-                    )
-                }
+            from provisa.compiler.schema_gen import SchemaInput, generate_schema
+            from provisa.compiler.introspect import ColumnMetadata
+            from provisa.compiler.sql_gen import build_context
+
+            def _col(name, dtype="varchar(100)", nullable=True):
+                return ColumnMetadata(column_name=name, data_type=dtype, is_nullable=nullable)
+
+            tables = [{
+                "id": 1,
+                "source_id": "test-pg",
+                "domain_id": "default",
+                "schema_name": "public",
+                "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "region", "visible_to": ["admin"]},
+                    {"column_name": "amount", "visible_to": ["admin"]},
+                ],
+            }]
+            column_types = {
+                1: [
+                    _col("id", "integer", nullable=False),
+                    _col("region", "varchar(50)"),
+                    _col("amount", "decimal(10,2)"),
+                ]
+            }
+            role = {"id": "admin", "capabilities": ["admin"], "domain_access": ["*"]}
+            si = SchemaInput(
+                tables=tables,
+                relationships=[],
+                column_types=column_types,
+                naming_rules=[],
+                role=role,
+                domains=[{"id": "default", "description": "Default"}],
+                source_types={"test-pg": "postgresql"},
             )
-        except Exception:
-            pytest.skip("Cannot build CompilationContext")
+            schema = generate_schema(si)
+            ctx = build_context(si)
+        except Exception as exc:
+            pytest.skip(f"Cannot build schema — {exc}")
 
         from provisa.executor.pool import SourcePool
         import os

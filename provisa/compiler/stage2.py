@@ -129,15 +129,19 @@ def _qualify_filter(filter_expr: str, alias: str) -> str:
         return filter_expr
 
     def _replace(m: re.Match) -> str:
-        word = m.group(0)
+        # Group 1 matches a single-quoted string literal — return unchanged
+        if m.group(1) is not None:
+            return m.group(1)
+        word = m.group(2)
         if word.lower() in _SQL_KEYWORDS:
             return word
-        start = m.start()
+        start = m.start(2)
         if start > 0 and filter_expr[start - 1] in (".", "'"):
             return word
         return f'"{alias}".{word}'
 
-    return re.sub(r'\b([a-zA-Z_]\w*)\b', _replace, filter_expr)
+    # Match single-quoted strings first (to skip them), then bare identifiers
+    return re.sub(r"('(?:[^'\\]|\\.)*')|(\b[a-zA-Z_]\w*\b)", _replace, filter_expr)
 
 
 def _table_id_for_node(table_node: exp.Table, gov_ctx: GovernanceContext) -> int | None:

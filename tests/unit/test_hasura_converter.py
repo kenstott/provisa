@@ -25,7 +25,7 @@ from provisa.hasura_v2.mapper import convert_metadata
 from provisa.hasura_v2.parser import parse_metadata_dir
 from provisa.import_shared.warnings import WarningCollector
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
 # ---------------------------------------------------------------------------

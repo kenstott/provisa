@@ -95,7 +95,8 @@ async def sql_client():
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
 
-    # Clean up
+    # Clean up — restore source_pools so subsequent tests see a clean SourcePool
+    from provisa.executor.pool import SourcePool
     app_mod.state.schemas = {}
     app_mod.state.contexts = {}
     app_mod.state.rls_contexts = {}
@@ -103,6 +104,7 @@ async def sql_client():
     app_mod.state.masking_rules = {}
     app_mod.state.source_types = {}
     app_mod.state.source_dialects = {}
+    app_mod.state.source_pools = SourcePool()
 
 
 # ---------------------------------------------------------------------------

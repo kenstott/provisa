@@ -30,7 +30,7 @@ from provisa.compiler.rls import RLSContext, inject_rls
 from provisa.compiler.mask_inject import inject_masking
 from provisa.security.masking import MaskingRule, MaskType
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 # ---------------------------------------------------------------------------
 # Shared fixtures / builders

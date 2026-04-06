@@ -492,7 +492,10 @@ class TestFlightDoGetWithRealData:
             loop.close()
             pytest.skip("PG-backed Flight server did not start in time")
 
-        client = flight.connect(location)
+        client = flight.connect(
+            location,
+            generic_options=[("grpc.max_metadata_size", 16 * 1024 * 1024)],
+        )
         yield client, server, state, source_pool, loop
 
         client.close()

@@ -20,7 +20,7 @@ from provisa.auth.models import AuthIdentity
 from provisa.auth.providers.simple import SimpleAuthProvider
 from provisa.auth.role_mapping import resolve_role
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 JWT_SECRET = "integration-test-secret"
 
@@ -41,8 +41,7 @@ def provider():
             "username": "bob",
             "password_hash": _hash_pw("bob-pass"),
             "roles": ["admin", "analyst"],
-        },
-    ]
+        }]
     return SimpleAuthProvider(users=users, jwt_secret=JWT_SECRET)
 
 
@@ -107,8 +106,7 @@ class TestRoleMappingFromJWT:
         token = provider.login("bob", "bob-pass")
         identity = await provider.validate_token(token)
         rules = [
-            {"type": "contains", "claim": "roles", "value": "admin", "role": "admin"},
-        ]
+            {"type": "contains", "claim": "roles", "value": "admin", "role": "admin"}]
         role = resolve_role(identity, rules, default_role="viewer")
         assert role == "admin"
 
@@ -116,8 +114,7 @@ class TestRoleMappingFromJWT:
         token = provider.login("alice", "alice-pass")
         identity = await provider.validate_token(token)
         rules = [
-            {"type": "exact", "claim": "sub", "value": "alice", "role": "power-user"},
-        ]
+            {"type": "exact", "claim": "sub", "value": "alice", "role": "power-user"}]
         role = resolve_role(identity, rules, default_role="viewer")
         assert role == "power-user"
 
@@ -125,8 +122,7 @@ class TestRoleMappingFromJWT:
         token = provider.login("alice", "alice-pass")
         identity = await provider.validate_token(token)
         rules = [
-            {"type": "exact", "claim": "sub", "value": "charlie", "role": "admin"},
-        ]
+            {"type": "exact", "claim": "sub", "value": "charlie", "role": "admin"}]
         role = resolve_role(identity, rules, default_role="viewer")
         assert role == "viewer"
 

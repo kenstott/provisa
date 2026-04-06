@@ -169,7 +169,7 @@ class TestBuildEnumTypes:
         gql_type = enum_types["order_status"]
 
         # GraphQL enum keys are sanitized; values (internal) are the original labels
-        all_values = list(gql_type.values.values())
+        all_values = [v.value for v in gql_type.values.values()]
         for label in labels:
             assert label in all_values, f"Expected {label!r} in enum values"
 

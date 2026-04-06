@@ -31,7 +31,7 @@ from provisa.compiler.sql_gen import (
     rewrite_hot_joins,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 # ---------------------------------------------------------------------------
 # Helpers / builders

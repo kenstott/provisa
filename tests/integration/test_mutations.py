@@ -57,6 +57,7 @@ def _build_schema_and_ctx():
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
+                {"column_name": "product_id", "visible_to": ["admin"]},
                 {"column_name": "amount", "visible_to": ["admin"]},
                 {"column_name": "region", "visible_to": ["admin"]},
                 {"column_name": "status", "visible_to": ["admin"]},
@@ -67,6 +68,7 @@ def _build_schema_and_ctx():
         1: [
             _col("id", "integer", nullable=False),
             _col("customer_id", "integer", nullable=True),
+            _col("product_id", "integer", nullable=True),
             _col("amount", "decimal(10,2)", nullable=True),
             _col("region", "varchar(50)", nullable=True),
             _col("status", "varchar(20)", nullable=True),
@@ -141,10 +143,15 @@ class TestInsertMutation:
         async with pg_pool.acquire() as conn:
             cid = await conn.fetchval("SELECT id FROM customers LIMIT 1")
 
+        # Get a valid product_id from the DB
+        async with pg_pool.acquire() as conn:
+            pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
+
         doc = parse(f"""
             mutation {{
                 insert_orders(input: {{
                     customer_id: {cid},
+                    product_id: {pid},
                     amount: 99.99,
                     region: "{_TEST_REGION}"
                 }}) {{ affected_rows }}
@@ -178,9 +185,10 @@ class TestInsertMutation:
         # Insert a row to update
         async with pg_pool.acquire() as conn:
             cid = await conn.fetchval("SELECT id FROM customers LIMIT 1")
+            pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
             await conn.execute(
-                "INSERT INTO orders (customer_id, amount, region) VALUES ($1, $2, $3)",
-                cid, 50.00, _TEST_REGION,
+                "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4)",
+                cid, pid, 50.00, _TEST_REGION,
             )
 
         try:
@@ -216,9 +224,10 @@ class TestInsertMutation:
         # Insert a row to delete
         async with pg_pool.acquire() as conn:
             cid = await conn.fetchval("SELECT id FROM customers LIMIT 1")
+            pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
             await conn.execute(
-                "INSERT INTO orders (customer_id, amount, region) VALUES ($1, $2, $3)",
-                cid, 77.77, _TEST_REGION,
+                "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4)",
+                cid, pid, 77.77, _TEST_REGION,
             )
 
         doc = parse(f"""
@@ -253,9 +262,10 @@ class TestInsertMutation:
         # Insert an initial row
         async with pg_pool.acquire() as conn:
             cid = await conn.fetchval("SELECT id FROM customers LIMIT 1")
+            pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
             inserted_id = await conn.fetchval(
-                "INSERT INTO orders (customer_id, amount, region) VALUES ($1, $2, $3) RETURNING id",
-                cid, 10.00, _TEST_REGION,
+                "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4) RETURNING id",
+                cid, pid, 10.00, _TEST_REGION,
             )
 
         try:
@@ -263,7 +273,7 @@ class TestInsertMutation:
             doc = parse(f"""
                 mutation {{
                     upsert_orders(
-                        input: {{ id: {inserted_id}, customer_id: {cid}, amount: 200.00, region: "{_TEST_REGION}" }},
+                        input: {{ id: {inserted_id}, customer_id: {cid}, product_id: {pid}, amount: 200.00, region: "{_TEST_REGION}" }},
                         on_conflict: [id]
                     ) {{ affected_rows }}
                 }}
@@ -289,9 +299,10 @@ class TestInsertMutation:
 
         async with pg_pool.acquire() as conn:
             cid = await conn.fetchval("SELECT id FROM customers LIMIT 1")
+            pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
 
         # Build input and apply a literal preset for the region column
-        input_data = {"customer_id": cid, "amount": 55.55}
+        input_data = {"customer_id": cid, "product_id": pid, "amount": 55.55}
         presets = [{"column": "region", "source": "literal", "value": _TEST_REGION}]
         enriched = apply_column_presets(input_data, presets)
 

@@ -29,7 +29,7 @@ from provisa.auth.approval_hook import (
     should_check,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 # ---------------------------------------------------------------------------
 # These tests do NOT require a database connection.

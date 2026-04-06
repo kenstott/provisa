@@ -23,7 +23,7 @@ import pytest
 from provisa.discovery.analyzer import RelationshipCandidate
 from provisa.discovery.candidates import accept, list_pending, reject, store_candidates
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
 def _candidate(
@@ -64,8 +64,7 @@ class TestStoreCandidates:
         candidates = [
             _candidate(src_col="customer_id"),
             _candidate(src_col="product_id", tgt_table=3),
-            _candidate(src_col="status_id", tgt_table=4),
-        ]
+            _candidate(src_col="status_id", tgt_table=4)]
         ids = await store_candidates(conn, candidates, "domain")
         assert ids == [1, 2, 3]
         assert conn.fetchval.call_count == 3

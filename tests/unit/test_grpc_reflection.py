@@ -25,7 +25,7 @@ reflection = pytest.importorskip("grpc_reflection.v1alpha.reflection")
 
 from provisa.grpc.reflection import enable_reflection
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
 class TestEnableReflection:
@@ -66,8 +66,7 @@ class TestEnableReflection:
         server = grpc.aio.server()
         service_names = [
             "provisa.v1.ProvisaService",
-            "provisa.v1.AdminService",
-        ]
+            "provisa.v1.AdminService"]
 
         captured = {}
         original_enable = reflection.enable_server_reflection
