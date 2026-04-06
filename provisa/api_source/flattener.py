@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 
 from provisa.api_source.models import ApiColumn, ApiColumnType
+from provisa.api_source.normalizers import get_normalizer
 
 
 def _navigate_path(data: object, path: str | None) -> object:
@@ -59,12 +60,27 @@ def flatten_response(
     data: object,
     root_path: str | None,
     columns: list[ApiColumn],
+    response_normalizer: str | None = None,
 ) -> list[dict]:
     """Flatten API response data into row dicts suitable for PG insertion.
 
+    If response_normalizer is set, applies it before root_path navigation.
     Navigates to root_path, then for each item extracts column values.
     Primitives become native values; objects/arrays become JSON strings.
     """
+    if response_normalizer:
+        # Normalizer returns ready-made row dicts; skip root navigation.
+        items = get_normalizer(response_normalizer)(data)
+        rows: list[dict] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            row: dict = {}
+            for col in columns:
+                row[col.name] = _extract_value(item, col)
+            rows.append(row)
+        return rows
+
     root = _navigate_path(data, root_path)
 
     if isinstance(root, dict):

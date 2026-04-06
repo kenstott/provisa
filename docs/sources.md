@@ -21,6 +21,8 @@
 | `exasol` | — | exasol | exasol | No |
 | `mongodb` | — | mongodb | — | No |
 | `cassandra` | — | cassandra | — | No |
+| `neo4j` | API cache pipeline | — | — | No |
+| `sparql` | API cache pipeline | — | — | No |
 
 **Direct execution**: Single-source RDBMS queries route to the native driver for sub-100ms latency. Sources with a direct driver and SQLGlot dialect support this path.
 
@@ -45,6 +47,61 @@ Register REST, GraphQL, and gRPC endpoints as queryable tables.
 **JSONB promotion**: Stewards can promote nested JSONB fields into native PG generated columns, making them filterable and relationship-eligible.
 
 **Caching**: API responses are cached in PG with configurable TTL. Cache key = `hash(endpoint_id, sorted_params)`.
+
+## Graph & Semantic Sources
+
+### Neo4j
+
+Register a Neo4j graph database as a queryable source. Stewards author Cypher queries that project scalar values; Provisa caches results and exposes them as GraphQL types.
+
+**Requirements**: Cypher queries must use property accessors in the `RETURN` clause (`RETURN n.id AS id, n.name AS name`) — returning node objects is rejected at registration time.
+
+```yaml
+# Register via admin API (no YAML config required)
+POST /admin/sources/neo4j
+{
+  "source_id": "graph",
+  "host": "neo4j",
+  "port": 7474,
+  "database": "neo4j"
+}
+
+# Register a table (preview + validate before persisting)
+POST /admin/sources/neo4j/graph/tables
+{
+  "table_name": "person_skills",
+  "cypher": "MATCH (p:Person)-[:HAS_SKILL]->(s:Skill) RETURN p.name AS name, s.skill AS skill, p.experience AS years",
+  "ttl": 300
+}
+```
+
+The preview endpoint (`POST /admin/sources/neo4j/{id}/preview`) returns sample rows and blocks registration if the Cypher returns node objects.
+
+### SPARQL
+
+Register any SPARQL 1.1 compliant triplestore (Apache Jena Fuseki, Virtuoso, Stardog, etc.) as a queryable source.
+
+**Requirements**: Queries must be `SELECT` queries. Variable names in the `SELECT` clause become column names automatically.
+
+```yaml
+# Register via admin API
+POST /admin/sources/sparql
+{
+  "source_id": "knowledge-graph",
+  "endpoint_url": "http://fuseki:3030/ds/sparql",
+  "default_graph_uri": "http://example.org/graph"
+}
+
+# Register a table (executes LIMIT 5 probe to validate and infer columns)
+POST /admin/sources/sparql/knowledge-graph/tables
+{
+  "table_name": "product_categories",
+  "sparql_query": "SELECT ?product ?label ?category WHERE { ?product a :Product ; rdfs:label ?label ; :hasCategory ?category . }",
+  "ttl": 600
+}
+```
+
+Both connectors use the existing API source cache pipeline — results are stored in PostgreSQL with configurable TTL, making them available for cross-source JOINs via Trino federation.
 
 ## Kafka Sources
 

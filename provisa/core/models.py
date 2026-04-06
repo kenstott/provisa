@@ -48,6 +48,9 @@ class SourceType(str, Enum):
     accumulo = "accumulo"
     # Streaming
     kafka = "kafka"
+    # Graph / Semantic
+    neo4j = "neo4j"
+    sparql = "sparql"
     # Other
     google_sheets = "google_sheets"
     prometheus = "prometheus"

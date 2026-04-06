@@ -166,6 +166,44 @@ mutation {
 }
 ```
 
+### Graph Source Registration
+
+Neo4j and SPARQL sources are registered via REST endpoints (not the GraphQL admin API):
+
+**Neo4j:**
+```bash
+# 1. Register the Neo4j source
+curl -X POST http://localhost:8001/admin/sources/neo4j \
+  -H "Content-Type: application/json" \
+  -d '{"source_id": "graph", "host": "neo4j", "port": 7474, "database": "neo4j"}'
+
+# 2. Preview a Cypher query (validates scalar projections)
+curl -X POST http://localhost:8001/admin/sources/neo4j/graph/preview \
+  -H "Content-Type: application/json" \
+  -d '{"cypher": "MATCH (p:Person) RETURN p.name AS name, p.age AS age"}'
+
+# 3. Register a table (runs preview+validate automatically)
+curl -X POST http://localhost:8001/admin/sources/neo4j/graph/tables \
+  -H "Content-Type: application/json" \
+  -d '{"table_name": "people", "cypher": "MATCH (p:Person) RETURN p.name AS name, p.age AS age", "ttl": 300}'
+```
+
+**SPARQL:**
+```bash
+# 1. Register the SPARQL source
+curl -X POST http://localhost:8001/admin/sources/sparql \
+  -H "Content-Type: application/json" \
+  -d '{"source_id": "kg", "endpoint_url": "http://fuseki:3030/ds/sparql"}'
+
+# 2. Register a table (probes endpoint and infers columns)
+curl -X POST http://localhost:8001/admin/sources/sparql/kg/tables \
+  -H "Content-Type: application/json" \
+  -d '{"table_name": "products", "sparql_query": "SELECT ?name ?category WHERE { ?p a :Product ; :name ?name ; :category ?category . }", "ttl": 600}'
+```
+
+Once registered, tables appear in the GraphQL schema and are queryable like any other source.
+
 ## GraphiQL
 
 The admin API ships with GraphiQL at `GET /admin/graphql` in the browser. Use it to explore the full admin schema interactively.
+

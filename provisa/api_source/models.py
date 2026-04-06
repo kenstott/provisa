@@ -11,6 +11,7 @@
 """Pydantic models for API data sources (Phase U)."""
 
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -82,6 +83,10 @@ class ApiEndpoint(BaseModel):
     ttl: int = 300
     response_root: str | None = None
     pagination: PaginationConfig | None = None
+    # Phase AO: query-API sources (Neo4j, SPARQL)
+    body_encoding: Literal["json", "form"] | None = None
+    query_template: str | None = None  # Cypher or SPARQL query
+    response_normalizer: str | None = None  # e.g. "neo4j_tabular" or "sparql_bindings"
 
 
 class ApiEndpointCandidate(BaseModel):

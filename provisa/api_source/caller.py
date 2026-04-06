@@ -77,13 +77,14 @@ async def _request_with_retry(
     params: dict | None = None,
     headers: dict | None = None,
     json_body: dict | None = None,
+    form_body: dict | None = None,
     timeout: float = _DEFAULT_TIMEOUT,
 ) -> httpx.Response:
     """Make an HTTP request with retry on 429/5xx."""
     for attempt in range(_MAX_RETRIES):
         resp = await client.request(
             method, url, params=params, headers=headers,
-            json=json_body, timeout=timeout,
+            json=json_body, data=form_body, timeout=timeout,
         )
         if resp.status_code == 429 or resp.status_code >= 500:
             if attempt < _MAX_RETRIES - 1:
@@ -107,11 +108,15 @@ async def _paginate(
     headers: dict,
     body: dict | None,
     timeout: float,
+    form_body: dict | None = None,
 ) -> list[dict]:
     """Follow pagination, collecting all pages."""
     pagination = endpoint.pagination
     if pagination is None:
-        resp = await _request_with_retry(client, endpoint.method, url, params, headers, body, timeout)
+        resp = await _request_with_retry(
+            client, endpoint.method, url, params, headers,
+            json_body=body, form_body=form_body, timeout=timeout,
+        )
         return [resp.json()]
 
     pages: list[dict] = []
@@ -122,7 +127,10 @@ async def _paginate(
         for _ in range(max_pages):
             if next_url is None:
                 break
-            resp = await _request_with_retry(client, endpoint.method, next_url, params, headers, body, timeout)
+            resp = await _request_with_retry(
+                client, endpoint.method, next_url, params, headers,
+                json_body=body, form_body=form_body, timeout=timeout,
+            )
             pages.append(resp.json())
             link = resp.headers.get("link", "")
             match = re.search(r'<([^>]+)>;\s*rel="next"', link)
@@ -133,7 +141,10 @@ async def _paginate(
         cursor_param = pagination.cursor_param or "cursor"
         cursor_field = pagination.cursor_field or "next_cursor"
         for _ in range(max_pages):
-            resp = await _request_with_retry(client, endpoint.method, url, params, headers, body, timeout)
+            resp = await _request_with_retry(
+                client, endpoint.method, url, params, headers,
+                json_body=body, form_body=form_body, timeout=timeout,
+            )
             data = resp.json()
             pages.append(data)
             cursor = data.get(cursor_field) if isinstance(data, dict) else None
@@ -151,7 +162,10 @@ async def _paginate(
             p = dict(params or {})
             p[page_size_param] = page_size
             p[offset_param] = offset
-            resp = await _request_with_retry(client, endpoint.method, url, p, headers, body, timeout)
+            resp = await _request_with_retry(
+                client, endpoint.method, url, p, headers,
+                json_body=body, form_body=form_body, timeout=timeout,
+            )
             data = resp.json()
             pages.append(data)
             # Heuristic: if response is a list shorter than page_size, we're done
@@ -167,7 +181,10 @@ async def _paginate(
             p = dict(params or {})
             p[page_param] = page_num
             p[page_size_param] = page_size
-            resp = await _request_with_retry(client, endpoint.method, url, p, headers, body, timeout)
+            resp = await _request_with_retry(
+                client, endpoint.method, url, p, headers,
+                json_body=body, form_body=form_body, timeout=timeout,
+            )
             data = resp.json()
             pages.append(data)
             if isinstance(data, list) and len(data) < page_size:
@@ -273,17 +290,33 @@ async def call_api(
     _apply_auth(auth, headers, query_params)
 
     # GraphQL: wrap query in proper body
+    json_body: dict | None = None
+    form_body: dict | None = None
     if endpoint.method == "QUERY":
         body = body or {}
-        body = {"query": endpoint.path, "variables": body}
+        json_body = {"query": endpoint.path, "variables": body}
         method = "POST"
     elif endpoint.method == "RPC":
         return await _call_grpc(endpoint, resolved_params, base_url)
+    elif endpoint.body_encoding == "json":
+        # Neo4j HTTP API: POST with JSON body containing the Cypher statement
+        json_body = {"statement": endpoint.query_template} if endpoint.query_template else body
+        method = endpoint.method
+    elif endpoint.body_encoding == "form":
+        # SPARQL 1.1: POST with form-encoded query parameter
+        form_body = {"query": endpoint.query_template} if endpoint.query_template else {}
+        if body:
+            form_body.update(body)
+        method = endpoint.method
     else:
+        json_body = body
         method = endpoint.method
 
     async with httpx.AsyncClient() as client:
-        pages = await _paginate(client, endpoint, url, query_params, headers, body, timeout)
+        pages = await _paginate(
+            client, endpoint, url, query_params, headers,
+            body=json_body, timeout=timeout, form_body=form_body,
+        )
 
     return pages
 

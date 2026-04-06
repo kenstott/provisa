@@ -876,6 +876,12 @@ def create_app() -> FastAPI:
     from provisa.api.admin.api_discovery import router as api_discovery_router
     app.include_router(api_discovery_router)
 
+    from provisa.api.admin.neo4j_router import router as neo4j_router
+    app.include_router(neo4j_router)
+
+    from provisa.api.admin.sparql_router import router as sparql_router
+    app.include_router(sparql_router)
+
     @app.get("/admin/config")
     async def download_config():
         """Download the current config YAML."""

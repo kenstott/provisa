@@ -19,10 +19,11 @@ Config-driven data virtualization platform. A single governed API over heterogen
 - **SSE subscriptions** — Real-time push via pluggable providers (change events, polling)
 
 ### Data Sources
-- **Multi-source federation** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, and more through a single API
+- **Multi-source federation** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, and more through a single API
 - **Smart routing** — Single-source queries execute directly (sub-100ms); multi-source queries federate transparently via Trino-compatible federation — bring your own Trino or Trino-compatible cluster to scale out
-- **Federation performance hints** — Query-level routing hints embedded as SQL comments (e.g., `/* @provisa route=trino */`) override automatic routing decisions for performance tuning
+- **Federation performance hints** — Query-level routing hints embedded as SQL comments override automatic routing decisions for performance tuning
 - **API sources** — Register REST/GraphQL/gRPC endpoints as queryable tables
+- **Graph sources** — Neo4j (Cypher) and SPARQL 1.1 triplestores registered via admin API; results cached and federable with relational sources
 - **Kafka integration** — Topics as read-only tables, query results as Kafka sinks
 - **Scheduled triggers** — Cron and interval-based triggers (via APScheduler) that fire webhooks, mutations, or Kafka sink publishes; configured via the admin API or YAML config
 
