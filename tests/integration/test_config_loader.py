@@ -44,7 +44,7 @@ async def _clean_tables(pg_pool, _init_schema):
     """Truncate config tables before each test."""
     async with pg_pool.acquire() as conn:
         await conn.execute("""
-            TRUNCATE rls_rules, relationships, table_columns,
+            TRUNCATE rls_rules, relationships, relationship_candidates, table_columns,
                      registered_tables, naming_rules, roles, domains, sources
             CASCADE
         """)

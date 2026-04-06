@@ -35,6 +35,11 @@ def _to_field_name(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]", "_", name).strip("_")
 
 
+def domain_to_sql_name(domain_id: str) -> str:
+    """Normalize a domain ID to a valid SQL identifier (non-alphanumeric → underscore)."""
+    return re.sub(r"[^a-zA-Z0-9]", "_", domain_id).strip("_")
+
+
 def apply_convention(name: str, convention: str) -> str | None:
     """Apply a naming convention to produce an alias.
 

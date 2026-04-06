@@ -119,8 +119,8 @@ class TestHotTableManager:
     def manager(self):
         return HotTableManager(
             redis_url="redis://localhost:6379",
-            auto_threshold=10_000,
-            max_rows=10_000,
+            auto_threshold=1_000,
+            max_rows=1_000,
         )
 
     @pytest.mark.asyncio
@@ -247,8 +247,8 @@ class TestRewriteHotJoins:
     def _make_manager(self, hot_entries: dict[str, HotTableEntry]) -> HotTableManager:
         mgr = HotTableManager.__new__(HotTableManager)
         mgr._redis_url = ""
-        mgr._auto_threshold = 10_000
-        mgr._max_rows = 10_000
+        mgr._auto_threshold = 1_000
+        mgr._max_rows = 1_000
         mgr._redis = None
         mgr._hot_tables = hot_entries
         return mgr
@@ -404,7 +404,7 @@ class TestHotTablesConfig:
     def test_defaults(self):
         from provisa.core.models import HotTablesConfig
         cfg = HotTablesConfig()
-        assert cfg.auto_threshold == 10_000
+        assert cfg.auto_threshold == 1_000
         assert cfg.refresh_interval == 300
 
     def test_custom(self):
@@ -422,8 +422,8 @@ class TestMutationInvalidation:
     async def test_invalidate_called_on_mutation(self):
         mgr = HotTableManager.__new__(HotTableManager)
         mgr._redis_url = ""
-        mgr._auto_threshold = 10_000
-        mgr._max_rows = 10_000
+        mgr._auto_threshold = 1_000
+        mgr._max_rows = 1_000
         mgr._redis = AsyncMock()
         mgr._hot_tables = {
             "countries": HotTableEntry(

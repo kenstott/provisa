@@ -36,7 +36,7 @@ from graphql import (
 
 from provisa.compiler.aggregate_gen import build_aggregate_types
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.naming import apply_convention, generate_name, to_type_name
+from provisa.compiler.naming import apply_convention, domain_to_sql_name, generate_name, to_type_name
 from provisa.compiler.type_map import FILTER_TYPE_MAP, trino_to_graphql
 
 
@@ -202,8 +202,7 @@ def _assign_names(
 
     for domain_id, group in domain_groups.items():
         domain_table_names = [t.table_name for t in group]
-        # Normalize domain_id to snake_case for prefix
-        domain_snake = re.sub(r"[^a-zA-Z0-9]", "_", domain_id).strip("_")
+        domain_snake = domain_to_sql_name(domain_id)
         for t in group:
             t.field_name = generate_name(
                 t.table_name, t.schema_name, t.source_id,

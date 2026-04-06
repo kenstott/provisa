@@ -8,11 +8,13 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Execute queries via Arrow Flight SQL through Zaychik proxy (REQ-045).
+"""Execute queries via Arrow Flight SQL through Zaychik proxy (REQ-045, REQ-146).
 
 Uses the ADBC Flight SQL driver to connect to the Zaychik Arrow Flight SQL
 proxy, which translates Flight SQL requests to Trino JDBC queries and streams
 results back as Arrow record batches.
+
+Falls back to the Trino REST executor when Zaychik is unavailable (REQ-146).
 """
 
 from __future__ import annotations
@@ -25,6 +27,19 @@ from provisa.executor.trino import QueryResult
 
 log = logging.getLogger(__name__)
 
+# Module-level flag tracking Zaychik availability within the process lifetime.
+# Set to False on first connection failure; subsequent calls skip Zaychik entirely.
+_zaychik_available: bool = True
+
+
+def is_zaychik_available() -> bool:
+    """Return whether Zaychik Arrow Flight is available in this process.
+
+    Returns False after the first connection or import failure; True otherwise.
+    Used for health checks and routing decisions.
+    """
+    return _zaychik_available
+
 
 def create_flight_connection(
     host: str = "localhost",
@@ -34,6 +49,9 @@ def create_flight_connection(
     """Create an ADBC Flight SQL connection to the Zaychik proxy.
 
     Returns an adbc_driver_flightsql.dbapi.Connection.
+
+    Raises ConnectionError or ImportError when Zaychik is unavailable.
+    Callers should catch these and fall back to execute_trino() (REQ-146).
     """
     import adbc_driver_flightsql.dbapi as flight_sql
 
@@ -89,6 +107,43 @@ def execute_trino_flight(
     column_names = table.column_names
     rows = [tuple(row.values()) for row in table.to_pylist()]
     return QueryResult(rows=rows, column_names=column_names)
+
+
+def execute_with_fallback(
+    flight_conn,
+    trino_conn,
+    sql: str,
+    params: list | None = None,
+) -> QueryResult:
+    """Execute SQL via Zaychik Arrow Flight, falling back to Trino REST (REQ-146).
+
+    On first Zaychik connection error or ImportError, sets the module-level
+    ``_zaychik_available`` flag to False and stops attempting Zaychik for the
+    remainder of this process lifetime.
+
+    Args:
+        flight_conn: Active ADBC Flight SQL connection (may be None).
+        trino_conn:  Active Trino REST connection for fallback.
+        sql:         SQL string to execute.
+        params:      Optional positional parameters.
+
+    Returns:
+        QueryResult — identical shape regardless of which path executed.
+    """
+    global _zaychik_available
+    from provisa.executor.trino import execute_trino
+
+    if _zaychik_available and flight_conn is not None:
+        try:
+            return execute_trino_flight(flight_conn, sql, params)
+        except (ImportError, Exception) as exc:
+            _zaychik_available = False
+            log.warning(
+                "Zaychik Arrow Flight unavailable (%s), falling back to Trino REST",
+                exc,
+            )
+
+    return execute_trino(trino_conn, sql, params)
 
 
 def _skip_prepare(cursor) -> None:

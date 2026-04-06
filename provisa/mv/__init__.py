@@ -9,3 +9,7 @@
 # permission from the copyright holder.
 
 """Materialized view optimization (Phase P)."""
+
+from provisa.mv.aggregate_catalog import AggregateMVCatalog, get_aggregate_catalog
+
+__all__ = ["AggregateMVCatalog", "get_aggregate_catalog"]

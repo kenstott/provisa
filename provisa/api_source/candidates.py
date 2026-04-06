@@ -33,7 +33,9 @@ async def store_candidates(
             INSERT INTO api_endpoint_candidates (source_id, path, method, table_name, columns, status)
             VALUES ($1, $2, $3, $4, $5::jsonb, 'discovered')
             ON CONFLICT (source_id, path, method) DO UPDATE
-                SET table_name = EXCLUDED.table_name, columns = EXCLUDED.columns, status = 'discovered'
+                SET table_name = EXCLUDED.table_name,
+                    columns = EXCLUDED.columns,
+                    status = CASE WHEN api_endpoint_candidates.status = 'registered' THEN 'registered' ELSE 'discovered' END
             RETURNING id
             """,
             source_id, c.path, c.method, c.table_name, columns_json,
@@ -56,6 +58,10 @@ async def list_candidates(
         rows = await conn.fetch(
             "SELECT * FROM api_endpoint_candidates WHERE status = 'discovered' ORDER BY id",
         )
+    def _parse_columns(raw) -> list[ApiColumn]:
+        data = raw if isinstance(raw, list) else json.loads(raw)
+        return [ApiColumn(**c) for c in data]
+
     return [
         ApiEndpointCandidate(
             id=r["id"],
@@ -63,7 +69,7 @@ async def list_candidates(
             path=r["path"],
             method=r["method"],
             table_name=r["table_name"],
-            columns=[ApiColumn(**c) for c in json.loads(r["columns"])],
+            columns=_parse_columns(r["columns"]),
             status=r["status"],
         )
         for r in rows
@@ -90,11 +96,18 @@ async def accept_candidate(
     ttl = overrides.get("ttl", 300)
     response_root = overrides.get("response_root")
 
-    # Insert endpoint
+    # Insert or update endpoint
     ep_row = await conn.fetchrow(
         """
         INSERT INTO api_endpoints (source_id, path, method, table_name, columns, ttl, response_root)
         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+        ON CONFLICT (table_name) DO UPDATE
+            SET source_id = EXCLUDED.source_id,
+                path = EXCLUDED.path,
+                method = EXCLUDED.method,
+                columns = EXCLUDED.columns,
+                ttl = EXCLUDED.ttl,
+                response_root = EXCLUDED.response_root
         RETURNING id
         """,
         row["source_id"], row["path"], row["method"],
@@ -107,7 +120,8 @@ async def accept_candidate(
         candidate_id,
     )
 
-    columns_parsed = [ApiColumn(**c) for c in json.loads(columns)]
+    raw_cols = columns if isinstance(columns, list) else json.loads(columns)
+    columns_parsed = [ApiColumn(**c) for c in raw_cols]
     return ApiEndpoint(
         id=ep_row["id"],
         source_id=row["source_id"],

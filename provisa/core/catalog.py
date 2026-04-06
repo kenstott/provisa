@@ -106,6 +106,32 @@ def create_catalog(conn: trino.dbapi.Connection, source: Source, resolved_passwo
         )
 
 
+def analyze_source_tables(
+    conn: trino.dbapi.Connection,
+    source: "Source",
+    tables: list,
+) -> None:
+    """Run ANALYZE on each registered table for a source.
+
+    Errors are logged and swallowed — connector may not support ANALYZE,
+    and registration must not fail because of it.
+    """
+    catalog_name = _to_catalog_name(source.id)
+    cur = conn.cursor()
+    for tbl in tables:
+        if tbl.source_id != source.id:
+            continue
+        schema = _validate_identifier(tbl.schema_name)
+        table = _validate_identifier(tbl.table_name)
+        sql = f"ANALYZE {catalog_name}.{schema}.{table}"
+        try:
+            cur.execute(sql)
+            cur.fetchall()
+            log.info("ANALYZE %s.%s.%s ok", catalog_name, schema, table)
+        except Exception as e:
+            log.debug("ANALYZE %s.%s.%s skipped: %s", catalog_name, schema, table, e)
+
+
 def drop_catalog(conn: trino.dbapi.Connection, source_id: str) -> None:
     """Drop a Trino dynamic catalog."""
     catalog_name = _to_catalog_name(source_id)

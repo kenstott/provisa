@@ -237,7 +237,7 @@ async def init_hot_tables(
     if not redis_url or not cache_config.get("enabled"):
         return None
 
-    auto_threshold = hot_config.get("auto_threshold", 10_000)
+    auto_threshold = hot_config.get("auto_threshold", 1_000)
     hot_mgr = HotTableManager(
         redis_url=redis_url,
         auto_threshold=auto_threshold,

@@ -26,8 +26,13 @@ function isAliased(c: CompileResult): boolean {
   return !!(c.root_field && c.canonical_field && c.root_field !== c.canonical_field)
 }
 
+function hasColumnAliases(c: CompileResult): boolean {
+  return c.column_aliases?.length > 0
+}
+
 const base: CompileResult = {
   sql: 'SELECT 1',
+  semantic_sql: 'SELECT 1',
   trino_sql: null,
   direct_sql: null,
   params: [],
@@ -36,6 +41,7 @@ const base: CompileResult = {
   sources: ['pg'],
   root_field: 'orders',
   canonical_field: 'orders',
+  column_aliases: [],
 }
 
 describe('normalizeCompileResponse', () => {
@@ -74,5 +80,16 @@ describe('isAliased', () => {
   it('returns false when canonical_field is empty string', () => {
     const noCanonical = { ...base, canonical_field: '' }
     expect(isAliased(noCanonical)).toBe(false)
+  })
+})
+
+describe('hasColumnAliases', () => {
+  it('returns false when column_aliases is empty', () => {
+    expect(hasColumnAliases(base)).toBe(false)
+  })
+
+  it('returns true when column_aliases has entries', () => {
+    const withAlias = { ...base, column_aliases: [{ field_name: 'userId', column: 'user_id' }] }
+    expect(hasColumnAliases(withAlias)).toBe(true)
   })
 })

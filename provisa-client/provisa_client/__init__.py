@@ -9,5 +9,6 @@
 # permission from the copyright holder.
 
 from provisa_client.client import ProvisaClient
+from provisa_client.dbapi import connect
 
-__all__ = ["ProvisaClient"]
+__all__ = ["ProvisaClient", "connect"]

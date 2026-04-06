@@ -15,6 +15,7 @@ from provisa.compiler.rls import RLSContext, inject_rls
 from provisa.compiler.sampling import apply_sampling, get_sample_size
 from provisa.compiler.sql_gen import CompiledQuery, CompilationContext
 from provisa.compiler.stage1 import compile_graphql
+from provisa.mv.aggregate_catalog import get_aggregate_catalog
 from provisa.mv.rewriter import rewrite_if_mv_match
 from provisa.security.rights import Capability, has_capability
 
@@ -33,11 +34,12 @@ def run_pipeline(
     view_sql_map: dict | None = None,
     kafka_table_configs=None,
     source_types: dict | None = None,
+    hot_manager=None,
 ) -> list[CompiledQuery]:
     """Run Stage 1 + governance for a GraphQL query.
 
     Pipeline: compile_graphql → inject_rls → inject_masking
-              → rewrite_if_mv_match → inject_kafka_filters → apply_sampling
+              → rewrite_if_mv_match → rewrite_hot_joins → inject_kafka_filters → apply_sampling
     """
     compiled_list = compile_graphql(document, ctx, variables, use_catalog=use_catalog)
     result: list[CompiledQuery] = []
@@ -50,6 +52,25 @@ def run_pipeline(
         compiled = inject_rls(compiled, ctx, rls)
         compiled = inject_masking(compiled, ctx, masking_rules, role_id)
         compiled = rewrite_if_mv_match(compiled, fresh_mvs)
+
+        # Aggregate MV routing (REQ-198/199): rewrite aggregate queries to use
+        # pre-computed MV backing tables when a matching MV exists.
+        if compiled.is_aggregate and compiled.agg_columns:
+            agg_mv = get_aggregate_catalog().find_aggregate_mv(
+                compiled.table, compiled.agg_columns, compiled.filters
+            )
+            if agg_mv is not None:
+                compiled = compiled.with_sql(
+                    get_aggregate_catalog().rewrite_sql(
+                        compiled.sql, agg_mv, compiled.agg_columns, compiled.filters
+                    )
+                )
+
+        # Hot table VALUES CTE injection (REQ-232): rewrite JOIN targets for hot
+        # tables into inline WITH ... AS (VALUES ...) CTEs to avoid DB round trips.
+        if hot_manager is not None:
+            from provisa.compiler.sql_gen import rewrite_hot_joins
+            compiled = rewrite_hot_joins(compiled, hot_manager)
 
         if kafka_table_configs and source_types:
             from provisa.kafka.window import inject_kafka_filters

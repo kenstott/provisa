@@ -28,7 +28,7 @@ async def get_sdl(request: Request, x_role: str = Header(None, alias="X-Role")):
     auth_role = getattr(request.state, "role", None)
     role = auth_role or x_role
     if role is None:
-        raise HTTPException(status_code=400, detail="Missing X-Role header")
+        raise HTTPException(status_code=422, detail="Missing X-Role header")
 
     schema = state.schemas.get(role)
     if schema is None:

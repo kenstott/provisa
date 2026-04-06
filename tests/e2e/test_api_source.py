@@ -19,7 +19,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
 
 @pytest.fixture
-async def client():
+async def client(pg_pool):
     os.environ.setdefault("PG_PASSWORD", "provisa")
 
     from provisa.api.app import create_app
@@ -30,6 +30,10 @@ async def client():
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
+
+    # Clean up rows created by discover tests (CASCADE deletes candidates/endpoints too)
+    async with pg_pool.acquire() as conn:
+        await conn.execute("DELETE FROM api_sources WHERE id = 'test-api'")
 
 
 class TestApiSourceDiscovery:

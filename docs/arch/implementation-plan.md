@@ -54,16 +54,20 @@ Every REQ is assigned to a phase. Cross-cutting requirements (REQ-064, REQ-065, 
 | V: Kafka Sources & Sink | REQ-114, REQ-115, REQ-116, REQ-117 |
 | W: Authentication | REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125 |
 | AA: Quick Wins | REQ-212, REQ-213, REQ-214, REQ-215, REQ-216, REQ-217, REQ-229 |
-| AB: Medium-Complexity Parity | REQ-218, REQ-219, REQ-220, REQ-221, REQ-222, REQ-256, REQ-257, REQ-258, REQ-260, REQ-261 |
+| AB: Medium-Complexity Parity | REQ-218, REQ-219, REQ-220, REQ-221, REQ-222, REQ-256, REQ-257, REQ-258, REQ-261 (REQ-260 moved to AM) |
 | AC: Tracked Functions & Webhooks | REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-210, REQ-211, REQ-242, REQ-243, REQ-244, REQ-245 |
 | AD: Schema Alignment | REQ-194, REQ-195, REQ-196, REQ-197, REQ-198, REQ-199, REQ-200, REQ-201, REQ-202, REQ-230, REQ-231, REQ-232, REQ-233, REQ-234, REQ-235, REQ-236, REQ-237, REQ-238, REQ-239, REQ-240, REQ-241 |
 | AE: ABAC Approval Hook | REQ-203, REQ-204, REQ-246, REQ-247 |
-| AF: Installer & Packaging | REQ-223, REQ-224, REQ-225, REQ-226, REQ-227, REQ-228 |
+| AF: Installer & Packaging | REQ-223, REQ-224, REQ-225, REQ-226, REQ-227, REQ-228, REQ-294 |
+| X: JDBC Arrow Flight Transport | REQ-293 |
 | AG: Hasura v2 Converter | REQ-182, REQ-184, REQ-185, REQ-186, REQ-187, REQ-188, REQ-190, REQ-192, REQ-193 |
 | AH: DDN Converter | REQ-183, REQ-189, REQ-191 |
 | AI: NoSQL Source Mapping | REQ-250, REQ-251, REQ-252, REQ-253 |
 | AJ: Apollo Federation | REQ-259 |
 | AK: Two-Stage Compiler & Multi-Protocol Clients | REQ-262, REQ-263, REQ-264, REQ-265, REQ-266, REQ-267, REQ-268, REQ-269, REQ-270, REQ-271, REQ-272, REQ-273, REQ-274 |
+| AL: Federation Performance | REQ-275, REQ-276, REQ-277, REQ-278, REQ-279, REQ-280, REQ-281 |
+| AM: Live Query Engine | REQ-260, REQ-282, REQ-283, REQ-284, REQ-285, REQ-286, REQ-287 |
+| AN: Automatic Persisted Queries (APQ) | REQ-288, REQ-289, REQ-290, REQ-291, REQ-292 |
 | Dropped | REQ-017 (NoSQL Parquet materialization — Trino native connectors handle this) |
 | Not implementation | REQ-072, REQ-073, REQ-074 (commercial positioning) |
 
@@ -1845,7 +1849,7 @@ auth:
 
 ## Phase X: JDBC Driver Arrow Flight Transport
 **Goal:** Wire the JDBC driver to use Arrow Flight (`grpc://host:8815`) for streaming query results instead of HTTP + JSON/Arrow file download. The Flight server already exists on the backend (`provisa/api/flight/server.py`) — this phase connects the JDBC client to it.
-**REQs:** REQ-229
+**REQs:** REQ-293
 
 **Motivation:**
 The current JDBC driver executes queries over HTTP, buffering the full response before returning rows. The backend already has a Flight server that streams Arrow record batches with backpressure and zero serialization overhead. Connecting the two eliminates the HTTP round-trip bottleneck and enables true streaming from the first row.
@@ -2169,7 +2173,7 @@ cd provisa-ui && npx playwright test                     # UI e2e (needs full st
 
 ### Context
 
-New Provisa features for Hasura v2 parity, installer packaging, then migration converters. Requirements: REQ-182 through REQ-229.
+New Provisa features for Hasura v2 parity, installer packaging, then migration converters. Requirements: REQ-182 through REQ-229 (plus REQ-293, REQ-294).
 
 **Priority**: Low-complexity features first (quick wins) -> medium-complexity features -> installer -> v2 converter -> DDN converter.
 
@@ -2594,7 +2598,7 @@ Abstract `ApprovalHook` interface with three implementations:
 
 ---
 
-## Phase AF: Installer & Packaging (REQ-223-228)
+## Phase AF: Installer & Packaging (REQ-223-228, REQ-294)
 
 ### What Gets Bundled (Hidden from User)
 - Python FastAPI server (compiled binary)
@@ -3274,3 +3278,258 @@ Phases AA-AE are independent and can be parallelized. Phase AF1 (shell script) c
 | `provisa_client/adbc.py` | Create |
 | `provisa-client/pyproject.toml` | Modify (add adbc optional dependency group) |
 | `provisa-client/tests/test_adbc.py` | Create |
+
+---
+
+## Phase AL: Federation Performance
+**Goal:** Cost-based optimizer always has accurate statistics; stewards and developers can steer execution without exposing engine internals.
+**REQs:** REQ-275, REQ-276, REQ-277, REQ-278, REQ-279, REQ-280, REQ-281
+
+**Build:**
+
+### AL1: Automatic ANALYZE on Registration (REQ-275, REQ-280)
+- `provisa/core/registration.py` — after dynamic catalog API call succeeds and tables are published, fire `ANALYZE catalog.schema.table` for each registered table via Trino HTTP API. Errors are logged and swallowed (connector may not support ANALYZE) — registration does not fail.
+- `provisa/api_source/cache.py` — after `write_cache()` completes a refresh cycle, fire `ANALYZE` on `api_cache_{table_name}` via Trino.
+- No config flag required — always on.
+
+### AL2: Refresh Statistics Mutation (REQ-276)
+- `provisa/api/admin/` — add `refreshSourceStatistics(source_id: ID!)` mutation. Looks up all tables for the source, fires `ANALYZE` on each. Returns count of tables analyzed and list of any failures.
+
+### AL3: Source-Level Federation Hints (REQ-278)
+- `provisa/core/models.py` — add `federation_hints: dict[str, str]` field to `SourceConfig`.
+- `provisa/executor/trino.py` — before query execution, collect hints from all sources touched by the query, inject `SET SESSION key = 'value'` statements. Conflicts resolved by per-query hints taking precedence (AL4).
+
+### AL4: Per-Query Session Property Overrides (REQ-277)
+- `provisa/core/models.py` — add `federation_hints: dict[str, str]` to `PersistedQuery`.
+- `provisa/executor/trino.py` — merge per-query hints on top of source-level hints; inject before execution.
+
+### AL5: Comment Hint Parser (REQ-279, REQ-281)
+- `provisa/compiler/hints.py` — `extract_hints(sql: str) -> tuple[str, dict[str, str]]`. Regex-extracts `/*+ ... */` from query text. Returns cleaned SQL and hint dict. Supported tokens:
+  - `BROADCAST(<table>)` → `join_distribution_type = 'BROADCAST'`
+  - `NO_REORDER` → `join_reordering_strategy = 'NONE'`
+  - `BROADCAST_SIZE(<size>)` → `join_max_broadcast_table_size = '<size>'`
+- `provisa/executor/trino.py` — call `extract_hints()` on incoming SQL; merge result on top of per-query hints (comment hints win).
+- All hint names exposed to users are Provisa-branded. Trino session property names live only inside `hints.py`.
+
+**Verify:**
+- `python -m pytest tests/test_federation_hints.py -x -q`:
+  - `extract_hints("/*+ BROADCAST(orders) */ SELECT ...")` returns cleaned SQL + correct session property
+  - `extract_hints("/*+ NO_REORDER */")` returns correct property
+  - Source-level hints injected when source is touched
+  - Per-query hints override source-level hints
+  - Comment hints override per-query hints
+  - `ANALYZE` fires after table registration (mock Trino HTTP)
+  - `ANALYZE` fires after API cache refresh (mock Trino HTTP)
+
+**Files:**
+| File | Action |
+|------|--------|
+| `provisa/compiler/hints.py` | Create |
+| `provisa/executor/trino.py` | Modify |
+| `provisa/core/models.py` | Modify |
+| `provisa/core/registration.py` | Modify |
+| `provisa/api_source/cache.py` | Modify |
+| `provisa/api/admin/` (mutations) | Modify |
+
+---
+
+## Phase AM: Live Query Engine
+**Goal:** Unify SSE subscriptions and Kafka sinks under a single poll-based delivery engine. A persisted query (or a non-CDC table) declares `live` config with a `watermark_column`, `poll_interval`, and one or more outputs (`sse_subscription`, `kafka_sink`). One engine, two output paths, independent watermarks per output.
+**REQs:** REQ-260, REQ-282, REQ-283, REQ-284, REQ-285, REQ-286, REQ-287
+**Depends on:** Phase H (Persisted Query Registry), Phase AB (SSE subscription infrastructure), Phase V (Kafka sink infrastructure)
+
+### Architecture
+
+```
+Live Query Config (persisted query or table)
+  watermark_column, poll_interval, outputs: [sse_subscription, kafka_sink]
+                        ↓
+              LiveQueryScheduler (APScheduler)
+                        ↓
+         Execute query WHERE watermark_col > last_watermark
+                        ↓
+              ┌─────────────────┐
+              ▼                 ▼
+     SSE fanout            Kafka producer
+   (per connected         (one message per row,
+    client stream)         keyed by optional col)
+              ↓                 ↓
+     Update watermark    Update watermark
+     in live_query_state in live_query_state
+```
+
+### Config
+
+Persisted query live delivery block (in `provisa.yaml` or admin API):
+```yaml
+persisted_queries:
+  - id: active-orders
+    query: "{ orders(where: {status: {_eq: \"active\"}}) { id amount updated_at } }"
+    live:
+      watermark_column: updated_at
+      poll_interval: 30s
+      outputs:
+        - type: sse_subscription
+        - type: kafka_sink
+          topic: provisa.active-orders
+          key_column: id
+```
+
+Table poll delivery (non-CDC source):
+```yaml
+tables:
+  - id: trino_orders
+    source_id: trino-federation
+    live:
+      delivery: poll
+      watermark_column: updated_at
+      soft_delete_column: deleted_at
+      poll_interval: 60s
+      outputs:
+        - type: sse_subscription
+        - type: kafka_sink
+          topic: provisa.trino-orders
+```
+
+### Build
+
+- `provisa/core/models.py` — add `LiveOutputConfig` (type, topic, key_column), `LiveDeliveryConfig` (watermark_column, poll_interval, delivery: cdc|poll, soft_delete_column, outputs list), attach to `PersistedQueryConfig` and `TableConfig`.
+- `provisa/core/schema.sql` — add `live_query_state` table: `(query_id TEXT, output_type TEXT, last_watermark TIMESTAMPTZ, last_polled_at TIMESTAMPTZ, status TEXT, PRIMARY KEY (query_id, output_type))`.
+- `provisa/live/__init__.py`
+- `provisa/live/engine.py` — `LiveQueryEngine`: APScheduler-backed scheduler. On startup, loads all active live configs from DB, schedules poll jobs. On config reload, diffs and reschedules. Each job: execute query with `WHERE watermark_col > last_watermark ORDER BY watermark_col`, fan out rows to registered outputs, commit new watermark to `live_query_state`.
+- `provisa/live/watermark.py` — `WatermarkStore`: read/write `live_query_state`. Handles per-output independence. On restart, resumes from last committed watermark.
+- `provisa/live/outputs/sse.py` — `SSEOutput`: maintains a set of connected SSE client queues per live query. `push(rows)` serializes and enqueues to all connected clients. Clients connect via existing `/data/subscribe` endpoint (extended to accept query_id in addition to table name).
+- `provisa/live/outputs/kafka.py` — `KafkaOutput`: produces one message per row to configured topic. Uses existing Kafka producer from Phase V. Respects `key_column` for Kafka message key.
+- `provisa/live/outputs/base.py` — `LiveOutput` abstract base: `push(rows: list[dict]) -> None`. Both SSEOutput and KafkaOutput implement this.
+- `provisa/api/data/subscribe.py` — extend SSE endpoint to accept `query_id` parameter. When `query_id` is provided, subscribes to the live query engine's SSE output instead of a raw table. Full security pipeline (RLS, masking, role auth) still applied per row on delivery.
+- `provisa/core/config_loader.py` — on config load, validate all live configs: `watermark_column` present for poll delivery, `delivery: cdc` rejected for non-CDC sources, `poll_interval` parseable. Fail-fast on validation error (REQ-064).
+
+**Key behaviors:**
+- Watermarks are per (query_id, output_type) — SSE and Kafka outputs advance independently (REQ-286).
+- Process restart resumes from last watermark — no replay, no gap (REQ-287).
+- Persisted queries always use `delivery: poll`; config that specifies `delivery: cdc` on a persisted query is a validation error (REQ-284).
+- Full governance pipeline (RLS, masking, column visibility) applied to every row emitted, regardless of output type (REQ-038–042).
+- `watermark_column` must appear in the query SELECT list for persisted queries (validated at config load time).
+
+**Verify:**
+- `python -m pytest tests/unit/test_live_engine.py -x -q`:
+  - Poll job executes query with correct `WHERE watermark_col > last_watermark` bound
+  - Rows fanned out to all registered outputs
+  - Watermark committed after successful delivery
+  - SSE and Kafka watermarks advance independently
+  - Restart resumes from committed watermark (mock DB, mock outputs)
+  - Config with missing `watermark_column` raises validation error
+  - Config with `delivery: cdc` on persisted query raises validation error
+- `python -m pytest tests/integration/test_live_engine.py -x -q`:
+  - Insert rows into source table → SSE client receives events within poll interval
+  - Insert rows into source table → Kafka topic receives messages within poll interval
+  - Both outputs active simultaneously — both receive same rows
+  - Watermark state survives process restart (real PG)
+
+**Files:**
+| File | Action |
+|------|--------|
+| `provisa/core/models.py` | Modify (add LiveOutputConfig, LiveDeliveryConfig) |
+| `provisa/core/schema.sql` | Modify (add live_query_state table) |
+| `provisa/live/__init__.py` | Create |
+| `provisa/live/engine.py` | Create |
+| `provisa/live/watermark.py` | Create |
+| `provisa/live/outputs/__init__.py` | Create |
+| `provisa/live/outputs/base.py` | Create |
+| `provisa/live/outputs/sse.py` | Create |
+| `provisa/live/outputs/kafka.py` | Create |
+| `provisa/api/data/subscribe.py` | Modify (add query_id subscription path) |
+| `provisa/core/config_loader.py` | Modify (live config validation) |
+| `tests/unit/test_live_engine.py` | Create |
+| `tests/integration/test_live_engine.py` | Create |
+| `tests/test_federation_hints.py` | Create |
+
+---
+
+## Phase AN: Automatic Persisted Queries (APQ)
+**Goal:** Implement the Apollo APQ wire protocol. Clients send a SHA256 hash instead of full query text on repeat calls. Pre-approved table queries are cached automatically on first execution. Governed Query hashes are registered at approval time. Registry-required table queries cannot be cached until approved.
+**REQs:** REQ-288, REQ-289, REQ-290, REQ-291, REQ-292
+**Depends on:** Phase D (query execution pipeline), Phase H (Governed Query registry), Phase O (Redis cache)
+
+### Wire Protocol
+
+Standard Apollo APQ — no client-side changes required:
+
+```
+# First call (hash only — cache miss)
+POST /data/graphql
+{"extensions": {"persistedQuery": {"version": 1, "sha256Hash": "<hash>"}}}
+
+← {"errors": [{"message": "PersistedQueryNotFound", "extensions": {"code": "PERSISTED_QUERY_NOT_FOUND"}}]}
+
+# Second call (full query + hash — cache store)
+POST /data/graphql
+{"query": "{ orders { id amount } }", "extensions": {"persistedQuery": {"version": 1, "sha256Hash": "<hash>"}}}
+
+← {"data": {...}}   # stored in APQ cache; hash usable from now on
+
+# Subsequent calls (hash only — cache hit)
+POST /data/graphql
+{"extensions": {"persistedQuery": {"version": 1, "sha256Hash": "<hash>"}}}
+
+← {"data": {...}}
+```
+
+### Governance interaction
+
+```
+Hash-only request arrives
+        ↓
+APQ cache lookup
+        ↓
+    Cache hit?
+   ↙          ↘
+  Yes           No
+   ↓             ↓
+Governance    Return PersistedQueryNotFound
+check          (client will resend with query text)
+   ↓
+Permitted?
+   ↓
+Execute
+```
+
+On full-query submission (hash + query text):
+- Governance check runs first
+- If rejected (registry-required table, no Governed Query approval) → error returned, hash NOT stored
+- If permitted → execute, then store hash → Redis
+
+### Governed Query name-based execution
+
+Governed Queries are executed by developer-chosen name — no hash involved. The endpoint accepts `{"queryId": "ActiveOrders"}` and looks up the approved query text from the registry. APQ and Governed Query execution are separate paths that never intersect.
+
+### Build
+
+- `provisa/api/data/endpoint.py` — detect `extensions.persistedQuery` in request body. Extract hash. Branch: hash-only → APQ lookup → governance check → execute. Hash + query → governance check → execute → APQ store.
+- `provisa/apq/__init__.py`
+- `provisa/apq/cache.py` — `APQCache`: `get(hash) -> str | None`, `set(hash, query_text, ttl)`, `delete(hash)`. Backed by Redis. TTL configurable via `apq.ttl` (REQ-289).
+- `provisa/api/data/endpoint.py` — two distinct execution branches: (1) APQ path: detects `extensions.persistedQuery.sha256Hash`, does cache lookup, governance check, execute, store. (2) Governed Query path: detects `queryId` field, looks up approved query text from registry by name, governance check (approval already granted), execute. Neither path calls into the other.
+
+**Key behaviors:**
+- APQ cache miss on a hash-only request always returns `PersistedQueryNotFound` — never a governance error. Client cannot infer governance state from APQ responses.
+- Governance check runs before APQ store — a rejected query is never cached (REQ-291).
+- Governed Query `queryId` path looks up query text from registry by name; approval already granted so no steward check at execution time — only RLS, masking, and role enforcement.
+- APQ and Governed Query are separate execution paths. Neither calls into the other (REQ-292).
+
+**Verify:**
+- `python -m pytest tests/unit/test_apq.py -x -q`:
+  - Hash-only request with cache miss → `PersistedQueryNotFound`
+  - Hash + query, governance passes → executes, hash stored in cache
+  - Hash + query, governance fails (registry-required, no approval) → error, hash NOT stored
+  - Hash-only after store → executes
+  - Governed Query approval → hash auto-registered, hash-only request executes immediately
+  - Auto-cached hash respects TTL; Governed Query hash has no TTL
+
+**Files:**
+| File | Action |
+|------|--------|
+| `provisa/apq/__init__.py` | Create |
+| `provisa/apq/cache.py` | Create |
+| `provisa/apq/cache.py` | Create |
+| `provisa/api/data/endpoint.py` | Modify (APQ and queryId branches) |
+| `tests/unit/test_apq.py` | Create |

@@ -171,6 +171,40 @@ Steward hint "direct"? → Direct (if possible)
 Redirect to Parquet/ORC? → Trino (CTAS, regardless of source count)
 ```
 
+## Federation Query Optimization
+
+Provisa primes the federation engine's cost-based optimizer automatically so cross-source query plans are based on real data distribution, not hardcoded defaults.
+
+### Automatic Statistics (`ANALYZE`)
+
+On source registration, Provisa runs `ANALYZE catalog.schema.table` for every published table. This collects:
+
+- Row count
+- Per-column: null fraction, distinct value count, min/max, histograms (connector-dependent)
+
+The optimizer uses these to estimate selectivity for filtered queries. Without statistics, it falls back to fixed defaults (e.g., 10% selectivity for equality predicates) which produce poor join plans on skewed or high-cardinality data. With statistics, estimates are accurate enough to make correct broadcast vs. partitioned join decisions for most workloads.
+
+**Coverage**: statistics support varies by connector. PostgreSQL, MySQL, Hive, Iceberg, and Delta Lake fully support `ANALYZE`. MongoDB and Cassandra connectors have partial or no support. Provisa swallows `ANALYZE` failures silently — registration is never blocked.
+
+**Selectivity limits**: statistics provide per-column estimates. For correlated predicates (`WHERE region = 'US' AND city = 'Seattle'`), the optimizer assumes column independence, which may underestimate row counts. This is a known limitation of column-level statistics in all cost-based optimizers.
+
+**API sources**: `api_cache_{table_name}` tables in PostgreSQL are analyzed automatically after each cache refresh cycle, so the optimizer has current row estimates when joining API-backed sources with relational sources.
+
+### Admin: Refresh Statistics
+
+Re-run statistics collection on demand via the admin API:
+
+```graphql
+mutation {
+  refreshSourceStatistics(sourceId: "sales-pg") {
+    tablesAnalyzed
+    failures { table message }
+  }
+}
+```
+
+Useful when a source has received significant new data since registration.
+
 ## Materialized Views
 
 MVs transparently optimize expensive queries by pre-computing and caching results.
@@ -234,14 +268,21 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `mv/` | Materialized view registry, refresh, SQL rewriter |
 | `events/` | Dataset change events and trigger dispatch |
 | `webhooks/` | Outbound webhook execution for mutations and events |
-| `scheduler/` | APScheduler-based background job management |
+| `scheduler/` | APScheduler-based background job management — cron and interval triggers that fire webhooks, mutations, or Kafka sink publishes |
+| `apq/` | Apollo APQ wire protocol — Redis-backed persisted query hash cache, governance-gated, separate from the governed query registry |
+| `compiler/cursor.py` | Relay-style cursor pagination — `first`/`after`/`last`/`before` arguments and `pageInfo` generation on all list queries |
+| `compiler/aggregate_gen.py` | Auto-generated `{table}_aggregate` query types with `count`, `sum`, `avg`, `min`, `max` sub-fields and filtered `nodes` access |
+| `compiler/enum_detect.py` | Enum table auto-detection — small lookup tables (≤ threshold rows) exposed as GraphQL enum types rather than string scalars |
+| `compiler/hints.py` | Federation performance hints — query-level routing directives embedded as SQL comments (`/* @provisa route=trino */`) that override automatic routing |
+| `compiler/mutation_gen.py` | Mutation compiler; column presets — server-side static or session-variable values applied on insert/update, not exposed in the mutation input type |
+| `auth/approval_hook.py` | ABAC approval hook — pluggable external authorization called before query execution; webhook, gRPC, and unix_socket transports; per-table/source/global scope; configurable fallback policy |
 | `subscriptions/` | SSE subscription state and delivery |
 | `discovery/` | LLM relationship discovery (Claude API) |
 | `grpc/` | Proto generation, gRPC server, reflection |
 | `api_source/` | REST/GraphQL/gRPC API sources with PG cache |
 | `kafka/` | Kafka topic sources, sink, Schema Registry |
 | `auth/` | Pluggable auth providers, middleware, role mapping |
-| `core/` | Config, models, DB, repositories, secrets |
+| `core/` | Config, models, DB, repositories, secrets; role model supports `parent_role_id` and `flatten_roles()` for recursive role inheritance |
 | `hasura_v2/` | Hasura v2 metadata → Provisa config converter |
 | `ddn/` | Hasura DDN supergraph → Provisa config converter |
 | `mongodb/` | MongoDB source connector |
@@ -332,6 +373,69 @@ Both converters map tracked tables, relationships, permissions, and remote schem
 ## Apollo Federation
 
 `compiler/federation.py` exposes Provisa as an Apollo Federation v2 subgraph. The subgraph SDL is auto-generated from the published schema with `@key` directives on primary-key columns and `@external`/`@provides` annotations on cross-subgraph relationships. Provisa responds to `_entities` and `_service` queries required by the federation gateway.
+
+## Cursor-Based Pagination
+
+All list queries support Relay-style cursor pagination via `compiler/cursor.py`. Clients pass `first`/`after` (forward) or `last`/`before` (backward) arguments. The compiler encodes row position as an opaque base64 cursor and injects the appropriate `WHERE`/`LIMIT` clauses. Every list query returns a `pageInfo` object:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `hasNextPage` | Boolean | True if more results exist after this page |
+| `hasPreviousPage` | Boolean | True if results exist before this page |
+| `startCursor` | String | Cursor of the first node in this page |
+| `endCursor` | String | Cursor of the last node in this page |
+
+## Aggregate Queries
+
+Every registered table gets an auto-generated `{table}_aggregate` root field (`compiler/aggregate_gen.py`). The aggregate type exposes `count`, `sum`, `avg`, `min`, `max` per numeric column, and `nodes` for filtered row access with full field selection (same RLS/masking as the base query). Aggregate queries are eligible for Aggregate MV routing — see `mv/aggregate_catalog.py`.
+
+## Automatic Persisted Queries (APQ)
+
+`apq/cache.py` implements the Apollo APQ wire protocol. When a client sends only a query hash (`extensions.persistedQuery`), Provisa looks it up in Redis. On a miss it returns a `PersistedQueryNotFound` error; the client retries with the full query body, which Provisa stores. APQ is governance-gated — only hashes registered in the persisted query registry (or in test mode) are accepted. This is separate from result caching (`cache/`).
+
+## Inherited Roles
+
+Roles in `core/models.py` can reference a `parent_role_id`. `flatten_roles()` recursively resolves the inheritance chain and merges RLS WHERE clauses (ANDed), column visibility (union, most restrictive wins), and masking policies (child overrides parent per column). This avoids duplicating permission sets across similar roles (e.g., `analyst` inheriting from `reader`).
+
+## ABAC Approval Hook
+
+`auth/approval_hook.py` is a pluggable authorization hook invoked before query execution, after RLS and masking. It integrates with external policy engines (OPA, custom ABAC services).
+
+| Setting | Description |
+|---------|-------------|
+| Transport | `webhook` (HTTP POST), `grpc`, or `unix_socket` |
+| Scope | Per-table, per-source, or global |
+| Fallback policy | `allow` or `deny` when the hook endpoint is unreachable |
+
+## Enum Table Auto-Detection
+
+`compiler/enum_detect.py` inspects row counts at schema generation time. Tables at or below the configured threshold are promoted to GraphQL enum types — their values become enum members rather than string scalars. Threshold is set via `PROVISA_ENUM_DETECT_THRESHOLD` (default: 100 rows).
+
+## Scheduled Triggers
+
+`scheduler/jobs.py` uses APScheduler to run background jobs defined as cron or interval triggers. Each job can POST to a webhook URL, execute a mutation against the data endpoint, or publish query results to a Kafka topic. Triggers are configured via the admin API (`scheduledTrigger` mutations) or the `scheduled_triggers` key in the YAML config.
+
+## Federation Performance Hints
+
+`compiler/hints.py` parses steward hints embedded in GraphQL queries as SQL comments using Provisa's comment syntax:
+
+```graphql
+# @provisa route=trino
+{ orders { id amount } }
+```
+
+| Hint | Effect |
+|------|--------|
+| `route=trino` | Force federation through Trino, bypassing direct-driver routing |
+| `route=direct` | Force direct-driver execution |
+
+## Column Presets in Mutations
+
+`compiler/mutation_gen.py` supports per-column server-side presets applied on `INSERT` or `UPDATE`. Presets are not included in the generated GraphQL mutation input type — they are injected by the compiler transparently. Preset types: `static` (literal value) or `session` (value from request session/header, e.g. `x-hasura-user-id`).
+
+## GraphQL Voyager Schema Explorer
+
+The admin UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) embeds GraphQL Voyager as an interactive schema visualization tool. It renders the role-scoped schema as a navigable entity relationship diagram — tables as nodes, relationships as edges. The schema shown is always filtered to the currently selected role.
 
 ## Security Enforcement Order
 

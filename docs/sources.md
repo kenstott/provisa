@@ -28,6 +28,8 @@
 
 **NoSQL limitations**: MongoDB and Cassandra are read-only via Trino. No mutations, no direct execution.
 
+**Statistics**: On registration, Provisa runs `ANALYZE` against each published table. This primes the federation engine's cost-based optimizer with row counts and column statistics (null fraction, distinct values, min/max). The optimizer uses these to estimate join cardinality and choose efficient execution plans — broadcast vs. partitioned join, join order, predicate pushdown. If a connector does not support `ANALYZE`, the failure is logged and registration proceeds normally.
+
 ## API Sources
 
 Register REST, GraphQL, and gRPC endpoints as queryable tables.

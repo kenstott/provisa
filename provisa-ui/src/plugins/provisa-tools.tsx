@@ -24,7 +24,8 @@ import type { GraphiQLPlugin } from "graphiql";
 
 function SqlPanel({ compiled }: { compiled: CompileResult }) {
   const [copied, setCopied] = useState(false);
-  const rawSql = compiled.direct_sql || compiled.trino_sql || compiled.sql;
+  const rawSql = compiled.semantic_sql ?? compiled.sql;
+  const sqlLabel = "Semantic SQL";
   let formatted: string;
   try {
     formatted = formatSql(rawSql, {
@@ -45,21 +46,27 @@ function SqlPanel({ compiled }: { compiled: CompileResult }) {
 
   const isAliased = compiled.root_field && compiled.canonical_field &&
     compiled.root_field !== compiled.canonical_field;
+  const hasColumnAliases = compiled.column_aliases?.length > 0;
 
   return (
     <div className="provisa-tools-sql">
       <div className="provisa-tools-meta">
         {compiled.root_field && (
           <div>
-            <strong>Field:</strong> {compiled.root_field}
+            <strong>Table:</strong> {compiled.root_field}
             {isAliased && (
               <span className="provisa-tools-alias"> (alias for <em>{compiled.canonical_field}</em>)</span>
             )}
           </div>
         )}
-        {isAliased && (
+        {(isAliased || hasColumnAliases) && (
           <div className="provisa-tools-alias-warn">
-            Warning: field alias adds semantic complexity — not recommended for sanctioned queries.
+            Warning: alias adds semantic complexity — not recommended for sanctioned queries.
+          </div>
+        )}
+        {hasColumnAliases && (
+          <div className="provisa-tools-column-aliases">
+            Column aliases: {compiled.column_aliases.map(a => `${a.column} → ${a.field_name}`).join(", ")}
           </div>
         )}
         <div>
@@ -71,7 +78,7 @@ function SqlPanel({ compiled }: { compiled: CompileResult }) {
         </div>
       </div>
       <div className="provisa-tools-code-header">
-        <span className="provisa-tools-label">SQL</span>
+        <span className="provisa-tools-label">{sqlLabel}</span>
         <button
           className="provisa-tools-copy"
           onClick={handleCopy}

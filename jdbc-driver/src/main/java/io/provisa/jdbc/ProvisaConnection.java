@@ -285,10 +285,66 @@ public class ProvisaConnection extends AbstractConnection {
     @Override
     public Statement createStatement() throws SQLException {
         checkClosed();
-        if ("catalog".equals(mode)) {
-            throw new SQLException("mode=catalog is metadata-only; query execution is not supported");
-        }
         return new ProvisaStatement(this);
+    }
+
+    /**
+     * Execute raw SQL through the /data/sql Stage 2 governance endpoint.
+     * Used by catalog mode to route arbitrary SQL through RLS, masking, and visibility.
+     *
+     * @return list of rows, each as a map of column name → value
+     */
+    List<Map<String, Object>> executeSqlEndpoint(String sql) throws SQLException {
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("sql", sql);
+            body.addProperty("role", role);
+
+            HttpURLConnection conn = (HttpURLConnection)
+                new URL(baseUrl + "/data/sql").openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("X-Provisa-Role", role);
+            if (authToken != null) {
+                conn.setRequestProperty("Authorization", "Bearer " + authToken);
+            }
+            conn.setDoOutput(true);
+            conn.getOutputStream().write(body.toString().getBytes(StandardCharsets.UTF_8));
+
+            if (conn.getResponseCode() != 200) {
+                String error = new String(conn.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+                throw new SQLException("HTTP " + conn.getResponseCode() + ": " + error);
+            }
+
+            String response = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            JsonObject result = JsonParser.parseString(response).getAsJsonObject();
+            JsonArray rows = result.getAsJsonObject("data").getAsJsonArray("sql");
+
+            List<Map<String, Object>> out = new ArrayList<>();
+            for (JsonElement el : rows) {
+                JsonObject row = el.getAsJsonObject();
+                Map<String, Object> map = new LinkedHashMap<>();
+                for (String key : row.keySet()) {
+                    JsonElement val = row.get(key);
+                    if (val == null || val.isJsonNull()) {
+                        map.put(key, null);
+                    } else if (val.isJsonPrimitive()) {
+                        JsonPrimitive p = val.getAsJsonPrimitive();
+                        if (p.isNumber()) map.put(key, p.getAsNumber());
+                        else if (p.isBoolean()) map.put(key, p.getAsBoolean());
+                        else map.put(key, p.getAsString());
+                    } else {
+                        map.put(key, val.toString());
+                    }
+                }
+                out.add(map);
+            }
+            return out;
+        } catch (SQLException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new SQLException("SQL endpoint execution failed: " + e.getMessage(), e);
+        }
     }
 
     @Override

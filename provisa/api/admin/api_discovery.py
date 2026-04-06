@@ -12,8 +12,10 @@
 
 from __future__ import annotations
 
+import asyncpg
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from urllib.parse import urlparse
 
 from provisa.api_source.candidates import (
     accept_candidate,
@@ -35,6 +37,7 @@ class DiscoverRequest(BaseModel):
     source_id: str
     type: ApiSourceType
     spec_url: str
+    base_url: str | None = None
 
 
 class AcceptRequest(BaseModel):
@@ -61,7 +64,21 @@ async def discover(req: DiscoverRequest):
     for c in candidates:
         c.source_id = req.source_id
 
+    parsed = urlparse(req.spec_url)
+    base_url = req.base_url or f"{parsed.scheme}://{parsed.netloc}"
+
     async with state.pg_pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO api_sources (id, type, base_url, spec_url)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (id) DO UPDATE
+                SET type = EXCLUDED.type,
+                    base_url = EXCLUDED.base_url,
+                    spec_url = EXCLUDED.spec_url
+            """,
+            req.source_id, req.type.value, base_url, req.spec_url,
+        )
         ids = await store_candidates(conn, req.source_id, candidates)
 
     return {"candidates_stored": len(ids), "ids": ids}
@@ -90,8 +107,13 @@ async def accept(candidate_id: int, req: AcceptRequest | None = None):
         raise HTTPException(status_code=503, detail="Database not connected")
 
     overrides = req.overrides if req else None
-    async with state.pg_pool.acquire() as conn:
-        endpoint = await accept_candidate(conn, candidate_id, overrides)
+    try:
+        async with state.pg_pool.acquire() as conn:
+            endpoint = await accept_candidate(conn, candidate_id, overrides)
+    except asyncpg.UniqueViolationError as e:
+        raise HTTPException(status_code=400, detail=f"Endpoint already registered: {e}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     return endpoint.model_dump()
 

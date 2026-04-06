@@ -36,8 +36,10 @@ export KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
 
 # Recreate data volumes if requested (useful after Docker crashes)
 if [ "$RESET_VOLUMES" = true ]; then
-  echo "Stopping services and removing data volumes..."
+  echo "WARNING: Resetting all volumes. All data will be lost."
+  sleep 3
   cd "$SCRIPT_DIR"
+  docker compose down
   docker compose down -v
   echo "Data volumes removed. Containers will reinitialize from scratch."
 fi

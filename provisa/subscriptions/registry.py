@@ -28,6 +28,9 @@ _MONGO_TYPES = {"mongodb"}
 # Source types using Kafka consumer
 _KAFKA_TYPES = {"kafka"}
 
+# Debezium CDC sources (MySQL, SQL Server, Oracle, PostgreSQL via Debezium)
+_DEBEZIUM_TYPES = {"debezium"}
+
 # All other SQL-ish sources fall back to polling
 _POLLING_TYPES = {
     "mysql", "singlestore", "mariadb", "sqlserver", "oracle", "duckdb",
@@ -63,6 +66,18 @@ def get_provider(source_type: str, config: dict[str, Any]) -> NotificationProvid
         return KafkaNotificationProvider(
             bootstrap_servers=config["bootstrap_servers"],
             group_id=config.get("group_id", "provisa-subscriptions"),
+        )
+
+    if source_type in _DEBEZIUM_TYPES:
+        from provisa.subscriptions.debezium_provider import DebeziumNotificationProvider
+
+        return DebeziumNotificationProvider(
+            bootstrap_servers=config["bootstrap_servers"],
+            topic_prefix=config["topic_prefix"],
+            database=config["database"],
+            consumer_group_id=config.get("consumer_group_id", "provisa-debezium"),
+            schema_registry_url=config.get("schema_registry_url"),
+            source_type=config.get("source_type", "postgresql"),
         )
 
     if source_type in _POLLING_TYPES:

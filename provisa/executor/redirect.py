@@ -198,6 +198,44 @@ def _serialize_arrow_table(
     return body.encode("utf-8"), "application/x-ndjson", ".ndjson"
 
 
+async def ensure_results_bucket(config: RedirectConfig) -> None:
+    """Ensure the configured S3/MinIO results bucket exists, creating it if needed.
+
+    Logs the outcome. Does not raise if MinIO is unavailable at startup.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    if not config.endpoint_url:
+        return
+
+    try:
+        import boto3
+        from botocore.config import Config as BotoConfig
+
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=config.endpoint_url,
+            aws_access_key_id=config.access_key,
+            aws_secret_access_key=config.secret_key,
+            region_name=config.region,
+            config=BotoConfig(signature_version="s3v4"),
+        )
+        try:
+            s3.head_bucket(Bucket=config.bucket)
+            logger.info("S3 bucket %r already exists", config.bucket)
+        except Exception:
+            s3.create_bucket(Bucket=config.bucket)
+            logger.info("Created S3 bucket %r", config.bucket)
+    except Exception:
+        logger.warning(
+            "Could not ensure S3 bucket %r — MinIO may be unavailable at startup",
+            config.bucket,
+            exc_info=True,
+        )
+
+
 async def upload_and_presign(
     result: QueryResult,
     config: RedirectConfig,

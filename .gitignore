@@ -79,3 +79,4 @@ node_modules/
 /packaging/macos/Provisa.app/Contents/MacOS/first-launch.sh
 /packaging/macos/Provisa.app/Contents/Resources/
 /packaging/macos/Provisa.app/Contents/_CodeSignature/
+/.claude/worktrees/

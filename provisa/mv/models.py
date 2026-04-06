@@ -64,6 +64,10 @@ class MVDefinition:
     expose_in_sdl: bool = False
     sdl_config: SDLConfig | None = None
 
+    # Aggregate MV routing (REQ-198/199)
+    serves_aggregates: bool = False
+    aggregate_columns: list[str] = field(default_factory=list)
+
     # Lifecycle guards
     max_rows: int = 1_000_000
     orphan_grace_period: int = 86400  # 24h in seconds

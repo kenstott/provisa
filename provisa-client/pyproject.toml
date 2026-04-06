@@ -10,12 +10,19 @@ dependencies = [
 
 [project.optional-dependencies]
 pandas = ["pandas>=2"]
+sqlalchemy = ["sqlalchemy>=2"]
+adbc = ["adbc-driver-manager>=0.10"]
 dev = [
     "pytest",
     "pytest-asyncio",
     "respx",
     "pandas>=2",
+    "sqlalchemy>=2",
 ]
+
+[project.entry-points."sqlalchemy.dialects"]
+"provisa.http" = "provisa_client.sqlalchemy_dialect:ProvisaDialect"
+"provisa.https" = "provisa_client.sqlalchemy_dialect:ProvisaDialect"
 
 [build-system]
 requires = ["setuptools>=68"]

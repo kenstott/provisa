@@ -56,6 +56,7 @@ class TableMeta:
     catalog_name: str  # Trino catalog name (source_id with hyphens → underscores)
     schema_name: str
     table_name: str
+    domain_id: str = ""  # semantic domain name (as JDBC clients see it)
 
 
 @dataclass(frozen=True)
@@ -165,6 +166,7 @@ def build_context(si: object) -> CompilationContext:
             catalog_name=t.source_id.replace("-", "_"),
             schema_name=t.schema_name,
             table_name=physical_name,
+            domain_id=t.domain_id,
         )
         ctx.tables[t.field_name] = meta
         # Register aggregate variant pointing to same TableMeta
@@ -206,6 +208,7 @@ def build_context(si: object) -> CompilationContext:
             catalog_name=tgt_info.source_id.replace("-", "_"),
             schema_name=tgt_info.schema_name,
             table_name=tgt_info.table_name,
+            domain_id=tgt_info.domain_id,
         )
 
         # Look up column types for the join columns
@@ -431,6 +434,28 @@ def _table_ref(meta: TableMeta, use_catalog: bool) -> str:
     if use_catalog:
         return f'{_q(meta.catalog_name)}.{_q(meta.schema_name)}.{_q(meta.table_name)}'
     return f'{_q(meta.schema_name)}.{_q(meta.table_name)}'
+
+
+def _semantic_table_ref(meta: TableMeta) -> str:
+    """Semantic table reference: domain_id.field_name (as JDBC clients see it)."""
+    from provisa.compiler.naming import domain_to_sql_name
+    return f'{_q(domain_to_sql_name(meta.domain_id))}.{_q(meta.field_name)}'
+
+
+def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:
+    """Replace physical table refs with semantic (domain.field_name) refs."""
+    replacements: dict[str, str] = {}
+    seen: set[tuple[str, str]] = set()
+    for meta in ctx.tables.values():
+        key = (meta.schema_name, meta.table_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        replacements[_table_ref(meta, use_catalog=False)] = _semantic_table_ref(meta)
+        replacements[_table_ref(meta, use_catalog=True)] = _semantic_table_ref(meta)
+    for phys in sorted(replacements, key=len, reverse=True):
+        sql = sql.replace(phys, replacements[phys])
+    return sql
 
 
 # --- Main compilation ---

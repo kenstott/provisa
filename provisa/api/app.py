@@ -77,6 +77,7 @@ class AppState:
     live_engine: object | None = None  # Phase AM: LiveEngine instance
     hostname: str = "localhost"  # publicly reachable hostname (PROVISA_HOSTNAME)
     source_federation_hints: dict[str, dict[str, str]] = {}  # source_id → Trino session props (AL3)
+    server_cfg: dict = {}  # raw server section from provisa.yaml
 
 
 state = AppState()
@@ -112,10 +113,10 @@ async def _load_and_build(config_path: str | None = None) -> None:
         raw_config = yaml.safe_load(f)
 
     # Resolve server hostname: env var > config file > default (localhost)
-    _server_cfg = raw_config.get("server", {}) if isinstance(raw_config, dict) else {}
+    state.server_cfg = raw_config.get("server", {}) if isinstance(raw_config, dict) else {}
     state.hostname = os.environ.get(
         "PROVISA_HOSTNAME",
-        _server_cfg.get("hostname", "localhost"),
+        state.server_cfg.get("hostname", "localhost"),
     )
 
     # Connect to PG
@@ -166,30 +167,9 @@ async def _load_and_build(config_path: str | None = None) -> None:
             exc_info=True,
         )
 
-    # Ensure MinIO results bucket exists
-    try:
-        from provisa.executor.redirect import RedirectConfig
-        rc = RedirectConfig.from_env()
-        if rc.endpoint_url:
-            import boto3
-            from botocore.config import Config as BotoConfig
-            s3 = boto3.client(
-                "s3",
-                endpoint_url=rc.endpoint_url,
-                aws_access_key_id=rc.access_key,
-                aws_secret_access_key=rc.secret_key,
-                region_name=rc.region,
-                config=BotoConfig(signature_version="s3v4"),
-            )
-            try:
-                s3.head_bucket(Bucket=rc.bucket)
-            except Exception:
-                s3.create_bucket(Bucket=rc.bucket)
-                import logging
-                logging.getLogger(__name__).info("Created S3 bucket %s", rc.bucket)
-    except Exception:
-        import logging
-        logging.getLogger(__name__).warning("Could not ensure S3 bucket", exc_info=True)
+    # Ensure MinIO results bucket exists (REQ-171)
+    from provisa.executor.redirect import RedirectConfig, ensure_results_bucket
+    await ensure_results_bucket(RedirectConfig.from_env())
 
     # Ensure results schema exists for CTAS redirects
     try:
@@ -731,7 +711,7 @@ async def lifespan(app: FastAPI):
             first_proto = next(iter(state.proto_files.values()))
             grpc_output_dir = tempfile.mkdtemp(prefix="provisa_grpc_")
             pb2_path, pb2_grpc_path = compile_proto(first_proto, grpc_output_dir)
-            grpc_port = int(os.environ.get("GRPC_PORT", str(_server_cfg.get("grpc_port", 50051))))
+            grpc_port = int(os.environ.get("GRPC_PORT", str(state.server_cfg.get("grpc_port", 50051))))
             state._grpc_server = await start_grpc_server(
                 grpc_port, state, pb2_path, pb2_grpc_path,
             )
@@ -743,7 +723,7 @@ async def lifespan(app: FastAPI):
     # Start Arrow Flight server
     try:
         from provisa.api.flight.server import ProvisaFlightServer
-        flight_port = int(os.environ.get("FLIGHT_PORT", str(_server_cfg.get("flight_port", 8815))))
+        flight_port = int(os.environ.get("FLIGHT_PORT", str(state.server_cfg.get("flight_port", 8815))))
         flight_server = ProvisaFlightServer(
             state, location=f"grpc://0.0.0.0:{flight_port}",
         )

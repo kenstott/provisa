@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import logging
 
+from typing import Optional
+
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import Response
 from graphql import GraphQLSyntaxError
@@ -68,6 +70,78 @@ class SubmitRequest(BaseModel):
 class SQLRequest(BaseModel):
     sql: str
     role: str = "admin"
+
+
+class EnforcementMetadata(BaseModel):
+    """Governance enforcement details returned by the /data/compile endpoint (REQ-062)."""
+
+    rls_filters_applied: list[str]
+    columns_excluded: list[str]
+    schema_scope: str
+    masking_applied: list[str]
+    ceiling_applied: Optional[int]
+    route: str
+
+
+def _build_enforcement_metadata(
+    compiled,
+    ctx,
+    rls,
+    masking_rules: dict,
+    role_id: str,
+    route_value: str,
+) -> EnforcementMetadata:
+    """Derive EnforcementMetadata from a compiled query and its governance inputs.
+
+    Args:
+        compiled:      CompiledQuery after RLS and masking injection.
+        ctx:           CompilationContext for the role.
+        rls:           RLSContext (rules dict keyed by table_id).
+        masking_rules: Raw masking rules dict [(table_id, role_id)] → {col: (rule, dtype)}.
+        role_id:       The requesting role.
+        route_value:   Route string (e.g. "direct:postgres" or "trino").
+    """
+    # RLS filters — collect filter_expr for each table_id present in the compiled query
+    rls_filters: list[str] = []
+    root_table = ctx.tables.get(compiled.root_field)
+    if root_table and root_table.table_id in rls.rules:
+        rls_filters.append(rls.rules[root_table.table_id])
+
+    for (type_name, _field_name), join_meta in ctx.joins.items():
+        if root_table and type_name == root_table.type_name:
+            if join_meta.target.table_id in rls.rules:
+                rls_filters.append(rls.rules[join_meta.target.table_id])
+
+    # Columns excluded — columns present in ctx but absent from compiled output
+    compiled_column_names = {c.column for c in compiled.columns}
+    excluded: list[str] = []
+    if root_table:
+        for col_name in (c.column for c in getattr(root_table, "columns", [])):
+            if col_name not in compiled_column_names:
+                excluded.append(f"{root_table.table_name}.{col_name}")
+
+    # Masking applied — (table_id, role_id) entries matching this role
+    masking_applied: list[str] = []
+    for (table_id, r_id), col_map in masking_rules.items():
+        if r_id != role_id:
+            continue
+        table_name = ""
+        for meta in ctx.tables.values():
+            if meta.table_id == table_id:
+                table_name = meta.table_name
+                break
+        for col_name, (rule, _dtype) in col_map.items():
+            label = f"{table_name}.{col_name} -> {rule.mask_type.value}" if table_name else col_name
+            masking_applied.append(label)
+
+    return EnforcementMetadata(
+        rls_filters_applied=rls_filters,
+        columns_excluded=excluded,
+        schema_scope=f"role:{role_id}",
+        masking_applied=masking_applied,
+        ceiling_applied=None,
+        route=route_value,
+    )
 
 
 def _extract_operation_name(query_text: str) -> str | None:
@@ -147,6 +221,20 @@ async def compile_endpoint(
             for c in compiled.columns
             if c.field_name != c.column
         ]
+
+        route_str = decision.route.value
+        if decision.route == Route.DIRECT and decision.dialect:
+            route_str = f"direct:{decision.dialect}"
+
+        enforcement = _build_enforcement_metadata(
+            compiled=compiled,
+            ctx=ctx,
+            rls=rls,
+            masking_rules=state.masking_rules,
+            role_id=role_id,
+            route_value=route_str,
+        )
+
         results.append({
             "sql": compiled.sql,
             "semantic_sql": make_semantic_sql(compiled.sql, ctx),
@@ -159,6 +247,7 @@ async def compile_endpoint(
             "root_field": compiled.root_field,
             "canonical_field": compiled.canonical_field or compiled.root_field,
             "column_aliases": column_aliases,
+            "enforcement": enforcement.model_dump(),
         })
 
     if len(results) == 1:
@@ -274,7 +363,18 @@ async def sql_endpoint(
     x_provisa_role: str | None = Header(None),
     accept: str | None = Header(None),
 ):
-    """Execute raw SQL through Stage 2 governance (REQ-264)."""
+    """Execute raw SQL through Stage 2 governance (REQ-264, REQ-266, REQ-267).
+
+    Pipeline:
+      1. Parse incoming SQL with SQLGlot.
+      2. Construct GovernanceContext from the request role.
+      3. Reject (HTTP 403) any table not in the role's schema scope.
+      4. Apply Stage 2 governance: RLS, masking, visibility, ceiling.
+      5. Route and execute the governed SQL.
+    """
+    import sqlglot
+    import sqlglot.expressions as exp
+
     from provisa.api.app import state
     from provisa.api.data.endpoint import _parse_accept, _format_response
     from provisa.compiler.stage2 import (
@@ -301,10 +401,45 @@ async def sql_endpoint(
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
 
+    # --- Step 1: Parse SQL via SQLGlot (REQ-266) ---
+    try:
+        parsed_tree = sqlglot.parse_one(request.sql, read="postgres")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"SQL parse error: {exc}")
+
+    # --- Step 2: Build GovernanceContext for the role (REQ-266) ---
     gov_ctx = build_governance_context(
         role_id, rls, state.masking_rules, ctx,
         getattr(state, "tables", []),
     )
+
+    # --- Step 3: Reject tables outside this role's schema scope (REQ-267) ---
+    forbidden_tables: list[str] = []
+    for tbl in parsed_tree.find_all(exp.Table):
+        tbl_name = tbl.name
+        tbl_db = tbl.db
+        full_key = f"{tbl_db}.{tbl_name}" if tbl_db else tbl_name
+        if (
+            full_key not in gov_ctx.table_map
+            and tbl_name not in gov_ctx.table_map
+        ):
+            forbidden_tables.append(full_key or tbl_name)
+
+    if forbidden_tables:
+        log.warning(
+            "[SQL] role=%s forbidden tables referenced: %s",
+            role_id,
+            forbidden_tables,
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Query references table(s) not accessible for role {role_id!r}: "
+                + ", ".join(forbidden_tables)
+            ),
+        )
+
+    # --- Step 4: Apply Stage 2 governance (RLS + masking + visibility + ceiling) ---
     governed_sql = apply_governance(request.sql, gov_ctx)
     sources = extract_sources(request.sql, gov_ctx, ctx)
 
@@ -317,6 +452,7 @@ async def sql_endpoint(
 
     output_format = _parse_accept(accept)
 
+    # --- Step 5: Execute the governed SQL ---
     if decision.route == Route.TRINO:
         sql_to_run = transpile_to_trino(governed_sql)
         result = await execute_trino(sql_to_run, [])

@@ -475,6 +475,7 @@ export async function sampleView(id: string): Promise<{ columns: string[]; rows:
 
 export interface CompileResult {
   sql: string;
+  semantic_sql: string;
   trino_sql: string | null;
   direct_sql: string | null;
   params: unknown[];
@@ -483,6 +484,7 @@ export interface CompileResult {
   sources: string[];
   root_field: string;
   canonical_field: string;
+  column_aliases: { field_name: string; column: string }[];
 }
 
 export async function compileQuery(

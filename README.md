@@ -10,6 +10,10 @@ GraphQL is used as the universal query language specifically because it can only
 
 ### Query & API
 - **GraphQL API** — Per-role schemas with field-level visibility, filtering, pagination, relationships
+- **Cursor-based pagination** — Relay-style `first`/`after`/`last`/`before` arguments on all list queries; returns `pageInfo` with `hasNextPage`, `hasPreviousPage`, `startCursor`, `endCursor`
+- **Aggregate queries** — Auto-generated `{table}_aggregate` types with `count`, `sum`, `avg`, `min`, `max` per numeric column and filtered `nodes` access
+- **Automatic Persisted Queries (APQ)** — Apollo APQ wire protocol support; Redis-backed, governance-gated; Apollo Client users get automatic query deduplication via `extensions.persistedQuery`
+- **Enum auto-detection** — Small lookup tables (≤ configured threshold rows) are automatically exposed as GraphQL enum types rather than string scalars
 - **gRPC endpoint** — Auto-generated `.proto` from registration model, streaming responses
 - **REST endpoints** — Auto-generated REST routes from approved queries
 - **JSON:API endpoints** — Auto-generated JSON:API routes with pagination, relationships, error objects
@@ -18,15 +22,20 @@ GraphQL is used as the universal query language specifically because it can only
 ### Data Sources
 - **Multi-source federation** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, and more through a single API
 - **Smart routing** — Single-source queries execute directly (sub-100ms); multi-source queries federate transparently via Trino-compatible federation — bring your own Trino or Trino-compatible cluster to scale out
+- **Federation performance hints** — Query-level routing hints embedded as SQL comments (e.g., `/* @provisa route=trino */`) override automatic routing decisions for performance tuning
 - **API sources** — Register REST/GraphQL/gRPC endpoints as queryable tables
 - **Kafka integration** — Topics as read-only tables, query results as Kafka sinks
+- **Scheduled triggers** — Cron and interval-based triggers (via APScheduler) that fire webhooks, mutations, or Kafka sink publishes; configured via the admin API or YAML config
 
 ### Security & Governance
 - **Row-level security** — Per-table, per-role WHERE clause injection
 - **Column masking** — Per-column data masking (regex, constant, truncate) with role-based bypass
+- **Column presets** — Server-side preset values (static or session variable references) applied automatically on insert/update without exposing them in the mutation input type
 - **Write permissions** — Per-column mutation access control (`writable_by`)
 - **Webhook mutations** — Database function tracking and outbound webhook-backed mutations
 - **Persisted query registry** — Approval workflow, governance, ceiling enforcement
+- **Inherited roles** — Roles can inherit from a parent role, recursively inheriting RLS rules, column visibility, and masking policies; avoids duplicating permission sets across similar roles
+- **ABAC approval hook** — Pluggable external authorization hook called before query execution; supports webhook, gRPC, and unix_socket transports; scoped per-table, per-source, or globally; configurable fallback policy when hook is unavailable
 - **Pluggable auth** — Firebase, Keycloak, OAuth 2.0, simple (testing)
 
 ### Delivery & Performance
@@ -38,6 +47,7 @@ GraphQL is used as the universal query language specifically because it can only
 
 ### Administration & Integration
 - **Admin API** — Strawberry GraphQL at `/admin/graphql` — config upload/download, relationship editing, AI-assisted FK suggestions, query approval
+- **GraphQL Voyager** — Built-in interactive schema visualization accessible from the admin UI; renders the role-scoped schema as an interactive entity relationship diagram
 - **LLM relationship discovery** — Claude-powered FK candidate suggestion
 - **JDBC driver** — BI tool integration (Tableau, PowerBI, DBeaver): `approved` and `catalog` modes
 - **Python client** — `pip install provisa-client`; GraphQL queries → DataFrames, Arrow Flight → pyarrow Tables
@@ -100,22 +110,41 @@ See [docs/integrations.md](docs/integrations.md) for Tableau and Power BI setup 
 ### Python Client
 
 ```bash
-pip install provisa-client
+pip install provisa-client                       # core
+pip install "provisa-client[pandas]"             # + DataFrame support
+pip install "provisa-client[sqlalchemy]"         # + SQLAlchemy dialect
+pip install "provisa-client[adbc]"               # + ADBC over Arrow Flight
 ```
 
 ```python
-from provisa_client import ProvisaClient
-
-client = ProvisaClient("http://localhost:8001", username="alice", password="secret")
+from provisa_client import ProvisaClient, connect
 
 # GraphQL → DataFrame
+client = ProvisaClient("http://localhost:8001", username="alice", password="secret")
 df = client.query_df("{ orders { id amount region } }")
 
-# Arrow Flight → pyarrow Table (high-throughput)
+# Arrow Flight → pyarrow Table (high-throughput columnar)
 table = client.flight("{ orders { id amount region } }")
+
+# DB-API 2.0 (PEP 249) — GraphQL or SQL, detected automatically
+with connect("http://localhost:8001", username="alice", password="secret") as conn:
+    cur = conn.cursor()
+    cur.execute("{ orders { id amount } }")
+    rows = cur.fetchall()
+
+# SQLAlchemy dialect
+from sqlalchemy import create_engine
+engine = create_engine("provisa+http://alice:secret@localhost:8001")
+
+# ADBC — Arrow-native streaming via Flight
+from provisa_client.adbc import adbc_connect
+with adbc_connect("http://localhost:8001", user="alice", password="secret") as conn:
+    with conn.cursor() as cur:
+        cur.execute("{ orders { id amount } }")
+        table = cur.fetch_arrow_table()
 ```
 
-See [docs/quickstart.md](docs/quickstart.md) for a step-by-step walkthrough.
+See [docs/python-client.md](docs/python-client.md) for full reference.
 
 ## Documentation
 

@@ -78,6 +78,14 @@ async def _load_config_in_txn(
     for tbl in config.tables:
         await table_repo.upsert(conn, tbl)
 
+    # 5a. ANALYZE — prime federation CBO stats after tables are registered
+    if trino_conn is not None:
+        for src in config.sources:
+            try:
+                catalog.analyze_source_tables(trino_conn, src, config.tables)
+            except Exception:
+                pass  # analyze_source_tables already logs per-table failures
+
     # 6. Relationships (tables must exist first)
     for rel in config.relationships:
         await rel_repo.upsert(conn, rel)

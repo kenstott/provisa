@@ -41,6 +41,16 @@ public class ProvisaStatement extends AbstractStatement {
     public ResultSet executeQuery(String sql) throws SQLException {
         if (closed) throw new SQLException("Statement is closed");
 
+        // Catalog mode: route raw SQL through /data/sql governance endpoint
+        if ("catalog".equals(conn.mode)) {
+            List<Map<String, Object>> rows = conn.executeSqlEndpoint(sql);
+            List<String> columns = rows.isEmpty()
+                ? new ArrayList<>()
+                : new ArrayList<>(rows.get(0).keySet());
+            currentResultSet = new ProvisaResultSet(columns, rows);
+            return currentResultSet;
+        }
+
         Matcher m = SQL_PATTERN.matcher(sql.trim());
         if (!m.matches()) {
             throw new SQLException(
