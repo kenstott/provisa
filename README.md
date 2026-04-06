@@ -32,7 +32,7 @@ Config-driven data virtualization platform. A single governed API over heterogen
 - **Column presets** — Server-side preset values (static or session variable references) applied automatically on insert/update without exposing them in the mutation input type
 - **Write permissions** — Per-column mutation access control (`writable_by`)
 - **Webhook mutations** — Database function tracking and outbound webhook-backed mutations
-- **Governed query registry** — Pre-approved named queries with approval workflow, role-scoped execution, and ceiling enforcement; distinct from Apollo APQ
+- **Governed query registry** — Pre-approved named queries with approval workflow, role-scoped execution, and ceiling enforcement. Each approved query is a **virtual table**: scopeable, joinable with other approved queries, and addressable by `stable_id`. Direct execution by name (`GET /data/graphql?queryId=<stable_id>`) returns the full result set over a cacheable GET — complementary to Apollo APQ but independent of it
 - **Inherited roles** — Roles can inherit from a parent role, recursively inheriting RLS rules, column visibility, and masking policies; avoids duplicating permission sets across similar roles
 - **ABAC approval hook** — Pluggable external authorization hook called before query execution; supports webhook, gRPC, and unix_socket transports; scoped per-table, per-source, or globally; configurable fallback policy when hook is unavailable
 - **Pluggable auth** — Firebase, Keycloak, OAuth 2.0, simple (testing)
