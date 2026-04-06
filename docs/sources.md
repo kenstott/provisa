@@ -1,6 +1,10 @@
 # Source Types
 
-## Database Sources
+## All Sources
+
+Comprehensive reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source without Trino (sub-100ms). "Trino connector" means the source routes through the federation engine for multi-source JOINs. Both can apply to the same source.
+
+### RDBMS
 
 | Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
 |------------|--------------|-----------------|-----------------|-----------|
@@ -11,26 +15,85 @@
 | `sqlserver` | aioodbc | sqlserver | tsql | Yes |
 | `oracle` | oracledb | oracle | oracle | Yes |
 | `duckdb` | duckdb | memory | duckdb | Yes |
+
+### Cloud Data Warehouses
+
+| Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
+|------------|--------------|-----------------|-----------------|-----------|
 | `snowflake` | — | snowflake | snowflake | Via Trino |
 | `bigquery` | — | bigquery | bigquery | Via Trino |
-| `clickhouse` | — | clickhouse | clickhouse | Via Trino |
-| `redshift` | — | redshift | redshift | Via Trino |
 | `databricks` | — | delta_lake | databricks | Via Trino |
-| `hive` | — | hive | hive | No |
+| `redshift` | — | redshift | redshift | Via Trino |
+
+### Analytics / OLAP
+
+| Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
+|------------|--------------|-----------------|-----------------|-----------|
+| `clickhouse` | — | clickhouse | clickhouse | Via Trino |
+| `elasticsearch` | — | elasticsearch | — | No |
+| `pinot` | — | pinot | — | No |
 | `druid` | — | druid | druid | No |
 | `exasol` | — | exasol | exasol | No |
+
+### Data Lake / Open Table Formats
+
+| Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
+|------------|--------------|-----------------|-----------------|-----------|
+| `iceberg` | — | iceberg | — | Via Trino |
+| `delta_lake` | — | delta_lake | — | Via Trino |
+| `hive` | — | hive | hive | No |
+
+### NoSQL
+
+| Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
+|------------|--------------|-----------------|-----------------|-----------|
 | `mongodb` | — | mongodb | — | No |
 | `cassandra` | — | cassandra | — | No |
-| `neo4j` | API cache pipeline | — | — | No |
-| `sparql` | API cache pipeline | — | — | No |
+| `redis` | — | redis | — | No |
+| `kudu` | — | kudu | — | No |
+| `accumulo` | — | accumulo | — | No |
 
-**Direct execution**: Single-source RDBMS queries route to the native driver for sub-100ms latency. Sources with a direct driver and SQLGlot dialect support this path.
+### Streaming
 
-**Trino federation**: Multi-source queries, NoSQL sources, and cloud warehouses route through Trino for cross-source JOINs.
+| Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
+|------------|--------------|-----------------|-----------------|-----------|
+| `kafka` | — | kafka | — | Sink only |
 
-**NoSQL limitations**: MongoDB and Cassandra are read-only via Trino. No mutations, no direct execution.
+### Graph & Semantic
 
-**Statistics**: On registration, Provisa runs `ANALYZE` against each published table. This primes the federation engine's cost-based optimizer with row counts and column statistics (null fraction, distinct values, min/max). The optimizer uses these to estimate join cardinality and choose efficient execution plans — broadcast vs. partitioned join, join order, predicate pushdown. If a connector does not support `ANALYZE`, the failure is logged and registration proceeds normally.
+| Source Type | Mechanism | Trino Connector | Mutations |
+|------------|-----------|-----------------|-----------|
+| `neo4j` | Cypher via HTTP API, results cached in PG | — | No |
+| `sparql` | SPARQL 1.1 POST, results cached in PG | — | No |
+
+### Observability & Other
+
+| Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
+|------------|--------------|-----------------|-----------------|-----------|
+| `prometheus` | — | prometheus | — | No |
+| `google_sheets` | — | google_sheets | — | No |
+
+### API Sources
+
+Register any HTTP endpoint as a queryable table.
+
+| API Type | Discovery | Column Inference |
+|---------|-----------|-----------------|
+| `openapi` | OpenAPI spec parsing | Primitives → native, objects → JSONB |
+| `graphql_api` | Schema introspection | Primitives → native, objects → JSONB |
+| `grpc_api` | Server reflection | Primitives → native, objects → JSONB |
+
+**Execution**: API responses are fetched, cached in PostgreSQL (configurable TTL), and exposed as GraphQL types. Cached tables participate in Trino federation like any other source.
+
+**JSONB rules**: Complex columns (objects, arrays) stored as JSONB are not filterable and cannot participate in relationships. Use JSONB promotion to convert nested fields into native columns.
+
+---
+
+**Direct execution** — Single-source RDBMS queries route to the native driver for sub-100ms latency. Sources with a direct driver and SQLGlot dialect support this path.
+
+**Trino federation** — Multi-source queries and sources without a direct driver route through Trino. Provisa includes an embedded federation engine; bring your own Trino cluster for large-scale deployments.
+
+**Statistics** — On registration, Provisa runs `ANALYZE` against each published table to prime the cost-based optimizer (row counts, null fraction, distinct values, min/max). Failures are logged and do not block registration.
 
 ## API Sources
 
