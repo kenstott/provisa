@@ -30,6 +30,22 @@ Copy-Item (Join-Path $ScriptDir 'first-launch.ps1') $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.ps1')       $BuildDir
 Copy-Item (Join-Path $ScriptDir 'provisa.cmd')       $BuildDir
 
+# VM image (OVA) — built by the build-vm-image CI job
+$OvaSrc = Join-Path $ScriptDir 'provisa-runtime.ova'
+if (-not (Test-Path $OvaSrc)) {
+  throw "provisa-runtime.ova not found at $OvaSrc — run the build-vm-image CI job first."
+}
+Copy-Item $OvaSrc $BuildDir
+
+# VirtualBox silent installer — downloaded by CI or placed manually
+$BuildRedist = Join-Path $BuildDir 'redist'
+New-Item -ItemType Directory -Path $BuildRedist -Force | Out-Null
+$VBoxSrc = Join-Path $ScriptDir 'redist\VirtualBox-setup.exe'
+if (-not (Test-Path $VBoxSrc)) {
+  throw "VirtualBox-setup.exe not found at $VBoxSrc — CI should download it before building."
+}
+Copy-Item $VBoxSrc $BuildRedist
+
 # ── Create dist dir ────────────────────────────────────────────────────────────
 $DistDir = Join-Path $ScriptDir 'dist'
 New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
@@ -37,7 +53,7 @@ New-Item -ItemType Directory -Path $DistDir -Force | Out-Null
 # ── Run NSIS ───────────────────────────────────────────────────────────────────
 Write-Host '[build-installer] Running makensis...' -ForegroundColor Cyan
 $NsiScript = Join-Path $ScriptDir 'installer.nsi'
-$Version = if ($env:VERSION) { $env:VERSION } else { 'dev' }
+$Version   = if ($env:VERSION) { $env:VERSION } else { 'dev' }
 & makensis /DVERSION=$Version $NsiScript
 if ($LASTEXITCODE -ne 0) {
   throw "makensis failed with exit code $LASTEXITCODE"

@@ -48,6 +48,127 @@ jobs:
           echo "jdbc_name=provisa-jdbc-${TAG}.jar"                   >> "$GITHUB_OUTPUT"
           echo "py_version=$PY_VERSION"                              >> "$GITHUB_OUTPUT"
 
+  build-vm-image:
+    name: Build Provisa runtime VM (OVA)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y qemu-utils e2fsprogs dosfstools parted util-linux
+
+      - name: Download alpine-make-vm-image
+        run: |
+          curl -fsSL https://github.com/alpinelinux/alpine-make-vm-image/releases/download/v0.11.0/alpine-make-vm-image \
+            -o alpine-make-vm-image
+          chmod +x alpine-make-vm-image
+
+      - name: Build Alpine VM with dockerd
+        run: |
+          chmod +x packaging/windows/vm/configure-dockerd.sh
+          sudo ./alpine-make-vm-image \
+            --image-format qcow2 \
+            --image-size 10G \
+            --packages "docker docker-compose-plugin openrc" \
+            --script-chroot \
+            provisa-runtime.qcow2 \
+            -- packaging/windows/vm/configure-dockerd.sh
+
+      - name: Convert QCOW2 to VMDK (streamOptimized)
+        run: |
+          qemu-img convert -f qcow2 -O vmdk \
+            -o subformat=streamOptimized \
+            provisa-runtime.qcow2 provisa-runtime.vmdk
+          VMDK_BYTES=$(stat -c %s provisa-runtime.vmdk)
+          echo "VMDK_BYTES=${VMDK_BYTES}" >> "$GITHUB_ENV"
+
+      - name: Create OVF descriptor
+        run: |
+          cat > provisa-runtime.ovf << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <Envelope xmlns="http://schemas.dmtf.org/ovf/envelope/1"
+                    xmlns:ovf="http://schemas.dmtf.org/ovf/envelope/1"
+                    xmlns:rasd="http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_ResourceAllocationSettingData"
+                    xmlns:vssd="http://schemas.dmtf.org/wbem/wscim/1/cim-schema/2/CIM_VirtualSystemSettingData"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <References>
+              <File ovf:href="provisa-runtime.vmdk" ovf:id="file1" ovf:size="${VMDK_BYTES}"/>
+            </References>
+            <DiskSection>
+              <Info>List of the virtual disks</Info>
+              <Disk ovf:capacity="10737418240" ovf:diskId="disk1" ovf:fileRef="file1"
+                    ovf:format="http://www.vmware.com/interfaces/specifications/vmdk.html#streamOptimized"/>
+            </DiskSection>
+            <NetworkSection>
+              <Info>Logical networks</Info>
+              <Network ovf:name="NAT"><Description>NAT</Description></Network>
+            </NetworkSection>
+            <VirtualSystem ovf:id="Provisa">
+              <Info>Provisa container runtime</Info>
+              <Name>Provisa</Name>
+              <OperatingSystemSection ovf:id="36">
+                <Info>Alpine Linux x86_64</Info>
+              </OperatingSystemSection>
+              <VirtualHardwareSection>
+                <Info>Virtual hardware</Info>
+                <System>
+                  <vssd:ElementName>Virtual Hardware Family</vssd:ElementName>
+                  <vssd:InstanceID>0</vssd:InstanceID>
+                  <vssd:VirtualSystemType>virtualbox-2.2</vssd:VirtualSystemType>
+                </System>
+                <Item>
+                  <rasd:Caption>2 virtual CPUs</rasd:Caption>
+                  <rasd:InstanceID>1</rasd:InstanceID>
+                  <rasd:ResourceType>3</rasd:ResourceType>
+                  <rasd:VirtualQuantity>2</rasd:VirtualQuantity>
+                </Item>
+                <Item>
+                  <rasd:AllocationUnits>MegaBytes</rasd:AllocationUnits>
+                  <rasd:Caption>2048 MB RAM</rasd:Caption>
+                  <rasd:InstanceID>2</rasd:InstanceID>
+                  <rasd:ResourceType>4</rasd:ResourceType>
+                  <rasd:VirtualQuantity>2048</rasd:VirtualQuantity>
+                </Item>
+                <Item>
+                  <rasd:Caption>SATA Controller</rasd:Caption>
+                  <rasd:InstanceID>3</rasd:InstanceID>
+                  <rasd:ResourceSubType>AHCI</rasd:ResourceSubType>
+                  <rasd:ResourceType>20</rasd:ResourceType>
+                </Item>
+                <Item>
+                  <rasd:Caption>disk0</rasd:Caption>
+                  <rasd:HostResource>ovf:/disk/disk1</rasd:HostResource>
+                  <rasd:InstanceID>4</rasd:InstanceID>
+                  <rasd:Parent>3</rasd:Parent>
+                  <rasd:ResourceType>17</rasd:ResourceType>
+                </Item>
+                <Item>
+                  <rasd:Caption>NAT network adapter</rasd:Caption>
+                  <rasd:Connection>NAT</rasd:Connection>
+                  <rasd:InstanceID>5</rasd:InstanceID>
+                  <rasd:ResourceSubType>E1000</rasd:ResourceSubType>
+                  <rasd:ResourceType>10</rasd:ResourceType>
+                </Item>
+              </VirtualHardwareSection>
+            </VirtualSystem>
+          </Envelope>
+          EOF
+
+      - name: Package OVA
+        run: |
+          tar -cf provisa-runtime.ova provisa-runtime.ovf provisa-runtime.vmdk
+
+      - name: Upload OVA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: provisa-runtime-ova
+          path: provisa-runtime.ova
+          retention-days: 1
+          compression-level: 0
+
   pull-images:
     name: Pull and save Docker images
     runs-on: ubuntu-latest
@@ -229,7 +350,7 @@ jobs:
   build-windows:
     name: Build airgapped Windows installer (${{ needs.metadata.outputs.channel }})
     runs-on: windows-latest
-    needs: [metadata, pull-images]
+    needs: [metadata, pull-images, build-vm-image]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -239,6 +360,22 @@ jobs:
         with:
           name: docker-images
           path: packaging/windows/images/
+
+      - name: Download Provisa runtime OVA
+        uses: actions/download-artifact@v4
+        with:
+          name: provisa-runtime-ova
+          path: packaging/windows/
+
+      - name: Download VirtualBox installer
+        shell: pwsh
+        run: |
+          $VBoxVersion = '7.1.6'
+          $VBoxUrl = "https://download.virtualbox.org/virtualbox/${VBoxVersion}/VirtualBox-${VBoxVersion}-167084-Win.exe"
+          New-Item -ItemType Directory -Path packaging/windows/redist -Force | Out-Null
+          Write-Host "Downloading VirtualBox ${VBoxVersion}..."
+          Invoke-WebRequest -Uri $VBoxUrl -OutFile packaging/windows/redist/VirtualBox-setup.exe -UseBasicParsing
+          Write-Host "VirtualBox installer downloaded."
 
       - name: Install NSIS
         run: |
@@ -267,7 +404,7 @@ jobs:
   publish-release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
-    needs: [metadata, build-dmg, build-linux, build-windows, build-jdbc, build-python-client]
+    needs: [metadata, build-dmg, build-linux, build-windows, build-jdbc, build-python-client, build-vm-image]
     permissions:
       contents: write
     steps:
@@ -331,18 +468,20 @@ jobs:
 
             ### macOS Install
             1. Download the DMG and drag **Provisa.app** to `/Applications`
-            2. Double-click to run first-launch setup (~2 min)
+            2. Double-click — first-launch setup runs once (~2 min, no internet required)
             3. `provisa start && provisa open`
 
             ### Linux Install
             ```bash
             chmod +x ${{ needs.metadata.outputs.linux_name }}
-            ./${{ needs.metadata.outputs.linux_name }}   # runs first-launch, installs CLI
+            ./${{ needs.metadata.outputs.linux_name }}   # one-time setup, no internet required
             provisa start && provisa open
             ```
 
             ### Windows Install
-            Run `${{ needs.metadata.outputs.windows_name }}` as Administrator, then open a new terminal:
+            1. Run `${{ needs.metadata.outputs.windows_name }}` — no admin rights required
+            2. Open **Provisa First Launch** from the Start Menu — one-time setup (~5 min, no internet required)
+            3. Open a new terminal:
             ```
             provisa start
             ```

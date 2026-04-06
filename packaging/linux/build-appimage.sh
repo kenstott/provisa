@@ -8,8 +8,14 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 IMAGES_DIR="${SCRIPT_DIR}/images"
 APPDIR="${SCRIPT_DIR}/Provisa.AppDir"
 OUT_DIR="${SCRIPT_DIR}/dist"
+DOCKER_BIN_CACHE="${SCRIPT_DIR}/.docker-bin-cache"
 APPIMAGETOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
 APPIMAGETOOL="${SCRIPT_DIR}/appimagetool-x86_64.AppImage"
+
+# Pin Docker version — update here to upgrade bundled runtime
+DOCKER_VERSION="${DOCKER_VERSION:-27.5.1}"
+DOCKER_ARCH="x86_64"
+DOCKER_BASE_URL="https://download.docker.com/linux/static/stable/${DOCKER_ARCH}"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 info() { printf "${CYAN}[build-appimage]${NC} %s\n" "$*"; }
@@ -28,6 +34,40 @@ check_prereqs() {
     sudo apt-get install -y libfuse2
   fi
   ok "Prerequisites satisfied."
+}
+
+# ── Download and cache Docker static binaries ──────────────────────────────────
+bundle_docker() {
+  local cache_marker="${DOCKER_BIN_CACHE}/.version-${DOCKER_VERSION}"
+  if [ -f "$cache_marker" ]; then
+    info "Docker ${DOCKER_VERSION} binaries already cached."
+    return
+  fi
+
+  info "Downloading Docker ${DOCKER_VERSION} static binaries..."
+  mkdir -p "$DOCKER_BIN_CACHE"
+
+  # Core daemon + runtime binaries
+  curl -fsSL "${DOCKER_BASE_URL}/docker-${DOCKER_VERSION}.tgz" \
+    | tar -xz -C "$DOCKER_BIN_CACHE" --strip-components=1 \
+        docker/dockerd \
+        docker/docker-proxy \
+        docker/docker-init \
+        docker/containerd \
+        docker/containerd-shim-runc-v2 \
+        docker/runc
+
+  # Rootless extras (no sudo/root required)
+  curl -fsSL "${DOCKER_BASE_URL}/docker-rootless-extras-${DOCKER_VERSION}.tgz" \
+    | tar -xz -C "$DOCKER_BIN_CACHE" --strip-components=1 \
+        docker-rootless-extras/dockerd-rootless.sh \
+        docker-rootless-extras/rootlesskit \
+        docker-rootless-extras/rootlesskit-docker-proxy \
+        docker-rootless-extras/vpnkit
+
+  chmod +x "${DOCKER_BIN_CACHE}"/*
+  touch "$cache_marker"
+  ok "Docker ${DOCKER_VERSION} binaries cached at ${DOCKER_BIN_CACHE}/"
 }
 
 # ── Save service images as tarballs ───────────────────────────────────────────
@@ -75,7 +115,21 @@ save_images() {
 build_appdir() {
   info "Building AppDir..."
   rm -rf "$APPDIR"
-  mkdir -p "${APPDIR}/images" "${APPDIR}/compose"
+  mkdir -p "${APPDIR}/images" "${APPDIR}/compose" "${APPDIR}/bin"
+
+  # Bundled Docker runtime
+  cp "${DOCKER_BIN_CACHE}"/dockerd \
+     "${DOCKER_BIN_CACHE}"/docker-proxy \
+     "${DOCKER_BIN_CACHE}"/docker-init \
+     "${DOCKER_BIN_CACHE}"/containerd \
+     "${DOCKER_BIN_CACHE}"/containerd-shim-runc-v2 \
+     "${DOCKER_BIN_CACHE}"/runc \
+     "${DOCKER_BIN_CACHE}"/dockerd-rootless.sh \
+     "${DOCKER_BIN_CACHE}"/rootlesskit \
+     "${DOCKER_BIN_CACHE}"/rootlesskit-docker-proxy \
+     "${DOCKER_BIN_CACHE}"/vpnkit \
+     "${APPDIR}/bin/"
+  chmod +x "${APPDIR}/bin/"*
 
   # Copy image tarballs
   cp "${IMAGES_DIR}"/*.tar "${APPDIR}/images/"
@@ -127,8 +181,10 @@ create_appimage() {
 main() {
   printf "\n${BOLD}Provisa AppImage Builder${NC}\n"
   printf "═══════════════════════════════════════════\n\n"
+  info "Bundling Docker ${DOCKER_VERSION} runtime..."
 
   check_prereqs
+  bundle_docker
   save_images
   build_appdir
   create_appimage

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # First-launch setup for Linux AppImage.
 # Loads bundled Docker images and installs the provisa CLI.
+# Always uses bundled rootless dockerd — no system Docker required.
 set -euo pipefail
 
 APPDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,6 +10,11 @@ COMPOSE_DIR="${APPDIR}/compose"
 PROVISA_HOME="${HOME}/.provisa"
 SENTINEL="${PROVISA_HOME}/.first-launch-complete"
 LOCAL_BIN="${HOME}/.local/bin"
+
+BUNDLED_ROOTLESS="${APPDIR}/bin/dockerd-rootless.sh"
+BUNDLED_SOCKET="${PROVISA_HOME}/run/docker.sock"
+BUNDLED_DATA="${PROVISA_HOME}/docker-data"
+BUNDLED_PID="${PROVISA_HOME}/run/dockerd.pid"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 info() { printf "${CYAN}[provisa]${NC} %s\n" "$*"; }
@@ -69,13 +75,37 @@ ask_ram_budget() {
   ok "RAM budget: ${budget_gb}GB → Trino workers: ${TRINO_WORKERS}"
 }
 
-# ── Check Docker ───────────────────────────────────────────────────────────────
-check_docker() {
-  if ! docker info &>/dev/null; then
-    err "Docker is not running. Start Docker Engine and re-run."
+# ── Start bundled rootless Docker ─────────────────────────────────────────────
+start_docker() {
+  if [ ! -x "$BUNDLED_ROOTLESS" ]; then
+    err "Bundled Docker runtime not found at ${APPDIR}/bin/ — reinstall Provisa."
     exit 1
   fi
-  ok "Docker is running."
+
+  mkdir -p "${PROVISA_HOME}/run" "$BUNDLED_DATA"
+  export XDG_RUNTIME_DIR="${PROVISA_HOME}/run"
+  export DOCKER_HOST="unix://${BUNDLED_SOCKET}"
+  export PATH="${APPDIR}/bin:${PATH}"
+
+  info "Starting bundled Docker runtime..."
+  "$BUNDLED_ROOTLESS" \
+    --data-root "$BUNDLED_DATA" \
+    --host "unix://${BUNDLED_SOCKET}" \
+    --pidfile "$BUNDLED_PID" \
+    --log-level error \
+    >/dev/null 2>&1 &
+
+  local retries=30
+  while [ $retries -gt 0 ]; do
+    docker info &>/dev/null 2>&1 && break
+    sleep 1
+    retries=$((retries - 1))
+  done
+  if [ $retries -eq 0 ]; then
+    err "Bundled Docker failed to start within 30 seconds."
+    exit 1
+  fi
+  ok "Docker started."
 }
 
 # ── Load images ────────────────────────────────────────────────────────────────
@@ -103,7 +133,8 @@ project_dir: "${COMPOSE_DIR}"
 ui_port: 3000
 api_port: 8000
 auto_open_browser: true
-runtime: docker
+runtime: bundled
+docker_host: "unix://${BUNDLED_SOCKET}"
 federation_workers: ${TRINO_WORKERS}
 YAML
   ok "Config written to ${PROVISA_HOME}/config.yaml"
@@ -115,6 +146,15 @@ install_cli() {
   cp "${APPDIR}/provisa-cli" "${LOCAL_BIN}/provisa"
   chmod +x "${LOCAL_BIN}/provisa"
   ok "CLI installed to ${LOCAL_BIN}/provisa"
+
+  # Persist DOCKER_HOST so future shells pick it up
+  for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+    [ -f "$rc" ] || continue
+    if ! grep -q "PROVISA_DOCKER_HOST" "$rc" 2>/dev/null; then
+      printf '\n# Provisa bundled Docker runtime\nexport DOCKER_HOST="%s"\n' \
+        "unix://${BUNDLED_SOCKET}" >> "$rc"
+    fi
+  done
 
   case ":${PATH}:" in
     *":${LOCAL_BIN}:"*) ;;
@@ -134,7 +174,7 @@ main() {
   printf "═══════════════════════════════════════════\n\n"
   info "Setting up Provisa (no internet required)..."
 
-  check_docker
+  start_docker
   ask_ram_budget
   load_images
   write_config

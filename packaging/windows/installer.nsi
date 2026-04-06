@@ -7,8 +7,8 @@
 
 Name "Provisa ${VERSION}"
 OutFile "dist\Provisa-Setup.exe"
-InstallDir "$PROGRAMFILES64\Provisa"
-RequestExecutionLevel admin
+InstallDir "$LOCALAPPDATA\Programs\Provisa"
+RequestExecutionLevel user
 
 !include "MUI2.nsh"
 
@@ -26,17 +26,17 @@ Section "Provisa" SecMain
   SetOutPath "$INSTDIR"
   File /r "build\*"
 
-  ; Add/Remove Programs entry
-  WriteRegStr HKLM \
+  ; Add/Remove Programs entry (per-user hive — no admin required)
+  WriteRegStr HKCU \
     "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa" \
     "DisplayName" "Provisa ${VERSION}"
-  WriteRegStr HKLM \
+  WriteRegStr HKCU \
     "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa" \
     "UninstallString" "$INSTDIR\Uninstall.exe"
-  WriteRegStr HKLM \
+  WriteRegStr HKCU \
     "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa" \
     "DisplayVersion" "${VERSION}"
-  WriteRegStr HKLM \
+  WriteRegStr HKCU \
     "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa" \
     "Publisher" "Provisa"
 
@@ -46,12 +46,9 @@ Section "Provisa" SecMain
     "powershell.exe" \
     "-ExecutionPolicy Bypass -File `"$INSTDIR\first-launch.ps1`""
 
-  ; Add $INSTDIR to system PATH
-  ReadRegStr $0 HKLM \
-    "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
-  WriteRegExpandStr HKLM \
-    "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" \
-    "Path" "$0;$INSTDIR"
+  ; Add $INSTDIR to user PATH (HKCU — no admin required)
+  ReadRegStr $0 HKCU "Environment" "Path"
+  WriteRegExpandStr HKCU "Environment" "Path" "$0;$INSTDIR"
   SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -59,13 +56,19 @@ SectionEnd
 
 ; ── Uninstall ─────────────────────────────────────────────────────────────────
 Section "Uninstall"
+  ; Stop and remove Provisa VM before deleting files
+  nsExec::Exec 'VBoxManage controlvm Provisa acpipowerbutton'
+  Sleep 3000
+  nsExec::Exec 'VBoxManage unregistervm Provisa --delete'
+
   RMDir /r "$INSTDIR"
 
   Delete "$SMPROGRAMS\Provisa\Provisa First Launch.lnk"
   RMDir  "$SMPROGRAMS\Provisa"
 
-  DeleteRegKey HKLM \
+  DeleteRegKey HKCU \
     "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa"
 
-  ; Note: $INSTDIR is left in PATH on uninstall (cosmetic; safe to leave)
+  ; Note: $INSTDIR is left in user PATH on uninstall (cosmetic; safe to leave)
+  ; Note: VirtualBox itself is not uninstalled — may be used by other apps
 SectionEnd
