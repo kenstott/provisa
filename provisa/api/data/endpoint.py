@@ -36,7 +36,7 @@ from provisa.compiler.mutation_gen import (
 from provisa.compiler.parser import GraphQLValidationError, parse_query
 from provisa.compiler.rls import RLSContext, inject_rls
 from provisa.compiler.sampling import apply_sampling, get_sample_size
-from provisa.compiler.sql_gen import compile_query
+from provisa.compiler.sql_gen import compile_query, make_semantic_sql
 from provisa.executor.direct import execute_direct
 from provisa.executor.serialize import serialize_aggregate, serialize_rows
 from provisa.executor.trino import execute_trino
@@ -51,9 +51,11 @@ router = APIRouter(prefix="/data", tags=["data"])
 
 
 class GraphQLRequest(BaseModel):
-    query: str
+    query: str | None = None
     variables: dict | None = None
     role: str = "admin"  # test mode: role passed in request
+    extensions: dict | None = None  # APQ: {"persistedQuery": {"sha256Hash": "..."}}
+    queryId: str | None = None  # Governed Query stable_id (Phase AN)
 
 
 _ACCEPT_MAP = {
@@ -159,6 +161,60 @@ async def graphql_endpoint(
             check_capability(role, Capability.QUERY_DEVELOPMENT)
         except InsufficientRightsError as e:
             raise HTTPException(status_code=403, detail=str(e))
+
+    # --- Governed Query path (queryId, Phase AN) ---
+    if request.queryId:
+        if state.pg_pool is None:
+            raise HTTPException(status_code=503, detail="Database pool not available")
+        async with state.pg_pool.acquire() as conn:
+            from provisa.registry.store import get_by_stable_id
+            record = await get_by_stable_id(conn, request.queryId)
+        if record is None or record.get("status") != "approved":
+            raise HTTPException(
+                status_code=404,
+                detail=f"Governed query {request.queryId!r} not found or not approved",
+            )
+        request = GraphQLRequest(
+            query=record["query_text"],
+            variables=request.variables,
+            role=request.role,
+        )
+
+    # --- APQ (Automatic Persisted Queries, Phase AN) ---
+    apq_hash: str | None = None
+    if request.extensions:
+        pq = request.extensions.get("persistedQuery", {})
+        apq_hash = pq.get("sha256Hash")
+
+    if apq_hash and not request.query:
+        # Hash-only request: look up in APQ cache
+        apq_cache = getattr(state, "apq_cache", None)
+        cached_query = await apq_cache.get(apq_hash) if apq_cache else None
+        if cached_query is None:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "errors": [{"message": "PersistedQueryNotFound",
+                                "extensions": {"code": "PERSISTED_QUERY_NOT_FOUND"}}]
+                },
+            )
+        request = GraphQLRequest(
+            query=cached_query,
+            variables=request.variables,
+            role=request.role,
+        )
+    elif apq_hash and request.query:
+        # Hash + query: validate hash then cache
+        from provisa.apq.cache import compute_apq_hash
+        expected = compute_apq_hash(request.query)
+        if expected != apq_hash:
+            raise HTTPException(status_code=400, detail="APQ hash mismatch")
+        apq_cache = getattr(state, "apq_cache", None)
+        if apq_cache:
+            await apq_cache.set(apq_hash, request.query)
+
+    if not request.query:
+        raise HTTPException(status_code=400, detail="query is required")
 
     schema = state.schemas[role_id]
     ctx = state.contexts[role_id]
@@ -806,229 +862,4 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id):
     return {"data": {mutation_name: results[0] if results else None}}
 
 
-class SinkRequest(BaseModel):
-    topic: str
-    trigger: str = "change_event"  # change_event, schedule, manual
-    key_column: str | None = None
-
-
-class SubmitRequest(BaseModel):
-    query: str
-    variables: dict | None = None
-    role: str = "admin"
-    sink: SinkRequest | None = None
-    business_purpose: str | None = None
-    use_cases: str | None = None
-    data_sensitivity: str | None = None  # public, internal, confidential, restricted
-    refresh_frequency: str | None = None  # real-time, hourly, daily, weekly, ad-hoc
-    expected_row_count: str | None = None  # <1K, 1K-100K, 100K+
-    owner_team: str | None = None
-    expiry_date: str | None = None  # ISO date
-
-
-def _extract_operation_name(query_text: str) -> str | None:
-    """Extract the operation name from a GraphQL query string."""
-    from graphql import parse as gql_parse
-    from graphql.language.ast import OperationDefinitionNode
-    try:
-        doc = gql_parse(query_text)
-        for defn in doc.definitions:
-            if isinstance(defn, OperationDefinitionNode) and defn.name:
-                return defn.name.value
-    except Exception:
-        pass
-    return None
-
-
-@router.post("/compile")
-async def compile_endpoint(
-    raw_request: Request,
-    request: GraphQLRequest,
-    x_provisa_role: str | None = Header(None),
-):
-    """Compile a GraphQL query and return the SQL that would execute.
-
-    Shows the full compiled SQL with RLS, masking, and sampling applied.
-    Does not execute the query.
-    """
-    from provisa.api.app import state
-
-    auth_role = getattr(raw_request.state, "role", None)
-    role_id = auth_role or x_provisa_role or request.role
-    if role_id not in state.schemas:
-        raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
-
-    schema = state.schemas[role_id]
-    ctx = state.contexts[role_id]
-    rls = state.rls_contexts.get(role_id, RLSContext.empty())
-    role = state.roles.get(role_id)
-
-    try:
-        document = parse_query(schema, request.query, request.variables)
-    except (GraphQLValidationError, GraphQLSyntaxError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    compiled_queries = compile_query(document, ctx, request.variables)
-    if not compiled_queries:
-        raise HTTPException(status_code=400, detail="No query fields found")
-
-    fresh_mvs = state.mv_registry.get_fresh()
-    role = state.roles.get(role_id)
-    results = []
-
-    for compiled in compiled_queries:
-        compiled = inject_rls(compiled, ctx, rls)
-        compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
-        compiled = rewrite_if_mv_match(compiled, fresh_mvs)
-
-        if hasattr(state, "kafka_table_configs") and state.kafka_table_configs:
-            from provisa.kafka.window import inject_kafka_filters
-            compiled = inject_kafka_filters(
-                compiled, ctx, state.source_types, state.kafka_table_configs,
-            )
-
-        sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
-        if sampling:
-            compiled = apply_sampling(compiled, get_sample_size())
-
-        has_json_extract = "->>" in compiled.sql
-        decision = decide_route(
-            sources=compiled.sources,
-            source_types=state.source_types,
-            source_dialects=state.source_dialects,
-            has_json_extract=has_json_extract,
-        )
-
-        trino_sql = transpile_to_trino(compiled.sql) if decision.route == Route.TRINO else None
-        direct_sql = None
-        if decision.route == Route.DIRECT and decision.dialect:
-            direct_sql = transpile(compiled.sql, decision.dialect)
-
-        results.append({
-            "sql": compiled.sql,
-            "trino_sql": trino_sql,
-            "direct_sql": direct_sql,
-            "params": compiled.params,
-            "route": decision.route.value,
-            "route_reason": decision.reason,
-            "sources": list(compiled.sources),
-            "root_field": compiled.root_field,
-            "canonical_field": compiled.canonical_field or compiled.root_field,
-        })
-
-    # Single field: return flat for backward compatibility
-    if len(results) == 1:
-        return results[0]
-    return {"queries": results}
-
-
-@router.post("/submit")
-async def submit_endpoint(
-    raw_request: Request,
-    request: SubmitRequest,
-    x_provisa_role: str | None = Header(None),
-):
-    """Submit a named GraphQL query for steward approval.
-
-    The query must have a named operation (e.g., 'query MyReport { ... }').
-    """
-    from provisa.api.app import state
-
-    auth_role = getattr(raw_request.state, "role", None)
-    role_id = auth_role or x_provisa_role or request.role
-    if role_id not in state.schemas:
-        raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
-
-    # Require named query
-    op_name = _extract_operation_name(request.query)
-    if not op_name:
-        raise HTTPException(
-            status_code=400,
-            detail="Query must have a named operation (e.g., 'query MyReport { ... }').",
-        )
-
-    schema = state.schemas[role_id]
-    ctx = state.contexts[role_id]
-    rls = state.rls_contexts.get(role_id, RLSContext.empty())
-    role = state.roles.get(role_id)
-
-    try:
-        document = parse_query(schema, request.query, request.variables)
-    except (GraphQLValidationError, GraphQLSyntaxError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    compiled_queries = compile_query(document, ctx, request.variables)
-    if not compiled_queries:
-        raise HTTPException(status_code=400, detail="No query fields found")
-
-    # Process all root fields for submission
-    target_tables = []
-    compiled_sqls = []
-    for compiled in compiled_queries:
-        compiled = inject_rls(compiled, ctx, rls)
-        compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
-        compiled_sqls.append(compiled.sql)
-        root_table = ctx.tables.get(compiled.root_field)
-        if root_table:
-            target_tables.append(root_table.table_id)
-    compiled = compiled_queries[0]  # use first for backward-compat fields
-
-    from provisa.registry.store import submit
-    async with state.pg_pool.acquire() as conn:
-        query_id = await submit(
-            conn,
-            query_text=request.query,
-            compiled_sql=compiled.sql,
-            target_tables=target_tables,
-            developer_id=role_id,
-        )
-
-        # Save optional metadata and sink
-        updates = []
-        params = []
-        idx = 1
-        for field, value in [
-            ("sink_topic", request.sink.topic if request.sink else None),
-            ("sink_trigger", request.sink.trigger if request.sink else None),
-            ("sink_key_column", request.sink.key_column if request.sink else None),
-            ("business_purpose", request.business_purpose),
-            ("use_cases", request.use_cases),
-            ("data_sensitivity", request.data_sensitivity),
-            ("refresh_frequency", request.refresh_frequency),
-            ("expected_row_count", request.expected_row_count),
-            ("owner_team", request.owner_team),
-            ("expiry_date", request.expiry_date),
-        ]:
-            if value is not None:
-                updates.append(f"{field} = ${idx}")
-                params.append(value)
-                idx += 1
-        if updates:
-            params.append(query_id)
-            await conn.execute(
-                f"UPDATE persisted_queries SET {', '.join(updates)} WHERE id = ${idx}",
-                *params,
-            )
-
-    return {
-        "query_id": query_id,
-        "operation_name": op_name,
-        "message": f"Query '{op_name}' submitted for approval (id={query_id}).",
-    }
-
-
-@router.get("/proto/{role_id}")
-async def proto_endpoint(role_id: str):
-    """Return the .proto file content for a role as text/plain."""
-    from provisa.api.app import state
-
-    if role_id not in state.proto_files:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No proto file available for role {role_id!r}",
-        )
-
-    return Response(
-        content=state.proto_files[role_id],
-        media_type="text/plain",
-    )
+# Dev endpoints (compile, submit, proto, sql) have been moved to endpoint_dev.py

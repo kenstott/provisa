@@ -137,6 +137,100 @@ Pluggable auth providers:
 
 Role mapping: identity claims → Provisa role via configurable rules.
 
+## ABAC Approval Hook
+
+An optional external policy hook that fires before query execution. When configured, Provisa calls out to your policy engine with the user identity, roles, tables, columns, and operation. The response determines whether the query proceeds.
+
+### Scoping
+
+The hook only fires when the query touches a scoped table or source — zero overhead for everything else.
+
+| Config | Effect |
+|--------|--------|
+| `auth.approval_hook.scope: all` | Every query triggers the hook |
+| `sources[].approval_hook: true` | All tables on that source trigger the hook |
+| `tables[].approval_hook: true` | That table triggers the hook |
+
+### Protocols
+
+Three transports are supported:
+
+| Type | Use case | Config field |
+|------|----------|-------------|
+| `webhook` | Any HTTP-capable policy service (OPA, custom) | `url` |
+| `unix_socket` | OPA or policy sidecar on same machine | `socket_path` + `url` |
+| `grpc` | High-throughput co-located policy service | `url` (host:port) |
+
+The gRPC transport uses the `provisa.auth.ApprovalService` contract defined in `provisa/auth/approval.proto`. Implement this service in your policy engine:
+
+```proto
+service ApprovalService {
+  rpc Evaluate (ApprovalRequest) returns (ApprovalResponse);
+}
+
+message ApprovalRequest {
+  string user = 1;
+  repeated string roles = 2;
+  repeated string tables = 3;
+  repeated string columns = 4;
+  string operation = 5;
+}
+
+message ApprovalResponse {
+  bool approved = 1;
+  string reason = 2;
+}
+```
+
+The gRPC channel is persistent — one channel per Provisa instance, reused across all calls to that hook endpoint.
+
+### Request / Response
+
+All three transports carry the same payload:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `user` | string | Authenticated user identity |
+| `roles` | string[] | User's Provisa roles |
+| `tables` | string[] | Table IDs referenced in the query |
+| `columns` | string[] | Columns selected in the query |
+| `operation` | string | `"query"` or `"mutation"` |
+
+The webhook and Unix socket transports exchange JSON. Response must include `approved` (bool) and optionally `reason` (string).
+
+### Timeout and Fallback
+
+```yaml
+auth:
+  approval_hook:
+    type: grpc          # webhook | grpc | unix_socket
+    url: "localhost:50051"
+    timeout_ms: 500     # default 5000
+    fallback: deny      # allow | deny — applied on timeout or error
+    scope: ""           # "" = use per-table/per-source flags; "all" = every query
+```
+
+On timeout or transport error, the `fallback` policy applies. A circuit breaker (default: open after 5 consecutive failures, half-open after 30s) prevents cascading failures from a slow hook endpoint.
+
+### Configuration Example
+
+```yaml
+auth:
+  approval_hook:
+    type: webhook
+    url: "http://opa.internal:8181/v1/data/provisa/allow"
+    timeout_ms: 300
+    fallback: deny
+
+sources:
+  - id: analytics_pg
+    approval_hook: true   # all tables on this source require hook approval
+
+tables:
+  - id: salary_data
+    approval_hook: true   # this table always requires hook approval
+```
+
 ## Secrets
 
 Credentials use `${env:VAR_NAME}` syntax, resolved at runtime. Passwords are never stored in the config DB.

@@ -35,6 +35,7 @@ def execute_trino(
     conn: trino.dbapi.Connection,
     sql: str,
     params: list | None = None,
+    session_hints: dict[str, str] | None = None,
 ) -> QueryResult:
     """Execute SQL on Trino and return results.
 
@@ -43,6 +44,9 @@ def execute_trino(
         sql: Trino-dialect SQL string.
         params: Positional parameters (Trino uses ? placeholders internally,
                 but we substitute $N -> ? before execution).
+        session_hints: Optional Trino session properties to set before executing
+                       the query (e.g. ``{"join_distribution_type": "BROADCAST"}``).
+                       Each entry emits a ``SET SESSION key = 'value'`` statement.
 
     Returns:
         QueryResult with rows and column names.
@@ -55,6 +59,16 @@ def execute_trino(
         for i in range(len(params), 0, -1):
             exec_sql = exec_sql.replace(f"@{i}", "?")
             exec_sql = exec_sql.replace(f"${i}", "?")
+
+    # Inject session properties before the main query when hints are present.
+    if session_hints:
+        cur = conn.cursor()
+        for key, value in session_hints.items():
+            safe_key = key.replace("'", "")
+            safe_value = value.replace("'", "")
+            set_sql = f"SET SESSION {safe_key} = '{safe_value}'"
+            log.info("[EXEC TRINO] session hint: %s", set_sql)
+            cur.execute(set_sql)
 
     log.info("[EXEC TRINO] sql=%s", exec_sql[:200])
     cur = conn.cursor()

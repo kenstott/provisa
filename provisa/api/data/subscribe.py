@@ -196,13 +196,72 @@ async def subscribe(
     table: str,
     request: Request,
     x_provisa_role: str | None = Header(None),
+    query_id: str | None = None,
 ):
     """Stream SSE events for changes on *table*.
 
-    Validates the table exists in the role's schema, resolves the
-    appropriate notification provider, and streams SSE events.
+    When ``query_id`` is provided, streams live query results from the
+    LiveEngine (Phase AM) rather than database change notifications.
+    The query_id must match an approved persisted query registered with
+    the live engine.
+
+    Without ``query_id``, validates the table exists in the role's schema,
+    resolves the appropriate notification provider, and streams SSE events.
     """
     from provisa.api.app import state
+
+    # --- Live query path (Phase AM) ---
+    if query_id is not None:
+        live_engine = getattr(state, "live_engine", None)
+        if live_engine is None:
+            raise HTTPException(status_code=503, detail="Live query engine not available")
+        if not live_engine.is_registered(query_id):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Live query {query_id!r} not registered",
+            )
+
+        disconnect = asyncio.Event()
+
+        async def on_disconnect_live() -> None:
+            while True:
+                if await request.is_disconnected():
+                    disconnect.set()
+                    return
+                await asyncio.sleep(1)
+
+        async def live_generator() -> AsyncGenerator[str, None]:
+            q = live_engine.subscribe(query_id)
+            task = asyncio.create_task(on_disconnect_live())
+            yield ": connected\n\n"
+            try:
+                while not disconnect.is_set():
+                    try:
+                        batch = await asyncio.wait_for(q.get(), timeout=30.0)
+                    except asyncio.TimeoutError:
+                        yield ": keepalive\n\n"
+                        continue
+                    if batch is None:
+                        break
+                    payload = json.dumps({"rows": batch})
+                    yield f"data: {payload}\n\n"
+            finally:
+                live_engine.unsubscribe(query_id, q)
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+
+        return StreamingResponse(
+            live_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     if state.pg_pool is None:
         raise HTTPException(status_code=503, detail="Database pool not available")

@@ -133,6 +133,7 @@ class Source(BaseModel):
     cache_enabled: bool = True
     cache_ttl: int | None = None  # overrides global default; None = inherit
     naming_convention: str | None = None  # overrides global; None = inherit
+    federation_hints: dict[str, str] = Field(default_factory=dict)  # Trino session props
 
     @property
     def connector(self) -> str:
@@ -222,10 +223,28 @@ class Table(BaseModel):
     naming_convention: str | None = None  # overrides source; None = inherit
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
     relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
+    live: LiveDeliveryConfig | None = None  # live query delivery config (Phase AM)
+
+
+class LiveOutputConfig(BaseModel):
+    """Single output destination for a live query (SSE fanout or Kafka sink)."""
+
+    type: str  # "sse" | "kafka"
+    topic: str | None = None  # Kafka topic (required when type="kafka")
+    key_column: str | None = None  # Kafka message key column
+
+
+class LiveDeliveryConfig(BaseModel):
+    """Live query delivery configuration attached to a table."""
+
+    query_id: str  # stable_id of the approved persisted query to run
+    watermark_column: str  # column whose max value is tracked as the watermark
+    poll_interval: int = 10  # seconds between polls
+    outputs: list[LiveOutputConfig] = Field(default_factory=list)
 
 
 class HotTablesConfig(BaseModel):
-    auto_threshold: int = 10_000  # max rows for auto-detection
+    auto_threshold: int = 1_000  # max rows for auto-detection
     refresh_interval: int = 300  # seconds between refreshes
 
 

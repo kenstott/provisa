@@ -25,6 +25,7 @@ from provisa.auth.approval_hook import (
     ApprovalResponse,
     CircuitBreaker,
     FallbackPolicy,
+    GrpcApprovalHook,
     HookType,
     WebhookApprovalHook,
     create_hook,
@@ -257,6 +258,152 @@ class TestCircuitBreaker:
 
 
 # ---------------------------------------------------------------------------
+# gRPC hook tests
+# ---------------------------------------------------------------------------
+
+
+class TestGrpcApprovalHook:
+    def _grpc_cfg(self, **overrides) -> ApprovalHookConfig:
+        defaults = {
+            "type": HookType.GRPC,
+            "url": "localhost:50099",
+            "timeout_ms": 500,
+            "fallback": FallbackPolicy.DENY,
+        }
+        defaults.update(overrides)
+        return ApprovalHookConfig(**defaults)
+
+    @pytest.mark.asyncio
+    async def test_approved(self):
+        hook = GrpcApprovalHook(self._grpc_cfg())
+
+        mock_proto_resp = AsyncMock()
+        mock_proto_resp.approved = True
+        mock_proto_resp.reason = "policy pass"
+
+        mock_stub = AsyncMock()
+        mock_stub.Evaluate = AsyncMock(return_value=mock_proto_resp)
+
+        mock_channel = AsyncMock()
+
+        with patch("grpc.aio.insecure_channel", return_value=mock_channel), \
+             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+            result = await hook.evaluate(_REQ)
+
+        assert result.approved is True
+        assert result.reason == "policy pass"
+        mock_stub.Evaluate.assert_awaited_once()
+        call_args = mock_stub.Evaluate.call_args
+        proto_req = call_args.args[0]
+        assert proto_req.user == "alice"
+        assert list(proto_req.tables) == ["orders", "customers"]
+
+    @pytest.mark.asyncio
+    async def test_denied(self):
+        hook = GrpcApprovalHook(self._grpc_cfg())
+
+        mock_proto_resp = AsyncMock()
+        mock_proto_resp.approved = False
+        mock_proto_resp.reason = "PII access blocked"
+
+        mock_stub = AsyncMock()
+        mock_stub.Evaluate = AsyncMock(return_value=mock_proto_resp)
+
+        with patch("grpc.aio.insecure_channel", return_value=AsyncMock()), \
+             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+            result = await hook.evaluate(_REQ)
+
+        assert result.approved is False
+        assert result.reason == "PII access blocked"
+
+    @pytest.mark.asyncio
+    async def test_grpc_error_fallback_deny(self):
+        import grpc
+
+        hook = GrpcApprovalHook(self._grpc_cfg(fallback=FallbackPolicy.DENY))
+
+        mock_stub = AsyncMock()
+        mock_stub.Evaluate = AsyncMock(side_effect=grpc.aio.AioRpcError(
+            grpc.StatusCode.UNAVAILABLE, None, None,
+        ))
+
+        with patch("grpc.aio.insecure_channel", return_value=AsyncMock()), \
+             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+            result = await hook.evaluate(_REQ)
+
+        assert result.approved is False
+        assert "fallback deny" in result.reason
+
+    @pytest.mark.asyncio
+    async def test_grpc_error_fallback_allow(self):
+        import grpc
+
+        hook = GrpcApprovalHook(self._grpc_cfg(fallback=FallbackPolicy.ALLOW))
+
+        mock_stub = AsyncMock()
+        mock_stub.Evaluate = AsyncMock(side_effect=grpc.aio.AioRpcError(
+            grpc.StatusCode.UNAVAILABLE, None, None,
+        ))
+
+        with patch("grpc.aio.insecure_channel", return_value=AsyncMock()), \
+             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+            result = await hook.evaluate(_REQ)
+
+        assert result.approved is True
+        assert "fallback allow" in result.reason
+
+    @pytest.mark.asyncio
+    async def test_channel_reused_across_calls(self):
+        hook = GrpcApprovalHook(self._grpc_cfg())
+
+        mock_proto_resp = AsyncMock()
+        mock_proto_resp.approved = True
+        mock_proto_resp.reason = ""
+
+        mock_stub = AsyncMock()
+        mock_stub.Evaluate = AsyncMock(return_value=mock_proto_resp)
+
+        with patch("grpc.aio.insecure_channel", return_value=AsyncMock()) as mock_chan_factory, \
+             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+            await hook.evaluate(_REQ)
+            await hook.evaluate(_REQ)
+
+        # Channel created only once; stub reused
+        mock_chan_factory.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_circuit_breaker_blocks_after_failures(self):
+        import grpc
+
+        cfg = self._grpc_cfg(
+            circuit_breaker_threshold=2,
+            circuit_breaker_cooldown_s=60.0,
+            fallback=FallbackPolicy.DENY,
+        )
+        hook = GrpcApprovalHook(cfg)
+
+        mock_stub = AsyncMock()
+        mock_stub.Evaluate = AsyncMock(side_effect=grpc.aio.AioRpcError(
+            grpc.StatusCode.UNAVAILABLE, None, None,
+        ))
+
+        with patch("grpc.aio.insecure_channel", return_value=AsyncMock()), \
+             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+            await hook.evaluate(_REQ)
+            await hook.evaluate(_REQ)
+
+        # Circuit now open — next call must not reach stub
+        mock_stub.Evaluate.reset_mock()
+        with patch("grpc.aio.insecure_channel", return_value=AsyncMock()), \
+             patch("provisa.auth.approval_pb2_grpc.ApprovalServiceStub", return_value=mock_stub):
+            result = await hook.evaluate(_REQ)
+
+        assert result.approved is False
+        assert "circuit breaker open" in result.reason
+        mock_stub.Evaluate.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # Factory tests
 # ---------------------------------------------------------------------------
 
@@ -265,6 +412,10 @@ class TestCreateHook:
     def test_webhook(self):
         hook = create_hook(_cfg(type=HookType.WEBHOOK))
         assert isinstance(hook, WebhookApprovalHook)
+
+    def test_grpc(self):
+        hook = create_hook(_cfg(type=HookType.GRPC, url="localhost:50051"))
+        assert isinstance(hook, GrpcApprovalHook)
 
     def test_invalid_type(self):
         with pytest.raises(ValueError, match="Unknown hook type"):

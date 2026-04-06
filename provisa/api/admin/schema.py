@@ -881,5 +881,55 @@ class Mutation:
             message=f"Task {task_id!r} {'enabled' if enabled else 'disabled'}",
         )
 
+    async def refresh_source_statistics(self, source_id: str) -> MutationResult:
+        """Run ANALYZE on all registered tables for a source (Phase AL).
+
+        Triggers Trino to collect fresh table statistics, which improves the
+        quality of join-order and broadcast decisions for federated queries.
+        """
+        from provisa.api.app import state
+
+        if state.trino_conn is None:
+            return MutationResult(success=False, message="Trino connection not available")
+
+        pool = await _get_pool()
+        if pool is None:
+            return MutationResult(success=False, message="Database pool not available")
+
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT schema_name, table_name FROM registered_tables WHERE source_id = $1",
+                source_id,
+            )
+
+        if not rows:
+            return MutationResult(
+                success=False,
+                message=f"No tables registered for source {source_id!r}",
+            )
+
+        analyzed: list[str] = []
+        errors: list[str] = []
+        source_catalog = source_id.replace("-", "_")
+
+        for row in rows:
+            full_name = f"{source_catalog}.{row['schema_name']}.{row['table_name']}"
+            try:
+                cur = state.trino_conn.cursor()
+                cur.execute(f"ANALYZE {full_name}")
+                analyzed.append(full_name)
+            except Exception as exc:
+                errors.append(f"{full_name}: {exc}")
+
+        if errors:
+            return MutationResult(
+                success=False,
+                message=f"ANALYZE completed with errors. OK={len(analyzed)} errors={errors}",
+            )
+        return MutationResult(
+            success=True,
+            message=f"ANALYZE completed for {len(analyzed)} table(s) on source {source_id!r}",
+        )
+
 
 admin_schema = strawberry.Schema(query=Query, mutation=Mutation)

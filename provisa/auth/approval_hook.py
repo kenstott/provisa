@@ -165,9 +165,11 @@ class GrpcApprovalHook(ApprovalHook):
         if self._channel is not None:
             return
         try:
-            import grpc  # type: ignore[import-untyped]
+            import grpc.aio  # type: ignore[import-untyped]
+            from provisa.auth import approval_pb2_grpc
 
             self._channel = grpc.aio.insecure_channel(self._url)
+            self._stub = approval_pb2_grpc.ApprovalServiceStub(self._channel)
         except ImportError:
             raise RuntimeError("grpcio required for gRPC approval hook")
 
@@ -177,9 +179,21 @@ class GrpcApprovalHook(ApprovalHook):
 
         try:
             self._ensure_channel()
-            # gRPC stub call would go here once proto stubs are generated.
-            # For now, raise so fallback kicks in until stubs exist.
-            raise NotImplementedError("gRPC stubs not yet generated")
+            from provisa.auth import approval_pb2
+
+            proto_req = approval_pb2.ApprovalRequest(
+                user=request.user,
+                roles=list(request.roles),
+                tables=list(request.tables),
+                columns=list(request.columns),
+                operation=request.operation,
+            )
+            proto_resp = await self._stub.Evaluate(proto_req, timeout=self._timeout)
+            self._breaker.record_success()
+            return ApprovalResponse(
+                approved=proto_resp.approved,
+                reason=proto_resp.reason,
+            )
         except Exception:
             self._breaker.record_failure()
             return self._fallback_response("grpc call failed")

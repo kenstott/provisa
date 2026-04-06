@@ -23,6 +23,7 @@ import yaml
 from fastapi import FastAPI
 
 from provisa.api.data.endpoint import router as data_router
+from provisa.api.data.endpoint_dev import router as dev_router
 from provisa.api.data.sdl import router as sdl_router
 from provisa.compiler.introspect import ColumnMetadata, introspect_tables
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
@@ -36,6 +37,7 @@ from provisa.compiler.mask_inject import MaskingRules
 from provisa.cache.store import CacheStore, NoopCacheStore, RedisCacheStore
 from provisa.mv.registry import MVRegistry
 from provisa.cache.warm_tables import WarmTableManager
+from provisa.apq.cache import APQCache, NoopAPQCache
 
 
 class AppState:
@@ -71,6 +73,8 @@ class AppState:
     _hot_refresh_task: asyncio.Task | None = None
     warm_manager: WarmTableManager = WarmTableManager()
     _warm_task: asyncio.Task | None = None
+    apq_cache: APQCache = NoopAPQCache()  # Phase AN: Automatic Persisted Queries
+    live_engine: object | None = None  # Phase AM: LiveEngine instance
 
 
 state = AppState()
@@ -741,6 +745,26 @@ async def lifespan(app: FastAPI):
     except Exception:
         _log.exception("Arrow Flight server startup failed")
 
+    # Start Live Query Engine (Phase AM)
+    try:
+        from provisa.live.engine import LiveEngine
+        live_engine = LiveEngine(pg_pool=state.pg_pool)
+        await live_engine.start()
+        state.live_engine = live_engine
+        _log.info("Live Query Engine started")
+    except Exception:
+        _log.exception("Live Query Engine startup failed")
+
+    # Initialize APQ cache (Phase AN)
+    redis_url = os.environ.get("REDIS_URL")
+    if redis_url:
+        try:
+            from provisa.apq.cache import RedisAPQCache
+            state.apq_cache = RedisAPQCache(redis_url)
+            _log.info("APQ cache initialized (Redis: %s)", redis_url)
+        except Exception:
+            _log.exception("APQ cache initialization failed")
+
     yield
 
     # Stop Arrow Flight server
@@ -778,6 +802,19 @@ async def lifespan(app: FastAPI):
             await state._mv_refresh_task
         except asyncio.CancelledError:
             pass
+    # Stop Live Query Engine (Phase AM)
+    if state.live_engine is not None:
+        try:
+            await state.live_engine.stop()
+        except Exception:
+            pass
+
+    # Close APQ cache (Phase AN)
+    try:
+        await state.apq_cache.close()
+    except Exception:
+        pass
+
     await state.cache_store.close()
     await state.source_pools.close_all()
     if state.pg_pool:
@@ -810,6 +847,7 @@ def create_app() -> FastAPI:
     wire_auth(app, state.auth_config)
 
     app.include_router(data_router)
+    app.include_router(dev_router)
     app.include_router(sdl_router)
 
     # SSE subscription endpoint (Phase AB2)
@@ -842,6 +880,9 @@ def create_app() -> FastAPI:
 
     from provisa.api.admin.discovery_schema import router as schema_discovery_router
     app.include_router(schema_discovery_router)
+
+    from provisa.api.admin.api_discovery import router as api_discovery_router
+    app.include_router(api_discovery_router)
 
     @app.get("/admin/config")
     async def download_config():
