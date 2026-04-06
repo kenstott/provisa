@@ -21,16 +21,6 @@ RequestExecutionLevel admin
 
 !insertmacro MUI_LANGUAGE "English"
 
-; ── StrRep macro (must be defined before use in sections) ────────────────────
-!macro _StrRep OUTPUT NEEDLE SEARCH REPLACE
-  Push "${REPLACE}"
-  Push "${SEARCH}"
-  Push "${NEEDLE}"
-  Call un.StrRep
-  Pop "${OUTPUT}"
-!macroend
-!define StrRep "!insertmacro _StrRep"
-
 ; ── Install ───────────────────────────────────────────────────────────────────
 Section "Provisa" SecMain
   SetOutPath "$INSTDIR"
@@ -77,60 +67,5 @@ Section "Uninstall"
   DeleteRegKey HKLM \
     "Software\Microsoft\Windows\CurrentVersion\Uninstall\Provisa"
 
-  ; Remove $INSTDIR from system PATH
-  ReadRegStr $0 HKLM \
-    "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "Path"
-  ${StrRep} $1 "$0" ";$INSTDIR" ""
-  WriteRegExpandStr HKLM \
-    "SYSTEM\CurrentControlSet\Control\Session Manager\Environment" \
-    "Path" "$1"
-  SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
+  ; Note: $INSTDIR is left in PATH on uninstall (cosmetic; safe to leave)
 SectionEnd
-
-; ── StrRep function (un. prefix required for use in Uninstall section) ────────
-Function un.StrRep
-  Exch $R0  ; needle
-  Exch
-  Exch $R1  ; search
-  Exch 2
-  Exch $R2  ; replace
-  Push $R3
-  Push $R4
-  Push $R5
-  Push $R6
-  Push $R7
-  Push $R8
-  Push $R9
-
-  StrLen $R3 $R1
-  StrLen $R4 $R2
-  StrCpy $R5 ""
-  StrCpy $R6 $R0
-
-  loop:
-    StrLen $R7 $R6
-    IntCmp $R7 $R3 next next done
-    StrCpy $R8 $R6 $R3
-    StrCmp $R8 $R1 found
-    StrCpy $R5 "$R5$R8" "" 1
-    StrCpy $R6 $R6 "" 1
-    Goto loop
-  found:
-    StrCpy $R5 "$R5$R2"
-    StrCpy $R6 $R6 "" $R3
-    Goto loop
-  done:
-    StrCpy $R5 "$R5$R6"
-
-  Pop $R9
-  Pop $R8
-  Pop $R7
-  Pop $R6
-  Pop $R5
-  Pop $R4
-  Pop $R3
-  StrCpy $R0 $R5
-  Pop $R2
-  Pop $R1
-  Exch $R0
-FunctionEnd
