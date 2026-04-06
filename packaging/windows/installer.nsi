@@ -21,6 +21,16 @@ RequestExecutionLevel admin
 
 !insertmacro MUI_LANGUAGE "English"
 
+; ── StrRep macro (must be defined before use in sections) ────────────────────
+!macro _StrRep OUTPUT NEEDLE SEARCH REPLACE
+  Push "${REPLACE}"
+  Push "${SEARCH}"
+  Push "${NEEDLE}"
+  Call StrRep
+  Pop "${OUTPUT}"
+!macroend
+!define StrRep "!insertmacro _StrRep"
+
 ; ── Install ───────────────────────────────────────────────────────────────────
 Section "Provisa" SecMain
   SetOutPath "$INSTDIR"
@@ -77,16 +87,7 @@ Section "Uninstall"
   SendMessage ${HWND_BROADCAST} ${WM_WININICHANGE} 0 "STR:Environment" /TIMEOUT=5000
 SectionEnd
 
-; ── StrRep function (needed for PATH removal) ─────────────────────────────────
-!macro _StrRep OUTPUT NEEDLE SEARCH REPLACE
-  Push "${REPLACE}"
-  Push "${SEARCH}"
-  Push "${NEEDLE}"
-  Call StrRep
-  Pop "${OUTPUT}"
-!macroend
-!define StrRep "!insertmacro _StrRep"
-
+; ── StrRep function ───────────────────────────────────────────────────────────
 Function StrRep
   Exch $R0  ; needle
   Exch
