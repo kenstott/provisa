@@ -241,7 +241,9 @@ jobs:
           path: packaging/windows/images/
 
       - name: Install NSIS
-        run: choco install nsis --no-progress -y
+        run: |
+          choco install nsis --no-progress -y
+          echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
 
       - name: Build installer
         shell: pwsh
