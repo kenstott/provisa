@@ -124,7 +124,7 @@ def _parse_relationship(raw: dict[str, Any], rel_type: str) -> HasuraRelationshi
             column_mapping={fk: "id"},
         )
 
-    if rel_type == "object" and isinstance(fk, dict):
+    if rel_type == "object" and fk and isinstance(fk, dict):
         remote_tbl = fk.get("table", {})
         if isinstance(remote_tbl, str):
             r_name, r_schema = remote_tbl, "public"
@@ -137,7 +137,7 @@ def _parse_relationship(raw: dict[str, Any], rel_type: str) -> HasuraRelationshi
             column_mapping={fk.get("column", ""): "id"},
         )
 
-    if rel_type == "array" and isinstance(fk, dict):
+    if rel_type == "array" and fk and isinstance(fk, dict):
         remote_tbl = fk.get("table", {})
         if isinstance(remote_tbl, str):
             r_name, r_schema = remote_tbl, "public"
