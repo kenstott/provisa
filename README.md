@@ -128,12 +128,33 @@ table = client.flight("{ orders { id amount region } }")
 # DB-API 2.0 (PEP 249) — GraphQL or SQL, detected automatically
 with connect("http://localhost:8001", username="alice", password="secret") as conn:
     cur = conn.cursor()
-    cur.execute("{ orders { id amount } }")
+
+    # GraphQL
+    cur.execute("{ orders { id amount region } }")
     rows = cur.fetchall()
 
-# SQLAlchemy dialect
-from sqlalchemy import create_engine
+    # SQL (routed through governance engine — RLS and masking applied)
+    cur.execute("SELECT id, amount FROM orders WHERE region = %s", ("west",))
+    rows = cur.fetchall()
+
+# SQLAlchemy dialect — provisa+http:// or provisa+https://
+from sqlalchemy import create_engine, text
+import pandas as pd
+
 engine = create_engine("provisa+http://alice:secret@localhost:8001")
+
+# pandas read_sql — GraphQL or SQL
+df = pd.read_sql("{ orders { id amount region } }", engine)
+df = pd.read_sql("SELECT id, amount, region FROM orders WHERE region = 'west'", engine)
+
+# raw execute
+with engine.connect() as conn:
+    rows = conn.execute(text("SELECT id, amount FROM orders")).fetchall()
+
+# role + mode URL parameters (mode=catalog for arbitrary SQL)
+engine = create_engine(
+    "provisa+http://alice:secret@localhost:8001?role=analyst&mode=catalog"
+)
 
 # ADBC — Arrow-native streaming via Flight
 from provisa_client.adbc import adbc_connect
