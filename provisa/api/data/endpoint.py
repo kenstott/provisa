@@ -120,6 +120,33 @@ def _inject_probe_limit(sql: str, limit: int) -> str:
     return sql + f" LIMIT {limit}"
 
 
+@router.get("/graphql")
+async def graphql_get_endpoint(
+    raw_request: Request,
+    queryId: str,
+    role: str = "admin",
+    x_provisa_role: str | None = Header(None),
+    accept: str | None = Header(None),
+):
+    """Execute a governed query by stable_id over GET.
+
+    GET /data/graphql?queryId=<stable_id>&role=<role>
+
+    GET is safe and idempotent — responses are CDN/proxy-cacheable.
+    Only approved governed queries are permitted; ad-hoc queries require POST.
+    """
+    request = GraphQLRequest(queryId=queryId, role=role)
+    return await graphql_endpoint(
+        raw_request=raw_request,
+        request=request,
+        x_provisa_role=x_provisa_role,
+        accept=accept,
+        x_provisa_redirect=None,
+        x_provisa_redirect_threshold=None,
+        x_provisa_redirect_format=None,
+    )
+
+
 @router.post("/graphql")
 async def graphql_endpoint(
     raw_request: Request,

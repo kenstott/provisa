@@ -97,10 +97,8 @@ curl -X POST http://localhost:8001/data/graphql \
   -H "Content-Type: application/json" \
   -d '{"query": "SELECT id, amount, region FROM orders", "role": "admin"}'
 
-# Execute a governed query by name (stable_id)
-curl -X POST http://localhost:8001/data/graphql \
-  -H "Content-Type: application/json" \
-  -d '{"queryId": "monthly-revenue-by-region", "role": "analyst"}'
+# Execute a governed query by name — GET is cacheable by CDN/proxies
+curl "http://localhost:8001/data/graphql?queryId=monthly-revenue-by-region&role=analyst"
 ```
 
 ### JDBC (Tableau, DBeaver, Power BI)

@@ -96,6 +96,78 @@ class TestGovernanceLogic:
         )
 
 
+class TestGovernedQueryGet:
+    """GET /data/graphql?queryId=<stable_id> — governed query execution over GET."""
+
+    @pytest.fixture(autouse=True)
+    async def _seed_approved_query(self, client, pg_pool):
+        """Insert an approved governed query and clean up after."""
+        async with pg_pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO persisted_queries
+                    (stable_id, status, query_text, compiled_sql,
+                     target_tables, developer_id)
+                VALUES ($1, 'approved', $2, $3, $4::int[], $5)
+                ON CONFLICT (stable_id) DO UPDATE
+                    SET status = 'approved', query_text = EXCLUDED.query_text
+                """,
+                "test-get-governed",
+                "{ sales_analytics__orders { id amount } }",
+                "SELECT id, amount FROM orders",
+                [],
+                "test-developer",
+            )
+        yield
+        async with pg_pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM persisted_queries WHERE stable_id = $1",
+                "test-get-governed",
+            )
+
+    async def test_get_approved_query_returns_200(self, client):
+        """GET with a valid approved queryId returns results."""
+        resp = await client.get(
+            "/data/graphql",
+            params={"queryId": "test-get-governed", "role": "admin"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "data" in data
+        assert "sales_analytics__orders" in data["data"]
+
+    async def test_get_unknown_query_id_returns_404(self, client):
+        """GET with an unrecognised queryId returns 404."""
+        resp = await client.get(
+            "/data/graphql",
+            params={"queryId": "does-not-exist", "role": "admin"},
+        )
+        assert resp.status_code == 404
+
+    async def test_get_requires_query_id_param(self, client):
+        """GET without queryId returns 422 (missing required param)."""
+        resp = await client.get("/data/graphql")
+        assert resp.status_code == 422
+
+    async def test_get_respects_role(self, client):
+        """GET passes role through to the execution pipeline."""
+        resp = await client.get(
+            "/data/graphql",
+            params={"queryId": "test-get-governed", "role": "admin"},
+        )
+        assert resp.status_code == 200
+
+    async def test_get_accept_header_controls_format(self, client):
+        """GET honours the Accept header for content negotiation."""
+        resp = await client.get(
+            "/data/graphql",
+            params={"queryId": "test-get-governed", "role": "admin"},
+            headers={"Accept": "text/csv"},
+        )
+        assert resp.status_code == 200
+        assert "text/csv" in resp.headers["content-type"]
+
+
 class TestDeprecatedQuery:
     def test_deprecated_query_error(self):
         from provisa.registry.governance import GovernanceError, check_deprecated
