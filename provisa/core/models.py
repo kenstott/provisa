@@ -207,6 +207,23 @@ class ColumnPreset(BaseModel):
     value: str | None = None  # literal value (for source=literal)
 
 
+class LiveOutputConfig(BaseModel):
+    """Single output destination for a live query (SSE fanout or Kafka sink)."""
+
+    type: str  # "sse" | "kafka"
+    topic: str | None = None  # Kafka topic (required when type="kafka")
+    key_column: str | None = None  # Kafka message key column
+
+
+class LiveDeliveryConfig(BaseModel):
+    """Live query delivery configuration attached to a table."""
+
+    query_id: str  # stable_id of the approved persisted query to run
+    watermark_column: str  # column whose max value is tracked as the watermark
+    poll_interval: int = 10  # seconds between polls
+    outputs: list[LiveOutputConfig] = Field(default_factory=list)
+
+
 class Table(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -224,23 +241,6 @@ class Table(BaseModel):
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
     relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
     live: LiveDeliveryConfig | None = None  # live query delivery config (Phase AM)
-
-
-class LiveOutputConfig(BaseModel):
-    """Single output destination for a live query (SSE fanout or Kafka sink)."""
-
-    type: str  # "sse" | "kafka"
-    topic: str | None = None  # Kafka topic (required when type="kafka")
-    key_column: str | None = None  # Kafka message key column
-
-
-class LiveDeliveryConfig(BaseModel):
-    """Live query delivery configuration attached to a table."""
-
-    query_id: str  # stable_id of the approved persisted query to run
-    watermark_column: str  # column whose max value is tracked as the watermark
-    poll_interval: int = 10  # seconds between polls
-    outputs: list[LiveOutputConfig] = Field(default_factory=list)
 
 
 class HotTablesConfig(BaseModel):
@@ -383,7 +383,28 @@ class AuthConfig(BaseModel):
     default_role: str = "analyst"
 
 
+class ServerConfig(BaseModel):
+    """Server network configuration.
+
+    Set ``hostname`` to the publicly reachable hostname or IP of the Provisa
+    server.  Used by gRPC, Arrow Flight, SSE, and any self-referential URLs
+    (e.g. redirect presign base URLs).  Defaults to ``localhost`` for desktop
+    development; set to the pod/VM hostname or load-balancer address in production.
+
+    Override via ``PROVISA_HOSTNAME`` environment variable at runtime.
+
+    Ports can be overridden via env vars: ``PROVISA_PORT``, ``GRPC_PORT``,
+    ``FLIGHT_PORT``.
+    """
+
+    hostname: str = "localhost"
+    port: int = 8000
+    grpc_port: int = 50051
+    flight_port: int = 8815
+
+
 class ProvisaConfig(BaseModel):
+    server: ServerConfig = Field(default_factory=ServerConfig)
     sources: list[Source]
     domains: list[Domain]
     naming: NamingConfig = Field(default_factory=NamingConfig)

@@ -75,6 +75,7 @@ class AppState:
     _warm_task: asyncio.Task | None = None
     apq_cache: APQCache = NoopAPQCache()  # Phase AN: Automatic Persisted Queries
     live_engine: object | None = None  # Phase AM: LiveEngine instance
+    hostname: str = "localhost"  # publicly reachable hostname (PROVISA_HOSTNAME)
 
 
 state = AppState()
@@ -108,6 +109,13 @@ async def _load_and_build(config_path: str | None = None) -> None:
 
     with open(path) as f:
         raw_config = yaml.safe_load(f)
+
+    # Resolve server hostname: env var > config file > default (localhost)
+    _server_cfg = raw_config.get("server", {}) if isinstance(raw_config, dict) else {}
+    state.hostname = os.environ.get(
+        "PROVISA_HOSTNAME",
+        _server_cfg.get("hostname", "localhost"),
+    )
 
     # Connect to PG
     pg_host = os.environ.get("PG_HOST", "localhost")
@@ -720,10 +728,11 @@ async def lifespan(app: FastAPI):
             first_proto = next(iter(state.proto_files.values()))
             grpc_output_dir = tempfile.mkdtemp(prefix="provisa_grpc_")
             pb2_path, pb2_grpc_path = compile_proto(first_proto, grpc_output_dir)
-            grpc_port = int(os.environ.get("GRPC_PORT", "50051"))
+            grpc_port = int(os.environ.get("GRPC_PORT", str(_server_cfg.get("grpc_port", 50051))))
             state._grpc_server = await start_grpc_server(
                 grpc_port, state, pb2_path, pb2_grpc_path,
             )
+            _log.info("gRPC server listening on %s:%d", state.hostname, grpc_port)
         except Exception:
             import logging
             logging.getLogger(__name__).exception("gRPC server startup failed")
@@ -731,7 +740,7 @@ async def lifespan(app: FastAPI):
     # Start Arrow Flight server
     try:
         from provisa.api.flight.server import ProvisaFlightServer
-        flight_port = int(os.environ.get("FLIGHT_PORT", "8815"))
+        flight_port = int(os.environ.get("FLIGHT_PORT", str(_server_cfg.get("flight_port", 8815))))
         flight_server = ProvisaFlightServer(
             state, location=f"grpc://0.0.0.0:{flight_port}",
         )
@@ -741,7 +750,7 @@ async def lifespan(app: FastAPI):
         )
         flight_thread.start()
         state._flight_server = flight_server
-        _log.info("Arrow Flight server listening on port %d", flight_port)
+        _log.info("Arrow Flight server listening on %s:%d", state.hostname, flight_port)
     except Exception:
         _log.exception("Arrow Flight server startup failed")
 
