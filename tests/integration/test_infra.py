@@ -34,7 +34,7 @@ class TestPostgresConnectivity:
     async def test_orders_table_exists(self, pg_pool):
         async with pg_pool.acquire() as conn:
             count = await conn.fetchval("SELECT COUNT(*) FROM orders")
-        assert count == 25
+        assert count >= 25  # seed data; CDC tests may add rows
 
     async def test_orders_fk_to_customers(self, pg_pool):
         async with pg_pool.acquire() as conn:
@@ -43,7 +43,7 @@ class TestPostgresConnectivity:
                 FROM orders o
                 JOIN customers c ON o.customer_id = c.id
             """)
-        assert count == 25
+        assert count >= 25  # seed data; CDC tests may add rows
 
 
 class TestTrinoConnectivity:
@@ -63,7 +63,7 @@ class TestTrinoConnectivity:
         cur = trino_conn.cursor()
         cur.execute("SELECT COUNT(*) FROM postgresql.public.orders")
         result = cur.fetchone()
-        assert result[0] == 25
+        assert result[0] >= 25  # seed data; CDC tests may add rows
 
     def test_trino_information_schema_columns(self, trino_conn):
         cur = trino_conn.cursor()

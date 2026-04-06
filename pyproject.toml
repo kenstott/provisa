@@ -26,6 +26,9 @@ dependencies = [
     "jsonpath-ng",
     "PyJWT[crypto]",
     "bcrypt",
+    "motor",
+    "elasticsearch>=8,<9",
+    "aiokafka",
 ]
 
 [project.optional-dependencies]

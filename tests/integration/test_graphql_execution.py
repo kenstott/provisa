@@ -121,27 +121,17 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
 @pytest_asyncio.fixture(scope="session")
 async def exec_pool():
     sp = SourcePool()
-    try:
-        await sp.add(
-            "sales-pg",
-            source_type="postgresql",
-            host=os.environ.get("PG_HOST", "localhost"),
-            port=int(os.environ.get("PG_PORT", "5432")),
-            database=os.environ.get("PG_DATABASE", "provisa"),
-            user=os.environ.get("PG_USER", "provisa"),
-            password=os.environ.get("PG_PASSWORD", "provisa"),
-        )
-        yield sp
-    except Exception:
-        yield None
-    finally:
-        if sp:
-            await sp.close_all()
-
-
-def _skip_if_no_pool(exec_pool):
-    if exec_pool is None or not exec_pool.has("sales-pg"):
-        pytest.skip("PostgreSQL not available")
+    await sp.add(
+        "sales-pg",
+        source_type="postgresql",
+        host=os.environ.get("PG_HOST", "localhost"),
+        port=int(os.environ.get("PG_PORT", "5432")),
+        database=os.environ.get("PG_DATABASE", "provisa"),
+        user=os.environ.get("PG_USER", "provisa"),
+        password=os.environ.get("PG_PASSWORD", "provisa"),
+    )
+    yield sp
+    await sp.close_all()
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +142,6 @@ class TestGraphQLExecution:
 
     async def test_simple_list_query(self, exec_pool):
         """`{ orders { id amount region } }` returns rows with correct columns."""
-        _skip_if_no_pool(exec_pool)
         schema, ctx = _build_schema_and_ctx()
         doc = parse("{ orders { id amount region } }")
         errors = validate(schema, doc)
@@ -170,7 +159,6 @@ class TestGraphQLExecution:
 
     async def test_filtered_query(self, exec_pool):
         """`{ orders(where: {region: {eq: "us-east"}}) { id } }` returns only matching rows."""
-        _skip_if_no_pool(exec_pool)
         schema, ctx = _build_schema_and_ctx()
         doc = parse('{ orders(where: { region: { eq: "us-east" } }) { id region } }')
         errors = validate(schema, doc)
@@ -188,7 +176,6 @@ class TestGraphQLExecution:
 
     async def test_limit_offset(self, exec_pool):
         """`{ orders(limit: 3, offset: 0) { id } }` returns exactly 3 rows."""
-        _skip_if_no_pool(exec_pool)
         schema, ctx = _build_schema_and_ctx()
         doc = parse("{ orders(limit: 3, offset: 0) { id } }")
         errors = validate(schema, doc)
@@ -203,7 +190,6 @@ class TestGraphQLExecution:
 
     async def test_order_by(self, exec_pool):
         """`{ orders(order_by: [{amount: desc}]) { id amount } }` returns rows in descending order."""
-        _skip_if_no_pool(exec_pool)
         schema, ctx = _build_schema_and_ctx()
         doc = parse("{ orders(order_by: [{ amount: desc }]) { id amount } }")
         errors = validate(schema, doc)
@@ -220,7 +206,6 @@ class TestGraphQLExecution:
 
     async def test_relationship_join(self, exec_pool):
         """`{ orders { id customers { name } } }` returns nested customer data."""
-        _skip_if_no_pool(exec_pool)
         schema, ctx = _build_schema_and_ctx()
         # Relationship field name is target table's field name: "customers"
         doc = parse("{ orders { id customer_id customers { name } } }")
@@ -243,7 +228,6 @@ class TestGraphQLExecution:
 
     async def test_cursor_pagination(self, exec_pool):
         """`{ orders_connection(first: 5) { edges { node { id } } pageInfo { hasNextPage endCursor } } }`"""
-        _skip_if_no_pool(exec_pool)
         schema, ctx = _build_schema_and_ctx(relay_pagination=True)
 
         doc = parse("""
@@ -269,7 +253,6 @@ class TestGraphQLExecution:
 
     async def test_distinct_on(self, exec_pool):
         """`{ orders(distinct_on: [region]) { region } }` returns distinct regions."""
-        _skip_if_no_pool(exec_pool)
         schema, ctx = _build_schema_and_ctx()
         doc = parse("{ orders(distinct_on: [region]) { region } }")
         errors = validate(schema, doc)
@@ -288,7 +271,6 @@ class TestGraphQLExecution:
 
     async def test_aggregate_query(self, exec_pool):
         """`{ orders_aggregate { aggregate { count sum { amount } } } }` returns aggregate values."""
-        _skip_if_no_pool(exec_pool)
         schema, ctx = _build_schema_and_ctx()
         doc = parse("""
             {

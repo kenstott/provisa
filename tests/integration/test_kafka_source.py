@@ -29,48 +29,31 @@ class TestKafkaTopicRead:
     def test_trino_kafka_connector_available(self, trino_conn):
         """Verify the Kafka connector is configured in Trino."""
         cursor = trino_conn.cursor()
-        try:
-            cursor.execute("SHOW CATALOGS")
-            catalogs = [row[0] for row in cursor.fetchall()]
-            if "support_kafka" not in catalogs:
-                pytest.skip("Kafka catalog not configured in Trino")
-        except Exception as e:
-            pytest.skip(f"Trino not available: {e}")
+        cursor.execute("SHOW CATALOGS")
+        catalogs = [row[0] for row in cursor.fetchall()]
+        assert "support_kafka" in catalogs, "Kafka catalog not configured in Trino"
 
     def test_kafka_topic_readable_as_table(self, trino_conn):
         """Read from a Kafka topic table via Trino."""
-        try:
-            cursor = trino_conn.cursor()
-            cursor.execute("SHOW TABLES FROM support_kafka.default")
-            tables = [row[0] for row in cursor.fetchall()]
-        except Exception as e:
-            pytest.skip(f"Kafka catalog not queryable: {e}")
-
-        if not tables:
-            pytest.skip("No Kafka topic tables configured")
+        cursor = trino_conn.cursor()
+        cursor.execute("SHOW TABLES FROM support_kafka.default")
+        tables = [row[0] for row in cursor.fetchall()]
+        assert tables, "No Kafka topic tables configured"
 
         # Query the first available topic table
         table = tables[0]
-        try:
-            cursor2 = trino_conn.cursor()
-            cursor2.execute(f'SELECT * FROM support_kafka."default"."{table}" LIMIT 5')
-            rows = cursor2.fetchall()
-            # Should return rows (may be empty if no messages yet)
-            assert isinstance(rows, list)
-        except Exception as e:
-            pytest.skip(f"Kafka table query failed: {e}")
+        cursor2 = trino_conn.cursor()
+        cursor2.execute(f'SELECT * FROM support_kafka."default"."{table}" LIMIT 5')
+        rows = cursor2.fetchall()
+        # Should return rows (may be empty if no messages yet)
+        assert isinstance(rows, list)
 
     def test_kafka_topic_has_columns(self, trino_conn):
         """Kafka topic tables should have schema-defined columns."""
         cursor = trino_conn.cursor()
-        try:
-            cursor.execute("SHOW TABLES FROM support_kafka.default")
-            tables = [row[0] for row in cursor.fetchall()]
-        except Exception:
-            pytest.skip("Kafka catalog not queryable")
-
-        if not tables:
-            pytest.skip("No Kafka topic tables")
+        cursor.execute("SHOW TABLES FROM support_kafka.default")
+        tables = [row[0] for row in cursor.fetchall()]
+        assert tables, "No Kafka topic tables"
 
         table = tables[0]
         cursor.execute(
@@ -88,14 +71,9 @@ class TestKafkaMessageContent:
     def test_kafka_messages_have_typed_columns(self, trino_conn):
         """When a schema is defined, messages have typed columns (not just raw bytes)."""
         cursor = trino_conn.cursor()
-        try:
-            cursor.execute("SHOW TABLES FROM support_kafka.default")
-            tables = [row[0] for row in cursor.fetchall()]
-        except Exception:
-            pytest.skip("Kafka catalog not available")
-
-        if not tables:
-            pytest.skip("No Kafka topic tables")
+        cursor.execute("SHOW TABLES FROM support_kafka.default")
+        tables = [row[0] for row in cursor.fetchall()]
+        assert tables, "No Kafka topic tables"
 
         table = tables[0]
         cursor.execute(
@@ -104,8 +82,7 @@ class TestKafkaMessageContent:
             f"AND column_name NOT LIKE '\\_%' ESCAPE '\\'"
         )
         typed_cols = cursor.fetchall()
-        if not typed_cols:
-            pytest.skip(f"Table {table} has no user-defined columns (only internal)")
+        assert typed_cols, f"Table {table} has no user-defined columns (only internal)"
 
         # At least one non-internal column should have a concrete type
         for name, dtype in typed_cols:

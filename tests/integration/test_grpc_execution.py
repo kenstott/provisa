@@ -52,7 +52,7 @@ _TEST_GRPC_PORT = int(os.environ.get("PROVISA_TEST_GRPC_PORT", "50151"))
 
 MINIMAL_PROTO = """\
 syntax = "proto3";
-package provisa.v1;
+package test.grpc.v1;
 
 message Order {
   int32 id = 1;
@@ -80,35 +80,6 @@ service ProvisaService {
   rpc QueryOrder (OrderRequest) returns (stream Order);
 }
 """
-
-
-def _grpcio_tools_available() -> bool:
-    try:
-        from grpc_tools import protoc  # noqa: F401
-        return True
-    except ImportError:
-        return False
-
-
-def _pg_available() -> bool:
-    import socket
-
-    host = os.environ.get("PG_HOST", "localhost")
-    port = int(os.environ.get("PG_PORT", "5432"))
-    try:
-        with socket.create_connection((host, port), timeout=1):
-            return True
-    except OSError:
-        return False
-
-
-_SKIP_NO_GRPC_TOOLS = pytest.mark.skipif(
-    not _grpcio_tools_available(),
-    reason="grpc_tools not installed — cannot compile test proto",
-)
-_SKIP_NO_PG = pytest.mark.skipif(
-    not _pg_available(), reason="PostgreSQL unavailable"
-)
 
 
 # ---------------------------------------------------------------------------
@@ -217,8 +188,10 @@ def compiled_proto_paths():
     pytest.importorskip("grpc_tools.protoc")
     from grpc_tools import protoc
 
+    # Use a distinct proto filename to avoid colliding with the production
+    # provisa_service.proto in the global protobuf descriptor pool.
     with tempfile.TemporaryDirectory() as tmpdir:
-        proto_path = Path(tmpdir) / "provisa_service.proto"
+        proto_path = Path(tmpdir) / "test_grpc_service.proto"
         proto_path.write_text(MINIMAL_PROTO)
 
         result = protoc.main([
@@ -229,10 +202,10 @@ def compiled_proto_paths():
             str(proto_path),
         ])
         if result != 0:
-            pytest.skip("protoc compilation failed")
+            raise RuntimeError(f"protoc compilation failed (exit code {result})")
 
-        pb2_path = Path(tmpdir) / "provisa_service_pb2.py"
-        pb2_grpc_path = Path(tmpdir) / "provisa_service_pb2_grpc.py"
+        pb2_path = Path(tmpdir) / "test_grpc_service_pb2.py"
+        pb2_grpc_path = Path(tmpdir) / "test_grpc_service_pb2_grpc.py"
         yield str(pb2_path), str(pb2_grpc_path)
 
 
@@ -244,7 +217,6 @@ def compiled_proto_paths():
 class TestGrpcServerStarts:
     """Verify the gRPC server starts and can be stopped cleanly."""
 
-    @_SKIP_NO_GRPC_TOOLS
     async def test_grpc_server_starts(self, compiled_proto_paths):
         """gRPC server binds to port and starts without error."""
         pb2_path, pb2_grpc_path = compiled_proto_paths
@@ -271,7 +243,6 @@ class TestGrpcServerStarts:
         assert server is not None
         await server.stop(grace=0)
 
-    @_SKIP_NO_GRPC_TOOLS
     async def test_grpc_server_binds_expected_port(self, compiled_proto_paths):
         """Server binds to the port specified in the call."""
         import socket
@@ -296,10 +267,16 @@ class TestGrpcServerStarts:
             pb2_path=pb2_path, pb2_grpc_path=pb2_grpc_path,
         )
         try:
-            # Port should now be in use
-            with pytest.raises(OSError):
-                with socket.create_server(("localhost", port)):
-                    pass
+            # Port should now be in use — verify by connecting to it
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            try:
+                sock.connect(("localhost", port))
+                sock.close()
+            except (ConnectionRefusedError, OSError) as exc:
+                raise AssertionError(
+                    f"gRPC server is not listening on port {port}: {exc}"
+                ) from exc
         finally:
             await server.stop(grace=0)
 
@@ -326,8 +303,9 @@ class TestGrpcQueryExecution:
 
         pb2_path, pb2_grpc_path = compiled_proto_paths
 
-        pb2 = _load_module(pb2_path, "provisa_service_pb2_exec")
-        pb2_grpc = _load_module(pb2_grpc_path, "provisa_service_pb2_grpc_exec")
+        # Derive module names from the file stem so _pb2_grpc.py can import its sibling.
+        pb2 = _load_module(pb2_path, Path(pb2_path).stem)
+        pb2_grpc = _load_module(pb2_grpc_path, Path(pb2_grpc_path).stem)
 
         from graphql import (
             GraphQLField,
@@ -374,18 +352,15 @@ class TestGrpcQueryExecution:
             pytest.skip("Cannot build CompilationContext with TableMeta")
 
         source_pool = SourcePool()
-        try:
-            await source_pool.add(
-                "test-pg",
-                source_type="postgresql",
-                host=os.environ.get("PG_HOST", "localhost"),
-                port=int(os.environ.get("PG_PORT", "5432")),
-                database=os.environ.get("PG_DATABASE", "provisa"),
-                user=os.environ.get("PG_USER", "provisa"),
-                password=os.environ.get("PG_PASSWORD", "provisa"),
-            )
-        except Exception:
-            pytest.skip("Cannot connect to PostgreSQL for gRPC tests")
+        await source_pool.add(
+            "test-pg",
+            source_type="postgresql",
+            host=os.environ.get("PG_HOST", "localhost"),
+            port=int(os.environ.get("PG_PORT", "5432")),
+            database=os.environ.get("PG_DATABASE", "provisa"),
+            user=os.environ.get("PG_USER", "provisa"),
+            password=os.environ.get("PG_PASSWORD", "provisa"),
+        )
 
         state = MagicMock()
         state.schemas = {"admin": schema}
@@ -424,8 +399,6 @@ class TestGrpcQueryExecution:
         await server.stop(grace=0)
         await source_pool.close_all()
 
-    @_SKIP_NO_GRPC_TOOLS
-    @_SKIP_NO_PG
     async def test_grpc_query_returns_rows(self, grpc_server_and_stub):
         """Execute a query via gRPC and verify rows are returned."""
         stub, pb2 = grpc_server_and_stub
@@ -438,8 +411,6 @@ class TestGrpcQueryExecution:
             rows.append(row)
         assert len(rows) >= 0  # 0 rows is acceptable; connection itself must succeed
 
-    @_SKIP_NO_GRPC_TOOLS
-    @_SKIP_NO_PG
     async def test_grpc_streaming_response(self, grpc_server_and_stub):
         """Streaming RPC yields multiple messages (or completes cleanly)."""
         stub, pb2 = grpc_server_and_stub
@@ -453,8 +424,6 @@ class TestGrpcQueryExecution:
         # The key assertion is that iteration completes without raising
         assert count >= 0
 
-    @_SKIP_NO_GRPC_TOOLS
-    @_SKIP_NO_PG
     async def test_grpc_role_header_applied(self, grpc_server_and_stub):
         """Role in metadata header is respected — wrong role returns NOT_FOUND."""
         stub, pb2 = grpc_server_and_stub
@@ -469,7 +438,6 @@ class TestGrpcQueryExecution:
 
         assert exc_info.value.code() == grpc.StatusCode.NOT_FOUND
 
-    @_SKIP_NO_GRPC_TOOLS
     async def test_grpc_missing_role_returns_unauthenticated(self, grpc_server_and_stub):
         """Missing role header causes UNAUTHENTICATED error."""
         stub, pb2 = grpc_server_and_stub
@@ -481,7 +449,6 @@ class TestGrpcQueryExecution:
 
         assert exc_info.value.code() == grpc.StatusCode.UNAUTHENTICATED
 
-    @_SKIP_NO_GRPC_TOOLS
     async def test_grpc_invalid_query_returns_error(self, grpc_server_and_stub):
         """An RPC for an unregistered type resolves via schema and may abort."""
         # We test via the servicer's _handle_query path with a mocked context
@@ -494,7 +461,7 @@ class TestGrpcQueryExecution:
 
         servicer = ProvisaServicer(state, pb2_mock, pb2_grpc_mock)
 
-        ctx = AsyncMock()
+        ctx = MagicMock()
         ctx.invocation_metadata.return_value = [("x-provisa-role", "admin")]
         ctx.abort = AsyncMock()
 

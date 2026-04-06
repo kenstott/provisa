@@ -34,13 +34,24 @@ def _pascal_to_snake(name: str) -> str:
 
 
 def _load_module(path: str, name: str):
-    """Dynamically load a Python module from a file path."""
+    """Dynamically load a Python module from a file path.
+
+    Returns a cached module if the name is already in sys.modules to avoid
+    re-executing the module body (which causes protobuf descriptor pool errors
+    when the same .proto file is registered more than once).
+    """
+    if name in sys.modules:
+        return sys.modules[name]
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Cannot load module from {path}")
     mod = importlib.util.module_from_spec(spec)
     sys.modules[name] = mod
-    spec.loader.exec_module(mod)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        del sys.modules[name]
+        raise
     return mod
 
 
@@ -102,11 +113,18 @@ class ProvisaServicer:
         from provisa.executor.trino import execute_trino
         from provisa.security.rights import Capability, has_capability
 
-        role_id = _get_role(context)
+        # Use await context.abort() directly rather than raising AbortError, which
+        # can cause "Abort error has been replaced!" in gRPC aio async generators.
+        metadata = dict(context.invocation_metadata())
+        role_id = metadata.get("x-provisa-role")
+        if not role_id:
+            await context.abort(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
+            return
         state = self._state
 
         if role_id not in state.schemas:
             await context.abort(grpc.StatusCode.NOT_FOUND, f"No schema for role {role_id!r}")
+            return
 
         schema = state.schemas[role_id]
         ctx = state.contexts[role_id]
@@ -119,6 +137,7 @@ class ProvisaServicer:
         msg_cls = getattr(self._pb2, type_name, None)
         if msg_cls is None:
             await context.abort(grpc.StatusCode.INTERNAL, f"Unknown message type {type_name}")
+            return
         descriptor = msg_cls.DESCRIPTOR
         field_names = [f.name for f in descriptor.fields if not f.message_type]
         gql_query += " ".join(field_names)
@@ -129,6 +148,7 @@ class ProvisaServicer:
         compiled_queries = compile_query(document, ctx)
         if not compiled_queries:
             await context.abort(grpc.StatusCode.INTERNAL, "No query fields compiled")
+            return
         compiled = compiled_queries[0]
 
         # Apply RLS, masking, MV rewrite
@@ -188,8 +208,13 @@ async def start_grpc_server(port: int, state, pb2_path: str, pb2_grpc_path: str)
     Returns:
         The started grpc.aio.Server.
     """
-    pb2 = _load_module(pb2_path, "provisa_service_pb2")
-    pb2_grpc = _load_module(pb2_grpc_path, "provisa_service_pb2_grpc")
+    import os
+    # Derive module names from the file stems so that _pb2_grpc.py can
+    # successfully import its sibling _pb2 module by the expected name.
+    pb2_name = os.path.splitext(os.path.basename(pb2_path))[0]
+    pb2_grpc_name = os.path.splitext(os.path.basename(pb2_grpc_path))[0]
+    pb2 = _load_module(pb2_path, pb2_name)
+    pb2_grpc = _load_module(pb2_grpc_path, pb2_grpc_name)
 
     servicer = ProvisaServicer(state, pb2, pb2_grpc)
 

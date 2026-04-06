@@ -16,7 +16,7 @@ Tests are split into two tiers:
      RedisAPQCache interface contract.  No Redis connection required.
 
   2. Redis-backed — exercises RedisAPQCache against a live Redis instance.
-     These tests are skipped when Redis is not reachable.
+     These tests FAIL when Redis is not reachable.
 
 The cache key format tested here matches:
     ``provisa:apq:<sha256_hex>``
@@ -47,29 +47,6 @@ _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 _TEST_QUERY = "{ orders { id amount region } }"
 _TEST_HASH = compute_apq_hash(_TEST_QUERY)
-
-
-def _redis_available() -> bool:
-    """Return True when a Redis instance is reachable."""
-    try:
-        import redis as _redis  # noqa: F401 — just check importability
-
-        import socket
-
-        url = _REDIS_URL.removeprefix("redis://")
-        host_port = url.split("/")[0]
-        host = host_port.split(":")[0] if ":" in host_port else host_port
-        port = int(host_port.split(":")[1]) if ":" in host_port else 6379
-        with socket.create_connection((host, port), timeout=1):
-            return True
-    except Exception:
-        return False
-
-
-_SKIP_NO_REDIS = pytest.mark.skipif(
-    not _redis_available(),
-    reason="Redis unavailable",
-)
 
 
 # ---------------------------------------------------------------------------
@@ -228,12 +205,7 @@ class TestApqGovernanceSimulation:
 
 
 class TestRedisApqCache:
-    """Live Redis tests — skipped when Redis is not reachable."""
-
-    @pytest.fixture(autouse=True)
-    def _skip_when_no_redis(self):
-        if not _redis_available():
-            pytest.skip("Redis unavailable")
+    """Live Redis tests — require a reachable Redis instance."""
 
     async def _make_cache(self, ttl: int = 60) -> RedisAPQCache:
         cache = RedisAPQCache(_REDIS_URL, ttl=ttl)
@@ -285,10 +257,7 @@ class TestRedisApqCache:
 
     async def test_apq_cache_key_format_in_redis(self):
         """The actual Redis key matches the provisa:apq:<hash> format."""
-        try:
-            import redis.asyncio as aioredis
-        except ImportError:
-            pytest.skip("redis package not installed")
+        import redis.asyncio as aioredis
 
         cache = await self._make_cache(ttl=30)
         try:
@@ -303,10 +272,7 @@ class TestRedisApqCache:
 
     async def test_apq_ttl_applied(self):
         """TTL is applied — key exists immediately after set (TTL > 0)."""
-        try:
-            import redis.asyncio as aioredis
-        except ImportError:
-            pytest.skip("redis package not installed")
+        import redis.asyncio as aioredis
 
         cache = await self._make_cache(ttl=120)
         try:

@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 from unittest.mock import MagicMock
 
 import pytest
@@ -324,53 +323,54 @@ class TestEntityResolution:
 
 
 # ---------------------------------------------------------------------------
-# Federation endpoint HTTP tests (skip if PG unavailable)
+# Federation endpoint HTTP tests (in-process ASGI transport — no external server)
 # ---------------------------------------------------------------------------
 
 class TestFederationEndpoint:
-    """HTTP-level tests require a running Provisa server.
+    """HTTP-level tests using httpx.ASGITransport against an in-process FastAPI app."""
 
-    These tests are skipped unless PROVISA_TEST_URL is set.
-    """
+    async def _make_fed_client(self):
+        """Build a minimal FastAPI app with the /graphql/federation route."""
+        import httpx
+        from fastapi import Body, FastAPI
+        from fastapi.responses import JSONResponse
+        from graphql import graphql as gql_execute
 
-    def _base_url(self) -> str:
-        return os.environ.get("PROVISA_TEST_URL", "")
+        base_schema = _make_base_schema()
+        tables = _make_tables_with_type_names()
+        pk_columns = _make_pk_columns()
+        fed_schema = build_federation_schema(base_schema, tables, pk_columns)
+
+        app = FastAPI()
+
+        @app.post("/graphql/federation")
+        async def federation_endpoint(body: dict = Body(default={})):
+            result = await gql_execute(fed_schema, body.get("query", ""))
+            return JSONResponse({
+                "data": result.data,
+                "errors": [str(e) for e in result.errors] if result.errors else None,
+            })
+
+        transport = httpx.ASGITransport(app=app)
+        return httpx.AsyncClient(transport=transport, base_url="http://test")
 
     async def test_federation_endpoint_reachable(self):
         """POST to the federation endpoint returns 200 for a valid query."""
-        base_url = self._base_url()
-        if not base_url:
-            pytest.skip("PROVISA_TEST_URL not set")
-
-        try:
-            import httpx  # noqa: PLC0415
-        except ImportError:
-            pytest.skip("httpx not installed")
-
-        async with httpx.AsyncClient() as client:
+        client = await self._make_fed_client()
+        async with client:
             resp = await client.post(
-                f"{base_url}/graphql/federation",
+                "/graphql/federation",
                 json={"query": "{ _service { sdl } }"},
-                timeout=10.0,
             )
         assert resp.status_code == 200
 
     async def test_service_query_returns_sdl_via_http(self):
         """{ _service { sdl } } returns a non-empty SDL string over HTTP."""
-        base_url = self._base_url()
-        if not base_url:
-            pytest.skip("PROVISA_TEST_URL not set")
-
-        try:
-            import httpx  # noqa: PLC0415
-        except ImportError:
-            pytest.skip("httpx not installed")
-
-        async with httpx.AsyncClient() as client:
+        client = await self._make_fed_client()
+        async with client:
             resp = await client.post(
-                f"{base_url}/graphql/federation",
+                "/graphql/federation",
                 json={"query": "{ _service { sdl } }"},
-                timeout=10.0,
             )
         data = resp.json()
         assert "data" in data

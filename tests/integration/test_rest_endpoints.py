@@ -15,8 +15,6 @@ Tests the REST route generation layer in two complementary ways:
      _build_graphql_query, _get_scalar_fields without any HTTP round-trip.
   2. HTTP via AsyncClient — tests the full FastAPI handler when the live
      AppState (schemas, contexts, pools) is available.
-
-The HTTP tests are skipped when PostgreSQL is unavailable.
 """
 
 from __future__ import annotations
@@ -31,33 +29,6 @@ from provisa.api.rest.generator import (
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-_pg_available = pytest.mark.skipif(
-    False,  # updated at collection time below
-    reason="PostgreSQL unavailable",
-)
-
-
-def _pg_skip():
-    """Return a skip marker when PG is not reachable."""
-    import os
-    import socket
-
-    host = os.environ.get("PG_HOST", "localhost")
-    port = int(os.environ.get("PG_PORT", "5432"))
-    try:
-        with socket.create_connection((host, port), timeout=1):
-            return False
-    except OSError:
-        return True
-
-
-_SKIP_NO_PG = pytest.mark.skipif(_pg_skip(), reason="PostgreSQL unavailable")
-
 
 # ---------------------------------------------------------------------------
 # Unit-style tests of the Python REST generator API (no HTTP, no PG needed)
@@ -262,8 +233,6 @@ class TestRestEndpointsHTTP:
     schema pre-loaded (same stack as the other integration tests).
     """
 
-    pytestmark = _SKIP_NO_PG
-
     async def _make_client(self, pg_pool):
         """Construct a minimal AppState and return an AsyncClient."""
         httpx = pytest.importorskip("httpx")
@@ -313,25 +282,22 @@ class TestRestEndpointsHTTP:
             )
             schema = generate_schema(si)
             ctx = build_context(si)
-        except Exception as exc:
-            pytest.skip(f"Cannot build schema — {exc}")
+        except Exception:
+            raise
 
         from provisa.executor.pool import SourcePool
         import os
 
         source_pool = SourcePool()
-        try:
-            await source_pool.add(
-                "test-pg",
-                source_type="postgresql",
-                host=os.environ.get("PG_HOST", "localhost"),
-                port=int(os.environ.get("PG_PORT", "5432")),
-                database=os.environ.get("PG_DATABASE", "provisa"),
-                user=os.environ.get("PG_USER", "provisa"),
-                password=os.environ.get("PG_PASSWORD", "provisa"),
-            )
-        except Exception:
-            pytest.skip("Cannot connect to PostgreSQL source pool")
+        await source_pool.add(
+            "test-pg",
+            source_type="postgresql",
+            host=os.environ.get("PG_HOST", "localhost"),
+            port=int(os.environ.get("PG_PORT", "5432")),
+            database=os.environ.get("PG_DATABASE", "provisa"),
+            user=os.environ.get("PG_USER", "provisa"),
+            password=os.environ.get("PG_PASSWORD", "provisa"),
+        )
 
         app_state = AppState()
         app_state.schemas = {"admin": schema}
@@ -350,15 +316,9 @@ class TestRestEndpointsHTTP:
         client = httpx.AsyncClient(transport=transport, base_url="http://test")
         return client, source_pool
 
-    @_SKIP_NO_PG
     async def test_get_list_endpoint_returns_rows(self, pg_pool):
         """GET /data/rest/orders returns array of objects."""
-        try:
-            client, pool = await self._make_client(pg_pool)
-        except pytest.skip.Exception:
-            raise
-        except Exception as exc:
-            pytest.skip(f"REST client setup failed: {exc}")
+        client, pool = await self._make_client(pg_pool)
 
         try:
             async with client:
@@ -370,13 +330,9 @@ class TestRestEndpointsHTTP:
         finally:
             await pool.close_all()
 
-    @_SKIP_NO_PG
     async def test_get_list_with_filter(self, pg_pool):
         """GET /data/rest/orders?where.region.eq=us-east filters results."""
-        try:
-            client, pool = await self._make_client(pg_pool)
-        except (pytest.skip.Exception, Exception) as exc:
-            pytest.skip(f"REST client setup failed: {exc}")
+        client, pool = await self._make_client(pg_pool)
 
         try:
             async with client:
@@ -392,13 +348,9 @@ class TestRestEndpointsHTTP:
         finally:
             await pool.close_all()
 
-    @_SKIP_NO_PG
     async def test_get_list_with_limit(self, pg_pool):
         """GET /data/rest/orders?limit=3 returns at most 3 items."""
-        try:
-            client, pool = await self._make_client(pg_pool)
-        except (pytest.skip.Exception, Exception) as exc:
-            pytest.skip(f"REST client setup failed: {exc}")
+        client, pool = await self._make_client(pg_pool)
 
         try:
             async with client:
@@ -409,13 +361,9 @@ class TestRestEndpointsHTTP:
         finally:
             await pool.close_all()
 
-    @_SKIP_NO_PG
     async def test_get_by_id_not_found(self, pg_pool):
         """GET /data/rest/orders?where.id.eq=99999 returns empty data."""
-        try:
-            client, pool = await self._make_client(pg_pool)
-        except (pytest.skip.Exception, Exception) as exc:
-            pytest.skip(f"REST client setup failed: {exc}")
+        client, pool = await self._make_client(pg_pool)
 
         try:
             async with client:
@@ -429,13 +377,9 @@ class TestRestEndpointsHTTP:
         finally:
             await pool.close_all()
 
-    @_SKIP_NO_PG
     async def test_get_list_rls_applied(self, pg_pool):
         """REST endpoint applies RLS for the requesting role (no crash)."""
-        try:
-            client, pool = await self._make_client(pg_pool)
-        except (pytest.skip.Exception, Exception) as exc:
-            pytest.skip(f"REST client setup failed: {exc}")
+        client, pool = await self._make_client(pg_pool)
 
         try:
             async with client:
@@ -445,13 +389,9 @@ class TestRestEndpointsHTTP:
         finally:
             await pool.close_all()
 
-    @_SKIP_NO_PG
     async def test_response_content_type(self, pg_pool):
         """REST response Content-Type is application/json."""
-        try:
-            client, pool = await self._make_client(pg_pool)
-        except (pytest.skip.Exception, Exception) as exc:
-            pytest.skip(f"REST client setup failed: {exc}")
+        client, pool = await self._make_client(pg_pool)
 
         try:
             async with client:
@@ -484,7 +424,7 @@ class TestRestEndpointsHTTP:
         try:
             ctx = CompilationContext()
         except Exception:
-            pytest.skip("CompilationContext signature mismatch")
+            raise
 
         app_state = AppState()
         app_state.schemas = {"admin": schema}

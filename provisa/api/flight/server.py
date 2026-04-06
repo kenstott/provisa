@@ -61,9 +61,12 @@ class ProvisaFlightServer(flight.FlightServerBase):
     """
 
     def __init__(self, state, location="grpc://0.0.0.0:8815", **kwargs):
+        import asyncio
         super().__init__(location, **kwargs)
         self._state = state
         self._session_modes: dict[bytes, str] = {}  # token -> mode
+        # Persistent event loop for async execution (asyncpg pools must use the same loop)
+        self._loop = asyncio.new_event_loop()
 
     @staticmethod
     def _parse_mode(buf: bytes | None) -> str:
@@ -365,17 +368,12 @@ class ProvisaFlightServer(flight.FlightServerBase):
             if sampling:
                 compiled_for_exec = apply_sampling(compiled_for_exec, get_sample_size())
             target_sql = transpile(compiled_for_exec.sql, decision.dialect or "postgres")
-            import asyncio
-            loop = asyncio.new_event_loop()
-            try:
-                result = loop.run_until_complete(
-                    execute_direct(
-                        self._state.source_pools, decision.source_id,
-                        target_sql, compiled_for_exec.params,
-                    )
+            result = self._loop.run_until_complete(
+                execute_direct(
+                    self._state.source_pools, decision.source_id,
+                    target_sql, compiled_for_exec.params,
                 )
-            finally:
-                loop.close()
+            )
             table = rows_to_arrow_table(result.rows, compiled.columns)
             return flight.RecordBatchStream(table)
 

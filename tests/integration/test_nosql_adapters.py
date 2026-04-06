@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import os
 from unittest.mock import MagicMock, patch
 
@@ -25,38 +24,6 @@ from provisa.source_adapters.registry import (
 )
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
-
-
-# ---------------------------------------------------------------------------
-# Infrastructure detection helpers
-# ---------------------------------------------------------------------------
-
-async def _mongo_available() -> bool:
-    host = os.environ.get("MONGO_HOST", "localhost")
-    port = int(os.environ.get("MONGO_PORT", "27017"))
-    try:
-        _, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, port), timeout=2.0
-        )
-        writer.close()
-        await writer.wait_closed()
-        return True
-    except Exception:
-        return False
-
-
-async def _es_available() -> bool:
-    host = os.environ.get("ES_HOST", "localhost")
-    port = int(os.environ.get("ES_PORT", "9200"))
-    try:
-        _, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, port), timeout=2.0
-        )
-        writer.close()
-        await writer.wait_closed()
-        return True
-    except Exception:
-        return False
 
 
 # ---------------------------------------------------------------------------
@@ -187,13 +154,7 @@ class TestMongoDBAdapter:
 
     async def test_mongodb_adapter_query_returns_documents(self):
         """MongoDB adapter connects and queries when server is available."""
-        if not await _mongo_available():
-            pytest.skip("MongoDB not available")
-
-        try:
-            import motor.motor_asyncio  # noqa: PLC0415
-        except ImportError:
-            pytest.skip("motor not installed")
+        import motor.motor_asyncio  # noqa: PLC0415
 
         host = os.environ.get("MONGO_HOST", "localhost")
         port = int(os.environ.get("MONGO_PORT", "27017"))
@@ -285,17 +246,11 @@ class TestElasticsearchAdapter:
 
     async def test_elasticsearch_adapter_live_query(self):
         """ES adapter query returns documents when server is available."""
-        if not await _es_available():
-            pytest.skip("Elasticsearch not available")
-
-        try:
-            from elasticsearch import AsyncElasticsearch  # noqa: PLC0415
-        except ImportError:
-            pytest.skip("elasticsearch-py not installed")
+        from elasticsearch import AsyncElasticsearch  # noqa: PLC0415
 
         host = os.environ.get("ES_HOST", "localhost")
         port = int(os.environ.get("ES_PORT", "9200"))
-        client = AsyncElasticsearch(hosts=[{"host": host, "port": port}])
+        client = AsyncElasticsearch(hosts=[{"host": host, "port": port, "scheme": "http"}])
         index = "provisa_test_index"
 
         try:

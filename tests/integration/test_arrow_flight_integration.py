@@ -17,11 +17,10 @@ Tests are organised into three tiers:
      builders).  These run without any infrastructure.
 
   2. In-process server — starts a ProvisaFlightServer in a background thread
-     and connects a pyarrow.flight.FlightClient to it.  Skipped when pyarrow
-     is not installed or when the test Flight port is already in use.
+     and connects a pyarrow.flight.FlightClient to it.
 
   3. Live PG-backed — extends the in-process server fixture with a real
-     source pool.  Skipped when PostgreSQL is unavailable.
+     source pool.
 """
 
 from __future__ import annotations
@@ -57,25 +56,6 @@ def _port_in_use(port: int) -> bool:
             return True
     except OSError:
         return False
-
-
-def _pg_available() -> bool:
-    import socket
-
-    host = os.environ.get("PG_HOST", "localhost")
-    port = int(os.environ.get("PG_PORT", "5432"))
-    try:
-        with socket.create_connection((host, port), timeout=1):
-            return True
-    except OSError:
-        return False
-
-
-_SKIP_PORT_IN_USE = pytest.mark.skipif(
-    _port_in_use(_TEST_FLIGHT_PORT),
-    reason=f"Port {_TEST_FLIGHT_PORT} already in use",
-)
-_SKIP_NO_PG = pytest.mark.skipif(not _pg_available(), reason="PostgreSQL unavailable")
 
 
 def _make_minimal_state():
@@ -293,9 +273,6 @@ def flight_server_and_client():
 
     The fixture is module-scoped to avoid repeated startup overhead.
     """
-    if _port_in_use(_TEST_FLIGHT_PORT):
-        pytest.skip(f"Port {_TEST_FLIGHT_PORT} already in use")
-
     state = _make_minimal_state()
 
     server = ProvisaFlightServer(state, location=_FLIGHT_LOCATION)
@@ -310,7 +287,7 @@ def flight_server_and_client():
             break
         time.sleep(0.1)
     else:
-        pytest.skip("Flight server did not start in time")
+        raise RuntimeError("Flight server did not start in time")
 
     client = flight.connect(_FLIGHT_LOCATION)
     yield client, server, state
@@ -322,14 +299,12 @@ def flight_server_and_client():
 class TestFlightServerStartsAndConnects:
     """Basic connectivity tests for the in-process Flight server."""
 
-    @_SKIP_PORT_IN_USE
     async def test_flight_server_starts(self, flight_server_and_client):
         """Flight server binds to port and accepts connections."""
         client, server, state = flight_server_and_client
         # list_flights with empty criteria should not raise
         _ = list(client.list_flights(b""))
 
-    @_SKIP_PORT_IN_USE
     async def test_flight_list_flights_default_mode(self, flight_server_and_client):
         """list_flights in default mode returns no flights (ad-hoc query server)."""
         client, server, state = flight_server_and_client
@@ -337,7 +312,6 @@ class TestFlightServerStartsAndConnects:
         # Default mode has no pre-defined flights
         assert isinstance(flights, list)
 
-    @_SKIP_PORT_IN_USE
     async def test_flight_invalid_ticket_returns_error(self, flight_server_and_client):
         """Malformed ticket JSON raises a Flight error."""
         client, server, state = flight_server_and_client
@@ -346,7 +320,6 @@ class TestFlightServerStartsAndConnects:
             reader = client.do_get(bad_ticket)
             reader.read_all()
 
-    @_SKIP_PORT_IN_USE
     async def test_flight_ticket_missing_query_raises_error(self, flight_server_and_client):
         """Ticket without 'query' key raises FlightServerError."""
         client, server, state = flight_server_and_client
@@ -356,7 +329,6 @@ class TestFlightServerStartsAndConnects:
             reader = client.do_get(bad_ticket)
             reader.read_all()
 
-    @_SKIP_PORT_IN_USE
     async def test_flight_unknown_role_raises_error(self, flight_server_and_client):
         """Ticket with unknown role raises FlightServerError."""
         client, server, state = flight_server_and_client
@@ -369,7 +341,6 @@ class TestFlightServerStartsAndConnects:
             reader = client.do_get(bad_ticket)
             reader.read_all()
 
-    @_SKIP_PORT_IN_USE
     async def test_flight_handshake_returns_token_for_valid_mode(self, flight_server_and_client):
         """do_handshake with valid mode completes without error."""
         # We connect a fresh client that goes through the handshake implicitly
@@ -398,9 +369,6 @@ class TestFlightDoGetWithRealData:
         """Start a PG-backed Flight server on a separate port."""
         port = _TEST_FLIGHT_PORT + 1
         location = f"grpc://localhost:{port}"
-
-        if _port_in_use(port):
-            pytest.skip(f"Port {port} already in use")
 
         from graphql import (
             GraphQLField,
@@ -445,28 +413,28 @@ class TestFlightDoGetWithRealData:
                 }
             )
         except Exception:
-            pytest.skip("Cannot build CompilationContext with TableMeta")
+            raise
 
         from provisa.executor.pool import SourcePool
-        import asyncio
+        from unittest.mock import MagicMock
+
+        # Create the server first so we can use its dedicated event loop for pool creation.
+        # The pool and the loop used for execution must be the same loop.
+        state_placeholder = MagicMock()
+        server = ProvisaFlightServer(state_placeholder, location=location)
+        loop = server._loop
 
         source_pool = SourcePool()
-        loop = asyncio.new_event_loop()
-        try:
-            loop.run_until_complete(source_pool.add(
-                "test-pg",
-                source_type="postgresql",
-                host=os.environ.get("PG_HOST", "localhost"),
-                port=int(os.environ.get("PG_PORT", "5432")),
-                database=os.environ.get("PG_DATABASE", "provisa"),
-                user=os.environ.get("PG_USER", "provisa"),
-                password=os.environ.get("PG_PASSWORD", "provisa"),
-            ))
-        except Exception:
-            loop.close()
-            pytest.skip("Cannot connect to PG for Flight tests")
+        loop.run_until_complete(source_pool.add(
+            "test-pg",
+            source_type="postgresql",
+            host=os.environ.get("PG_HOST", "localhost"),
+            port=int(os.environ.get("PG_PORT", "5432")),
+            database=os.environ.get("PG_DATABASE", "provisa"),
+            user=os.environ.get("PG_USER", "provisa"),
+            password=os.environ.get("PG_PASSWORD", "provisa"),
+        ))
 
-        from unittest.mock import MagicMock
         state = MagicMock()
         state.schemas = {"admin": schema}
         state.contexts = {"admin": ctx}
@@ -478,8 +446,8 @@ class TestFlightDoGetWithRealData:
         state.masking_rules = {}
         state.flight_client = None
         state.trino_conn = None
+        server._state = state
 
-        server = ProvisaFlightServer(state, location=location)
         thread = threading.Thread(target=server.serve, daemon=True)
         thread.start()
 
@@ -489,8 +457,7 @@ class TestFlightDoGetWithRealData:
                 break
             time.sleep(0.1)
         else:
-            loop.close()
-            pytest.skip("PG-backed Flight server did not start in time")
+            raise RuntimeError("PG-backed Flight server did not start in time")
 
         client = flight.connect(
             location,
@@ -503,14 +470,12 @@ class TestFlightDoGetWithRealData:
         loop.run_until_complete(source_pool.close_all())
         loop.close()
 
-    @_SKIP_NO_PG
     async def test_flight_server_starts(self, pg_backed_flight):
         """PG-backed Flight server starts and accepts a connection."""
         client, server, state, pool, loop = pg_backed_flight
         # A successful list_flights call proves the server is running
         _ = list(client.list_flights(b""))
 
-    @_SKIP_NO_PG
     async def test_flight_do_get_returns_record_batches(self, pg_backed_flight):
         """do_get with a valid GraphQL ticket returns Arrow RecordBatches."""
         client, server, state, pool, loop = pg_backed_flight
@@ -528,7 +493,6 @@ class TestFlightDoGetWithRealData:
 
         assert isinstance(table, pa.Table)
 
-    @_SKIP_NO_PG
     async def test_flight_schema_matches_query(self, pg_backed_flight):
         """Returned schema field names match the queried columns."""
         client, server, state, pool, loop = pg_backed_flight
@@ -541,14 +505,13 @@ class TestFlightDoGetWithRealData:
         try:
             reader = client.do_get(ticket)
             table = reader.read_all()
-        except flight.FlightServerError as exc:
-            pytest.skip(f"Flight server returned error: {exc}")
+        except flight.FlightServerError:
+            raise
 
         schema_names = set(table.schema.names)
         for field_name in ("id", "region", "amount"):
             assert field_name in schema_names
 
-    @_SKIP_NO_PG
     async def test_flight_row_count_matches_sql(self, pg_backed_flight, pg_pool):
         """Row count from Flight matches direct PG count."""
         client, server, state, pool, loop = pg_backed_flight
@@ -565,13 +528,12 @@ class TestFlightDoGetWithRealData:
         try:
             reader = client.do_get(ticket)
             table = reader.read_all()
-        except flight.FlightServerError as exc:
-            pytest.skip(f"Flight server returned error: {exc}")
+        except flight.FlightServerError:
+            raise
 
         # The Flight server may apply sampling; row count <= pg_count
         assert table.num_rows <= pg_count
 
-    @_SKIP_NO_PG
     async def test_flight_invalid_ticket_returns_error(self, pg_backed_flight):
         """Malformed ticket bytes raises a Flight error."""
         client, server, state, pool, loop = pg_backed_flight

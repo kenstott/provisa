@@ -47,14 +47,6 @@ CONNECTOR_NAME = "provisa-test-pg"
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _debezium_available() -> bool:
-    try:
-        r = httpx.get(f"{DEBEZIUM_URL}/connectors", timeout=3)
-        return r.status_code == 200
-    except Exception:
-        return False
-
-
 def _register_connector(pg_host: str, pg_port: int, pg_user: str, pg_password: str) -> None:
     """Register a Debezium PostgreSQL connector via the Connect REST API."""
     connector_config = {
@@ -73,6 +65,8 @@ def _register_connector(pg_host: str, pg_port: int, pg_user: str, pg_password: s
             "slot.name": f"debezium_test_{uuid.uuid4().hex[:8]}",
             "publication.name": f"debezium_pub_{uuid.uuid4().hex[:8]}",
             "snapshot.mode": "initial",
+            "publication.autocreate.mode": "filtered",
+            "decimal.handling.mode": "double",
             "key.converter": "org.apache.kafka.connect.json.JsonConverter",
             "value.converter": "org.apache.kafka.connect.json.JsonConverter",
             "key.converter.schemas.enable": "false",
@@ -94,8 +88,11 @@ def _register_connector(pg_host: str, pg_port: int, pg_user: str, pg_password: s
     )
 
 
-def _wait_connector_running(timeout: int = 60) -> bool:
-    """Poll until the connector transitions to RUNNING state."""
+def _wait_connector_running(timeout: int = 60) -> None:
+    """Poll until the connector transitions to RUNNING state.
+
+    Raises RuntimeError if the connector does not reach RUNNING within *timeout* seconds.
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -108,11 +105,13 @@ def _wait_connector_running(timeout: int = 60) -> bool:
                 connector_state = status.get("connector", {}).get("state", "")
                 tasks = status.get("tasks", [])
                 if connector_state == "RUNNING" and tasks and tasks[0]["state"] == "RUNNING":
-                    return True
+                    return
         except Exception:
             pass
         time.sleep(2)
-    return False
+    raise RuntimeError(
+        f"Debezium connector '{CONNECTOR_NAME}' did not reach RUNNING state within {timeout}s"
+    )
 
 
 async def _collect_events(
@@ -141,9 +140,6 @@ async def _collect_events(
 @pytest.fixture(scope="module")
 def debezium_connector(pg_pool):
     """Register the Debezium connector once per module and tear it down after."""
-    if not _debezium_available():
-        pytest.skip("Debezium Connect not available — run docker-compose up")
-
     pg_host = os.environ.get("PG_HOST", "localhost")
     # Inside docker-compose the connector talks to the internal PG hostname,
     # but when running tests from the host we tell Debezium to reach PG
@@ -158,14 +154,32 @@ def debezium_connector(pg_pool):
         pg_password=os.environ.get("PG_PASSWORD", "provisa"),
     )
 
-    running = _wait_connector_running(timeout=60)
-    if not running:
-        pytest.skip("Debezium connector did not reach RUNNING state within 60s")
+    _wait_connector_running(timeout=60)
 
     yield
 
     # Cleanup: delete the connector
     httpx.delete(f"{DEBEZIUM_URL}/connectors/{CONNECTOR_NAME}", timeout=5)
+    time.sleep(1)
+
+    # Drop inactive replication slots to avoid exhausting max_replication_slots
+    # (set to 10 in docker-compose) across repeated test runs.
+    import subprocess
+    pg_host = os.environ.get("PG_HOST", "localhost")
+    pg_port = os.environ.get("PG_PORT", "5432")
+    pg_user = os.environ.get("PG_USER", "provisa")
+    pg_db = os.environ.get("PG_DATABASE", "provisa")
+    subprocess.run(
+        [
+            "psql",
+            f"postgresql://{pg_user}:provisa@{pg_host}:{pg_port}/{pg_db}",
+            "-c",
+            "SELECT pg_drop_replication_slot(slot_name) "
+            "FROM pg_replication_slots WHERE active = false",
+        ],
+        capture_output=True,
+        timeout=10,
+    )
 
 
 @pytest.fixture(scope="module")
@@ -186,8 +200,6 @@ def provider():
 class TestDebeziumConnectorRegistration:
     def test_debezium_connect_reachable(self):
         """Debezium Connect REST API is reachable."""
-        if not _debezium_available():
-            pytest.skip("Debezium Connect not available")
         r = httpx.get(f"{DEBEZIUM_URL}/connectors", timeout=5)
         assert r.status_code == 200
 
@@ -213,9 +225,10 @@ class TestDebeziumInsertEvents:
             # Give the consumer a moment to subscribe before the insert
             await asyncio.sleep(3)
             async with pg_pool.acquire() as conn:
+                pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
                 await conn.execute(
-                    "INSERT INTO orders (customer_id, amount, region) VALUES ($1, $2, $3)",
-                    1, 999.99, marker,
+                    "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4)",
+                    1, pid, 999.99, marker,
                 )
 
         events_task = asyncio.create_task(
@@ -244,9 +257,10 @@ class TestDebeziumInsertEvents:
         async def do_insert():
             await asyncio.sleep(2)
             async with pg_pool.acquire() as conn:
+                pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
                 await conn.execute(
-                    "INSERT INTO orders (customer_id, amount, region) VALUES ($1, $2, $3)",
-                    1, 1.0, marker,
+                    "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4)",
+                    1, pid, 1.0, marker,
                 )
 
         events_task = asyncio.create_task(
@@ -271,9 +285,10 @@ class TestDebeziumUpdateEvents:
         # Insert first, then update
         marker = f"upd-test-{uuid.uuid4().hex[:8]}"
         async with pg_pool.acquire() as conn:
+            pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
             row_id = await conn.fetchval(
-                "INSERT INTO orders (customer_id, amount, region) VALUES ($1, $2, $3) RETURNING id",
-                1, 50.0, marker,
+                "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4) RETURNING id",
+                1, pid, 50.0, marker,
             )
 
         # Small delay to let the insert event pass, then update
@@ -307,9 +322,10 @@ class TestDebeziumDeleteEvents:
         """Deleting a row produces a delete ChangeEvent."""
         marker = f"del-test-{uuid.uuid4().hex[:8]}"
         async with pg_pool.acquire() as conn:
+            pid = await conn.fetchval("SELECT id FROM products LIMIT 1")
             row_id = await conn.fetchval(
-                "INSERT INTO orders (customer_id, amount, region) VALUES ($1, $2, $3) RETURNING id",
-                1, 10.0, marker,
+                "INSERT INTO orders (customer_id, product_id, amount, region) VALUES ($1, $2, $3, $4) RETURNING id",
+                1, pid, 10.0, marker,
             )
 
         await asyncio.sleep(2)
@@ -342,9 +358,10 @@ class TestDebeziumProviderLifecycle:
         await p.close()  # should not raise
 
     def test_topic_name_matches_debezium_convention(self, provider):
-        """Topic name follows {prefix}.{database}.{table} convention."""
+        """Topic name follows {prefix}.{schema}.{table} convention for PostgreSQL."""
         topic = provider._build_topic("orders")
-        assert topic == f"{TOPIC_PREFIX}.{DATABASE}.orders"
+        # PostgreSQL Debezium connector uses schema name (public) not database name
+        assert topic == f"{TOPIC_PREFIX}.public.orders"
 
     async def test_snapshot_events_received_on_fresh_consumer(self, debezium_connector):
         """A fresh consumer group receives snapshot (read) events as inserts."""
@@ -363,32 +380,29 @@ class TestDebeziumProviderLifecycle:
         original_init = fresh_provider.__class__.__init__
 
         events = []
-        try:
-            from aiokafka import AIOKafkaConsumer
+        from aiokafka import AIOKafkaConsumer  # noqa: PLC0415
 
-            consumer = AIOKafkaConsumer(
-                fresh_provider._build_topic("orders"),
-                bootstrap_servers=KAFKA_BOOTSTRAP,
-                group_id=f"snapshot-earliest-{uuid.uuid4().hex[:8]}",
-                auto_offset_reset="earliest",
-            )
-            await consumer.start()
-            try:
-                async with asyncio.timeout(15):
-                    async for msg in consumer:
-                        if msg.value:
-                            envelope = json.loads(msg.value)
-                            payload = envelope.get("payload", envelope)
-                            if payload.get("op") == "r":
-                                events.append(payload)
-                            if len(events) >= 3:
-                                break
-            except TimeoutError:
-                pass
-            finally:
-                await consumer.stop()
-        except ImportError:
-            pytest.skip("aiokafka not installed")
+        consumer = AIOKafkaConsumer(
+            fresh_provider._build_topic("orders"),
+            bootstrap_servers=KAFKA_BOOTSTRAP,
+            group_id=f"snapshot-earliest-{uuid.uuid4().hex[:8]}",
+            auto_offset_reset="earliest",
+        )
+        await consumer.start()
+        try:
+            async with asyncio.timeout(15):
+                async for msg in consumer:
+                    if msg.value:
+                        envelope = json.loads(msg.value)
+                        payload = envelope.get("payload", envelope)
+                        if payload.get("op") == "r":
+                            events.append(payload)
+                        if len(events) >= 3:
+                            break
+        except TimeoutError:
+            pass
+        finally:
+            await consumer.stop()
 
         assert events, (
             "Expected snapshot (op=r) events from earliest offset. "

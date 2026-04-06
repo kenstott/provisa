@@ -119,18 +119,15 @@ def _aliased_orders_query() -> CompiledQuery:
 @pytest_asyncio.fixture(scope="session")
 async def source_pool():
     sp = SourcePool()
-    try:
-        await sp.add(
-            "test-pg",
-            source_type="postgresql",
-            host=os.environ.get("PG_HOST", "localhost"),
-            port=int(os.environ.get("PG_PORT", "5432")),
-            database=os.environ.get("PG_DATABASE", "provisa"),
-            user=os.environ.get("PG_USER", "provisa"),
-            password=os.environ.get("PG_PASSWORD", "provisa"),
-        )
-    except Exception:
-        pytest.skip("PostgreSQL not available")
+    await sp.add(
+        "test-pg",
+        source_type="postgresql",
+        host=os.environ.get("PG_HOST", "localhost"),
+        port=int(os.environ.get("PG_PORT", "5432")),
+        database=os.environ.get("PG_DATABASE", "provisa"),
+        user=os.environ.get("PG_USER", "provisa"),
+        password=os.environ.get("PG_PASSWORD", "provisa"),
+    )
     yield sp
     await sp.close_all()
 

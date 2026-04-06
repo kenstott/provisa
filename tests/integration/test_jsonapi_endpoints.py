@@ -14,7 +14,6 @@ Tests are organised in two layers:
   1. Pure Python API — exercises the serializer, pagination helpers, and
      error formatting modules directly.  No PG, no HTTP required.
   2. HTTP via httpx.AsyncClient — tests the full JSON:API FastAPI handler.
-     These are skipped when PostgreSQL is unavailable.
 """
 
 from __future__ import annotations
@@ -23,26 +22,6 @@ import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _pg_skip() -> bool:
-    import os
-    import socket
-
-    host = os.environ.get("PG_HOST", "localhost")
-    port = int(os.environ.get("PG_PORT", "5432"))
-    try:
-        with socket.create_connection((host, port), timeout=1):
-            return False
-    except OSError:
-        return True
-
-
-_SKIP_NO_PG = pytest.mark.skipif(_pg_skip(), reason="PostgreSQL unavailable")
 
 _SAMPLE_ROWS = [
     {"id": 1, "region": "us-east", "amount": 500, "customer_id": 10},
@@ -399,10 +378,7 @@ class TestJsonapiSparseFieldsets:
 
 
 class TestJsonapiEndpointsHTTP:
-    """HTTP-level JSON:API tests using httpx.AsyncClient.
-
-    Skipped when PostgreSQL is unavailable.
-    """
+    """HTTP-level JSON:API tests using httpx.AsyncClient."""
 
     async def _make_client(self, pg_pool):
         httpx = pytest.importorskip("httpx")
@@ -451,25 +427,22 @@ class TestJsonapiEndpointsHTTP:
             )
             schema = generate_schema(si)
             ctx = build_context(si)
-        except Exception as exc:
-            pytest.skip(f"Cannot build schema — {exc}")
+        except Exception:
+            raise
 
         from provisa.executor.pool import SourcePool
         import os
 
         source_pool = SourcePool()
-        try:
-            await source_pool.add(
-                "test-pg",
-                source_type="postgresql",
-                host=os.environ.get("PG_HOST", "localhost"),
-                port=int(os.environ.get("PG_PORT", "5432")),
-                database=os.environ.get("PG_DATABASE", "provisa"),
-                user=os.environ.get("PG_USER", "provisa"),
-                password=os.environ.get("PG_PASSWORD", "provisa"),
-            )
-        except Exception:
-            pytest.skip("Cannot connect to PostgreSQL source pool")
+        await source_pool.add(
+            "test-pg",
+            source_type="postgresql",
+            host=os.environ.get("PG_HOST", "localhost"),
+            port=int(os.environ.get("PG_PORT", "5432")),
+            database=os.environ.get("PG_DATABASE", "provisa"),
+            user=os.environ.get("PG_USER", "provisa"),
+            password=os.environ.get("PG_PASSWORD", "provisa"),
+        )
 
         app_state = AppState()
         app_state.schemas = {"admin": schema}
@@ -487,15 +460,9 @@ class TestJsonapiEndpointsHTTP:
         client = httpx.AsyncClient(transport=transport, base_url="http://test")
         return client, source_pool
 
-    @_SKIP_NO_PG
     async def test_jsonapi_content_type_header(self, pg_pool):
         """Response Content-Type is application/vnd.api+json."""
-        try:
-            client, pool = await self._make_client(pg_pool)
-        except pytest.skip.Exception:
-            raise
-        except Exception as exc:
-            pytest.skip(f"Client setup failed: {exc}")
+        client, pool = await self._make_client(pg_pool)
 
         try:
             async with client:
@@ -508,13 +475,9 @@ class TestJsonapiEndpointsHTTP:
         finally:
             await pool.close_all()
 
-    @_SKIP_NO_PG
     async def test_jsonapi_list_response_has_data_meta_links(self, pg_pool):
         """Full HTTP response has data, meta, and links top-level keys."""
-        try:
-            client, pool = await self._make_client(pg_pool)
-        except (pytest.skip.Exception, Exception) as exc:
-            pytest.skip(f"Client setup failed: {exc}")
+        client, pool = await self._make_client(pg_pool)
 
         try:
             async with client:
@@ -530,13 +493,9 @@ class TestJsonapiEndpointsHTTP:
         finally:
             await pool.close_all()
 
-    @_SKIP_NO_PG
     async def test_jsonapi_resource_type_matches_table_http(self, pg_pool):
         """type field in resource matches table name via HTTP."""
-        try:
-            client, pool = await self._make_client(pg_pool)
-        except (pytest.skip.Exception, Exception) as exc:
-            pytest.skip(f"Client setup failed: {exc}")
+        client, pool = await self._make_client(pg_pool)
 
         try:
             async with client:
@@ -575,7 +534,7 @@ class TestJsonapiEndpointsHTTP:
             from provisa.compiler.sql_gen import CompilationContext
             ctx = CompilationContext()
         except Exception:
-            pytest.skip("CompilationContext signature mismatch")
+            raise
 
         app_state = AppState()
         app_state.schemas = {"admin": schema}
@@ -616,7 +575,7 @@ class TestJsonapiEndpointsHTTP:
             from provisa.compiler.sql_gen import CompilationContext
             ctx = CompilationContext()
         except Exception:
-            pytest.skip("CompilationContext signature mismatch")
+            raise
 
         app_state = AppState()
         app_state.schemas = {"admin": schema}

@@ -42,26 +42,23 @@ def _pg_env() -> dict:
 
 
 async def _try_pg_pool():
-    """Attempt to create an asyncpg pool; return None if PG is unavailable."""
-    try:
-        import asyncpg  # noqa: PLC0415
-        env = _pg_env()
-        pool = await asyncio.wait_for(
-            asyncpg.create_pool(
-                host=env["host"],
-                port=env["port"],
-                database=env["database"],
-                user=env["user"],
-                password=env["password"],
-                min_size=1,
-                max_size=3,
-                command_timeout=10,
-            ),
-            timeout=5.0,
-        )
-        return pool
-    except Exception:
-        return None
+    """Create an asyncpg pool; raises if PG is unavailable."""
+    import asyncpg  # noqa: PLC0415
+    env = _pg_env()
+    pool = await asyncio.wait_for(
+        asyncpg.create_pool(
+            host=env["host"],
+            port=env["port"],
+            database=env["database"],
+            user=env["user"],
+            password=env["password"],
+            min_size=1,
+            max_size=3,
+            command_timeout=10,
+        ),
+        timeout=5.0,
+    )
+    return pool
 
 
 # ---------------------------------------------------------------------------
@@ -202,8 +199,6 @@ class TestPgNotificationProvider:
     async def test_pg_provider_yields_change_event(self):
         """Provider yields ChangeEvent when a NOTIFY arrives on the channel."""
         pool = await _try_pg_pool()
-        if pool is None:
-            pytest.skip("PostgreSQL not available")
 
         from provisa.subscriptions.pg_provider import PgNotificationProvider, CHANNEL_PREFIX
 

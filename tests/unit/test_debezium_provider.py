@@ -99,14 +99,28 @@ def _make_aiokafka_module(messages: list) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 class TestTopicName:
-    def test_topic_name_built_correctly(self):
-        """Topic name must be {prefix}.{database}.{table}."""
-        provider = _provider(topic_prefix="myprefix", database="salesdb")
+    def test_topic_name_postgresql_uses_schema(self):
+        """For PostgreSQL, topic uses pg_schema (not database) in path."""
+        provider = _provider(topic_prefix="myprefix", database="salesdb", source_type="postgresql")
         topic = provider._build_topic("orders")
-        assert topic == "myprefix.salesdb.orders"
+        assert topic == "myprefix.public.orders"
+
+    def test_topic_name_postgresql_custom_schema(self):
+        """pg_schema parameter overrides the default 'public' schema segment."""
+        provider = _provider(
+            topic_prefix="myprefix", database="salesdb",
+            source_type="postgresql", pg_schema="myschema",
+        )
+        assert provider._build_topic("orders") == "myprefix.myschema.orders"
+
+    def test_topic_name_mysql_uses_database(self):
+        """For non-PostgreSQL sources, topic uses database name in path."""
+        provider = _provider(topic_prefix="dbserver1", database="mydb", source_type="mysql")
+        assert provider._build_topic("customers") == "dbserver1.mydb.customers"
 
     def test_topic_name_different_table(self):
-        provider = _provider(topic_prefix="dbserver1", database="mydb")
+        """Topic name for a different table."""
+        provider = _provider(topic_prefix="dbserver1", database="mydb", source_type="mysql")
         assert provider._build_topic("customers") == "dbserver1.mydb.customers"
 
 

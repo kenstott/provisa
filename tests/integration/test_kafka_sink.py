@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 import time
@@ -35,21 +34,6 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 
 def _kafka_bootstrap() -> str:
     return os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-
-
-async def _kafka_available() -> bool:
-    """Quick TCP check for Kafka availability."""
-    host, port_str = _kafka_bootstrap().split(":", 1)
-    port = int(port_str)
-    try:
-        _, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, port), timeout=2.0
-        )
-        writer.close()
-        await writer.wait_closed()
-        return True
-    except Exception:
-        return False
 
 
 # ---------------------------------------------------------------------------
@@ -198,13 +182,7 @@ class TestKafkaProducerMocked:
 class TestKafkaSinkReal:
     async def test_sink_publishes_and_consumer_reads_message(self):
         """Produce a row to Kafka; AIOKafkaConsumer receives it as JSON."""
-        if not await _kafka_available():
-            pytest.skip("Kafka not available")
-
-        try:
-            from aiokafka import AIOKafkaConsumer, AIOKafkaProducer  # noqa: PLC0415
-        except ImportError:
-            pytest.skip("aiokafka not installed")
+        from aiokafka import AIOKafkaConsumer, AIOKafkaProducer  # noqa: PLC0415
 
         topic = f"provisa-test-{uuid.uuid4().hex[:8]}"
         bootstrap = _kafka_bootstrap()
@@ -244,13 +222,7 @@ class TestKafkaSinkReal:
 
     async def test_sink_trigger_on_change_event(self):
         """Change event triggers correct topic publication when Kafka available."""
-        if not await _kafka_available():
-            pytest.skip("Kafka not available")
-
-        try:
-            from aiokafka import AIOKafkaConsumer, AIOKafkaProducer  # noqa: PLC0415
-        except ImportError:
-            pytest.skip("aiokafka not installed")
+        from aiokafka import AIOKafkaConsumer, AIOKafkaProducer  # noqa: PLC0415
 
         topic = f"provisa-change-{uuid.uuid4().hex[:8]}"
         bootstrap = _kafka_bootstrap()

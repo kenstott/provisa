@@ -36,30 +36,22 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 @pytest_asyncio.fixture(scope="module")
 async def source_pool():
     sp = SourcePool()
-    try:
-        await sp.add(
-            "test-pg",
-            source_type="postgresql",
-            host=os.environ.get("PG_HOST", "localhost"),
-            port=int(os.environ.get("PG_PORT", "5432")),
-            database=os.environ.get("PG_DATABASE", "provisa"),
-            user=os.environ.get("PG_USER", "provisa"),
-            password=os.environ.get("PG_PASSWORD", "provisa"),
-        )
-        yield sp
-    except Exception:
-        pytest.skip("PostgreSQL not available")
-        yield None
-    finally:
-        if sp:
-            await sp.close_all()
+    await sp.add(
+        "test-pg",
+        source_type="postgresql",
+        host=os.environ.get("PG_HOST", "localhost"),
+        port=int(os.environ.get("PG_PORT", "5432")),
+        database=os.environ.get("PG_DATABASE", "provisa"),
+        user=os.environ.get("PG_USER", "provisa"),
+        password=os.environ.get("PG_PASSWORD", "provisa"),
+    )
+    yield sp
+    await sp.close_all()
 
 
 @pytest_asyncio.fixture(scope="module")
 async def pg_func(source_pool):
     """Create a real PG function for testing, drop it after the module."""
-    if source_pool is None:
-        pytest.skip("PostgreSQL not available")
     create_sql = """
         CREATE OR REPLACE FUNCTION public.provisa_test_action(p_region TEXT, p_limit INT)
         RETURNS TABLE(id INT, region TEXT, amount NUMERIC)

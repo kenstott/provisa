@@ -97,27 +97,17 @@ def _build_schema_and_ctx():
 @pytest_asyncio.fixture(scope="session")
 async def mut_pool():
     sp = SourcePool()
-    try:
-        await sp.add(
-            "sales-pg",
-            source_type="postgresql",
-            host=os.environ.get("PG_HOST", "localhost"),
-            port=int(os.environ.get("PG_PORT", "5432")),
-            database=os.environ.get("PG_DATABASE", "provisa"),
-            user=os.environ.get("PG_USER", "provisa"),
-            password=os.environ.get("PG_PASSWORD", "provisa"),
-        )
-        yield sp
-    except Exception:
-        yield None
-    finally:
-        if sp:
-            await sp.close_all()
-
-
-def _skip_if_no_pool(pool):
-    if pool is None or not pool.has("sales-pg"):
-        pytest.skip("PostgreSQL not available")
+    await sp.add(
+        "sales-pg",
+        source_type="postgresql",
+        host=os.environ.get("PG_HOST", "localhost"),
+        port=int(os.environ.get("PG_PORT", "5432")),
+        database=os.environ.get("PG_DATABASE", "provisa"),
+        user=os.environ.get("PG_USER", "provisa"),
+        password=os.environ.get("PG_PASSWORD", "provisa"),
+    )
+    yield sp
+    await sp.close_all()
 
 
 async def _cleanup(pg_pool):
@@ -136,7 +126,6 @@ class TestInsertMutation:
 
     async def test_insert_mutation(self, mut_pool, pg_pool):
         """Compile + execute insert mutation; verify the row is persisted."""
-        _skip_if_no_pool(mut_pool)
         schema, ctx = _build_schema_and_ctx()
 
         # Get a valid customer_id from the DB
@@ -179,7 +168,6 @@ class TestInsertMutation:
 
     async def test_update_mutation(self, mut_pool, pg_pool):
         """Compile + execute update mutation; verify affected rows are updated."""
-        _skip_if_no_pool(mut_pool)
         schema, ctx = _build_schema_and_ctx()
 
         # Insert a row to update
@@ -218,7 +206,6 @@ class TestInsertMutation:
 
     async def test_delete_mutation(self, mut_pool, pg_pool):
         """Compile + execute delete mutation; verify rows are removed."""
-        _skip_if_no_pool(mut_pool)
         schema, ctx = _build_schema_and_ctx()
 
         # Insert a row to delete
@@ -256,7 +243,6 @@ class TestInsertMutation:
 
     async def test_upsert_mutation(self, mut_pool, pg_pool):
         """Test the upsert path (ON CONFLICT ... DO UPDATE)."""
-        _skip_if_no_pool(mut_pool)
         schema, ctx = _build_schema_and_ctx()
 
         # Insert an initial row
@@ -294,7 +280,6 @@ class TestInsertMutation:
 
     async def test_mutation_respects_column_preset(self, mut_pool, pg_pool):
         """Column preset is applied automatically (test via checking inserted row)."""
-        _skip_if_no_pool(mut_pool)
         schema, ctx = _build_schema_and_ctx()
 
         async with pg_pool.acquire() as conn:
@@ -334,7 +319,6 @@ class TestInsertMutation:
 
     async def test_mutation_blocked_for_read_only_column(self, mut_pool, pg_pool):
         """Mutation on a NoSQL (non-writable) source type raises an appropriate error."""
-        _skip_if_no_pool(mut_pool)
         schema, ctx = _build_schema_and_ctx()
 
         doc = parse(f"""

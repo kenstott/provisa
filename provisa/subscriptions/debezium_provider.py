@@ -62,6 +62,7 @@ class DebeziumNotificationProvider(NotificationProvider):
         consumer_group_id: str = "provisa-debezium",
         schema_registry_url: str | None = None,
         source_type: str = "postgresql",
+        pg_schema: str = "public",
     ) -> None:
         self._bootstrap_servers = bootstrap_servers
         self._topic_prefix = topic_prefix
@@ -69,10 +70,17 @@ class DebeziumNotificationProvider(NotificationProvider):
         self._consumer_group_id = consumer_group_id
         self._schema_registry_url = schema_registry_url
         self._source_type = source_type
+        self._pg_schema = pg_schema
         self._consumer: Any | None = None
 
     def _build_topic(self, table: str) -> str:
-        """Build Debezium topic name: {prefix}.{database}.{table}."""
+        """Build Debezium topic name.
+
+        PostgreSQL: {prefix}.{schema}.{table}  (Debezium uses schema, not dbname)
+        Other DBs:  {prefix}.{database}.{table}
+        """
+        if self._source_type == "postgresql":
+            return f"{self._topic_prefix}.{self._pg_schema}.{table}"
         return f"{self._topic_prefix}.{self._database}.{table}"
 
     def _parse_json_message(self, raw: bytes) -> dict | None:

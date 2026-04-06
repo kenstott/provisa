@@ -54,37 +54,29 @@ def _make_cols(*names: str, nested_in: str | None = None) -> list[ColumnRef]:
 @pytest_asyncio.fixture(scope="session")
 async def source_pool():
     """Real PG pool for execute_direct tests."""
-    try:
-        from provisa.executor.pool import SourcePool
-        sp = SourcePool()
-        await sp.add(
-            "test-pg",
-            source_type="postgresql",
-            host=os.environ.get("PG_HOST", "localhost"),
-            port=int(os.environ.get("PG_PORT", "5432")),
-            database=os.environ.get("PG_DATABASE", "provisa"),
-            user=os.environ.get("PG_USER", "provisa"),
-            password=os.environ.get("PG_PASSWORD", "provisa"),
-        )
-        yield sp
-        await sp.close_all()
-    except Exception:
-        yield None
+    from provisa.executor.pool import SourcePool
+    sp = SourcePool()
+    await sp.add(
+        "test-pg",
+        source_type="postgresql",
+        host=os.environ.get("PG_HOST", "localhost"),
+        port=int(os.environ.get("PG_PORT", "5432")),
+        database=os.environ.get("PG_DATABASE", "provisa"),
+        user=os.environ.get("PG_USER", "provisa"),
+        password=os.environ.get("PG_PASSWORD", "provisa"),
+    )
+    yield sp
+    await sp.close_all()
 
 
 async def _fetch_orders(source_pool):
-    """Fetch a small result set from PG for format tests. Skip if unavailable."""
-    if source_pool is None:
-        pytest.skip("PostgreSQL unavailable")
-    try:
-        from provisa.executor.direct import execute_direct
-        result = await execute_direct(
-            source_pool, "test-pg",
-            'SELECT "id", "amount" FROM "public"."orders" LIMIT 5',
-        )
-        return result
-    except Exception as exc:
-        pytest.skip(f"PostgreSQL unavailable: {exc}")
+    """Fetch a small result set from PG for format tests."""
+    from provisa.executor.direct import execute_direct
+    result = await execute_direct(
+        source_pool, "test-pg",
+        'SELECT "id", "amount" FROM "public"."orders" LIMIT 5',
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------
