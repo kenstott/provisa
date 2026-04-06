@@ -2,11 +2,11 @@
 
 ## All Sources
 
-Comprehensive reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source without Trino (sub-100ms). "Trino connector" means the source routes through the federation engine for multi-source JOINs. Both can apply to the same source.
+Comprehensive reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source without Trino (sub-100ms). "Connector Name" is the Trino connector used when the source routes through the federation engine for multi-source JOINs. Both can apply to the same source.
 
 ### RDBMS
 
-| Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
+| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations |
 |------------|--------------|-----------------|-----------------|-----------|
 | `postgresql` | asyncpg | postgresql | postgres | Yes |
 | `mysql` | aiomysql | mysql | mysql | Yes |
@@ -18,7 +18,7 @@ Comprehensive reference for every source type Provisa supports. "Direct driver" 
 
 ### Cloud Data Warehouses
 
-| Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
+| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations |
 |------------|--------------|-----------------|-----------------|-----------|
 | `snowflake` | — | snowflake | snowflake | Via Trino |
 | `bigquery` | — | bigquery | bigquery | Via Trino |
@@ -27,7 +27,7 @@ Comprehensive reference for every source type Provisa supports. "Direct driver" 
 
 ### Analytics / OLAP
 
-| Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
+| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations |
 |------------|--------------|-----------------|-----------------|-----------|
 | `clickhouse` | — | clickhouse | clickhouse | Via Trino |
 | `elasticsearch` | — | elasticsearch | — | No |
@@ -37,7 +37,7 @@ Comprehensive reference for every source type Provisa supports. "Direct driver" 
 
 ### Data Lake / Open Table Formats
 
-| Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
+| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations |
 |------------|--------------|-----------------|-----------------|-----------|
 | `iceberg` | — | iceberg | — | Via Trino |
 | `delta_lake` | — | delta_lake | — | Via Trino |
@@ -45,7 +45,7 @@ Comprehensive reference for every source type Provisa supports. "Direct driver" 
 
 ### NoSQL
 
-| Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
+| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations |
 |------------|--------------|-----------------|-----------------|-----------|
 | `mongodb` | — | mongodb | — | No |
 | `cassandra` | — | cassandra | — | No |
@@ -55,20 +55,20 @@ Comprehensive reference for every source type Provisa supports. "Direct driver" 
 
 ### Streaming
 
-| Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
+| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations |
 |------------|--------------|-----------------|-----------------|-----------|
 | `kafka` | — | kafka | — | Sink only |
 
 ### Graph & Semantic
 
-| Source Type | Mechanism | Trino Connector | Mutations |
+| Source Type | Mechanism | Connector Name | Mutations |
 |------------|-----------|-----------------|-----------|
 | `neo4j` | Cypher via HTTP API, results cached in PG | — | No |
 | `sparql` | SPARQL 1.1 POST, results cached in PG | — | No |
 
 ### Observability & Other
 
-| Source Type | Direct Driver | Trino Connector | SQLGlot Dialect | Mutations |
+| Source Type | Direct Driver | Connector Name | SQLGlot Dialect | Mutations |
 |------------|--------------|-----------------|-----------------|-----------|
 | `prometheus` | — | prometheus | — | No |
 | `google_sheets` | — | google_sheets | — | No |
