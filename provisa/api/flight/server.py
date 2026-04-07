@@ -22,8 +22,10 @@ Supports three modes controlled by a connection property in the Flight SQL hands
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import re
 
 import pyarrow as pa
 import pyarrow.flight as flight
@@ -36,6 +38,7 @@ from provisa.api.flight.catalog import (
     catalog_table_to_arrow_schema,
     catalog_table_to_flight_info,
     fetch_approved_queries,
+    fetch_approved_queries_async,
 )
 from provisa.compiler.parser import parse_query
 from provisa.compiler.rls import RLSContext, inject_rls
@@ -50,6 +53,15 @@ from provisa.transpiler.transpile import transpile, transpile_to_trino
 
 log = logging.getLogger(__name__)
 
+_SQL_PREFIX = re.compile(r"^\s*(SELECT|WITH)\b", re.IGNORECASE)
+_SQL_FROM = re.compile(r"\bFROM\s+(\w+)", re.IGNORECASE)
+_SQL_LIMIT = re.compile(r"\bLIMIT\s+(\d+)", re.IGNORECASE)
+_GQL_OP_NAME = re.compile(r"\bquery\s+(\w+)")
+
+
+def _is_sql(query: str) -> bool:
+    return bool(_SQL_PREFIX.match(query))
+
 
 class ProvisaFlightServer(flight.FlightServerBase):
     """Arrow Flight server that executes GraphQL queries and streams Arrow data.
@@ -60,12 +72,13 @@ class ProvisaFlightServer(flight.FlightServerBase):
       - (default): full GraphQL query execution
     """
 
-    def __init__(self, state, location="grpc://0.0.0.0:8815", **kwargs):
-        import asyncio
+    def __init__(self, state, location="grpc://0.0.0.0:8815", *, main_loop=None, **kwargs):
         super().__init__(location, **kwargs)
         self._state = state
         self._session_modes: dict[bytes, str] = {}  # token -> mode
-        # Persistent event loop for async execution (asyncpg pools must use the same loop)
+        # The main event loop owns the asyncpg pools; dispatch coroutines to it.
+        self._main_loop = main_loop or asyncio.get_event_loop()
+        # Keep a local loop for non-pool async work.
         self._loop = asyncio.new_event_loop()
 
     @staticmethod
@@ -355,8 +368,90 @@ class ProvisaFlightServer(flight.FlightServerBase):
 
         return document, ctx, rls, role, compiled, decision, variables
 
+    def _do_get_sql(self, request: dict) -> flight.RecordBatchStream:
+        """Execute SQL where FROM references an approved query operation name."""
+        try:
+            return self._do_get_sql_inner(request)
+        except flight.FlightServerError:
+            raise
+        except Exception as exc:
+            log.exception("SQL flight execution failed")
+            raise flight.FlightServerError(f"SQL execution failed: {type(exc).__name__}: {exc}") from exc
+
+    def _do_get_sql_inner(self, request: dict) -> flight.RecordBatchStream:
+        sql = request.get("query", "")
+        role_id = request.get("role", "admin")
+
+        from_match = _SQL_FROM.search(sql)
+        if not from_match:
+            raise flight.FlightServerError("Cannot parse FROM clause")
+        op_name = from_match.group(1)
+
+        limit_match = _SQL_LIMIT.search(sql)
+        limit = int(limit_match.group(1)) if limit_match else None
+
+        approved = asyncio.run_coroutine_threadsafe(
+            fetch_approved_queries_async(self._state), self._main_loop
+        ).result()
+        matched = None
+        for q in approved:
+            m = _GQL_OP_NAME.search(q.query_text or "")
+            if m and m.group(1) == op_name:
+                matched = q
+                break
+
+        if matched is None:
+            raise flight.FlightServerError(f"Approved query not found: {op_name}")
+
+        if role_id not in self._state.schemas:
+            raise flight.FlightServerError(f"Unknown role: {role_id}")
+
+        ctx = self._state.contexts[role_id]
+        rls = self._state.rls_contexts.get(role_id, RLSContext.empty())
+        role = self._state.roles.get(role_id)
+        schema = self._state.schemas[role_id]
+
+        document = parse_query(schema, matched.query_text, None)
+        compiled_queries = compile_query(document, ctx, None)
+        if not compiled_queries:
+            raise flight.FlightServerError("No query fields in approved query")
+
+        compiled = compiled_queries[0]
+        decision = decide_route(
+            sources=compiled.sources,
+            source_types=self._state.source_types,
+            source_dialects=self._state.source_dialects,
+        )
+
+        compiled_for_exec = inject_rls(compiled, ctx, rls)
+        sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
+        if sampling:
+            compiled_for_exec = apply_sampling(compiled_for_exec, get_sample_size())
+
+        target_sql = transpile(compiled_for_exec.sql, decision.dialect or "postgres")
+        result = asyncio.run_coroutine_threadsafe(
+            execute_direct(
+                self._state.source_pools, decision.source_id,
+                target_sql, compiled_for_exec.params,
+            ),
+            self._main_loop,
+        ).result()
+        table = rows_to_arrow_table(result.rows, compiled.columns)
+        if limit is not None:
+            table = table.slice(0, limit)
+        return flight.RecordBatchStream(table)
+
     def _do_get_default(self, ticket):
-        """Original full-execution do_get path."""
+        """Execute a GraphQL or SQL query ticket and return Arrow record batches."""
+        try:
+            request = json.loads(ticket.ticket.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            raise flight.FlightServerError(f"Invalid ticket: {e}")
+
+        query_text = request.get("query", "")
+        if _is_sql(query_text):
+            return self._do_get_sql(request)
+
         document, ctx, rls, role, compiled, decision, variables = \
             self._compile_query(ticket.ticket)
 
@@ -368,12 +463,13 @@ class ProvisaFlightServer(flight.FlightServerBase):
             if sampling:
                 compiled_for_exec = apply_sampling(compiled_for_exec, get_sample_size())
             target_sql = transpile(compiled_for_exec.sql, decision.dialect or "postgres")
-            result = self._loop.run_until_complete(
+            result = asyncio.run_coroutine_threadsafe(
                 execute_direct(
                     self._state.source_pools, decision.source_id,
                     target_sql, compiled_for_exec.params,
-                )
-            )
+                ),
+                self._main_loop,
+            ).result()
             table = rows_to_arrow_table(result.rows, compiled.columns)
             return flight.RecordBatchStream(table)
 

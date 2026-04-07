@@ -86,7 +86,7 @@ class TestBuildEndpoint:
         cfg = self._cfg()
         cols = [ApiColumn(name="id", type=ApiColumnType.integer)]
         ep = build_endpoint(cfg, "users", "MATCH (u:User) RETURN u.id AS id", cols)
-        assert "/query/v2" in ep.path
+        assert "/tx/commit" in ep.path
         assert "neo4j" in ep.path
 
     def test_response_normalizer_is_neo4j_tabular(self):
@@ -243,10 +243,10 @@ class TestLiveNeo4jExecution:
                 name="n", type=ApiColumnType.integer)],
         )
 
-        payload = {"statement": cypher, "parameters": {}}
+        payload = {"statements": [{"statement": cypher}]}
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                f"http://{self.NEO4J_HOST}:{self.NEO4J_PORT}/db/neo4j/query/v2",
+                f"http://{self.NEO4J_HOST}:{self.NEO4J_PORT}/db/neo4j/tx/commit",
                 json=payload,
                 headers={"Content-Type": "application/json", "Accept": "application/json"},
                 timeout=10.0,
@@ -266,8 +266,8 @@ class TestLiveNeo4jExecution:
         cypher = "RETURN 'hello' AS greeting, 42 AS answer"
         async with httpx.AsyncClient() as client:
             resp = await client.post(
-                f"http://{self.NEO4J_HOST}:{self.NEO4J_PORT}/db/neo4j/query/v2",
-                json={"statement": cypher, "parameters": {}},
+                f"http://{self.NEO4J_HOST}:{self.NEO4J_PORT}/db/neo4j/tx/commit",
+                json={"statements": [{"statement": cypher}]},
                 headers={"Content-Type": "application/json", "Accept": "application/json"},
                 timeout=10.0,
             )

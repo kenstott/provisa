@@ -60,12 +60,12 @@ def build_endpoint(
 ) -> ApiEndpoint:
     """Build an ApiEndpoint for a single Neo4j table (Cypher query).
 
-    The endpoint POSTs the Cypher to Neo4j's HTTP transaction API v2
+    The endpoint POSTs the Cypher to Neo4j's HTTP legacy transaction API
     and uses the neo4j_tabular normalizer to convert the response.
     """
     return ApiEndpoint(
         source_id=cfg.source_id,
-        path=f"/db/{cfg.database}/query/v2",
+        path=f"/db/{cfg.database}/tx/commit",
         method="POST",
         table_name=table_name,
         columns=columns,

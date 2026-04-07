@@ -44,7 +44,7 @@ class TestCompileBasic:
         """Basic compile returns a non-empty SQL string."""
         resp = await client.post(
             "/data/compile",
-            json={"query": "{ orders { id amount } }", "role": "admin"},
+            json={"query": "{ sales_analytics__orders { id amount } }", "role": "admin"},
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -55,7 +55,7 @@ class TestCompileBasic:
         """Compile response includes the enforcement object (REQ-161)."""
         resp = await client.post(
             "/data/compile",
-            json={"query": "{ orders { id amount } }", "role": "admin"},
+            json={"query": "{ sales_analytics__orders { id amount } }", "role": "admin"},
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -70,7 +70,7 @@ class TestCompileBasic:
         """schema_scope in enforcement reflects the requested role."""
         resp = await client.post(
             "/data/compile",
-            json={"query": "{ orders { id } }", "role": "analyst"},
+            json={"query": "{ sales_analytics__orders { id } }", "role": "analyst"},
         )
         assert resp.status_code == 200
         scope = resp.json()["enforcement"]["schema_scope"]
@@ -80,7 +80,7 @@ class TestCompileBasic:
         """Compile includes route and route_reason fields."""
         resp = await client.post(
             "/data/compile",
-            json={"query": "{ orders { id } }", "role": "admin"},
+            json={"query": "{ sales_analytics__orders { id } }", "role": "admin"},
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -91,7 +91,7 @@ class TestCompileBasic:
         """Compile identifies the source(s) involved in the query."""
         resp = await client.post(
             "/data/compile",
-            json={"query": "{ orders { id } }", "role": "admin"},
+            json={"query": "{ sales_analytics__orders { id } }", "role": "admin"},
         )
         assert resp.status_code == 200
         sources = resp.json()["sources"]
@@ -102,7 +102,7 @@ class TestCompileBasic:
         """Compile always returns a params list (may be empty)."""
         resp = await client.post(
             "/data/compile",
-            json={"query": "{ orders { id } }", "role": "admin"},
+            json={"query": "{ sales_analytics__orders { id } }", "role": "admin"},
         )
         assert resp.status_code == 200
         assert isinstance(resp.json()["params"], list)
@@ -114,7 +114,7 @@ class TestCompileWithVariables:
         resp = await client.post(
             "/data/compile",
             json={
-                "query": "query ($region: String) { orders(where: {region: {_eq: $region}}) { id } }",
+                "query": "query ($region: String) { sales_analytics__orders(where: {region: {eq: $region}}) { id } }",
                 "variables": {"region": "EMEA"},
                 "role": "admin",
             },
@@ -133,7 +133,7 @@ class TestCompileMultiRoot:
         resp = await client.post(
             "/data/compile",
             json={
-                "query": "{ orders { id } customers { id } }",
+                "query": "{ sales_analytics__orders { id } sales_analytics__customers { id } }",
                 "role": "admin",
             },
         )
@@ -153,7 +153,7 @@ class TestCompileRLSEnforcement:
         # Use a role known to have RLS from test config
         resp = await client.post(
             "/data/compile",
-            json={"query": "{ orders { id } }", "role": "analyst"},
+            json={"query": "{ sales_analytics__orders { id } }", "role": "analyst"},
         )
         assert resp.status_code == 200
         enforcement = resp.json()["enforcement"]
@@ -161,10 +161,12 @@ class TestCompileRLSEnforcement:
         assert isinstance(enforcement["rls_filters_applied"], list)
 
     async def test_compile_excluded_columns_shown(self, client):
-        """Columns hidden from the role appear in columns_excluded."""
+        """Columns not requested appear in columns_excluded."""
+        # analyst can see: id, customer_id, region, status, created_at on orders
+        # querying only id means the rest appear as excluded
         resp = await client.post(
             "/data/compile",
-            json={"query": "{ orders { id amount region } }", "role": "analyst"},
+            json={"query": "{ sales_analytics__orders { id } }", "role": "analyst"},
         )
         assert resp.status_code == 200
         enforcement = resp.json()["enforcement"]
@@ -176,7 +178,7 @@ class TestCompileErrors:
         """Syntactically invalid GraphQL returns 400."""
         resp = await client.post(
             "/data/compile",
-            json={"query": "{ orders { id", "role": "admin"},
+            json={"query": "{ sales_analytics__orders { id", "role": "admin"},
         )
         assert resp.status_code == 400
 
@@ -184,7 +186,7 @@ class TestCompileErrors:
         """Unknown role returns 400 (no schema found)."""
         resp = await client.post(
             "/data/compile",
-            json={"query": "{ orders { id } }", "role": "nonexistent_role"},
+            json={"query": "{ sales_analytics__orders { id } }", "role": "nonexistent_role"},
         )
         assert resp.status_code == 400
 

@@ -247,7 +247,7 @@ services:
   # Optional: Apache Jena Fuseki (SPARQL) for Phase AO integration tests
   # Start with: docker compose up fuseki
   fuseki:
-    image: atomgraph/fuseki:4.10.0
+    image: atomgraph/fuseki:latest
     profiles: ["sparql"]
     ports:
       - "3030:3030"

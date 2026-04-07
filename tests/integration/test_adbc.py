@@ -224,6 +224,49 @@ class TestLiveAdbcExecution:
     FLIGHT_HOST = "localhost"
     FLIGHT_PORT = 8815
 
+    _GOVERNED_QUERIES = {
+        "ActiveOrders": (
+            "query ActiveOrders { sales_analytics__orders { id amount region status created_at } }"
+        ),
+        "AnalystOrders": (
+            "query AnalystOrders { sales_analytics__orders { id region status created_at } }"
+        ),
+    }
+
+    @pytest.fixture(scope="class", autouse=True)
+    def seed_governed_queries(self):
+        """Submit and approve ActiveOrders and AnalystOrders governed queries."""
+        import httpx
+
+        base = self.PROVISA_URL
+        approve_mutation = """
+        mutation ApproveQuery($queryId: Int!, $approverId: String!) {
+          approveQuery(queryId: $queryId, approverId: $approverId) {
+            success message
+          }
+        }
+        """
+        for op_name, query_text in self._GOVERNED_QUERIES.items():
+            try:
+                submit_resp = httpx.post(
+                    f"{base}/data/submit",
+                    json={"query": query_text, "role": "admin"},
+                    timeout=10,
+                )
+                if submit_resp.status_code != 200:
+                    continue
+                query_id = submit_resp.json()["query_id"]
+                httpx.post(
+                    f"{base}/admin/graphql",
+                    json={
+                        "query": approve_mutation,
+                        "variables": {"queryId": query_id, "approverId": "admin"},
+                    },
+                    timeout=10,
+                )
+            except Exception:
+                pass
+
     @pytest.fixture
     def conn(self):
         from provisa_client.adbc import adbc_connect

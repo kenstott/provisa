@@ -291,12 +291,12 @@ def fetch_approved_queries(state) -> list[ApprovedQuery]:
         return []
     loop = asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(_fetch_approved_queries_async(state))
+        return loop.run_until_complete(fetch_approved_queries_async(state))
     finally:
         loop.close()
 
 
-async def _fetch_approved_queries_async(state) -> list[ApprovedQuery]:
+async def fetch_approved_queries_async(state) -> list[ApprovedQuery]:
     async with state.pg_pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT stable_id, query_text, compiled_sql "

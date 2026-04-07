@@ -726,6 +726,7 @@ async def lifespan(app: FastAPI):
         flight_port = int(os.environ.get("FLIGHT_PORT", str(state.server_cfg.get("flight_port", 8815))))
         flight_server = ProvisaFlightServer(
             state, location=f"grpc://0.0.0.0:{flight_port}",
+            main_loop=asyncio.get_running_loop(),
         )
         import threading
         flight_thread = threading.Thread(

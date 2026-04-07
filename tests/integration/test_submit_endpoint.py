@@ -45,22 +45,21 @@ class TestSubmitBasic:
         resp = await client.post(
             "/data/submit",
             json={
-                "query": "query MonthlyRevenue { orders { id amount region } }",
+                "query": "query MonthlyRevenue { sales_analytics__orders { id amount region } }",
                 "role": "admin",
             },
         )
         assert resp.status_code == 200
         body = resp.json()
         assert "query_id" in body
-        # UUID format: 8-4-4-4-12 hex chars
-        assert len(body["query_id"]) == 36
+        assert isinstance(body["query_id"], int) and body["query_id"] > 0
 
     async def test_submit_returns_operation_name(self, client):
         """Submit response echoes back the operation name."""
         resp = await client.post(
             "/data/submit",
             json={
-                "query": "query SalesReport { orders { id amount } }",
+                "query": "query SalesReport { sales_analytics__orders { id amount } }",
                 "role": "admin",
             },
         )
@@ -72,7 +71,7 @@ class TestSubmitBasic:
         resp = await client.post(
             "/data/submit",
             json={
-                "query": "query CustomerList { customers { id name } }",
+                "query": "query CustomerList { sales_analytics__customers { id name } }",
                 "role": "admin",
             },
         )
@@ -88,7 +87,7 @@ class TestSubmitRequiresOperationName:
         resp = await client.post(
             "/data/submit",
             json={
-                "query": "{ orders { id amount } }",
+                "query": "{ sales_analytics__orders { id amount } }",
                 "role": "admin",
             },
         )
@@ -99,7 +98,7 @@ class TestSubmitRequiresOperationName:
         resp = await client.post(
             "/data/submit",
             json={
-                "query": "query { orders { id } }",
+                "query": "query { sales_analytics__orders { id } }",
                 "role": "admin",
             },
         )
@@ -112,7 +111,7 @@ class TestSubmitWithMetadata:
         resp = await client.post(
             "/data/submit",
             json={
-                "query": "query RevenueByRegion { orders { id amount region } }",
+                "query": "query RevenueByRegion { sales_analytics__orders { id amount region } }",
                 "role": "admin",
                 "business_purpose": "Monthly revenue tracking by region",
                 "owner_team": "analytics",
@@ -128,7 +127,7 @@ class TestSubmitWithMetadata:
         resp = await client.post(
             "/data/submit",
             json={
-                "query": "query OrderStream { orders { id amount } }",
+                "query": "query OrderStream { sales_analytics__orders { id amount } }",
                 "role": "admin",
                 "sink": {
                     "topic": "order-events",
@@ -145,7 +144,7 @@ class TestSubmitWithMetadata:
         resp = await client.post(
             "/data/submit",
             json={
-                "query": "query QuarterlyReport { orders { id } }",
+                "query": "query QuarterlyReport { sales_analytics__orders { id } }",
                 "role": "admin",
                 "expiry_date": "2026-12-31",
             },
@@ -160,7 +159,7 @@ class TestSubmitGovernanceGate:
         resp = await client.post(
             "/data/submit",
             json={
-                "query": "query SecretData { orders { id } }",
+                "query": "query SecretData { sales_analytics__orders { id } }",
                 "role": "readonly",
             },
         )
@@ -172,7 +171,7 @@ class TestSubmitGovernanceGate:
         resp = await client.post(
             "/data/submit",
             json={
-                "query": "query Test { orders { id } }",
+                "query": "query Test { sales_analytics__orders { id } }",
                 "role": "nonexistent",
             },
         )
@@ -182,7 +181,7 @@ class TestSubmitGovernanceGate:
 class TestSubmitIdempotency:
     async def test_submit_same_operation_twice_returns_distinct_ids(self, client):
         """Each submit call produces a new pending entry, even for the same op name."""
-        query = "query DuplicateTest { orders { id } }"
+        query = "query DuplicateTest { sales_analytics__orders { id } }"
 
         resp1 = await client.post(
             "/data/submit",

@@ -9,11 +9,33 @@
 # permission from the copyright holder.
 
 import os
+import socket
 
 import asyncpg
 import pytest
 import pytest_asyncio
 import trino
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _reserve_flight_port():
+    """Allocate a free port for the Arrow Flight server before any test starts.
+
+    Multiple integration tests spin up an in-process FastAPI app via
+    ASGITransport. Each app instance tries to bind the Arrow Flight gRPC
+    server on FLIGHT_PORT (default 8815). If port 8815 is already in use
+    (e.g. by a previous test run's zombie process or the live server) the
+    lifespan fails and every request returns 400. Setting a random free port
+    here ensures every in-process app gets a usable socket.
+    """
+    port = _free_port()
+    os.environ.setdefault("FLIGHT_PORT", str(port))
 
 
 @pytest.fixture(scope="session")

@@ -152,9 +152,9 @@ class TestNotifyDispatch:
             return mock_response
 
         mock_client.post = AsyncMock(side_effect=capture_post)
-        mgr._http_client = mock_client
 
         await mgr.setup(pg_pool)
+        mgr._http_client = mock_client  # override after setup (setup creates a real client)
         mgr._running = True
 
         # Manually send a NOTIFY to simulate the PG trigger firing

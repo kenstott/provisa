@@ -25,6 +25,7 @@ Tests are organised into three tiers:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import threading
@@ -418,22 +419,36 @@ class TestFlightDoGetWithRealData:
         from provisa.executor.pool import SourcePool
         from unittest.mock import MagicMock
 
-        # Create the server first so we can use its dedicated event loop for pool creation.
-        # The pool and the loop used for execution must be the same loop.
-        state_placeholder = MagicMock()
-        server = ProvisaFlightServer(state_placeholder, location=location)
-        loop = server._loop
+        # Create a dedicated event loop that runs in a background thread.
+        # ProvisaFlightServer dispatches asyncpg coroutines to _main_loop via
+        # run_coroutine_threadsafe, so _main_loop must be actively running.
+        main_loop = asyncio.new_event_loop()
 
+        def _run_main_loop():
+            main_loop.run_forever()
+
+        loop_thread = threading.Thread(target=_run_main_loop, daemon=True)
+        loop_thread.start()
+
+        # Create source pool on the running main_loop.
         source_pool = SourcePool()
-        loop.run_until_complete(source_pool.add(
-            "test-pg",
-            source_type="postgresql",
-            host=os.environ.get("PG_HOST", "localhost"),
-            port=int(os.environ.get("PG_PORT", "5432")),
-            database=os.environ.get("PG_DATABASE", "provisa"),
-            user=os.environ.get("PG_USER", "provisa"),
-            password=os.environ.get("PG_PASSWORD", "provisa"),
-        ))
+        asyncio.run_coroutine_threadsafe(
+            source_pool.add(
+                "test-pg",
+                source_type="postgresql",
+                host=os.environ.get("PG_HOST", "localhost"),
+                port=int(os.environ.get("PG_PORT", "5432")),
+                database=os.environ.get("PG_DATABASE", "provisa"),
+                user=os.environ.get("PG_USER", "provisa"),
+                password=os.environ.get("PG_PASSWORD", "provisa"),
+            ),
+            main_loop,
+        ).result(timeout=15)
+
+        state_placeholder = MagicMock()
+        server = ProvisaFlightServer(
+            state_placeholder, location=location, main_loop=main_loop
+        )
 
         state = MagicMock()
         state.schemas = {"admin": schema}
@@ -448,8 +463,8 @@ class TestFlightDoGetWithRealData:
         state.trino_conn = None
         server._state = state
 
-        thread = threading.Thread(target=server.serve, daemon=True)
-        thread.start()
+        flight_thread = threading.Thread(target=server.serve, daemon=True)
+        flight_thread.start()
 
         import time
         for _ in range(20):
@@ -463,12 +478,13 @@ class TestFlightDoGetWithRealData:
             location,
             generic_options=[("grpc.max_metadata_size", 16 * 1024 * 1024)],
         )
-        yield client, server, state, source_pool, loop
+        yield client, server, state, source_pool, main_loop
 
         client.close()
         server.shutdown()
-        loop.run_until_complete(source_pool.close_all())
-        loop.close()
+        asyncio.run_coroutine_threadsafe(source_pool.close_all(), main_loop).result(timeout=10)
+        main_loop.call_soon_threadsafe(main_loop.stop)
+        loop_thread.join(timeout=5)
 
     async def test_flight_server_starts(self, pg_backed_flight):
         """PG-backed Flight server starts and accepts a connection."""
