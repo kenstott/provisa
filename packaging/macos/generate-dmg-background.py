@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Generate the DMG installer background image (800×500 @1x).
+"""Generate the DMG installer background image (660×400 @1x).
 
 Layout:
   Top:     Provisa branding + tagline
-  Left:    App icon position (x=200, y=265)
-  Right:   Applications folder drop target (x=600, y=265)
+  Left:    App icon position (x=165, y=155)
+  Right:   Applications folder drop target (x=495, y=155)
   Centre:  Drag arrow between them
   Bottom:  "Drag Provisa to the Applications folder to install" instruction
 
@@ -33,7 +33,7 @@ from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-W, H = 800, 500
+W, H = 660, 400
 
 GRAD_TL = (15,  40, 100)   # deep navy
 GRAD_BR = (80,  10, 140)   # rich purple
@@ -98,10 +98,10 @@ def make_background(scale: int = SCALE) -> Image.Image:
     draw.text((inst_x, inst_y), inst_text, font=inst_font, fill=TEXT_DIM)
 
     # ── horizontal drag arrow (Provisa → Applications) ────────────────────
-    app_cx  = int(200 * scale)   # Provisa.app icon centre
-    apps_cx = int(600 * scale)   # Applications drop target centre
+    app_cx  = int(165 * scale)   # Provisa.app icon centre
+    apps_cx = int(495 * scale)   # Applications drop target centre
     icon_r  = int(55 * scale)    # approximate icon half-width
-    arr_y   = int(265 * scale)   # vertical centre of the icon row
+    arr_y   = int(155 * scale)   # vertical centre of the icon row
     ah = int(14 * scale)         # arrowhead half-size
     lw = max(2, int(3 * scale))
 

@@ -24,10 +24,22 @@ export PATH="${MACOS_DIR}/bin/${BIN_ARCH}:${PATH}"
 # ── First launch ──────────────────────────────────────────────────────────────
 if [ ! -f "$SENTINEL" ]; then
   if [ ! -x "$FIRST_LAUNCH_SCRIPT" ]; then
-    printf "[provisa] first-launch.sh not found or not executable.\n" >&2
+    osascript -e 'display alert "Provisa" message "Setup script not found. Please reinstall Provisa." as critical'
     exit 1
   fi
-  exec "$FIRST_LAUNCH_SCRIPT"
+
+  # The app has no terminal (LSUIElement). Open a Terminal window so the
+  # user can see progress, answer prompts, and watch setup complete.
+  WRAP="$(mktemp "${TMPDIR:-/tmp}/provisa-setup-XXXXX.sh")"
+  printf '#!/usr/bin/env bash\nexec "%s"\n' "$FIRST_LAUNCH_SCRIPT" > "$WRAP"
+  chmod +x "$WRAP"
+  osascript \
+    -e 'tell application "Terminal"' \
+    -e "  do script \"$WRAP\"" \
+    -e '  set custom title of front window to "Provisa Setup"' \
+    -e '  activate' \
+    -e 'end tell'
+  exit 0
 fi
 
 # ── Delegate to provisa CLI ───────────────────────────────────────────────────
@@ -36,6 +48,6 @@ if [ -x "/usr/local/bin/provisa" ]; then
 elif [ -x "$PROVISA_CLI" ]; then
   exec "$PROVISA_CLI" "$@"
 else
-  printf "[provisa] provisa CLI not found. Re-run the app to complete setup.\n" >&2
+  osascript -e 'display alert "Provisa" message "Setup is not complete. Please open Provisa.app to run first-launch setup." as warning'
   exit 1
 fi

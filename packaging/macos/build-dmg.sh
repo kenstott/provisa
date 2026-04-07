@@ -270,11 +270,12 @@ create_dmg() {
   mkdir -p "$tmp_dmg"
   cp -r "${APP_BUNDLE}" "${tmp_dmg}/Provisa.app"
 
-  # Images sit alongside the .app in the DMG (not inside it), in a hidden
-  # dot-folder so Finder doesn't display it as a visible icon.
+  # Images sit alongside the .app in the DMG (not inside it).
+  # chflags hidden makes Finder hide the folder on the mounted volume.
   # first-launch.sh copies them to ~/.provisa/images on first run.
-  mkdir -p "${tmp_dmg}/.images"
-  cp "${IMAGES_DIR}"/*.tar "${tmp_dmg}/.images/"
+  mkdir -p "${tmp_dmg}/images"
+  cp "${IMAGES_DIR}"/*.tar "${tmp_dmg}/images/"
+  chflags hidden "${tmp_dmg}/images"
 
   # Remove any existing DMG so create-dmg doesn't complain
   rm -f "${DMG_PATH}"
@@ -284,11 +285,11 @@ create_dmg() {
     --volicon "${SCRIPT_DIR}/Provisa.icns" \
     --background "${SCRIPT_DIR}/dmg-background.png" \
     --window-pos 200 120 \
-    --window-size 800 500 \
+    --window-size 660 400 \
     --icon-size 128 \
-    --icon "Provisa.app" 200 265 \
+    --icon "Provisa.app" 165 155 \
     --hide-extension "Provisa.app" \
-    --app-drop-link 600 265 \
+    --app-drop-link 495 155 \
     "${DMG_PATH}" \
     "${tmp_dmg}/"
 

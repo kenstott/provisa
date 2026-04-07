@@ -168,7 +168,7 @@ stage_images() {
   local bundle_parent
   bundle_parent="$(dirname "$BUNDLE_DIR")"
   local src=""
-  for candidate in "${bundle_parent}/.images" "${bundle_parent}/images"; do
+  for candidate in "${bundle_parent}/images" "${bundle_parent}/.images"; do
     if [ -d "$candidate" ] && ls "$candidate"/*.tar &>/dev/null 2>&1; then
       src="$candidate"
       break
@@ -177,7 +177,7 @@ stage_images() {
 
   # 2. Scan mounted DMG volumes (user dragged .app to Applications but DMG still open)
   if [ -z "$src" ]; then
-    for vol_images in /Volumes/*/.images /Volumes/*/images; do
+    for vol_images in /Volumes/*/images /Volumes/*/.images; do
       if [ -d "$vol_images" ] && ls "$vol_images"/*.tar &>/dev/null 2>&1; then
         src="$vol_images"
         break
