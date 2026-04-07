@@ -150,6 +150,7 @@ export async function createSource(input: {
   database: string;
   username: string;
   password: string;
+  path?: string | null;
 }): Promise<MutationResult> {
   const data = await gql<{ createSource: MutationResult }>(
     `mutation($input: SourceInput!) { createSource(input: $input) { success message } }`,
@@ -261,6 +262,7 @@ export async function updateSource(input: {
   database: string;
   username: string;
   password: string;
+  path?: string | null;
 }): Promise<MutationResult> {
   const data = await gql<{ updateSource: MutationResult }>(
     `mutation($input: SourceInput!) { updateSource(input: $input) { success message } }`,
@@ -485,6 +487,7 @@ export interface CompileResult {
   root_field: string;
   canonical_field: string;
   column_aliases: { field_name: string; column: string }[];
+  optimizations?: string[];
 }
 
 export async function compileQuery(

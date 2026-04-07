@@ -70,13 +70,23 @@ function SqlPanel({ compiled }: { compiled: CompileResult }) {
           </div>
         )}
         <div>
-          <strong>Route:</strong> {compiled.route}
+          <strong>Route:</strong> {compiled.route === 'virtual' ? 'federated' : compiled.route}
         </div>
         <div className="provisa-tools-reason">{compiled.route_reason}</div>
         <div>
           <strong>Sources:</strong> {compiled.sources.join(", ")}
         </div>
       </div>
+      {compiled.optimizations && compiled.optimizations.length > 0 && (
+        <div className="provisa-tools-optimizations">
+          <span className="provisa-tools-label">Optimizations</span>
+          <ul className="provisa-tools-optimizations-list">
+            {compiled.optimizations.map((opt, i) => (
+              <li key={i}>{opt}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="provisa-tools-code-header">
         <span className="provisa-tools-label">{sqlLabel}</span>
         <button

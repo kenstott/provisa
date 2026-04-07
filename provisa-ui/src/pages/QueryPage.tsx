@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useRef, useCallback, useState, useEffect, useMemo } from "react";
+import { useRef, useCallback, useState, useMemo } from "react";
 import { GraphiQL } from "graphiql";
 import { createGraphiQLFetcher } from "@graphiql/toolkit";
 import "@graphiql/react/style.css";
@@ -28,7 +28,6 @@ import {
 
 // @ts-ignore — CJS fork, no type declarations
 import { Explorer } from "graphiql-explorer";
-import { initializeMode } from 'monaco-graphql/esm/initialize'
 
 const colors = {
   keyword: "hsl(var(--color-primary))",
@@ -76,20 +75,15 @@ const explorerStyles = {
   actionButtonStyle: {},
 };
 
-/** Custom ExplorerPlugin that seeds the query from localStorage before Monaco loads. */
+/** Custom ExplorerPlugin that syncs GraphiQL state with the Explorer. */
 export function SyncedExplorerContent() {
   const { setOperationName, run } = useGraphiQLActions();
   const schema = useGraphiQL((s) => s.schema);
   const [liveQuery, setQuery] = useOptimisticState(useOperationsEditorState());
   // initialQuery is set from storage (graphiql:query or tabState) during provider init.
-  // Use it as fallback before Monaco populates liveQuery.
+  // Use it as fallback before the editor populates liveQuery.
   const initialQuery = useGraphiQL((s) => s.initialQuery);
   const query = liveQuery || initialQuery;
-
-  useEffect(() => {
-    if (!schema) return
-    initializeMode().setSchemaConfig([{ schema }])
-  }, [schema])
 
   const handleRunOperation = useCallback(
     (operationName?: string) => {

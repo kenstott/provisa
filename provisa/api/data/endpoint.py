@@ -28,6 +28,7 @@ from pydantic import BaseModel
 
 from provisa.cache.key import cache_key
 from provisa.cache.middleware import build_cache_headers, check_cache, store_result
+from provisa.compiler.hints import extract_graphql_hints
 from provisa.compiler.mask_inject import inject_masking
 from provisa.compiler.mutation_gen import (
     compile_mutation,
@@ -241,6 +242,9 @@ async def graphql_endpoint(
     if not request.query:
         raise HTTPException(status_code=400, detail="query is required")
 
+    graphql_hints = extract_graphql_hints(request.query)
+    steward_hint = graphql_hints.get("route")
+
     schema = state.schemas[role_id]
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
@@ -300,6 +304,7 @@ async def graphql_endpoint(
             force_redirect=force_redirect,
             redirect_threshold=x_provisa_redirect_threshold,
             redirect_format=redirect_format,
+            steward_hint=steward_hint,
         )
 
     # AN (REQ-291): store APQ hash only after successful execution — never cache rejected queries
@@ -447,6 +452,7 @@ async def _execute_one_field(
     compiled, ctx, rls, state, variables, role, role_id,
     document, fresh_mvs, output_format,
     *, force_redirect, redirect_config, effective_redirect_format, probe_limit,
+    steward_hint: str | None = None,
 ):
     """Execute a single compiled query field through the full pipeline.
 
@@ -476,6 +482,7 @@ async def _execute_one_field(
         sources=compiled.sources,
         source_types=state.source_types,
         source_dialects=state.source_dialects,
+        steward_hint=steward_hint,
         has_json_extract=has_json_extract,
     )
     log.info(
@@ -701,7 +708,7 @@ def _recompile_for_trino_single(compiled, document, ctx, rls, state, variables, 
     return catalog_compiled
 
 
-async def _handle_query(document, ctx, rls, state, variables, role, output_format="json", role_id="admin", *, force_redirect=False, redirect_threshold=None, redirect_format=None):
+async def _handle_query(document, ctx, rls, state, variables, role, output_format="json", role_id="admin", *, force_redirect=False, redirect_threshold=None, redirect_format=None, steward_hint: str | None = None):
     """Handle a GraphQL query operation with content negotiation.
 
     Pipeline per root field: compile → RLS → masking → MV rewrite → sampling
@@ -751,6 +758,7 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
             redirect_config=redirect_config,
             effective_redirect_format=effective_redirect_format,
             probe_limit=probe_limit,
+            steward_hint=steward_hint,
         )
         if cached_entry is not None:
             headers = build_cache_headers(cached_entry)
@@ -781,6 +789,7 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
             redirect_config=redirect_config,
             effective_redirect_format=effective_redirect_format,
             probe_limit=probe_limit,
+            steward_hint=steward_hint,
         )
         if redirect_info is not None:
             merged_data[root_field] = None

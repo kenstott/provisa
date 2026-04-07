@@ -25,6 +25,7 @@ from fastapi.responses import Response
 from graphql import GraphQLSyntaxError
 from pydantic import BaseModel
 
+from provisa.compiler.hints import extract_graphql_hints, graphql_comments_to_sql
 from provisa.compiler.mask_inject import inject_masking
 from provisa.compiler.parser import GraphQLValidationError, parse_query
 from provisa.compiler.rls import RLSContext, inject_rls
@@ -176,6 +177,10 @@ async def compile_endpoint(
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
     role = state.roles.get(role_id)
 
+    graphql_hints = extract_graphql_hints(request.query)
+    steward_hint = graphql_hints.get("route")
+    sql_comment_prefix = graphql_comments_to_sql(request.query)
+
     try:
         document = parse_query(schema, request.query, request.variables)
     except (GraphQLValidationError, GraphQLSyntaxError) as e:
@@ -191,7 +196,10 @@ async def compile_endpoint(
     for compiled in compiled_queries:
         compiled = inject_rls(compiled, ctx, rls)
         compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
+
+        pre_mv_sources = set(compiled.sources)
         compiled = rewrite_if_mv_match(compiled, fresh_mvs)
+        mv_applied = compiled.sources != pre_mv_sources
 
         if hasattr(state, "kafka_table_configs") and state.kafka_table_configs:
             from provisa.kafka.window import inject_kafka_filters
@@ -208,6 +216,7 @@ async def compile_endpoint(
             sources=compiled.sources,
             source_types=state.source_types,
             source_dialects=state.source_dialects,
+            steward_hint=steward_hint,
             has_json_extract=has_json_extract,
         )
 
@@ -235,9 +244,20 @@ async def compile_endpoint(
             route_value=route_str,
         )
 
+        optimizations: list[str] = []
+        if mv_applied:
+            new_sources = compiled.sources - pre_mv_sources
+            optimizations.append(
+                f"Materialized view rewrite: sources → {', '.join(sorted(new_sources))}"
+            )
+        if steward_hint:
+            optimizations.append(f"Route override: {steward_hint} (via # @provisa)")
+        if sampling:
+            optimizations.append("Sampling applied (role lacks FULL_RESULTS capability)")
+
         results.append({
             "sql": compiled.sql,
-            "semantic_sql": make_semantic_sql(compiled.sql, ctx),
+            "semantic_sql": sql_comment_prefix + make_semantic_sql(compiled.sql, ctx),
             "trino_sql": trino_sql,
             "direct_sql": direct_sql,
             "params": compiled.params,
@@ -248,6 +268,7 @@ async def compile_endpoint(
             "canonical_field": compiled.canonical_field or compiled.root_field,
             "column_aliases": column_aliases,
             "enforcement": enforcement.model_dump(),
+            "optimizations": optimizations,
         })
 
     if len(results) == 1:

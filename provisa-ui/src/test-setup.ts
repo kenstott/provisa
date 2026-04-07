@@ -9,6 +9,12 @@
 // permission from the copyright holder.
 
 import "@testing-library/jest-dom/vitest";
+import { afterEach } from "vitest";
+import { cleanup } from "@testing-library/react";
+
+// @testing-library/react auto-cleanup doesn't reliably fire between tests in
+// vitest's vmThreads pool.  Register it explicitly so DOM state never leaks.
+afterEach(cleanup);
 
 // @react-aria/interactions patches HTMLElement.prototype.focus at module-init time.
 // In jsdom vm contexts the property can be accessor-only; re-declare as a plain

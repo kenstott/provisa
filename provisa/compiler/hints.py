@@ -17,6 +17,10 @@ Supported hints:
   - ``BROADCAST(table)``           → ``join_distribution_type = 'BROADCAST'``
   - ``NO_REORDER``                 → ``join_reordering_strategy = 'NONE'``
   - ``BROADCAST_SIZE(table, N)``   → ``join_max_broadcast_table_size = 'N'``
+
+Also parses GraphQL query comment hints of the form ``# @provisa key=value``:
+  - ``# @provisa route=trino``     → force Trino federation
+  - ``# @provisa route=direct``    → force direct driver
 """
 
 from __future__ import annotations
@@ -65,3 +69,77 @@ def extract_hints(sql: str) -> tuple[str, dict[str, str]]:
         cleaned = cleaned.replace(block_match.group(0), "", 1)
 
     return cleaned.strip(), session_props
+
+
+def extract_graphql_comments(query: str) -> list[str]:
+    """Extract all ``#`` comment lines from a GraphQL query string.
+
+    Returns each comment text (without the leading ``#``) as a list item,
+    in the order they appear.  Both ``@provisa`` directive lines and plain
+    description comments are included so callers can choose which to keep.
+
+    Args:
+        query: Raw GraphQL query string.
+
+    Returns:
+        List of comment strings (stripped), e.g.
+        ``["@provisa route=trino", "Fetch all active customers"]``.
+    """
+    comments: list[str] = []
+    for line in query.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            comments.append(stripped[1:].strip())
+    return comments
+
+
+def graphql_comments_to_sql(query: str) -> str:
+    """Convert GraphQL ``#`` comment lines to SQL ``--`` comment lines.
+
+    Returns a block of ``-- comment`` lines (terminated with a newline) that
+    can be prepended to a SQL string, or an empty string when there are no
+    comments.
+
+    Args:
+        query: Raw GraphQL query string.
+
+    Returns:
+        SQL comment block, e.g. ``"-- @provisa route=trino\\n-- My report\\n"``.
+    """
+    lines = extract_graphql_comments(query)
+    if not lines:
+        return ""
+    return "".join(f"-- {line}\n" for line in lines)
+
+
+def extract_graphql_hints(query: str) -> dict[str, str]:
+    """Extract ``# @provisa key=value`` hints from GraphQL query comment lines.
+
+    Lines beginning with ``#`` are GraphQL comments; this parser scans for
+    the ``@provisa`` marker and collects all ``key=value`` pairs that follow.
+
+    Example::
+
+        # @provisa route=trino
+        query MyReport { orders { id } }
+
+    Args:
+        query: Raw GraphQL query string.
+
+    Returns:
+        Dict of hint key → value, e.g. ``{"route": "trino"}``.
+    """
+    hints: dict[str, str] = {}
+    for line in query.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("#"):
+            continue
+        comment = stripped[1:].strip()
+        if not comment.startswith("@provisa"):
+            continue
+        rest = comment[len("@provisa"):].strip()
+        for part in rest.split():
+            if "=" in part:
+                k, _, v = part.partition("=")
+                hints[k.strip()] = v.strip()
+    return hints

@@ -290,6 +290,20 @@ body.graphiql-dark .graphiql-dialog {
   color: hsl(224, 10%, 50%);
 }
 
+.provisa-tools-optimizations {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.provisa-tools-optimizations-list {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: hsl(142, 71%, 45%);
+  list-style: disc;
+}
+
 /* Response panel layout for table/JSON toggle */
 .graphiql-container .graphiql-response {
   display: flex;
