@@ -168,21 +168,21 @@ sign_app() {
   # Developer ID + secure timestamp before the outer bundle is signed.
   # --deep is NOT used: it doesn't reliably propagate --timestamp.
   # Sign innermost files first, then the outer bundle.
+  # Sign all code objects in explicit dependency order (innermost first).
+  # find is not used because it doesn't guarantee order, and codesign requires
+  # every subcomponent to be signed before the file that contains/calls it.
   info "Signing bundled executables (inner → outer)..."
-
-  # 1. Mach-O binaries (limactl arm64 + x86_64)
-  while IFS= read -r -d '' f; do
-    if file "$f" | grep -q "Mach-O"; then
-      codesign "${sign_flags[@]}" "$f"
-      info "  Signed Mach-O: ${f#"${APP_BUNDLE}/"}"
-    fi
-  done < <(find "${APP_BUNDLE}/Contents/MacOS/bin" -type f -print0 2>/dev/null)
-
-  # 2. Scripts in Contents/MacOS (provisa-launcher, first-launch.sh)
-  while IFS= read -r -d '' f; do
+  local sign_targets=(
+    "${APP_BUNDLE}/Contents/MacOS/first-launch.sh"
+    "${APP_BUNDLE}/Contents/MacOS/bin/arm64/limactl"
+    "${APP_BUNDLE}/Contents/MacOS/bin/x86_64/limactl"
+    "${APP_BUNDLE}/Contents/MacOS/provisa-launcher"
+  )
+  for f in "${sign_targets[@]}"; do
+    [ -f "$f" ] || continue
     codesign "${sign_flags[@]}" "$f"
-    info "  Signed script: ${f#"${APP_BUNDLE}/"}"
-  done < <(find "${APP_BUNDLE}/Contents/MacOS" -maxdepth 1 -type f -print0)
+    info "  Signed: ${f#"${APP_BUNDLE}/"}"
+  done
 
   info "Signing app bundle..."
   codesign "${sign_flags[@]}" --verbose \
