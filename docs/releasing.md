@@ -69,12 +69,25 @@ Configure these under **Settings → Secrets → Actions**:
 | Secret | Required for | Description |
 |--------|-------------|-------------|
 | `PYPI_API_TOKEN` | PyPI publishing | API token from `~/.pypirc` (starts with `pypi-`) |
+| `APPLE_CERT_P12_BASE64` | Signed builds | Base64-encoded `.p12` certificate file (see below) |
+| `APPLE_CERT_P12_PASSWORD` | Signed builds | Password set when exporting the `.p12` from Keychain Access |
 | `APPLE_DEVELOPER_ID` | Signed builds | Full cert name: `Developer ID Application: Your Name (TEAMID)` |
 | `APPLE_NOTARYTOOL_APPLE_ID` | Notarized builds | Apple ID email |
-| `APPLE_NOTARYTOOL_PASSWORD` | Notarized builds | App-specific password |
+| `APPLE_NOTARYTOOL_PASSWORD` | Notarized builds | App-specific password from appleid.apple.com (not your login password) |
 | `APPLE_NOTARYTOOL_TEAM_ID` | Notarized builds | 10-character Apple Team ID |
 
 Builds without these secrets succeed but produce an unsigned/unnotarized DMG (users will see a Gatekeeper warning).
+
+## Exporting the .p12 Certificate
+
+1. Open **Keychain Access** → login keychain → **My Certificates**
+2. Find **Developer ID Application: Your Name (TEAMID)** — expand it to confirm the private key is nested underneath
+3. Select both the certificate and its private key → right-click → **Export 2 Items** → save as `.p12` → set a strong password
+4. Base64-encode and copy to clipboard:
+   ```bash
+   base64 -i YourCert.p12 | pbcopy
+   ```
+5. Paste as the value of `APPLE_CERT_P12_BASE64`; set `APPLE_CERT_P12_PASSWORD` to the password from step 3
 
 ## Finding Your Certificate Name
 
