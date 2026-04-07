@@ -305,8 +305,11 @@ jobs:
           fi
           echo "$APPLE_CERT_P12_BASE64" | base64 --decode > /tmp/signing.p12
           security create-keychain -p "" build.keychain
-          security default-keychain -s build.keychain
           security unlock-keychain -p "" build.keychain
+          # Add build.keychain to the search list while keeping system keychains
+          # (system keychains hold Apple's intermediate CA certs needed for chain validation)
+          security list-keychains -d user -s build.keychain \
+            $(security list-keychains -d user | tr -d '"' | tr '\n' ' ')
           security import /tmp/signing.p12 \
             -k build.keychain \
             -P "$APPLE_CERT_P12_PASSWORD" \
@@ -316,6 +319,8 @@ jobs:
             -S apple-tool:,apple:,codesign: \
             -s -k "" build.keychain
           rm /tmp/signing.p12
+          # Diagnostic: confirm the cert was imported and is trusted for codesigning
+          security find-identity -v -p codesigning build.keychain
 
       - name: Build DMG
         env:

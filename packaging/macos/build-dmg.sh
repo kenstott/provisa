@@ -188,6 +188,11 @@ sign_app() {
   codesign "${sign_flags[@]}" --verbose \
     --entitlements "${SCRIPT_DIR}/entitlements.plist" \
     "${APP_BUNDLE}"
+
+  # Diagnostic: show what cert was actually used for limactl
+  info "Verifying limactl signature (certificate details):"
+  codesign -dvvv "${APP_BUNDLE}/Contents/MacOS/bin/arm64/limactl" 2>&1 | grep -E "Authority|TeamIdent|Signature" || true
+
   ok "App bundle signed."
 }
 
