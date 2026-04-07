@@ -19,8 +19,12 @@ Supported hints:
   - ``BROADCAST_SIZE(table, N)``   → ``join_max_broadcast_table_size = 'N'``
 
 Also parses GraphQL query comment hints of the form ``# @provisa key=value``:
-  - ``# @provisa route=trino``     → force Trino federation
-  - ``# @provisa route=direct``    → force direct driver
+  - ``# @provisa route=federated`` → force Trino federation
+  - ``# @provisa route=direct``    → force direct driver (single-source only)
+  - ``# @provisa join=broadcast``  → Trino session: join_distribution_type=BROADCAST
+  - ``# @provisa join=partitioned``→ Trino session: join_distribution_type=PARTITIONED
+  - ``# @provisa reorder=off``     → Trino session: join_reordering_strategy=NONE
+  - ``# @provisa broadcast_size=N``→ Trino session: join_max_broadcast_table_size=N
 """
 
 from __future__ import annotations
@@ -110,6 +114,34 @@ def graphql_comments_to_sql(query: str) -> str:
     if not lines:
         return ""
     return "".join(f"-- {line}\n" for line in lines)
+
+
+def graphql_hints_to_session_props(hints: dict[str, str]) -> dict[str, str]:
+    """Convert ``# @provisa`` federation hints to Trino session properties.
+
+    Handles the federation-specific keys; routing keys (``route``) are ignored
+    here since they are handled by the router, not the executor.
+
+    Args:
+        hints: Dict returned by :func:`extract_graphql_hints`.
+
+    Returns:
+        Dict of Trino session property name → value, ready to merge into
+        ``session_hints`` before execution.
+    """
+    props: dict[str, str] = {}
+    join = hints.get("join", "").lower()
+    if join == "broadcast":
+        props["join_distribution_type"] = "BROADCAST"
+    elif join == "partitioned":
+        props["join_distribution_type"] = "PARTITIONED"
+    reorder = hints.get("reorder", "").lower()
+    if reorder == "off":
+        props["join_reordering_strategy"] = "NONE"
+    broadcast_size = hints.get("broadcast_size", "")
+    if broadcast_size:
+        props["join_max_broadcast_table_size"] = broadcast_size
+    return props
 
 
 def extract_graphql_hints(query: str) -> dict[str, str]:

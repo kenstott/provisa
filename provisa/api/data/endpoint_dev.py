@@ -25,7 +25,7 @@ from fastapi.responses import Response
 from graphql import GraphQLSyntaxError
 from pydantic import BaseModel
 
-from provisa.compiler.hints import extract_graphql_hints, graphql_comments_to_sql
+from provisa.compiler.hints import extract_graphql_hints, graphql_comments_to_sql, graphql_hints_to_session_props
 from provisa.compiler.mask_inject import inject_masking
 from provisa.compiler.parser import GraphQLValidationError, parse_query
 from provisa.compiler.rls import RLSContext, inject_rls
@@ -178,7 +178,9 @@ async def compile_endpoint(
     role = state.roles.get(role_id)
 
     graphql_hints = extract_graphql_hints(request.query)
-    steward_hint = graphql_hints.get("route")
+    raw_route_hint = graphql_hints.get("route")
+    # Normalise user-facing alias
+    steward_hint = "trino" if raw_route_hint == "federated" else raw_route_hint
     sql_comment_prefix = graphql_comments_to_sql(request.query)
 
     try:
@@ -245,13 +247,30 @@ async def compile_endpoint(
         )
 
         optimizations: list[str] = []
+        warnings: list[str] = []
         if mv_applied:
             new_sources = compiled.sources - pre_mv_sources
             optimizations.append(
                 f"Materialized view rewrite: sources → {', '.join(sorted(new_sources))}"
             )
-        if steward_hint:
-            optimizations.append(f"Route override: {steward_hint} (via # @provisa)")
+        if raw_route_hint == "direct":
+            if len(compiled.sources) > 1:
+                warnings.append(
+                    "route=direct ignored: query spans multiple sources and requires federation"
+                )
+            elif steward_hint == "direct" and decision.route != Route.DIRECT:
+                warnings.append(
+                    "route=direct ignored: source has no direct driver"
+                )
+            else:
+                optimizations.append("Route override: direct (via # @provisa)")
+        elif raw_route_hint == "federated":
+            optimizations.append("Route override: federated (via # @provisa)")
+        elif raw_route_hint:
+            warnings.append(f"Unknown route hint: {raw_route_hint!r}")
+        session_props = graphql_hints_to_session_props(graphql_hints)
+        for k, v in session_props.items():
+            optimizations.append(f"Federation hint: {k}={v} (via # @provisa)")
         if sampling:
             optimizations.append("Sampling applied (role lacks FULL_RESULTS capability)")
 
@@ -269,6 +288,7 @@ async def compile_endpoint(
             "column_aliases": column_aliases,
             "enforcement": enforcement.model_dump(),
             "optimizations": optimizations,
+            "warnings": warnings,
         })
 
     if len(results) == 1:

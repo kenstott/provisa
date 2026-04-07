@@ -28,7 +28,7 @@ from pydantic import BaseModel
 
 from provisa.cache.key import cache_key
 from provisa.cache.middleware import build_cache_headers, check_cache, store_result
-from provisa.compiler.hints import extract_graphql_hints
+from provisa.compiler.hints import extract_graphql_hints, graphql_hints_to_session_props
 from provisa.compiler.mask_inject import inject_masking
 from provisa.compiler.mutation_gen import (
     compile_mutation,
@@ -243,7 +243,8 @@ async def graphql_endpoint(
         raise HTTPException(status_code=400, detail="query is required")
 
     graphql_hints = extract_graphql_hints(request.query)
-    steward_hint = graphql_hints.get("route")
+    raw_route_hint = graphql_hints.get("route")
+    steward_hint = "trino" if raw_route_hint == "federated" else raw_route_hint
 
     schema = state.schemas[role_id]
     ctx = state.contexts[role_id]
@@ -570,7 +571,8 @@ async def _execute_one_field(
             for sid in catalog_compiled.sources:
                 src_hints = getattr(state, "source_federation_hints", {}).get(sid, {})
                 session_hints.update(src_hints)
-            session_hints.update(comment_hints)  # comment hints take precedence
+            session_hints.update(graphql_hints_to_session_props(graphql_hints))  # @provisa hints
+            session_hints.update(comment_hints)  # SQL /*+ */ hints take precedence
 
             trino_sql = transpile_to_trino(exec_sql)
             result = execute_trino(

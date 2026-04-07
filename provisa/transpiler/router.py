@@ -86,10 +86,10 @@ def decide_route(
         )
 
     # Steward override
-    if steward_hint == "trino":
+    if steward_hint in ("trino", "federated"):
         return RouteDecision(
             route=Route.TRINO, source_id=None, dialect=None,
-            reason="steward override: trino",
+            reason="steward override: federated",
         )
     if steward_hint == "direct" and len(sources) == 1:
         sid = next(iter(sources))

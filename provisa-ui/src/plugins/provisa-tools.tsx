@@ -77,6 +77,16 @@ function SqlPanel({ compiled }: { compiled: CompileResult }) {
           <strong>Sources:</strong> {compiled.sources.join(", ")}
         </div>
       </div>
+      {compiled.warnings && compiled.warnings.length > 0 && (
+        <div className="provisa-tools-warnings">
+          <span className="provisa-tools-label">Warnings</span>
+          <ul className="provisa-tools-warnings-list">
+            {compiled.warnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {compiled.optimizations && compiled.optimizations.length > 0 && (
         <div className="provisa-tools-optimizations">
           <span className="provisa-tools-label">Optimizations</span>

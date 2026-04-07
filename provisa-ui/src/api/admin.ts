@@ -488,6 +488,7 @@ export interface CompileResult {
   canonical_field: string;
   column_aliases: { field_name: string; column: string }[];
   optimizations?: string[];
+  warnings?: string[];
 }
 
 export async function compileQuery(
