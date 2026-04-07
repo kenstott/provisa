@@ -3,8 +3,10 @@
 
 Layout:
   Top:     Provisa branding + tagline
-  Centre:  App icon position (x=330, y=185) — centred in the window
-  Bottom:  "Double-click Provisa to install" instruction
+  Left:    App icon position (x=165, y=185)
+  Right:   Applications folder drop target (x=495, y=185)
+  Centre:  Drag arrow between them
+  Bottom:  "Drag Provisa to the Applications folder to install" instruction
 
 The background is rendered at 2× (Retina) resolution.
 """
@@ -89,25 +91,27 @@ def make_background(scale: int = SCALE) -> Image.Image:
     # ── instruction text ──────────────────────────────────────────────────
     inst_font = _font(int(16 * scale))
     inst_y    = int(H * scale * 0.88)
-    inst_text = "Double-click Provisa to install"
+    inst_text = "Drag Provisa to the Applications folder to install"
     bbox      = draw.textbbox((0, 0), inst_text, font=inst_font)
     inst_x    = (sw - (bbox[2] - bbox[0])) // 2
     draw.text((inst_x, inst_y), inst_text, font=inst_font, fill=TEXT_DIM)
 
-    # ── down-arrow above icon (suggests double-click / open) ─────────────
-    icon_cx = int(330 * scale)   # centred icon position
-    icon_top = int(120 * scale)  # above the icon
-    ah = int(12 * scale)
+    # ── horizontal drag arrow (Provisa → Applications) ────────────────────
+    app_cx  = int(165 * scale)   # Provisa.app icon centre
+    apps_cx = int(495 * scale)   # Applications drop target centre
+    icon_r  = int(55 * scale)    # approximate icon half-width
+    arr_y   = int(185 * scale)   # vertical centre of the icon row
+    ah = int(14 * scale)         # arrowhead half-size
     lw = max(2, int(3 * scale))
-    arrow_x  = icon_cx
-    arrow_y1 = int(95 * scale)
-    arrow_y2 = icon_top
-    draw.line([(arrow_x, arrow_y1), (arrow_x, arrow_y2)],
-              fill=ARROW_COL, width=lw)
+
+    x1 = app_cx  + icon_r + int(10 * scale)  # start just right of Provisa icon
+    x2 = apps_cx - icon_r - int(10 * scale)  # end just left of Applications icon
+
+    draw.line([(x1, arr_y), (x2, arr_y)], fill=ARROW_COL, width=lw)
     draw.polygon(
-        [(arrow_x,      arrow_y2),
-         (arrow_x - ah, arrow_y2 - ah),
-         (arrow_x + ah, arrow_y2 - ah)],
+        [(x2,      arr_y),
+         (x2 - ah, arr_y - ah),
+         (x2 - ah, arr_y + ah)],
         fill=ARROW_COL,
     )
 
