@@ -89,17 +89,27 @@ write_lima_config() {
   if [ -f "$LIMA_YAML" ]; then
     return
   fi
+  mkdir -p "$PROVISA_HOME"
+  # Map uname -m to Lima arch values
+  local lima_arch
+  case "$ARCH" in
+    arm64)  lima_arch="aarch64" ;;
+    x86_64) lima_arch="x86_64"  ;;
+    *)      lima_arch="aarch64" ;;
+  esac
   cat > "$LIMA_YAML" <<YAML
 # Provisa Lima VM — airgapped, no network pull required
 vmType: vz
 os: Linux
-arch: host
+arch: "${lima_arch}"
 cpus: 4
 memory: "${LIMA_MEMORY}"
 disk: "60GiB"
-rosetta:
-  enabled: true
-  binfmt: true
+vmOpts:
+  vz:
+    rosetta:
+      enabled: true
+      binfmt: true
 containerd:
   system: true
   user: false
@@ -111,7 +121,6 @@ provision:
   - mode: system
     script: |
       #!/bin/bash
-      # containerd already managed by Lima containerd integration
       systemctl enable --now containerd || true
 YAML
 }
@@ -128,11 +137,11 @@ start_lima() {
       return 0
     fi
     info "Resuming existing VM..."
-    "$LIMACTL" start "$LIMA_VM_NAME"
+    "$LIMACTL" start --yes "$LIMA_VM_NAME"
   else
     write_lima_config
     info "Creating VM from config..."
-    "$LIMACTL" start --name="$LIMA_VM_NAME" "$LIMA_YAML"
+    "$LIMACTL" start --yes --name="$LIMA_VM_NAME" "$LIMA_YAML"
   fi
   ok "VM started."
 }
