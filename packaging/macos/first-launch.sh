@@ -164,17 +164,20 @@ stage_images() {
   fi
   mkdir -p "$staged"
 
-  # 1. Sibling images next to the .app (running directly from mounted DMG)
-  local sibling_images
-  sibling_images="$(dirname "$BUNDLE_DIR")/images"
+  # 1. Sibling .images next to the .app (running directly from mounted DMG)
+  local bundle_parent
+  bundle_parent="$(dirname "$BUNDLE_DIR")"
   local src=""
-  if [ -d "$sibling_images" ] && ls "$sibling_images"/*.tar &>/dev/null 2>&1; then
-    src="$sibling_images"
-  fi
+  for candidate in "${bundle_parent}/.images" "${bundle_parent}/images"; do
+    if [ -d "$candidate" ] && ls "$candidate"/*.tar &>/dev/null 2>&1; then
+      src="$candidate"
+      break
+    fi
+  done
 
   # 2. Scan mounted DMG volumes (user dragged .app to Applications but DMG still open)
   if [ -z "$src" ]; then
-    for vol_images in /Volumes/*/images; do
+    for vol_images in /Volumes/*/.images /Volumes/*/images; do
       if [ -d "$vol_images" ] && ls "$vol_images"/*.tar &>/dev/null 2>&1; then
         src="$vol_images"
         break

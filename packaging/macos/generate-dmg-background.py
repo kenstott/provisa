@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Generate the DMG installer background image (660×400 @2x = 1320×800).
+"""Generate the DMG installer background image (800×500 @1x).
 
 Layout:
   Top:     Provisa branding + tagline
-  Left:    App icon position (x=165, y=185)
-  Right:   Applications folder drop target (x=495, y=185)
+  Left:    App icon position (x=200, y=265)
+  Right:   Applications folder drop target (x=600, y=265)
   Centre:  Drag arrow between them
   Bottom:  "Drag Provisa to the Applications folder to install" instruction
 
-The background is rendered at 2× (Retina) resolution.
+Rendered at 1× so Finder renders it at the correct size without Retina scaling
+confusion.
 """
 import math
 import os
@@ -31,8 +32,8 @@ ensure_pillow()
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
 
-# ── Constants (logical pixels — will be doubled for @2x) ─────────────────────
-W, H = 660, 400
+# ── Constants ─────────────────────────────────────────────────────────────────
+W, H = 800, 500
 
 GRAD_TL = (15,  40, 100)   # deep navy
 GRAD_BR = (80,  10, 140)   # rich purple
@@ -41,7 +42,7 @@ TEXT_MAIN  = (255, 255, 255, 255)
 TEXT_DIM   = (200, 210, 240, 200)
 ARROW_COL  = (180, 190, 255, 180)
 
-SCALE = 2   # Retina
+SCALE = 1   # 1× — Finder renders DMG backgrounds without Retina scaling
 
 
 def lerp(a, b, t):
@@ -97,10 +98,10 @@ def make_background(scale: int = SCALE) -> Image.Image:
     draw.text((inst_x, inst_y), inst_text, font=inst_font, fill=TEXT_DIM)
 
     # ── horizontal drag arrow (Provisa → Applications) ────────────────────
-    app_cx  = int(165 * scale)   # Provisa.app icon centre
-    apps_cx = int(495 * scale)   # Applications drop target centre
+    app_cx  = int(200 * scale)   # Provisa.app icon centre
+    apps_cx = int(600 * scale)   # Applications drop target centre
     icon_r  = int(55 * scale)    # approximate icon half-width
-    arr_y   = int(185 * scale)   # vertical centre of the icon row
+    arr_y   = int(265 * scale)   # vertical centre of the icon row
     ah = int(14 * scale)         # arrowhead half-size
     lw = max(2, int(3 * scale))
 
