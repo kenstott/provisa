@@ -108,12 +108,22 @@ class FakeResponse:
 
 
 class TestNeo4jTabularNormalizer:
+    """Tests use the Neo4j legacy HTTP transaction API format:
+    {"results": [{"columns": [...], "data": [{"row": [...], "meta": [...]}]}], "errors": []}
+    """
+
     def test_basic_two_columns(self):
         response = {
-            "data": {
-                "fields": ["name", "age"],
-                "values": [["Alice", 30], ["Bob", 25]],
-            }
+            "results": [
+                {
+                    "columns": ["name", "age"],
+                    "data": [
+                        {"row": ["Alice", 30], "meta": []},
+                        {"row": ["Bob", 25], "meta": []},
+                    ],
+                }
+            ],
+            "errors": [],
         }
         rows = neo4j_tabular(response)
         assert len(rows) == 2
@@ -122,33 +132,29 @@ class TestNeo4jTabularNormalizer:
 
     def test_single_row(self):
         response = {
-            "data": {
-                "fields": ["id"],
-                "values": [[42]],
-            }
+            "results": [{"columns": ["id"], "data": [{"row": [42], "meta": []}]}],
+            "errors": [],
         }
         rows = neo4j_tabular(response)
         assert rows == [{"id": 42}]
 
-    def test_empty_values_list(self):
-        response = {"data": {"fields": ["a", "b"], "values": []}}
+    def test_empty_data_list(self):
+        response = {"results": [{"columns": ["a", "b"], "data": []}], "errors": []}
         rows = neo4j_tabular(response)
         assert rows == []
 
-    def test_missing_data_block(self):
+    def test_missing_results_block(self):
         rows = neo4j_tabular({})
         assert rows == []
 
-    def test_non_list_value_entry_skipped(self):
+    def test_multiple_result_sets(self):
+        """Multiple result blocks (batched statements) are all merged."""
         response = {
-            "data": {
-                "fields": ["x"],
-                "values": [
-                    [1],
-                    "not_a_list",
-                    [2],
-                ],
-            }
+            "results": [
+                {"columns": ["x"], "data": [{"row": [1], "meta": []}]},
+                {"columns": ["x"], "data": [{"row": [2], "meta": []}]},
+            ],
+            "errors": [],
         }
         rows = neo4j_tabular(response)
         assert len(rows) == 2
@@ -156,32 +162,39 @@ class TestNeo4jTabularNormalizer:
         assert rows[1] == {"x": 2}
 
     def test_zip_truncates_to_shorter_side(self):
-        """Extra values beyond field count are silently dropped by zip()."""
+        """Extra row values beyond column count are silently dropped by zip()."""
         response = {
-            "data": {
-                "fields": ["a"],
-                "values": [[1, 2, 3]],
-            }
+            "results": [{"columns": ["a"], "data": [{"row": [1, 2, 3], "meta": []}]}],
+            "errors": [],
         }
         rows = neo4j_tabular(response)
         assert rows == [{"a": 1}]
 
     def test_null_values_preserved(self):
         response = {
-            "data": {
-                "fields": ["name", "score"],
-                "values": [["Alice", None]],
-            }
+            "results": [
+                {
+                    "columns": ["name", "score"],
+                    "data": [{"row": ["Alice", None], "meta": []}],
+                }
+            ],
+            "errors": [],
         }
         rows = neo4j_tabular(response)
         assert rows[0]["score"] is None
 
     def test_three_columns_multiple_rows(self):
         response = {
-            "data": {
-                "fields": ["id", "label", "weight"],
-                "values": [[1, "a", 0.5], [2, "b", 1.5]],
-            }
+            "results": [
+                {
+                    "columns": ["id", "label", "weight"],
+                    "data": [
+                        {"row": [1, "a", 0.5], "meta": []},
+                        {"row": [2, "b", 1.5], "meta": []},
+                    ],
+                }
+            ],
+            "errors": [],
         }
         rows = neo4j_tabular(response)
         assert rows[0]["weight"] == 0.5
@@ -312,7 +325,10 @@ class TestGetNormalizerRegistry:
 
     def test_returned_callable_works(self):
         fn = get_normalizer("neo4j_tabular")
-        result = fn({"data": {"fields": ["k"], "values": [[1]]}})
+        result = fn({
+            "results": [{"columns": ["k"], "data": [{"row": [1], "meta": []}]}],
+            "errors": [],
+        })
         assert result == [{"k": 1}]
 
 

@@ -50,16 +50,20 @@ def _is_graphql(query: str) -> bool:
     return bool(_GQL_RE.match(query))
 
 
+_TIMEOUT = 10.0
+
+
 def _auth_login(base_url: str, username: str, password: str) -> str | None:
     """POST /auth/login and return token, or None on failure."""
     try:
         r = httpx.post(
             f"{base_url}/auth/login",
             json={"username": username, "password": password},
+            timeout=_TIMEOUT,
         )
         if r.status_code == 200:
             return r.json().get("token")
-    except httpx.HTTPError:
+    except (httpx.HTTPError, httpx.TimeoutException):
         pass
     return None
 
@@ -186,6 +190,7 @@ class Cursor:
                 f"{self._conn._base_url}/data/graphql",
                 json={"query": query, "role": self._conn._role},
                 headers=self._conn._headers(),
+                timeout=_TIMEOUT,
             )
             r.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -211,9 +216,10 @@ class Cursor:
                 f"{self._conn._base_url}/data/sql",
                 json={"sql": query, "role": self._conn._role},
                 headers=self._conn._headers(),
+                timeout=_TIMEOUT,
             )
             r.raise_for_status()
-        except httpx.HTTPStatusError as exc:
+        except (httpx.HTTPStatusError, httpx.TimeoutException) as exc:
             raise OperationalError(str(exc)) from exc
         body = r.json()
         # Handle {"data": {"_sql": [...]}} or just a list

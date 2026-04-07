@@ -323,7 +323,7 @@ async def submit_endpoint(
             ("refresh_frequency", request.refresh_frequency),
             ("expected_row_count", request.expected_row_count),
             ("owner_team", request.owner_team),
-            ("expiry_date", request.expiry_date),
+            ("expiry_date", __import__("datetime").date.fromisoformat(request.expiry_date) if request.expiry_date else None),
         ]:
             if value is not None:
                 updates.append(f"{field_name} = ${idx}")
@@ -443,8 +443,15 @@ async def sql_endpoint(
     governed_sql = apply_governance(request.sql, gov_ctx)
     sources = extract_sources(request.sql, gov_ctx, ctx)
 
+    # When no tables are referenced (e.g. SELECT 1), fall back to the first
+    # available relational pool rather than a hardcoded "pg" ID.
+    _default_source = next(
+        (sid for sid, t in state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
+        next(iter(state.source_pools), "pg"),
+    )
+
     decision = decide_route(
-        sources=sources or {"pg"},
+        sources=sources or {_default_source},
         source_types=state.source_types,
         source_dialects=state.source_dialects,
         has_json_extract="->>" in governed_sql,
@@ -460,7 +467,7 @@ async def sql_endpoint(
         dialect = decision.dialect or "postgres"
         sql_to_run = transpile(governed_sql, dialect)
         result = await execute_direct(
-            state.source_pools, decision.source_id or "pg", sql_to_run, [],
+            state.source_pools, decision.source_id or _default_source, sql_to_run, [],
         )
 
     rows_as_dicts = [dict(zip(result.column_names, row)) for row in result.rows]

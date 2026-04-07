@@ -105,7 +105,7 @@ def test_create_connect_args_query_params():
 
 @respx.mock
 def test_get_table_names_returns_stable_ids():
-    respx.get(f"{BASE}/data/graphql").mock(
+    respx.post(f"{BASE}/admin/graphql").mock(
         return_value=httpx.Response(
             200,
             json={
@@ -132,7 +132,7 @@ def test_get_table_names_returns_stable_ids():
 
 @respx.mock
 def test_get_table_names_returns_empty_on_error():
-    respx.get(f"{BASE}/data/graphql").mock(
+    respx.post(f"{BASE}/admin/graphql").mock(
         return_value=httpx.Response(500)
     )
     dialect = ProvisaDialect()

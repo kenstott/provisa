@@ -74,18 +74,22 @@ class ProvisaDialect(DefaultDialect):
             return raw.connection._base_url, raw.connection._role
         return "http://localhost:8001", "admin"
 
+    _TIMEOUT = 10.0  # seconds
+
     def get_table_names(self, connection: Any, schema: str | None = None, **kw: Any) -> list[str]:
         base_url, role = self._get_base_url_and_role(connection)
         try:
-            r = httpx.get(
-                f"{base_url}/data/graphql",
-                params={"query": "{ persistedQueries { stableId status } }", "role": role},
+            r = httpx.post(
+                f"{base_url}/admin/graphql",
+                json={"query": "{ persistedQueries { stableId status } }"},
+                headers={"Content-Type": "application/json", "X-Role": role},
+                timeout=self._TIMEOUT,
             )
             r.raise_for_status()
             body = r.json()
             queries = body.get("data", {}).get("persistedQueries", [])
             return [q["stableId"] for q in queries if isinstance(q, dict) and q.get("stableId")]
-        except (httpx.HTTPError, KeyError):
+        except (httpx.HTTPError, httpx.TimeoutException, KeyError):
             return []
 
     def get_columns(
@@ -114,6 +118,7 @@ class ProvisaDialect(DefaultDialect):
                 f"{base_url}/admin/graphql",
                 json={"query": query},
                 headers={"Content-Type": "application/json", "X-Role": role},
+                timeout=self._TIMEOUT,
             )
             r.raise_for_status()
             body = r.json()
@@ -128,7 +133,7 @@ class ProvisaDialect(DefaultDialect):
                         }
                         for col in table.get("columns", [])
                     ]
-        except (httpx.HTTPError, KeyError):
+        except (httpx.HTTPError, httpx.TimeoutException, KeyError):
             pass
         return []
 

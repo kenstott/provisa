@@ -16,59 +16,71 @@ from provisa.api_source.normalizers import get_normalizer, neo4j_tabular, sparql
 
 
 class TestNeo4jTabular:
+    """Tests use the Neo4j legacy HTTP transaction API format:
+    {"results": [{"columns": [...], "data": [{"row": [...], "meta": [...]}]}], "errors": []}
+    """
+
     def test_single_row(self):
         response = {
-            "data": {
-                "fields": ["name", "age"],
-                "values": [["Alice", 30]],
-            }
+            "results": [
+                {
+                    "columns": ["name", "age"],
+                    "data": [{"row": ["Alice", 30], "meta": []}],
+                }
+            ],
+            "errors": [],
         }
         rows = neo4j_tabular(response)
         assert rows == [{"name": "Alice", "age": 30}]
 
     def test_multi_row(self):
         response = {
-            "data": {
-                "fields": ["id", "amount"],
-                "values": [[1, 99.5], [2, 42.0]],
-            }
+            "results": [
+                {
+                    "columns": ["id", "amount"],
+                    "data": [
+                        {"row": [1, 99.5], "meta": []},
+                        {"row": [2, 42.0], "meta": []},
+                    ],
+                }
+            ],
+            "errors": [],
         }
         rows = neo4j_tabular(response)
         assert rows == [{"id": 1, "amount": 99.5}, {"id": 2, "amount": 42.0}]
 
-    def test_empty_values(self):
-        response = {
-            "data": {
-                "fields": ["name"],
-                "values": [],
-            }
-        }
+    def test_empty_data(self):
+        response = {"results": [{"columns": ["name"], "data": []}], "errors": []}
         rows = neo4j_tabular(response)
         assert rows == []
 
-    def test_missing_data_key(self):
+    def test_missing_results_key(self):
         rows = neo4j_tabular({})
         assert rows == []
 
     def test_null_value_in_row(self):
         response = {
-            "data": {
-                "fields": ["name", "email"],
-                "values": [["Bob", None]],
-            }
+            "results": [
+                {
+                    "columns": ["name", "email"],
+                    "data": [{"row": ["Bob", None], "meta": []}],
+                }
+            ],
+            "errors": [],
         }
         rows = neo4j_tabular(response)
         assert rows == [{"name": "Bob", "email": None}]
 
-    def test_skips_non_list_entries(self):
+    def test_multiple_result_sets_merged(self):
         response = {
-            "data": {
-                "fields": ["name"],
-                "values": ["not-a-list", ["Alice"]],
-            }
+            "results": [
+                {"columns": ["name"], "data": [{"row": ["Alice"], "meta": []}]},
+                {"columns": ["name"], "data": [{"row": ["Bob"], "meta": []}]},
+            ],
+            "errors": [],
         }
         rows = neo4j_tabular(response)
-        assert rows == [{"name": "Alice"}]
+        assert rows == [{"name": "Alice"}, {"name": "Bob"}]
 
 
 class TestSparqlBindings:

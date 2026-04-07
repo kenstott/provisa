@@ -786,7 +786,7 @@ class TestProvisaDialectGetTableNames:
             }
         }
         resp = _make_httpx_response(200, body)
-        with patch("provisa_client.sqlalchemy_dialect.httpx.get", return_value=resp):
+        with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
             names = dialect.get_table_names(conn)
         assert names == ["q-001", "q-002"]
 
@@ -796,7 +796,7 @@ class TestProvisaDialectGetTableNames:
         dialect = ProvisaDialect()
         conn = self._make_connection()
         with patch(
-            "provisa_client.sqlalchemy_dialect.httpx.get",
+            "provisa_client.sqlalchemy_dialect.httpx.post",
             side_effect=httpx.HTTPError("connection refused"),
         ):
             names = dialect.get_table_names(conn)
@@ -815,7 +815,7 @@ class TestProvisaDialectGetTableNames:
             }
         }
         resp = _make_httpx_response(200, body)
-        with patch("provisa_client.sqlalchemy_dialect.httpx.get", return_value=resp):
+        with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
             names = dialect.get_table_names(conn)
         assert names == ["q-001"]
 
@@ -924,7 +924,7 @@ class TestProvisaDialectHasTable:
         conn = self._make_connection()
         body = {"data": {"persistedQueries": [{"stableId": "my-query"}]}}
         resp = _make_httpx_response(200, body)
-        with patch("provisa_client.sqlalchemy_dialect.httpx.get", return_value=resp):
+        with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
             assert dialect.has_table(conn, "my-query") is True
 
     def test_returns_false_when_table_absent(self):
@@ -933,7 +933,7 @@ class TestProvisaDialectHasTable:
         conn = self._make_connection()
         body = {"data": {"persistedQueries": [{"stableId": "other-query"}]}}
         resp = _make_httpx_response(200, body)
-        with patch("provisa_client.sqlalchemy_dialect.httpx.get", return_value=resp):
+        with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
             assert dialect.has_table(conn, "missing") is False
 
 
