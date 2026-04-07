@@ -8,7 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useRef, useCallback, useState, useMemo } from "react";
+import { useRef, useCallback, useState, useMemo, useEffect } from "react";
+import * as monaco from "monaco-editor";
 import { GraphiQL } from "graphiql";
 import { createGraphiQLFetcher } from "@graphiql/toolkit";
 import "@graphiql/react/style.css";
@@ -28,6 +29,79 @@ import {
 
 // @ts-ignore — CJS fork, no type declarations
 import { Explorer } from "graphiql-explorer";
+
+/** Register # @provisa hint completions in the GraphQL Monaco editor. */
+monaco.languages.registerCompletionItemProvider("graphql", {
+  triggerCharacters: ["#", "@", " ", "="],
+  provideCompletionItems(model, position) {
+    const lineText = model.getValueInRange({
+      startLineNumber: position.lineNumber,
+      startColumn: 1,
+      endLineNumber: position.lineNumber,
+      endColumn: position.column,
+    });
+
+    const trimmed = lineText.trimStart();
+    if (!trimmed.startsWith("#")) return { suggestions: [] };
+    const commentContent = trimmed.slice(1).trimStart();
+
+    const mkRange = (startCol: number) => ({
+      startLineNumber: position.lineNumber,
+      endLineNumber: position.lineNumber,
+      startColumn: startCol,
+      endColumn: position.column,
+    });
+
+    // After "# @provisa " → suggest commands
+    const provisaMatch = commentContent.match(/^@provisa\s+(\S*)$/);
+    if (provisaMatch) {
+      const typed = provisaMatch[1];
+      const cmdStart = position.column - typed.length;
+      return {
+        suggestions: [
+          {
+            label: "route=trino",
+            kind: monaco.languages.CompletionItemKind.EnumMember,
+            detail: "Force Trino federation",
+            documentation: "Route this query through Trino even if a direct driver is available.",
+            insertText: "route=trino",
+            range: mkRange(cmdStart),
+          },
+          {
+            label: "route=direct",
+            kind: monaco.languages.CompletionItemKind.EnumMember,
+            detail: "Force direct driver",
+            documentation: "Route this query directly to the source, bypassing Trino.",
+            insertText: "route=direct",
+            range: mkRange(cmdStart),
+          },
+        ],
+      };
+    }
+
+    // After "# " or "# @<partial>" → suggest @provisa
+    const atMatch = commentContent.match(/^(@\S*)$/);
+    if (atMatch || commentContent === "" || /^\S*$/.test(commentContent)) {
+      const typed = atMatch ? atMatch[1] : commentContent;
+      const typedStart = position.column - typed.length;
+      return {
+        suggestions: [
+          {
+            label: "@provisa",
+            kind: monaco.languages.CompletionItemKind.Keyword,
+            detail: "Provisa query hint",
+            documentation: "Add a Provisa execution hint, e.g. route=trino or route=direct.",
+            insertText: "@provisa ",
+            range: mkRange(typedStart),
+            command: { id: "editor.action.triggerSuggest", title: "Trigger suggest" },
+          },
+        ],
+      };
+    }
+
+    return { suggestions: [] };
+  },
+});
 
 const colors = {
   keyword: "hsl(var(--color-primary))",
