@@ -49,8 +49,16 @@ check_prereqs() {
 # ── Generate app icon and DMG background ─────────────────────────────────────
 generate_assets() {
   info "Generating icon and DMG background..."
-  python3 "${SCRIPT_DIR}/generate-icon.py" "${SCRIPT_DIR}"
-  python3 "${SCRIPT_DIR}/generate-dmg-background.py" "${SCRIPT_DIR}"
+
+  # Use an isolated venv to avoid PEP 668 restrictions on managed Python installs
+  local venv="${SCRIPT_DIR}/.build-venv"
+  if [ ! -x "${venv}/bin/python3" ]; then
+    python3 -m venv "$venv"
+  fi
+  "${venv}/bin/pip" install pillow --quiet --upgrade
+
+  "${venv}/bin/python3" "${SCRIPT_DIR}/generate-icon.py" "${SCRIPT_DIR}"
+  "${venv}/bin/python3" "${SCRIPT_DIR}/generate-dmg-background.py" "${SCRIPT_DIR}"
 
   # Copy icon into app bundle
   local icns_src="${SCRIPT_DIR}/Provisa.icns"
