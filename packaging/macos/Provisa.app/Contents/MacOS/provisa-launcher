@@ -31,7 +31,7 @@ if [ ! -f "$SENTINEL" ]; then
   # The app has no terminal (LSUIElement). Open a Terminal window so the
   # user can see progress, answer prompts, and watch setup complete.
   # The wrapper self-deletes after exec so the temp file isn't left around.
-  WRAP="$(mktemp "${TMPDIR:-/tmp}/provisa-setup-XXXXX.sh")"
+  WRAP="$(mktemp -t provisa-setup.XXXXX)"
   printf '#!/usr/bin/env bash\nrm -f "%s"\nexec "%s"\n' "$WRAP" "$FIRST_LAUNCH_SCRIPT" > "$WRAP"
   chmod +x "$WRAP"
   osascript \
