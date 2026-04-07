@@ -38,15 +38,15 @@ services:
       start_period: 30s
 
   pgbouncer:
-    image: bitnami/pgbouncer:latest
+    image: edoburu/pgbouncer:latest
     ports:
       - "6432:6432"
     environment:
-      POSTGRESQL_HOST: postgres
-      POSTGRESQL_PORT: 5432
-      PGBOUNCER_PORT: 6432
-      PGBOUNCER_DATABASE: provisa
-      PGBOUNCER_POOL_MODE: transaction
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: provisa
+      POOL_MODE: transaction
+      LISTEN_PORT: 6432
     depends_on:
       postgres:
         condition: service_healthy
