@@ -22,7 +22,6 @@ case "$ARCH" in
 esac
 
 LIMACTL="${BUNDLE_DIR}/MacOS/bin/${BIN_ARCH}/limactl"
-CTR="${BUNDLE_DIR}/MacOS/bin/${BIN_ARCH}/ctr"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 info() { printf "${CYAN}[provisa]${NC} %s\n" "$*"; }

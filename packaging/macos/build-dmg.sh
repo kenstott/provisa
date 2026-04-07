@@ -12,9 +12,8 @@ BIN_DIR="${APP_BUNDLE}/Contents/MacOS/bin"
 DMG_NAME="Provisa.dmg"
 DMG_PATH="${OUT_DIR}/${DMG_NAME}"
 
-# Lima + containerd versions
+# Lima version
 LIMA_VERSION="2.1.1"
-CONTAINERD_VERSION="2.2.2"
 
 # Service images from docker-compose (use digest-pinning in production)
 IMAGES=(
@@ -90,25 +89,12 @@ download_lima() {
   ok "Lima binaries downloaded."
 }
 
-# ── Download containerd binaries ──────────────────────────────────────────────
+# ── containerd ────────────────────────────────────────────────────────────────
+# ctr is provided natively by Lima's containerd integration inside the VM.
+# first-launch.sh runs `ctr` via `limactl shell ... sudo ctr`, so no macOS-side
+# binary is needed. Bundling the Linux ELF ctr breaks codesign signing checks.
 download_containerd() {
-  info "Downloading containerd ${CONTAINERD_VERSION}..."
-  local base_url="https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}"
-  local tmp="${SCRIPT_DIR}/tmp-containerd"
-  mkdir -p "$tmp"
-
-  for arch in arm64 x86_64; do
-    local carch="$arch"
-    [ "$arch" = "x86_64" ] && carch="amd64"
-    local tar_name="containerd-${CONTAINERD_VERSION}-linux-${carch}.tar.gz"
-    curl -fsSL "${base_url}/${tar_name}" -o "${tmp}/containerd-${arch}.tar.gz"
-    mkdir -p "${tmp}/${arch}"
-    tar -xzf "${tmp}/containerd-${arch}.tar.gz" -C "${tmp}/${arch}"
-    cp "${tmp}/${arch}/bin/ctr" "${BIN_DIR}/${arch}/ctr"
-    chmod +x "${BIN_DIR}/${arch}/ctr"
-  done
-  rm -rf "$tmp"
-  ok "containerd binaries downloaded."
+  ok "containerd: using Lima native integration — no macOS bundle needed."
 }
 
 # ── Save service images as tarballs ──────────────────────────────────────────
