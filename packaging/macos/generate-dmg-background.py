@@ -101,7 +101,7 @@ def make_background(scale: int = SCALE) -> Image.Image:
     app_cx  = int(165 * scale)   # Provisa.app icon centre
     apps_cx = int(495 * scale)   # Applications drop target centre
     icon_r  = int(55 * scale)    # approximate icon half-width
-    arr_y   = int(155 * scale)   # vertical centre of the icon row
+    arr_y   = int(230 * scale)   # vertical centre of the icon row
     ah = int(14 * scale)         # arrowhead half-size
     lw = max(2, int(3 * scale))
 

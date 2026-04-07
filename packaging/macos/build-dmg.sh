@@ -287,9 +287,9 @@ create_dmg() {
     --window-pos 200 120 \
     --window-size 660 400 \
     --icon-size 128 \
-    --icon "Provisa.app" 165 155 \
+    --icon "Provisa.app" 165 230 \
     --hide-extension "Provisa.app" \
-    --app-drop-link 495 155 \
+    --app-drop-link 495 230 \
     "${DMG_PATH}" \
     "${tmp_dmg}/"
 
