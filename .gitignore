@@ -75,6 +75,9 @@ node_modules/
 # DMG build artifacts
 /packaging/macos/dist/
 /packaging/macos/images/
+/packaging/macos/Provisa.iconset/
+/packaging/macos/Provisa.icns
+/packaging/macos/dmg-background.png
 /packaging/macos/Provisa.app/Contents/MacOS/bin/
 /packaging/macos/Provisa.app/Contents/MacOS/first-launch.sh
 /packaging/macos/Provisa.app/Contents/Resources/

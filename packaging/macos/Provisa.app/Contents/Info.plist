@@ -30,6 +30,9 @@
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
 
+  <key>CFBundleIconName</key>
+  <string>AppIcon</string>
+
   <key>LSMinimumSystemVersion</key>
   <string>13.0</string>
 
@@ -40,7 +43,7 @@
   <true/>
 
   <key>NSHumanReadableCopyright</key>
-  <string>Copyright © 2024 Provisa. All rights reserved.</string>
+  <string>Copyright © 2026 Provisa. All rights reserved.</string>
 
   <key>NSAppleEventsUsageDescription</key>
   <string>Provisa needs to run scripts to set up the container runtime.</string>

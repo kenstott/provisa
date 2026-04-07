@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Phase AF2a — Build airgapped macOS DMG with Lima + containerd.
-# Requires: docker (build host only), hdiutil, codesign, xcrun
+# Requires: docker (build host only), hdiutil, codesign, xcrun, python3
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,13 +32,32 @@ err()  { printf "${RED}[build-dmg]${NC} %s\n" "$*" >&2; }
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 check_prereqs() {
-  for cmd in curl hdiutil codesign; do
+  for cmd in curl hdiutil codesign python3; do
     if ! command -v "$cmd" &>/dev/null; then
       err "Required tool not found: ${cmd}"
       exit 1
     fi
   done
+  # create-dmg — install via brew if absent
+  if ! command -v create-dmg &>/dev/null; then
+    info "Installing create-dmg..."
+    brew install create-dmg --quiet
+  fi
   ok "All prerequisites found."
+}
+
+# ── Generate app icon and DMG background ─────────────────────────────────────
+generate_assets() {
+  info "Generating icon and DMG background..."
+  python3 "${SCRIPT_DIR}/generate-icon.py" "${SCRIPT_DIR}"
+  python3 "${SCRIPT_DIR}/generate-dmg-background.py" "${SCRIPT_DIR}"
+
+  # Copy icon into app bundle
+  local icns_src="${SCRIPT_DIR}/Provisa.icns"
+  local icns_dst="${APP_BUNDLE}/Contents/Resources/AppIcon.icns"
+  mkdir -p "$(dirname "$icns_dst")"
+  cp "$icns_src" "$icns_dst"
+  ok "Icon and background generated."
 }
 
 # ── Download Lima binaries (arm64 + x86_64) ──────────────────────────────────
@@ -180,15 +199,22 @@ create_dmg() {
   rm -rf "$tmp_dmg"
   mkdir -p "$tmp_dmg"
   cp -r "${APP_BUNDLE}" "${tmp_dmg}/Provisa.app"
-  ln -s /Applications "${tmp_dmg}/Applications"
 
-  hdiutil create \
-    -volname "Provisa" \
-    -srcfolder "$tmp_dmg" \
-    -ov \
-    -format UDZO \
-    -imagekey zlib-level=9 \
-    "${DMG_PATH}"
+  # Remove any existing DMG so create-dmg doesn't complain
+  rm -f "${DMG_PATH}"
+
+  create-dmg \
+    --volname "Provisa" \
+    --volicon "${SCRIPT_DIR}/Provisa.icns" \
+    --background "${SCRIPT_DIR}/dmg-background.png" \
+    --window-pos 200 120 \
+    --window-size 660 400 \
+    --icon-size 128 \
+    --icon "Provisa.app" 165 185 \
+    --hide-extension "Provisa.app" \
+    --app-drop-link 495 185 \
+    "${DMG_PATH}" \
+    "${tmp_dmg}/"
 
   rm -rf "$tmp_dmg"
   ok "DMG created: ${DMG_PATH}"
@@ -202,6 +228,7 @@ main() {
   check_prereqs
   mkdir -p "${BIN_DIR}/arm64" "${BIN_DIR}/x86_64"
 
+  generate_assets
   download_lima
   download_containerd
   save_images
