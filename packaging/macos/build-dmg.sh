@@ -192,7 +192,7 @@ sign_app() {
   done < <(find "${APP_BUNDLE}/Contents/MacOS/bin" -type f -print0 2>/dev/null)
 
   info "Signing app bundle..."
-  codesign "${sign_flags[@]}" --verify --verbose \
+  codesign "${sign_flags[@]}" --verbose \
     --entitlements "${SCRIPT_DIR}/entitlements.plist" \
     "${APP_BUNDLE}"
   ok "App bundle signed."
