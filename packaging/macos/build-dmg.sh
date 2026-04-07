@@ -174,10 +174,27 @@ sign_app() {
     info "APPLE_DEVELOPER_ID not set — skipping signing."
     return
   fi
+
+  # Sign bundled third-party binaries first — Apple notarization requires all
+  # Mach-O executables to be signed with our Developer ID + secure timestamp.
+  # limactl/ctr come pre-signed by their own publishers, so we must re-sign.
+  info "Signing bundled binaries..."
+  for binary in \
+    "${BIN_DIR}/arm64/limactl"  "${BIN_DIR}/x86_64/limactl" \
+    "${BIN_DIR}/arm64/ctr"      "${BIN_DIR}/x86_64/ctr"; do
+    [ -f "$binary" ] || continue
+    codesign --force --verify \
+      --sign "${APPLE_DEVELOPER_ID}" \
+      --options runtime \
+      --timestamp \
+      "$binary"
+  done
+
   info "Signing app bundle..."
   codesign --deep --force --verify --verbose \
     --sign "${APPLE_DEVELOPER_ID}" \
     --options runtime \
+    --timestamp \
     --entitlements "${SCRIPT_DIR}/entitlements.plist" \
     "${APP_BUNDLE}"
   ok "App bundle signed."
