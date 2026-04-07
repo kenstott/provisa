@@ -156,7 +156,14 @@ function createProvisaFetch(
       }
     }
 
-    const res = await fetch(input, { ...init, headers });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    let res: Response;
+    try {
+      res = await fetch(input, { ...init, headers, signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
     const contentType = res.headers.get("content-type") ?? "";
 
     if (contentType.includes("application/json")) {

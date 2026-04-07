@@ -257,7 +257,7 @@ async def graphql_endpoint(
     # directly against the GraphQL schema instead of compiling to SQL.
     from graphql import execute as gql_execute
     from graphql.language.ast import OperationDefinitionNode
-    introspection_fields = {"__schema", "__type"}
+    introspection_fields = {"__schema", "__type", "__typename"}
     is_introspection = False
     for defn in document.definitions:
         if isinstance(defn, OperationDefinitionNode) and defn.selection_set:
