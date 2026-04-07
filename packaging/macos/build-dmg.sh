@@ -198,9 +198,15 @@ notarize_app() {
     --team-id  "${APPLE_NOTARYTOOL_TEAM_ID}"
   )
 
+  # notarytool requires a zip, pkg, or dmg — zip the .app with ditto
+  local zip_path="${OUT_DIR}/Provisa-notarize.zip"
+  info "Zipping app bundle for notarization submission..."
+  ditto -c -k --keepParent "${APP_BUNDLE}" "$zip_path"
+
   info "Submitting app bundle for notarization..."
   local submit_out
-  submit_out=$(xcrun notarytool submit "${APP_BUNDLE}" "${notary_args[@]}" --output-format json)
+  submit_out=$(xcrun notarytool submit "$zip_path" "${notary_args[@]}" --output-format json)
+  rm -f "$zip_path"
   local submission_id
   submission_id=$(printf '%s' "$submit_out" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
   ok "Submission ID: ${submission_id}"
