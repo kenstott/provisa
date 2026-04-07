@@ -258,15 +258,11 @@ async def compile_endpoint(
                 warnings.append(
                     "route=direct ignored: query spans multiple sources and requires federation"
                 )
-            elif steward_hint == "direct" and decision.route != Route.DIRECT:
+            elif decision.route != Route.DIRECT:
                 warnings.append(
                     "route=direct ignored: source has no direct driver"
                 )
-            else:
-                optimizations.append("Route override: direct (via # @provisa)")
-        elif raw_route_hint == "federated":
-            optimizations.append("Route override: federated (via # @provisa)")
-        elif raw_route_hint:
+        elif raw_route_hint and raw_route_hint != "federated":
             warnings.append(f"Unknown route hint: {raw_route_hint!r}")
         session_props = graphql_hints_to_session_props(graphql_hints)
         for k, v in session_props.items():
