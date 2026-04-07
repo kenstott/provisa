@@ -183,8 +183,10 @@ sign_app() {
   ok "App bundle signed."
 }
 
-# ── Notarization ──────────────────────────────────────────────────────────────
-notarize_dmg() {
+# ── Notarization (targets the .app bundle, NOT the DMG) ──────────────────────
+# Images are kept outside the .app so the bundle is small and notarizes in
+# seconds rather than the 45-60 min needed to scan a 1.4 GB DMG.
+notarize_app() {
   if [ -z "${APPLE_NOTARYTOOL_APPLE_ID:-}" ]; then
     info "APPLE_NOTARYTOOL_APPLE_ID not set — skipping notarization."
     return
@@ -196,15 +198,15 @@ notarize_dmg() {
     --team-id  "${APPLE_NOTARYTOOL_TEAM_ID}"
   )
 
-  info "Submitting DMG for notarization (no-wait)..."
+  info "Submitting app bundle for notarization..."
   local submit_out
-  submit_out=$(xcrun notarytool submit "${DMG_PATH}" "${notary_args[@]}" --output-format json)
+  submit_out=$(xcrun notarytool submit "${APP_BUNDLE}" "${notary_args[@]}" --output-format json)
   local submission_id
   submission_id=$(printf '%s' "$submit_out" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
   ok "Submission ID: ${submission_id}"
 
-  # Poll with retry — notarytool --wait has no retry on network blips
-  local max_polls=90   # 90 × 40 s = 60 min ceiling
+  # Poll with retry — notarytool --wait has no retry on transient network errors
+  local max_polls=45   # 45 × 40 s = 30 min ceiling (small app should be fast)
   local poll=0
   local status=""
   while [ $poll -lt $max_polls ]; do
@@ -236,8 +238,8 @@ notarize_dmg() {
     exit 1
   fi
 
-  xcrun stapler staple "${DMG_PATH}"
-  ok "DMG notarized and stapled."
+  xcrun stapler staple "${APP_BUNDLE}"
+  ok "App bundle notarized and stapled."
 }
 
 # ── Create DMG ────────────────────────────────────────────────────────────────
@@ -249,6 +251,11 @@ create_dmg() {
   mkdir -p "$tmp_dmg"
   cp -r "${APP_BUNDLE}" "${tmp_dmg}/Provisa.app"
 
+  # Images sit alongside the .app in the DMG (not inside it).
+  # first-launch.sh copies them to ~/.provisa/images on first run.
+  mkdir -p "${tmp_dmg}/images"
+  cp "${IMAGES_DIR}"/*.tar "${tmp_dmg}/images/"
+
   # Remove any existing DMG so create-dmg doesn't complain
   rm -f "${DMG_PATH}"
 
@@ -259,9 +266,8 @@ create_dmg() {
     --window-pos 200 120 \
     --window-size 660 400 \
     --icon-size 128 \
-    --icon "Provisa.app" 165 185 \
+    --icon "Provisa.app" 330 185 \
     --hide-extension "Provisa.app" \
-    --app-drop-link 495 185 \
     "${DMG_PATH}" \
     "${tmp_dmg}/"
 
@@ -282,15 +288,11 @@ main() {
   download_containerd
   save_images
 
-  # Copy images into app bundle
-  mkdir -p "${APP_BUNDLE}/Contents/Resources/images"
-  cp "${IMAGES_DIR}"/*.tar "${APP_BUNDLE}/Contents/Resources/images/"
-
   embed_compose
   embed_scripts
   sign_app
-  create_dmg
-  notarize_dmg
+  notarize_app   # notarize the small .app before images are added
+  create_dmg     # DMG bundles Provisa.app (notarized) + images/ alongside
 
   printf "\n${GREEN}${BOLD}Build complete.${NC}\n"
   printf "DMG: %s\n" "${DMG_PATH}"

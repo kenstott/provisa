@@ -164,8 +164,44 @@ stage_images() {
     return 0
   fi
   mkdir -p "$staged"
+
+  # When running from a DMG, images sit next to the .app bundle
+  local sibling_images
+  sibling_images="$(dirname "$BUNDLE_DIR")/images"
+  local src=""
+  if [ -d "$sibling_images" ] && ls "$sibling_images"/*.tar &>/dev/null 2>&1; then
+    src="$sibling_images"
+  elif [ -d "$IMAGES_DIR" ] && ls "$IMAGES_DIR"/*.tar &>/dev/null 2>&1; then
+    src="$IMAGES_DIR"
+  else
+    err "Container images not found."
+    err "Please re-mount the Provisa DMG and double-click Provisa.app to complete setup."
+    exit 1
+  fi
+
   info "Staging images to ${staged}..."
-  cp "${IMAGES_DIR}"/*.tar "$staged/"
+  cp "$src"/*.tar "$staged/"
+}
+
+# ── Self-install to /Applications when running from DMG ──────────────────────
+install_to_applications() {
+  local app_dst="/Applications/Provisa.app"
+  # Only auto-install when launched directly from a mounted DMG volume
+  if [[ "$BUNDLE_DIR" != /Volumes/* ]]; then
+    return 0
+  fi
+  if [ -d "$app_dst" ]; then
+    info "Updating existing installation at ${app_dst}..."
+    rm -rf "$app_dst"
+  else
+    info "Installing Provisa to /Applications..."
+  fi
+  if cp -rp "$BUNDLE_DIR" "$app_dst" 2>/dev/null; then
+    ok "Installed to /Applications/Provisa.app"
+  else
+    osascript -e "do shell script \"cp -rp '$BUNDLE_DIR' '$app_dst'\" with administrator privileges"
+    ok "Installed to /Applications/Provisa.app"
+  fi
 }
 
 # ── Prompt for UI port ────────────────────────────────────────────────────────
@@ -240,6 +276,8 @@ install_cli() {
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
   if [ -f "$SENTINEL" ]; then
+    # Already set up — if re-run from DMG, still update the /Applications copy
+    install_to_applications
     exit 0
   fi
 
@@ -255,7 +293,8 @@ main() {
   mkdir -p "$PROVISA_HOME"
   ask_ram_budget
   write_config
-  stage_images
+  stage_images            # copies images/ from DMG sibling → ~/.provisa/images
+  install_to_applications # self-installs to /Applications if running from DMG
   start_lima
   import_images
   install_cli
@@ -263,7 +302,13 @@ main() {
   touch "$SENTINEL"
   ok "First-launch setup complete."
   printf "\n${GREEN}${BOLD}Provisa is ready.${NC}\n"
-  printf "Run: ${BOLD}provisa start${NC}\n\n"
+
+  if [[ "$BUNDLE_DIR" == /Volumes/* ]]; then
+    printf "\nOpening Provisa from /Applications...\n"
+    open /Applications/Provisa.app
+  else
+    printf "Run: ${BOLD}provisa start${NC}\n\n"
+  fi
 }
 
 main "$@"
