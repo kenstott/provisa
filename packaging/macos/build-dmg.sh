@@ -189,12 +189,53 @@ notarize_dmg() {
     info "APPLE_NOTARYTOOL_APPLE_ID not set — skipping notarization."
     return
   fi
-  info "Submitting DMG for notarization..."
-  xcrun notarytool submit "${DMG_PATH}" \
-    --apple-id "${APPLE_NOTARYTOOL_APPLE_ID}" \
-    --password "${APPLE_NOTARYTOOL_PASSWORD}" \
-    --team-id "${APPLE_NOTARYTOOL_TEAM_ID}" \
-    --wait
+
+  local notary_args=(
+    --apple-id "${APPLE_NOTARYTOOL_APPLE_ID}"
+    --password "${APPLE_NOTARYTOOL_PASSWORD}"
+    --team-id  "${APPLE_NOTARYTOOL_TEAM_ID}"
+  )
+
+  info "Submitting DMG for notarization (no-wait)..."
+  local submit_out
+  submit_out=$(xcrun notarytool submit "${DMG_PATH}" "${notary_args[@]}" --output-format json)
+  local submission_id
+  submission_id=$(printf '%s' "$submit_out" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+  ok "Submission ID: ${submission_id}"
+
+  # Poll with retry — notarytool --wait has no retry on network blips
+  local max_polls=90   # 90 × 40 s = 60 min ceiling
+  local poll=0
+  local status=""
+  while [ $poll -lt $max_polls ]; do
+    status=$(xcrun notarytool info "$submission_id" "${notary_args[@]}" \
+               --output-format json 2>/dev/null \
+             | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))" \
+             2>/dev/null || echo "network-error")
+
+    case "$status" in
+      Accepted)
+        ok "Notarization accepted."
+        break ;;
+      Invalid|Rejected)
+        err "Notarization ${status}:"
+        xcrun notarytool log "$submission_id" "${notary_args[@]}" >&2 || true
+        exit 1 ;;
+      network-error)
+        info "  Network error — retrying in 40 s (poll $((poll+1))/${max_polls})..." ;;
+      *)
+        info "  Status: ${status:-unknown} (poll $((poll+1))/${max_polls})" ;;
+    esac
+
+    sleep 40
+    poll=$((poll + 1))
+  done
+
+  if [ "$status" != "Accepted" ]; then
+    err "Notarization timed out after $((max_polls * 40 / 60)) minutes."
+    exit 1
+  fi
+
   xcrun stapler staple "${DMG_PATH}"
   ok "DMG notarized and stapled."
 }
