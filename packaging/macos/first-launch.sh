@@ -9,7 +9,7 @@ IMAGES_DIR="${RESOURCES}/images"
 PROVISA_HOME="${HOME}/.provisa"
 SENTINEL="${PROVISA_HOME}/.first-launch-complete"
 LIMA_VM_NAME="provisa"
-LIMA_YAML="${RESOURCES}/provisa-lima.yaml"
+LIMA_YAML="${PROVISA_HOME}/provisa-lima.yaml"
 
 ARCH="$(uname -m)"
 case "$ARCH" in
