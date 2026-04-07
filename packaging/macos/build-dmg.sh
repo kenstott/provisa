@@ -164,18 +164,25 @@ sign_app() {
   local id="${APPLE_DEVELOPER_ID}"
   local sign_flags=(--force --sign "$id" --options runtime --timestamp)
 
-  # Apple notarization requires every Mach-O inside the bundle to be
-  # individually signed with Developer ID + secure timestamp.
-  # --deep is intentionally NOT used: it re-signs nested executables without
-  # reliably propagating --timestamp, which breaks notarization.
-  # Sign from innermost to outermost.
-  info "Signing bundled Mach-O binaries (inner → outer)..."
+  # Apple requires every code object inside the bundle to be signed with
+  # Developer ID + secure timestamp before the outer bundle is signed.
+  # --deep is NOT used: it doesn't reliably propagate --timestamp.
+  # Sign innermost files first, then the outer bundle.
+  info "Signing bundled executables (inner → outer)..."
+
+  # 1. Mach-O binaries (limactl arm64 + x86_64)
   while IFS= read -r -d '' f; do
     if file "$f" | grep -q "Mach-O"; then
       codesign "${sign_flags[@]}" "$f"
-      info "  Signed: ${f#"${APP_BUNDLE}/"}"
+      info "  Signed Mach-O: ${f#"${APP_BUNDLE}/"}"
     fi
   done < <(find "${APP_BUNDLE}/Contents/MacOS/bin" -type f -print0 2>/dev/null)
+
+  # 2. Scripts in Contents/MacOS (provisa-launcher, first-launch.sh)
+  while IFS= read -r -d '' f; do
+    codesign "${sign_flags[@]}" "$f"
+    info "  Signed script: ${f#"${APP_BUNDLE}/"}"
+  done < <(find "${APP_BUNDLE}/Contents/MacOS" -maxdepth 1 -type f -print0)
 
   info "Signing app bundle..."
   codesign "${sign_flags[@]}" --verbose \
