@@ -175,26 +175,24 @@ sign_app() {
     return
   fi
 
-  # Sign bundled third-party binaries first — Apple notarization requires all
-  # Mach-O executables to be signed with our Developer ID + secure timestamp.
-  # limactl/ctr come pre-signed by their own publishers, so we must re-sign.
-  info "Signing bundled binaries..."
-  for binary in \
-    "${BIN_DIR}/arm64/limactl"  "${BIN_DIR}/x86_64/limactl" \
-    "${BIN_DIR}/arm64/ctr"      "${BIN_DIR}/x86_64/ctr"; do
-    [ -f "$binary" ] || continue
-    codesign --force --verify \
-      --sign "${APPLE_DEVELOPER_ID}" \
-      --options runtime \
-      --timestamp \
-      "$binary"
-  done
+  local id="${APPLE_DEVELOPER_ID}"
+  local sign_flags=(--force --sign "$id" --options runtime --timestamp)
+
+  # Apple notarization requires every Mach-O inside the bundle to be
+  # individually signed with Developer ID + secure timestamp.
+  # --deep is intentionally NOT used: it re-signs nested executables without
+  # reliably propagating --timestamp, which breaks notarization.
+  # Sign from innermost to outermost.
+  info "Signing bundled Mach-O binaries (inner → outer)..."
+  while IFS= read -r -d '' f; do
+    if file "$f" | grep -q "Mach-O"; then
+      codesign "${sign_flags[@]}" "$f"
+      info "  Signed: ${f#"${APP_BUNDLE}/"}"
+    fi
+  done < <(find "${APP_BUNDLE}/Contents/MacOS/bin" -type f -print0 2>/dev/null)
 
   info "Signing app bundle..."
-  codesign --deep --force --verify --verbose \
-    --sign "${APPLE_DEVELOPER_ID}" \
-    --options runtime \
-    --timestamp \
+  codesign "${sign_flags[@]}" --verify --verbose \
     --entitlements "${SCRIPT_DIR}/entitlements.plist" \
     "${APP_BUNDLE}"
   ok "App bundle signed."
