@@ -94,7 +94,7 @@ write_lima_config() {
     err "Provisa macOS requires Apple Silicon (arm64). Intel Macs are not supported."
     exit 1
   fi
-  local arm64_local="${PROVISA_HOME}/vm-image/ubuntu-24.04-minimal-cloudimg-arm64.img"
+  local arm64_local="${PROVISA_HOME}/vm-image/ubuntu-24.04-server-cloudimg-arm64.img"
 
   cat > "$LIMA_YAML" <<YAML
 # Provisa Lima VM — Apple Silicon (arm64) only
