@@ -86,40 +86,24 @@ download_lima() {
     cp "${tmp}/${arch}/bin/limactl" "${BIN_DIR}/${arch}/limactl"
     chmod +x "${BIN_DIR}/${arch}/limactl"
   done
-  rm -rf "$tmp"
-  ok "Lima binaries downloaded."
-}
 
-# ── Lima guest agent (Linux-aarch64) ─────────────────────────────────────────
-# Lima 2.x requires a Linux guest agent binary at ~/.lima/_config/lima-guestagent.Linux-aarch64
-# before the VM starts. We bundle it in the app and install it at first launch.
-# It is a Linux ELF binary — must NOT be added to codesign targets.
-download_guest_agents() {
-  info "Downloading Lima guest agent for Linux-aarch64..."
-  local base_url="https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}"
-  local tarball="lima-additional-guestagents-${LIMA_VERSION}-Linux-aarch64.tar.gz"
+  # Extract Linux-aarch64 guest agent from the arm64 tarball (Lima 2.x requirement).
+  # Stored as lima-guestagent.Linux-aarch64.gz inside the tarball — decompress it.
+  # Linux ELF binary — must NOT be added to codesign targets.
   local guest_dir="${APP_BUNDLE}/Contents/MacOS/bin/guest-agents"
   mkdir -p "$guest_dir"
-
-  if [ -f "${guest_dir}/lima-guestagent.Linux-aarch64" ]; then
-    info "  Skipping (cached): lima-guestagent.Linux-aarch64"
-    return
-  fi
-
-  local tmp="${SCRIPT_DIR}/tmp-guestagent"
-  mkdir -p "$tmp"
-  curl -fsSL "${base_url}/${tarball}" -o "${tmp}/guestagent.tar.gz"
-  tar -xzf "${tmp}/guestagent.tar.gz" -C "$tmp"
-  local bin
-  bin="$(find "$tmp" -name "lima-guestagent" -type f | head -1)"
-  if [ -z "$bin" ]; then
-    err "lima-guestagent binary not found in tarball"
+  local guest_gz="${tmp}/arm64/share/lima/lima-guestagent.Linux-aarch64.gz"
+  if [ -f "$guest_gz" ]; then
+    gunzip -c "$guest_gz" > "${guest_dir}/lima-guestagent.Linux-aarch64"
+    chmod +x "${guest_dir}/lima-guestagent.Linux-aarch64"
+    ok "Lima guest agent extracted."
+  else
+    err "lima-guestagent.Linux-aarch64.gz not found in Lima tarball"
     exit 1
   fi
-  cp "$bin" "${guest_dir}/lima-guestagent.Linux-aarch64"
-  chmod +x "${guest_dir}/lima-guestagent.Linux-aarch64"
+
   rm -rf "$tmp"
-  ok "Lima guest agent downloaded."
+  ok "Lima binaries downloaded."
 }
 
 # ── containerd ────────────────────────────────────────────────────────────────
@@ -364,7 +348,6 @@ main() {
 
   generate_assets
   download_lima
-  download_guest_agents
   download_containerd
   download_vm_images
   save_images
