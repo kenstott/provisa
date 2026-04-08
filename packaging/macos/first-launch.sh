@@ -90,31 +90,23 @@ write_lima_config() {
     return
   fi
   mkdir -p "$PROVISA_HOME"
-  # Map uname -m to Lima arch values
-  local lima_arch
-  case "$ARCH" in
-    arm64)  lima_arch="aarch64" ;;
-    x86_64) lima_arch="x86_64"  ;;
-    *)      lima_arch="aarch64" ;;
-  esac
-  # Bundled arm64 minimal image (Apple Silicon). Intel Macs fall back to
-  # the Ubuntu 24.04 minimal image downloaded on first launch (~280MB).
+  if [ "$ARCH" != "arm64" ]; then
+    err "Provisa macOS requires Apple Silicon (arm64). Intel Macs are not supported."
+    exit 1
+  fi
   local arm64_local="${PROVISA_HOME}/vm-image/ubuntu-24.04-minimal-cloudimg-arm64.img"
-  local amd64_url="https://cloud-images.ubuntu.com/minimal/releases/24.04/release/ubuntu-24.04-minimal-cloudimg-amd64.img"
 
   cat > "$LIMA_YAML" <<YAML
-# Provisa Lima VM — airgapped on Apple Silicon; minimal download on Intel
+# Provisa Lima VM — Apple Silicon (arm64) only
 vmType: vz
 os: Linux
-arch: "${lima_arch}"
+arch: "aarch64"
 cpus: 4
 memory: "${LIMA_MEMORY}"
 disk: "60GiB"
 images:
   - location: "${arm64_local}"
     arch: "aarch64"
-  - location: "${amd64_url}"
-    arch: "x86_64"
 vmOpts:
   vz:
     rosetta:
