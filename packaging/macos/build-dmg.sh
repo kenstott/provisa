@@ -342,9 +342,6 @@ create_dmg() {
   cp "${VM_IMAGES_DIR}"/*.img "${tmp_dmg}/vm-image/"
   chflags hidden "${tmp_dmg}/vm-image"
 
-  mkdir -p "${tmp_dmg}/nerdctl"
-  cp "${NERDCTL_DIR}/${NERDCTL_ARCHIVE}" "${tmp_dmg}/nerdctl/"
-  chflags hidden "${tmp_dmg}/nerdctl"
 
   # Remove any existing DMG so create-dmg doesn't complain
   rm -f "${DMG_PATH}"

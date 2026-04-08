@@ -285,6 +285,9 @@ stage_images() {
 }
 
 # ── Stage nerdctl-full archive for airgapped containerd install ───────────────
+# Tries local sources first (airgapped path). Falls back to a one-time download
+# (~245MB) if not bundled — the DMG exceeds GitHub's 2 GB asset limit when
+# nerdctl is included, so it ships separately.
 stage_nerdctl() {
   local staged="${PROVISA_HOME}/nerdctl"
   local archive="nerdctl-full-2.2.2-linux-arm64.tar.gz"
@@ -293,6 +296,7 @@ stage_nerdctl() {
   fi
   mkdir -p "$staged"
 
+  # 1. Check alongside the app in the mounted DMG or sibling directory
   local bundle_parent
   bundle_parent="$(dirname "$BUNDLE_DIR")"
   local src=""
@@ -302,6 +306,7 @@ stage_nerdctl() {
     fi
   done
 
+  # 2. Scan mounted volumes (DMG still open)
   if [ -z "$src" ]; then
     for vol_nerdctl in /Volumes/*/nerdctl /Volumes/*/.nerdctl; do
       if [ -d "$vol_nerdctl" ] && [ -f "${vol_nerdctl}/${archive}" ]; then
@@ -310,13 +315,18 @@ stage_nerdctl() {
     done
   fi
 
-  if [ -z "$src" ]; then
-    err "nerdctl archive not found in DMG. Please keep the Provisa DMG mounted and re-open Provisa.app."
-    exit 1
+  if [ -n "$src" ]; then
+    info "Staging nerdctl archive from ${src}..."
+    cp "${src}/${archive}" "${staged}/"
+    return 0
   fi
 
-  info "Staging nerdctl archive to ${staged}..."
-  cp "${src}/${archive}" "${staged}/"
+  # 3. One-time download (internet required — only on first setup)
+  info "nerdctl runtime not bundled — downloading once (~245MB)..."
+  curl -fL \
+    "https://github.com/containerd/nerdctl/releases/download/v2.2.2/${archive}" \
+    -o "${staged}/${archive}"
+  ok "nerdctl archive downloaded and cached."
 }
 
 # ── Self-install to /Applications when running from DMG ──────────────────────
