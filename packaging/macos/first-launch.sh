@@ -127,6 +127,25 @@ provision:
 YAML
 }
 
+# ── Install Lima guest agent ──────────────────────────────────────────────────
+# Lima 2.x requires this Linux ELF binary at ~/.lima/_config/ before VM start.
+install_guest_agent() {
+  local guest_agent_dir="${HOME}/.lima/_config"
+  local guest_agent="${guest_agent_dir}/lima-guestagent.Linux-aarch64"
+  if [ -f "$guest_agent" ]; then
+    return 0
+  fi
+  local src="${BUNDLE_DIR}/MacOS/bin/guest-agents/lima-guestagent.Linux-aarch64"
+  if [ ! -f "$src" ]; then
+    err "Lima guest agent not found in bundle: ${src}"
+    exit 1
+  fi
+  mkdir -p "$guest_agent_dir"
+  cp "$src" "$guest_agent"
+  chmod +x "$guest_agent"
+  ok "Lima guest agent installed."
+}
+
 # ── Start Lima VM ─────────────────────────────────────────────────────────────
 start_lima() {
   info "Starting Provisa VM (first launch — this takes ~2 minutes)..."
@@ -382,6 +401,7 @@ main() {
   stage_vm_image          # copies base VM image from DMG → ~/.provisa/vm-image
   stage_images            # copies container images from DMG → ~/.provisa/images
   install_to_applications # self-installs to /Applications if running from DMG
+  install_guest_agent     # copies Lima guest agent to ~/.lima/_config/
   start_lima
   import_images
   install_cli

@@ -90,6 +90,38 @@ download_lima() {
   ok "Lima binaries downloaded."
 }
 
+# ── Lima guest agent (Linux-aarch64) ─────────────────────────────────────────
+# Lima 2.x requires a Linux guest agent binary at ~/.lima/_config/lima-guestagent.Linux-aarch64
+# before the VM starts. We bundle it in the app and install it at first launch.
+# It is a Linux ELF binary — must NOT be added to codesign targets.
+download_guest_agents() {
+  info "Downloading Lima guest agent for Linux-aarch64..."
+  local base_url="https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}"
+  local tarball="lima-additional-guestagents-${LIMA_VERSION}-Linux-aarch64.tar.gz"
+  local guest_dir="${APP_BUNDLE}/Contents/MacOS/bin/guest-agents"
+  mkdir -p "$guest_dir"
+
+  if [ -f "${guest_dir}/lima-guestagent.Linux-aarch64" ]; then
+    info "  Skipping (cached): lima-guestagent.Linux-aarch64"
+    return
+  fi
+
+  local tmp="${SCRIPT_DIR}/tmp-guestagent"
+  mkdir -p "$tmp"
+  curl -fsSL "${base_url}/${tarball}" -o "${tmp}/guestagent.tar.gz"
+  tar -xzf "${tmp}/guestagent.tar.gz" -C "$tmp"
+  local bin
+  bin="$(find "$tmp" -name "lima-guestagent" -type f | head -1)"
+  if [ -z "$bin" ]; then
+    err "lima-guestagent binary not found in tarball"
+    exit 1
+  fi
+  cp "$bin" "${guest_dir}/lima-guestagent.Linux-aarch64"
+  chmod +x "${guest_dir}/lima-guestagent.Linux-aarch64"
+  rm -rf "$tmp"
+  ok "Lima guest agent downloaded."
+}
+
 # ── containerd ────────────────────────────────────────────────────────────────
 # ctr is provided natively by Lima's containerd integration inside the VM.
 # first-launch.sh runs `ctr` via `limactl shell ... sudo ctr`, so no macOS-side
@@ -332,6 +364,7 @@ main() {
 
   generate_assets
   download_lima
+  download_guest_agents
   download_containerd
   download_vm_images
   save_images
