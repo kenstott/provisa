@@ -189,11 +189,22 @@ function Start-Vm {
 # ── Load images ────────────────────────────────────────────────────────────────
 function Load-Images {
   Write-Info 'Loading bundled container images (no network required)...'
-  $tars = Get-ChildItem -Path $ImagesDir -Filter '*.tar' -ErrorAction Stop
+  $tars = Get-ChildItem -Path $ImagesDir -Filter '*.tar.gz' -ErrorAction Stop
   foreach ($tar in $tars) {
     Write-Info "  Loading: $($tar.Name)"
-    docker load -i $tar.FullName
-    if ($LASTEXITCODE -ne 0) { Write-Err "Failed to load image: $($tar.Name)"; exit 1 }
+    # Decompress to a temp .tar, then load — docker load does not accept .gz on Windows
+    $tmpTar = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetFileNameWithoutExtension($tar.Name))
+    try {
+      $inStream  = [System.IO.File]::OpenRead($tar.FullName)
+      $gzStream  = New-Object System.IO.Compression.GZipStream($inStream, [System.IO.Compression.CompressionMode]::Decompress)
+      $outStream = [System.IO.File]::Create($tmpTar)
+      $gzStream.CopyTo($outStream)
+      $outStream.Close(); $gzStream.Close(); $inStream.Close()
+      docker load -i $tmpTar
+      if ($LASTEXITCODE -ne 0) { Write-Err "Failed to load image: $($tar.Name)"; exit 1 }
+    } finally {
+      Remove-Item -Path $tmpTar -Force -ErrorAction SilentlyContinue
+    }
   }
   Write-Ok "Loaded $($tars.Count) images."
 }

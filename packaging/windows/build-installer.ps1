@@ -14,7 +14,7 @@ $BuildDir = Join-Path $ScriptDir 'build'
 # images/
 $BuildImages = Join-Path $BuildDir 'images'
 New-Item -ItemType Directory -Path $BuildImages -Force | Out-Null
-Copy-Item (Join-Path $ScriptDir 'images\*.tar') $BuildImages
+Copy-Item (Join-Path $ScriptDir 'images\*.tar.gz') $BuildImages
 
 # compose/
 $BuildCompose = Join-Path $BuildDir 'compose'

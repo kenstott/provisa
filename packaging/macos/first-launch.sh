@@ -120,7 +120,7 @@ containerd:
   system: true
   user: false
   archives:
-    - location: "file://${nerdctl_archive}"
+    - location: "${nerdctl_archive}"
       arch: "aarch64"
       digest: "${nerdctl_digest}"
 mounts:
