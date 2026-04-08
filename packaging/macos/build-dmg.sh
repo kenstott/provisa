@@ -159,10 +159,13 @@ download_vm_images() {
 }
 
 # ── Save service images as tarballs ──────────────────────────────────────────
+# Images are saved as .tar.gz (gzip -9) to fit under GitHub's 2 GB per-asset
+# limit while bundling the nerdctl archive. Trino:480 is ~1.5 GB uncompressed
+# but ~600 MB gzipped. ctr images import handles gzip streams transparently.
 save_images() {
   mkdir -p "$IMAGES_DIR"
   local count
-  count=$(ls "${IMAGES_DIR}"/*.tar 2>/dev/null | wc -l | tr -d ' ')
+  count=$(ls "${IMAGES_DIR}"/*.tar.gz 2>/dev/null | wc -l | tr -d ' ')
   if [ "$count" -ge 6 ]; then
     info "Images pre-populated (${count} tarballs) — skipping docker pull."
     return
@@ -171,25 +174,25 @@ save_images() {
     err "docker not found and images not pre-populated in ${IMAGES_DIR}"
     exit 1
   fi
-  info "Saving service images..."
+  info "Saving service images (gzip compressed)..."
   for img in "${IMAGES[@]}"; do
     local tag="${img##*/}"
     tag="${tag//:/-}"
     tag="${tag//\//-}"
-    local out="${IMAGES_DIR}/${tag}.tar"
+    local out="${IMAGES_DIR}/${tag}.tar.gz"
     if [ -f "$out" ]; then
       info "  Skipping (cached): ${img}"
       continue
     fi
     info "  Pulling + saving: ${img}"
     docker pull "$img"
-    docker save "$img" -o "$out"
+    docker save "$img" | gzip -9 > "$out"
     ok "  Saved: ${out}"
   done
   # Build and save zaychik (custom image)
   info "  Building + saving zaychik..."
   docker build -t provisa/zaychik:local "${REPO_ROOT}/zaychik"
-  docker save provisa/zaychik:local -o "${IMAGES_DIR}/zaychik-local.tar"
+  docker save provisa/zaychik:local | gzip -9 > "${IMAGES_DIR}/zaychik-local.tar.gz"
   ok "  Saved zaychik."
 }
 
@@ -335,8 +338,12 @@ create_dmg() {
   # chflags hidden keeps them out of the Finder window.
   # first-launch.sh copies them to ~/.provisa/ on first run.
   mkdir -p "${tmp_dmg}/images"
-  cp "${IMAGES_DIR}"/*.tar "${tmp_dmg}/images/"
+  cp "${IMAGES_DIR}"/*.tar.gz "${tmp_dmg}/images/"
   chflags hidden "${tmp_dmg}/images"
+
+  mkdir -p "${tmp_dmg}/nerdctl"
+  cp "${NERDCTL_DIR}/${NERDCTL_ARCHIVE}" "${tmp_dmg}/nerdctl/"
+  chflags hidden "${tmp_dmg}/nerdctl"
 
   mkdir -p "${tmp_dmg}/vm-image"
   cp "${VM_IMAGES_DIR}"/*.img "${tmp_dmg}/vm-image/"

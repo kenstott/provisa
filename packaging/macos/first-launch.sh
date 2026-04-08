@@ -191,16 +191,15 @@ start_lima() {
 import_images() {
   info "Importing bundled container images (no network required)..."
   local count=0
-  for tar_file in "${IMAGES_DIR}"/*.tar; do
-    [ -f "$tar_file" ] || continue
+  for gz_file in "${IMAGES_DIR}"/*.tar.gz; do
+    [ -f "$gz_file" ] || continue
     local name
-    name="$(basename "$tar_file")"
+    name="$(basename "$gz_file")"
     info "  Importing: ${name}"
+    # ctr images import handles gzip streams; pipe via gunzip for compatibility
+    gunzip -c "$gz_file" | \
     "$LIMACTL" shell "$LIMA_VM_NAME" -- \
-      sudo ctr --namespace=default images import "/mnt/lima.hostagent/Users/${USER}/.provisa/images/${name}" \
-      2>/dev/null || \
-    "$LIMACTL" shell "$LIMA_VM_NAME" -- \
-      sudo ctr --namespace=default images import - < "$tar_file"
+      sudo ctr --namespace=default images import -
     count=$((count + 1))
   done
   ok "Imported ${count} images."
@@ -253,7 +252,7 @@ stage_images() {
   bundle_parent="$(dirname "$BUNDLE_DIR")"
   local src=""
   for candidate in "${bundle_parent}/images" "${bundle_parent}/.images"; do
-    if [ -d "$candidate" ] && ls "$candidate"/*.tar &>/dev/null 2>&1; then
+    if [ -d "$candidate" ] && ls "$candidate"/*.tar.gz &>/dev/null 2>&1; then
       src="$candidate"
       break
     fi
@@ -262,7 +261,7 @@ stage_images() {
   # 2. Scan mounted DMG volumes (user dragged .app to Applications but DMG still open)
   if [ -z "$src" ]; then
     for vol_images in /Volumes/*/images /Volumes/*/.images; do
-      if [ -d "$vol_images" ] && ls "$vol_images"/*.tar &>/dev/null 2>&1; then
+      if [ -d "$vol_images" ] && ls "$vol_images"/*.tar.gz &>/dev/null 2>&1; then
         src="$vol_images"
         break
       fi
@@ -270,7 +269,7 @@ stage_images() {
   fi
 
   # 3. Fallback: images embedded inside the bundle (not typical in Option C)
-  if [ -z "$src" ] && [ -d "$IMAGES_DIR" ] && ls "$IMAGES_DIR"/*.tar &>/dev/null 2>&1; then
+  if [ -z "$src" ] && [ -d "$IMAGES_DIR" ] && ls "$IMAGES_DIR"/*.tar.gz &>/dev/null 2>&1; then
     src="$IMAGES_DIR"
   fi
 
@@ -281,13 +280,10 @@ stage_images() {
   fi
 
   info "Staging images to ${staged}..."
-  cp "$src"/*.tar "$staged/"
+  cp "$src"/*.tar.gz "$staged/"
 }
 
 # ── Stage nerdctl-full archive for airgapped containerd install ───────────────
-# Tries local sources first (airgapped path). Falls back to a one-time download
-# (~245MB) if not bundled — the DMG exceeds GitHub's 2 GB asset limit when
-# nerdctl is included, so it ships separately.
 stage_nerdctl() {
   local staged="${PROVISA_HOME}/nerdctl"
   local archive="nerdctl-full-2.2.2-linux-arm64.tar.gz"
@@ -296,7 +292,6 @@ stage_nerdctl() {
   fi
   mkdir -p "$staged"
 
-  # 1. Check alongside the app in the mounted DMG or sibling directory
   local bundle_parent
   bundle_parent="$(dirname "$BUNDLE_DIR")"
   local src=""
@@ -306,7 +301,6 @@ stage_nerdctl() {
     fi
   done
 
-  # 2. Scan mounted volumes (DMG still open)
   if [ -z "$src" ]; then
     for vol_nerdctl in /Volumes/*/nerdctl /Volumes/*/.nerdctl; do
       if [ -d "$vol_nerdctl" ] && [ -f "${vol_nerdctl}/${archive}" ]; then
@@ -315,18 +309,13 @@ stage_nerdctl() {
     done
   fi
 
-  if [ -n "$src" ]; then
-    info "Staging nerdctl archive from ${src}..."
-    cp "${src}/${archive}" "${staged}/"
-    return 0
+  if [ -z "$src" ]; then
+    err "nerdctl archive not found. Please keep the Provisa DMG mounted and re-open Provisa.app."
+    exit 1
   fi
 
-  # 3. One-time download (internet required — only on first setup)
-  info "nerdctl runtime not bundled — downloading once (~245MB)..."
-  curl -fL \
-    "https://github.com/containerd/nerdctl/releases/download/v2.2.2/${archive}" \
-    -o "${staged}/${archive}"
-  ok "nerdctl archive downloaded and cached."
+  info "Staging nerdctl archive to ${staged}..."
+  cp "${src}/${archive}" "${staged}/"
 }
 
 # ── Self-install to /Applications when running from DMG ──────────────────────
