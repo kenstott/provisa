@@ -100,6 +100,9 @@ write_lima_config() {
   fi
   local arm64_local="${PROVISA_HOME}/vm-image/ubuntu-24.04-server-cloudimg-arm64.img"
 
+  local nerdctl_archive="${PROVISA_HOME}/nerdctl/nerdctl-full-2.2.2-linux-arm64.tar.gz"
+  local nerdctl_digest="sha256:55d68d2613b5f065021146bac21f620cde9e7fdd4bd3eff74cd324f5462e107a"
+
   cat > "$LIMA_YAML" <<YAML
 # Provisa Lima VM — Apple Silicon (arm64) only
 vmType: vz
@@ -112,13 +115,14 @@ images:
   - location: "${arm64_local}"
     arch: "aarch64"
 vmOpts:
-  vz:
-    rosetta:
-      enabled: true
-      binfmt: true
+  vz: {}
 containerd:
   system: true
   user: false
+  archives:
+    - location: "file://${nerdctl_archive}"
+      arch: "aarch64"
+      digest: "${nerdctl_digest}"
 mounts:
   - location: "~/.provisa"
     writable: true
@@ -280,6 +284,41 @@ stage_images() {
   cp "$src"/*.tar "$staged/"
 }
 
+# ── Stage nerdctl-full archive for airgapped containerd install ───────────────
+stage_nerdctl() {
+  local staged="${PROVISA_HOME}/nerdctl"
+  local archive="nerdctl-full-2.2.2-linux-arm64.tar.gz"
+  if [ -f "${staged}/${archive}" ]; then
+    return 0
+  fi
+  mkdir -p "$staged"
+
+  local bundle_parent
+  bundle_parent="$(dirname "$BUNDLE_DIR")"
+  local src=""
+  for candidate in "${bundle_parent}/nerdctl" "${bundle_parent}/.nerdctl"; do
+    if [ -d "$candidate" ] && [ -f "${candidate}/${archive}" ]; then
+      src="$candidate"; break
+    fi
+  done
+
+  if [ -z "$src" ]; then
+    for vol_nerdctl in /Volumes/*/nerdctl /Volumes/*/.nerdctl; do
+      if [ -d "$vol_nerdctl" ] && [ -f "${vol_nerdctl}/${archive}" ]; then
+        src="$vol_nerdctl"; break
+      fi
+    done
+  fi
+
+  if [ -z "$src" ]; then
+    err "nerdctl archive not found in DMG. Please keep the Provisa DMG mounted and re-open Provisa.app."
+    exit 1
+  fi
+
+  info "Staging nerdctl archive to ${staged}..."
+  cp "${src}/${archive}" "${staged}/"
+}
+
 # ── Self-install to /Applications when running from DMG ──────────────────────
 install_to_applications() {
   local app_dst="/Applications/Provisa.app"
@@ -416,6 +455,7 @@ main() {
   write_config
   stage_vm_image          # copies base VM image from DMG → ~/.provisa/vm-image
   stage_images            # copies container images from DMG → ~/.provisa/images
+  stage_nerdctl           # copies nerdctl-full archive from DMG → ~/.provisa/nerdctl/
   install_to_applications # self-installs to /Applications if running from DMG
   install_guest_agent     # stages gz to ~/.provisa/share/lima/, creates limactl symlink
   start_lima

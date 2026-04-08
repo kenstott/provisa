@@ -9,12 +9,18 @@ OUT_DIR="${SCRIPT_DIR}/dist"
 APP_BUNDLE="${SCRIPT_DIR}/Provisa.app"
 IMAGES_DIR="${SCRIPT_DIR}/images"
 VM_IMAGES_DIR="${SCRIPT_DIR}/vm-images"
+NERDCTL_DIR="${SCRIPT_DIR}/nerdctl"
 BIN_DIR="${APP_BUNDLE}/Contents/MacOS/bin"
 DMG_NAME="Provisa.dmg"
 DMG_PATH="${OUT_DIR}/${DMG_NAME}"
 
 # Lima version
 LIMA_VERSION="2.1.1"
+# nerdctl-full version Lima 2.1.1 fetches (must match exactly)
+NERDCTL_VERSION="2.2.2"
+NERDCTL_ARCHIVE="nerdctl-full-${NERDCTL_VERSION}-linux-arm64.tar.gz"
+# sha256 of the official nerdctl-full-2.2.2-linux-arm64.tar.gz
+NERDCTL_DIGEST="sha256:55d68d2613b5f065021146bac21f620cde9e7fdd4bd3eff74cd324f5462e107a"
 
 # Service images from docker-compose (use digest-pinning in production)
 IMAGES=(
@@ -107,12 +113,29 @@ download_lima() {
   ok "Lima binaries downloaded."
 }
 
+# ── Download nerdctl-full archive (bundled for airgapped containerd install) ──
+# Lima uses nerdctl-full to provision containerd inside the VM. We pre-download
+# it so the install is fully airgapped — no network needed at first launch.
+# first-launch.sh stages the archive to ~/.provisa/nerdctl/ and the Lima YAML
+# points containerd.archives to that local file:// URL.
+download_nerdctl() {
+  mkdir -p "$NERDCTL_DIR"
+  if [ -f "${NERDCTL_DIR}/${NERDCTL_ARCHIVE}" ]; then
+    info "nerdctl archive cached — skipping."
+    return
+  fi
+  info "Downloading nerdctl-full ${NERDCTL_VERSION} (arm64, ~245MB)..."
+  curl -fL \
+    "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/${NERDCTL_ARCHIVE}" \
+    -o "${NERDCTL_DIR}/${NERDCTL_ARCHIVE}"
+  ok "nerdctl archive downloaded."
+}
+
 # ── containerd ────────────────────────────────────────────────────────────────
-# ctr is provided natively by Lima's containerd integration inside the VM.
-# first-launch.sh runs `ctr` via `limactl shell ... sudo ctr`, so no macOS-side
-# binary is needed. Bundling the Linux ELF ctr breaks codesign signing checks.
+# containerd is installed inside the VM by Lima via the nerdctl-full archive.
+# No macOS-side binary is needed.
 download_containerd() {
-  ok "containerd: using Lima native integration — no macOS bundle needed."
+  ok "containerd: installed in VM from bundled nerdctl-full archive."
 }
 
 # ── Download Lima base VM image (bundled for airgapped install) ───────────────
@@ -319,6 +342,10 @@ create_dmg() {
   cp "${VM_IMAGES_DIR}"/*.img "${tmp_dmg}/vm-image/"
   chflags hidden "${tmp_dmg}/vm-image"
 
+  mkdir -p "${tmp_dmg}/nerdctl"
+  cp "${NERDCTL_DIR}/${NERDCTL_ARCHIVE}" "${tmp_dmg}/nerdctl/"
+  chflags hidden "${tmp_dmg}/nerdctl"
+
   # Remove any existing DMG so create-dmg doesn't complain
   rm -f "${DMG_PATH}"
 
@@ -349,6 +376,7 @@ main() {
 
   generate_assets
   download_lima
+  download_nerdctl
   download_containerd
   download_vm_images
   save_images
