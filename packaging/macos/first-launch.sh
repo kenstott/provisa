@@ -98,7 +98,7 @@ write_lima_config() {
     err "Provisa macOS requires Apple Silicon (arm64). Intel Macs are not supported."
     exit 1
   fi
-  local arm64_local="${PROVISA_HOME}/vm-image/ubuntu-24.04-minimal-cloudimg-arm64.img"
+  local arm64_local="${PROVISA_HOME}/vm-image/provisa-vm.img"
 
   local nerdctl_archive="${PROVISA_HOME}/nerdctl/nerdctl-full-2.2.2-linux-arm64.tar.gz"
   local nerdctl_digest="sha256:55d68d2613b5f065021146bac21f620cde9e7fdd4bd3eff74cd324f5462e107a"
@@ -208,7 +208,7 @@ import_images() {
 # ── Stage base VM image from DMG to ~/.provisa/vm-image/ ─────────────────────
 stage_vm_image() {
   local staged="${PROVISA_HOME}/vm-image"
-  if [ -d "$staged" ] && ls "$staged"/*.img &>/dev/null 2>&1; then
+  if [ -f "${staged}/provisa-vm.img" ]; then
     return 0
   fi
   mkdir -p "$staged"
@@ -236,11 +236,11 @@ stage_vm_image() {
   fi
 
   info "Staging base VM image to ${staged}..."
-  cp "$src"/*.img "$staged/"
-  local expected="${PROVISA_HOME}/vm-image/ubuntu-24.04-minimal-cloudimg-arm64.img"
-  if [ ! -f "$expected" ]; then
-    err "VM image not found after staging: ${expected}"
-    err "Files in ${staged}: $(ls "$staged" 2>/dev/null || echo '(empty)')"
+  local src_img
+  src_img=$(ls "$src"/*.img | head -1)
+  cp "$src_img" "${staged}/provisa-vm.img"
+  if [ ! -f "${staged}/provisa-vm.img" ]; then
+    err "VM image not found after staging: ${staged}/provisa-vm.img"
     exit 1
   fi
 }

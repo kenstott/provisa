@@ -147,13 +147,16 @@ download_vm_images() {
   mkdir -p "$VM_IMAGES_DIR"
   local base_url="https://cloud-images.ubuntu.com/minimal/releases/noble/release"
   local arm64_img="ubuntu-24.04-minimal-cloudimg-arm64.img"
+  # Store with a fixed name so first-launch.sh never needs updating when the
+  # upstream filename changes across releases.
+  local fixed_name="provisa-vm.img"
 
-  if [ -f "${VM_IMAGES_DIR}/${arm64_img}" ]; then
-    info "  Skipping (cached): ${arm64_img}"
+  if [ -f "${VM_IMAGES_DIR}/${fixed_name}" ]; then
+    info "  Skipping (cached): ${fixed_name}"
   else
     info "  Downloading base VM image: ${arm64_img} (~200MB)..."
-    curl -fL "${base_url}/${arm64_img}" -o "${VM_IMAGES_DIR}/${arm64_img}"
-    ok "  Saved: ${VM_IMAGES_DIR}/${arm64_img}"
+    curl -fL "${base_url}/${arm64_img}" -o "${VM_IMAGES_DIR}/${fixed_name}"
+    ok "  Saved: ${VM_IMAGES_DIR}/${fixed_name}"
   fi
   ok "Base VM image ready."
 }
