@@ -135,13 +135,13 @@ install_guest_agent() {
   if [ -f "$guest_agent" ]; then
     return 0
   fi
-  local src="${BUNDLE_DIR}/MacOS/bin/guest-agents/lima-guestagent.Linux-aarch64"
-  if [ ! -f "$src" ]; then
-    err "Lima guest agent not found in bundle: ${src}"
+  local src_gz="${RESOURCES}/lima-guest-agents/lima-guestagent.Linux-aarch64.gz"
+  if [ ! -f "$src_gz" ]; then
+    err "Lima guest agent not found in bundle: ${src_gz}"
     exit 1
   fi
   mkdir -p "$guest_agent_dir"
-  cp "$src" "$guest_agent"
+  gunzip -c "$src_gz" > "$guest_agent"
   chmod +x "$guest_agent"
   ok "Lima guest agent installed."
 }

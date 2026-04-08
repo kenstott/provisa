@@ -87,16 +87,15 @@ download_lima() {
     chmod +x "${BIN_DIR}/${arch}/limactl"
   done
 
-  # Extract Linux-aarch64 guest agent from the arm64 tarball (Lima 2.x requirement).
-  # Stored as lima-guestagent.Linux-aarch64.gz inside the tarball — decompress it.
-  # Linux ELF binary — must NOT be added to codesign targets.
-  local guest_dir="${APP_BUNDLE}/Contents/MacOS/bin/guest-agents"
+  # Bundle Linux-aarch64 guest agent from the arm64 tarball (Lima 2.x requirement).
+  # Kept as .gz so codesign does not attempt to validate the Linux ELF inside the bundle.
+  # first-launch.sh decompresses it to ~/.lima/_config/ before VM start.
+  local guest_dir="${APP_BUNDLE}/Contents/Resources/lima-guest-agents"
   mkdir -p "$guest_dir"
   local guest_gz="${tmp}/arm64/share/lima/lima-guestagent.Linux-aarch64.gz"
   if [ -f "$guest_gz" ]; then
-    gunzip -c "$guest_gz" > "${guest_dir}/lima-guestagent.Linux-aarch64"
-    chmod +x "${guest_dir}/lima-guestagent.Linux-aarch64"
-    ok "Lima guest agent extracted."
+    cp "$guest_gz" "${guest_dir}/lima-guestagent.Linux-aarch64.gz"
+    ok "Lima guest agent bundled (compressed)."
   else
     err "lima-guestagent.Linux-aarch64.gz not found in Lima tarball"
     exit 1
