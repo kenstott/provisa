@@ -98,13 +98,18 @@ write_lima_config() {
     *)      lima_arch="aarch64" ;;
   esac
   cat > "$LIMA_YAML" <<YAML
-# Provisa Lima VM — airgapped, no network pull required
+# Provisa Lima VM
 vmType: vz
 os: Linux
 arch: "${lima_arch}"
 cpus: 4
 memory: "${LIMA_MEMORY}"
 disk: "60GiB"
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
 vmOpts:
   vz:
     rosetta:
