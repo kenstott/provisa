@@ -98,7 +98,7 @@ write_lima_config() {
     err "Provisa macOS requires Apple Silicon (arm64). Intel Macs are not supported."
     exit 1
   fi
-  local arm64_local="${PROVISA_HOME}/vm-image/ubuntu-24.04-server-cloudimg-arm64.img"
+  local arm64_local="${PROVISA_HOME}/vm-image/ubuntu-24.04-minimal-cloudimg-arm64.img"
 
   local nerdctl_archive="${PROVISA_HOME}/nerdctl/nerdctl-full-2.2.2-linux-arm64.tar.gz"
   local nerdctl_digest="sha256:55d68d2613b5f065021146bac21f620cde9e7fdd4bd3eff74cd324f5462e107a"

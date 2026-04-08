@@ -145,13 +145,13 @@ download_containerd() {
 # Releases' 2 GB per-asset limit.
 download_vm_images() {
   mkdir -p "$VM_IMAGES_DIR"
-  local base_url="https://cloud-images.ubuntu.com/releases/24.04/release"
-  local arm64_img="ubuntu-24.04-server-cloudimg-arm64.img"
+  local base_url="https://cloud-images.ubuntu.com/minimal/releases/24.04/release"
+  local arm64_img="ubuntu-24.04-minimal-cloudimg-arm64.img"
 
   if [ -f "${VM_IMAGES_DIR}/${arm64_img}" ]; then
     info "  Skipping (cached): ${arm64_img}"
   else
-    info "  Downloading base VM image: ${arm64_img} (~280MB)..."
+    info "  Downloading base VM image: ${arm64_img} (~200MB)..."
     curl -fL "${base_url}/${arm64_img}" -o "${VM_IMAGES_DIR}/${arm64_img}"
     ok "  Saved: ${VM_IMAGES_DIR}/${arm64_img}"
   fi
