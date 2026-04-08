@@ -23,6 +23,8 @@ Config-driven data virtualization platform. A single governed API over heterogen
 - **Smart routing** — Single-source queries execute directly (sub-100ms); multi-source queries federate transparently via Trino-compatible federation — bring your own Trino or Trino-compatible cluster to scale out
 - **Federation performance hints** — Query-level routing hints embedded as SQL comments override automatic routing decisions for performance tuning
 - **API sources** — Register REST/GraphQL/gRPC endpoints as queryable tables
+- **Remote GraphQL schemas** — Point at any external GraphQL endpoint; Provisa introspects it, auto-registers Query fields as virtual tables and Mutation fields as tracked functions, and caches results in Redis. Full governance (RLS, masking, domain access) applied on top. No per-field remote hop on cache hit — significantly faster than Hasura remote schemas.
+- **OpenAPI auto-registration** — Point at any OpenAPI 3.x or Swagger 2.0 spec (local file path or remote URL); GET operations become virtual query tables, POST/PUT/PATCH/DELETE operations become tracked mutations. If no spec is available, author one manually in the admin UI. GET results are cached in Redis; full governance applied to all results.
 - **Graph sources** — Neo4j (Cypher) and SPARQL 1.1 triplestores registered via admin API; results cached and federable with relational sources
 - **Kafka integration** — Topics as read-only tables, query results as Kafka sinks
 - **Scheduled triggers** — Cron and interval-based triggers (via APScheduler) that fire webhooks, mutations, or Kafka sink publishes; configured via the admin API or YAML config
@@ -32,7 +34,7 @@ Config-driven data virtualization platform. A single governed API over heterogen
 - **Column masking** — Per-column data masking (regex, constant, truncate) with role-based bypass
 - **Column presets** — Server-side preset values (static or session variable references) applied automatically on insert/update without exposing them in the mutation input type
 - **Write permissions** — Per-column mutation access control (`writable_by`)
-- **Webhook mutations** — Database function tracking and outbound webhook-backed mutations
+- **Tracked functions & webhooks** — DB functions and outbound webhooks exposed as GraphQL mutations; return types can be a registered table or a custom JSON Schema shape defined inline
 - **Governed query registry** — Pre-approved named queries with approval workflow, role-scoped execution, and ceiling enforcement. Each approved query is a **virtual table**: scopeable, joinable with other approved queries, and addressable by `stable_id`. Direct execution by name (`GET /data/graphql?queryId=<stable_id>`) returns the full result set over a cacheable GET — complementary to Apollo APQ but independent of it
 - **Inherited roles** — Roles can inherit from a parent role, recursively inheriting RLS rules, column visibility, and masking policies; avoids duplicating permission sets across similar roles
 - **ABAC approval hook** — Pluggable external authorization hook called before query execution; supports webhook, gRPC, and unix_socket transports; scoped per-table, per-source, or globally; configurable fallback policy when hook is unavailable

@@ -25,8 +25,8 @@ async def upsert_function(conn: asyncpg.Connection, func: Function) -> int:
         """
         INSERT INTO tracked_functions
             (name, source_id, schema_name, function_name, returns,
-             arguments, visible_to, writable_by, domain_id, description)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             arguments, visible_to, writable_by, domain_id, description, kind)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (name) DO UPDATE SET
             source_id = EXCLUDED.source_id,
             schema_name = EXCLUDED.schema_name,
@@ -36,7 +36,8 @@ async def upsert_function(conn: asyncpg.Connection, func: Function) -> int:
             visible_to = EXCLUDED.visible_to,
             writable_by = EXCLUDED.writable_by,
             domain_id = EXCLUDED.domain_id,
-            description = EXCLUDED.description
+            description = EXCLUDED.description,
+            kind = EXCLUDED.kind
         RETURNING id
         """,
         func.name,
@@ -49,6 +50,7 @@ async def upsert_function(conn: asyncpg.Connection, func: Function) -> int:
         func.writable_by,
         func.domain_id,
         func.description,
+        func.kind,
     )
     return func_id
 
@@ -90,8 +92,8 @@ async def upsert_webhook(conn: asyncpg.Connection, wh: Webhook) -> int:
         """
         INSERT INTO tracked_webhooks
             (name, url, method, timeout_ms, returns, inline_return_type,
-             arguments, visible_to, domain_id, description)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             arguments, visible_to, domain_id, description, kind)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (name) DO UPDATE SET
             url = EXCLUDED.url,
             method = EXCLUDED.method,
@@ -101,7 +103,8 @@ async def upsert_webhook(conn: asyncpg.Connection, wh: Webhook) -> int:
             arguments = EXCLUDED.arguments,
             visible_to = EXCLUDED.visible_to,
             domain_id = EXCLUDED.domain_id,
-            description = EXCLUDED.description
+            description = EXCLUDED.description,
+            kind = EXCLUDED.kind
         RETURNING id
         """,
         wh.name,
@@ -114,6 +117,7 @@ async def upsert_webhook(conn: asyncpg.Connection, wh: Webhook) -> int:
         wh.visible_to,
         wh.domain_id,
         wh.description,
+        wh.kind,
     )
     return wh_id
 
@@ -168,6 +172,7 @@ def function_from_dict(d: dict) -> Function:
         writable_by=d.get("writable_by", []),
         domain_id=d.get("domain_id", ""),
         description=d.get("description"),
+        kind=d.get("kind", "mutation"),
     )
 
 
@@ -184,4 +189,5 @@ def webhook_from_dict(d: dict) -> Webhook:
         visible_to=d.get("visible_to", []),
         domain_id=d.get("domain_id", ""),
         description=d.get("description"),
+        kind=d.get("kind", "mutation"),
     )

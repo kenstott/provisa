@@ -400,6 +400,7 @@ def _map_commands(
         ]
         fn_name = cmd.graphql_root_field or cmd.name
         desc = f"DDN {cmd.command_type}" if cmd.command_type else None
+        fn_kind = "query" if cmd.command_type == "query" else "mutation"
 
         functions.append(Function(
             name=fn_name,
@@ -410,6 +411,7 @@ def _map_commands(
             arguments=args,
             domain_id=cmd.subgraph or "default",
             description=desc,
+            kind=fn_kind,
         ))
     return functions
 

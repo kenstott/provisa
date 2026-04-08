@@ -31,13 +31,14 @@ async def store_candidates(
             """
             INSERT INTO relationship_candidates
                 (source_table_id, target_table_id, source_column, target_column,
-                 cardinality, confidence, reasoning, scope)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 cardinality, confidence, reasoning, suggested_name, scope)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ON CONFLICT (source_table_id, source_column, target_table_id, target_column)
             DO UPDATE SET
                 cardinality = EXCLUDED.cardinality,
                 confidence = EXCLUDED.confidence,
                 reasoning = EXCLUDED.reasoning,
+                suggested_name = EXCLUDED.suggested_name,
                 scope = EXCLUDED.scope,
                 status = 'suggested'
             RETURNING id
@@ -49,6 +50,7 @@ async def store_candidates(
             c.cardinality,
             c.confidence,
             c.reasoning,
+            c.suggested_name or None,
             scope,
         )
         ids.append(row_id)
@@ -63,7 +65,7 @@ async def list_pending(conn: asyncpg.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def accept(conn: asyncpg.Connection, candidate_id: int) -> dict:
+async def accept(conn: asyncpg.Connection, candidate_id: int, rel_id: str | None = None) -> dict:
     """Accept a candidate: mark accepted and create a relationship."""
     row = await conn.fetchrow(
         "UPDATE relationship_candidates SET status = 'accepted' "
@@ -73,7 +75,7 @@ async def accept(conn: asyncpg.Connection, candidate_id: int) -> dict:
     if row is None:
         raise ValueError(f"Candidate {candidate_id} not found or not in suggested status")
 
-    rel_id = f"disc-{uuid.uuid4().hex[:12]}"
+    rel_id = rel_id or row.get("suggested_name") or f"disc-{uuid.uuid4().hex[:12]}"
     await conn.execute(
         """
         INSERT INTO relationships (id, source_table_id, target_table_id,
@@ -96,6 +98,14 @@ async def accept(conn: asyncpg.Connection, candidate_id: int) -> dict:
         "target_column": row["target_column"],
         "cardinality": row["cardinality"],
     }
+
+
+async def clear_rejections(conn: asyncpg.Connection) -> int:
+    """Delete all rejected candidates. Returns count deleted."""
+    result = await conn.execute(
+        "DELETE FROM relationship_candidates WHERE status = 'rejected'"
+    )
+    return int(result.split()[-1])
 
 
 async def reject(conn: asyncpg.Connection, candidate_id: int, reason: str) -> None:

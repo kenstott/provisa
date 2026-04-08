@@ -18,7 +18,7 @@ import {
 } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import type { TableMetadata } from "../api/admin";
-import type { RegisteredTable, Source, Domain } from "../types/admin";
+import type { RegisteredTable, Source } from "../types/admin";
 import type { Role } from "../types/auth";
 
 function MultiSelect({ options, value, onChange }: {
@@ -123,7 +123,7 @@ interface ColumnForm {
 export function TablesPage() {
   const [tables, setTables] = useState<RegisteredTable[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
-  const [domains, setDomains] = useState<Domain[]>([]);
+  const [domainHints, setDomainHints] = useState<string[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
@@ -159,8 +159,8 @@ export function TablesPage() {
   const reload = () => {
     setLoading(true);
     Promise.all([fetchTables(), fetchSources(), fetchDomains(), fetchRoles(), fetchSettings()])
-      .then(([t, s, d, r, st]) => {
-        setTables(t); setSources(s); setDomains(d); setRoles(r); setSettings(st);
+      .then(([t, s, doms, r, st]) => {
+        setTables(t); setSources(s); setDomainHints(doms.map((d) => d.id)); setRoles(r); setSettings(st);
         const edits: Record<number, { value: string; dirty: boolean; saving: boolean }> = {};
         for (const tbl of t) {
           edits[tbl.id] = { value: tbl.cacheTtl != null ? String(tbl.cacheTtl) : "", dirty: false, saving: false };
@@ -413,9 +413,7 @@ export function TablesPage() {
             Domain
             <select value={domainId} onChange={(e) => setDomainId(e.target.value)}>
               <option value="">Select domain...</option>
-              {domains.map((d) => (
-                <option key={d.id} value={d.id}>{d.id}{d.description ? ` — ${d.description}` : ""}</option>
-              ))}
+              {domainHints.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
           </label>
           <label>
@@ -593,37 +591,31 @@ export function TablesPage() {
                   </td>
                   <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{getEffectiveTableTtl(t)}</td>
                   <td>{t.columns.length}</td>
-                  <td onClick={(e) => e.stopPropagation()} style={{ display: "flex", gap: "0.25rem" }}>
-                    <button
-                      onClick={() => handlePurgeTableCache(t.id)}
-                      disabled={purging[t.id]}
-                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
-                    >
-                      {purging[t.id] ? "Purging..." : "Invalidate Cache"}
-                    </button>
-                    <button
-                      className="destructive"
-                      onClick={() => handleDelete(t.id)}
-                      style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
-                    >
-                      Delete
-                    </button>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    <div style={{ display: "flex", gap: "0.25rem" }}>
+                      <button
+                        onClick={() => handlePurgeTableCache(t.id)}
+                        disabled={purging[t.id]}
+                        style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                      >
+                        {purging[t.id] ? "Purging..." : "Invalidate Cache"}
+                      </button>
+                      <button
+                        className="destructive"
+                        onClick={() => handleDelete(t.id)}
+                        style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 {expanded === t.id && (
                   <tr key={`${t.id}-cols`}>
-                    <td colSpan={13}>
+                    <td colSpan={13} style={{ padding: 0 }}>
                       {!isEditing ? (
                         <>
-                          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.5rem" }}>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); startEditing(t); }}
-                              style={{ padding: "0.25rem 0.75rem", fontSize: "0.8rem" }}
-                            >
-                              Edit
-                            </button>
-                          </div>
-                          <table className="data-table" style={{ margin: "0 0 0.5rem" }}>
+                          <table className="data-table" style={{ margin: 0 }}>
                             <thead>
                               <tr>
                                 <th>Column</th><th>Alias</th><th>Description</th><th>Visible To (Read)</th><th>Writable By (R/W)</th><th>Masking</th>
@@ -654,6 +646,14 @@ export function TablesPage() {
                               ))}
                             </tbody>
                           </table>
+                          <div style={{ display: "flex", justifyContent: "flex-start", padding: "0.5rem" }}>
+                            <button
+                              className="btn-secondary"
+                              onClick={(e) => { e.stopPropagation(); startEditing(t); }}
+                            >
+                              Edit
+                            </button>
+                          </div>
                         </>
                       ) : (
                         <>
@@ -806,9 +806,9 @@ export function TablesPage() {
                               ))}
                             </tbody>
                           </table>
-                          <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                            <button onClick={cancelEditing} style={{ padding: "0.25rem 0.75rem", fontSize: "0.8rem" }}>Cancel</button>
-                            <button onClick={handleSaveEdit} disabled={saving} style={{ padding: "0.25rem 0.75rem", fontSize: "0.8rem" }}>
+                          <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", padding: "0.75rem 0.5rem" }}>
+                            <button className="btn-secondary" onClick={cancelEditing}>Cancel</button>
+                            <button onClick={handleSaveEdit} disabled={saving}>
                               {saving ? "Saving..." : "Save"}
                             </button>
                           </div>

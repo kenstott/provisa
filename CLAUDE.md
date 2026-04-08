@@ -51,6 +51,9 @@ On new requirement/constraint/feature/design decision: spawn background haiku ag
 | `accumulo/` | Accumulo connector |
 | `prometheus/` | Prometheus connector |
 | `source_adapters/` | Generic source adapter layer |
+| `graphql_remote/` | Remote GraphQL schema connector — introspect, map, execute, cache |
+| `neo4j/` | Neo4j Cypher query source |
+| `sparql/` | SPARQL 1.1 triplestore source |
 
 Patterns: FastAPI async handlers, Pydantic validation.
 

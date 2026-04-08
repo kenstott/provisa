@@ -25,6 +25,7 @@ const MOCK_FUNCTIONS = [
     writableBy: ["admin"],
     domainId: "sales",
     description: "Processes a single order",
+    kind: "mutation",
   },
 ];
 
@@ -40,6 +41,7 @@ const MOCK_WEBHOOKS = [
     visibleTo: ["admin"],
     domainId: "ops",
     description: "Sends a Slack notification",
+    kind: "mutation",
   },
 ];
 
@@ -97,17 +99,17 @@ async function setupActionsMocks(page: Parameters<typeof setupMocks>[0]) {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-test.describe("ActionsPage", () => {
+test.describe("CommandsPage", () => {
   test.beforeEach(async ({ page }) => {
     await setupActionsMocks(page);
-    await page.goto("/actions");
-    await expect(page.getByRole("heading", { name: "Actions" })).toBeVisible({ timeout: 15000 });
+    await page.goto("/commands");
+    await expect(page.getByRole("heading", { name: "Commands" })).toBeVisible({ timeout: 15000 });
   });
 
   // ── Page renders ───────────────────────────────────────────────────────────
 
-  test("shows Actions heading and section headings", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: "Actions" })).toBeVisible();
+  test("shows Commands heading and section headings", async ({ page }) => {
+    await expect(page.getByRole("heading", { name: "Commands" })).toBeVisible();
     await expect(page.locator("h3", { hasText: "DB Functions" })).toBeVisible();
     await expect(page.locator("h3", { hasText: "Webhooks" })).toBeVisible();
   });
@@ -129,28 +131,28 @@ test.describe("ActionsPage", () => {
     await page.route("**/admin/actions", async (route) => {
       await route.fulfill({ json: { functions: [], webhooks: [] } });
     });
-    await page.goto("/actions");
-    await expect(page.getByRole("heading", { name: "Actions" })).toBeVisible({ timeout: 15000 });
+    await page.goto("/commands");
+    await expect(page.getByRole("heading", { name: "Commands" })).toBeVisible({ timeout: 15000 });
     await expect(page.locator("td", { hasText: "No functions registered" })).toBeVisible({ timeout: 10000 });
     await expect(page.locator("td", { hasText: "No webhooks registered" })).toBeVisible({ timeout: 10000 });
   });
 
   // ── Add action form ────────────────────────────────────────────────────────
 
-  test("opens Add Action form when button is clicked", async ({ page }) => {
-    await page.getByRole("button", { name: "Add Action" }).click();
+  test("opens Add Command form when button is clicked", async ({ page }) => {
+    await page.getByRole("button", { name: "Add Command" }).click();
     await expect(page.locator(".form-card")).toBeVisible({ timeout: 5000 });
   });
 
-  test("cancel hides the Add Action form", async ({ page }) => {
-    await page.getByRole("button", { name: "Add Action" }).click();
+  test("cancel hides the Add Command form", async ({ page }) => {
+    await page.getByRole("button", { name: "Add Command" }).click();
     await expect(page.locator(".form-card")).toBeVisible({ timeout: 5000 });
     await page.getByRole("button", { name: "Cancel" }).click();
     await expect(page.locator(".form-card")).not.toBeVisible({ timeout: 5000 });
   });
 
   test("form defaults to DB Function type", async ({ page }) => {
-    await page.getByRole("button", { name: "Add Action" }).click();
+    await page.getByRole("button", { name: "Add Command" }).click();
     const typeSelect = page.locator(".form-card select").first();
     await expect(typeSelect).toHaveValue("function");
   });
@@ -158,7 +160,7 @@ test.describe("ActionsPage", () => {
   // ── Create DB Function ─────────────────────────────────────────────────────
 
   test("creates a DB Function and closes the form", async ({ page }) => {
-    await page.getByRole("button", { name: "Add Action" }).click();
+    await page.getByRole("button", { name: "Add Command" }).click();
     await expect(page.locator(".form-card")).toBeVisible();
 
     // Name is required
@@ -185,7 +187,7 @@ test.describe("ActionsPage", () => {
   });
 
   test("create function shows success message", async ({ page }) => {
-    await page.getByRole("button", { name: "Add Action" }).click();
+    await page.getByRole("button", { name: "Add Command" }).click();
 
     await page.locator(".form-card input[placeholder='e.g. process_order']").fill("fn_test");
     await page.locator(".form-card select").nth(1).selectOption("sales-pg");
@@ -206,7 +208,7 @@ test.describe("ActionsPage", () => {
   // ── Create Webhook ─────────────────────────────────────────────────────────
 
   test("switching form type to Webhook shows URL and Method fields", async ({ page }) => {
-    await page.getByRole("button", { name: "Add Action" }).click();
+    await page.getByRole("button", { name: "Add Command" }).click();
     await page.locator(".form-card select").first().selectOption("webhook");
 
     await expect(page.locator(".form-card input[placeholder='https://api.example.com/action']")).toBeVisible();
@@ -215,7 +217,7 @@ test.describe("ActionsPage", () => {
   });
 
   test("creates a Webhook and closes the form", async ({ page }) => {
-    await page.getByRole("button", { name: "Add Action" }).click();
+    await page.getByRole("button", { name: "Add Command" }).click();
     await page.locator(".form-card select").first().selectOption("webhook");
 
     await page.locator(".form-card input[placeholder='e.g. process_order']").fill("my_webhook");
@@ -226,7 +228,7 @@ test.describe("ActionsPage", () => {
   });
 
   test("webhook method dropdown has POST GET PUT PATCH options", async ({ page }) => {
-    await page.getByRole("button", { name: "Add Action" }).click();
+    await page.getByRole("button", { name: "Add Command" }).click();
     await page.locator(".form-card select").first().selectOption("webhook");
 
     const methodSelect = page.locator(".form-card label", { hasText: "Method" }).locator("select");
@@ -237,7 +239,7 @@ test.describe("ActionsPage", () => {
   });
 
   test("webhook inline return type fields appear when no Returns table is selected", async ({ page }) => {
-    await page.getByRole("button", { name: "Add Action" }).click();
+    await page.getByRole("button", { name: "Add Command" }).click();
     await page.locator(".form-card select").first().selectOption("webhook");
 
     // No Returns table selected — Inline Return Type section should be visible
@@ -246,7 +248,7 @@ test.describe("ActionsPage", () => {
   });
 
   test("adds and removes an inline return field", async ({ page }) => {
-    await page.getByRole("button", { name: "Add Action" }).click();
+    await page.getByRole("button", { name: "Add Command" }).click();
     await page.locator(".form-card select").first().selectOption("webhook");
 
     await page.getByRole("button", { name: "+ Add Field" }).click();
@@ -263,14 +265,14 @@ test.describe("ActionsPage", () => {
   // ── Arguments ─────────────────────────────────────────────────────────────
 
   test("adds an argument to the form", async ({ page }) => {
-    await page.getByRole("button", { name: "Add Action" }).click();
+    await page.getByRole("button", { name: "Add Command" }).click();
 
     await page.getByRole("button", { name: "+ Add Argument" }).click();
     await expect(page.locator(".form-card input[placeholder='Arg name']")).toBeVisible();
   });
 
   test("removes an argument from the form", async ({ page }) => {
-    await page.getByRole("button", { name: "Add Action" }).click();
+    await page.getByRole("button", { name: "Add Command" }).click();
     await page.getByRole("button", { name: "+ Add Argument" }).click();
     await page.locator(".form-card input[placeholder='Arg name']").fill("arg1");
 
@@ -283,12 +285,10 @@ test.describe("ActionsPage", () => {
   // ── Edit existing action ───────────────────────────────────────────────────
 
   test("clicking Edit on a function opens the form pre-populated", async ({ page }) => {
-    // Functions table: Edit button in the first row
-    const functionRows = page.locator("h3", { hasText: "DB Functions" });
-    await expect(functionRows).toBeVisible({ timeout: 10000 });
-
-    // Find the Edit button in the functions section (first data-table)
+    // Expand the first function row, then click Edit
     const fnTable = page.locator(".data-table").first();
+    await expect(fnTable.locator("td", { hasText: "process_order" }).first()).toBeVisible({ timeout: 10000 });
+    await fnTable.locator("td", { hasText: "process_order" }).first().click();
     await fnTable.getByRole("button", { name: "Edit" }).first().click();
 
     await expect(page.locator(".form-card")).toBeVisible({ timeout: 5000 });
@@ -299,6 +299,8 @@ test.describe("ActionsPage", () => {
 
   test("clicking Edit on a webhook opens the form pre-populated with webhook fields", async ({ page }) => {
     const whTable = page.locator(".data-table").last();
+    await expect(whTable.locator("td", { hasText: "notify_slack" })).toBeVisible({ timeout: 10000 });
+    await whTable.locator("td", { hasText: "notify_slack" }).click();
     await whTable.getByRole("button", { name: "Edit" }).first().click();
 
     await expect(page.locator(".form-card")).toBeVisible({ timeout: 5000 });
@@ -309,6 +311,8 @@ test.describe("ActionsPage", () => {
 
   test("Update button shown when editing an existing action", async ({ page }) => {
     const fnTable = page.locator(".data-table").first();
+    await expect(fnTable.locator("td", { hasText: "process_order" }).first()).toBeVisible({ timeout: 10000 });
+    await fnTable.locator("td", { hasText: "process_order" }).first().click();
     await fnTable.getByRole("button", { name: "Edit" }).first().click();
     await expect(page.locator(".form-card button[type='submit']", { hasText: "Update" })).toBeVisible();
   });
@@ -317,6 +321,8 @@ test.describe("ActionsPage", () => {
 
   test("deletes a function via ConfirmDialog", async ({ page }) => {
     const fnTable = page.locator(".data-table").first();
+    await expect(fnTable.locator("td", { hasText: "process_order" }).first()).toBeVisible({ timeout: 10000 });
+    await fnTable.locator("td", { hasText: "process_order" }).first().click();
     await fnTable.getByRole("button", { name: "Delete" }).first().click();
 
     await expect(page.locator(".modal")).toBeVisible({ timeout: 5000 });
@@ -327,6 +333,8 @@ test.describe("ActionsPage", () => {
 
   test("cancel delete dialog leaves modal content intact", async ({ page }) => {
     const fnTable = page.locator(".data-table").first();
+    await expect(fnTable.locator("td", { hasText: "process_order" }).first()).toBeVisible({ timeout: 10000 });
+    await fnTable.locator("td", { hasText: "process_order" }).first().click();
     await fnTable.getByRole("button", { name: "Delete" }).first().click();
 
     await expect(page.locator(".modal")).toBeVisible({ timeout: 5000 });
@@ -336,6 +344,8 @@ test.describe("ActionsPage", () => {
 
   test("deletes a webhook via ConfirmDialog", async ({ page }) => {
     const whTable = page.locator(".data-table").last();
+    await expect(whTable.locator("td", { hasText: "notify_slack" })).toBeVisible({ timeout: 10000 });
+    await whTable.locator("td", { hasText: "notify_slack" }).click();
     await whTable.getByRole("button", { name: "Delete" }).first().click();
 
     await expect(page.locator(".modal")).toBeVisible({ timeout: 5000 });
@@ -348,6 +358,8 @@ test.describe("ActionsPage", () => {
 
   test("Test button fires the function action and shows result panel", async ({ page }) => {
     const fnTable = page.locator(".data-table").first();
+    await expect(fnTable.locator("td", { hasText: "process_order" }).first()).toBeVisible({ timeout: 10000 });
+    await fnTable.locator("td", { hasText: "process_order" }).first().click();
     await fnTable.getByRole("button", { name: "Test" }).first().click();
 
     // Result panel must appear with the action name and JSON data
@@ -357,6 +369,8 @@ test.describe("ActionsPage", () => {
 
   test("test result panel can be closed", async ({ page }) => {
     const fnTable = page.locator(".data-table").first();
+    await expect(fnTable.locator("td", { hasText: "process_order" }).first()).toBeVisible({ timeout: 10000 });
+    await fnTable.locator("td", { hasText: "process_order" }).first().click();
     await fnTable.getByRole("button", { name: "Test" }).first().click();
     await expect(page.locator("h4", { hasText: "Test Result:" })).toBeVisible({ timeout: 10000 });
 
@@ -366,6 +380,8 @@ test.describe("ActionsPage", () => {
 
   test("Test button on webhook fires webhook action and shows result", async ({ page }) => {
     const whTable = page.locator(".data-table").last();
+    await expect(whTable.locator("td", { hasText: "notify_slack" })).toBeVisible({ timeout: 10000 });
+    await whTable.locator("td", { hasText: "notify_slack" }).click();
     await whTable.getByRole("button", { name: "Test" }).first().click();
 
     await expect(page.locator("h4", { hasText: "Test Result: notify_slack" })).toBeVisible({ timeout: 10000 });
@@ -378,6 +394,8 @@ test.describe("ActionsPage", () => {
     });
 
     const fnTable = page.locator(".data-table").first();
+    await expect(fnTable.locator("td", { hasText: "process_order" }).first()).toBeVisible({ timeout: 10000 });
+    await fnTable.locator("td", { hasText: "process_order" }).first().click();
     await fnTable.getByRole("button", { name: "Test" }).first().click();
 
     await expect(page.locator(".error", { hasText: "Test failed" })).toBeVisible({ timeout: 10000 });
@@ -386,10 +404,10 @@ test.describe("ActionsPage", () => {
 
 // COVERAGE NOTE
 // Tested:
-//   - Page loads and shows Actions / DB Functions / Webhooks headings
+//   - Page loads and shows Commands / DB Functions / Webhooks headings
 //   - Lists existing functions (name, source) and webhooks (name, URL, method, timeout)
 //   - Empty state messages for both functions and webhooks tables
-//   - Add Action button opens form; Cancel hides it
+//   - Add Command button opens form; Cancel hides it
 //   - Form defaults to "DB Function" type
 //   - Create DB Function: fills required fields, submits, form closes, success message shown
 //   - Switching form type to Webhook shows URL, Method, Timeout, Inline Return Type section

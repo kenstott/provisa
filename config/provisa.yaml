@@ -321,6 +321,39 @@ kafka_sources:
 #         password_hash: "$2b$12$..."  # bcrypt hash
 #         roles: [admin]
 
+# Hello-world DB function: wraps get_customers_by_region() in sales-pg.
+# Demonstrates tracked functions — callable as a GraphQL mutation.
+functions:
+  - name: hello_get_customers
+    source_id: sales-pg
+    schema: public
+    function_name: get_customers_by_region
+    returns: public.customers
+    domain_id: sales-analytics
+    kind: query
+    description: "Hello-world: fetch customers by region (or all if omitted)"
+    arguments:
+      - name: region
+        type: String
+
+# Hello-world webhook: echoes the request body back via httpbin.
+# Demonstrates tracked webhooks — callable as a GraphQL mutation.
+webhooks:
+  - name: hello_echo
+    url: https://httpbin.org/post
+    method: POST
+    timeout_ms: 5000
+    domain_id: sales
+    description: "Hello-world: POST args to httpbin echo service and return response"
+    arguments:
+      - name: message
+        type: String
+    inline_return_type:
+      - name: origin
+        type: String
+      - name: url
+        type: String
+
 discovery:
   sample_size: 20          # rows to sample per table for LLM analysis
   min_confidence: 0.7      # minimum confidence threshold for candidates

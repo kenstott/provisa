@@ -61,14 +61,16 @@ export interface RegisteredTable {
 export interface Relationship {
   id: number;
   sourceTableId: number;
-  targetTableId: number;
+  targetTableId: number | null;
   sourceTableName: string;
   targetTableName: string;
   sourceColumn: string;
-  targetColumn: string;
+  targetColumn: string | null;
   cardinality: string;
   materialize: boolean;
   refreshInterval: number;
+  targetFunctionName: string | null;
+  functionArg: string | null;
 }
 
 export interface RLSRule {

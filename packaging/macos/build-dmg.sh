@@ -24,6 +24,7 @@ NERDCTL_DIGEST="sha256:55d68d2613b5f065021146bac21f620cde9e7fdd4bd3eff74cd324f54
 
 # Service images from docker-compose (use digest-pinning in production)
 IMAGES=(
+  "python:3.12-slim"
   "postgres:16"
   "edoburu/pgbouncer:latest"
   "minio/minio:latest"
@@ -161,6 +162,26 @@ download_vm_images() {
   ok "Base VM image ready."
 }
 
+# ── Pre-build provisa wheels for linux/arm64 (airgapped pip install) ─────────
+# Wheels are built inside a linux/arm64 container on the build host (network
+# available here, not at install time). Bundled into provisa-source/wheels/ so
+# Dockerfile can use --no-index --find-links /wheels with no PyPI access.
+build_provisa_wheels() {
+  local wheels_dir="${SCRIPT_DIR}/tmp-provisa-wheels"
+  if [ -d "$wheels_dir" ] && [ "$(ls -A "$wheels_dir" 2>/dev/null)" ]; then
+    info "Provisa wheels cached — skipping."
+    return
+  fi
+  mkdir -p "$wheels_dir"
+  info "Building provisa wheels for linux/arm64 (requires network on build host)..."
+  docker run --rm --platform linux/arm64 \
+    -v "${REPO_ROOT}:/src:ro" \
+    -v "${wheels_dir}:/wheels" \
+    python:3.12-slim \
+    pip wheel --no-cache-dir --wheel-dir /wheels /src
+  ok "Provisa wheels built ($(ls "$wheels_dir" | wc -l | tr -d ' ') wheels)."
+}
+
 # ── Save service images as tarballs ──────────────────────────────────────────
 # Images are saved as .tar.gz (gzip -9) to fit under GitHub's 2 GB per-asset
 # limit while bundling the nerdctl archive. Trino:480 is ~1.5 GB uncompressed
@@ -220,6 +241,13 @@ embed_compose() {
   cp "${REPO_ROOT}/main.py"        "$src_dst/"
   cp "${REPO_ROOT}/pyproject.toml" "$src_dst/"
   cp -r "${REPO_ROOT}/provisa"    "${src_dst}/provisa"
+  # Embed pre-built wheels so Dockerfile pip install needs no network
+  local wheels_src="${SCRIPT_DIR}/tmp-provisa-wheels"
+  if [ ! -d "$wheels_src" ] || [ -z "$(ls -A "$wheels_src" 2>/dev/null)" ]; then
+    err "No wheels found in ${wheels_src} — run build_provisa_wheels() first."
+    exit 1
+  fi
+  cp -r "$wheels_src" "${src_dst}/wheels"
   ok "Compose files, config, and provisa source embedded."
 }
 
@@ -409,6 +437,7 @@ main() {
   download_containerd
   download_vm_images
   save_images
+  build_provisa_wheels
 
   embed_compose
   embed_scripts

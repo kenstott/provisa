@@ -53,3 +53,26 @@ async def list_all(conn: asyncpg.Connection) -> list[dict]:
 async def delete(conn: asyncpg.Connection, source_id: str) -> bool:
     result = await conn.execute("DELETE FROM sources WHERE id = $1", source_id)
     return result == "DELETE 1"
+
+
+async def rename(conn: asyncpg.Connection, old_id: str, new_id: str) -> bool:
+    """Rename a source: copy to new_id, retarget registered_tables, delete old_id."""
+    async with conn.transaction():
+        row = await conn.fetchrow("SELECT * FROM sources WHERE id = $1", old_id)
+        if row is None:
+            return False
+        await conn.execute(
+            """
+            INSERT INTO sources (id, type, host, port, database, username, dialect, path)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (id) DO NOTHING
+            """,
+            new_id, row["type"], row["host"], row["port"],
+            row["database"], row["username"], row["dialect"], row["path"],
+        )
+        await conn.execute(
+            "UPDATE registered_tables SET source_id = $1 WHERE source_id = $2",
+            new_id, old_id,
+        )
+        await conn.execute("DELETE FROM sources WHERE id = $1", old_id)
+    return True

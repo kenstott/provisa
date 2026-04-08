@@ -33,6 +33,8 @@ export interface TrackedFunction {
   writableBy: string[];
   domainId: string;
   description: string | null;
+  kind: string;
+  returnSchema?: Record<string, unknown> | null;
 }
 
 export interface TrackedWebhook {
@@ -46,6 +48,7 @@ export interface TrackedWebhook {
   visibleTo: string[];
   domainId: string;
   description: string | null;
+  kind: string;
 }
 
 export async function fetchActions(): Promise<{ functions: TrackedFunction[]; webhooks: TrackedWebhook[] }> {
@@ -65,6 +68,8 @@ export async function saveFunction(input: {
   writableBy: string[];
   domainId: string;
   description?: string;
+  kind?: string;
+  returnSchema?: Record<string, unknown> | null;
 }): Promise<MutationResult> {
   const resp = await fetch(`${API_BASE}/admin/actions/functions`, {
     method: "POST",
@@ -86,6 +91,7 @@ export async function saveWebhook(input: {
   visibleTo: string[];
   domainId: string;
   description?: string;
+  kind?: string;
 }): Promise<MutationResult> {
   const resp = await fetch(`${API_BASE}/admin/actions/webhooks`, {
     method: "POST",

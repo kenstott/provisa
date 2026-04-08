@@ -411,8 +411,9 @@ stage_provisa_source() {
 # ── Build provisa/provisa:local inside Lima from staged source ─────────────────
 build_provisa_image() {
   info "Building provisa/provisa:local inside Lima VM..."
+  # --pull=never: use the bundled python:3.12-slim image, never pull from Docker Hub
   "$LIMACTL" shell "$LIMA_VM_NAME" -- \
-    sudo nerdctl build -t provisa/provisa:local "${PROVISA_HOME}/provisa-source"
+    sudo nerdctl build --pull=never -t provisa/provisa:local "${PROVISA_HOME}/provisa-source"
   ok "provisa/provisa:local built."
 }
 

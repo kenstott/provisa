@@ -31,6 +31,9 @@ export function NavBar() {
         <CapabilityGate capability="table_registration">
           <Link to="/views">Views</Link>
         </CapabilityGate>
+        <CapabilityGate capability="admin">
+          <Link to="/commands">Commands</Link>
+        </CapabilityGate>
         <CapabilityGate capability="security_config">
           <Link to="/security">Security</Link>
         </CapabilityGate>
@@ -42,9 +45,6 @@ export function NavBar() {
         </CapabilityGate>
         <CapabilityGate capability="query_approval">
           <Link to="/approvals">Approvals</Link>
-        </CapabilityGate>
-        <CapabilityGate capability="admin">
-          <Link to="/actions">Actions</Link>
         </CapabilityGate>
         <CapabilityGate capability="admin">
           <Link to="/admin">Admin</Link>

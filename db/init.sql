@@ -142,3 +142,19 @@ INSERT INTO analytics.customer_segments (customer_id, segment, score) VALUES
     (8, 'medium-value', 60.2),
     (9, 'high-value', 85.9),
     (10, 'low-value', 30.0);
+
+-- Hello-world DB function: returns customers filtered by region.
+-- Exposed as the "hello_get_customers" tracked function in Provisa.
+CREATE OR REPLACE FUNCTION get_customers_by_region(p_region TEXT DEFAULT NULL)
+RETURNS TABLE (
+    id         INTEGER,
+    name       VARCHAR,
+    email      VARCHAR,
+    region     VARCHAR,
+    created_at TIMESTAMP
+) LANGUAGE sql STABLE AS $$
+    SELECT id, name, email, region, created_at
+    FROM customers
+    WHERE p_region IS NULL OR region = p_region
+    ORDER BY id;
+$$;

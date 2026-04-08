@@ -20,6 +20,10 @@ CREATE TABLE IF NOT EXISTS domains (
     description TEXT NOT NULL DEFAULT ''
 );
 
+-- Seed default (no-domain) row so domain_id='' is always a valid FK target
+INSERT INTO domains (id, description) VALUES ('', 'No domain')
+ON CONFLICT (id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS naming_rules (
     id          SERIAL PRIMARY KEY,
     pattern     TEXT NOT NULL,
@@ -94,6 +98,10 @@ CREATE TABLE IF NOT EXISTS relationships (
 DO $$ BEGIN
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS refresh_interval INTEGER NOT NULL DEFAULT 300;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS target_function_name TEXT;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS function_arg TEXT;
+    ALTER TABLE relationships ALTER COLUMN target_table_id DROP NOT NULL;
+    ALTER TABLE relationships ALTER COLUMN target_column DROP NOT NULL;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -218,6 +226,7 @@ CREATE TABLE IF NOT EXISTS relationship_candidates (
     cardinality     TEXT NOT NULL,
     confidence      REAL NOT NULL,
     reasoning       TEXT,
+    suggested_name  TEXT,
     status          TEXT NOT NULL DEFAULT 'suggested'
                     CHECK (status IN ('suggested', 'accepted', 'rejected', 'expired')),
     scope           TEXT NOT NULL,
@@ -301,5 +310,52 @@ CREATE TABLE IF NOT EXISTS live_query_state (
     watermark   TEXT,                   -- last-seen watermark column value (serialized as text)
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Tracked DB functions exposed as GraphQL mutations (REQ-205)
+CREATE TABLE IF NOT EXISTS tracked_functions (
+    id            SERIAL PRIMARY KEY,
+    name          TEXT NOT NULL UNIQUE,
+    source_id     TEXT NOT NULL DEFAULT '',
+    schema_name   TEXT NOT NULL DEFAULT 'public',
+    function_name TEXT NOT NULL DEFAULT '',
+    returns       TEXT NOT NULL DEFAULT '',
+    arguments     JSONB NOT NULL DEFAULT '[]',
+    visible_to    TEXT[] NOT NULL DEFAULT '{}',
+    writable_by   TEXT[] NOT NULL DEFAULT '{}',
+    domain_id     TEXT NOT NULL DEFAULT '',
+    description   TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Tracked webhooks exposed as GraphQL mutations (REQ-211)
+CREATE TABLE IF NOT EXISTS tracked_webhooks (
+    id                 SERIAL PRIMARY KEY,
+    name               TEXT NOT NULL UNIQUE,
+    url                TEXT NOT NULL DEFAULT '',
+    method             TEXT NOT NULL DEFAULT 'POST',
+    timeout_ms         INTEGER NOT NULL DEFAULT 5000,
+    returns            TEXT,
+    inline_return_type JSONB NOT NULL DEFAULT '[]',
+    arguments          JSONB NOT NULL DEFAULT '[]',
+    visible_to         TEXT[] NOT NULL DEFAULT '{}',
+    domain_id          TEXT NOT NULL DEFAULT '',
+    description        TEXT,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Migration: add kind column to tracked_functions and tracked_webhooks
+DO $$ BEGIN
+    ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'mutation';
+    ALTER TABLE tracked_webhooks ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'mutation';
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- Migration: add return_schema to tracked_functions (custom shape for non-table returns)
+DO $$ BEGIN
+    ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS return_schema JSONB;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- No auth tables needed — auth is config-driven, not DB-driven

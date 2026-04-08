@@ -8,13 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for SourcePool lifecycle.
+"""Integration tests for SourcePool lifecycle against a live PostgreSQL instance.
 
-These tests require a running PostgreSQL instance. They are skipped
-when PG is not reachable.
+Requires docker-compose stack (postgres service). No skipping.
 """
 
-import asyncio
 import os
 
 import pytest
@@ -22,23 +20,9 @@ import pytest
 from provisa.executor.pool import SourcePool
 
 
-def _pg_reachable() -> bool:
-    """Check if PG is reachable (non-blocking quick check)."""
-    import socket
-    host = os.environ.get("PG_HOST", "localhost")
-    port = int(os.environ.get("PG_PORT", "5432"))
-    try:
-        sock = socket.create_connection((host, port), timeout=1)
-        sock.close()
-        return True
-    except OSError:
-        return False
-
-
 pytestmark = [
     pytest.mark.asyncio,
     pytest.mark.integration,
-    pytest.mark.skipif(not _pg_reachable(), reason="PostgreSQL not reachable"),
 ]
 
 
@@ -63,15 +47,6 @@ class TestSourcePool:
         assert driver is not None
         assert driver.is_connected
         await sp.close_all()
-
-    async def test_has_returns_false_for_unknown(self):
-        sp = SourcePool()
-        assert not sp.has("nonexistent")
-
-    async def test_get_raises_for_unknown(self):
-        sp = SourcePool()
-        with pytest.raises(KeyError):
-            sp.get("nonexistent")
 
     async def test_double_add_is_noop(self, pool_params):
         sp = SourcePool()

@@ -75,8 +75,8 @@ class TestStoreCandidates:
         c = _candidate()
         await store_candidates(conn, [c], "cross-domain")
         call_args = conn.fetchval.call_args
-        # scope is the 8th positional arg
-        assert call_args[0][8] == "cross-domain"
+        # scope is the last positional arg (SQL + 9 data params → index 9)
+        assert call_args[0][9] == "cross-domain"
 
     async def test_store_empty_list(self):
         conn = AsyncMock()

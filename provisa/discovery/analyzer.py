@@ -33,6 +33,7 @@ class RelationshipCandidate:
     cardinality: str
     confidence: float
     reasoning: str
+    suggested_name: str = ""
 
 
 def _extract_json(text: str) -> str:
@@ -94,16 +95,17 @@ def analyze(
     )
 
     response_text = message.content[0].text
+    log.warning("LLM raw response (%d chars): %s", len(response_text), response_text[:3000])
 
     try:
         raw_json = _extract_json(response_text)
         candidates_raw = json.loads(raw_json)
     except (json.JSONDecodeError, TypeError) as e:
-        log.warning("Malformed LLM response: %s", e)
+        log.warning("Malformed LLM response (%s). Raw text: %s", e, response_text[:500])
         return []
 
     if not isinstance(candidates_raw, list):
-        log.warning("LLM response is not a JSON array")
+        log.warning("LLM response is not a JSON array. Raw: %s", response_text[:500])
         return []
 
     results: list[RelationshipCandidate] = []
@@ -115,6 +117,7 @@ def analyze(
             continue
         confidence = float(raw["confidence"])
         if confidence < min_confidence:
+            log.warning("Candidate below threshold (%.2f < %.2f): %s", confidence, min_confidence, raw)
             continue
         results.append(RelationshipCandidate(
             source_table_id=int(raw["source_table_id"]),
@@ -124,6 +127,7 @@ def analyze(
             cardinality=str(raw["cardinality"]),
             confidence=confidence,
             reasoning=str(raw.get("reasoning", "")),
+            suggested_name=str(raw.get("suggested_name", "")),
         ))
 
     return results

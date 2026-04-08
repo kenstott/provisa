@@ -78,14 +78,16 @@ def _role_from_row(row) -> RoleType:
 def _rel_from_row(row) -> RelationshipType:
     return RelationshipType(
         id=row["id"], source_table_id=row["source_table_id"],
-        target_table_id=row["target_table_id"],
+        target_table_id=row.get("target_table_id"),
         source_table_name=row.get("source_table_name", ""),
-        target_table_name=row.get("target_table_name", ""),
+        target_table_name=row.get("target_table_name") or "",
         source_column=row["source_column"],
-        target_column=row["target_column"],
+        target_column=row.get("target_column"),
         cardinality=row["cardinality"],
         materialize=row.get("materialize", False),
         refresh_interval=row.get("refresh_interval", 300),
+        target_function_name=row.get("target_function_name"),
+        function_arg=row.get("function_arg"),
     )
 
 
@@ -171,7 +173,7 @@ class Query:
                 "tt.table_name AS target_table_name "
                 "FROM relationships r "
                 "JOIN registered_tables st ON r.source_table_id = st.id "
-                "JOIN registered_tables tt ON r.target_table_id = tt.id "
+                "LEFT JOIN registered_tables tt ON r.target_table_id = tt.id "
                 "ORDER BY r.id"
             )
             return [_rel_from_row(r) for r in rows]
@@ -220,6 +222,8 @@ class Query:
     async def available_schemas(self, source_id: str) -> list[str]:
         """List schemas available in a source's Trino catalog."""
         from provisa.api.app import state
+        if getattr(state, "openapi_specs", {}).get(source_id):
+            return ["openapi"]
         catalog = source_id.replace("-", "_")
         # Admin/platform schemas to hide from data UI
         _HIDDEN_SCHEMAS = {"information_schema", "pg_catalog"}
@@ -242,8 +246,14 @@ class Query:
 
         Returns table names with comments from the physical database.
         Filters out Provisa admin/platform tables.
+        For OpenAPI sources, returns GET operations as virtual tables.
         """
         from provisa.api.app import state
+        if getattr(state, "openapi_specs", {}).get(source_id) and schema_name == "openapi":
+            from provisa.openapi.mapper import parse_spec
+            spec = state.openapi_specs[source_id]["spec"]
+            queries, _ = parse_spec(spec)
+            return [AvailableTableType(name=q.operation_id, comment=q.summary) for q in queries]
         catalog = source_id.replace("-", "_")
         # Admin tables managed by Provisa — hide from data registration
         _ADMIN_TABLES = {
@@ -271,6 +281,28 @@ class Query:
             return []
 
     @strawberry.field
+    async def available_functions(
+        self, source_id: str, schema_name: str = "openapi"
+    ) -> list[AvailableTableType]:
+        """List available functions/mutations for a source.
+
+        For OpenAPI sources: returns non-GET operations (POST/PUT/PATCH/DELETE).
+        """
+        from provisa.api.app import state
+        if getattr(state, "openapi_specs", {}).get(source_id) and schema_name == "openapi":
+            from provisa.openapi.mapper import parse_spec
+            spec = state.openapi_specs[source_id]["spec"]
+            _, mutations = parse_spec(spec)
+            return [
+                AvailableTableType(
+                    name=m.operation_id,
+                    comment=f"[{m.method}] {m.path}" + (f" — {m.summary}" if m.summary else ""),
+                )
+                for m in mutations
+            ]
+        return []
+
+    @strawberry.field
     async def available_columns(
         self, source_id: str, schema_name: str, table_name: str
     ) -> list[str]:
@@ -293,8 +325,28 @@ class Query:
     async def available_columns_metadata(
         self, source_id: str, schema_name: str, table_name: str
     ) -> list[AvailableColumnType]:
-        """List columns with data types and comments from the physical database."""
+        """List columns with data types and comments from the physical database.
+
+        For OpenAPI sources: derives columns from the operation's response schema + params.
+        """
         from provisa.api.app import state
+        if getattr(state, "openapi_specs", {}).get(source_id) and schema_name == "openapi":
+            from provisa.openapi.mapper import parse_spec
+            from provisa.openapi.register import _schema_to_columns
+            spec = state.openapi_specs[source_id]["spec"]
+            queries, _ = parse_spec(spec)
+            q = next((q for q in queries if q.operation_id == table_name), None)
+            if q is None:
+                return []
+            cols = _schema_to_columns(q.response_schema)
+            existing = {c["name"] for c in cols}
+            for p in q.path_params + q.query_params:
+                if p["name"] not in existing:
+                    cols.append({"name": p["name"], "type": p.get("type", "string")})
+            return [
+                AvailableColumnType(name=c["name"], data_type=c["type"], comment=None)
+                for c in cols
+            ]
         catalog = source_id.replace("-", "_")
         try:
             cursor = state.trino_conn.cursor()
@@ -506,6 +558,19 @@ class Mutation:
         return MutationResult(success=True, message=f"Source {input.id!r} updated")
 
     @strawberry.mutation
+    async def rename_source(self, old_id: str, new_id: str) -> MutationResult:
+        from provisa.core.repositories import source as source_repo
+
+        if not new_id.strip():
+            return MutationResult(success=False, message="New ID must not be empty")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            renamed = await source_repo.rename(conn, old_id, new_id)
+        if renamed:
+            return MutationResult(success=True, message=f"Source renamed {old_id!r} → {new_id!r}")
+        return MutationResult(success=False, message=f"Source {old_id!r} not found")
+
+    @strawberry.mutation
     async def delete_source(self, id: str) -> MutationResult:
         from provisa.core.repositories import source as source_repo
 
@@ -526,6 +591,17 @@ class Mutation:
         async with pool.acquire() as conn:
             await domain_repo.upsert(conn, model)
         return MutationResult(success=True, message=f"Domain {input.id!r} created")
+
+    @strawberry.mutation
+    async def delete_domain(self, id: str) -> MutationResult:
+        from provisa.core.repositories import domain as domain_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            deleted = await domain_repo.delete(conn, id)
+        if deleted:
+            return MutationResult(success=True, message=f"Domain {id!r} deleted")
+        return MutationResult(success=False, message=f"Domain {id!r} not found")
 
     @strawberry.mutation
     async def create_role(self, input: RoleInput) -> MutationResult:
@@ -715,12 +791,14 @@ class Mutation:
         model = RelModel(
             id=input.id,
             source_table_id=input.source_table_id,
-            target_table_id=input.target_table_id,
+            target_table_id=input.target_table_id or "",
             source_column=input.source_column,
-            target_column=input.target_column,
+            target_column=input.target_column or "",
             cardinality=Cardinality(input.cardinality),
             materialize=input.materialize,
             refresh_interval=input.refresh_interval,
+            target_function_name=input.target_function_name or None,
+            function_arg=input.function_arg or None,
         )
         async with pool.acquire() as conn:
             await rel_repo.upsert(conn, model)

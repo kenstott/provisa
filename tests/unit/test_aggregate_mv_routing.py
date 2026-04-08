@@ -8,9 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration tests for aggregate MV routing (REQ-198, REQ-199).
+"""Unit tests for aggregate MV routing (REQ-198, REQ-199).
 
-Tests the AggregateMVCatalog logic and SQL rewriting without requiring PG.
+Pure logic — no I/O, no database required.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import pytest
 from provisa.mv.aggregate_catalog import AggregateMVCatalog
 from provisa.mv.models import MVDefinition, MVStatus
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+# No pytestmark needed — all tests are synchronous pure-logic tests.
 
 # ---------------------------------------------------------------------------
 # Builders

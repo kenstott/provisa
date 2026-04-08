@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -21,7 +21,7 @@ import {
   sampleView,
 } from "../api/admin";
 import type { ViewConfig } from "../api/admin";
-import type { Domain, RegisteredTable } from "../types/admin";
+import type { RegisteredTable } from "../types/admin";
 
 const EMPTY_VIEW: ViewConfig = {
   id: "",
@@ -36,7 +36,7 @@ const EMPTY_VIEW: ViewConfig = {
 
 export function ViewsPage() {
   const [views, setViews] = useState<ViewConfig[]>([]);
-  const [domains, setDomains] = useState<Domain[]>([]);
+  const [domainHints, setDomainHints] = useState<string[]>([]);
   const [tables, setTables] = useState<RegisteredTable[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -85,9 +85,9 @@ export function ViewsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    const [v, d, t] = await Promise.all([fetchViews(), fetchDomains(), fetchTables()]);
+    const [v, doms, t] = await Promise.all([fetchViews(), fetchDomains(), fetchTables()]);
     setViews(v);
-    setDomains(d);
+    setDomainHints(doms.map((d) => d.id));
     setTables(t);
     setLoading(false);
   }, []);
@@ -191,8 +191,8 @@ export function ViewsPage() {
         <label>
           Domain
           <select value={editing!.domain_id} onChange={(e) => updateEditing("domain_id", e.target.value)}>
-            <option value="">Select...</option>
-            {domains.map((d) => <option key={d.id} value={d.id}>{d.id}</option>)}
+            <option value="">Select domain...</option>
+            {domainHints.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </label>
         <label>
@@ -212,11 +212,12 @@ export function ViewsPage() {
             placeholder="What this view represents"
           />
         </label>
-        <label className="checkbox-label">
+        <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem", whiteSpace: "nowrap", flex: "0 0 auto" }}>
           <input
             type="checkbox"
             checked={editing!.materialize}
             onChange={(e) => updateEditing("materialize", e.target.checked)}
+            style={{ width: "auto", padding: 0 }}
           />
           Materialize
         </label>
@@ -290,9 +291,8 @@ export function ViewsPage() {
             const isExpanded = expanded === v.id;
             const isEditing = editing?.id === v.id && !isNew;
             return (
-              <>
+              <React.Fragment key={v.id}>
                 <tr
-                  key={v.id}
                   onClick={() => {
                     if (isExpanded) {
                       setExpanded(null);
@@ -303,7 +303,7 @@ export function ViewsPage() {
                     }
                     setSampleData(null);
                   }}
-                  style={{ cursor: "pointer", background: isExpanded ? "var(--color-row-selected, #e8f0fe)" : undefined }}
+                  style={{ cursor: "pointer", background: isExpanded ? "var(--surface)" : undefined }}
                 >
                   <td><code>{v.id}</code></td>
                   <td className="reasoning-cell">{v.description || ""}</td>
@@ -313,33 +313,33 @@ export function ViewsPage() {
                   <td>{v.columns?.length || 0}</td>
                 </tr>
                 {isExpanded && (
-                  <tr key={`${v.id}-detail`}>
-                    <td colSpan={6} style={{ padding: "0.75rem 1rem", background: "var(--surface-secondary, #f8f9fa)" }}>
+                  <tr>
+                    <td colSpan={6} style={{ padding: "0.75rem 1rem", background: "var(--bg)", borderTop: "1px solid var(--border)" }}>
                       {isEditing ? renderEditForm() : (
                         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                          <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0 }}>
-                            <dt><strong>Domain</strong></dt><dd>{v.domain_id || "—"}</dd>
-                            <dt><strong>Governance</strong></dt><dd>{v.governance}</dd>
-                            <dt><strong>Materialized</strong></dt><dd>{v.materialize ? `Yes (${v.refresh_interval}s)` : "No"}</dd>
-                            <dt><strong>Columns</strong></dt><dd>{v.columns?.length || 0}</dd>
-                            {v.description && <><dt><strong>Description</strong></dt><dd>{v.description}</dd></>}
-                            <dt><strong>SQL</strong></dt><dd><pre style={{ margin: 0, fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>{v.sql}</pre></dd>
+                          <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0, color: "var(--text)" }}>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Domain</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{v.domain_id || "—"}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Governance</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{v.governance}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Materialized</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{v.materialize ? `Yes (${v.refresh_interval}s)` : "No"}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Columns</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{v.columns?.length || 0}</dd>
+                            {v.description && <><dt style={{ color: "var(--text-muted)" }}><strong>Description</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{v.description}</dd></>}
+                            <dt style={{ color: "var(--text-muted)" }}><strong>SQL</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}><pre style={{ margin: 0, fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>{v.sql}</pre></dd>
                           </dl>
                           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                            <button className="btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); handleEdit(v); }}>Edit</button>
+                            <button className="btn-secondary" onClick={(e) => { e.stopPropagation(); handleEdit(v); }}>Edit</button>
                             <button
-                              className="btn-secondary btn-sm"
+                              className="btn-secondary"
                               onClick={(e) => { e.stopPropagation(); handleSample(v.id); }}
                               disabled={sampling === v.id}
                             >{sampling === v.id ? "..." : "Sample"}</button>
-                            <button className="btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); handleDelete(v.id); }}>Delete</button>
+                            <button className="btn-danger" onClick={(e) => { e.stopPropagation(); handleDelete(v.id); }}>Delete</button>
                           </div>
                         </div>
                       )}
                     </td>
                   </tr>
                 )}
-              </>
+              </React.Fragment>
             );
           })}
           {views.length === 0 && (

@@ -25,6 +25,7 @@ from provisa.core.repositories import (
     relationship as rel_repo,
     role as role_repo,
     rls as rls_repo,
+    function as function_repo,
 )
 from provisa.core import catalog
 
@@ -93,6 +94,14 @@ async def _load_config_in_txn(
     # 7. RLS rules (tables + roles must exist first)
     for rule in config.rls_rules:
         await rls_repo.upsert(conn, rule)
+
+    # 8. Tracked DB functions
+    for func in config.functions:
+        await function_repo.upsert_function(conn, func)
+
+    # 9. Tracked webhooks
+    for wh in config.webhooks:
+        await function_repo.upsert_webhook(conn, wh)
 
 
 async def load_config(

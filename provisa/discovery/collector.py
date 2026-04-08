@@ -161,15 +161,8 @@ async def collect_metadata(
     )
     existing_rels = [dict(r) for r in existing]
 
-    # Fetch previously rejected candidates
-    rejected = await pg_conn.fetch(
-        "SELECT source_table_id, source_column, target_table_id, target_column "
-        "FROM relationship_candidates WHERE status = 'rejected'"
-    )
-    rejected_pairs = [dict(r) for r in rejected]
-
     return DiscoveryInput(
         tables=table_metas,
         existing_relationships=existing_rels,
-        rejected_pairs=rejected_pairs,
+        rejected_pairs=[],
     )

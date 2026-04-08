@@ -21,16 +21,24 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
     source_tbl = await table_repo.find_by_table_name(conn, rel.source_table_id)
     if source_tbl is None:
         raise ValueError(f"Source table not registered: {rel.source_table_id}")
-    target_tbl = await table_repo.find_by_table_name(conn, rel.target_table_id)
-    if target_tbl is None:
-        raise ValueError(f"Target table not registered: {rel.target_table_id}")
+
+    target_tbl_id = None
+    if rel.target_function_name:
+        # Computed relationship — no target table
+        target_tbl_id = None
+    else:
+        target_tbl = await table_repo.find_by_table_name(conn, rel.target_table_id)
+        if target_tbl is None:
+            raise ValueError(f"Target table not registered: {rel.target_table_id}")
+        target_tbl_id = target_tbl["id"]
 
     await conn.execute(
         """
         INSERT INTO relationships (id, source_table_id, target_table_id,
                                    source_column, target_column, cardinality,
-                                   materialize, refresh_interval)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                                   materialize, refresh_interval,
+                                   target_function_name, function_arg)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (id) DO UPDATE SET
             source_table_id = EXCLUDED.source_table_id,
             target_table_id = EXCLUDED.target_table_id,
@@ -38,16 +46,20 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
             target_column = EXCLUDED.target_column,
             cardinality = EXCLUDED.cardinality,
             materialize = EXCLUDED.materialize,
-            refresh_interval = EXCLUDED.refresh_interval
+            refresh_interval = EXCLUDED.refresh_interval,
+            target_function_name = EXCLUDED.target_function_name,
+            function_arg = EXCLUDED.function_arg
         """,
         rel.id,
         source_tbl["id"],
-        target_tbl["id"],
+        target_tbl_id,
         rel.source_column,
-        rel.target_column,
+        rel.target_column or None,
         rel.cardinality.value,
         rel.materialize,
         rel.refresh_interval,
+        rel.target_function_name,
+        rel.function_arg,
     )
 
 

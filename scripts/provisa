@@ -67,8 +67,8 @@ ensure_lima_running() {
 # ── Compose command detection ───────────────────────────────────────────────
 compose_cmd() {
     if [ "$RUNTIME" = "lima" ]; then
-        # Route all compose through nerdctl inside the Lima VM
-        echo "$LIMACTL shell $LIMA_VM -- nerdctl compose"
+        # Route all compose through nerdctl inside the Lima VM (system containerd = rootful)
+        echo "$LIMACTL shell $LIMA_VM -- sudo nerdctl compose"
     elif docker compose version &>/dev/null 2>&1; then
         echo "docker compose"
     elif command -v docker-compose &>/dev/null; then

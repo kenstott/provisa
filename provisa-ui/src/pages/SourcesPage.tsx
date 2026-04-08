@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect } from "react";
-import { fetchSources, deleteSource, createSource, updateSource, updateSourceCache, updateSourceNaming, fetchSettings } from "../api/admin";
+import React, { useState, useEffect } from "react";
+import { fetchSources, deleteSource, createSource, updateSource, renameSource, updateSourceCache, updateSourceNaming, fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SchemaDiscovery } from "../components/SchemaDiscovery";
@@ -63,6 +63,8 @@ const SOURCE_TYPES = [
   { value: "openapi", label: "REST API (OpenAPI)", category: "API", defaultPort: 443 },
   { value: "graphql_api", label: "GraphQL API", category: "API", defaultPort: 443 },
   { value: "grpc_api", label: "gRPC API", category: "API", defaultPort: 443 },
+  { value: "graphql_remote", label: "GraphQL Remote Schema", category: "API", defaultPort: 443 },
+  { value: "grpc_remote", label: "gRPC Remote Schema", category: "API", defaultPort: 50051 },
   // Streaming
   { value: "kafka", label: "Kafka", category: "Streaming", defaultPort: 9092 },
 ];
@@ -201,18 +203,24 @@ export function SourcesPage() {
     e.preventDefault();
     setError(null);
     try {
+      const { namingConvention: _nc, cacheTtl: _ct, cacheEnabled: _ce, ...coreForm } = form;
       const sourcePayload = {
-        ...form,
+        ...coreForm,
         path: FILE_SOURCES.has(form.type) ? form.path || null : null,
       };
       if (editingSourceId) {
-        const result = await updateSource(sourcePayload);
+        const effectiveId = form.id.trim() || editingSourceId;
+        if (effectiveId !== editingSourceId) {
+          const renameResult = await renameSource(editingSourceId, effectiveId);
+          if (!renameResult.success) throw new Error(renameResult.message);
+        }
+        const result = await updateSource({ ...sourcePayload, id: effectiveId });
         if (!result.success) throw new Error(result.message);
         const ttlValue = form.cacheTtl.trim() === "" ? null : parseInt(form.cacheTtl, 10);
         if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
-        const cacheResult = await updateSourceCache(editingSourceId, form.cacheEnabled, ttlValue);
+        const cacheResult = await updateSourceCache(effectiveId, form.cacheEnabled, ttlValue);
         if (!cacheResult.success) throw new Error(cacheResult.message);
-        const namingResult = await updateSourceNaming(editingSourceId, form.namingConvention === "" ? null : form.namingConvention);
+        const namingResult = await updateSourceNaming(effectiveId, form.namingConvention === "" ? null : form.namingConvention);
         if (!namingResult.success) throw new Error(namingResult.message);
       } else {
         await createSource(sourcePayload);
@@ -224,8 +232,133 @@ export function SourcesPage() {
     }
   };
 
+  const [gqlNamespace, setGqlNamespace] = useState("");
+  const [gqlCacheTtl, setGqlCacheTtl] = useState("300");
+  const [refreshingSourceId, setRefreshingSourceId] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
+  // OpenAPI-specific state
+  const [openapiSpecPath, setOpenapiSpecPath] = useState("");
+  const [openapiBaseUrl, setOpenapiBaseUrl] = useState("");
+  const [openapiNamespace, setOpenapiNamespace] = useState("");
+  const [openapiCacheTtl, setOpenapiCacheTtl] = useState("300");
+  const [openapiPreview, setOpenapiPreview] = useState<{ queries: any[]; mutations: any[] } | null>(null);
+  const [openapiPreviewing, setOpenapiPreviewing] = useState(false);
+  const [openapiPreviewError, setOpenapiPreviewError] = useState<string | null>(null);
+
+  // gRPC Remote-specific state
+  const [grpcProtoPath, setGrpcProtoPath] = useState("");
+  const [grpcServerAddress, setGrpcServerAddress] = useState("");
+  const [grpcNamespace, setGrpcNamespace] = useState("");
+  const [grpcTls, setGrpcTls] = useState(false);
+  const [grpcImportPaths, setGrpcImportPaths] = useState("");
+  const [grpcCacheTtl, setGrpcCacheTtl] = useState("300");
+
+  const handleRefreshSchema = async (sourceId: string, sourceType?: string) => {
+    setRefreshingSourceId(sourceId);
+    setRefreshError(null);
+    try {
+      const url = sourceType === "openapi"
+        ? `/admin/openapi/refresh/${sourceId}`
+        : sourceType === "grpc_remote"
+          ? `/admin/grpc-remote/refresh/${sourceId}`
+          : `/admin/sources/graphql-remote/${sourceId}/refresh`;
+      const resp = await fetch(url, { method: "POST" });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(body.detail ?? resp.statusText);
+      }
+    } catch (err: any) {
+      setRefreshError(err.message);
+    } finally {
+      setRefreshingSourceId(null);
+    }
+  };
+
+  const handleOpenapiPreview = async () => {
+    setOpenapiPreviewing(true);
+    setOpenapiPreviewError(null);
+    setOpenapiPreview(null);
+    try {
+      const resp = await fetch("/admin/openapi/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spec_path: openapiSpecPath }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(body.detail ?? resp.statusText);
+      }
+      setOpenapiPreview(await resp.json());
+    } catch (err: any) {
+      setOpenapiPreviewError(err.message);
+    } finally {
+      setOpenapiPreviewing(false);
+    }
+  };
+
+  const handleOpenapiRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      const resp = await fetch("/admin/openapi/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          spec_path: openapiSpecPath,
+          base_url: openapiBaseUrl || undefined,
+          source_id: form.id,
+          namespace: openapiNamespace,
+          domain_id: "",
+          auth_config: authType !== "none" ? { type: authType, ...authFields } : null,
+          cache_ttl: parseInt(openapiCacheTtl, 10) || 300,
+        }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(body.detail ?? resp.statusText);
+      }
+      await createSource({ id: form.id, type: form.type, host: form.host, port: form.port, database: form.database, username: form.username, password: form.password, path: null });
+      handleCancelForm();
+      load();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleGrpcRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      const resp = await fetch("/admin/grpc-remote/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_id: form.id,
+          proto_path: grpcProtoPath,
+          server_address: grpcServerAddress,
+          namespace: grpcNamespace,
+          domain_id: "",
+          import_paths: grpcImportPaths ? grpcImportPaths.split(",").map((s) => s.trim()).filter(Boolean) : [],
+          tls: grpcTls,
+          auth_config: authType !== "none" ? { type: authType, ...authFields } : null,
+          cache_ttl: parseInt(grpcCacheTtl, 10) || 300,
+        }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(body.detail ?? resp.statusText);
+      }
+      await createSource({ id: form.id, type: form.type, host: form.host, port: form.port, database: form.database, username: form.username, password: form.password, path: null });
+      handleCancelForm();
+      load();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   const category = getCategory(form.type);
-  const isApi = category === "API";
+  const isApi = category === "API" && form.type !== "openapi" && form.type !== "graphql_remote" && form.type !== "grpc_remote";
   const isKafka = category === "Streaming";
   const isFile = FILE_SOURCES.has(form.type);
   const isSimpleRdbms = SIMPLE_RDBMS.has(form.type);
@@ -418,6 +551,106 @@ export function SourcesPage() {
           <label style={{ gridColumn: "1 / -1" }}>Metadata Sheet ID <input value={form.database} onChange={(e) => setForm({ ...form, database: e.target.value })} placeholder="Sheet ID for table definitions" /></label>
         </>
       )}
+      {form.type === "openapi" && (
+        <>
+          <label style={{ gridColumn: "1 / -1" }}>Spec Path or URL
+            <input required value={openapiSpecPath} onChange={(e) => setOpenapiSpecPath(e.target.value)} placeholder="https://api.example.com/openapi.json or ./spec.yaml" />
+          </label>
+          <label style={{ gridColumn: "1 / -1" }}>Base URL <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>(leave blank to use servers[0].url from spec)</span>
+            <input value={openapiBaseUrl} onChange={(e) => setOpenapiBaseUrl(e.target.value)} placeholder="https://api.example.com (optional override)" />
+          </label>
+          <label>Namespace
+            <input value={openapiNamespace} onChange={(e) => setOpenapiNamespace(e.target.value)} placeholder="myapi" />
+          </label>
+          <label>Cache TTL (seconds)
+            <input type="number" min={0} value={openapiCacheTtl} onChange={(e) => setOpenapiCacheTtl(e.target.value)} placeholder="300" />
+          </label>
+          <label style={{ gridColumn: "1 / -1" }}>Authentication
+            <select value={authType} onChange={(e) => { setAuthType(e.target.value); setAuthFields({}); }}>
+              {API_AUTH_TYPES.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+          </label>
+          {authType === "bearer" && (
+            <label style={{ gridColumn: "1 / -1" }}>Token <input required value={authFields.token ?? ""} onChange={(e) => setAuthFields({ ...authFields, token: e.target.value })} placeholder="${env:API_TOKEN}" /></label>
+          )}
+          {authType === "basic" && <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />}
+          {authType === "api_key" && (
+            <>
+              <label>Header Name <input required value={authFields.header_name ?? "X-API-Key"} onChange={(e) => setAuthFields({ ...authFields, header_name: e.target.value })} placeholder="X-API-Key" /></label>
+              <label>API Key <input required value={authFields.api_key ?? ""} onChange={(e) => setAuthFields({ ...authFields, api_key: e.target.value })} placeholder="${env:API_KEY}" /></label>
+            </>
+          )}
+          <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <button type="button" onClick={handleOpenapiPreview} disabled={openapiPreviewing || !openapiSpecPath}>
+              {openapiPreviewing ? "Loading..." : "Preview"}
+            </button>
+            {openapiPreviewError && <span className="error" style={{ fontSize: "0.85rem" }}>{openapiPreviewError}</span>}
+          </div>
+          {openapiPreview && (
+            <div style={{ gridColumn: "1 / -1", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+              <strong>{openapiPreview.queries.length} queries</strong>: {openapiPreview.queries.map((q) => q.operation_id).join(", ") || "none"}
+              <br />
+              <strong>{openapiPreview.mutations.length} mutations</strong>: {openapiPreview.mutations.map((m) => m.operation_id).join(", ") || "none"}
+            </div>
+          )}
+        </>
+      )}
+      {form.type === "graphql_remote" && (
+        <>
+          <label style={{ gridColumn: "1 / -1" }}>Endpoint URL <input required value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="https://api.example.com/graphql" /></label>
+          <label>Namespace <input required value={gqlNamespace} onChange={(e) => setGqlNamespace(e.target.value)} placeholder="myapi" /></label>
+          <label>Cache TTL (seconds) <input type="number" min={0} value={gqlCacheTtl} onChange={(e) => setGqlCacheTtl(e.target.value)} placeholder="300" /></label>
+          <label style={{ gridColumn: "1 / -1" }}>Authentication
+            <select value={authType} onChange={(e) => { setAuthType(e.target.value); setAuthFields({}); }}>
+              <option value="none">No Auth</option>
+              <option value="bearer">Bearer Token</option>
+              <option value="basic">Basic Auth</option>
+            </select>
+          </label>
+          {authType === "bearer" && (
+            <label style={{ gridColumn: "1 / -1" }}>Token <input required value={authFields.token ?? ""} onChange={(e) => setAuthFields({ ...authFields, token: e.target.value })} placeholder="${env:GQL_TOKEN}" /></label>
+          )}
+          {authType === "basic" && <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />}
+        </>
+      )}
+      {form.type === "grpc_remote" && (
+        <>
+          <label style={{ gridColumn: "1 / -1" }}>Proto Path or URL
+            <input required value={grpcProtoPath} onChange={(e) => setGrpcProtoPath(e.target.value)} placeholder="https://api.example.com/service.proto or ./service.proto" />
+          </label>
+          <label style={{ gridColumn: "1 / -1" }}>Server Address
+            <input required value={grpcServerAddress} onChange={(e) => setGrpcServerAddress(e.target.value)} placeholder="api.example.com:50051" />
+          </label>
+          <label>Namespace
+            <input value={grpcNamespace} onChange={(e) => setGrpcNamespace(e.target.value)} placeholder="mygrpc" />
+          </label>
+          <label>Cache TTL (seconds)
+            <input type="number" min={0} value={grpcCacheTtl} onChange={(e) => setGrpcCacheTtl(e.target.value)} placeholder="300" />
+          </label>
+          <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem", whiteSpace: "nowrap" }}>
+            <input type="checkbox" checked={grpcTls} onChange={(e) => setGrpcTls(e.target.checked)} style={{ width: "auto" }} />
+            TLS
+          </label>
+          <label style={{ gridColumn: "1 / -1" }}>Import Paths <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>(comma-separated, optional)</span>
+            <input value={grpcImportPaths} onChange={(e) => setGrpcImportPaths(e.target.value)} placeholder="/path/to/protos,/another/path" />
+          </label>
+          <label style={{ gridColumn: "1 / -1" }}>Authentication
+            <select value={authType} onChange={(e) => { setAuthType(e.target.value); setAuthFields({}); }}>
+              {API_AUTH_TYPES.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+          </label>
+          {authType === "bearer" && (
+            <label style={{ gridColumn: "1 / -1" }}>Token <input required value={authFields.token ?? ""} onChange={(e) => setAuthFields({ ...authFields, token: e.target.value })} placeholder="${env:GRPC_TOKEN}" /></label>
+          )}
+          {authType === "basic" && <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />}
+          {authType === "api_key" && (
+            <>
+              <label>Header Name <input required value={authFields.header_name ?? "X-API-Key"} onChange={(e) => setAuthFields({ ...authFields, header_name: e.target.value })} placeholder="X-API-Key" /></label>
+              <label>API Key <input required value={authFields.api_key ?? ""} onChange={(e) => setAuthFields({ ...authFields, api_key: e.target.value })} placeholder="${env:API_KEY}" /></label>
+            </>
+          )}
+        </>
+      )}
       {isApi && (
         <>
           <label>Base URL <input required value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="https://api.example.com" /></label>
@@ -469,8 +702,9 @@ export function SourcesPage() {
               {NAMING_CONVENTIONS.map((nc) => <option key={nc.value} value={nc.value}>{nc.label}</option>)}
             </select>
           </label>
-          <label>Cache Enabled
-            <input type="checkbox" checked={form.cacheEnabled} onChange={(e) => setForm({ ...form, cacheEnabled: e.target.checked })} />
+          <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem", whiteSpace: "nowrap" }}>
+            <input type="checkbox" checked={form.cacheEnabled} onChange={(e) => setForm({ ...form, cacheEnabled: e.target.checked })} style={{ width: "auto" }} />
+            Cache Enabled
           </label>
           <label>Cache TTL (seconds)
             <input type="number" min={0} value={form.cacheTtl} onChange={(e) => setForm({ ...form, cacheTtl: e.target.value })} placeholder="inherit global" />
@@ -494,9 +728,10 @@ export function SourcesPage() {
       </div>
 
       {error && <div className="error">{error}</div>}
+      {refreshError && <div className="error">Schema refresh failed: {refreshError}</div>}
 
       {showForm && !editingSourceId && (
-        <form className="form-card" onSubmit={handleCreate}>
+        <form className="form-card" onSubmit={form.type === "openapi" ? handleOpenapiRegister : form.type === "grpc_remote" ? handleGrpcRegister : handleCreate}>
           <label>ID <input required value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="e.g. sales-pg" /></label>
           <label>Type
             <select value={form.type} onChange={(e) => handleTypeChange(e.target.value)}>
@@ -523,14 +758,13 @@ export function SourcesPage() {
             const isExpanded = expanded === s.id;
             const isEditing = editingSourceId === s.id;
             return (
-              <>
+              <React.Fragment key={s.id}>
                 <tr
-                  key={s.id}
                   onClick={() => {
                     setExpanded(isExpanded ? null : s.id);
                     if (isEditing && isExpanded) { setEditingSourceId(null); handleCancelForm(); }
                   }}
-                  style={{ cursor: "pointer", background: isExpanded ? "var(--color-row-selected, #e8f0fe)" : undefined }}
+                  style={{ cursor: "pointer", background: isExpanded ? "var(--surface)" : undefined }}
                 >
                   <td>{s.id}</td>
                   <td>{SOURCE_TYPES.find((t) => t.value === s.type)?.label ?? s.type}</td>
@@ -547,6 +781,15 @@ export function SourcesPage() {
                     {MAPPING_TYPES.has(s.type) && (
                       <button onClick={() => { setMappingSourceId(s.id); setMappingSourceType(s.type); setDiscoverSourceId(null); }} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>Map Table</button>
                     )}
+                    {(s.type === "graphql_remote" || s.type === "openapi" || s.type === "grpc_remote") && (
+                      <button
+                        onClick={() => handleRefreshSchema(s.id, s.type)}
+                        disabled={refreshingSourceId === s.id}
+                        style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                      >
+                        {refreshingSourceId === s.id ? "Refreshing..." : "Refresh Schema"}
+                      </button>
+                    )}
                     <ConfirmDialog
                       title={`Delete source "${s.id}"?`}
                       consequence={`This will remove the data source "${s.id}" and may break tables that reference it.`}
@@ -558,9 +801,10 @@ export function SourcesPage() {
                 </tr>
                 {isExpanded && (
                   <tr key={`${s.id}-detail`}>
-                    <td colSpan={9} style={{ padding: "0.75rem 1rem", background: "var(--surface-secondary, #f8f9fa)" }}>
+                    <td colSpan={9} style={{ padding: "0.75rem 1rem", background: "var(--bg)", borderTop: "1px solid var(--border)" }}>
                       {isEditing ? (
                         <form className="form-card" onSubmit={handleCreate} style={{ margin: 0 }}>
+                          <label>ID <input required value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} /></label>
                           <label>Type
                             <select value={form.type} onChange={(e) => handleTypeChange(e.target.value)}>
                               {CATEGORIES.map((cat) => (
@@ -573,33 +817,40 @@ export function SourcesPage() {
                             </select>
                           </label>
                           {renderFormFields()}
-                          <div style={{ display: "flex", gap: "0.5rem" }}>
-                            <button type="submit">Save</button>
-                            <button type="button" onClick={handleCancelForm}>Cancel</button>
+                          <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", alignItems: "flex-start", alignSelf: "end" }}>
+                            <button type="button" className="btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.875rem", lineHeight: "1.25" }} onClick={handleCancelForm}>Cancel</button>
+                            <button type="submit" style={{ padding: "0.5rem 1rem", fontSize: "0.875rem", lineHeight: "1.25" }}>Save</button>
                           </div>
                         </form>
                       ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                          <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0 }}>
-                            <dt>Type</dt><dd>{SOURCE_TYPES.find((t) => t.value === s.type)?.label ?? s.type}</dd>
-                            <dt>Host</dt><dd>{s.host || "—"}</dd>
-                            <dt>Port</dt><dd>{s.port || "—"}</dd>
-                            <dt>Database</dt><dd>{s.database || "—"}</dd>
-                            <dt>Username</dt><dd>{s.username || "—"}</dd>
-                            <dt>Naming</dt><dd>{s.namingConvention || "inherit (global)"}</dd>
-                            <dt>Cache</dt><dd>{s.cacheEnabled ? "enabled" : "disabled"}</dd>
-                            <dt>Cache TTL</dt><dd>{s.cacheTtl != null ? `${s.cacheTtl}s` : "inherit"}</dd>
-                            <dt>Effective TTL</dt><dd>{getEffectiveTtl(s)}</dd>
+                          <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0, color: "var(--text)" }}>
+                            {([
+                              ["Type", SOURCE_TYPES.find((t) => t.value === s.type)?.label ?? s.type],
+                              ["Host", s.host || "—"],
+                              ["Port", s.port || "—"],
+                              ["Database", s.database || "—"],
+                              ["Username", s.username || "—"],
+                              ["Naming", s.namingConvention || "inherit (global)"],
+                              ["Cache", s.cacheEnabled ? "enabled" : "disabled"],
+                              ["Cache TTL", s.cacheTtl != null ? `${s.cacheTtl}s` : "inherit"],
+                              ["Effective TTL", getEffectiveTtl(s)],
+                            ] as [string, string | number][]).map(([k, v]) => (
+                              <React.Fragment key={k}>
+                                <dt style={{ color: "var(--text-muted)", fontWeight: 500, fontSize: "0.875rem" }}>{k}</dt>
+                                <dd style={{ color: "var(--text)", margin: 0, fontSize: "0.875rem" }}>{v}</dd>
+                              </React.Fragment>
+                            ))}
                           </dl>
                           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                            <button className="btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); handleEdit(s); }}>Edit</button>
+                            <button className="btn-secondary" onClick={(e) => { e.stopPropagation(); handleEdit(s); }}>Edit</button>
                           </div>
                         </div>
                       )}
                     </td>
                   </tr>
                 )}
-              </>
+              </React.Fragment>
             );
           })}
         </tbody>

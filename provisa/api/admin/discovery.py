@@ -37,11 +37,19 @@ class RejectRequest(BaseModel):
     reason: str
 
 
+class AcceptRequest(BaseModel):
+    name: str | None = None
+
+
 def _get_api_key() -> str:
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
         raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not set")
     return key
+
+
+import logging as _logging
+_log = _logging.getLogger(__name__)
 
 
 @router.post("/relationships")
@@ -63,8 +71,14 @@ async def trigger_discovery(body: DiscoverRequest):
         discovery_input = await collect_metadata(
             state.trino_conn, conn, body.scope, scope_id,
         )
+        _log.warning(
+            "Discovery metadata: %d tables, columns per table: %s",
+            len(discovery_input.tables),
+            {t.table_name: len(t.columns) for t in discovery_input.tables},
+        )
         prompt = build_prompt(discovery_input)
         candidates = analyze(prompt, api_key, discovery_input)
+        _log.warning("LLM returned %d candidates after validation", len(candidates))
         stored_ids = await candidates_repo.store_candidates(conn, candidates, body.scope)
 
     return {"candidates_found": len(candidates), "stored_ids": stored_ids}
@@ -78,10 +92,10 @@ async def list_candidates():
 
 
 @router.post("/candidates/{candidate_id}/accept")
-async def accept_candidate(candidate_id: int):
+async def accept_candidate(candidate_id: int, body: AcceptRequest | None = None):
     """Accept a relationship candidate."""
     async with state.pg_pool.acquire() as conn:
-        return await candidates_repo.accept(conn, candidate_id)
+        return await candidates_repo.accept(conn, candidate_id, body.name if body else None)
 
 
 @router.post("/candidates/{candidate_id}/reject")
@@ -90,3 +104,21 @@ async def reject_candidate(candidate_id: int, body: RejectRequest):
     async with state.pg_pool.acquire() as conn:
         await candidates_repo.reject(conn, candidate_id, body.reason)
     return {"status": "rejected"}
+
+
+@router.get("/candidates/rejected/count")
+async def rejected_count():
+    """Count rejected candidates."""
+    async with state.pg_pool.acquire() as conn:
+        count = await conn.fetchval(
+            "SELECT COUNT(*) FROM relationship_candidates WHERE status = 'rejected'"
+        )
+    return {"count": count}
+
+
+@router.delete("/candidates/rejected")
+async def clear_rejections():
+    """Delete all rejected candidates."""
+    async with state.pg_pool.acquire() as conn:
+        count = await candidates_repo.clear_rejections(conn)
+    return {"deleted": count}

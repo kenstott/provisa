@@ -84,14 +84,16 @@ class AvailableColumnType:
 class RelationshipType:
     id: str
     source_table_id: int
-    target_table_id: int
+    target_table_id: int | None
     source_table_name: str
     target_table_name: str
     source_column: str
-    target_column: str
+    target_column: str | None
     cardinality: str
     materialize: bool
     refresh_interval: int
+    target_function_name: str | None
+    function_arg: str | None
 
 
 @strawberry.type
@@ -161,12 +163,14 @@ class TableInput:
 class RelationshipInput:
     id: str
     source_table_id: str  # table name (resolved to ID)
-    target_table_id: str
+    target_table_id: str = ""  # empty for computed relationships
     source_column: str
-    target_column: str
+    target_column: str = ""  # empty for computed relationships
     cardinality: str
     materialize: bool = False
     refresh_interval: int = 300
+    target_function_name: str | None = None
+    function_arg: str | None = None
 
 
 @strawberry.input

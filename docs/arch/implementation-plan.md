@@ -55,7 +55,7 @@ Every REQ is assigned to a phase. Cross-cutting requirements (REQ-064, REQ-065, 
 | W: Authentication | REQ-120, REQ-121, REQ-122, REQ-123, REQ-124, REQ-125 |
 | AA: Quick Wins | REQ-212, REQ-213, REQ-214, REQ-215, REQ-216, REQ-217, REQ-229 |
 | AB: Medium-Complexity Parity | REQ-218, REQ-219, REQ-220, REQ-221, REQ-222, REQ-256, REQ-257, REQ-258, REQ-261 (REQ-260 moved to AM) |
-| AC: Tracked Functions & Webhooks | REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-210, REQ-211, REQ-242, REQ-243, REQ-244, REQ-245 |
+| AC: Commands (Tracked Functions & Webhooks) | REQ-205, REQ-206, REQ-207, REQ-208, REQ-209, REQ-210, REQ-211, REQ-242, REQ-243, REQ-244, REQ-245 |
 | AD: Schema Alignment | REQ-194, REQ-195, REQ-196, REQ-197, REQ-198, REQ-199, REQ-200, REQ-201, REQ-202, REQ-230, REQ-231, REQ-232, REQ-233, REQ-234, REQ-235, REQ-236, REQ-237, REQ-238, REQ-239, REQ-240, REQ-241 |
 | AE: ABAC Approval Hook | REQ-203, REQ-204, REQ-246, REQ-247 |
 | AF: Installer & Packaging | REQ-223, REQ-224, REQ-225, REQ-226, REQ-227, REQ-228, REQ-294 |
@@ -2411,7 +2411,7 @@ For each root query field, generate JSON:API compliant `GET /data/jsonapi/{table
 
 ---
 
-## Phase AC: Tracked Functions & Webhook Mutations (REQ-205-211)
+## Phase AC: Commands — Tracked Functions & Webhook Mutations (REQ-205-211)
 
 ### Config Models
 
@@ -2426,18 +2426,18 @@ New `Function` and `Webhook` Pydantic models. `functions` and `webhooks` section
 5. Repository: new `provisa/core/repositories/function.py`
 6. Config loader: persist functions/webhooks
 
-### AC2. Actions UI Page (REQ-242-245)
+### AC2. Commands UI Page (REQ-242-245)
 
-Admin UI "Actions" page for managing custom mutations.
+Admin UI "Commands" page (`CommandsPage.tsx`) for managing custom mutations. **UI already implemented** — `CommandsPage.tsx` exists with full CRUD, return-type toggle (registered table / custom schema), `inferJsonSchema()` helper, and test button.
 
 - **List view**: all registered functions + webhooks, grouped by type. Columns: name, type (DB Function/Webhook), source/URL, domain, exposed_as, governance, return table, arg count.
-- **Add form**: type selector (DB Function / Webhook). DB Function: source dropdown, schema, function name, exposed_as toggle, returns (registered table dropdown), argument rows (name + type), visible_to/writable_by role pickers. Webhook: name, URL, method, timeout_ms, returns (table dropdown or inline type builder), argument rows, visible_to.
+- **Add form**: type selector (DB Function / Webhook). DB Function: source dropdown, schema, function name, exposed_as toggle, returns (registered table dropdown OR custom JSON Schema), argument rows (name + type), visible_to/writable_by role pickers. Webhook: name, URL, method, timeout_ms, returns (table dropdown or inline type builder), argument rows, visible_to.
 - **Inline type builder**: dynamic rows for webhook return types — field name + GraphQL type dropdown. Adds/removes rows.
-- **Test button**: execute action with sample args, show result + governance metadata (masked columns, RLS applied, role used). Mirrors query test endpoint pattern.
-- **Edit/delete**: existing actions editable inline, delete with confirmation.
+- **Test button**: execute command with sample args, show result + governance metadata (masked columns, RLS applied, role used). Mirrors query test endpoint pattern.
+- **Edit/delete**: existing commands editable inline, delete with confirmation.
 
-**Files**: `provisa-ui/src/pages/ActionsPage.tsx` (new), `provisa-ui/src/components/ActionForm.tsx` (new), `provisa-ui/src/components/InlineTypeBuilder.tsx` (new), route in `App.tsx`, admin API mutations for CRUD
-**Effort**: ~600 lines TypeScript
+**Files**: `provisa-ui/src/pages/CommandsPage.tsx` (exists), route in `App.tsx` (exists), admin API mutations for CRUD
+**Effort**: ~600 lines TypeScript (complete)
 
 ### Phase AC Gates
 
@@ -2447,9 +2447,9 @@ Admin UI "Actions" page for managing custom mutations.
 - Webhook mutation: mock HTTP endpoint, verify call with correct args, verify response mapping
 - Inline return type: verify custom GraphQL type generated
 - Test argument validation: invalid arg type rejected at parse time
-- Actions UI: add DB function via form, verify appears in list, test button returns result
-- Actions UI: add webhook with inline type, verify schema reflects custom return type
-- Actions UI: delete action, verify removed from schema
+- Commands UI: add DB function via form, verify appears in list, test button returns result
+- Commands UI: add webhook with inline type, verify schema reflects custom return type
+- Commands UI: delete command, verify removed from schema
 
 **Documentation**:
 - `docs/configuration.md`: `functions` and `webhooks` config sections with examples
@@ -3143,7 +3143,7 @@ Multiple Provisa instances can be composed (e.g., one per data domain), or Provi
 |-------|------|--------|-------------|
 | AA | Quick wins: dialect expansion, upsert, distinct_on, presets, inherited roles, cron | Low | None |
 | AB | Cursor pagination, SSE subscriptions, event triggers, enums, REST + JSON:API auto-gen | Medium | None |
-| AC | Tracked functions & webhook mutations | Medium | None |
+| AC | Commands (tracked functions & webhook mutations) | Medium | None |
 | AD | Naming convention, orderBy alignment, aggregates, MV lifecycle, warm/hot tables | Medium | None |
 | AE | ABAC approval hook | Medium | None |
 | AF | Installer & packaging (AF1/AF2/AF3) | Low -> High | Phases AA-AE for features |
@@ -3650,3 +3650,439 @@ Prerequisites for both connectors. Build first.
 | `tests/unit/test_neo4j_preview.py` | Create |
 | `tests/integration/test_neo4j_source.py` | Create |
 | `tests/integration/test_sparql_source.py` | Create |
+
+## Phase AP: GraphQL Remote Schema Connector (REQ-304–313)
+**Goal:** Allow Provisa to federate an external GraphQL API as a first-class source. The remote schema is introspected once; Query fields become virtual read-only tables, Mutation fields become tracked functions with `return_schema`. Results are cached in Redis — zero remote hops on cache hit, which is the primary performance advantage over Hasura remote schemas. Full governance (RLS, masking, column visibility, domain access) applies to remote results in Stage 2, identically to local tables. The `return_schema` feature (custom JSON Schema → `GraphQLObjectType`) built in this session is the prerequisite that enables mutation return types without requiring a registered table.
+**REQs:** REQ-304, REQ-305, REQ-306, REQ-307, REQ-308, REQ-309, REQ-310, REQ-311, REQ-312, REQ-313
+**Depends on:** Phase U (API Sources), Phase AO (Query-API Sources — normalizer pattern), Phase AC (Tracked Functions), Phase O (Cache)
+
+### Custom Return Schema for Tracked Functions (REQ-304–306) — COMPLETE
+
+Already implemented in this session.
+
+- `provisa/core/schema.sql` — migration: `ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS return_schema JSONB`
+- `provisa/api/admin/actions_router.py` — `FunctionInput.returnSchema`, `_row_to_function`, INSERT/UPDATE SQL include `return_schema`
+- `provisa/compiler/schema_gen.py` — `_json_schema_to_gql_type(schema, type_name)` helper; `_build_action_fields` uses it when `returns` is empty and `return_schema` is present
+- `provisa-ui/src/api/actions.ts` — `TrackedFunction.returnSchema`, `saveFunction` input
+- `provisa-ui/src/pages/CommandsPage.tsx` — mode toggle ("Registered Table" / "Custom Schema"), `inferJsonSchema()` client-side inference, schema textarea editor
+
+### Remote Schema Source (REQ-307–313)
+
+**Source registration:**
+
+- `provisa/core/models.py` — add `GRAPHQL_REMOTE = "graphql_remote"` to `SourceType`
+- `provisa/graphql_remote/__init__.py`
+- `provisa/graphql_remote/introspect.py` — `introspect_schema(url, auth) -> dict`: POST `{"query": introspection_query}`, return parsed `__schema`
+- `provisa/graphql_remote/mapper.py` — `map_schema(introspection, namespace, source_id) -> (tables, functions)`:
+  - Query fields with object return type → virtual table registrations (columns from object fields, scalar types mapped to Provisa column types)
+  - Mutation fields → tracked function registrations with `return_schema` derived from return type
+  - All generated type names prefixed with `{namespace}__` (REQ-312)
+  - Non-scalar leaf types (nested objects) flattened to JSON string column in V1 (REQ-306 scope)
+- `provisa/graphql_remote/executor.py` — `execute_remote(url, auth, query, variables) -> list[dict]`: build and forward minimal GraphQL query to remote, unwrap `data` envelope, return rows
+- `provisa/api/admin/graphql_remote_router.py` — admin endpoints:
+  - `POST /admin/sources/graphql-remote` — register source (introspect + auto-register tables/functions, store `introspection_json` on source)
+  - `POST /admin/sources/graphql-remote/{source_id}/refresh` — re-introspect, update registrations (REQ-311)
+
+**Query execution (REQ-309):**
+
+- `provisa/source_adapters/graphql_remote_adapter.py` — implements source adapter interface:
+  - Cache key: `graphql_remote:{source_id}:{query_hash}`
+  - Cache hit → return cached rows directly
+  - Cache miss → `execute_remote(...)` → cache result with source TTL → return rows
+- Governance (Stage 2) applied after rows returned from adapter, identically to all other sources (REQ-310)
+
+**Admin UI:**
+
+- `provisa-ui/src/pages/SourcesPage.tsx` — add "GraphQL Remote" as a source type option; form fields: endpoint URL, namespace, auth type/token, cache TTL; "Refresh Schema" button on existing remote sources
+
+**Verify:**
+- `python -m pytest tests/unit/test_graphql_remote_mapper.py -x -q`:
+  - Query field with scalar fields → virtual table columns
+  - Mutation field → tracked function with `return_schema`
+  - Namespace prefix applied to all type names
+  - Non-scalar nested field → JSON string column
+- `python -m pytest tests/unit/test_graphql_remote_introspect.py -x -q`:
+  - Introspection response parsed correctly
+  - Auth header forwarded (bearer/basic)
+  - Network error raises clean exception
+- `python -m pytest tests/integration/test_graphql_remote_source.py -x -q` (requires mock GraphQL server container):
+  - Source registration → tables and functions auto-registered
+  - Query → cache miss → remote call → rows returned
+  - Second identical query → cache hit → no remote call
+  - Refresh schema → updated registrations
+
+**Files:**
+| File | Action |
+|------|--------|
+| `provisa/core/models.py` | Modify (add `GRAPHQL_REMOTE` to `SourceType`) |
+| `provisa/graphql_remote/__init__.py` | Create |
+| `provisa/graphql_remote/introspect.py` | Create |
+| `provisa/graphql_remote/mapper.py` | Create |
+| `provisa/graphql_remote/executor.py` | Create |
+| `provisa/source_adapters/graphql_remote_adapter.py` | Create |
+| `provisa/api/admin/graphql_remote_router.py` | Create |
+| `provisa-ui/src/pages/SourcesPage.tsx` | Modify (add GraphQL Remote source type) |
+| `tests/unit/test_graphql_remote_mapper.py` | Create |
+| `tests/unit/test_graphql_remote_introspect.py` | Create |
+| `tests/integration/test_graphql_remote_source.py` | Create |
+
+---
+
+## Phase AQ — OpenAPI Auto-Registration Connector
+
+**Goal:** Register any REST API as a Provisa data source by providing an OpenAPI 3.x or Swagger 2.0 spec. GET operations become virtual query tables; non-GET operations become tracked mutations. Full governance, caching, and RLS apply.
+
+**Requirements:** REQ-314–321
+
+### Step 1 — Spec loader
+
+`provisa/openapi/loader.py`
+
+```python
+import json, pathlib
+import httpx
+import yaml
+
+def load_spec(spec_path: str) -> dict:
+    """Load an OpenAPI spec from a local file path or remote URL."""
+    p = pathlib.Path(spec_path)
+    if p.exists():
+        text = p.read_text()
+    else:
+        r = httpx.get(spec_path, timeout=30, follow_redirects=True)
+        r.raise_for_status()
+        text = r.text
+    if spec_path.endswith(".yaml") or spec_path.endswith(".yml") or (not spec_path.startswith("http") and "\n" in text and ":" in text.split("\n")[0]):
+        return yaml.safe_load(text)
+    return json.loads(text)
+```
+
+### Step 2 — Spec parser / mapper
+
+`provisa/openapi/mapper.py`
+
+Parse the spec into two lists:
+
+```python
+@dataclass
+class OpenAPIQuery:
+    operation_id: str        # slugified path + method, or operationId
+    path: str                # /users/{id}
+    method: str = "GET"
+    summary: str | None = None
+    path_params: list[dict]  # [{name, type}]
+    query_params: list[dict]
+    response_schema: dict | None = None  # JSON Schema of 200 response body
+
+@dataclass
+class OpenAPIMutation:
+    operation_id: str
+    path: str
+    method: str              # POST | PUT | PATCH | DELETE
+    summary: str | None = None
+    input_schema: dict | None = None    # JSON Schema of requestBody
+    response_schema: dict | None = None
+```
+
+Resolution logic:
+- `responses.200` → `responses.2xx` → `responses.default`
+- If response schema is `{type: array, items: {...}}`, columns are from `items.properties`
+- If response schema is `{type: object, properties: {...}}`, columns are directly from `properties`
+- Request body: `requestBody.content["application/json"].schema`
+
+### Step 3 — Source adapter
+
+`provisa/source_adapters/openapi_adapter.py`
+
+- `fetch(query: OpenAPIQuery, args: dict, auth_config: dict) -> list[dict]`
+- Substitutes path params, appends query params, injects auth header
+- Returns list of dicts (rows)
+- GET results cached in Redis with key `openapi:{source_id}:{operation_id}:{stable_args_hash}:{role}`
+
+Non-GET (mutations):
+- `execute(mutation: OpenAPIMutation, input: dict, auth_config: dict) -> dict`
+- No caching
+
+### Step 4 — Auto-registration on source create
+
+`provisa/openapi/register.py`
+
+```python
+async def auto_register_openapi_source(source_id: str, spec: dict, conn):
+    """Parse spec and upsert virtual tables + tracked functions."""
+    queries, mutations = parse_spec(spec)
+    for q in queries:
+        await upsert_table(source_id, q, conn)
+    for m in mutations:
+        await upsert_tracked_function(source_id, m, conn)
+```
+
+- Calls existing table/function repository upsert methods
+- Idempotent — safe to call on refresh
+- Preserves existing RLS/masking rules (does not overwrite governance columns)
+
+### Step 5 — Admin router
+
+`provisa/api/admin/openapi_router.py`
+
+```
+POST /admin/openapi/register
+  body: { spec_path: str, source_id: str, namespace: str, auth_config?: dict }
+  → loads spec, stores locally, calls auto_register_openapi_source
+
+POST /admin/openapi/refresh/{source_id}
+  → re-loads spec from stored path, re-runs auto_register
+
+POST /admin/openapi/preview
+  body: { spec_path: str }
+  → parses spec, returns { queries: [...], mutations: [...] } without persisting
+
+GET  /admin/openapi/spec/{source_id}
+  → returns stored spec JSON for manual editing
+
+PUT  /admin/openapi/spec/{source_id}
+  body: raw OpenAPI spec JSON/YAML
+  → stores manually authored spec, runs auto_register
+```
+
+### Step 6 — UI (SourcesPage)
+
+`provisa-ui/src/pages/SourcesPage.tsx`
+
+- Add `OPENAPI` to source type dropdown
+- When `OPENAPI` selected: show `Spec Path or URL` field with note "local file path or https:// URL"
+- Show "Can't get a spec? Create one manually" toggle → opens inline spec editor (Monaco or `<textarea>`)
+- Preview button → calls `/admin/openapi/preview`, renders table of queries and mutations to be registered
+- On save → POST to `/admin/openapi/register`
+- Add "Refresh Schema" button on existing OpenAPI source rows
+
+### Step 7 — Schema generation integration
+
+`provisa/compiler/schema_gen.py`
+
+- OpenAPI virtual tables are registered as standard tables in `registered_tables` — no schema gen changes needed
+- OpenAPI mutations are registered as tracked functions with `return_schema` populated from `response_schema` — no schema gen changes needed
+- The existing `_json_schema_to_gql_type` helper handles response schemas automatically
+
+**Verify:**
+- `python -m pytest tests/unit/test_openapi_loader.py -x -q`:
+  - Local YAML file → parsed dict
+  - Local JSON file → parsed dict
+  - Remote URL → fetched and parsed (mock httpx)
+  - Invalid path raises clean error
+- `python -m pytest tests/unit/test_openapi_mapper.py -x -q`:
+  - GET operation → `OpenAPIQuery` with correct params and response schema
+  - POST operation → `OpenAPIMutation` with input schema and response schema
+  - Path with `{param}` → path_params list
+  - Array response schema → columns from `items.properties`
+  - Object response schema → columns from `properties`
+- `python -m pytest tests/integration/test_openapi_source.py -x -q` (requires mock REST server container):
+  - Source registration with local spec → tables and functions auto-registered
+  - Query → cache miss → remote GET → rows returned
+  - Second identical query → cache hit → no remote call
+  - Mutation → remote POST → result returned, not cached
+  - Spec refresh → updated registrations
+
+**Files:**
+| File | Action |
+|------|--------|
+| `provisa/openapi/__init__.py` | Create |
+| `provisa/openapi/loader.py` | Create |
+| `provisa/openapi/mapper.py` | Create |
+| `provisa/openapi/register.py` | Create |
+| `provisa/source_adapters/openapi_adapter.py` | Create |
+| `provisa/api/admin/openapi_router.py` | Create |
+| `provisa/core/models.py` | Modify (add `OPENAPI` to `SourceType`) |
+| `provisa-ui/src/pages/SourcesPage.tsx` | Modify (OpenAPI source type + spec editor) |
+| `tests/unit/test_openapi_loader.py` | Create |
+| `tests/unit/test_openapi_mapper.py` | Create |
+| `tests/integration/test_openapi_source.py` | Create |
+
+---
+
+## Phase AR — gRPC Remote Schema Connector
+
+### Goal
+Mirror Phase AQ for gRPC: parse a `.proto` file to auto-register virtual tables (query methods) and tracked functions (mutation methods). No manual table/function registration required. `provisa/grpc_remote/` is the new module — entirely distinct from `provisa/grpc/` which serves Provisa's own gRPC server.
+
+### Business Rule — Query vs Mutation
+A gRPC method is a **query** (virtual table) when its name starts with any of:
+`Get`, `List`, `Find`, `Fetch`, `Search`, `Stream`
+All other methods (`Create`, `Update`, `Delete`, `Upsert`, `Run`, etc.) are **mutations** (tracked functions).
+Steward may override the classification per-method in the admin UI.
+
+### Proto Type Mapping
+| Proto type | SQL/GraphQL type |
+|-----------|-----------------|
+| `string`, `bytes` | `text` |
+| `int32`, `uint32`, `sint32`, `fixed32`, `sfixed32` | `integer` |
+| `int64`, `uint64`, `sint64`, `fixed64`, `sfixed64` | `bigint` |
+| `float` | `real` |
+| `double` | `numeric` |
+| `bool` | `boolean` |
+| `repeated <T>` | `jsonb` |
+| message (nested) | `jsonb` |
+| enum | `text` |
+
+### Module Layout
+
+```
+provisa/grpc_remote/
+    __init__.py
+    loader.py       # load_proto(path_or_url) → FileDescriptorProto
+    mapper.py       # map_proto(fds, namespace, source_id, domain_id) → (tables, functions)
+    executor.py     # execute_query(channel, method_descriptor, args) → list[dict]
+                    # execute_mutation(channel, method_descriptor, args) → dict
+
+provisa/source_adapters/
+    grpc_remote_adapter.py   # fetch() with cache-aside; execute() mutation, no cache
+
+provisa/api/admin/
+    grpc_remote_router.py    # POST /admin/grpc-remote/register
+                              # POST /admin/grpc-remote/refresh/{id}
+                              # GET  /admin/grpc-remote
+                              # GET  /admin/grpc-remote/{id}/proto
+```
+
+### Component Design
+
+#### `loader.py`
+```python
+async def load_proto(path_or_url: str, import_paths: list[str] | None = None) -> FileDescriptorProto
+```
+- Local `.proto` → invokes `grpc_tools.protoc` subprocess with `--descriptor_set_out` to a temp file; deserialises `FileDescriptorSet`
+- `http://` / `https://` URL → fetches raw bytes with `httpx`, writes to temp `.proto`, then same subprocess path
+- `import_paths` forwarded as `-I` flags for well-known proto imports (`google/protobuf/timestamp.proto` etc.)
+- Raises `ValueError` for parse failures; `FileNotFoundError` for missing local path; `httpx.HTTPError` for fetch failures
+
+#### `mapper.py`
+```python
+def map_proto(
+    fds: FileDescriptorProto,
+    namespace: str,
+    source_id: str,
+    domain_id: str,
+) -> tuple[list[GrpcQuery], list[GrpcMutation]]
+```
+`GrpcQuery` fields: `service`, `method`, `full_method_path`, `input_message`, `output_message`, `columns: list[ColumnDef]`
+`GrpcMutation` fields: same plus `input_fields: list[ColumnDef]`
+
+Logic:
+1. Iterate `fds.service` → each `ServiceDescriptorProto`
+2. Iterate `service.method` → each `MethodDescriptorProto`
+3. Apply query/mutation business rule on `method.name`
+4. Resolve input/output message types via `fds.message_type` lookup
+5. Map message fields to `ColumnDef` using proto type table above
+6. Prefix all names with `{namespace}__`
+
+#### `executor.py`
+```python
+async def execute_query(
+    channel: grpc.aio.Channel,
+    full_method_path: str,
+    input_message_class: type,
+    args: dict,
+    columns: list[str],
+) -> list[dict]
+
+async def execute_mutation(
+    channel: grpc.aio.Channel,
+    full_method_path: str,
+    input_message_class: type,
+    args: dict,
+) -> dict
+```
+Uses `grpc.aio.Channel.unary_unary()` for standard request/response.
+Server-streaming methods (`Stream*`) use `unary_stream()` and collect all responses into a list.
+Proto message serialisation via `betterproto` (already dependency for `provisa/grpc/`).
+
+#### `grpc_remote_adapter.py`
+```python
+class GrpcRemoteAdapter:
+    async def fetch(self, source_id, method, args, columns, role) -> list[dict]
+    async def execute(self, source_id, method, args) -> dict
+```
+Cache key: `grpc_remote:{source_id}:{method}:{args_hash}:{role}`
+Mutations bypass cache entirely.
+Channel reuse: one `grpc.aio.insecure_channel` / `secure_channel` per source, stored in `AppState.grpc_remote_channels`.
+
+#### `grpc_remote_router.py`
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /admin/grpc-remote/register` | Load proto, classify methods, auto-register tables+functions |
+| `POST /admin/grpc-remote/refresh/{id}` | Re-parse proto, update registrations, preserve governance |
+| `GET  /admin/grpc-remote` | List registered gRPC remote sources |
+| `GET  /admin/grpc-remote/{id}/proto` | Return raw proto text |
+| `PUT  /admin/grpc-remote/{id}/proto` | Replace proto text, re-run registration |
+
+#### `SourcesPage.tsx` changes
+- Add `grpc_remote` to the excluded set alongside `openapi` and `graphql_remote` (not caught by generic `isApi`)
+- Dedicated form section: proto path/URL, server address, TLS (yes/no), namespace, domain_id, import paths (newline-separated), auth (none/bearer)
+- "Refresh Schema" button → calls `POST /admin/grpc-remote/refresh/{id}`
+
+#### `core/models.py`
+Add `grpc_remote = "grpc_remote"` to `SourceType` enum.
+
+#### `api/app.py`
+Add `grpc_remote_channels: dict[str, grpc.aio.Channel] = {}` to `AppState`.
+Register `grpc_remote_router` in `create_app()`.
+
+### Tests
+
+#### Unit — `tests/unit/test_grpc_remote_mapper.py`
+Pure logic, no I/O. Use a hand-crafted `FileDescriptorProto` object.
+- `GetOrder` → classified as query
+- `CreateOrder` → classified as mutation
+- `ListOrders` → classified as query
+- `DeleteOrder` → classified as mutation
+- `StreamEvents` → classified as query
+- `UpdateOrder` → classified as mutation
+- `string` field → `text` column
+- `int32` field → `integer` column
+- `repeated string` field → `jsonb` column
+- nested message field → `jsonb` column
+- `bool` field → `boolean` column
+- namespace prefix applied to table name
+- empty service → empty lists
+- method with no input fields → zero-argument query
+- multiple services in one proto → all methods collected
+
+#### Unit — `tests/unit/test_grpc_remote_loader.py`
+Uses `respx` for URL fetch; `tmp_path` pytest fixture for local file.
+- Local `.proto` path → returns `FileDescriptorProto`
+- Remote URL → fetches bytes, returns `FileDescriptorProto`
+- Missing local path → raises `FileNotFoundError`
+- HTTP 404 → raises `httpx.HTTPError`
+- Invalid proto syntax → raises `ValueError`
+- `import_paths` forwarded to protoc subprocess
+
+#### Integration — `tests/integration/test_grpc_remote_source.py`
+Requires a lightweight gRPC test server in `docker-compose.yml` (or a locally built one that the test starts in-process).
+- Register source with valid proto → tables and functions created
+- Query virtual table → gRPC call executed, rows returned
+- Same query again → cache hit, no gRPC call
+- Mutation → gRPC call executed, not cached
+- Schema refresh → updated registrations, existing RLS preserved
+
+### Verification Commands
+```
+python -m pytest tests/unit/test_grpc_remote_mapper.py -x -q
+python -m pytest tests/unit/test_grpc_remote_loader.py -x -q
+python -m pytest tests/integration/test_grpc_remote_source.py -x -q
+```
+
+### Files
+| File | Action |
+|------|--------|
+| `provisa/grpc_remote/__init__.py` | Create |
+| `provisa/grpc_remote/loader.py` | Create |
+| `provisa/grpc_remote/mapper.py` | Create |
+| `provisa/grpc_remote/executor.py` | Create |
+| `provisa/source_adapters/grpc_remote_adapter.py` | Create |
+| `provisa/api/admin/grpc_remote_router.py` | Create |
+| `provisa/core/models.py` | Modify (add `grpc_remote` to `SourceType`) |
+| `provisa/api/app.py` | Modify (add `grpc_remote_channels` to AppState, register router) |
+| `provisa-ui/src/pages/SourcesPage.tsx` | Modify (gRPC Remote dedicated form section) |
+| `tests/unit/test_grpc_remote_mapper.py` | Create |
+| `tests/unit/test_grpc_remote_loader.py` | Create |
+| `tests/integration/test_grpc_remote_source.py` | Create |

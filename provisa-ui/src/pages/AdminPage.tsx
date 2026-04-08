@@ -20,8 +20,11 @@ import {
   uploadConfig,
   fetchSettings,
   updateSettings,
+  createDomain,
+  deleteDomain,
 } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
+import type { Domain } from "../types/admin";
 import { MVManager } from "../components/admin/MVManager";
 import { CacheManager } from "../components/admin/CacheManager";
 import { SystemHealth } from "../components/admin/SystemHealth";
@@ -35,6 +38,10 @@ type Tab = typeof TABS[number];
 export function AdminPage() {
   const [activeTab, setActiveTab] = useState<Tab>("Overview");
   const [stats, setStats] = useState<Record<string, number>>({});
+  const [domains, setDomains] = useState<Domain[]>([]);
+  const [newDomainId, setNewDomainId] = useState("");
+  const [newDomainDesc, setNewDomainDesc] = useState("");
+  const [domainMsg, setDomainMsg] = useState("");
   const [loading, setLoading] = useState(true);
   const [configYaml, setConfigYaml] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -54,15 +61,16 @@ export function AdminPage() {
       fetchRlsRules(),
       fetchSettings(),
     ])
-      .then(([sources, domains, tables, rels, roles, rls, s]) => {
+      .then(([sources, doms, tables, rels, roles, rls, s]) => {
         setStats({
           Sources: sources.length,
-          Domains: domains.length,
+          Domains: doms.length,
           Tables: tables.length,
           Relationships: rels.length,
           Roles: roles.length,
           "RLS Rules": rls.length,
         });
+        setDomains(doms);
         setSettings(s);
       })
       .finally(() => setLoading(false));
@@ -119,6 +127,25 @@ export function AdminPage() {
     });
   };
 
+  const handleAddDomain = async () => {
+    if (!newDomainId.trim()) return;
+    await createDomain(newDomainId.trim(), newDomainDesc.trim());
+    const updated = await fetchDomains();
+    setDomains(updated);
+    setStats((s) => ({ ...s, Domains: updated.length }));
+    setNewDomainId("");
+    setNewDomainDesc("");
+    setDomainMsg(`Added "${newDomainId.trim()}"`);
+  };
+
+  const handleDeleteDomain = async (id: string) => {
+    await deleteDomain(id);
+    const updated = await fetchDomains();
+    setDomains(updated);
+    setStats((s) => ({ ...s, Domains: updated.length }));
+    setDomainMsg(`Deleted "${id}"`);
+  };
+
   if (loading) return <div className="page">Loading admin dashboard...</div>;
 
   return (
@@ -149,16 +176,42 @@ export function AdminPage() {
             ))}
           </div>
 
+          <h3>Domains</h3>
+          {domainMsg && <div className="success" style={{ marginBottom: "0.5rem" }}>{domainMsg}</div>}
+          <table className="data-table" style={{ marginBottom: "1rem" }}>
+            <thead><tr><th>ID</th><th>Description</th><th></th></tr></thead>
+            <tbody>
+              {domains.length === 0 && (
+                <tr><td colSpan={3} style={{ color: "var(--text-muted)", textAlign: "center" }}>No domains defined</td></tr>
+              )}
+              {domains.map((d) => (
+                <tr key={d.id}>
+                  <td>{d.id}</td>
+                  <td>{d.description || "—"}</td>
+                  <td>
+                    <button className="btn-danger" style={{ padding: "0.2rem 0.5rem", fontSize: "0.8rem" }} onClick={() => handleDeleteDomain(d.id)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "1.5rem" }}>
+            <input value={newDomainId} onChange={(e) => setNewDomainId(e.target.value)} placeholder="domain-id" style={{ width: "160px" }} />
+            <input value={newDomainDesc} onChange={(e) => setNewDomainDesc(e.target.value)} placeholder="description (optional)" style={{ flex: 1 }} />
+            <button className="btn-primary" onClick={handleAddDomain} disabled={!newDomainId.trim()}>Add Domain</button>
+          </div>
+
           <h3>Platform Settings</h3>
           {settings && (
             <div className="settings-grid">
               <div className="settings-section">
                 <h4>Redirect</h4>
-                <label>
+                <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem", whiteSpace: "nowrap" }}>
                   <input
                     type="checkbox"
                     checked={settings.redirect.enabled}
                     onChange={(e) => updateRedirect("enabled", e.target.checked)}
+                    style={{ width: "auto" }}
                   />
                   Enabled
                 </label>
@@ -200,7 +253,7 @@ export function AdminPage() {
               </div>
               <div className="settings-section">
                 <h4>Naming</h4>
-                <label>
+                <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem", whiteSpace: "nowrap" }}>
                   <input
                     type="checkbox"
                     checked={settings.naming.domain_prefix}
@@ -210,6 +263,7 @@ export function AdminPage() {
                         naming: { domain_prefix: e.target.checked },
                       })
                     }
+                    style={{ width: "auto" }}
                   />
                   Domain prefix (domain_id__ prepended to all names)
                 </label>

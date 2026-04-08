@@ -78,6 +78,12 @@ class AppState:
     hostname: str = "localhost"  # publicly reachable hostname (PROVISA_HOSTNAME)
     source_federation_hints: dict[str, dict[str, str]] = {}  # source_id → Trino session props (AL3)
     server_cfg: dict = {}  # raw server section from provisa.yaml
+    tracked_functions: dict[str, dict] = {}  # gql field name → fn dict
+    tracked_webhooks: dict[str, dict] = {}   # gql field name → wh dict
+    pg_enum_types: dict = {}  # pg_name → GraphQLEnumType (REQ-221)
+    graphql_remote_sources: dict[str, dict] = {}  # source_id → GraphQL remote registration
+    openapi_specs: dict[str, dict] = {}  # source_id → OpenAPI spec registration
+    grpc_remote_sources: dict[str, dict] = {}  # source_id → gRPC remote registration
 
 
 state = AppState()
@@ -290,6 +296,20 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 use_pgbouncer=src.use_pgbouncer,
                 pgbouncer_port=src.pgbouncer_port,
             )
+
+    # REQ-221: Fetch enum types from all PostgreSQL sources
+    from provisa.compiler.enum_detect import build_enum_types
+    _enum_registry: dict[str, list[str]] = {}
+    for _src in config.sources:
+        if _src.type.value == "postgresql" and state.source_pools.has(_src.id):
+            _driver = state.source_pools.get(_src.id)
+            if hasattr(_driver, "fetch_enums"):
+                try:
+                    _reg = await _driver.fetch_enums()
+                    _enum_registry.update(_reg)
+                except Exception:
+                    pass
+    state.pg_enum_types = build_enum_types(_enum_registry)
 
     # Load materialized view definitions
     from provisa.mv.models import MVDefinition, JoinPattern, SDLConfig
@@ -561,6 +581,45 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                     state.masking_rules[key] = {}
                 state.masking_rules[key][col_name] = (mask_rule, data_type)
 
+        # Load tracked functions and webhooks for action schema fields
+        from provisa.api.admin.actions_router import _ensure_tables
+        await _ensure_tables(state.pg_pool)
+        fn_rows = await conn.fetch("SELECT * FROM tracked_functions ORDER BY name")
+        wh_rows = await conn.fetch("SELECT * FROM tracked_webhooks ORDER BY name")
+        import json as _json
+        tracked_functions = [
+            {
+                **dict(r),
+                "arguments": _json.loads(r["arguments"]) if isinstance(r["arguments"], str) else (r["arguments"] or []),
+                "visible_to": list(r["visible_to"] or []),
+            }
+            for r in fn_rows
+        ]
+        tracked_webhooks = [
+            {
+                **dict(r),
+                "arguments": _json.loads(r["arguments"]) if isinstance(r["arguments"], str) else (r["arguments"] or []),
+                "inline_return_type": _json.loads(r["inline_return_type"]) if isinstance(r["inline_return_type"], str) else (r["inline_return_type"] or []),
+                "visible_to": list(r["visible_to"] or []),
+            }
+            for r in wh_rows
+        ]
+
+        from provisa.compiler.naming import domain_to_sql_name as _d2sql
+        _dp = raw_config.get("schema", {}).get("domain_prefix", False) if raw_config else False
+        state.tracked_functions = {}
+        for f in tracked_functions:
+            state.tracked_functions[f["name"]] = f
+            if _dp and f.get("domain_id"):
+                prefixed = f"{_d2sql(f['domain_id'])}__{f['name']}"
+                state.tracked_functions[prefixed] = f
+        state.tracked_webhooks = {}
+        for w in tracked_webhooks:
+            state.tracked_webhooks[w["name"]] = w
+            if _dp and w.get("domain_id"):
+                prefixed = f"{_d2sql(w['domain_id'])}__{w['name']}"
+                state.tracked_webhooks[prefixed] = w
+
         for role in roles:
             state.roles[role["id"]] = role
             si = SchemaInput(
@@ -574,6 +633,9 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 domain_prefix=domain_prefix,
                 physical_table_map=kafka_physical or None,
                 naming_convention=raw_config.get("naming", {}).get("convention", "snake_case") if raw_config else "snake_case",
+                functions=tracked_functions,
+                webhooks=tracked_webhooks,
+                enum_types=state.pg_enum_types,
             )
             try:
                 state.schemas[role["id"]] = generate_schema(si)
@@ -883,6 +945,15 @@ def create_app() -> FastAPI:
     from provisa.api.admin.sparql_router import router as sparql_router
     app.include_router(sparql_router)
 
+    from provisa.api.admin.graphql_remote_router import router as graphql_remote_router
+    app.include_router(graphql_remote_router)
+
+    from provisa.api.admin.openapi_router import router as openapi_router
+    app.include_router(openapi_router)
+
+    from provisa.api.admin.grpc_remote_router import router as grpc_remote_router
+    app.include_router(grpc_remote_router)
+
     from provisa.api.admin.actions_router import router as actions_router
     app.include_router(actions_router)
 
@@ -1024,7 +1095,7 @@ def create_app() -> FastAPI:
 
         return {"success": True, "updated": updated}
 
-    @app.get("/health")
+    @app.api_route("/health", methods=["GET", "HEAD"])
     async def health():
         return {"status": "ok"}
 

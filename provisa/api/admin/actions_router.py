@@ -18,6 +18,8 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+import httpx
+
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/actions", tags=["admin", "actions"])
 
@@ -71,6 +73,8 @@ def _row_to_function(row: dict) -> dict:
         "writableBy": list(row["writable_by"] or []),
         "domainId": row["domain_id"],
         "description": row.get("description"),
+        "kind": row.get("kind", "mutation"),
+        "returnSchema": row.get("return_schema"),
     }
 
 
@@ -86,6 +90,7 @@ def _row_to_webhook(row: dict) -> dict:
         "visibleTo": list(row["visible_to"] or []),
         "domainId": row["domain_id"],
         "description": row.get("description"),
+        "kind": row.get("kind", "mutation"),
     }
 
 
@@ -120,6 +125,8 @@ class FunctionInput(BaseModel):
     writableBy: list[str] = []
     domainId: str = ""
     description: str | None = None
+    kind: str = "mutation"
+    returnSchema: dict | None = None
 
 
 class WebhookInput(BaseModel):
@@ -133,6 +140,7 @@ class WebhookInput(BaseModel):
     visibleTo: list[str] = []
     domainId: str = ""
     description: str | None = None
+    kind: str = "mutation"
 
 
 @router.post("/functions")
@@ -150,8 +158,9 @@ async def create_function(body: FunctionInput):
             """
             INSERT INTO tracked_functions
                 (name, source_id, schema_name, function_name, returns,
-                 arguments, visible_to, writable_by, domain_id, description)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 arguments, visible_to, writable_by, domain_id, description, kind,
+                 return_schema)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             ON CONFLICT (name) DO UPDATE SET
                 source_id     = EXCLUDED.source_id,
                 schema_name   = EXCLUDED.schema_name,
@@ -162,6 +171,8 @@ async def create_function(body: FunctionInput):
                 writable_by   = EXCLUDED.writable_by,
                 domain_id     = EXCLUDED.domain_id,
                 description   = EXCLUDED.description,
+                kind          = EXCLUDED.kind,
+                return_schema = EXCLUDED.return_schema,
                 updated_at    = NOW()
             """,
             body.name,
@@ -174,9 +185,13 @@ async def create_function(body: FunctionInput):
             body.writableBy,
             body.domainId,
             body.description,
+            body.kind,
+            json.dumps(body.returnSchema) if body.returnSchema is not None else None,
         )
 
     log.info("Saved tracked function %s", body.name)
+    from provisa.api.app import _rebuild_schemas
+    await _rebuild_schemas()
     return {"success": True, "name": body.name}
 
 
@@ -203,6 +218,8 @@ async def update_function(name: str, body: FunctionInput):
                 writable_by   = $8,
                 domain_id     = $9,
                 description   = $10,
+                kind          = $11,
+                return_schema = $12,
                 updated_at    = NOW()
             WHERE name = $1
             """,
@@ -216,12 +233,16 @@ async def update_function(name: str, body: FunctionInput):
             body.writableBy,
             body.domainId,
             body.description,
+            body.kind,
+            json.dumps(body.returnSchema) if body.returnSchema is not None else None,
         )
 
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail=f"Function '{name}' not found")
 
     log.info("Updated tracked function %s", name)
+    from provisa.api.app import _rebuild_schemas
+    await _rebuild_schemas()
     return {"success": True, "name": name}
 
 
@@ -244,6 +265,8 @@ async def delete_function(name: str):
         raise HTTPException(status_code=404, detail=f"Function '{name}' not found")
 
     log.info("Deleted tracked function %s", name)
+    from provisa.api.app import _rebuild_schemas
+    await _rebuild_schemas()
     return {"success": True, "name": name}
 
 
@@ -262,8 +285,8 @@ async def create_webhook(body: WebhookInput):
             """
             INSERT INTO tracked_webhooks
                 (name, url, method, timeout_ms, returns,
-                 inline_return_type, arguments, visible_to, domain_id, description)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 inline_return_type, arguments, visible_to, domain_id, description, kind)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             ON CONFLICT (name) DO UPDATE SET
                 url                = EXCLUDED.url,
                 method             = EXCLUDED.method,
@@ -274,6 +297,7 @@ async def create_webhook(body: WebhookInput):
                 visible_to         = EXCLUDED.visible_to,
                 domain_id          = EXCLUDED.domain_id,
                 description        = EXCLUDED.description,
+                kind               = EXCLUDED.kind,
                 updated_at         = NOW()
             """,
             body.name,
@@ -286,9 +310,12 @@ async def create_webhook(body: WebhookInput):
             body.visibleTo,
             body.domainId,
             body.description,
+            body.kind,
         )
 
     log.info("Saved tracked webhook %s", body.name)
+    from provisa.api.app import _rebuild_schemas
+    await _rebuild_schemas()
     return {"success": True, "name": body.name}
 
 
@@ -315,6 +342,7 @@ async def update_webhook(name: str, body: WebhookInput):
                 visible_to         = $8,
                 domain_id          = $9,
                 description        = $10,
+                kind               = $11,
                 updated_at         = NOW()
             WHERE name = $1
             """,
@@ -328,12 +356,15 @@ async def update_webhook(name: str, body: WebhookInput):
             body.visibleTo,
             body.domainId,
             body.description,
+            body.kind,
         )
 
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail=f"Webhook '{name}' not found")
 
     log.info("Updated tracked webhook %s", name)
+    from provisa.api.app import _rebuild_schemas
+    await _rebuild_schemas()
     return {"success": True, "name": name}
 
 
@@ -356,4 +387,62 @@ async def delete_webhook(name: str):
         raise HTTPException(status_code=404, detail=f"Webhook '{name}' not found")
 
     log.info("Deleted tracked webhook %s", name)
+    from provisa.api.app import _rebuild_schemas
+    await _rebuild_schemas()
     return {"success": True, "name": name}
+
+
+class TestActionInput(BaseModel):
+    actionType: str  # "function" or "webhook"
+    name: str
+
+
+@router.post("/test")
+async def test_action(body: TestActionInput):
+    """Run a no-arg test invocation of a tracked function or webhook."""
+    from provisa.api.app import state
+
+    if state.pg_pool is None:
+        raise HTTPException(status_code=503, detail="Database not connected")
+
+    await _ensure_tables(state.pg_pool)
+
+    if body.actionType == "function":
+        async with state.pg_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM tracked_functions WHERE name = $1", body.name
+            )
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Function '{body.name}' not found")
+
+        src_id = row["source_id"]
+        fn = row["function_name"]
+        schema = row["schema_name"]
+
+        if not state.source_pools.has(src_id):
+            raise HTTPException(status_code=503, detail=f"Source '{src_id}' not connected")
+
+        result = await state.source_pools.execute(
+            src_id, f'SELECT * FROM "{schema}"."{fn}"() LIMIT 5'
+        )
+        cols = result.column_names
+        return {"rows": [dict(zip(cols, r)) for r in result.rows]}
+
+    elif body.actionType == "webhook":
+        async with state.pg_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT * FROM tracked_webhooks WHERE name = $1", body.name
+            )
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Webhook '{body.name}' not found")
+
+        url = row["url"]
+        method = row["method"].upper()
+        timeout = row["timeout_ms"] / 1000
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.request(method, url, json={"_test": True})
+
+        return {"status": resp.status_code, "body": resp.json()}
+
+    raise HTTPException(status_code=400, detail=f"Unknown actionType '{body.actionType}'")

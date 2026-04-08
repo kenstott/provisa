@@ -82,9 +82,14 @@ def build_prompt(discovery_input: DiscoveryInput) -> str:
         '  "target_column": "<column_name>",\n'
         '  "cardinality": "many-to-one" | "one-to-many",\n'
         '  "confidence": <float 0.0-1.0>,\n'
-        '  "reasoning": "<brief explanation>"\n'
+        '  "reasoning": "<brief explanation>",\n'
+        '  "suggested_name": "<kebab-case business concept name>"\n'
         "}\n"
         "```\n"
+        "For suggested_name: name the business concept or process this relationship represents, "
+        "not the tables or columns involved. Think: what does this join MEAN to the business?\n"
+        "Good: purchase-history, customer-feedback, fulfillment-status, support-account\n"
+        "Bad: orders-to-customers, product-id-join, orders-product-id-to-products\n"
     )
 
     return "\n".join(sections)

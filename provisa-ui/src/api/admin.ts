@@ -56,6 +56,15 @@ export async function fetchDomains(): Promise<Domain[]> {
   return data.domains;
 }
 
+export async function createDomain(id: string, description: string): Promise<void> {
+  await gql(`mutation { createDomain(input: { id: ${JSON.stringify(id)}, description: ${JSON.stringify(description)} }) { success message } }`);
+}
+
+export async function deleteDomain(id: string): Promise<void> {
+  await gql(`mutation { deleteDomain(id: ${JSON.stringify(id)}) { success message } }`);
+}
+
+
 export async function fetchTables(): Promise<RegisteredTable[]> {
   const data = await gql<{ tables: RegisteredTable[] }>(
     `{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description } } }`
@@ -65,7 +74,7 @@ export async function fetchTables(): Promise<RegisteredTable[]> {
 
 export async function fetchRelationships(): Promise<Relationship[]> {
   const data = await gql<{ relationships: Relationship[] }>(
-    `{ relationships { id sourceTableId targetTableId sourceTableName targetTableName sourceColumn targetColumn cardinality materialize refreshInterval } }`
+    `{ relationships { id sourceTableId targetTableId sourceTableName targetTableName sourceColumn targetColumn cardinality materialize refreshInterval targetFunctionName functionArg } }`
   );
   return data.relationships;
 }
@@ -73,12 +82,14 @@ export async function fetchRelationships(): Promise<Relationship[]> {
 export async function upsertRelationship(input: {
   id: string;
   sourceTableId: string;
-  targetTableId: string;
+  targetTableId?: string;
   sourceColumn: string;
-  targetColumn: string;
+  targetColumn?: string;
   cardinality: string;
   materialize: boolean;
   refreshInterval: number;
+  targetFunctionName?: string | null;
+  functionArg?: string | null;
 }): Promise<MutationResult> {
   const data = await gql<{ upsertRelationship: MutationResult }>(
     `mutation($input: RelationshipInput!) { upsertRelationship(input: $input) { success message } }`,
@@ -254,6 +265,16 @@ export async function fetchAvailableColumnsMetadata(
   return data.availableColumnsMetadata;
 }
 
+export async function fetchAvailableFunctions(sourceId: string, schemaName = "openapi"): Promise<TableMetadata[]> {
+  const data = await gql<{ availableFunctions: TableMetadata[] }>(
+    `query($sourceId: String!, $schemaName: String!) {
+      availableFunctions(sourceId: $sourceId, schemaName: $schemaName) { name comment }
+    }`,
+    { sourceId, schemaName }
+  );
+  return data.availableFunctions;
+}
+
 export async function updateSource(input: {
   id: string;
   type: string;
@@ -269,6 +290,14 @@ export async function updateSource(input: {
     { input }
   );
   return data.updateSource;
+}
+
+export async function renameSource(oldId: string, newId: string): Promise<MutationResult> {
+  const data = await gql<{ renameSource: MutationResult }>(
+    `mutation($oldId: String!, $newId: String!) { renameSource(oldId: $oldId, newId: $newId) { success message } }`,
+    { oldId, newId }
+  );
+  return data.renameSource;
 }
 
 export async function deleteSource(id: string): Promise<MutationResult> {
@@ -315,11 +344,28 @@ export async function fetchCandidates(): Promise<any[]> {
   return resp.json();
 }
 
-export async function acceptCandidate(id: number): Promise<any> {
+export async function acceptCandidate(id: number, name?: string): Promise<any> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/${id}/accept`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: name ?? null }),
   });
   if (!resp.ok) throw new Error(`Accept failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function fetchRejectedCount(): Promise<number> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/rejected/count`);
+  if (!resp.ok) throw new Error(`Fetch rejected count failed: ${resp.status}`);
+  const data = await resp.json();
+  return data.count;
+}
+
+export async function clearRejectedCandidates(): Promise<{ deleted: number }> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/rejected`, {
+    method: "DELETE",
+  });
+  if (!resp.ok) throw new Error(`Clear rejections failed: ${resp.status}`);
   return resp.json();
 }
 

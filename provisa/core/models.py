@@ -58,6 +58,9 @@ class SourceType(str, Enum):
     # Other
     google_sheets = "google_sheets"
     prometheus = "prometheus"
+    graphql_remote = "graphql_remote"
+    openapi = "openapi"
+    grpc_remote = "grpc_remote"
 
 
 class GovernanceLevel(str, Enum):
@@ -259,12 +262,14 @@ class HotTablesConfig(BaseModel):
 class Relationship(BaseModel):
     id: str
     source_table_id: str
-    target_table_id: str
+    target_table_id: str = ""  # empty for computed (function-target) relationships
     source_column: str
-    target_column: str
+    target_column: str = ""  # empty for computed relationships
     cardinality: Cardinality
     materialize: bool = False  # auto-create MV for cross-source joins
     refresh_interval: int = 300  # MV refresh interval in seconds
+    target_function_name: str | None = None  # computed relationship: DB function name
+    function_arg: str | None = None  # which function arg receives source_column value
 
 
 class Role(BaseModel):
@@ -339,9 +344,9 @@ class InlineType(BaseModel):
 
 
 class Function(BaseModel):
-    """Tracked DB function exposed as a GraphQL mutation."""
+    """Tracked DB function exposed as a GraphQL query or mutation."""
 
-    name: str  # exposed mutation name
+    name: str  # exposed field name
     source_id: str
     schema_name: str = Field(alias="schema", default="public")
     function_name: str
@@ -351,14 +356,15 @@ class Function(BaseModel):
     writable_by: list[str] = Field(default_factory=list)
     domain_id: str = ""
     description: str | None = None
+    kind: str = "mutation"  # "mutation" or "query"
 
     model_config = ConfigDict(populate_by_name=True)
 
 
 class Webhook(BaseModel):
-    """External HTTP webhook exposed as a GraphQL mutation."""
+    """External HTTP webhook exposed as a GraphQL query or mutation."""
 
-    name: str  # exposed mutation name
+    name: str  # exposed field name
     url: str
     method: str = "POST"
     timeout_ms: int = 5000
@@ -368,6 +374,7 @@ class Webhook(BaseModel):
     visible_to: list[str] = Field(default_factory=list)
     domain_id: str = ""
     description: str | None = None
+    kind: str = "mutation"  # "mutation" or "query"
 
 
 class ScheduledTrigger(BaseModel):

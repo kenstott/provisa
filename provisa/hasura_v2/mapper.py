@@ -336,6 +336,8 @@ def _map_action(
     handler = action.definition.handler
     visible_to = [p.get("role", "") for p in action.permissions if p.get("role")]
 
+    action_kind = action.definition.action_type if action.definition.action_type in ("mutation", "query") else "mutation"
+
     if handler.startswith("http://") or handler.startswith("https://"):
         # Webhook-backed action
         args = []
@@ -352,6 +354,7 @@ def _map_action(
             arguments=args,
             visible_to=visible_to,
             domain_id="default",
+            kind=action_kind,
         )
 
     # DB-backed action — treat as function
@@ -368,6 +371,7 @@ def _map_action(
         returns="void",
         visible_to=visible_to,
         domain_id="default",
+        kind=action_kind,
     )
 
 

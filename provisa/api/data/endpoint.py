@@ -21,6 +21,8 @@ import asyncio
 import json
 import logging
 
+import httpx
+
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from graphql import GraphQLSyntaxError, OperationType
@@ -722,6 +724,17 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
       → cache check → route → transpile → execute → cache store → serialize.
     Multiple root fields are executed independently and merged.
     """
+    action_sels, regular_names = _split_action_fields(document, state)
+
+    if action_sels and not regular_names:
+        data = {}
+        for sel in action_sels:
+            data[sel.name.value] = await _execute_action_field(sel.name.value, sel, state, variables)
+        return JSONResponse(content={"data": data}, headers=build_cache_headers(None))
+
+    if action_sels and regular_names:
+        raise HTTPException(status_code=400, detail="Cannot mix action fields with table queries")
+
     compiled_queries = compile_query(document, ctx, variables)
     if not compiled_queries:
         raise HTTPException(status_code=400, detail="No query fields found")
@@ -832,8 +845,80 @@ def _check_writable_by(table_meta, columns: list[str], role_id: str):
             )
 
 
+async def _execute_action_field(field_name: str, field_node, state, variables: dict | None) -> list:
+    """Execute a tracked function or webhook field, return rows list."""
+    from provisa.compiler.sql_gen import _extract_value
+    args: dict = {}
+    if hasattr(field_node, "arguments") and field_node.arguments:
+        for arg in field_node.arguments:
+            args[arg.name.value] = _extract_value(arg.value, variables)
+
+    fn = state.tracked_functions.get(field_name)
+    if fn:
+        src_id = fn["source_id"]
+        schema = fn["schema_name"]
+        fn_name = fn["function_name"]
+        if not state.source_pools.has(src_id):
+            raise HTTPException(status_code=503, detail=f"Source '{src_id}' not connected")
+        if args:
+            params = list(args.values())
+            placeholders = ", ".join(f"${i + 1}" for i in range(len(params)))
+            sql = f'SELECT * FROM "{schema}"."{fn_name}"({placeholders})'
+        else:
+            sql = f'SELECT * FROM "{schema}"."{fn_name}"()'
+            params = []
+        result = await state.source_pools.execute(src_id, sql, params)
+        from provisa.executor.serialize import _convert_value
+        cols = result.column_names
+        return [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
+
+    wh = state.tracked_webhooks.get(field_name)
+    if wh:
+        url = wh["url"]
+        method = wh["method"].upper()
+        timeout = wh["timeout_ms"] / 1000
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.request(method, url, json=args)
+        body = resp.json()
+        return body if isinstance(body, list) else [body]
+
+    raise HTTPException(status_code=400, detail=f"Unknown action field: {field_name!r}")
+
+
+def _split_action_fields(document, state) -> tuple[list, list]:
+    """Return (action_sel_list, regular_field_names) from document root selections."""
+    action_sels = []
+    regular_names = []
+    for defn in document.definitions:
+        if not hasattr(defn, "selection_set"):
+            continue
+        for sel in defn.selection_set.selections:
+            from graphql import FieldNode as _FieldNode
+            if not isinstance(sel, _FieldNode):
+                continue
+            fname = sel.name.value
+            if fname in state.tracked_functions or fname in state.tracked_webhooks:
+                action_sels.append(sel)
+            else:
+                regular_names.append(fname)
+    return action_sels, regular_names
+
+
 async def _handle_mutation(document, ctx, rls, state, variables, role_id):
     """Handle a GraphQL mutation operation."""
+    action_sels, regular_names = _split_action_fields(document, state)
+
+    # Pure action mutation(s)
+    if action_sels and not regular_names:
+        data = {}
+        for sel in action_sels:
+            data[sel.name.value] = await _execute_action_field(sel.name.value, sel, state, variables)
+        return {"data": data}
+
+    # Mixed action + regular fields — not supported
+    if action_sels and regular_names:
+        raise HTTPException(status_code=400, detail="Cannot mix action fields with table mutations")
+
     try:
         mutations = compile_mutation(
             document, ctx, state.source_types, variables,

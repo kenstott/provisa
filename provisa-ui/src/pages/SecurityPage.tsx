@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   fetchRoles,
@@ -109,7 +109,7 @@ const ALL_CAPABILITIES: Capability[] = [
 ];
 
 const EMPTY_ROLE = { id: "", capabilities: [] as Capability[], domainAccess: [] as string[] };
-const EMPTY_RULE = { tableId: "", roleId: "", filterExpr: "" };
+const EMPTY_RULE = { tableId: "", roleId: "", filterExpr: "", domainFilter: "" };
 
 export function SecurityPage() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -149,9 +149,14 @@ export function SecurityPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const normalizeDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
   const tableNameById = Object.fromEntries(
     tables.map((t) => [t.id, t.tableName]),
   );
+  const tableLabelById = Object.fromEntries(
+    tables.map((t) => [t.id, `${normalizeDomain(t.domainId)}.${t.tableName}`]),
+  );
+  const uniqueDomains = [...new Set(tables.map((t) => normalizeDomain(t.domainId)).filter(Boolean))].sort();
 
   // --- Role handlers ---
   const handleNewRole = () => {
@@ -252,10 +257,12 @@ export function SecurityPage() {
 
   const startEditingRule = (rule: RLSRule) => {
     const tableName = tableNameById[rule.tableId] ?? String(rule.tableId);
+    const tbl = tables.find((t) => t.id === rule.tableId);
     setRuleForm({
       tableId: tableName,
       roleId: rule.roleId,
       filterExpr: rule.filterExpr,
+      domainFilter: tbl ? normalizeDomain(tbl.domainId) : "",
     });
     setEditingRuleInRow(rule.id);
     setError("");
@@ -297,11 +304,12 @@ export function SecurityPage() {
               Capabilities
               <div className="checkbox-grid">
                 {ALL_CAPABILITIES.map((cap) => (
-                  <label key={cap} className="checkbox-label">
+                  <label key={cap} style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "0.35rem", whiteSpace: "nowrap" }}>
                     <input
                       type="checkbox"
                       checked={roleForm.capabilities.includes(cap)}
                       onChange={() => toggleCapability(cap)}
+                      style={{ width: "auto", padding: 0 }}
                     />
                     {cap}
                   </label>
@@ -331,10 +339,9 @@ export function SecurityPage() {
         </thead>
         <tbody>
           {roles.map((r) => (
-            <>
+            <React.Fragment key={r.id}>
               <tr
-                key={r.id}
-                style={{ cursor: "pointer", background: expandedRole === r.id ? "var(--row-selected, #e8f0fe)" : undefined }}
+                style={{ cursor: "pointer", background: expandedRole === r.id ? "var(--surface)" : undefined }}
                 onClick={() => { setExpandedRole(expandedRole === r.id ? null : r.id); setEditingRoleInRow(null); }}
               >
                 <td>{r.id}</td>
@@ -342,16 +349,16 @@ export function SecurityPage() {
                 <td>{r.domain_access.join(", ")}</td>
               </tr>
               {expandedRole === r.id && (
-                <tr key={`${r.id}-detail`}>
-                  <td colSpan={3} style={{ padding: "0.75rem 1rem", background: "var(--surface-secondary, #f8f9fa)" }}>
+                <tr>
+                  <td colSpan={3} style={{ padding: "0.75rem 1rem", background: "var(--bg)", borderTop: "1px solid var(--border)" }}>
                     {editingRoleInRow !== r.id ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                         <div><strong>ID:</strong> {r.id}</div>
                         <div><strong>Capabilities:</strong> {r.capabilities.join(", ") || "none"}</div>
                         <div><strong>Domain Access:</strong> {r.domain_access.join(", ") || "none"}</div>
                         <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                          <button className="btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); startEditingRole(r); }}>Edit</button>
-                          <button className="btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); handleDeleteRole(r.id); }}>Delete</button>
+                          <button className="btn-secondary" onClick={(e) => { e.stopPropagation(); startEditingRole(r); }}>Edit</button>
+                          <button className="btn-danger" onClick={(e) => { e.stopPropagation(); handleDeleteRole(r.id); }}>Delete</button>
                         </div>
                       </div>
                     ) : (
@@ -361,11 +368,12 @@ export function SecurityPage() {
                             Capabilities
                             <div className="checkbox-grid">
                               {ALL_CAPABILITIES.map((cap) => (
-                                <label key={cap} className="checkbox-label">
+                                <label key={cap} style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "0.35rem", whiteSpace: "nowrap" }}>
                                   <input
                                     type="checkbox"
                                     checked={roleForm.capabilities.includes(cap)}
                                     onChange={() => toggleCapability(cap)}
+                                    style={{ width: "auto", padding: 0 }}
                                   />
                                   {cap}
                                 </label>
@@ -381,12 +389,10 @@ export function SecurityPage() {
                             onChange={(selected) => setRoleForm({ ...roleForm, domainAccess: selected })}
                           />
                         </label>
-                        <div style={{ display: "flex", gap: "0.5rem" }}>
-                          <button className="btn-primary btn-sm" onClick={handleSaveRole} disabled={saving}>
+                        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                          <button className="btn-secondary" onClick={() => setEditingRoleInRow(null)}>Cancel</button>
+                          <button className="btn-primary" onClick={handleSaveRole} disabled={saving}>
                             {saving ? "Saving..." : "Save"}
-                          </button>
-                          <button className="btn-secondary btn-sm" onClick={() => setEditingRoleInRow(null)}>
-                            Cancel
                           </button>
                         </div>
                       </div>
@@ -394,13 +400,13 @@ export function SecurityPage() {
                   </td>
                 </tr>
               )}
-            </>
+            </React.Fragment>
           ))}
         </tbody>
       </table>
 
       {/* RLS Rules Section */}
-      <div className="page-header">
+      <div className="page-header" style={{ marginTop: "2rem" }}>
         <h2>RLS Rules</h2>
         <div className="page-actions">
           <button className="btn-primary" onClick={() => {
@@ -416,15 +422,27 @@ export function SecurityPage() {
         <div className="form-card">
           <div className="form-row">
             <label>
+              Domain
+              <select
+                value={ruleForm.domainFilter}
+                onChange={(e) => setRuleForm({ ...ruleForm, domainFilter: e.target.value, tableId: "" })}
+              >
+                <option value="">All</option>
+                {uniqueDomains.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </label>
+            <label>
               Table
               <select
                 value={ruleForm.tableId}
                 onChange={(e) => setRuleForm({ ...ruleForm, tableId: e.target.value })}
               >
                 <option value="">Select...</option>
-                {tables.map((t) => (
-                  <option key={t.id} value={t.tableName}>{t.tableName}</option>
-                ))}
+                {tables
+                  .filter((t) => !ruleForm.domainFilter || normalizeDomain(t.domainId) === ruleForm.domainFilter)
+                  .map((t) => (
+                    <option key={t.id} value={t.tableName}>{t.tableName}</option>
+                  ))}
               </select>
             </label>
             <label>
@@ -443,10 +461,12 @@ export function SecurityPage() {
           <div className="form-row">
             <label style={{ flex: 1 }}>
               Filter Expression
-              <input
+              <textarea
+                rows={2}
                 value={ruleForm.filterExpr}
                 onChange={(e) => setRuleForm({ ...ruleForm, filterExpr: e.target.value })}
                 placeholder="region = 'US' AND status = 'active'"
+                style={{ resize: "vertical", fontFamily: "monospace", fontSize: "0.875rem" }}
               />
             </label>
           </div>
@@ -464,34 +484,43 @@ export function SecurityPage() {
         </thead>
         <tbody>
           {rules.map((r) => (
-            <>
+            <React.Fragment key={r.id}>
               <tr
-                key={r.id}
-                style={{ cursor: "pointer", background: expandedRule === r.id ? "var(--row-selected, #e8f0fe)" : undefined }}
+                style={{ cursor: "pointer", background: expandedRule === r.id ? "var(--surface)" : undefined }}
                 onClick={() => { setExpandedRule(expandedRule === r.id ? null : r.id); setEditingRuleInRow(null); }}
               >
                 <td>{r.id}</td>
-                <td>{tableNameById[r.tableId] ?? r.tableId}</td>
+                <td>{tableLabelById[r.tableId] ?? r.tableId}</td>
                 <td>{r.roleId}</td>
                 <td><code>{r.filterExpr}</code></td>
               </tr>
               {expandedRule === r.id && (
-                <tr key={`${r.id}-detail`}>
-                  <td colSpan={4} style={{ padding: "0.75rem 1rem", background: "var(--surface-secondary, #f8f9fa)" }}>
+                <tr>
+                  <td colSpan={4} style={{ padding: "0.75rem 1rem", background: "var(--bg)", borderTop: "1px solid var(--border)" }}>
                     {editingRuleInRow !== r.id ? (
                       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                         <div><strong>ID:</strong> {r.id}</div>
-                        <div><strong>Table:</strong> {tableNameById[r.tableId] ?? r.tableId}</div>
+                        <div><strong>Table:</strong> {tableLabelById[r.tableId] ?? r.tableId}</div>
                         <div><strong>Role:</strong> {r.roleId}</div>
                         <div><strong>Filter:</strong> <code>{r.filterExpr}</code></div>
                         <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                          <button className="btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); startEditingRule(r); }}>Edit</button>
-                          <button className="btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); handleDeleteRule(r); }}>Delete</button>
+                          <button className="btn-secondary" onClick={(e) => { e.stopPropagation(); startEditingRule(r); }}>Edit</button>
+                          <button className="btn-danger" onClick={(e) => { e.stopPropagation(); handleDeleteRule(r); }}>Delete</button>
                         </div>
                       </div>
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
                         <div className="form-row">
+                          <label>
+                            Domain
+                            <select
+                              value={ruleForm.domainFilter}
+                              onChange={(e) => setRuleForm({ ...ruleForm, domainFilter: e.target.value, tableId: "" })}
+                            >
+                              <option value="">All</option>
+                              {uniqueDomains.map((d) => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                          </label>
                           <label>
                             Table
                             <select
@@ -499,9 +528,11 @@ export function SecurityPage() {
                               onChange={(e) => setRuleForm({ ...ruleForm, tableId: e.target.value })}
                             >
                               <option value="">Select...</option>
-                              {tables.map((t) => (
-                                <option key={t.id} value={t.tableName}>{t.tableName}</option>
-                              ))}
+                              {tables
+                                .filter((t) => !ruleForm.domainFilter || normalizeDomain(t.domainId) === ruleForm.domainFilter)
+                                .map((t) => (
+                                  <option key={t.id} value={t.tableName}>{t.tableName}</option>
+                                ))}
                             </select>
                           </label>
                           <label>
@@ -516,21 +547,23 @@ export function SecurityPage() {
                               ))}
                             </select>
                           </label>
+                        </div>
+                        <div className="form-row">
                           <label style={{ flex: 1 }}>
                             Filter Expression
-                            <input
+                            <textarea
+                              rows={2}
                               value={ruleForm.filterExpr}
                               onChange={(e) => setRuleForm({ ...ruleForm, filterExpr: e.target.value })}
                               placeholder="region = 'US' AND status = 'active'"
+                              style={{ resize: "vertical", fontFamily: "monospace", fontSize: "0.875rem" }}
                             />
                           </label>
                         </div>
-                        <div style={{ display: "flex", gap: "0.5rem" }}>
-                          <button className="btn-primary btn-sm" onClick={handleSaveRule} disabled={saving}>
+                        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                          <button className="btn-secondary" onClick={() => setEditingRuleInRow(null)}>Cancel</button>
+                          <button className="btn-primary" onClick={handleSaveRule} disabled={saving}>
                             {saving ? "Saving..." : "Save"}
-                          </button>
-                          <button className="btn-secondary btn-sm" onClick={() => setEditingRuleInRow(null)}>
-                            Cancel
                           </button>
                         </div>
                       </div>
@@ -538,7 +571,7 @@ export function SecurityPage() {
                   </td>
                 </tr>
               )}
-            </>
+            </React.Fragment>
           ))}
         </tbody>
       </table>

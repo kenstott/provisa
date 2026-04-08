@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   fetchActions,
   saveFunction,
@@ -18,7 +18,8 @@ import {
   testAction,
 } from "../api/actions";
 import type { TrackedFunction, TrackedWebhook, ActionArg, InlineField } from "../api/actions";
-import { fetchSources, fetchTables } from "../api/admin";
+import { fetchSources, fetchTables, fetchDomains, fetchAvailableFunctions } from "../api/admin";
+import type { TableMetadata } from "../api/admin";
 import type { Source, RegisteredTable } from "../types/admin";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 
@@ -45,6 +46,10 @@ interface FormState {
   method: string;
   timeoutMs: number;
   inlineReturnType: InlineField[];
+  kind: string;
+  returnSchemaMode: "table" | "custom";
+  sampleJson: string;
+  returnSchemaStr: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -63,13 +68,37 @@ const EMPTY_FORM: FormState = {
   method: "POST",
   timeoutMs: 5000,
   inlineReturnType: [],
+  kind: "mutation",
+  returnSchemaMode: "table",
+  sampleJson: "",
+  returnSchemaStr: "",
 };
 
-export function ActionsPage() {
+function inferJsonSchema(jsonStr: string): string {
+  try {
+    const obj = JSON.parse(jsonStr);
+    const sample = Array.isArray(obj) ? obj[0] : obj;
+    if (!sample || typeof sample !== "object") return "";
+    const props: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(sample)) {
+      const t = typeof v;
+      props[k] = { type: t === "number" ? (Number.isInteger(v as number) ? "integer" : "number") : t === "boolean" ? "boolean" : "string" };
+    }
+    return JSON.stringify({
+      type: Array.isArray(obj) ? "array" : "object",
+      ...(Array.isArray(obj) ? { items: { type: "object", properties: props } } : { properties: props }),
+    }, null, 2);
+  } catch {
+    return "";
+  }
+}
+
+export function CommandsPage() {
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
   const [webhooks, setWebhooks] = useState<TrackedWebhook[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [tables, setTables] = useState<RegisteredTable[]>([]);
+  const [domainHints, setDomainHints] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
@@ -81,21 +110,25 @@ export function ActionsPage() {
   const [testing, setTesting] = useState<string | null>(null);
   const [expandedFn, setExpandedFn] = useState<string | null>(null);
   const [expandedWh, setExpandedWh] = useState<string | null>(null);
+  const [availableFunctions, setAvailableFunctions] = useState<TableMetadata[]>([]);
+  const [loadingFunctions, setLoadingFunctions] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [fns, whs, srcs, tbls] = await Promise.all([
+      const [fns, whs, srcs, tbls, doms] = await Promise.all([
         fetchActions().then((a) => a.functions),
         fetchActions().then((a) => a.webhooks),
         fetchSources(),
         fetchTables(),
+        fetchDomains(),
       ]);
       setFunctions(fns);
       setWebhooks(whs);
       setSources(srcs);
       setTables(tbls);
+      setDomainHints(doms.map((d) => d.id));
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -105,9 +138,31 @@ export function ActionsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const tableOptions = tables.map((t) => ({
-    value: `${t.sourceId}.${t.schemaName}.${t.tableName}`,
-    label: `${t.sourceId}.${t.schemaName}.${t.tableName}${t.alias ? ` (${t.alias})` : ""}`,
+  useEffect(() => {
+    setAvailableFunctions([]);
+    const src = sources.find((s) => s.id === form.sourceId);
+    if (!src || src.type !== "openapi") return;
+    setLoadingFunctions(true);
+    fetchAvailableFunctions(form.sourceId)
+      .then(setAvailableFunctions)
+      .catch(() => setAvailableFunctions([]))
+      .finally(() => setLoadingFunctions(false));
+  }, [form.sourceId, sources]);
+
+  // Physical options: schema.table — used for DB functions (returns within the source)
+  const physicalTableOptions = (sourceId: string) =>
+    tables
+      .filter((t) => t.sourceId === sourceId)
+      .map((t) => ({
+        value: `${t.schemaName}.${t.tableName}`,
+        label: `${t.schemaName}.${t.tableName}${t.alias ? ` (${t.alias})` : ""}`,
+      }));
+
+  // Virtual options: normalized_source.schema.table — used for webhooks
+  const normalizePart = (s: string) => s.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
+  const virtualTableOptions = tables.map((t) => ({
+    value: `${normalizePart(t.sourceId)}.${normalizePart(t.schemaName)}.${t.tableName}`,
+    label: `${normalizePart(t.sourceId)}.${normalizePart(t.schemaName)}.${t.tableName}${t.alias ? ` (${t.alias})` : ""}`,
   }));
 
   const handleAddArg = () => setForm({ ...form, arguments: [...form.arguments, { ...EMPTY_ARG }] });
@@ -129,6 +184,7 @@ export function ActionsPage() {
     if (actionType === "function") {
       const fn = functions.find((f) => f.name === name);
       if (!fn) return;
+      const hasCustomSchema = !!fn.returnSchema && !fn.returns;
       setForm({
         actionType: "function",
         name: fn.name,
@@ -145,6 +201,10 @@ export function ActionsPage() {
         method: "POST",
         timeoutMs: 5000,
         inlineReturnType: [],
+        kind: fn.kind ?? "mutation",
+        returnSchemaMode: hasCustomSchema ? "custom" : "table",
+        sampleJson: "",
+        returnSchemaStr: hasCustomSchema ? JSON.stringify(fn.returnSchema, null, 2) : "",
       });
       setExpandedFn(name);
     } else {
@@ -166,6 +226,7 @@ export function ActionsPage() {
         method: wh.method,
         timeoutMs: wh.timeoutMs,
         inlineReturnType: wh.inlineReturnType.length > 0 ? wh.inlineReturnType : [],
+        kind: wh.kind ?? "mutation",
       });
       setExpandedWh(name);
     }
@@ -182,17 +243,23 @@ export function ActionsPage() {
       const visibleTo = form.visibleTo.split(",").map((s) => s.trim()).filter(Boolean);
       if (form.actionType === "function") {
         const writableBy = form.writablBy.split(",").map((s) => s.trim()).filter(Boolean);
+        let returnSchema: Record<string, unknown> | null = null;
+        if (form.returnSchemaMode === "custom" && form.returnSchemaStr) {
+          try { returnSchema = JSON.parse(form.returnSchemaStr); } catch { /* leave null */ }
+        }
         await saveFunction({
           name: form.name,
           sourceId: form.sourceId,
           schemaName: form.schemaName,
           functionName: form.functionName,
-          returns: form.returns,
+          returns: form.returnSchemaMode === "custom" ? "" : form.returns,
           arguments: form.arguments,
           visibleTo,
           writableBy,
           domainId: form.domainId,
           description: form.description || undefined,
+          kind: form.kind,
+          returnSchema,
         });
       } else {
         await saveWebhook({
@@ -206,6 +273,7 @@ export function ActionsPage() {
           visibleTo,
           domainId: form.domainId,
           description: form.description || undefined,
+          kind: form.kind,
         });
       }
       setMsg(`Saved ${form.actionType} "${form.name}"`);
@@ -245,23 +313,76 @@ export function ActionsPage() {
       {form.actionType === "function" && (
         <>
           <label>Source
-            <select required value={form.sourceId} onChange={(e) => setForm({ ...form, sourceId: e.target.value })}>
+            <select required value={form.sourceId} onChange={(e) => {
+              const selectedSrc = sources.find((s) => s.id === e.target.value);
+              setForm({ ...form, sourceId: e.target.value, schemaName: selectedSrc?.type === "openapi" ? "openapi" : form.schemaName, functionName: "" });
+            }}>
               <option value="">Select source...</option>
               {sources.map((s) => <option key={s.id} value={s.id}>{s.id} ({s.type})</option>)}
             </select>
           </label>
           <label>Schema
-            <input value={form.schemaName} onChange={(e) => setForm({ ...form, schemaName: e.target.value })} />
+            <input
+              value={form.schemaName}
+              onChange={(e) => setForm({ ...form, schemaName: e.target.value })}
+              readOnly={sources.find((s) => s.id === form.sourceId)?.type === "openapi"}
+            />
           </label>
           <label>Function Name
-            <input required value={form.functionName} onChange={(e) => setForm({ ...form, functionName: e.target.value })} placeholder="DB function name" />
+            {sources.find((s) => s.id === form.sourceId)?.type === "openapi" ? (
+              <select
+                required
+                value={form.functionName}
+                onChange={(e) => setForm({ ...form, functionName: e.target.value })}
+                disabled={loadingFunctions}
+              >
+                <option value="">{loadingFunctions ? "Loading..." : "Select operation..."}</option>
+                {availableFunctions.map((f) => (
+                  <option key={f.name} value={f.name} title={f.comment ?? undefined}>{f.name}{f.comment ? ` — ${f.comment}` : ""}</option>
+                ))}
+              </select>
+            ) : (
+              <input required value={form.functionName} onChange={(e) => setForm({ ...form, functionName: e.target.value })} placeholder="DB function name" />
+            )}
           </label>
-          <label>Returns (table)
-            <select required value={form.returns} onChange={(e) => setForm({ ...form, returns: e.target.value })}>
-              <option value="">Select table...</option>
-              {tableOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          <label>Return Type
+            <select value={form.returnSchemaMode} onChange={(e) => setForm({ ...form, returnSchemaMode: e.target.value as "table" | "custom", returns: "", returnSchemaStr: "", sampleJson: "" })}>
+              <option value="table">Registered Table</option>
+              <option value="custom">Custom Schema</option>
             </select>
           </label>
+          {form.returnSchemaMode === "table" ? (
+            <label>Returns (table)
+              <select value={form.returns} onChange={(e) => setForm({ ...form, returns: e.target.value })}>
+                <option value="">Select table...</option>
+                {physicalTableOptions(form.sourceId).map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </label>
+          ) : (
+            <div style={{ gridColumn: "1 / -1" }}>
+              <label>Sample JSON (paste a sample row or array to infer schema)
+                <textarea
+                  rows={4}
+                  value={form.sampleJson}
+                  onChange={(e) => {
+                    const inferred = inferJsonSchema(e.target.value);
+                    setForm({ ...form, sampleJson: e.target.value, returnSchemaStr: inferred || form.returnSchemaStr });
+                  }}
+                  placeholder={'[{"id": 1, "name": "foo"}]'}
+                  style={{ fontFamily: "monospace", fontSize: "0.85rem", resize: "vertical" }}
+                />
+              </label>
+              <label>JSON Schema (edit as needed)
+                <textarea
+                  rows={8}
+                  value={form.returnSchemaStr}
+                  onChange={(e) => setForm({ ...form, returnSchemaStr: e.target.value })}
+                  placeholder='{"type":"array","items":{"type":"object","properties":{"id":{"type":"integer"}}}}'
+                  style={{ fontFamily: "monospace", fontSize: "0.85rem", resize: "vertical" }}
+                />
+              </label>
+            </div>
+          )}
           <label>Visible To (roles, comma-separated)
             <input value={form.visibleTo} onChange={(e) => setForm({ ...form, visibleTo: e.target.value })} placeholder="admin, analyst" />
           </label>
@@ -289,7 +410,7 @@ export function ActionsPage() {
           <label>Returns (table, optional)
             <select value={form.returns} onChange={(e) => setForm({ ...form, returns: e.target.value })}>
               <option value="">None (use inline type)</option>
-              {tableOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              {virtualTableOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </label>
           <label>Visible To (roles, comma-separated)
@@ -300,8 +421,8 @@ export function ActionsPage() {
               <h4 style={{ marginBottom: "0.5rem" }}>Inline Return Type</h4>
               {form.inlineReturnType.map((f, i) => (
                 <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.25rem", alignItems: "center" }}>
-                  <input value={f.name} onChange={(e) => handleInlineFieldChange(i, "name", e.target.value)} placeholder="Field name" style={{ flex: 1 }} />
-                  <select value={f.type} onChange={(e) => handleInlineFieldChange(i, "type", e.target.value)}>
+                  <input value={f.name} onChange={(e) => handleInlineFieldChange(i, "name", e.target.value)} placeholder="Field name" style={{ flex: 1, minWidth: 0 }} />
+                  <select value={f.type} onChange={(e) => handleInlineFieldChange(i, "type", e.target.value)} style={{ flex: "0 0 auto", width: "120px" }}>
                     {GRAPHQL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <button type="button" className="destructive" onClick={() => handleRemoveInlineField(i)} style={{ padding: "0.25rem 0.5rem" }}>X</button>
@@ -312,8 +433,17 @@ export function ActionsPage() {
           )}
         </>
       )}
+      <label>Kind
+        <select value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value })}>
+          <option value="mutation">Mutation</option>
+          <option value="query">Query</option>
+        </select>
+      </label>
       <label>Domain
-        <input value={form.domainId} onChange={(e) => setForm({ ...form, domainId: e.target.value })} placeholder="optional" />
+        <select value={form.domainId} onChange={(e) => setForm({ ...form, domainId: e.target.value })}>
+          <option value="">Select domain...</option>
+          {domainHints.map((d) => <option key={d} value={d}>{d}</option>)}
+        </select>
       </label>
       <label>Description
         <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="optional" />
@@ -322,8 +452,8 @@ export function ActionsPage() {
         <h4 style={{ marginBottom: "0.5rem" }}>Arguments</h4>
         {form.arguments.map((arg, i) => (
           <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.25rem", alignItems: "center" }}>
-            <input value={arg.name} onChange={(e) => handleArgChange(i, "name", e.target.value)} placeholder="Arg name" style={{ flex: 1 }} />
-            <select value={arg.type} onChange={(e) => handleArgChange(i, "type", e.target.value)}>
+            <input value={arg.name} onChange={(e) => handleArgChange(i, "name", e.target.value)} placeholder="Arg name" style={{ flex: 1, minWidth: 0 }} />
+            <select value={arg.type} onChange={(e) => handleArgChange(i, "type", e.target.value)} style={{ flex: "0 0 auto", width: "120px" }}>
               {GRAPHQL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
             <button type="button" className="destructive" onClick={() => handleRemoveArg(i)} style={{ padding: "0.25rem 0.5rem" }}>X</button>
@@ -334,15 +464,15 @@ export function ActionsPage() {
     </>
   );
 
-  if (loading) return <div className="page">Loading actions...</div>;
+  if (loading) return <div className="page">Loading commands...</div>;
 
   return (
     <div className="page">
       <div className="page-header">
-        <h2>Actions</h2>
+        <h2>Commands</h2>
         {!editingName && (
           <button onClick={() => { setShowForm(!showForm); if (showForm) handleCancel(); }}>
-            {showForm ? "Cancel" : "Add Action"}
+            {showForm ? "Cancel" : "Add Command"}
           </button>
         )}
       </div>
@@ -386,54 +516,54 @@ export function ActionsPage() {
             const isExpanded = expandedFn === fn.name;
             const isEditing = editingName === fn.name;
             return (
-              <>
+              <React.Fragment key={fn.name}>
                 <tr
-                  key={fn.name}
                   onClick={() => {
                     setExpandedFn(isExpanded ? null : fn.name);
                     if (isEditing) setEditingName(null);
                   }}
-                  style={{ cursor: "pointer", background: isExpanded ? "var(--color-row-selected, #e8f0fe)" : undefined }}
+                  style={{ cursor: "pointer", background: isExpanded ? "var(--surface)" : undefined }}
                 >
                   <td>{fn.name}</td>
                   <td>{fn.sourceId}</td>
                   <td>{fn.schemaName}.{fn.functionName}</td>
-                  <td>{fn.returns}</td>
+                  <td>{fn.returns || (fn.returnSchema ? "custom schema" : "—")}</td>
                   <td>{fn.arguments.length}</td>
                   <td>{fn.visibleTo.join(", ") || "all"}</td>
                 </tr>
                 {isExpanded && (
-                  <tr key={`${fn.name}-detail`}>
-                    <td colSpan={6} style={{ padding: "0.75rem 1rem", background: "var(--surface-secondary, #f8f9fa)" }}>
+                  <tr>
+                    <td colSpan={6} style={{ padding: "0.75rem 1rem", background: "var(--bg)", borderTop: "1px solid var(--border)" }}>
                       {isEditing ? (
                         <form className="form-card" onSubmit={handleSave} style={{ margin: 0 }}>
                           {renderFormFields()}
-                          <div style={{ display: "flex", gap: "0.5rem" }}>
-                            <button type="submit" disabled={saving}>{saving ? "Saving..." : "Update"}</button>
-                            <button type="button" onClick={handleCancel}>Cancel</button>
+                          <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                            <button type="button" className="btn-secondary" onClick={handleCancel}>Cancel</button>
+                            <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Saving..." : "Update"}</button>
                           </div>
                         </form>
                       ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                          <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0 }}>
-                            <dt><strong>Name</strong></dt><dd>{fn.name}</dd>
-                            <dt><strong>Source</strong></dt><dd>{fn.sourceId}</dd>
-                            <dt><strong>Schema</strong></dt><dd>{fn.schemaName}</dd>
-                            <dt><strong>Function</strong></dt><dd>{fn.functionName}</dd>
-                            <dt><strong>Returns</strong></dt><dd>{fn.returns}</dd>
-                            <dt><strong>Visible To</strong></dt><dd>{fn.visibleTo.join(", ") || "all"}</dd>
-                            <dt><strong>Writable By</strong></dt><dd>{fn.writableBy.join(", ") || "all"}</dd>
-                            <dt><strong>Domain</strong></dt><dd>{fn.domainId || "—"}</dd>
-                            <dt><strong>Description</strong></dt><dd>{fn.description || "—"}</dd>
-                            <dt><strong>Arguments</strong></dt><dd>{fn.arguments.length === 0 ? "none" : fn.arguments.map((a) => `${a.name}: ${a.type}`).join(", ")}</dd>
+                          <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0, color: "var(--text)" }}>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Name</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{fn.name}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Kind</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{fn.kind ?? "mutation"}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Source</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{fn.sourceId}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Schema</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{fn.schemaName}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Function</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{fn.functionName}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Returns</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{fn.returns || (fn.returnSchema ? "custom schema" : "—")}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Visible To</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{fn.visibleTo.join(", ") || "all"}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Writable By</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{fn.writableBy.join(", ") || "all"}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Domain</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{fn.domainId || "—"}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Description</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{fn.description || "—"}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Arguments</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{fn.arguments.length === 0 ? "none" : fn.arguments.map((a) => `${a.name}: ${a.type}`).join(", ")}</dd>
                           </dl>
                           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
                             <button
-                              className="btn-secondary btn-sm"
+                              className="btn-secondary"
                               onClick={(e) => { e.stopPropagation(); handleEdit("function", fn.name); }}
                             >Edit</button>
                             <button
-                              className="btn-secondary btn-sm"
+                              className="btn-secondary"
                               onClick={(e) => { e.stopPropagation(); handleTest("function", fn.name); }}
                               disabled={testing === fn.name}
                             >{testing === fn.name ? "Testing..." : "Test"}</button>
@@ -443,7 +573,7 @@ export function ActionsPage() {
                               onConfirm={async () => { await deleteFunction(fn.name); setExpandedFn(null); load(); }}
                             >
                               {(open) => (
-                                <button className="btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); open(); }}>Delete</button>
+                                <button className="btn-danger" onClick={(e) => { e.stopPropagation(); open(); }}>Delete</button>
                               )}
                             </ConfirmDialog>
                           </div>
@@ -452,7 +582,7 @@ export function ActionsPage() {
                     </td>
                   </tr>
                 )}
-              </>
+              </React.Fragment>
             );
           })}
         </tbody>
@@ -479,14 +609,13 @@ export function ActionsPage() {
             const isExpanded = expandedWh === wh.name;
             const isEditing = editingName === wh.name;
             return (
-              <>
+              <React.Fragment key={wh.name}>
                 <tr
-                  key={wh.name}
                   onClick={() => {
                     setExpandedWh(isExpanded ? null : wh.name);
                     if (isEditing) setEditingName(null);
                   }}
-                  style={{ cursor: "pointer", background: isExpanded ? "var(--color-row-selected, #e8f0fe)" : undefined }}
+                  style={{ cursor: "pointer", background: isExpanded ? "var(--surface)" : undefined }}
                 >
                   <td>{wh.name}</td>
                   <td style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>{wh.url}</td>
@@ -497,28 +626,29 @@ export function ActionsPage() {
                   <td>{wh.visibleTo.join(", ") || "all"}</td>
                 </tr>
                 {isExpanded && (
-                  <tr key={`${wh.name}-detail`}>
-                    <td colSpan={7} style={{ padding: "0.75rem 1rem", background: "var(--surface-secondary, #f8f9fa)" }}>
+                  <tr>
+                    <td colSpan={7} style={{ padding: "0.75rem 1rem", background: "var(--bg)", borderTop: "1px solid var(--border)" }}>
                       {isEditing ? (
                         <form className="form-card" onSubmit={handleSave} style={{ margin: 0 }}>
                           {renderFormFields()}
-                          <div style={{ display: "flex", gap: "0.5rem" }}>
-                            <button type="submit" disabled={saving}>{saving ? "Saving..." : "Update"}</button>
-                            <button type="button" onClick={handleCancel}>Cancel</button>
+                          <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                            <button type="button" className="btn-secondary" onClick={handleCancel}>Cancel</button>
+                            <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Saving..." : "Update"}</button>
                           </div>
                         </form>
                       ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                          <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0 }}>
-                            <dt><strong>Name</strong></dt><dd>{wh.name}</dd>
-                            <dt><strong>URL</strong></dt><dd>{wh.url}</dd>
-                            <dt><strong>Method</strong></dt><dd>{wh.method}</dd>
-                            <dt><strong>Timeout</strong></dt><dd>{wh.timeoutMs}ms</dd>
-                            <dt><strong>Returns</strong></dt><dd>{wh.returns || `inline (${wh.inlineReturnType.length} fields)`}</dd>
-                            <dt><strong>Visible To</strong></dt><dd>{wh.visibleTo.join(", ") || "all"}</dd>
-                            <dt><strong>Domain</strong></dt><dd>{wh.domainId || "—"}</dd>
-                            <dt><strong>Description</strong></dt><dd>{wh.description || "—"}</dd>
-                            <dt><strong>Arguments</strong></dt><dd>{wh.arguments.length === 0 ? "none" : wh.arguments.map((a) => `${a.name}: ${a.type}`).join(", ")}</dd>
+                          <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0, color: "var(--text)" }}>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Name</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{wh.name}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Kind</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{wh.kind ?? "mutation"}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>URL</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{wh.url}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Method</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{wh.method}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Timeout</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{wh.timeoutMs}ms</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Returns</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{wh.returns || `inline (${wh.inlineReturnType.length} fields)`}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Visible To</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{wh.visibleTo.join(", ") || "all"}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Domain</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{wh.domainId || "—"}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Description</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{wh.description || "—"}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Arguments</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{wh.arguments.length === 0 ? "none" : wh.arguments.map((a) => `${a.name}: ${a.type}`).join(", ")}</dd>
                             {wh.inlineReturnType.length > 0 && (
                               <>
                                 <dt><strong>Inline Fields</strong></dt><dd>{wh.inlineReturnType.map((f) => `${f.name}: ${f.type}`).join(", ")}</dd>
@@ -527,11 +657,11 @@ export function ActionsPage() {
                           </dl>
                           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
                             <button
-                              className="btn-secondary btn-sm"
+                              className="btn-secondary"
                               onClick={(e) => { e.stopPropagation(); handleEdit("webhook", wh.name); }}
                             >Edit</button>
                             <button
-                              className="btn-secondary btn-sm"
+                              className="btn-secondary"
                               onClick={(e) => { e.stopPropagation(); handleTest("webhook", wh.name); }}
                               disabled={testing === wh.name}
                             >{testing === wh.name ? "Testing..." : "Test"}</button>
@@ -541,7 +671,7 @@ export function ActionsPage() {
                               onConfirm={async () => { await deleteWebhook(wh.name); setExpandedWh(null); load(); }}
                             >
                               {(open) => (
-                                <button className="btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); open(); }}>Delete</button>
+                                <button className="btn-danger" onClick={(e) => { e.stopPropagation(); open(); }}>Delete</button>
                               )}
                             </ConfirmDialog>
                           </div>
@@ -550,7 +680,7 @@ export function ActionsPage() {
                     </td>
                   </tr>
                 )}
-              </>
+              </React.Fragment>
             );
           })}
         </tbody>

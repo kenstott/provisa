@@ -179,10 +179,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up QEMU (for linux/arm64 wheel build)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Pull service images and build zaychik
         run: |
           mkdir -p images
           for img in \
+            "python:3.12-slim" \
             "postgres:16" \
             "edoburu/pgbouncer:latest" \
             "minio/minio:latest" \
@@ -198,11 +204,28 @@ jobs:
           docker save provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
           # provisa/provisa:local is built at first-launch on each platform — not bundled.
 
+      - name: Build provisa wheels for linux/arm64
+        run: |
+          mkdir -p provisa-wheels
+          docker run --rm --platform linux/arm64 \
+            -v "$PWD:/src:ro" \
+            -v "$PWD/provisa-wheels:/wheels" \
+            python:3.12-slim \
+            pip wheel --no-cache-dir --wheel-dir /wheels /src
+
       - name: Upload image tarballs
         uses: actions/upload-artifact@v4
         with:
           name: docker-images
           path: images/
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload provisa wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: provisa-wheels
+          path: provisa-wheels/
           retention-days: 1
           compression-level: 0
 
@@ -297,6 +320,12 @@ jobs:
         with:
           name: docker-images
           path: packaging/macos/images/
+
+      - name: Download provisa wheels
+        uses: actions/download-artifact@v4
+        with:
+          name: provisa-wheels
+          path: packaging/macos/tmp-provisa-wheels/
 
       - name: Import Apple signing certificate
         env:

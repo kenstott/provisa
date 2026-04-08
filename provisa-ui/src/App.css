@@ -397,7 +397,7 @@ body {
   margin-bottom: 0.75rem;
 }
 .form-row label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.875rem; color: var(--text-muted); flex: 1; }
-.form-row input, .form-row select {
+.form-row input:not([type="checkbox"]), .form-row select {
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--border);
@@ -478,7 +478,7 @@ body {
   overflow: hidden;
 }
 .view-sql-editor .cm-editor { font-size: 13px; }
-.view-editor-actions { display: flex; gap: 0.5rem; }
+.view-editor-actions { display: flex; gap: 0.5rem; justify-content: flex-end; align-items: flex-start; }
 
 /* View list row selection */
 .data-table tr.row-selected { background: var(--border); }
