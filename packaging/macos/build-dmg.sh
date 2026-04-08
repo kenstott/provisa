@@ -87,10 +87,11 @@ download_lima() {
     chmod +x "${BIN_DIR}/${arch}/limactl"
   done
 
-  # Bundle Linux-aarch64 guest agent from the arm64 tarball (Lima 2.x requirement).
-  # Kept as .gz so codesign does not attempt to validate the Linux ELF inside the bundle.
-  # first-launch.sh decompresses it to ~/.lima/_config/ before VM start.
-  local guest_dir="${APP_BUNDLE}/Contents/Resources/lima-guest-agents"
+  # Bundle Linux-aarch64 guest agent alongside limactl binaries.
+  # Lima 2.x resolves share/lima/ relative to the limactl binary dir:
+  #   limactl at bin/arm64/limactl → Lima looks in bin/share/lima/
+  # Kept as .gz — codesign ignores non-code files; Lima decompresses internally.
+  local guest_dir="${BIN_DIR}/share/lima"
   mkdir -p "$guest_dir"
   local guest_gz="${tmp}/arm64/share/lima/lima-guestagent.Linux-aarch64.gz"
   if [ -f "$guest_gz" ]; then
