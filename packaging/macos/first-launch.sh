@@ -112,7 +112,7 @@ cpus: 4
 memory: "${LIMA_MEMORY}"
 disk: "60GiB"
 images:
-  - location: "${arm64_local}"
+  - location: "file://${arm64_local}"
     arch: "aarch64"
 vmOpts:
   vz: {}
@@ -237,6 +237,12 @@ stage_vm_image() {
 
   info "Staging base VM image to ${staged}..."
   cp "$src"/*.img "$staged/"
+  local expected="${PROVISA_HOME}/vm-image/ubuntu-24.04-minimal-cloudimg-arm64.img"
+  if [ ! -f "$expected" ]; then
+    err "VM image not found after staging: ${expected}"
+    err "Files in ${staged}: $(ls "$staged" 2>/dev/null || echo '(empty)')"
+    exit 1
+  fi
 }
 
 # ── Copy images into provisa home for VM access ───────────────────────────────
