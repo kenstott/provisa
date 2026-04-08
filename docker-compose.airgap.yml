@@ -1,0 +1,11 @@
+# Airgapped overlay — replaces build: directives with pre-built local images.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.airgap.yml up
+# Used by the provisa CLI when runtime: lima (macOS DMG install).
+services:
+  zaychik:
+    build: null
+    image: provisa/zaychik:local
+
+  provisa:
+    build: null
+    image: provisa/provisa:local

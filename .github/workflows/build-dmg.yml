@@ -196,6 +196,8 @@ jobs:
           done
           docker build -t provisa/zaychik:local ./zaychik
           docker save provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
+          docker build -t provisa/provisa:local .
+          docker save provisa/provisa:local | gzip -9 > images/provisa-local.tar.gz
 
       - name: Upload image tarballs
         uses: actions/upload-artifact@v4

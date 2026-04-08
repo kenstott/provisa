@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Provisa CLI wrapper — delegates to Docker Compose with branded output.
+# When runtime: lima (macOS DMG install), all compose commands are routed
+# through limactl shell <vm> -- nerdctl compose inside the Lima VM.
 set -euo pipefail
 
 PROVISA_HOME="${HOME}/.provisa"
@@ -35,6 +37,8 @@ UI_PORT="$(read_config ui_port 3000)"
 API_PORT="$(read_config api_port 8000)"
 AUTO_OPEN="$(read_config auto_open_browser true)"
 TRINO_WORKERS="$(read_config federation_workers 0)"
+RUNTIME="$(read_config runtime docker)"
+LIMA_VM="$(read_config lima_vm provisa)"
 
 # ── Validation ──────────────────────────────────────────────────────────────
 if [ -z "$PROJECT_DIR" ] || [ ! -d "$PROJECT_DIR" ]; then
@@ -43,9 +47,29 @@ if [ -z "$PROJECT_DIR" ] || [ ! -d "$PROJECT_DIR" ]; then
     exit 1
 fi
 
+# ── Lima helpers ─────────────────────────────────────────────────────────────
+# limactl symlink created by first-launch.sh at ~/.provisa/bin/limactl
+LIMACTL="${PROVISA_HOME}/bin/limactl"
+
+ensure_lima_running() {
+    if [ ! -x "$LIMACTL" ]; then
+        err "limactl not found at ${LIMACTL}. Re-run Provisa.app to complete setup."
+        exit 1
+    fi
+    local state
+    state="$("$LIMACTL" list --format '{{.Status}}' "$LIMA_VM" 2>/dev/null || echo "unknown")"
+    if [ "$state" != "Running" ]; then
+        info "Starting Provisa VM..."
+        "$LIMACTL" start --yes "$LIMA_VM"
+    fi
+}
+
 # ── Compose command detection ───────────────────────────────────────────────
 compose_cmd() {
-    if docker compose version &>/dev/null 2>&1; then
+    if [ "$RUNTIME" = "lima" ]; then
+        # Route all compose through nerdctl inside the Lima VM
+        echo "$LIMACTL shell $LIMA_VM -- nerdctl compose"
+    elif docker compose version &>/dev/null 2>&1; then
         echo "docker compose"
     elif command -v docker-compose &>/dev/null; then
         echo "docker-compose"
@@ -55,7 +79,16 @@ compose_cmd() {
     fi
 }
 
-COMPOSE_FILES="-f ${PROJECT_DIR}/docker-compose.yml -f ${PROJECT_DIR}/docker-compose.prod.yml"
+# Compose files: airgap overlay added when running in Lima to replace build: with image:
+_build_compose_files() {
+    local files="-f ${PROJECT_DIR}/docker-compose.yml -f ${PROJECT_DIR}/docker-compose.prod.yml"
+    if [ "$RUNTIME" = "lima" ] && [ -f "${PROJECT_DIR}/docker-compose.airgap.yml" ]; then
+        files="${files} -f ${PROJECT_DIR}/docker-compose.airgap.yml"
+    fi
+    echo "$files"
+}
+
+COMPOSE_FILES="$(_build_compose_files)"
 
 # Lazily resolved on first docker command
 _COMPOSE=""
@@ -156,6 +189,10 @@ wait_for_healthy() {
 cmd_start() {
     printf "${CYAN}${BOLD}Starting Provisa...${NC}\n"
     mkdir -p "$LOG_DIR"
+
+    if [ "$RUNTIME" = "lima" ]; then
+        ensure_lima_running
+    fi
 
     local scale_arg=""
     if [ "${TRINO_WORKERS:-0}" -gt 0 ] 2>/dev/null; then
@@ -293,6 +330,12 @@ cmd_uninstall() {
             info "Stopping services..."
             # shellcheck disable=SC2086
             $(get_compose) $COMPOSE_FILES down 2>/dev/null || true
+
+            if [ "$RUNTIME" = "lima" ] && [ -x "$LIMACTL" ]; then
+                info "Stopping Lima VM..."
+                "$LIMACTL" stop "$LIMA_VM" 2>/dev/null || true
+                "$LIMACTL" delete "$LIMA_VM" 2>/dev/null || true
+            fi
 
             info "Removing ${PROVISA_HOME}..."
             rm -rf "$PROVISA_HOME"

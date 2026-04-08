@@ -169,7 +169,7 @@ save_images() {
   mkdir -p "$IMAGES_DIR"
   local count
   count=$(ls "${IMAGES_DIR}"/*.tar.gz 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$count" -ge 6 ]; then
+  if [ "$count" -ge 7 ]; then
     info "Images pre-populated (${count} tarballs) — skipping docker pull."
     return
   fi
@@ -197,6 +197,12 @@ save_images() {
   docker build -t provisa/zaychik:local "${REPO_ROOT}/zaychik"
   docker save provisa/zaychik:local | gzip -9 > "${IMAGES_DIR}/zaychik-local.tar.gz"
   ok "  Saved zaychik."
+
+  # Build and save provisa API server (replaces build: . in docker-compose.prod.yml)
+  info "  Building + saving provisa..."
+  docker build -t provisa/provisa:local "${REPO_ROOT}"
+  docker save provisa/provisa:local | gzip -9 > "${IMAGES_DIR}/provisa-local.tar.gz"
+  ok "  Saved provisa."
 }
 
 # ── Embed compose files and config ───────────────────────────────────────────
@@ -205,6 +211,7 @@ embed_compose() {
   mkdir -p "$res"
   cp "${REPO_ROOT}/docker-compose.yml" "${res}/docker-compose.yml"
   cp "${REPO_ROOT}/docker-compose.prod.yml" "${res}/docker-compose.prod.yml"
+  cp "${REPO_ROOT}/docker-compose.airgap.yml" "${res}/docker-compose.airgap.yml"
   cp -r "${REPO_ROOT}/config" "${res}/config"
   cp -r "${REPO_ROOT}/db" "${res}/db"
   cp -r "${REPO_ROOT}/trino" "${res}/trino"
