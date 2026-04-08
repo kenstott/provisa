@@ -8,6 +8,7 @@ $ErrorActionPreference = 'Stop'
 $ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ImagesDir   = Join-Path $ScriptDir 'images'
 $ComposeDir  = Join-Path $ScriptDir 'compose'
+$SourceDir   = Join-Path $ScriptDir 'provisa-source'
 $OvaPath     = Join-Path $ScriptDir 'provisa-runtime.ova'
 $VBoxSetup   = Join-Path $ScriptDir 'redist\VirtualBox-setup.exe'
 $ProvisaHome = Join-Path $env:USERPROFILE '.provisa'
@@ -209,6 +210,18 @@ function Load-Images {
   Write-Ok "Loaded $($tars.Count) images."
 }
 
+# ── Build provisa image from bundled source ───────────────────────────────────
+function Build-ProvisaImage {
+  Write-Info 'Building provisa/provisa:local from bundled source...'
+  if (-not (Test-Path $SourceDir)) {
+    Write-Err "provisa-source not found at $SourceDir. Reinstall Provisa."
+    exit 1
+  }
+  docker build -t provisa/provisa:local $SourceDir
+  if ($LASTEXITCODE -ne 0) { Write-Err 'Failed to build provisa image.'; exit 1 }
+  Write-Ok 'provisa/provisa:local built.'
+}
+
 # ── Ask hostname ─────────────────────────────────────────────────────────────
 function Ask-Hostname {
   $input = Read-Host 'Hostname for Provisa [localhost]'
@@ -282,6 +295,7 @@ Ensure-VirtualBox
 Import-Vm
 Start-Vm
 Load-Images
+Build-ProvisaImage
 Write-Config
 Set-DockerHostEnv
 

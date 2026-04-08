@@ -11,19 +11,30 @@ Write-Host '[build-installer] Preparing build directory...' -ForegroundColor Cya
 # ── Assemble build tree ────────────────────────────────────────────────────────
 $BuildDir = Join-Path $ScriptDir 'build'
 
-# images/
+# images/ — exclude provisa-local.tar.gz (built at first-launch from bundled source)
 $BuildImages = Join-Path $BuildDir 'images'
 New-Item -ItemType Directory -Path $BuildImages -Force | Out-Null
-Copy-Item (Join-Path $ScriptDir 'images\*.tar.gz') $BuildImages
+Get-ChildItem -Path (Join-Path $ScriptDir 'images') -Filter '*.tar.gz' |
+  Where-Object { $_.Name -ne 'provisa-local.tar.gz' } |
+  Copy-Item -Destination $BuildImages
 
 # compose/
 $BuildCompose = Join-Path $BuildDir 'compose'
 New-Item -ItemType Directory -Path $BuildCompose -Force | Out-Null
-Copy-Item (Join-Path $RepoRoot 'docker-compose.yml')      $BuildCompose
-Copy-Item (Join-Path $RepoRoot 'docker-compose.prod.yml') $BuildCompose
+Copy-Item (Join-Path $RepoRoot 'docker-compose.yml')       $BuildCompose
+Copy-Item (Join-Path $RepoRoot 'docker-compose.prod.yml')  $BuildCompose
+Copy-Item (Join-Path $RepoRoot 'docker-compose.airgap.yml') $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'config')  (Join-Path $BuildCompose 'config')  -Recurse -Force
 Copy-Item (Join-Path $RepoRoot 'db')      (Join-Path $BuildCompose 'db')      -Recurse -Force
 Copy-Item (Join-Path $RepoRoot 'trino')   (Join-Path $BuildCompose 'trino')   -Recurse -Force
+
+# provisa-source/ — used by first-launch to build provisa/provisa:local image
+$BuildSrc = Join-Path $BuildDir 'provisa-source'
+New-Item -ItemType Directory -Path $BuildSrc -Force | Out-Null
+Copy-Item (Join-Path $RepoRoot 'Dockerfile')    $BuildSrc
+Copy-Item (Join-Path $RepoRoot 'main.py')        $BuildSrc
+Copy-Item (Join-Path $RepoRoot 'pyproject.toml') $BuildSrc
+Copy-Item (Join-Path $RepoRoot 'provisa')   (Join-Path $BuildSrc 'provisa')   -Recurse -Force
 
 # scripts
 Copy-Item (Join-Path $ScriptDir 'first-launch.ps1') $BuildDir
