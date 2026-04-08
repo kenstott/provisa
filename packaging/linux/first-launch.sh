@@ -121,6 +121,18 @@ load_images() {
   ok "Loaded ${count} images."
 }
 
+# ── Build provisa/provisa:local from bundled source ───────────────────────────
+build_provisa_image() {
+  local src="${APPDIR}/provisa-source"
+  if [ ! -f "${src}/Dockerfile" ]; then
+    err "provisa-source not found at ${src}. Reinstall Provisa."
+    exit 1
+  fi
+  info "Building provisa/provisa:local from bundled source..."
+  docker build -t provisa/provisa:local "$src"
+  ok "provisa/provisa:local built."
+}
+
 # ── Ask hostname ──────────────────────────────────────────────────────────────
 ask_hostname() {
   local default="localhost"
@@ -214,6 +226,7 @@ main() {
   start_docker
   ask_ram_budget
   load_images
+  build_provisa_image
   write_config
   install_cli
 

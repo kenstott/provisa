@@ -131,15 +131,26 @@ build_appdir() {
      "${APPDIR}/bin/"
   chmod +x "${APPDIR}/bin/"*
 
-  # Copy image tarballs
-  cp "${IMAGES_DIR}"/*.tar.gz "${APPDIR}/images/"
+  # Copy image tarballs — exclude provisa-local.tar.gz (built at first-launch)
+  for f in "${IMAGES_DIR}"/*.tar.gz; do
+    [[ "$(basename "$f")" == "provisa-local.tar.gz" ]] && continue
+    cp "$f" "${APPDIR}/images/"
+  done
 
   # Copy compose files and config
-  cp "${REPO_ROOT}/docker-compose.yml"      "${APPDIR}/compose/"
-  cp "${REPO_ROOT}/docker-compose.prod.yml" "${APPDIR}/compose/"
-  cp -r "${REPO_ROOT}/config"               "${APPDIR}/compose/config"
-  cp -r "${REPO_ROOT}/db"                   "${APPDIR}/compose/db"
-  cp -r "${REPO_ROOT}/trino"                "${APPDIR}/compose/trino"
+  cp "${REPO_ROOT}/docker-compose.yml"       "${APPDIR}/compose/"
+  cp "${REPO_ROOT}/docker-compose.prod.yml"  "${APPDIR}/compose/"
+  cp "${REPO_ROOT}/docker-compose.airgap.yml" "${APPDIR}/compose/"
+  cp -r "${REPO_ROOT}/config"                "${APPDIR}/compose/config"
+  cp -r "${REPO_ROOT}/db"                    "${APPDIR}/compose/db"
+  cp -r "${REPO_ROOT}/trino"                 "${APPDIR}/compose/trino"
+
+  # Bundle provisa source for first-launch image build
+  mkdir -p "${APPDIR}/provisa-source"
+  cp "${REPO_ROOT}/Dockerfile"    "${APPDIR}/provisa-source/"
+  cp "${REPO_ROOT}/main.py"        "${APPDIR}/provisa-source/"
+  cp "${REPO_ROOT}/pyproject.toml" "${APPDIR}/provisa-source/"
+  cp -r "${REPO_ROOT}/provisa"    "${APPDIR}/provisa-source/provisa"
 
   # Copy CLI and launch scripts
   cp "${REPO_ROOT}/scripts/provisa"         "${APPDIR}/provisa-cli"

@@ -392,6 +392,30 @@ APPLESCRIPT
   echo "$port"
 }
 
+# ── Stage provisa source for first-launch image build ─────────────────────────
+stage_provisa_source() {
+  local dest="${PROVISA_HOME}/provisa-source"
+  if [ -d "$dest" ] && [ -f "${dest}/Dockerfile" ]; then
+    return 0
+  fi
+  mkdir -p "$dest"
+  local src="${RESOURCES}/provisa-source"
+  if [ ! -d "$src" ]; then
+    err "provisa-source not found in bundle. Reinstall Provisa."
+    exit 1
+  fi
+  cp -r "$src"/. "$dest/"
+  ok "Provisa source staged to ${dest}"
+}
+
+# ── Build provisa/provisa:local inside Lima from staged source ─────────────────
+build_provisa_image() {
+  info "Building provisa/provisa:local inside Lima VM..."
+  "$LIMACTL" shell "$LIMA_VM_NAME" -- \
+    sudo nerdctl build -t provisa/provisa:local "${PROVISA_HOME}/provisa-source"
+  ok "provisa/provisa:local built."
+}
+
 # ── Stage compose files into ~/.provisa/compose/ (VM-accessible) ─────────────
 # The Lima YAML mounts ~/.provisa writable. The app bundle's Resources dir is
 # NOT mounted, so compose files must live under ~/.provisa for nerdctl compose
@@ -488,11 +512,13 @@ main() {
   stage_vm_image          # copies base VM image from DMG → ~/.provisa/vm-image
   stage_images            # copies container images from DMG → ~/.provisa/images
   stage_nerdctl           # copies nerdctl-full archive from DMG → ~/.provisa/nerdctl/
+  stage_provisa_source    # copies Dockerfile + source → ~/.provisa/provisa-source/ (VM-accessible)
   stage_compose           # copies compose files from bundle → ~/.provisa/compose/ (VM-accessible)
   install_to_applications # self-installs to /Applications if running from DMG
   install_guest_agent     # stages gz to ~/.provisa/share/lima/, creates limactl symlink
   start_lima
   import_images
+  build_provisa_image     # builds provisa/provisa:local inside Lima from bundled source
   install_cli
 
   touch "$SENTINEL"

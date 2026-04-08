@@ -169,7 +169,7 @@ save_images() {
   mkdir -p "$IMAGES_DIR"
   local count
   count=$(ls "${IMAGES_DIR}"/*.tar.gz 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$count" -ge 7 ]; then
+  if [ "$count" -ge 6 ]; then
     info "Images pre-populated (${count} tarballs) — skipping docker pull."
     return
   fi
@@ -198,11 +198,7 @@ save_images() {
   docker save provisa/zaychik:local | gzip -9 > "${IMAGES_DIR}/zaychik-local.tar.gz"
   ok "  Saved zaychik."
 
-  # Build and save provisa API server (replaces build: . in docker-compose.prod.yml)
-  info "  Building + saving provisa..."
-  docker build -t provisa/provisa:local "${REPO_ROOT}"
-  docker save provisa/provisa:local | gzip -9 > "${IMAGES_DIR}/provisa-local.tar.gz"
-  ok "  Saved provisa."
+  # provisa/provisa:local is built at first-launch from bundled source — not saved here.
 }
 
 # ── Embed compose files and config ───────────────────────────────────────────
@@ -217,7 +213,14 @@ embed_compose() {
   cp -r "${REPO_ROOT}/trino" "${res}/trino"
   cp "${REPO_ROOT}/scripts/provisa" "${res}/provisa-cli"
   chmod +x "${res}/provisa-cli"
-  ok "Compose files and config embedded."
+  # Bundle provisa source so first-launch can build provisa/provisa:local inside Lima
+  local src_dst="${res}/provisa-source"
+  mkdir -p "$src_dst"
+  cp "${REPO_ROOT}/Dockerfile"    "$src_dst/"
+  cp "${REPO_ROOT}/main.py"        "$src_dst/"
+  cp "${REPO_ROOT}/pyproject.toml" "$src_dst/"
+  cp -r "${REPO_ROOT}/provisa"    "${src_dst}/provisa"
+  ok "Compose files, config, and provisa source embedded."
 }
 
 # ── Copy first-launch + launcher scripts ─────────────────────────────────────
@@ -355,8 +358,12 @@ create_dmg() {
   # Container images and base VM image sit alongside the .app in the DMG.
   # chflags hidden keeps them out of the Finder window.
   # first-launch.sh copies them to ~/.provisa/ on first run.
+  # provisa-local.tar.gz is excluded — built at first-launch from bundled source.
   mkdir -p "${tmp_dmg}/images"
-  cp "${IMAGES_DIR}"/*.tar.gz "${tmp_dmg}/images/"
+  for f in "${IMAGES_DIR}"/*.tar.gz; do
+    [[ "$(basename "$f")" == "provisa-local.tar.gz" ]] && continue
+    cp "$f" "${tmp_dmg}/images/"
+  done
   chflags hidden "${tmp_dmg}/images"
 
   mkdir -p "${tmp_dmg}/nerdctl"
