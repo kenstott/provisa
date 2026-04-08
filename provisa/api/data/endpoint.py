@@ -34,7 +34,7 @@ from provisa.compiler.mutation_gen import (
     compile_mutation,
     inject_rls_into_mutation,
 )
-from provisa.compiler.parser import GraphQLValidationError, parse_query
+from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
 from provisa.compiler.rls import RLSContext, inject_rls
 from provisa.compiler.sampling import apply_sampling, get_sample_size
 from provisa.compiler.sql_gen import compile_query, make_semantic_sql
@@ -258,6 +258,9 @@ async def graphql_endpoint(
     except GraphQLSyntaxError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    # Apply variable defaults declared in the operation for any missing variables (§6.4.1)
+    effective_variables = coerce_variable_defaults(document, request.variables)
+
     # Detect introspection queries (__schema, __type) and execute them
     # directly against the GraphQL schema instead of compiling to SQL.
     from graphql import execute as gql_execute
@@ -276,7 +279,7 @@ async def graphql_endpoint(
                 break
 
     if is_introspection:
-        result = gql_execute(schema, document, variable_values=request.variables)
+        result = gql_execute(schema, document, variable_values=effective_variables)
         return JSONResponse({"data": result.data})
 
     # Detect mutation vs query
@@ -297,15 +300,16 @@ async def graphql_endpoint(
 
     if is_mut:
         response = await _handle_mutation(
-            document, ctx, rls, state, request.variables, role_id,
+            document, ctx, rls, state, effective_variables, role_id,
         )
     else:
         response = await _handle_query(
-            document, ctx, rls, state, request.variables, role, output_format, role_id,
+            document, ctx, rls, state, effective_variables, role, output_format, role_id,
             force_redirect=force_redirect,
             redirect_threshold=x_provisa_redirect_threshold,
             redirect_format=redirect_format,
             steward_hint=steward_hint,
+            query_session_props=graphql_hints_to_session_props(graphql_hints),
         )
 
     # AN (REQ-291): store APQ hash only after successful execution — never cache rejected queries
@@ -454,6 +458,7 @@ async def _execute_one_field(
     document, fresh_mvs, output_format,
     *, force_redirect, redirect_config, effective_redirect_format, probe_limit,
     steward_hint: str | None = None,
+    query_session_props: dict | None = None,
 ):
     """Execute a single compiled query field through the full pipeline.
 
@@ -571,7 +576,7 @@ async def _execute_one_field(
             for sid in catalog_compiled.sources:
                 src_hints = getattr(state, "source_federation_hints", {}).get(sid, {})
                 session_hints.update(src_hints)
-            session_hints.update(graphql_hints_to_session_props(graphql_hints))  # @provisa hints
+            session_hints.update(query_session_props or {})  # @provisa hints
             session_hints.update(comment_hints)  # SQL /*+ */ hints take precedence
 
             trino_sql = transpile_to_trino(exec_sql)
@@ -710,7 +715,7 @@ def _recompile_for_trino_single(compiled, document, ctx, rls, state, variables, 
     return catalog_compiled
 
 
-async def _handle_query(document, ctx, rls, state, variables, role, output_format="json", role_id="admin", *, force_redirect=False, redirect_threshold=None, redirect_format=None, steward_hint: str | None = None):
+async def _handle_query(document, ctx, rls, state, variables, role, output_format="json", role_id="admin", *, force_redirect=False, redirect_threshold=None, redirect_format=None, steward_hint: str | None = None, query_session_props: dict | None = None):
     """Handle a GraphQL query operation with content negotiation.
 
     Pipeline per root field: compile → RLS → masking → MV rewrite → sampling
@@ -761,6 +766,7 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
             effective_redirect_format=effective_redirect_format,
             probe_limit=probe_limit,
             steward_hint=steward_hint,
+            query_session_props=query_session_props,
         )
         if cached_entry is not None:
             headers = build_cache_headers(cached_entry)
@@ -792,6 +798,7 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
             effective_redirect_format=effective_redirect_format,
             probe_limit=probe_limit,
             steward_hint=steward_hint,
+            query_session_props=query_session_props,
         )
         if redirect_info is not None:
             merged_data[root_field] = None

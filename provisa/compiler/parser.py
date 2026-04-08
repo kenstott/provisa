@@ -19,6 +19,17 @@ from graphql import (
     parse,
     validate,
 )
+from graphql.language.ast import (
+    BooleanValueNode,
+    EnumValueNode,
+    FloatValueNode,
+    IntValueNode,
+    ListValueNode,
+    NullValueNode,
+    ObjectValueNode,
+    OperationDefinitionNode,
+    StringValueNode,
+)
 
 
 class GraphQLValidationError(Exception):
@@ -54,3 +65,44 @@ def parse_query(
     if errors:
         raise GraphQLValidationError(errors)
     return document
+
+
+def _ast_default_to_python(node: object) -> object:
+    """Convert an AST default value node to a Python value."""
+    if isinstance(node, StringValueNode):
+        return node.value
+    if isinstance(node, IntValueNode):
+        return int(node.value)
+    if isinstance(node, FloatValueNode):
+        return float(node.value)
+    if isinstance(node, BooleanValueNode):
+        return node.value
+    if isinstance(node, EnumValueNode):
+        return node.value
+    if isinstance(node, NullValueNode):
+        return None
+    if isinstance(node, ListValueNode):
+        return [_ast_default_to_python(v) for v in node.values]
+    if isinstance(node, ObjectValueNode):
+        return {f.name.value: _ast_default_to_python(f.value) for f in node.fields}
+    return None
+
+
+def coerce_variable_defaults(
+    document: DocumentNode,
+    variables: dict | None,
+) -> dict:
+    """Return a variables dict with defaults applied for any missing variables.
+
+    GraphQL spec §6.4.1: if a variable is missing from the supplied variables
+    but has a default value in the operation definition, the default is used.
+    """
+    result: dict = dict(variables) if variables else {}
+    for defn in document.definitions:
+        if not isinstance(defn, OperationDefinitionNode):
+            continue
+        for var_def in defn.variable_definitions:
+            name = var_def.variable.name.value
+            if name not in result and var_def.default_value is not None:
+                result[name] = _ast_default_to_python(var_def.default_value)
+    return result

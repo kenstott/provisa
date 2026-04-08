@@ -27,7 +27,7 @@ from pydantic import BaseModel
 
 from provisa.compiler.hints import extract_graphql_hints, graphql_comments_to_sql, graphql_hints_to_session_props
 from provisa.compiler.mask_inject import inject_masking
-from provisa.compiler.parser import GraphQLValidationError, parse_query
+from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
 from provisa.compiler.rls import RLSContext, inject_rls
 from provisa.compiler.sampling import apply_sampling, get_sample_size
 from provisa.compiler.sql_gen import compile_query, make_semantic_sql
@@ -188,7 +188,8 @@ async def compile_endpoint(
     except (GraphQLValidationError, GraphQLSyntaxError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    compiled_queries = compile_query(document, ctx, request.variables)
+    effective_variables = coerce_variable_defaults(document, request.variables)
+    compiled_queries = compile_query(document, ctx, effective_variables)
     if not compiled_queries:
         raise HTTPException(status_code=400, detail="No query fields found")
 
@@ -322,7 +323,8 @@ async def submit_endpoint(
     except (GraphQLValidationError, GraphQLSyntaxError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    compiled_queries = compile_query(document, ctx, request.variables)
+    effective_variables = coerce_variable_defaults(document, request.variables)
+    compiled_queries = compile_query(document, ctx, effective_variables)
     if not compiled_queries:
         raise HTTPException(status_code=400, detail="No query fields found")
 
