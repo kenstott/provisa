@@ -1,0 +1,6 @@
+id,name,country,timezone
+1,Northeast,US,America/New_York
+2,Southeast,US,America/New_York
+3,Midwest,US,America/Chicago
+4,Southwest,US,America/Denver
+5,West,US,America/Los_Angeles

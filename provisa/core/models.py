@@ -51,6 +51,10 @@ class SourceType(str, Enum):
     # Graph / Semantic
     neo4j = "neo4j"
     sparql = "sparql"
+    # File-based
+    sqlite = "sqlite"
+    csv = "csv"
+    parquet = "parquet"
     # Other
     google_sheets = "google_sheets"
     prometheus = "prometheus"
@@ -124,11 +128,12 @@ class Source(BaseModel):
             )
         return v
     type: SourceType
-    host: str
-    port: int
-    database: str
-    username: str
-    password: str  # Secret reference e.g. ${env:PG_PASSWORD}
+    host: str = ""
+    port: int = 0
+    database: str = ""
+    username: str = ""
+    password: str = ""  # Secret reference e.g. ${env:PG_PASSWORD}
+    path: str | None = None  # File path or URL for file-based sources (csv, parquet, sqlite)
     pool_min: int = Field(default=1, alias="pool_min")
     pool_max: int = Field(default=5, alias="pool_max")
     use_pgbouncer: bool = Field(default=False, alias="use_pgbouncer")

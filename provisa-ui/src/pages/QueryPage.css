@@ -536,6 +536,58 @@ body.graphiql-dark .graphiql-dialog {
   overflow: visible !important;
 }
 
+/* X-Provisa header quick-insert bar */
+section.graphiql-editor-tool:has(.provisa-headers-bar) {
+  padding-top: 0;
+}
+
+.provisa-headers-bar {
+  border-bottom: 1px solid hsla(var(--color-neutral), 0.2);
+}
+
+.provisa-headers-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+}
+
+.provisa-headers-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: hsl(var(--color-primary));
+  text-transform: uppercase;
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.provisa-header-btn {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  border: 1px solid hsla(var(--color-neutral), 0.3);
+  background: hsla(var(--color-neutral), 0.08);
+  color: hsl(var(--color-neutral));
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+
+.provisa-header-btn:hover {
+  background: hsla(var(--color-primary), 0.15);
+  border-color: hsl(var(--color-primary));
+  color: hsl(var(--color-primary));
+}
+
+.provisa-header-btn.active {
+  background: hsla(var(--color-primary), 0.2);
+  border-color: hsl(var(--color-primary));
+  color: hsl(var(--color-primary));
+  font-weight: 600;
+}
+
 /* Domain folder styling */
 .graphiql-explorer-domain > summary::-webkit-details-marker {
   display: none;

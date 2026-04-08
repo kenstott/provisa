@@ -19,7 +19,7 @@ import type {
   MutationResult,
 } from "../types/admin";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8001";
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 async function gql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
   const resp = await fetch(`${API_BASE}/admin/graphql`, {
@@ -289,7 +289,7 @@ export async function fetchSdl(roleId: string): Promise<string> {
 
 // --- Discovery ---
 
-const API_BASE_RAW = import.meta.env.VITE_API_BASE || "http://localhost:8001";
+const API_BASE_RAW = import.meta.env.VITE_API_BASE || "";
 
 export async function discoverRelationships(
   scope: string,

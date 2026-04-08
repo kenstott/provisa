@@ -378,6 +378,9 @@ export function TablesPage() {
         })),
       });
       if (!result.success) { setError(result.message); return; }
+      await handleNamingChange(editingTable.id, editingTable.namingConvention ?? "");
+      const ttlEdit = cacheTtlEdits[editingTable.id];
+      if (ttlEdit?.dirty) await handleSaveTableCache(editingTable.id);
       setEditingTable(null);
       reload();
     } catch (e: any) { setError(e.message); }
@@ -582,37 +585,11 @@ export function TablesPage() {
                   <td>{t.alias || ""}</td>
                   <td className="reasoning-cell">{t.description || ""}</td>
                   <td>{t.governance}</td>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <select
-                      value={t.namingConvention ?? ""}
-                      onChange={(e) => handleNamingChange(t.id, e.target.value)}
-                      style={{ fontSize: "0.85rem" }}
-                    >
-                      {NAMING_CONVENTIONS.map((nc) => (
-                        <option key={nc.value} value={nc.value}>{nc.label}</option>
-                      ))}
-                    </select>
+                  <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                    {NAMING_CONVENTIONS.find((nc) => nc.value === (t.namingConvention ?? ""))?.label ?? t.namingConvention ?? "Inherit (source)"}
                   </td>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <div style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
-                      <input
-                        type="number"
-                        min={0}
-                        value={cacheTtlEdits[t.id]?.value ?? (t.cacheTtl != null ? String(t.cacheTtl) : "")}
-                        onChange={(e) => setCacheTtlEdits((prev) => ({ ...prev, [t.id]: { ...prev[t.id], value: e.target.value, dirty: true } }))}
-                        placeholder="inherit"
-                        style={{ width: "5rem" }}
-                      />
-                      {cacheTtlEdits[t.id]?.dirty && (
-                        <button
-                          onClick={() => handleSaveTableCache(t.id)}
-                          disabled={cacheTtlEdits[t.id]?.saving}
-                          style={{ padding: "0.15rem 0.4rem", fontSize: "0.7rem" }}
-                        >
-                          {cacheTtlEdits[t.id]?.saving ? "..." : "Save"}
-                        </button>
-                      )}
-                    </div>
+                  <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                    {t.cacheTtl != null ? `${t.cacheTtl}s` : "inherit"}
                   </td>
                   <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{getEffectiveTableTtl(t)}</td>
                   <td>{t.columns.length}</td>
@@ -687,6 +664,27 @@ export function TablesPage() {
                                 value={editingTable.alias || ""}
                                 onChange={(e) => setEditingTable({ ...editingTable, alias: e.target.value || null })}
                                 placeholder="GraphQL name override"
+                              />
+                            </label>
+                            <label>
+                              Naming Convention
+                              <select
+                                value={editingTable.namingConvention ?? ""}
+                                onChange={(e) => setEditingTable({ ...editingTable, namingConvention: e.target.value || null })}
+                              >
+                                {NAMING_CONVENTIONS.map((nc) => (
+                                  <option key={nc.value} value={nc.value}>{nc.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              Cache TTL (seconds)
+                              <input
+                                type="number"
+                                min={0}
+                                value={cacheTtlEdits[editingTable.id]?.value ?? (editingTable.cacheTtl != null ? String(editingTable.cacheTtl) : "")}
+                                onChange={(e) => setCacheTtlEdits((prev) => ({ ...prev, [editingTable.id]: { ...prev[editingTable.id], value: e.target.value, dirty: true } }))}
+                                placeholder="inherit"
                               />
                             </label>
                             <label style={{ gridColumn: "1 / -1" }}>

@@ -13,10 +13,6 @@ import { render } from "@testing-library/react";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
-vi.mock("monaco-graphql/esm/initialize", () => ({
-  initializeMode: vi.fn(() => ({ setSchemaConfig: vi.fn() })),
-}));
-
 let mockLiveQuery = "";
 let mockSchema: unknown = null;
 let mockInitialQuery = "";
@@ -60,7 +56,7 @@ describe("SyncedExplorerContent — query fallback logic", () => {
     mockInitialQuery = "";
   });
 
-  it("passes liveQuery to Explorer when Monaco is ready", () => {
+  it("passes liveQuery to Explorer when liveQuery is set", () => {
     mockLiveQuery = "{ orders { id } }";
     mockInitialQuery = "{ products { sku } }";
 
@@ -69,7 +65,7 @@ describe("SyncedExplorerContent — query fallback logic", () => {
     expect(lastExplorerQuery).toBe("{ orders { id } }");
   });
 
-  it("falls back to initialQuery when liveQuery is empty (pre-Monaco)", () => {
+  it("falls back to initialQuery when liveQuery is empty", () => {
     mockLiveQuery = "";
     mockInitialQuery = "{ customers { name } }";
 

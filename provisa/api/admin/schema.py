@@ -60,6 +60,7 @@ def _source_from_row(row) -> SourceType:
         cache_enabled=row.get("cache_enabled", True),
         cache_ttl=row.get("cache_ttl"),
         naming_convention=row.get("naming_convention"),
+        path=row.get("path"),
     )
 
 
@@ -458,6 +459,7 @@ class Mutation:
             id=input.id, type=input.type, host=input.host,
             port=input.port, database=input.database,
             username=input.username, password=input.password,
+            path=input.path,
         )
         async with pool.acquire() as conn:
             await source_repo.upsert(conn, model)
@@ -498,6 +500,7 @@ class Mutation:
                 id=input.id, type=input.type, host=input.host,
                 port=input.port, database=input.database,
                 username=input.username, password=input.password,
+                path=input.path,
             )
             await source_repo.upsert(conn, model)
         return MutationResult(success=True, message=f"Source {input.id!r} updated")

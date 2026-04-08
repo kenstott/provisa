@@ -32,7 +32,6 @@ type ActionType = "function" | "webhook";
 interface FormState {
   actionType: ActionType;
   name: string;
-  // Function fields
   sourceId: string;
   schemaName: string;
   functionName: string;
@@ -42,7 +41,6 @@ interface FormState {
   domainId: string;
   description: string;
   arguments: ActionArg[];
-  // Webhook fields
   url: string;
   method: string;
   timeoutMs: number;
@@ -81,6 +79,8 @@ export function ActionsPage() {
   const [saving, setSaving] = useState(false);
   const [testResult, setTestResult] = useState<{ name: string; data: unknown } | null>(null);
   const [testing, setTesting] = useState<string | null>(null);
+  const [expandedFn, setExpandedFn] = useState<string | null>(null);
+  const [expandedWh, setExpandedWh] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,28 +110,15 @@ export function ActionsPage() {
     label: `${t.sourceId}.${t.schemaName}.${t.tableName}${t.alias ? ` (${t.alias})` : ""}`,
   }));
 
-  const handleAddArg = () => {
-    setForm({ ...form, arguments: [...form.arguments, { ...EMPTY_ARG }] });
-  };
-
-  const handleRemoveArg = (idx: number) => {
-    setForm({ ...form, arguments: form.arguments.filter((_, i) => i !== idx) });
-  };
-
+  const handleAddArg = () => setForm({ ...form, arguments: [...form.arguments, { ...EMPTY_ARG }] });
+  const handleRemoveArg = (idx: number) => setForm({ ...form, arguments: form.arguments.filter((_, i) => i !== idx) });
   const handleArgChange = (idx: number, field: keyof ActionArg, value: string) => {
     const args = [...form.arguments];
     args[idx] = { ...args[idx], [field]: value };
     setForm({ ...form, arguments: args });
   };
-
-  const handleAddInlineField = () => {
-    setForm({ ...form, inlineReturnType: [...form.inlineReturnType, { ...EMPTY_INLINE }] });
-  };
-
-  const handleRemoveInlineField = (idx: number) => {
-    setForm({ ...form, inlineReturnType: form.inlineReturnType.filter((_, i) => i !== idx) });
-  };
-
+  const handleAddInlineField = () => setForm({ ...form, inlineReturnType: [...form.inlineReturnType, { ...EMPTY_INLINE }] });
+  const handleRemoveInlineField = (idx: number) => setForm({ ...form, inlineReturnType: form.inlineReturnType.filter((_, i) => i !== idx) });
   const handleInlineFieldChange = (idx: number, field: keyof InlineField, value: string) => {
     const fields = [...form.inlineReturnType];
     fields[idx] = { ...fields[idx], [field]: value };
@@ -159,6 +146,7 @@ export function ActionsPage() {
         timeoutMs: 5000,
         inlineReturnType: [],
       });
+      setExpandedFn(name);
     } else {
       const wh = webhooks.find((w) => w.name === name);
       if (!wh) return;
@@ -179,9 +167,10 @@ export function ActionsPage() {
         timeoutMs: wh.timeoutMs,
         inlineReturnType: wh.inlineReturnType.length > 0 ? wh.inlineReturnType : [],
       });
+      setExpandedWh(name);
     }
     setEditingName(name);
-    setShowForm(true);
+    setShowForm(false);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -251,217 +240,129 @@ export function ActionsPage() {
     setEditingName(null);
   };
 
+  const renderFormFields = () => (
+    <>
+      {form.actionType === "function" && (
+        <>
+          <label>Source
+            <select required value={form.sourceId} onChange={(e) => setForm({ ...form, sourceId: e.target.value })}>
+              <option value="">Select source...</option>
+              {sources.map((s) => <option key={s.id} value={s.id}>{s.id} ({s.type})</option>)}
+            </select>
+          </label>
+          <label>Schema
+            <input value={form.schemaName} onChange={(e) => setForm({ ...form, schemaName: e.target.value })} />
+          </label>
+          <label>Function Name
+            <input required value={form.functionName} onChange={(e) => setForm({ ...form, functionName: e.target.value })} placeholder="DB function name" />
+          </label>
+          <label>Returns (table)
+            <select required value={form.returns} onChange={(e) => setForm({ ...form, returns: e.target.value })}>
+              <option value="">Select table...</option>
+              {tableOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </label>
+          <label>Visible To (roles, comma-separated)
+            <input value={form.visibleTo} onChange={(e) => setForm({ ...form, visibleTo: e.target.value })} placeholder="admin, analyst" />
+          </label>
+          <label>Writable By (roles, comma-separated)
+            <input value={form.writablBy} onChange={(e) => setForm({ ...form, writablBy: e.target.value })} placeholder="admin" />
+          </label>
+        </>
+      )}
+      {form.actionType === "webhook" && (
+        <>
+          <label>URL
+            <input required value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="https://api.example.com/action" />
+          </label>
+          <label>Method
+            <select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
+              <option value="POST">POST</option>
+              <option value="GET">GET</option>
+              <option value="PUT">PUT</option>
+              <option value="PATCH">PATCH</option>
+            </select>
+          </label>
+          <label>Timeout (ms)
+            <input type="number" min={100} value={form.timeoutMs} onChange={(e) => setForm({ ...form, timeoutMs: +e.target.value })} />
+          </label>
+          <label>Returns (table, optional)
+            <select value={form.returns} onChange={(e) => setForm({ ...form, returns: e.target.value })}>
+              <option value="">None (use inline type)</option>
+              {tableOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </label>
+          <label>Visible To (roles, comma-separated)
+            <input value={form.visibleTo} onChange={(e) => setForm({ ...form, visibleTo: e.target.value })} placeholder="admin, analyst" />
+          </label>
+          {!form.returns && (
+            <div style={{ gridColumn: "1 / -1" }}>
+              <h4 style={{ marginBottom: "0.5rem" }}>Inline Return Type</h4>
+              {form.inlineReturnType.map((f, i) => (
+                <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.25rem", alignItems: "center" }}>
+                  <input value={f.name} onChange={(e) => handleInlineFieldChange(i, "name", e.target.value)} placeholder="Field name" style={{ flex: 1 }} />
+                  <select value={f.type} onChange={(e) => handleInlineFieldChange(i, "type", e.target.value)}>
+                    {GRAPHQL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                  <button type="button" className="destructive" onClick={() => handleRemoveInlineField(i)} style={{ padding: "0.25rem 0.5rem" }}>X</button>
+                </div>
+              ))}
+              <button type="button" onClick={handleAddInlineField} style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>+ Add Field</button>
+            </div>
+          )}
+        </>
+      )}
+      <label>Domain
+        <input value={form.domainId} onChange={(e) => setForm({ ...form, domainId: e.target.value })} placeholder="optional" />
+      </label>
+      <label>Description
+        <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="optional" />
+      </label>
+      <div style={{ gridColumn: "1 / -1" }}>
+        <h4 style={{ marginBottom: "0.5rem" }}>Arguments</h4>
+        {form.arguments.map((arg, i) => (
+          <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.25rem", alignItems: "center" }}>
+            <input value={arg.name} onChange={(e) => handleArgChange(i, "name", e.target.value)} placeholder="Arg name" style={{ flex: 1 }} />
+            <select value={arg.type} onChange={(e) => handleArgChange(i, "type", e.target.value)}>
+              {GRAPHQL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+            <button type="button" className="destructive" onClick={() => handleRemoveArg(i)} style={{ padding: "0.25rem 0.5rem" }}>X</button>
+          </div>
+        ))}
+        <button type="button" onClick={handleAddArg} style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>+ Add Argument</button>
+      </div>
+    </>
+  );
+
   if (loading) return <div className="page">Loading actions...</div>;
 
   return (
     <div className="page">
       <div className="page-header">
         <h2>Actions</h2>
-        <button onClick={() => { setShowForm(!showForm); if (showForm) handleCancel(); }}>
-          {showForm ? "Cancel" : "Add Action"}
-        </button>
+        {!editingName && (
+          <button onClick={() => { setShowForm(!showForm); if (showForm) handleCancel(); }}>
+            {showForm ? "Cancel" : "Add Action"}
+          </button>
+        )}
       </div>
 
       {error && <div className="error">{error}</div>}
       {msg && <div className="success">{msg}</div>}
 
-      {showForm && (
+      {showForm && !editingName && (
         <form className="form-card" onSubmit={handleSave}>
           <label>Type
-            <select
-              value={form.actionType}
-              onChange={(e) => setForm({ ...EMPTY_FORM, actionType: e.target.value as ActionType })}
-              disabled={editingName !== null}
-            >
+            <select value={form.actionType} onChange={(e) => setForm({ ...EMPTY_FORM, actionType: e.target.value as ActionType })}>
               <option value="function">DB Function</option>
               <option value="webhook">Webhook</option>
             </select>
           </label>
-
           <label>Name
-            <input
-              required
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="e.g. process_order"
-              disabled={editingName !== null}
-            />
+            <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. process_order" />
           </label>
-
-          {form.actionType === "function" && (
-            <>
-              <label>Source
-                <select
-                  required
-                  value={form.sourceId}
-                  onChange={(e) => setForm({ ...form, sourceId: e.target.value })}
-                >
-                  <option value="">Select source...</option>
-                  {sources.map((s) => (
-                    <option key={s.id} value={s.id}>{s.id} ({s.type})</option>
-                  ))}
-                </select>
-              </label>
-              <label>Schema
-                <input
-                  value={form.schemaName}
-                  onChange={(e) => setForm({ ...form, schemaName: e.target.value })}
-                />
-              </label>
-              <label>Function Name
-                <input
-                  required
-                  value={form.functionName}
-                  onChange={(e) => setForm({ ...form, functionName: e.target.value })}
-                  placeholder="DB function name"
-                />
-              </label>
-              <label>Returns (table)
-                <select
-                  required
-                  value={form.returns}
-                  onChange={(e) => setForm({ ...form, returns: e.target.value })}
-                >
-                  <option value="">Select table...</option>
-                  {tableOptions.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label>Visible To (roles, comma-separated)
-                <input
-                  value={form.visibleTo}
-                  onChange={(e) => setForm({ ...form, visibleTo: e.target.value })}
-                  placeholder="admin, analyst"
-                />
-              </label>
-              <label>Writable By (roles, comma-separated)
-                <input
-                  value={form.writablBy}
-                  onChange={(e) => setForm({ ...form, writablBy: e.target.value })}
-                  placeholder="admin"
-                />
-              </label>
-            </>
-          )}
-
-          {form.actionType === "webhook" && (
-            <>
-              <label>URL
-                <input
-                  required
-                  value={form.url}
-                  onChange={(e) => setForm({ ...form, url: e.target.value })}
-                  placeholder="https://api.example.com/action"
-                />
-              </label>
-              <label>Method
-                <select value={form.method} onChange={(e) => setForm({ ...form, method: e.target.value })}>
-                  <option value="POST">POST</option>
-                  <option value="GET">GET</option>
-                  <option value="PUT">PUT</option>
-                  <option value="PATCH">PATCH</option>
-                </select>
-              </label>
-              <label>Timeout (ms)
-                <input
-                  type="number"
-                  min={100}
-                  value={form.timeoutMs}
-                  onChange={(e) => setForm({ ...form, timeoutMs: +e.target.value })}
-                />
-              </label>
-              <label>Returns (table, optional)
-                <select
-                  value={form.returns}
-                  onChange={(e) => setForm({ ...form, returns: e.target.value })}
-                >
-                  <option value="">None (use inline type)</option>
-                  {tableOptions.map((t) => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label>Visible To (roles, comma-separated)
-                <input
-                  value={form.visibleTo}
-                  onChange={(e) => setForm({ ...form, visibleTo: e.target.value })}
-                  placeholder="admin, analyst"
-                />
-              </label>
-
-              {!form.returns && (
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <h4 style={{ marginBottom: "0.5rem" }}>Inline Return Type</h4>
-                  {form.inlineReturnType.map((f, i) => (
-                    <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.25rem", alignItems: "center" }}>
-                      <input
-                        value={f.name}
-                        onChange={(e) => handleInlineFieldChange(i, "name", e.target.value)}
-                        placeholder="Field name"
-                        style={{ flex: 1 }}
-                      />
-                      <select
-                        value={f.type}
-                        onChange={(e) => handleInlineFieldChange(i, "type", e.target.value)}
-                      >
-                        {GRAPHQL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                      <button type="button" className="destructive" onClick={() => handleRemoveInlineField(i)} style={{ padding: "0.25rem 0.5rem" }}>
-                        X
-                      </button>
-                    </div>
-                  ))}
-                  <button type="button" onClick={handleAddInlineField} style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-                    + Add Field
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-
-          <label>Domain
-            <input
-              value={form.domainId}
-              onChange={(e) => setForm({ ...form, domainId: e.target.value })}
-              placeholder="optional"
-            />
-          </label>
-          <label>Description
-            <input
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="optional"
-            />
-          </label>
-
-          <div style={{ gridColumn: "1 / -1" }}>
-            <h4 style={{ marginBottom: "0.5rem" }}>Arguments</h4>
-            {form.arguments.map((arg, i) => (
-              <div key={i} style={{ display: "flex", gap: "0.5rem", marginBottom: "0.25rem", alignItems: "center" }}>
-                <input
-                  value={arg.name}
-                  onChange={(e) => handleArgChange(i, "name", e.target.value)}
-                  placeholder="Arg name"
-                  style={{ flex: 1 }}
-                />
-                <select
-                  value={arg.type}
-                  onChange={(e) => handleArgChange(i, "type", e.target.value)}
-                >
-                  {GRAPHQL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-                <button type="button" className="destructive" onClick={() => handleRemoveArg(i)} style={{ padding: "0.25rem 0.5rem" }}>
-                  X
-                </button>
-              </div>
-            ))}
-            <button type="button" onClick={handleAddArg} style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>
-              + Add Argument
-            </button>
-          </div>
-
-          <button type="submit" disabled={saving}>{saving ? "Saving..." : editingName ? "Update" : "Create"}</button>
+          {renderFormFields()}
+          <button type="submit" disabled={saving}>{saving ? "Saving..." : "Create"}</button>
         </form>
       )}
 
@@ -475,42 +376,85 @@ export function ActionsPage() {
             <th>Returns</th>
             <th>Args</th>
             <th>Visible To</th>
-            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {functions.length === 0 && (
-            <tr><td colSpan={7} style={{ color: "var(--text-muted)", textAlign: "center" }}>No functions registered</td></tr>
+            <tr><td colSpan={6} style={{ color: "var(--text-muted)", textAlign: "center" }}>No functions registered</td></tr>
           )}
-          {functions.map((fn) => (
-            <tr key={fn.name}>
-              <td>{fn.name}</td>
-              <td>{fn.sourceId}</td>
-              <td>{fn.schemaName}.{fn.functionName}</td>
-              <td>{fn.returns}</td>
-              <td>{fn.arguments.length}</td>
-              <td>{fn.visibleTo.join(", ") || "all"}</td>
-              <td style={{ display: "flex", gap: "0.25rem" }}>
-                <button onClick={() => handleEdit("function", fn.name)} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleTest("function", fn.name)}
-                  disabled={testing === fn.name}
-                  style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+          {functions.map((fn) => {
+            const isExpanded = expandedFn === fn.name;
+            const isEditing = editingName === fn.name;
+            return (
+              <>
+                <tr
+                  key={fn.name}
+                  onClick={() => {
+                    setExpandedFn(isExpanded ? null : fn.name);
+                    if (isEditing) setEditingName(null);
+                  }}
+                  style={{ cursor: "pointer", background: isExpanded ? "var(--color-row-selected, #e8f0fe)" : undefined }}
                 >
-                  {testing === fn.name ? "Testing..." : "Test"}
-                </button>
-                <ConfirmDialog
-                  title={`Delete function "${fn.name}"?`}
-                  consequence="This will remove the function from the schema."
-                  onConfirm={async () => { await deleteFunction(fn.name); load(); }}
-                >
-                  {(open) => <button className="destructive" onClick={open}>Delete</button>}
-                </ConfirmDialog>
-              </td>
-            </tr>
-          ))}
+                  <td>{fn.name}</td>
+                  <td>{fn.sourceId}</td>
+                  <td>{fn.schemaName}.{fn.functionName}</td>
+                  <td>{fn.returns}</td>
+                  <td>{fn.arguments.length}</td>
+                  <td>{fn.visibleTo.join(", ") || "all"}</td>
+                </tr>
+                {isExpanded && (
+                  <tr key={`${fn.name}-detail`}>
+                    <td colSpan={6} style={{ padding: "0.75rem 1rem", background: "var(--surface-secondary, #f8f9fa)" }}>
+                      {isEditing ? (
+                        <form className="form-card" onSubmit={handleSave} style={{ margin: 0 }}>
+                          {renderFormFields()}
+                          <div style={{ display: "flex", gap: "0.5rem" }}>
+                            <button type="submit" disabled={saving}>{saving ? "Saving..." : "Update"}</button>
+                            <button type="button" onClick={handleCancel}>Cancel</button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                          <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0 }}>
+                            <dt><strong>Name</strong></dt><dd>{fn.name}</dd>
+                            <dt><strong>Source</strong></dt><dd>{fn.sourceId}</dd>
+                            <dt><strong>Schema</strong></dt><dd>{fn.schemaName}</dd>
+                            <dt><strong>Function</strong></dt><dd>{fn.functionName}</dd>
+                            <dt><strong>Returns</strong></dt><dd>{fn.returns}</dd>
+                            <dt><strong>Visible To</strong></dt><dd>{fn.visibleTo.join(", ") || "all"}</dd>
+                            <dt><strong>Writable By</strong></dt><dd>{fn.writableBy.join(", ") || "all"}</dd>
+                            <dt><strong>Domain</strong></dt><dd>{fn.domainId || "—"}</dd>
+                            <dt><strong>Description</strong></dt><dd>{fn.description || "—"}</dd>
+                            <dt><strong>Arguments</strong></dt><dd>{fn.arguments.length === 0 ? "none" : fn.arguments.map((a) => `${a.name}: ${a.type}`).join(", ")}</dd>
+                          </dl>
+                          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
+                            <button
+                              className="btn-secondary btn-sm"
+                              onClick={(e) => { e.stopPropagation(); handleEdit("function", fn.name); }}
+                            >Edit</button>
+                            <button
+                              className="btn-secondary btn-sm"
+                              onClick={(e) => { e.stopPropagation(); handleTest("function", fn.name); }}
+                              disabled={testing === fn.name}
+                            >{testing === fn.name ? "Testing..." : "Test"}</button>
+                            <ConfirmDialog
+                              title={`Delete function "${fn.name}"?`}
+                              consequence="This will remove the function from the schema."
+                              onConfirm={async () => { await deleteFunction(fn.name); setExpandedFn(null); load(); }}
+                            >
+                              {(open) => (
+                                <button className="btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); open(); }}>Delete</button>
+                              )}
+                            </ConfirmDialog>
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          })}
         </tbody>
       </table>
 
@@ -525,43 +469,90 @@ export function ActionsPage() {
             <th>Returns</th>
             <th>Args</th>
             <th>Visible To</th>
-            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {webhooks.length === 0 && (
-            <tr><td colSpan={8} style={{ color: "var(--text-muted)", textAlign: "center" }}>No webhooks registered</td></tr>
+            <tr><td colSpan={7} style={{ color: "var(--text-muted)", textAlign: "center" }}>No webhooks registered</td></tr>
           )}
-          {webhooks.map((wh) => (
-            <tr key={wh.name}>
-              <td>{wh.name}</td>
-              <td style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>{wh.url}</td>
-              <td>{wh.method}</td>
-              <td>{wh.timeoutMs}ms</td>
-              <td>{wh.returns || `inline (${wh.inlineReturnType.length} fields)`}</td>
-              <td>{wh.arguments.length}</td>
-              <td>{wh.visibleTo.join(", ") || "all"}</td>
-              <td style={{ display: "flex", gap: "0.25rem" }}>
-                <button onClick={() => handleEdit("webhook", wh.name)} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleTest("webhook", wh.name)}
-                  disabled={testing === wh.name}
-                  style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+          {webhooks.map((wh) => {
+            const isExpanded = expandedWh === wh.name;
+            const isEditing = editingName === wh.name;
+            return (
+              <>
+                <tr
+                  key={wh.name}
+                  onClick={() => {
+                    setExpandedWh(isExpanded ? null : wh.name);
+                    if (isEditing) setEditingName(null);
+                  }}
+                  style={{ cursor: "pointer", background: isExpanded ? "var(--color-row-selected, #e8f0fe)" : undefined }}
                 >
-                  {testing === wh.name ? "Testing..." : "Test"}
-                </button>
-                <ConfirmDialog
-                  title={`Delete webhook "${wh.name}"?`}
-                  consequence="This will remove the webhook from the schema."
-                  onConfirm={async () => { await deleteWebhook(wh.name); load(); }}
-                >
-                  {(open) => <button className="destructive" onClick={open}>Delete</button>}
-                </ConfirmDialog>
-              </td>
-            </tr>
-          ))}
+                  <td>{wh.name}</td>
+                  <td style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>{wh.url}</td>
+                  <td>{wh.method}</td>
+                  <td>{wh.timeoutMs}ms</td>
+                  <td>{wh.returns || `inline (${wh.inlineReturnType.length} fields)`}</td>
+                  <td>{wh.arguments.length}</td>
+                  <td>{wh.visibleTo.join(", ") || "all"}</td>
+                </tr>
+                {isExpanded && (
+                  <tr key={`${wh.name}-detail`}>
+                    <td colSpan={7} style={{ padding: "0.75rem 1rem", background: "var(--surface-secondary, #f8f9fa)" }}>
+                      {isEditing ? (
+                        <form className="form-card" onSubmit={handleSave} style={{ margin: 0 }}>
+                          {renderFormFields()}
+                          <div style={{ display: "flex", gap: "0.5rem" }}>
+                            <button type="submit" disabled={saving}>{saving ? "Saving..." : "Update"}</button>
+                            <button type="button" onClick={handleCancel}>Cancel</button>
+                          </div>
+                        </form>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                          <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0 }}>
+                            <dt><strong>Name</strong></dt><dd>{wh.name}</dd>
+                            <dt><strong>URL</strong></dt><dd>{wh.url}</dd>
+                            <dt><strong>Method</strong></dt><dd>{wh.method}</dd>
+                            <dt><strong>Timeout</strong></dt><dd>{wh.timeoutMs}ms</dd>
+                            <dt><strong>Returns</strong></dt><dd>{wh.returns || `inline (${wh.inlineReturnType.length} fields)`}</dd>
+                            <dt><strong>Visible To</strong></dt><dd>{wh.visibleTo.join(", ") || "all"}</dd>
+                            <dt><strong>Domain</strong></dt><dd>{wh.domainId || "—"}</dd>
+                            <dt><strong>Description</strong></dt><dd>{wh.description || "—"}</dd>
+                            <dt><strong>Arguments</strong></dt><dd>{wh.arguments.length === 0 ? "none" : wh.arguments.map((a) => `${a.name}: ${a.type}`).join(", ")}</dd>
+                            {wh.inlineReturnType.length > 0 && (
+                              <>
+                                <dt><strong>Inline Fields</strong></dt><dd>{wh.inlineReturnType.map((f) => `${f.name}: ${f.type}`).join(", ")}</dd>
+                              </>
+                            )}
+                          </dl>
+                          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
+                            <button
+                              className="btn-secondary btn-sm"
+                              onClick={(e) => { e.stopPropagation(); handleEdit("webhook", wh.name); }}
+                            >Edit</button>
+                            <button
+                              className="btn-secondary btn-sm"
+                              onClick={(e) => { e.stopPropagation(); handleTest("webhook", wh.name); }}
+                              disabled={testing === wh.name}
+                            >{testing === wh.name ? "Testing..." : "Test"}</button>
+                            <ConfirmDialog
+                              title={`Delete webhook "${wh.name}"?`}
+                              consequence="This will remove the webhook from the schema."
+                              onConfirm={async () => { await deleteWebhook(wh.name); setExpandedWh(null); load(); }}
+                            >
+                              {(open) => (
+                                <button className="btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); open(); }}>Delete</button>
+                              )}
+                            </ConfirmDialog>
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          })}
         </tbody>
       </table>
 

@@ -1,0 +1,16 @@
+id,first_name,last_name,email,phone,city,state,country,created_at,lifetime_value
+1,Alice,Johnson,alice@example.com,555-0101,New York,NY,US,2023-01-15,4250.00
+2,Bob,Smith,bob@example.com,555-0102,Los Angeles,CA,US,2023-02-20,1875.50
+3,Carol,Williams,carol@example.com,555-0103,Chicago,IL,US,2023-03-10,6100.75
+4,David,Brown,david@example.com,555-0104,Houston,TX,US,2023-04-05,920.00
+5,Eve,Jones,eve@example.com,555-0105,Phoenix,AZ,US,2023-05-18,3450.25
+6,Frank,Garcia,frank@example.com,555-0106,Philadelphia,PA,US,2023-06-22,780.00
+7,Grace,Martinez,grace@example.com,555-0107,San Antonio,TX,US,2023-07-14,5200.00
+8,Hank,Lopez,hank@example.com,555-0108,San Diego,CA,US,2023-08-09,2100.50
+9,Iris,Gonzalez,iris@example.com,555-0109,Dallas,TX,US,2023-09-03,330.00
+10,Jack,Wilson,jack@example.com,555-0110,San Jose,CA,US,2023-10-27,8900.00
+11,Karen,Anderson,karen@example.com,555-0111,Austin,TX,US,2023-11-12,1560.75
+12,Liam,Thomas,liam@example.com,555-0112,Jacksonville,FL,US,2023-12-01,4470.00
+13,Mia,Taylor,mia@example.com,555-0113,Fort Worth,TX,US,2024-01-08,670.25
+14,Noah,Moore,noah@example.com,555-0114,Columbus,OH,US,2024-02-14,2890.00
+15,Olivia,Jackson,olivia@example.com,555-0115,Charlotte,NC,US,2024-03-30,11200.00

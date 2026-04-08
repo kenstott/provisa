@@ -30,6 +30,19 @@ sources:
     username: ""
     password: ""
 
+  # File-based sources (Issue #27)
+  - id: demo-customers-csv
+    type: csv
+    path: ./demo/files/customers.csv
+
+  - id: demo-products-parquet
+    type: parquet
+    path: ./demo/files/products.parquet
+
+  - id: demo-orders-sqlite
+    type: sqlite
+    path: ./demo/files/orders.sqlite
+
 domains:
   - id: sales-analytics
     description: Sales operational and analytical data

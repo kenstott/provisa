@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Kenneth Stott
+# Canary: dc1a39a3-3106-4421-ad4d-2bbfd2031758
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Generate Provisa.app icon in all required macOS iconset sizes.
 
 Self-installs Pillow if not present. Outputs:

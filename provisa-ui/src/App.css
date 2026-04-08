@@ -226,27 +226,44 @@ body {
 }
 .multiselect-option:hover { background: var(--surface); }
 
-/* Admin tabs */
+/* Admin tabs — folder tab style */
 .admin-tabs {
   display: flex;
-  gap: 0;
+  gap: 2px;
+  align-items: flex-end;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 1.5rem;
+  margin-bottom: 0;
+  padding: 0 0.25rem;
 }
 .admin-tab {
-  padding: 0.5rem 1rem;
+  position: relative;
+  padding: 0.4rem 1rem;
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--text-muted);
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
   cursor: pointer;
+  top: 1px;
+  transition: color 0.15s, background 0.15s;
 }
-.admin-tab:hover { color: var(--text); }
+.admin-tab:hover { color: var(--text); background: var(--surface); }
 .admin-tab.active {
-  color: var(--primary);
-  border-bottom-color: var(--primary);
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border);
+  border-bottom: 1px solid var(--surface);
+  z-index: 1;
+}
+.admin-tab-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
 }
 
 /* Status badges */
@@ -462,6 +479,56 @@ body {
 }
 .view-sql-editor .cm-editor { font-size: 13px; }
 .view-editor-actions { display: flex; gap: 0.5rem; }
+
+/* View list row selection */
+.data-table tr.row-selected { background: var(--border); }
+.data-table tr.row-selected:hover { background: var(--border); }
+
+/* View detail panel */
+.view-detail-panel {
+  background: var(--surface);
+  border-radius: 8px;
+  margin-top: 1rem;
+  overflow: hidden;
+}
+.view-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.875rem;
+}
+.view-detail-body {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.view-detail-row {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.875rem;
+}
+.view-detail-label {
+  min-width: 8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.view-detail-sql { align-items: flex-start; }
+.view-detail-sql-pre {
+  margin: 0;
+  font-family: monospace;
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--bg);
+  padding: 0.5rem;
+  border-radius: 4px;
+  flex: 1;
+  max-height: 200px;
+  overflow-y: auto;
+}
 
 /* Sample data panel */
 .sample-panel {

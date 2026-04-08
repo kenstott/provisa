@@ -27,7 +27,12 @@
       "mcp__github__update_issue",
       "mcp__github__list_issues",
       "mcp__github__get_issue",
-      "mcp__filesystem__list_directory"
+      "mcp__filesystem__list_directory",
+      "mcp__github__add_issue_comment",
+      "mcp__puppeteer__puppeteer_navigate",
+      "mcp__puppeteer__puppeteer_screenshot",
+      "mcp__puppeteer__puppeteer_click",
+      "mcp__puppeteer__puppeteer_evaluate"
     ]
   },
   "enabledMcpjsonServers": [

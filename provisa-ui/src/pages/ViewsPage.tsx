@@ -39,7 +39,9 @@ export function ViewsPage() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [tables, setTables] = useState<RegisteredTable[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<ViewConfig | null>(null);
+  const [isNew, setIsNew] = useState(false);
   const [sampleData, setSampleData] = useState<{
     viewId: string;
     columns: string[];
@@ -50,16 +52,12 @@ export function ViewsPage() {
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
 
-  // Build CodeMirror schema map: { schemaName: { tableName: [cols] } }
   const sqlSchema = useMemo(() => {
     const schema: Record<string, Record<string, string[]> | string[]> = {};
     for (const t of tables) {
       const cols = t.columns.map((c) => c.columnName);
-      // Add bare table name for unqualified access
       schema[t.tableName] = cols;
-      // Add alias as an additional table name if present
       if (t.alias) schema[t.alias] = cols;
-      // Add schema-qualified: schemaName.tableName
       if (t.schemaName) {
         if (!schema[t.schemaName] || Array.isArray(schema[t.schemaName])) {
           schema[t.schemaName] = {} as Record<string, string[]>;
@@ -75,7 +73,6 @@ export function ViewsPage() {
       sql({
         dialect: PostgreSQL,
         schema: sqlSchema,
-        // Lower keyword priority so table/column names rank higher
         keywordCompletion: (kw: string, type: string) => ({
           label: kw,
           type,
@@ -97,15 +94,19 @@ export function ViewsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleEdit = (view: ViewConfig) => {
-    setEditing({ ...view, columns: view.columns || [] });
+  const handleNew = () => {
+    setEditing({ ...EMPTY_VIEW });
+    setIsNew(true);
+    setExpanded(null);
     setSampleData(null);
     setError("");
     setMsg("");
   };
 
-  const handleNew = () => {
-    setEditing({ ...EMPTY_VIEW });
+  const handleEdit = (view: ViewConfig) => {
+    setEditing({ ...view, columns: view.columns || [] });
+    setIsNew(false);
+    setExpanded(view.id);
     setSampleData(null);
     setError("");
     setMsg("");
@@ -113,6 +114,7 @@ export function ViewsPage() {
 
   const handleCancel = () => {
     setEditing(null);
+    setIsNew(false);
     setError("");
     setMsg("");
   };
@@ -131,6 +133,7 @@ export function ViewsPage() {
       if (result.success) {
         setMsg(result.message);
         setEditing(null);
+        setIsNew(false);
         load();
       } else {
         setError(result.message);
@@ -146,11 +149,13 @@ export function ViewsPage() {
     setError("");
     try {
       await deleteView(id);
+      if (expanded === id) setExpanded(null);
+      if (editing?.id === id) { setEditing(null); setIsNew(false); }
       load();
     } catch (e: any) {
       setError(e.message);
     }
-  }, [load]);
+  }, [load, expanded, editing]);
 
   const handleSample = useCallback(async (id: string) => {
     setSampling(id);
@@ -171,6 +176,82 @@ export function ViewsPage() {
     setEditing({ ...editing, [key]: value });
   };
 
+  const renderEditForm = () => (
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <div className="form-row">
+        <label>
+          ID
+          <input
+            value={editing!.id}
+            onChange={(e) => updateEditing("id", e.target.value)}
+            placeholder="monthly-revenue"
+            disabled={!isNew}
+          />
+        </label>
+        <label>
+          Domain
+          <select value={editing!.domain_id} onChange={(e) => updateEditing("domain_id", e.target.value)}>
+            <option value="">Select...</option>
+            {domains.map((d) => <option key={d.id} value={d.id}>{d.id}</option>)}
+          </select>
+        </label>
+        <label>
+          Governance
+          <select value={editing!.governance} onChange={(e) => updateEditing("governance", e.target.value)}>
+            <option value="pre-approved">pre-approved</option>
+            <option value="registry-required">registry-required</option>
+          </select>
+        </label>
+      </div>
+      <div className="form-row">
+        <label style={{ flex: 2 }}>
+          Description
+          <input
+            value={editing!.description || ""}
+            onChange={(e) => updateEditing("description", e.target.value)}
+            placeholder="What this view represents"
+          />
+        </label>
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={editing!.materialize}
+            onChange={(e) => updateEditing("materialize", e.target.checked)}
+          />
+          Materialize
+        </label>
+        {editing!.materialize && (
+          <label>
+            Refresh (s)
+            <input
+              type="number"
+              value={editing!.refresh_interval || 300}
+              onChange={(e) => updateEditing("refresh_interval", parseInt(e.target.value) || 300)}
+            />
+          </label>
+        )}
+      </div>
+      <label className="view-sql-label">
+        SQL
+        <div className="view-sql-editor">
+          <CodeMirror
+            value={editing!.sql}
+            height="200px"
+            theme={oneDark}
+            extensions={sqlExtensions}
+            onChange={(value) => updateEditing("sql", value)}
+          />
+        </div>
+      </label>
+      <div className="view-editor-actions">
+        <button className="btn-primary" onClick={handleSave} disabled={saving}>
+          {saving ? "Saving..." : "Save"}
+        </button>
+        <button className="btn-secondary" onClick={handleCancel}>Cancel</button>
+      </div>
+    </div>
+  );
+
   if (loading) return <div className="page">Loading views...</div>;
 
   return (
@@ -178,10 +259,8 @@ export function ViewsPage() {
       <div className="page-header">
         <h2>Views</h2>
         <div className="page-actions">
-          {!editing && (
-            <button className="btn-primary" onClick={handleNew}>
-              New View
-            </button>
+          {!isNew && (
+            <button className="btn-primary" onClick={handleNew}>New View</button>
           )}
         </div>
       </div>
@@ -189,91 +268,9 @@ export function ViewsPage() {
       {error && <div className="error">{error}</div>}
       {msg && <div style={{ color: "var(--approve)", marginBottom: "1rem", fontSize: "0.875rem" }}>{msg}</div>}
 
-      {editing && (
+      {isNew && editing && (
         <div className="view-editor">
-          <div className="form-row">
-            <label>
-              ID
-              <input
-                value={editing.id}
-                onChange={(e) => updateEditing("id", e.target.value)}
-                placeholder="monthly-revenue"
-                disabled={views.some((v) => v.id === editing.id)}
-              />
-            </label>
-            <label>
-              Domain
-              <select
-                value={editing.domain_id}
-                onChange={(e) => updateEditing("domain_id", e.target.value)}
-              >
-                <option value="">Select...</option>
-                {domains.map((d) => (
-                  <option key={d.id} value={d.id}>{d.id}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Governance
-              <select
-                value={editing.governance}
-                onChange={(e) => updateEditing("governance", e.target.value)}
-              >
-                <option value="pre-approved">pre-approved</option>
-                <option value="registry-required">registry-required</option>
-              </select>
-            </label>
-          </div>
-          <div className="form-row">
-            <label style={{ flex: 2 }}>
-              Description
-              <input
-                value={editing.description || ""}
-                onChange={(e) => updateEditing("description", e.target.value)}
-                placeholder="What this view represents"
-              />
-            </label>
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={editing.materialize}
-                onChange={(e) => updateEditing("materialize", e.target.checked)}
-              />
-              Materialize
-            </label>
-            {editing.materialize && (
-              <label>
-                Refresh (s)
-                <input
-                  type="number"
-                  value={editing.refresh_interval || 300}
-                  onChange={(e) =>
-                    updateEditing("refresh_interval", parseInt(e.target.value) || 300)
-                  }
-                />
-              </label>
-            )}
-          </div>
-          <label className="view-sql-label">
-            SQL
-            <div className="view-sql-editor">
-              <CodeMirror
-                value={editing.sql}
-                height="200px"
-                theme={oneDark}
-                extensions={sqlExtensions}
-                onChange={(value) => updateEditing("sql", value)}
-              />
-            </div>
-          </label>
-          <div className="view-editor-actions">
-            <button className="btn-primary" onClick={handleSave} disabled={saving}>
-              {saving ? "Saving..." : "Save"}
-            </button>
-            <button className="btn-secondary" onClick={handleCancel}>
-              Cancel
-            </button>
-          </div>
+          {renderEditForm()}
         </div>
       )}
 
@@ -286,40 +283,68 @@ export function ViewsPage() {
             <th>Governance</th>
             <th>Materialized</th>
             <th>Columns</th>
-            <th></th>
           </tr>
         </thead>
         <tbody>
-          {views.map((v) => (
-            <tr key={v.id}>
-              <td><code>{v.id}</code></td>
-              <td className="reasoning-cell">{v.description || ""}</td>
-              <td>{v.domain_id}</td>
-              <td>{v.governance}</td>
-              <td>{v.materialize ? "Yes" : "No"}</td>
-              <td>{v.columns?.length || 0}</td>
-              <td>
-                <div style={{ display: "flex", gap: "0.25rem" }}>
-                  <button className="btn-sm btn-secondary" onClick={() => handleEdit(v)}>
-                    Edit
-                  </button>
-                  <button
-                    className="btn-sm btn-secondary"
-                    onClick={() => handleSample(v.id)}
-                    disabled={sampling === v.id}
-                  >
-                    {sampling === v.id ? "..." : "Sample"}
-                  </button>
-                  <button className="btn-sm btn-danger" onClick={() => handleDelete(v.id)}>
-                    Delete
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
+          {views.map((v) => {
+            const isExpanded = expanded === v.id;
+            const isEditing = editing?.id === v.id && !isNew;
+            return (
+              <>
+                <tr
+                  key={v.id}
+                  onClick={() => {
+                    if (isExpanded) {
+                      setExpanded(null);
+                      if (isEditing) { setEditing(null); setIsNew(false); }
+                    } else {
+                      setExpanded(v.id);
+                      if (editing && !isNew) { setEditing(null); setIsNew(false); }
+                    }
+                    setSampleData(null);
+                  }}
+                  style={{ cursor: "pointer", background: isExpanded ? "var(--color-row-selected, #e8f0fe)" : undefined }}
+                >
+                  <td><code>{v.id}</code></td>
+                  <td className="reasoning-cell">{v.description || ""}</td>
+                  <td>{v.domain_id}</td>
+                  <td>{v.governance}</td>
+                  <td>{v.materialize ? "Yes" : "No"}</td>
+                  <td>{v.columns?.length || 0}</td>
+                </tr>
+                {isExpanded && (
+                  <tr key={`${v.id}-detail`}>
+                    <td colSpan={6} style={{ padding: "0.75rem 1rem", background: "var(--surface-secondary, #f8f9fa)" }}>
+                      {isEditing ? renderEditForm() : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                          <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0 }}>
+                            <dt><strong>Domain</strong></dt><dd>{v.domain_id || "—"}</dd>
+                            <dt><strong>Governance</strong></dt><dd>{v.governance}</dd>
+                            <dt><strong>Materialized</strong></dt><dd>{v.materialize ? `Yes (${v.refresh_interval}s)` : "No"}</dd>
+                            <dt><strong>Columns</strong></dt><dd>{v.columns?.length || 0}</dd>
+                            {v.description && <><dt><strong>Description</strong></dt><dd>{v.description}</dd></>}
+                            <dt><strong>SQL</strong></dt><dd><pre style={{ margin: 0, fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>{v.sql}</pre></dd>
+                          </dl>
+                          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
+                            <button className="btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); handleEdit(v); }}>Edit</button>
+                            <button
+                              className="btn-secondary btn-sm"
+                              onClick={(e) => { e.stopPropagation(); handleSample(v.id); }}
+                              disabled={sampling === v.id}
+                            >{sampling === v.id ? "..." : "Sample"}</button>
+                            <button className="btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); handleDelete(v.id); }}>Delete</button>
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </>
+            );
+          })}
           {views.length === 0 && (
             <tr>
-              <td colSpan={7} style={{ textAlign: "center", color: "var(--text-muted)" }}>
+              <td colSpan={6} style={{ textAlign: "center", color: "var(--text-muted)" }}>
                 No views defined. Click "New View" to create one.
               </td>
             </tr>
@@ -332,18 +357,12 @@ export function ViewsPage() {
           <div className="sample-header">
             <strong>Sample: {sampleData.viewId}</strong>
             <span className="query-hint">{sampleData.rows.length} rows (limit 20)</span>
-            <button className="btn-sm btn-secondary" onClick={() => setSampleData(null)}>
-              Close
-            </button>
+            <button className="btn-sm btn-secondary" onClick={() => setSampleData(null)}>Close</button>
           </div>
           <div className="sample-table-wrapper">
             <table className="data-table">
               <thead>
-                <tr>
-                  {sampleData.columns.map((col) => (
-                    <th key={col}>{col}</th>
-                  ))}
-                </tr>
+                <tr>{sampleData.columns.map((col) => <th key={col}>{col}</th>)}</tr>
               </thead>
               <tbody>
                 {sampleData.rows.map((row, i) => (

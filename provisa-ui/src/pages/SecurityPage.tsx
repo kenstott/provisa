@@ -120,13 +120,17 @@ export function SecurityPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  // Roles
   const [showRoleForm, setShowRoleForm] = useState(false);
   const [roleForm, setRoleForm] = useState(EMPTY_ROLE);
-  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const [expandedRole, setExpandedRole] = useState<string | null>(null);
+  const [editingRoleInRow, setEditingRoleInRow] = useState<string | null>(null);
 
+  // RLS Rules
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [ruleForm, setRuleForm] = useState(EMPTY_RULE);
-  const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
+  const [expandedRule, setExpandedRule] = useState<number | null>(null);
+  const [editingRuleInRow, setEditingRuleInRow] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -150,20 +154,8 @@ export function SecurityPage() {
   );
 
   // --- Role handlers ---
-  const handleEditRole = (role: Role) => {
-    setRoleForm({
-      id: role.id,
-      capabilities: [...role.capabilities],
-      domainAccess: [...role.domain_access],
-    });
-    setEditingRoleId(role.id);
-    setShowRoleForm(true);
-    setError("");
-  };
-
   const handleNewRole = () => {
     setRoleForm({ ...EMPTY_ROLE });
-    setEditingRoleId(null);
     setShowRoleForm(true);
     setError("");
   };
@@ -177,7 +169,7 @@ export function SecurityPage() {
       if (!res.success) { setError(res.message); return; }
       setShowRoleForm(false);
       setRoleForm({ ...EMPTY_ROLE });
-      setEditingRoleId(null);
+      setEditingRoleInRow(null);
       await load();
     } catch (e: any) {
       setError(e.message);
@@ -191,12 +183,23 @@ export function SecurityPage() {
     setError("");
     try {
       await deleteRole(id);
+      if (expandedRole === id) setExpandedRole(null);
       await load();
     } catch (e: any) {
       setError(e.message);
     } finally {
       setSaving(false);
     }
+  };
+
+  const startEditingRole = (role: Role) => {
+    setRoleForm({
+      id: role.id,
+      capabilities: [...role.capabilities],
+      domainAccess: [...role.domain_access],
+    });
+    setEditingRoleInRow(role.id);
+    setError("");
   };
 
   const toggleCapability = (cap: Capability) => {
@@ -208,31 +211,9 @@ export function SecurityPage() {
     }));
   };
 
-  const toggleDomain = (domain: string) => {
-    setRoleForm((f) => ({
-      ...f,
-      domainAccess: f.domainAccess.includes(domain)
-        ? f.domainAccess.filter((d) => d !== domain)
-        : [...f.domainAccess, domain],
-    }));
-  };
-
   // --- RLS Rule handlers ---
-  const handleEditRule = (rule: RLSRule) => {
-    const tableName = tableNameById[rule.tableId] ?? String(rule.tableId);
-    setRuleForm({
-      tableId: tableName,
-      roleId: rule.roleId,
-      filterExpr: rule.filterExpr,
-    });
-    setEditingRuleId(rule.id);
-    setShowRuleForm(true);
-    setError("");
-  };
-
   const handleNewRule = () => {
     setRuleForm({ ...EMPTY_RULE });
-    setEditingRuleId(null);
     setShowRuleForm(true);
     setError("");
   };
@@ -246,7 +227,7 @@ export function SecurityPage() {
       if (!res.success) { setError(res.message); return; }
       setShowRuleForm(false);
       setRuleForm({ ...EMPTY_RULE });
-      setEditingRuleId(null);
+      setEditingRuleInRow(null);
       await load();
     } catch (e: any) {
       setError(e.message);
@@ -260,12 +241,24 @@ export function SecurityPage() {
     setError("");
     try {
       await deleteRlsRule(rule.tableId, rule.roleId);
+      if (expandedRule === rule.id) setExpandedRule(null);
       await load();
     } catch (e: any) {
       setError(e.message);
     } finally {
       setSaving(false);
     }
+  };
+
+  const startEditingRule = (rule: RLSRule) => {
+    const tableName = tableNameById[rule.tableId] ?? String(rule.tableId);
+    setRuleForm({
+      tableId: tableName,
+      roleId: rule.roleId,
+      filterExpr: rule.filterExpr,
+    });
+    setEditingRuleInRow(rule.id);
+    setError("");
   };
 
   if (loading) return <div className="page">Loading security config...</div>;
@@ -278,7 +271,10 @@ export function SecurityPage() {
       <div className="page-header">
         <h2>Roles</h2>
         <div className="page-actions">
-          <button className="btn-primary" onClick={() => showRoleForm ? (setShowRoleForm(false), setEditingRoleId(null)) : handleNewRole()}>
+          <button className="btn-primary" onClick={() => {
+            if (showRoleForm) { setShowRoleForm(false); }
+            else { setExpandedRole(null); handleNewRole(); }
+          }}>
             {showRoleForm ? "Cancel" : "Add Role"}
           </button>
         </div>
@@ -293,7 +289,6 @@ export function SecurityPage() {
                 value={roleForm.id}
                 onChange={(e) => setRoleForm({ ...roleForm, id: e.target.value })}
                 placeholder="analyst"
-                disabled={editingRoleId !== null}
               />
             </label>
           </div>
@@ -332,19 +327,74 @@ export function SecurityPage() {
 
       <table className="data-table">
         <thead>
-          <tr><th>ID</th><th>Capabilities</th><th>Domain Access</th><th></th></tr>
+          <tr><th>ID</th><th>Capabilities</th><th>Domain Access</th></tr>
         </thead>
         <tbody>
           {roles.map((r) => (
-            <tr key={r.id}>
-              <td>{r.id}</td>
-              <td>{r.capabilities.join(", ")}</td>
-              <td>{r.domain_access.join(", ")}</td>
-              <td style={{ whiteSpace: "nowrap" }}>
-                <button className="btn-secondary btn-sm" onClick={() => handleEditRole(r)}>Edit</button>{" "}
-                <button className="btn-danger btn-sm" onClick={() => handleDeleteRole(r.id)}>Delete</button>
-              </td>
-            </tr>
+            <>
+              <tr
+                key={r.id}
+                style={{ cursor: "pointer", background: expandedRole === r.id ? "var(--row-selected, #e8f0fe)" : undefined }}
+                onClick={() => { setExpandedRole(expandedRole === r.id ? null : r.id); setEditingRoleInRow(null); }}
+              >
+                <td>{r.id}</td>
+                <td>{r.capabilities.join(", ")}</td>
+                <td>{r.domain_access.join(", ")}</td>
+              </tr>
+              {expandedRole === r.id && (
+                <tr key={`${r.id}-detail`}>
+                  <td colSpan={3} style={{ padding: "0.75rem 1rem", background: "var(--surface-secondary, #f8f9fa)" }}>
+                    {editingRoleInRow !== r.id ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                        <div><strong>ID:</strong> {r.id}</div>
+                        <div><strong>Capabilities:</strong> {r.capabilities.join(", ") || "none"}</div>
+                        <div><strong>Domain Access:</strong> {r.domain_access.join(", ") || "none"}</div>
+                        <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
+                          <button className="btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); startEditingRole(r); }}>Edit</button>
+                          <button className="btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); handleDeleteRole(r.id); }}>Delete</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                        <div className="form-row">
+                          <label>
+                            Capabilities
+                            <div className="checkbox-grid">
+                              {ALL_CAPABILITIES.map((cap) => (
+                                <label key={cap} className="checkbox-label">
+                                  <input
+                                    type="checkbox"
+                                    checked={roleForm.capabilities.includes(cap)}
+                                    onChange={() => toggleCapability(cap)}
+                                  />
+                                  {cap}
+                                </label>
+                              ))}
+                            </div>
+                          </label>
+                        </div>
+                        <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.875rem", color: "var(--text-muted)" }}>
+                          Domain Access
+                          <MultiSelect
+                            options={[{ id: "*", label: "All Domains" }, ...domains.map((d) => ({ id: d.id, label: d.id }))]}
+                            value={roleForm.domainAccess}
+                            onChange={(selected) => setRoleForm({ ...roleForm, domainAccess: selected })}
+                          />
+                        </label>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <button className="btn-primary btn-sm" onClick={handleSaveRole} disabled={saving}>
+                            {saving ? "Saving..." : "Save"}
+                          </button>
+                          <button className="btn-secondary btn-sm" onClick={() => setEditingRoleInRow(null)}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              )}
+            </>
           ))}
         </tbody>
       </table>
@@ -353,7 +403,10 @@ export function SecurityPage() {
       <div className="page-header">
         <h2>RLS Rules</h2>
         <div className="page-actions">
-          <button className="btn-primary" onClick={() => showRuleForm ? (setShowRuleForm(false), setEditingRuleId(null)) : handleNewRule()}>
+          <button className="btn-primary" onClick={() => {
+            if (showRuleForm) { setShowRuleForm(false); }
+            else { setExpandedRule(null); handleNewRule(); }
+          }}>
             {showRuleForm ? "Cancel" : "Add RLS Rule"}
           </button>
         </div>
@@ -407,20 +460,85 @@ export function SecurityPage() {
 
       <table className="data-table">
         <thead>
-          <tr><th>ID</th><th>Table</th><th>Role</th><th>Filter</th><th></th></tr>
+          <tr><th>ID</th><th>Table</th><th>Role</th><th>Filter</th></tr>
         </thead>
         <tbody>
           {rules.map((r) => (
-            <tr key={r.id}>
-              <td>{r.id}</td>
-              <td>{tableNameById[r.tableId] ?? r.tableId}</td>
-              <td>{r.roleId}</td>
-              <td><code>{r.filterExpr}</code></td>
-              <td>
-                <button className="btn-secondary btn-sm" onClick={() => handleEditRule(r)}>Edit</button>
-                <button className="btn-danger btn-sm" onClick={() => handleDeleteRule(r)}>Delete</button>
-              </td>
-            </tr>
+            <>
+              <tr
+                key={r.id}
+                style={{ cursor: "pointer", background: expandedRule === r.id ? "var(--row-selected, #e8f0fe)" : undefined }}
+                onClick={() => { setExpandedRule(expandedRule === r.id ? null : r.id); setEditingRuleInRow(null); }}
+              >
+                <td>{r.id}</td>
+                <td>{tableNameById[r.tableId] ?? r.tableId}</td>
+                <td>{r.roleId}</td>
+                <td><code>{r.filterExpr}</code></td>
+              </tr>
+              {expandedRule === r.id && (
+                <tr key={`${r.id}-detail`}>
+                  <td colSpan={4} style={{ padding: "0.75rem 1rem", background: "var(--surface-secondary, #f8f9fa)" }}>
+                    {editingRuleInRow !== r.id ? (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                        <div><strong>ID:</strong> {r.id}</div>
+                        <div><strong>Table:</strong> {tableNameById[r.tableId] ?? r.tableId}</div>
+                        <div><strong>Role:</strong> {r.roleId}</div>
+                        <div><strong>Filter:</strong> <code>{r.filterExpr}</code></div>
+                        <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
+                          <button className="btn-secondary btn-sm" onClick={(e) => { e.stopPropagation(); startEditingRule(r); }}>Edit</button>
+                          <button className="btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); handleDeleteRule(r); }}>Delete</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                        <div className="form-row">
+                          <label>
+                            Table
+                            <select
+                              value={ruleForm.tableId}
+                              onChange={(e) => setRuleForm({ ...ruleForm, tableId: e.target.value })}
+                            >
+                              <option value="">Select...</option>
+                              {tables.map((t) => (
+                                <option key={t.id} value={t.tableName}>{t.tableName}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Role
+                            <select
+                              value={ruleForm.roleId}
+                              onChange={(e) => setRuleForm({ ...ruleForm, roleId: e.target.value })}
+                            >
+                              <option value="">Select...</option>
+                              {roles.map((role) => (
+                                <option key={role.id} value={role.id}>{role.id}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label style={{ flex: 1 }}>
+                            Filter Expression
+                            <input
+                              value={ruleForm.filterExpr}
+                              onChange={(e) => setRuleForm({ ...ruleForm, filterExpr: e.target.value })}
+                              placeholder="region = 'US' AND status = 'active'"
+                            />
+                          </label>
+                        </div>
+                        <div style={{ display: "flex", gap: "0.5rem" }}>
+                          <button className="btn-primary btn-sm" onClick={handleSaveRule} disabled={saving}>
+                            {saving ? "Saving..." : "Save"}
+                          </button>
+                          <button className="btn-secondary btn-sm" onClick={() => setEditingRuleInRow(null)}>
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              )}
+            </>
           ))}
         </tbody>
       </table>

@@ -18,15 +18,16 @@ from provisa.core.models import Source
 async def upsert(conn: asyncpg.Connection, source: Source) -> None:
     await conn.execute(
         """
-        INSERT INTO sources (id, type, host, port, database, username, dialect)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO sources (id, type, host, port, database, username, dialect, path)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (id) DO UPDATE SET
             type = EXCLUDED.type,
             host = EXCLUDED.host,
             port = EXCLUDED.port,
             database = EXCLUDED.database,
             username = EXCLUDED.username,
-            dialect = EXCLUDED.dialect
+            dialect = EXCLUDED.dialect,
+            path = EXCLUDED.path
         """,
         source.id,
         source.type.value,
@@ -35,6 +36,7 @@ async def upsert(conn: asyncpg.Connection, source: Source) -> None:
         source.database,
         source.username,
         source.dialect or "",
+        source.path,
     )
 
 

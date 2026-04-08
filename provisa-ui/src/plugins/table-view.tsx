@@ -82,6 +82,8 @@ export function ResponseTableOverlay() {
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [responseText, setResponseText] = useState("");
+  const [copiedJson, setCopiedJson] = useState(false);
+  const [copiedCsv, setCopiedCsv] = useState(false);
   const editorContext = useEditorContext({ nonNull: true });
 
   // Poll for response editor value since GraphiQL doesn't re-render on content change
@@ -156,6 +158,30 @@ export function ResponseTableOverlay() {
     if (!responseText) return;
     downloadFile(responseText, "response.json", "application/json");
   }, [responseText, downloadFile]);
+
+  const handleCopyJSON = useCallback(() => {
+    if (!responseText) return;
+    navigator.clipboard.writeText(responseText).then(() => {
+      setCopiedJson(true);
+      setTimeout(() => setCopiedJson(false), 2000);
+    });
+  }, [responseText]);
+
+  const handleCopyCSV = useCallback(() => {
+    if (!currentTable || currentTable.columns.length === 0) return;
+    const escape = (v: unknown) => {
+      const s = v != null ? String(v) : "";
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+    const header = currentTable.columns.map(escape).join(",");
+    const body = currentTable.rows.map((row) => currentTable.columns.map((col) => escape(row[col])).join(",")).join("\n");
+    navigator.clipboard.writeText(`${header}\n${body}`).then(() => {
+      setCopiedCsv(true);
+      setTimeout(() => setCopiedCsv(false), 2000);
+    });
+  }, [currentTable]);
 
   const handleDownloadCSV = useCallback(() => {
     if (!currentTable || currentTable.columns.length === 0) return;
@@ -242,6 +268,22 @@ export function ResponseTableOverlay() {
           {" JSON"}
         </button>
         <button
+          onClick={handleCopyJSON}
+          disabled={!responseText}
+          title="Copy JSON to clipboard"
+        >
+          {copiedJson ? (
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+              <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+              <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z" />
+              <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z" />
+            </svg>
+          )}
+        </button>
+        <button
           onClick={handleDownloadCSV}
           disabled={!hasData}
           title="Download CSV"
@@ -251,6 +293,22 @@ export function ResponseTableOverlay() {
             <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z" />
           </svg>
           {" CSV"}
+        </button>
+        <button
+          onClick={handleCopyCSV}
+          disabled={!hasData}
+          title="Copy CSV to clipboard"
+        >
+          {copiedCsv ? (
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+              <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+              <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z" />
+              <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z" />
+            </svg>
+          )}
         </button>
       </div>
       {showTable && hasData && (

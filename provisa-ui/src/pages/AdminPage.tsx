@@ -137,6 +137,7 @@ export function AdminPage() {
         ))}
       </div>
 
+      <div className="admin-tab-content">
       {activeTab === "Overview" && (
         <>
           <div className="stats-grid">
@@ -319,6 +320,7 @@ export function AdminPage() {
       {activeTab === "Cache" && <CacheManager />}
       {activeTab === "Scheduled Tasks" && <ScheduledTasks />}
       {activeTab === "System Health" && <SystemHealth />}
+      </div>
     </div>
   );
 }

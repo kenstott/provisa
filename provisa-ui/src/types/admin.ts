@@ -21,6 +21,7 @@ export interface Source {
   cacheEnabled: boolean;
   cacheTtl: number | null;
   namingConvention: string | null;
+  path: string | null;
 }
 
 export interface Domain {

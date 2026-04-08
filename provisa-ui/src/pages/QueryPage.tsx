@@ -20,6 +20,7 @@ import "./QueryPage.css";
 import { useAuth } from "../context/AuthContext";
 import { provisaToolsPlugin } from "../plugins/provisa-tools";
 import { ResponseTableOverlay } from "../plugins/table-view";
+import { HeadersQuickInsert } from "../plugins/headers-quick-insert";
 import {
   useGraphiQL,
   useGraphiQLActions,
@@ -318,9 +319,10 @@ function createProvisaFetch(
       });
     }
 
+    const body = await res.text();
     return new Response(
       JSON.stringify({
-        data: { __error: { message: `Unexpected content type: ${contentType}` } },
+        errors: [{ message: body || `HTTP ${res.status}` }],
       }),
       { status: 200, headers: { "content-type": "application/json" } },
     );
@@ -412,6 +414,7 @@ export function QueryPage() {
       >
         <GraphiQL.Footer>
           <ResponseTableOverlay />
+          <HeadersQuickInsert />
         </GraphiQL.Footer>
       </GraphiQL>
     </div>

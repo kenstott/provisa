@@ -31,6 +31,9 @@ _ADAPTER_MAP: dict[str, str] = {
     "cassandra": "provisa.cassandra.source",
     "prometheus": "provisa.prometheus.source",
     "accumulo": "provisa.accumulo.source",
+    "sqlite": "provisa.file_source.source",
+    "csv": "provisa.file_source.source",
+    "parquet": "provisa.file_source.source",
 }
 
 _loaded: dict[str, ModuleType] = {}

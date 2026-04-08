@@ -72,7 +72,9 @@ function SqlPanel({ compiled }: { compiled: CompileResult }) {
         <div>
           <strong>Route:</strong> {compiled.route === 'virtual' ? 'federated' : compiled.route}
         </div>
-        <div className="provisa-tools-reason">{compiled.route_reason}</div>
+        {compiled.route_reason && !compiled.route_reason.startsWith("steward override") && (
+          <div className="provisa-tools-reason">{compiled.route_reason}</div>
+        )}
         <div>
           <strong>Sources:</strong> {compiled.sources.join(", ")}
         </div>
@@ -87,11 +89,11 @@ function SqlPanel({ compiled }: { compiled: CompileResult }) {
           </ul>
         </div>
       )}
-      {compiled.optimizations && compiled.optimizations.length > 0 && (
+      {compiled.optimizations && compiled.optimizations.filter(o => !o.startsWith("route-override")).length > 0 && (
         <div className="provisa-tools-optimizations">
           <span className="provisa-tools-label">Optimizations</span>
           <ul className="provisa-tools-optimizations-list">
-            {compiled.optimizations.map((opt, i) => (
+            {compiled.optimizations.filter(o => !o.startsWith("route-override")).map((opt, i) => (
               <li key={i}>{opt}</li>
             ))}
           </ul>

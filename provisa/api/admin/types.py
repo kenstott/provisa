@@ -27,6 +27,7 @@ class SourceType:
     cache_enabled: bool
     cache_ttl: int | None
     naming_convention: str | None
+    path: str | None
 
 
 @strawberry.type
@@ -115,11 +116,12 @@ class RLSRuleType:
 class SourceInput:
     id: str
     type: str
-    host: str
-    port: int
-    database: str
-    username: str
-    password: str
+    host: str = ""
+    port: int = 0
+    database: str = ""
+    username: str = ""
+    password: str = ""
+    path: str | None = None
 
 
 @strawberry.input

@@ -3,16 +3,16 @@
 CREATE TABLE IF NOT EXISTS sources (
     id            TEXT PRIMARY KEY,
     type          TEXT NOT NULL,
-    host          TEXT NOT NULL,
-    port          INTEGER NOT NULL,
-    database      TEXT NOT NULL,
-    username      TEXT NOT NULL,
+    host          TEXT NOT NULL DEFAULT '',
+    port          INTEGER NOT NULL DEFAULT 0,
+    database      TEXT NOT NULL DEFAULT '',
+    username      TEXT NOT NULL DEFAULT '',
     dialect       TEXT NOT NULL DEFAULT '',
     cache_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     cache_ttl     INTEGER,
-    naming_convention TEXT
+    naming_convention TEXT,
+    path          TEXT  -- file path or URL for file-based sources (csv, parquet, sqlite)
     -- password never stored; resolved at runtime via secrets provider
-
 );
 
 CREATE TABLE IF NOT EXISTS domains (
@@ -74,6 +74,7 @@ DO $$ BEGIN
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_precision TEXT;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_enabled BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS path TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
