@@ -87,16 +87,17 @@ download_lima() {
     chmod +x "${BIN_DIR}/${arch}/limactl"
   done
 
-  # Bundle Linux-aarch64 guest agent alongside limactl binaries.
-  # Lima 2.x resolves share/lima/ relative to the limactl binary dir:
-  #   limactl at bin/arm64/limactl → Lima looks in bin/share/lima/
-  # Kept as .gz — codesign ignores non-code files; Lima decompresses internally.
-  local guest_dir="${BIN_DIR}/share/lima"
+  # Bundle Linux-aarch64 guest agent in Resources/ (NOT Contents/MacOS/).
+  # Codesign rejects any file under Contents/MacOS/ as an unsigned code object.
+  # first-launch.sh stages the gz to ~/.provisa/share/lima/ and creates a
+  # symlink ~/.provisa/bin/limactl → real limactl so Lima's SelfDirs() resolves
+  # share/lima/ relative to ~/.provisa/bin/ — outside the signed bundle.
+  local guest_dir="${APP_BUNDLE}/Contents/Resources/lima-guest-agents"
   mkdir -p "$guest_dir"
   local guest_gz="${tmp}/arm64/share/lima/lima-guestagent.Linux-aarch64.gz"
   if [ -f "$guest_gz" ]; then
     cp "$guest_gz" "${guest_dir}/lima-guestagent.Linux-aarch64.gz"
-    ok "Lima guest agent bundled (compressed)."
+    ok "Lima guest agent bundled (compressed) in Resources/."
   else
     err "lima-guestagent.Linux-aarch64.gz not found in Lima tarball"
     exit 1

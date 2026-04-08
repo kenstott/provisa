@@ -21,7 +21,11 @@ case "$ARCH" in
     ;;
 esac
 
-LIMACTL="${BUNDLE_DIR}/MacOS/bin/${BIN_ARCH}/limactl"
+# Real limactl inside the signed bundle
+LIMACTL_REAL="${BUNDLE_DIR}/MacOS/bin/${BIN_ARCH}/limactl"
+# Symlink at ~/.provisa/bin/limactl — Lima's SelfDirs() uses os.Args[0] (symlink-aware)
+# so Lima resolves share/lima/ relative to ~/.provisa/bin/, not inside the bundle.
+LIMACTL="${PROVISA_HOME}/bin/limactl"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
 info() { printf "${CYAN}[provisa]${NC} %s\n" "$*"; }
@@ -125,6 +129,37 @@ provision:
       #!/bin/bash
       systemctl enable --now containerd || true
 YAML
+}
+
+# ── Install guest agent and create limactl symlink ────────────────────────────
+# Lima 2.x (usrlocal.GuestAgentBinary) resolves the guest agent at:
+#   {limactl_binary_dir}/../share/lima/
+# SelfDirs() uses os.Args[0] (symlink-aware, NOT os.Executable()).
+# So invoking limactl via ~/.provisa/bin/limactl (symlink) makes Lima look in
+# ~/.provisa/share/lima/ — outside the codesign-protected bundle.
+install_guest_agent() {
+  local guest_agents_src="${RESOURCES}/lima-guest-agents"
+  local lima_share="${PROVISA_HOME}/share/lima"
+  local lima_bin="${PROVISA_HOME}/bin"
+
+  mkdir -p "$lima_share" "$lima_bin"
+
+  # Stage gz (Lima decompresses internally on first VM start)
+  local gz_name="lima-guestagent.Linux-aarch64.gz"
+  if [ ! -f "${lima_share}/${gz_name}" ]; then
+    if [ ! -f "${guest_agents_src}/${gz_name}" ]; then
+      err "Guest agent not found in bundle: ${guest_agents_src}/${gz_name}"
+      exit 1
+    fi
+    cp "${guest_agents_src}/${gz_name}" "${lima_share}/${gz_name}"
+    ok "Guest agent staged to ${lima_share}/${gz_name}"
+  fi
+
+  # Create symlink so Lima's SelfDirs() resolves to ~/.provisa/bin/
+  if [ ! -L "${lima_bin}/limactl" ]; then
+    ln -sf "$LIMACTL_REAL" "${lima_bin}/limactl"
+    ok "limactl symlink created at ${lima_bin}/limactl"
+  fi
 }
 
 # ── Start Lima VM ─────────────────────────────────────────────────────────────
@@ -382,6 +417,7 @@ main() {
   stage_vm_image          # copies base VM image from DMG → ~/.provisa/vm-image
   stage_images            # copies container images from DMG → ~/.provisa/images
   install_to_applications # self-installs to /Applications if running from DMG
+  install_guest_agent     # stages gz to ~/.provisa/share/lima/, creates limactl symlink
   start_lima
   import_images
   install_cli
