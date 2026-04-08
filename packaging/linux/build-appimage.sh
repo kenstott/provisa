@@ -74,7 +74,7 @@ bundle_docker() {
 save_images() {
   mkdir -p "$IMAGES_DIR"
   local count
-  count=$(ls "${IMAGES_DIR}"/*.tar 2>/dev/null | wc -l | tr -d ' ')
+  count=$(find "${IMAGES_DIR}" -maxdepth 1 -name "*.tar.gz" 2>/dev/null | wc -l | tr -d ' ')
   if [ "$count" -ge 6 ]; then
     info "Images pre-populated (${count} tarballs) — skipping docker pull."
     return
@@ -95,19 +95,19 @@ save_images() {
     local tag="${img##*/}"
     tag="${tag//:/-}"
     tag="${tag//\//-}"
-    local out="${IMAGES_DIR}/${tag}.tar"
+    local out="${IMAGES_DIR}/${tag}.tar.gz"
     if [ -f "$out" ]; then
       info "  Skipping (cached): ${img}"
       continue
     fi
     info "  Pulling + saving: ${img}"
     docker pull "$img"
-    docker save "$img" -o "$out"
+    docker save "$img" | gzip -9 > "$out"
     ok "  Saved: ${out}"
   done
   info "  Building + saving zaychik..."
   docker build -t provisa/zaychik:local "${REPO_ROOT}/zaychik"
-  docker save provisa/zaychik:local -o "${IMAGES_DIR}/zaychik-local.tar"
+  docker save provisa/zaychik:local | gzip -9 > "${IMAGES_DIR}/zaychik-local.tar.gz"
   ok "  Saved zaychik."
 }
 
@@ -132,7 +132,7 @@ build_appdir() {
   chmod +x "${APPDIR}/bin/"*
 
   # Copy image tarballs
-  cp "${IMAGES_DIR}"/*.tar "${APPDIR}/images/"
+  cp "${IMAGES_DIR}"/*.tar.gz "${APPDIR}/images/"
 
   # Copy compose files and config
   cp "${REPO_ROOT}/docker-compose.yml"      "${APPDIR}/compose/"

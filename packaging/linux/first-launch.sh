@@ -112,10 +112,10 @@ start_docker() {
 load_images() {
   info "Loading bundled container images (no network required)..."
   local count=0
-  for tar_file in "${IMAGES_DIR}"/*.tar; do
+  for tar_file in "${IMAGES_DIR}"/*.tar.gz; do
     [ -f "$tar_file" ] || continue
     info "  Loading: $(basename "$tar_file")"
-    docker load -i "$tar_file"
+    gunzip -c "$tar_file" | docker load
     count=$((count + 1))
   done
   ok "Loaded ${count} images."
