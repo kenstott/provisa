@@ -98,27 +98,24 @@ download_containerd() {
   ok "containerd: using Lima native integration — no macOS bundle needed."
 }
 
-# ── Download Lima base VM images (bundled for airgapped install) ──────────────
-# Lima 2.x requires a base OS disk image to boot the VM. We bundle both
-# arm64 and x86_64 Ubuntu 24.04 cloud images so the installer is fully
-# airgapped — no internet access required at install time.
+# ── Download Lima base VM image (bundled for airgapped install) ───────────────
+# Lima 2.x requires a base OS disk image to boot the VM. We bundle the
+# Ubuntu 24.04 minimal arm64 image (~280MB) so Apple Silicon installs are
+# fully airgapped. The minimal variant is used to stay under GitHub
+# Releases' 2 GB per-asset limit.
 download_vm_images() {
   mkdir -p "$VM_IMAGES_DIR"
-  local base_url="https://cloud-images.ubuntu.com/releases/24.04/release"
-  local images=(
-    "ubuntu-24.04-server-cloudimg-arm64.img"
-    "ubuntu-24.04-server-cloudimg-amd64.img"
-  )
-  for img in "${images[@]}"; do
-    if [ -f "${VM_IMAGES_DIR}/${img}" ]; then
-      info "  Skipping (cached): ${img}"
-      continue
-    fi
-    info "  Downloading base VM image: ${img} (~500MB)..."
-    curl -fL "${base_url}/${img}" -o "${VM_IMAGES_DIR}/${img}"
-    ok "  Saved: ${VM_IMAGES_DIR}/${img}"
-  done
-  ok "Base VM images ready."
+  local base_url="https://cloud-images.ubuntu.com/minimal/releases/24.04/release"
+  local arm64_img="ubuntu-24.04-minimal-cloudimg-arm64.img"
+
+  if [ -f "${VM_IMAGES_DIR}/${arm64_img}" ]; then
+    info "  Skipping (cached): ${arm64_img}"
+  else
+    info "  Downloading base VM image: ${arm64_img} (~280MB)..."
+    curl -fL "${base_url}/${arm64_img}" -o "${VM_IMAGES_DIR}/${arm64_img}"
+    ok "  Saved: ${VM_IMAGES_DIR}/${arm64_img}"
+  fi
+  ok "Base VM image ready."
 }
 
 # ── Save service images as tarballs ──────────────────────────────────────────
