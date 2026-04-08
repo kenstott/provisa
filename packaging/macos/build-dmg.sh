@@ -8,6 +8,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 OUT_DIR="${SCRIPT_DIR}/dist"
 APP_BUNDLE="${SCRIPT_DIR}/Provisa.app"
 IMAGES_DIR="${SCRIPT_DIR}/images"
+VM_IMAGES_DIR="${SCRIPT_DIR}/vm-images"
 BIN_DIR="${APP_BUNDLE}/Contents/MacOS/bin"
 DMG_NAME="Provisa.dmg"
 DMG_PATH="${OUT_DIR}/${DMG_NAME}"
@@ -95,6 +96,29 @@ download_lima() {
 # binary is needed. Bundling the Linux ELF ctr breaks codesign signing checks.
 download_containerd() {
   ok "containerd: using Lima native integration — no macOS bundle needed."
+}
+
+# ── Download Lima base VM images (bundled for airgapped install) ──────────────
+# Lima 2.x requires a base OS disk image to boot the VM. We bundle both
+# arm64 and x86_64 Ubuntu 24.04 cloud images so the installer is fully
+# airgapped — no internet access required at install time.
+download_vm_images() {
+  mkdir -p "$VM_IMAGES_DIR"
+  local base_url="https://cloud-images.ubuntu.com/releases/24.04/release"
+  local images=(
+    "ubuntu-24.04-server-cloudimg-arm64.img"
+    "ubuntu-24.04-server-cloudimg-amd64.img"
+  )
+  for img in "${images[@]}"; do
+    if [ -f "${VM_IMAGES_DIR}/${img}" ]; then
+      info "  Skipping (cached): ${img}"
+      continue
+    fi
+    info "  Downloading base VM image: ${img} (~500MB)..."
+    curl -fL "${base_url}/${img}" -o "${VM_IMAGES_DIR}/${img}"
+    ok "  Saved: ${VM_IMAGES_DIR}/${img}"
+  done
+  ok "Base VM images ready."
 }
 
 # ── Save service images as tarballs ──────────────────────────────────────────
@@ -270,12 +294,16 @@ create_dmg() {
   mkdir -p "$tmp_dmg"
   cp -r "${APP_BUNDLE}" "${tmp_dmg}/Provisa.app"
 
-  # Images sit alongside the .app in the DMG (not inside it).
-  # chflags hidden makes Finder hide the folder on the mounted volume.
-  # first-launch.sh copies them to ~/.provisa/images on first run.
+  # Container images and base VM image sit alongside the .app in the DMG.
+  # chflags hidden keeps them out of the Finder window.
+  # first-launch.sh copies them to ~/.provisa/ on first run.
   mkdir -p "${tmp_dmg}/images"
   cp "${IMAGES_DIR}"/*.tar "${tmp_dmg}/images/"
   chflags hidden "${tmp_dmg}/images"
+
+  mkdir -p "${tmp_dmg}/vm-image"
+  cp "${VM_IMAGES_DIR}"/*.img "${tmp_dmg}/vm-image/"
+  chflags hidden "${tmp_dmg}/vm-image"
 
   # Remove any existing DMG so create-dmg doesn't complain
   rm -f "${DMG_PATH}"
@@ -308,6 +336,7 @@ main() {
   generate_assets
   download_lima
   download_containerd
+  download_vm_images
   save_images
 
   embed_compose

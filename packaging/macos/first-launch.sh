@@ -98,7 +98,7 @@ write_lima_config() {
     *)      lima_arch="aarch64" ;;
   esac
   cat > "$LIMA_YAML" <<YAML
-# Provisa Lima VM
+# Provisa Lima VM — fully airgapped, all images bundled in the installer
 vmType: vz
 os: Linux
 arch: "${lima_arch}"
@@ -106,9 +106,9 @@ cpus: 4
 memory: "${LIMA_MEMORY}"
 disk: "60GiB"
 images:
-  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+  - location: "${PROVISA_HOME}/vm-image/ubuntu-24.04-server-cloudimg-arm64.img"
     arch: "aarch64"
-  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+  - location: "${PROVISA_HOME}/vm-image/ubuntu-24.04-server-cloudimg-amd64.img"
     arch: "x86_64"
 vmOpts:
   vz:
@@ -168,6 +168,40 @@ import_images() {
     count=$((count + 1))
   done
   ok "Imported ${count} images."
+}
+
+# ── Stage base VM image from DMG to ~/.provisa/vm-image/ ─────────────────────
+stage_vm_image() {
+  local staged="${PROVISA_HOME}/vm-image"
+  if [ -d "$staged" ] && ls "$staged"/*.img &>/dev/null 2>&1; then
+    return 0
+  fi
+  mkdir -p "$staged"
+
+  local bundle_parent
+  bundle_parent="$(dirname "$BUNDLE_DIR")"
+  local src=""
+  for candidate in "${bundle_parent}/vm-image" "${bundle_parent}/.vm-image"; do
+    if [ -d "$candidate" ] && ls "$candidate"/*.img &>/dev/null 2>&1; then
+      src="$candidate"; break
+    fi
+  done
+
+  if [ -z "$src" ]; then
+    for vol_vm in /Volumes/*/vm-image /Volumes/*/.vm-image; do
+      if [ -d "$vol_vm" ] && ls "$vol_vm"/*.img &>/dev/null 2>&1; then
+        src="$vol_vm"; break
+      fi
+    done
+  fi
+
+  if [ -z "$src" ]; then
+    err "Base VM image not found. Please keep the Provisa DMG mounted and re-open Provisa.app."
+    exit 1
+  fi
+
+  info "Staging base VM image to ${staged}..."
+  cp "$src"/*.img "$staged/"
 }
 
 # ── Copy images into provisa home for VM access ───────────────────────────────
@@ -348,7 +382,8 @@ main() {
   mkdir -p "$PROVISA_HOME"
   ask_ram_budget
   write_config
-  stage_images            # copies images/ from DMG sibling → ~/.provisa/images
+  stage_vm_image          # copies base VM image from DMG → ~/.provisa/vm-image
+  stage_images            # copies container images from DMG → ~/.provisa/images
   install_to_applications # self-installs to /Applications if running from DMG
   start_lima
   import_images
