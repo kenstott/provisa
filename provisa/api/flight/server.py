@@ -40,7 +40,7 @@ from provisa.api.flight.catalog import (
     fetch_approved_queries,
     fetch_approved_queries_async,
 )
-from provisa.compiler.parser import parse_query
+from provisa.compiler.parser import coerce_variable_defaults, parse_query
 from provisa.compiler.rls import RLSContext, inject_rls
 from provisa.compiler.sampling import apply_sampling, get_sample_size
 from provisa.compiler.sql_gen import compile_query
@@ -57,10 +57,34 @@ _SQL_PREFIX = re.compile(r"^\s*(SELECT|WITH)\b", re.IGNORECASE)
 _SQL_FROM = re.compile(r"\bFROM\s+(\w+)", re.IGNORECASE)
 _SQL_LIMIT = re.compile(r"\bLIMIT\s+(\d+)", re.IGNORECASE)
 _GQL_OP_NAME = re.compile(r"\bquery\s+(\w+)")
+_WHERE_INT = re.compile(r'\b(\w+)\s*=\s*(-?\d+(?:\.\d+)?)\b')
+_WHERE_STR = re.compile(r"\b(\w+)\s*=\s*'([^']*)'")
 
 
 def _is_sql(query: str) -> bool:
     return bool(_SQL_PREFIX.match(query))
+
+
+def _parse_where_variables(sql: str) -> dict:
+    """Extract key=value pairs from a SQL WHERE clause as a variables dict.
+
+    Supports integer/float literals and single-quoted string literals.
+    Used to map JDBC-style ``SELECT * FROM op WHERE k = v`` filters to
+    GraphQL variable values.
+    """
+    variables: dict = {}
+    where_match = re.search(r'\bWHERE\b(.*?)(?:\bLIMIT\b|$)', sql, re.IGNORECASE | re.DOTALL)
+    if not where_match:
+        return variables
+    clause = where_match.group(1)
+    for m in _WHERE_STR.finditer(clause):
+        variables[m.group(1)] = m.group(2)
+    for m in _WHERE_INT.finditer(clause):
+        key = m.group(1)
+        if key not in variables:
+            raw = m.group(2)
+            variables[key] = float(raw) if "." in raw else int(raw)
+    return variables
 
 
 class ProvisaFlightServer(flight.FlightServerBase):
@@ -411,8 +435,17 @@ class ProvisaFlightServer(flight.FlightServerBase):
         role = self._state.roles.get(role_id)
         schema = self._state.schemas[role_id]
 
-        document = parse_query(schema, matched.query_text, None)
-        compiled_queries = compile_query(document, ctx, None)
+        # Fix 1: ticket-level variables (Python Flight client path)
+        ticket_variables: dict = request.get("variables") or {}
+        # Fix 2: WHERE clause variables (JDBC tool path)
+        where_variables = _parse_where_variables(sql)
+        # WHERE variables are overrides; ticket variables take precedence
+        variables: dict = {**where_variables, **ticket_variables}
+
+        document = parse_query(schema, matched.query_text, variables or None)
+        # Fix 3: apply declared GraphQL defaults for any still-missing vars
+        variables = coerce_variable_defaults(document, variables)
+        compiled_queries = compile_query(document, ctx, variables or None)
         if not compiled_queries:
             raise flight.FlightServerError("No query fields in approved query")
 

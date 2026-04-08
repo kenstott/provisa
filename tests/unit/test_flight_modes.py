@@ -299,6 +299,56 @@ class TestServerApprovedTables:
 # Default mode unchanged
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# WHERE variable parsing (REQ-302)
+# ---------------------------------------------------------------------------
+
+class TestParseWhereVariables:
+    """Unit tests for _parse_where_variables — JDBC WHERE-clause variable extraction."""
+
+    def test_integer_equality(self):
+        from provisa.api.flight.server import _parse_where_variables
+        sql = "SELECT * FROM orders WHERE id = 42"
+        assert _parse_where_variables(sql) == {"id": 42}
+
+    def test_string_equality(self):
+        from provisa.api.flight.server import _parse_where_variables
+        sql = "SELECT * FROM orders WHERE region = 'us-east'"
+        assert _parse_where_variables(sql) == {"region": "us-east"}
+
+    def test_multiple_predicates(self):
+        from provisa.api.flight.server import _parse_where_variables
+        sql = "SELECT * FROM orders WHERE region = 'eu-west' AND id = 99"
+        result = _parse_where_variables(sql)
+        assert result["region"] == "eu-west"
+        assert result["id"] == 99
+
+    def test_no_where_returns_empty(self):
+        from provisa.api.flight.server import _parse_where_variables
+        sql = "SELECT * FROM orders"
+        assert _parse_where_variables(sql) == {}
+
+    def test_stops_at_limit(self):
+        from provisa.api.flight.server import _parse_where_variables
+        sql = "SELECT * FROM orders WHERE id = 5 LIMIT 10"
+        result = _parse_where_variables(sql)
+        assert result == {"id": 5}
+
+    def test_float_value(self):
+        from provisa.api.flight.server import _parse_where_variables
+        sql = "SELECT * FROM orders WHERE amount = 3.14"
+        assert _parse_where_variables(sql) == {"amount": 3.14}
+
+    def test_negative_integer(self):
+        from provisa.api.flight.server import _parse_where_variables
+        sql = "SELECT * FROM orders WHERE offset_val = -1"
+        assert _parse_where_variables(sql) == {"offset_val": -1}
+
+
+# ---------------------------------------------------------------------------
+# Default mode unchanged
+# ---------------------------------------------------------------------------
+
 class TestDefaultMode:
     def test_missing_query_raises(self, fake_state):
         """Default mode still requires a query in the ticket."""

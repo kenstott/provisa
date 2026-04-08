@@ -128,6 +128,39 @@ class ProvisaClient:
         """Execute a GraphQL query via Arrow Flight. Returns a pandas DataFrame."""
         return self.flight(gql, variables).to_pandas()
 
+    def flight_governed(
+        self,
+        stable_id_or_op_name: str,
+        variables: dict[str, Any] | None = None,
+    ) -> pa.Table:
+        """Execute an approved governed query via Arrow Flight.
+
+        ``stable_id_or_op_name`` is either the stable_id of an approved query
+        or the GraphQL operation name (e.g. ``"GetOrders"``).  Variables are
+        forwarded to the server and merged with any WHERE-clause values parsed
+        from the flight ticket on the server side.
+
+        Returns a pyarrow Table.
+        """
+        data: dict[str, Any] = {
+            "query": f"query {stable_id_or_op_name}",
+            "role": self._role,
+            "stable_id": stable_id_or_op_name,
+        }
+        if variables:
+            data["variables"] = variables
+        ticket = fl.Ticket(json.dumps(data).encode())
+        reader = self._flight_client().do_get(ticket)
+        return reader.read_all()
+
+    def flight_governed_df(
+        self,
+        stable_id_or_op_name: str,
+        variables: dict[str, Any] | None = None,
+    ):
+        """Execute an approved governed query via Arrow Flight. Returns a pandas DataFrame."""
+        return self.flight_governed(stable_id_or_op_name, variables).to_pandas()
+
     # ── Catalog / discovery ───────────────────────────────────────────────
 
     def list_tables(self):
