@@ -239,10 +239,18 @@ sign_app() {
   # find is not used because it doesn't guarantee order, and codesign requires
   # every subcomponent to be signed before the file that contains/calls it.
   info "Signing bundled executables (inner → outer)..."
+
+  # limactl needs com.apple.security.virtualization to use Apple's VZ framework
+  local limactl_entitlements="${SCRIPT_DIR}/entitlements-limactl.plist"
+  for arch in arm64 x86_64; do
+    local lc="${APP_BUNDLE}/Contents/MacOS/bin/${arch}/limactl"
+    [ -f "$lc" ] || continue
+    codesign "${sign_flags[@]}" --entitlements "$limactl_entitlements" "$lc"
+    info "  Signed (with virtualization entitlement): bin/${arch}/limactl"
+  done
+
   local sign_targets=(
     "${APP_BUNDLE}/Contents/MacOS/first-launch.sh"
-    "${APP_BUNDLE}/Contents/MacOS/bin/arm64/limactl"
-    "${APP_BUNDLE}/Contents/MacOS/bin/x86_64/limactl"
     "${APP_BUNDLE}/Contents/MacOS/provisa-launcher"
   )
   for f in "${sign_targets[@]}"; do
