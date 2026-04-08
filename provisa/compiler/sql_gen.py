@@ -697,11 +697,11 @@ def _compile_root_field(
         order_sql = _compile_order_by(order_by_val, root_alias)
         sql += f" ORDER BY {order_sql}"
 
-    # LIMIT / OFFSET
+    # LIMIT / OFFSET — always parameterized, never interpolated
     if "limit" in args:
-        sql += f" LIMIT {int(args['limit'])}"
+        sql += f" LIMIT {collector.add(int(args['limit']))}"
     if "offset" in args:
-        sql += f" OFFSET {int(args['offset'])}"
+        sql += f" OFFSET {collector.add(int(args['offset']))}"
 
     return CompiledQuery(
         sql=sql,
@@ -1073,7 +1073,7 @@ def _compile_connection_field(
 
     page_size = args.get("first") or args.get("last")
     if effective_limit is not None:
-        sql += f" LIMIT {effective_limit}"
+        sql += f" LIMIT {collector.add(int(effective_limit))}"
 
     return CompiledQuery(
         sql=sql,

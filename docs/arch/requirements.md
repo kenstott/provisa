@@ -415,6 +415,7 @@
 
 ## GraphQL Variable Defaults
 - **REQ-300** (2026-04-07): GraphQL operations may declare variable default values (e.g. `query Q($limit: Int = 10)`). The compiler MUST apply those defaults for any variable not present in the request `variables` dict, per GraphQL spec §6.4.1. Missing a declared default must not produce a 500 — the default value is used as if the caller had supplied it.
+- **REQ-301** (2026-04-07): LIMIT and OFFSET values MUST be emitted as positional parameters (`$N`) in compiled SQL, never interpolated as literals. This ensures consistent parameterization regardless of whether the value originated from a GraphQL variable or an inline literal argument.
 
 ## Query-API Sources (Neo4j & SPARQL)
 - **REQ-295** (2026-04-06): Neo4j registered as a non-Trino source using the existing API source pipeline. Source config accepts Neo4j HTTP API endpoint URL, target database name, and auth (none/basic/bearer token). Tables defined as steward-authored Cypher SELECT queries. The Neo4j HTTP API v2 response envelope (`data.fields` / `data.values`) is unwrapped by the built-in `neo4j_tabular` response normalizer into flat row dicts before the existing flattener runs. Column names match the aliases declared in the Cypher `RETURN` clause. Does not use Trino. Part of Phase AO (Query-API Sources).

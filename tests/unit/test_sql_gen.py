@@ -190,13 +190,15 @@ class TestPagination:
         schema, ctx = schema_and_ctx
         doc = parse("{ orders(limit: 10) { id } }")
         results = compile_query(doc, ctx)
-        assert results[0].sql.endswith("LIMIT 10")
+        assert results[0].sql.endswith("LIMIT $1")
+        assert results[0].params == [10]
 
     def test_offset(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
         doc = parse("{ orders(limit: 10, offset: 20) { id } }")
         results = compile_query(doc, ctx)
-        assert "LIMIT 10 OFFSET 20" in results[0].sql
+        assert "LIMIT $1 OFFSET $2" in results[0].sql
+        assert results[0].params == [10, 20]
 
     def test_order_by(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
@@ -253,8 +255,9 @@ class TestPagination:
         sql = results[0].sql
         assert "ORDER BY" in sql
         assert '"id" ASC' in sql
-        assert "LIMIT 5" in sql
-        assert "OFFSET 10" in sql
+        assert "LIMIT $1" in sql
+        assert "OFFSET $2" in sql
+        assert results[0].params == [5, 10]
 
 
 class TestDistinctOn:

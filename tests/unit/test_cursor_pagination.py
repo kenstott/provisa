@@ -107,7 +107,8 @@ class TestCursorPagination:
         q = results[0]
         assert q.is_connection and not q.is_backward
         assert q.page_size == 10
-        assert "LIMIT 11" in q.sql
+        assert "LIMIT $1" in q.sql
+        assert q.params == [11]
         assert 'ORDER BY "id" ASC' in q.sql
 
     def test_connection_first_after_compiles(self, schema_and_ctx):
@@ -124,8 +125,8 @@ class TestCursorPagination:
         q = compile_query(doc, ctx)[0]
         assert q.has_cursor
         assert 'WHERE "id" > $1' in q.sql
-        assert q.params == [42]
-        assert "LIMIT 6" in q.sql
+        assert "LIMIT $2" in q.sql
+        assert q.params == [42, 6]
 
     def test_connection_last_before_compiles(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
@@ -141,8 +142,8 @@ class TestCursorPagination:
         q = compile_query(doc, ctx)[0]
         assert q.is_backward and q.has_cursor
         assert '"id" < $1' in q.sql
-        assert q.params == [100]
-        assert "LIMIT 6" in q.sql
+        assert "LIMIT $2" in q.sql
+        assert q.params == [100, 6]
         assert 'ORDER BY "id" DESC' in q.sql
 
     def test_connection_with_where(self, schema_and_ctx):
@@ -156,8 +157,8 @@ class TestCursorPagination:
         assert not validate(schema, doc)
         q = compile_query(doc, ctx)[0]
         assert '"region" = $1' in q.sql
-        assert q.params == ["us"]
-        assert "LIMIT 11" in q.sql
+        assert "LIMIT $2" in q.sql
+        assert q.params == ["us", 11]
 
     def test_connection_with_order_by(self, schema_and_ctx):
         schema, ctx = schema_and_ctx

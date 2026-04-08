@@ -112,9 +112,8 @@ class TestStage1:
         doc = _parse('{ orders(limit: 10) { id } }')
         ctx = _basic_ctx()
         results = compile_graphql(doc, ctx)
-        sql = results[0].sql.upper()
-        assert "LIMIT" in sql
-        assert "10" in sql
+        assert "LIMIT" in results[0].sql.upper()
+        assert results[0].params == [10]
 
     def test_stage1_applies_where_argument(self):
         doc = _parse('{ orders(where: { id: { eq: 42 } }) { id } }')
