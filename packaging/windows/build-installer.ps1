@@ -21,8 +21,8 @@ Get-ChildItem -Path (Join-Path $ScriptDir 'images') -Filter '*.tar.gz' |
 # compose/
 $BuildCompose = Join-Path $BuildDir 'compose'
 New-Item -ItemType Directory -Path $BuildCompose -Force | Out-Null
-Copy-Item (Join-Path $RepoRoot 'docker-compose.yml')       $BuildCompose
-Copy-Item (Join-Path $RepoRoot 'docker-compose.prod.yml')  $BuildCompose
+Copy-Item (Join-Path $RepoRoot 'docker-compose.core.yml')   $BuildCompose
+Copy-Item (Join-Path $RepoRoot 'docker-compose.app.yml')    $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'docker-compose.airgap.yml') $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'config')  (Join-Path $BuildCompose 'config')  -Recurse -Force
 Copy-Item (Join-Path $RepoRoot 'db')      (Join-Path $BuildCompose 'db')      -Recurse -Force

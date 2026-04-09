@@ -136,7 +136,7 @@ YAML
 # ── Download/clone if not present ────────────────────────────────────────────
 ensure_project_source() {
     # If install.sh is running from a git repo, source is already present
-    if [ -f "${SCRIPT_DIR}/docker-compose.yml" ]; then
+    if [ -f "${SCRIPT_DIR}/docker-compose.core.yml" ]; then
         ok "Project source found at ${SCRIPT_DIR}"
         return 0
     fi
@@ -148,7 +148,7 @@ ensure_project_source() {
         SCRIPT_DIR="${SCRIPT_DIR}/provisa-source"
         ok "Cloned Provisa source to ${SCRIPT_DIR}"
     else
-        err "docker-compose.yml not found and git is not available."
+        err "docker-compose.core.yml not found and git is not available."
         err "Clone the Provisa repo first, then run install.sh from inside it."
         exit 1
     fi

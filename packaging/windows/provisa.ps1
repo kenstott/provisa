@@ -115,9 +115,10 @@ function Stop-Vm {
 function Invoke-Compose {
   param([hashtable]$Config, [string[]]$ComposeArgs)
   $env:DOCKER_HOST = $Config.DockerHost
-  $compose1 = Join-Path $Config.ProjectDir 'docker-compose.yml'
-  $compose2 = Join-Path $Config.ProjectDir 'docker-compose.prod.yml'
-  docker compose -f $compose1 -f $compose2 @ComposeArgs
+  $compose1 = Join-Path $Config.ProjectDir 'docker-compose.core.yml'
+  $compose2 = Join-Path $Config.ProjectDir 'docker-compose.app.yml'
+  $compose3 = Join-Path $Config.ProjectDir 'docker-compose.airgap.yml'
+  docker compose -f $compose1 -f $compose2 -f $compose3 @ComposeArgs
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 

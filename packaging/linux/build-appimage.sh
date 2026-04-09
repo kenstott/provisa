@@ -161,8 +161,8 @@ build_appdir() {
   done
 
   # Copy compose files and config
-  cp "${REPO_ROOT}/docker-compose.yml"       "${APPDIR}/compose/"
-  cp "${REPO_ROOT}/docker-compose.prod.yml"  "${APPDIR}/compose/"
+  cp "${REPO_ROOT}/docker-compose.core.yml"   "${APPDIR}/compose/"
+  cp "${REPO_ROOT}/docker-compose.app.yml"    "${APPDIR}/compose/"
   cp "${REPO_ROOT}/docker-compose.airgap.yml" "${APPDIR}/compose/"
   cp -r "${REPO_ROOT}/config"                "${APPDIR}/compose/config"
   cp -r "${REPO_ROOT}/db"                    "${APPDIR}/compose/db"
