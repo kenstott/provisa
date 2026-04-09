@@ -762,7 +762,7 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
     if action_sels and not regular_names:
         data = {}
         for sel in action_sels:
-            data[sel.name.value] = await _execute_action_field(sel.name.value, sel, state, variables)
+            data[sel.name.value] = await _execute_action_field(sel.name.value, sel, state, variables, ctx=ctx)
         return JSONResponse(content={"data": data}, headers=build_cache_headers(None))
 
     if action_sels and regular_names:
@@ -881,6 +881,73 @@ def _check_writable_by(table_meta, columns: list[str], role_id: str):
 _ACTION_FILTER_ARGS = {"where", "order_by", "limit", "offset"}
 
 
+async def _resolve_action_relationships(
+    rows: list[dict],
+    selection_set,
+    return_type_name: str,
+    ctx,
+    state,
+) -> list[dict]:
+    """Batch-resolve nested relationship fields on action result rows."""
+    from graphql import FieldNode as _FieldNode
+    from provisa.executor.serialize import _convert_value
+
+    for sel in selection_set.selections:
+        if not isinstance(sel, _FieldNode):
+            continue
+        rel_field = sel.name.value
+        join_key = (return_type_name, rel_field)
+        if join_key not in ctx.joins:
+            continue
+
+        join_meta = ctx.joins[join_key]
+        src_col = join_meta.source_column
+        tgt_col = join_meta.target_column
+        tgt = join_meta.target
+
+        nested_cols = []
+        if sel.selection_set:
+            for ns in sel.selection_set.selections:
+                if isinstance(ns, _FieldNode):
+                    nested_cols.append(ns.name.value)
+        if not nested_cols:
+            for r in rows:
+                r[rel_field] = None if join_meta.cardinality == "many-to-one" else []
+            continue
+
+        src_values = list({r[src_col] for r in rows if r.get(src_col) is not None})
+        if not src_values or not state.source_pools.has(tgt.source_id):
+            for r in rows:
+                r[rel_field] = None if join_meta.cardinality == "many-to-one" else []
+            continue
+
+        select_cols = list({tgt_col} | set(nested_cols))
+        col_list = ", ".join(f'"{c}"' for c in select_cols)
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(src_values)))
+        sql = (
+            f'SELECT {col_list} FROM "{tgt.schema_name}"."{tgt.table_name}"'
+            f' WHERE "{tgt_col}" IN ({placeholders})'
+        )
+        result = await state.source_pools.execute(tgt.source_id, sql, src_values)
+        rel_cols = result.column_names
+        rel_rows = [{c: _convert_value(v) for c, v in zip(rel_cols, r)} for r in result.rows]
+
+        if join_meta.cardinality == "many-to-one":
+            rel_index = {rr[tgt_col]: {k: rr[k] for k in nested_cols if k in rr} for rr in rel_rows}
+            for r in rows:
+                r[rel_field] = rel_index.get(r.get(src_col))
+        else:
+            from collections import defaultdict
+            rel_index_multi: dict = defaultdict(list)
+            for rr in rel_rows:
+                child = {k: rr[k] for k in nested_cols if k in rr}
+                rel_index_multi[rr[tgt_col]].append(child)
+            for r in rows:
+                r[rel_field] = rel_index_multi.get(r.get(src_col), [])
+
+    return rows
+
+
 def _apply_action_filters(rows: list[dict], args: dict) -> list[dict]:
     """Apply where/order_by/limit/offset post-processing to action result rows."""
     where = args.get("where")
@@ -948,7 +1015,7 @@ def _like_match(value: str, pattern: str) -> bool:
     return bool(re.fullmatch(regex, value, re.DOTALL))
 
 
-async def _execute_action_field(field_name: str, field_node, state, variables: dict | None) -> list:
+async def _execute_action_field(field_name: str, field_node, state, variables: dict | None, *, ctx=None) -> list:
     """Execute a tracked function or webhook field, return rows list."""
     from provisa.compiler.sql_gen import _extract_value
     raw_args: dict = {}
@@ -977,6 +1044,7 @@ async def _execute_action_field(field_name: str, field_node, state, variables: d
         from provisa.executor.serialize import _convert_value
         cols = result.column_names
         rows = [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
+        rows = await _maybe_resolve_relationships(rows, field_node, fn.get("returns", ""), ctx, state)
         return _apply_action_filters(rows, filter_args)
 
     wh = state.tracked_webhooks.get(field_name)
@@ -988,9 +1056,28 @@ async def _execute_action_field(field_name: str, field_node, state, variables: d
             resp = await client.request(method, url, json=args)
         body = resp.json()
         rows = body if isinstance(body, list) else [body]
+        rows = await _maybe_resolve_relationships(rows, field_node, wh.get("returns", ""), ctx, state)
         return _apply_action_filters(rows, filter_args)
 
     raise HTTPException(status_code=400, detail=f"Unknown action field: {field_name!r}")
+
+
+async def _maybe_resolve_relationships(rows, field_node, returns_str: str, ctx, state) -> list:
+    """Resolve nested relationship fields on action rows if ctx and return type are known."""
+    if not ctx or not rows or not field_node.selection_set or not returns_str:
+        return rows
+    if "." not in returns_str:
+        return rows
+    parts = returns_str.split(".", 1)
+    ret_schema, ret_table = parts[0], parts[-1]
+    return_type_name = None
+    for meta in ctx.tables.values():
+        if meta.schema_name == ret_schema and meta.table_name == ret_table:
+            return_type_name = meta.type_name
+            break
+    if return_type_name:
+        rows = await _resolve_action_relationships(rows, field_node.selection_set, return_type_name, ctx, state)
+    return rows
 
 
 def _split_action_fields(document, state) -> tuple[list, list]:
