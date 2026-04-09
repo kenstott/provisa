@@ -37,7 +37,7 @@ UI_PORT="$(read_config ui_port 3000)"
 API_PORT="$(read_config api_port 8000)"
 FLIGHT_PORT="$(read_config flight_port 8815)"
 AUTO_OPEN="$(read_config auto_open_browser true)"
-TRINO_WORKERS="$(read_config federation_workers 0)"
+FED_WORKERS="$(read_config federation_workers 0)"
 RUNTIME="$(read_config runtime docker)"
 LIMA_VM="$(read_config lima_vm provisa)"
 
@@ -231,9 +231,9 @@ cmd_start() {
     fi
 
     local scale_arg=""
-    if [ "${TRINO_WORKERS:-0}" -gt 0 ] 2>/dev/null; then
-        scale_arg="--scale trino-worker=${TRINO_WORKERS}"
-        info "Starting ${TRINO_WORKERS} Trino worker(s)..."
+    if [ "${FED_WORKERS:-0}" -gt 0 ] 2>/dev/null; then
+        scale_arg="--scale trino-worker=${FED_WORKERS}"
+        info "Starting ${FED_WORKERS} federation worker(s)..."
     fi
 
     # shellcheck disable=SC2086

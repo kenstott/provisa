@@ -32,8 +32,8 @@ info() { printf "${CYAN}[provisa]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[provisa]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[provisa]${NC} %s\n" "$*" >&2; }
 
-# ── Derive Trino worker count from RAM budget ─────────────────────────────────
-_workers_from_budget() {
+# ── Derive suggested federation worker count from RAM budget ─────────────────
+_suggested_workers() {
   local gb="$1"
   if   [ "$gb" -ge 96 ]; then echo 4
   elif [ "$gb" -ge 48 ]; then echo 2
@@ -42,8 +42,8 @@ _workers_from_budget() {
   fi
 }
 
-# ── Ask RAM and CPU budgets at first launch ──────────────────────────────────
-# Sets globals: BUDGET_GB, TRINO_WORKERS, LIMA_MEMORY, LIMA_CPUS
+# ── Ask RAM, CPU, and federation worker budgets at first launch ──────────────
+# Sets globals: BUDGET_GB, FED_WORKERS, LIMA_MEMORY, LIMA_CPUS
 ask_ram_budget() {
   local total_gb total_cores
   total_gb="$(sysctl -n hw.memsize | awk '{printf "%d", $1/1024/1024/1024}')"
@@ -82,16 +82,13 @@ ask_ram_budget() {
   else
     BUDGET_GB="${selected%GB}"
   fi
-
-  TRINO_WORKERS="$(_workers_from_budget "$BUDGET_GB")"
   LIMA_MEMORY="${BUDGET_GB}GiB"
 
   # ── CPUs ──
   printf "\n${BOLD}CPU Budget${NC}\n"
   printf "How many CPU cores should Provisa use? (host total: %d)\n" "$total_cores"
-  printf "${DIM}Trino uses 2 threads per vCPU. Leave cores for your other tools.${NC}\n\n"
+  printf "${DIM}The query engine uses 2 threads per vCPU. Leave cores for your other tools.${NC}\n\n"
 
-  # Suggested default: half the host cores, min 2, max 12
   local default_cpus=$(( total_cores / 2 ))
   [ "$default_cpus" -lt 2 ] && default_cpus=2
   [ "$default_cpus" -gt 12 ] && default_cpus=12
@@ -100,25 +97,24 @@ ask_ram_budget() {
   for n in 2 4 6 8 10 12; do
     [ "$n" -le "$total_cores" ] && cpu_options+=("$n")
   done
-  # Ensure "All" option exists
   cpu_options+=("All (${total_cores})")
 
   i=1
-  local default_idx=1
+  local default_cpu_idx=1
   for opt in "${cpu_options[@]}"; do
     local marker=""
-    local opt_val="${opt%% *}"   # strip " (N)" suffix if present
+    local opt_val="${opt%% *}"
     [ "$opt_val" = "$default_cpus" ] && marker=" ${DIM}(recommended)${NC}"
     printf "  [%d] %s cores%b\n" "$i" "$opt" "$marker"
-    [ "$opt_val" = "$default_cpus" ] && default_idx=$i
+    [ "$opt_val" = "$default_cpus" ] && default_cpu_idx=$i
     i=$((i + 1))
   done
   printf "\n"
 
   while true; do
-    printf "Enter choice [1-%d] (default %d): " "${#cpu_options[@]}" "$default_idx"
+    printf "Enter choice [1-%d] (default %d): " "${#cpu_options[@]}" "$default_cpu_idx"
     read -r choice
-    [ -z "$choice" ] && choice="$default_idx"
+    [ -z "$choice" ] && choice="$default_cpu_idx"
     if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#cpu_options[@]}" ]; then
       break
     fi
@@ -132,7 +128,40 @@ ask_ram_budget() {
     LIMA_CPUS="${cpu_selected%% *}"
   fi
 
-  ok "RAM: ${BUDGET_GB}GB | CPUs: ${LIMA_CPUS} | Trino workers: ${TRINO_WORKERS}"
+  # ── Federation Workers ──
+  local default_workers
+  default_workers="$(_suggested_workers "$BUDGET_GB")"
+
+  printf "\n${BOLD}Federation Workers${NC}\n"
+  printf "How many additional query workers should Provisa run?\n"
+  printf "${DIM}Workers parallelize queries across federated sources. Each needs ~4GB RAM.${NC}\n"
+  printf "${DIM}0 workers = coordinator-only mode (fine for most single-machine installs).${NC}\n\n"
+
+  local worker_options=(0 1 2 3 4)
+  i=1
+  local default_worker_idx=1
+  for opt in "${worker_options[@]}"; do
+    local marker=""
+    [ "$opt" = "$default_workers" ] && marker=" ${DIM}(recommended)${NC}"
+    printf "  [%d] %d%b\n" "$i" "$opt" "$marker"
+    [ "$opt" = "$default_workers" ] && default_worker_idx=$i
+    i=$((i + 1))
+  done
+  printf "\n"
+
+  while true; do
+    printf "Enter choice [1-%d] (default %d): " "${#worker_options[@]}" "$default_worker_idx"
+    read -r choice
+    [ -z "$choice" ] && choice="$default_worker_idx"
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#worker_options[@]}" ]; then
+      break
+    fi
+    printf "Invalid choice. Try again.\n"
+  done
+
+  FED_WORKERS="${worker_options[$((choice - 1))]}"
+
+  ok "RAM: ${BUDGET_GB}GB | CPUs: ${LIMA_CPUS} | Federation workers: ${FED_WORKERS}"
 }
 
 # ── Write Lima VM config if not present ──────────────────────────────────────
@@ -577,7 +606,7 @@ flight_port: ${flight_port}
 auto_open_browser: true
 runtime: lima
 lima_vm: ${LIMA_VM_NAME}
-federation_workers: ${TRINO_WORKERS}
+federation_workers: ${FED_WORKERS}
 YAML
   ok "Config written to ${PROVISA_HOME}/config.yaml"
 }
@@ -609,7 +638,7 @@ main() {
 
   # Globals set by ask_ram_budget
   BUDGET_GB=8
-  TRINO_WORKERS=0
+  FED_WORKERS=0
   LIMA_MEMORY="8GiB"
   LIMA_CPUS=4
 
