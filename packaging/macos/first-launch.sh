@@ -131,6 +131,8 @@ provision:
   - mode: system
     script: |
       #!/bin/bash
+      # iptables is required by the CNI bridge plugin for container networking
+      apt-get update -qq && apt-get install -y --no-install-recommends iptables
       systemctl enable --now containerd || true
 YAML
 }
