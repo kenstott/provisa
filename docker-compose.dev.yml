@@ -127,7 +127,7 @@ services:
     volumes:
       - neo4j_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:7474 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:7474 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 30
