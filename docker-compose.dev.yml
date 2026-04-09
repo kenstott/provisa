@@ -7,9 +7,26 @@ services:
     ports:
       - "5432:5432"
 
+  pgbouncer:
+    ports:
+      - "6432:6432"
+
+  minio:
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  redis:
+    ports:
+      - "6379:6379"
+
   trino:
     ports:
       - "8080:8080"
+
+  zaychik:
+    ports:
+      - "8480:8480"
 
   mongodb:
     image: mongo:7

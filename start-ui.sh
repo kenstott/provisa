@@ -36,24 +36,24 @@ export PROVISA_REDIRECT_BUCKET="${PROVISA_REDIRECT_BUCKET:-provisa-results}"
 export PROVISA_CHANGE_EVENT_BOOTSTRAP="${PROVISA_CHANGE_EVENT_BOOTSTRAP:-localhost:9092}"
 export KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
 
+# Compose files for dev: core services + dev overlay (ports, kafka, mongo, elasticsearch, observability)
+COMPOSE_FILES="-f docker-compose.core.yml -f docker-compose.dev.yml"
+
 # Recreate data volumes if requested (useful after Docker crashes)
 if [ "$RESET_VOLUMES" = true ]; then
   echo "WARNING: Resetting all volumes. All data will be lost."
   sleep 3
   cd "$SCRIPT_DIR"
-  ALL_PROFILES="--profile observability --profile neo4j --profile sparql --profile dev"
-  docker compose $ALL_PROFILES down --remove-orphans
-  docker compose $ALL_PROFILES down -v --remove-orphans
+  docker compose $COMPOSE_FILES down --remove-orphans
+  docker compose $COMPOSE_FILES down -v --remove-orphans
   echo "Data volumes removed. Containers will reinitialize from scratch."
 fi
 
 # Start infrastructure services via Docker Compose
 echo "Starting Docker Compose services..."
 cd "$SCRIPT_DIR"
-COMPOSE_PROFILES="--profile dev"
 JVM_CONFIG_PATCHED=false
 if [ "$OBSERVABILITY" = true ]; then
-  COMPOSE_PROFILES="--profile dev --profile observability"
   # Download OTel Java agent for Trino if not already present
   OTEL_AGENT="$SCRIPT_DIR/observability/trino-otel/opentelemetry-javaagent.jar"
   if [ ! -f "$OTEL_AGENT" ]; then
@@ -69,7 +69,7 @@ if [ "$OBSERVABILITY" = true ]; then
     JVM_CONFIG_PATCHED=true
   fi
 fi
-docker compose $COMPOSE_PROFILES up -d --wait
+docker compose $COMPOSE_FILES up -d --wait
 echo "Docker Compose services are healthy."
 if [ "$OBSERVABILITY" = true ]; then
   echo "  Grafana: http://localhost:3100"
@@ -77,7 +77,7 @@ fi
 
 # Seed Kafka with demo data (only if Kafka is running)
 if [ -f "$SCRIPT_DIR/scripts/seed-kafka.py" ] && \
-   docker compose ps kafka --status running 2>/dev/null | grep -q kafka; then
+   docker compose $COMPOSE_FILES ps kafka --status running 2>/dev/null | grep -q kafka; then
   echo "Seeding Kafka..."
   "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/seed-kafka.py" 2>/dev/null || true
 fi
@@ -166,7 +166,8 @@ cleanup() {
   kill $BACKEND_PID $UI_PID 2>/dev/null || true
   wait $BACKEND_PID $UI_PID 2>/dev/null || true
   echo "Stopping Docker Compose services..."
-  docker compose --profile dev --profile observability --profile neo4j --profile sparql -f "$SCRIPT_DIR/docker-compose.yml" down --remove-orphans
+  cd "$SCRIPT_DIR"
+  docker compose $COMPOSE_FILES down --remove-orphans
   if [ "$JVM_CONFIG_PATCHED" = true ]; then
     mv "${SCRIPT_DIR}/trino/etc/jvm.config.bak" "${SCRIPT_DIR}/trino/etc/jvm.config"
   fi
