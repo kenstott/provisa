@@ -42,25 +42,25 @@ _workers_from_budget() {
   fi
 }
 
-# ── Ask RAM budget at first launch ───────────────────────────────────────────
+# ── Ask RAM and CPU budgets at first launch ──────────────────────────────────
 # Sets globals: BUDGET_GB, TRINO_WORKERS, LIMA_MEMORY, LIMA_CPUS
 ask_ram_budget() {
   local total_gb total_cores
   total_gb="$(sysctl -n hw.memsize | awk '{printf "%d", $1/1024/1024/1024}')"
   total_cores="$(sysctl -n hw.logicalcpu)"
 
+  # ── RAM ──
   printf "\n${BOLD}RAM Budget${NC}\n"
   printf "How much RAM should Provisa use? (host total: %dGB)\n\n" "$total_gb"
 
-  # Build option list: powers of 2 up to total, then All
-  local options=()
+  local ram_options=()
   for size in 4 8 16 32 64 128; do
-    [ "$size" -le "$total_gb" ] && options+=("${size}GB")
+    [ "$size" -le "$total_gb" ] && ram_options+=("${size}GB")
   done
-  options+=("All (${total_gb}GB)")
+  ram_options+=("All (${total_gb}GB)")
 
   local i=1
-  for opt in "${options[@]}"; do
+  for opt in "${ram_options[@]}"; do
     printf "  [%d] %s\n" "$i" "$opt"
     i=$((i + 1))
   done
@@ -68,15 +68,15 @@ ask_ram_budget() {
 
   local choice
   while true; do
-    printf "Enter choice [1-%d]: " "${#options[@]}"
+    printf "Enter choice [1-%d]: " "${#ram_options[@]}"
     read -r choice
-    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#options[@]}" ]; then
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#ram_options[@]}" ]; then
       break
     fi
     printf "Invalid choice. Try again.\n"
   done
 
-  local selected="${options[$((choice - 1))]}"
+  local selected="${ram_options[$((choice - 1))]}"
   if [[ "$selected" == All* ]]; then
     BUDGET_GB="$total_gb"
   else
@@ -86,12 +86,53 @@ ask_ram_budget() {
   TRINO_WORKERS="$(_workers_from_budget "$BUDGET_GB")"
   LIMA_MEMORY="${BUDGET_GB}GiB"
 
-  # CPU budget: half the host logical cores, min 2, max 12
-  LIMA_CPUS=$(( total_cores / 2 ))
-  [ "$LIMA_CPUS" -lt 2 ] && LIMA_CPUS=2
-  [ "$LIMA_CPUS" -gt 12 ] && LIMA_CPUS=12
+  # ── CPUs ──
+  printf "\n${BOLD}CPU Budget${NC}\n"
+  printf "How many CPU cores should Provisa use? (host total: %d)\n" "$total_cores"
+  printf "${DIM}Trino uses 2 threads per vCPU. Leave cores for your other tools.${NC}\n\n"
 
-  ok "RAM budget: ${BUDGET_GB}GB → Trino workers: ${TRINO_WORKERS} | CPUs: ${LIMA_CPUS} (host: ${total_cores})"
+  # Suggested default: half the host cores, min 2, max 12
+  local default_cpus=$(( total_cores / 2 ))
+  [ "$default_cpus" -lt 2 ] && default_cpus=2
+  [ "$default_cpus" -gt 12 ] && default_cpus=12
+
+  local cpu_options=()
+  for n in 2 4 6 8 10 12; do
+    [ "$n" -le "$total_cores" ] && cpu_options+=("$n")
+  done
+  # Ensure "All" option exists
+  cpu_options+=("All (${total_cores})")
+
+  i=1
+  local default_idx=1
+  for opt in "${cpu_options[@]}"; do
+    local marker=""
+    local opt_val="${opt%% *}"   # strip " (N)" suffix if present
+    [ "$opt_val" = "$default_cpus" ] && marker=" ${DIM}(recommended)${NC}"
+    printf "  [%d] %s cores%b\n" "$i" "$opt" "$marker"
+    [ "$opt_val" = "$default_cpus" ] && default_idx=$i
+    i=$((i + 1))
+  done
+  printf "\n"
+
+  while true; do
+    printf "Enter choice [1-%d] (default %d): " "${#cpu_options[@]}" "$default_idx"
+    read -r choice
+    [ -z "$choice" ] && choice="$default_idx"
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#cpu_options[@]}" ]; then
+      break
+    fi
+    printf "Invalid choice. Try again.\n"
+  done
+
+  local cpu_selected="${cpu_options[$((choice - 1))]}"
+  if [[ "$cpu_selected" == All* ]]; then
+    LIMA_CPUS="$total_cores"
+  else
+    LIMA_CPUS="${cpu_selected%% *}"
+  fi
+
+  ok "RAM: ${BUDGET_GB}GB | CPUs: ${LIMA_CPUS} | Trino workers: ${TRINO_WORKERS}"
 }
 
 # ── Write Lima VM config if not present ──────────────────────────────────────
