@@ -139,7 +139,7 @@ services:
       - "3030:3030"
     command: ["--mem", "/provisa"]
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3030/$$/ping || exit 1"]
+      test: ["CMD-SHELL", "wget -qO /dev/null 'http://localhost:3030/provisa/query?query=ASK%7B%7D' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 18
