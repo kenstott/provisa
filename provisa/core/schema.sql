@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     description TEXT,
     cache_ttl   INTEGER,
     naming_convention TEXT,
+    watermark_column TEXT,
     UNIQUE (source_id, schema_name, table_name)
 );
 
@@ -84,7 +85,6 @@ DO $$ BEGIN
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS path TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS visible_to TEXT[] NOT NULL DEFAULT '{}';
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -199,6 +199,7 @@ CREATE TABLE IF NOT EXISTS persisted_queries (
 
 -- Migration: add sink and metadata columns
 DO $$ BEGIN
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS visible_to TEXT[] NOT NULL DEFAULT '{}';
     ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS sink_topic TEXT;
     ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS sink_trigger TEXT;
     ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS sink_key_column TEXT;
