@@ -43,10 +43,11 @@ _workers_from_budget() {
 }
 
 # ── Ask RAM budget at first launch ───────────────────────────────────────────
-# Sets globals: BUDGET_GB, TRINO_WORKERS, LIMA_MEMORY
+# Sets globals: BUDGET_GB, TRINO_WORKERS, LIMA_MEMORY, LIMA_CPUS
 ask_ram_budget() {
-  local total_gb
+  local total_gb total_cores
   total_gb="$(sysctl -n hw.memsize | awk '{printf "%d", $1/1024/1024/1024}')"
+  total_cores="$(sysctl -n hw.logicalcpu)"
 
   printf "\n${BOLD}RAM Budget${NC}\n"
   printf "How much RAM should Provisa use? (host total: %dGB)\n\n" "$total_gb"
@@ -85,7 +86,12 @@ ask_ram_budget() {
   TRINO_WORKERS="$(_workers_from_budget "$BUDGET_GB")"
   LIMA_MEMORY="${BUDGET_GB}GiB"
 
-  ok "RAM budget: ${BUDGET_GB}GB → Trino workers: ${TRINO_WORKERS}"
+  # CPU budget: half the host logical cores, min 2, max 12
+  LIMA_CPUS=$(( total_cores / 2 ))
+  [ "$LIMA_CPUS" -lt 2 ] && LIMA_CPUS=2
+  [ "$LIMA_CPUS" -gt 12 ] && LIMA_CPUS=12
+
+  ok "RAM budget: ${BUDGET_GB}GB → Trino workers: ${TRINO_WORKERS} | CPUs: ${LIMA_CPUS} (host: ${total_cores})"
 }
 
 # ── Write Lima VM config if not present ──────────────────────────────────────
@@ -108,7 +114,7 @@ write_lima_config() {
 vmType: vz
 os: Linux
 arch: "aarch64"
-cpus: 4
+cpus: ${LIMA_CPUS}
 memory: "${LIMA_MEMORY}"
 disk: "60GiB"
 images:
@@ -564,6 +570,7 @@ main() {
   BUDGET_GB=8
   TRINO_WORKERS=0
   LIMA_MEMORY="8GiB"
+  LIMA_CPUS=4
 
   printf "\n${BOLD}Provisa — First Launch Setup${NC}\n"
   printf "═══════════════════════════════════════════\n\n"
