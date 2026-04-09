@@ -22,6 +22,29 @@ info() { printf "${CYAN}[build-appimage]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[build-appimage]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[build-appimage]${NC} %s\n" "$*" >&2; }
 
+# ── Pre-build provisa wheels for linux/amd64 (airgapped pip install) ──────────
+build_provisa_wheels() {
+  local wheels_dir="${SCRIPT_DIR}/tmp-provisa-wheels"
+  local stamp_file="${wheels_dir}/.pyproject_mtime"
+  local current_mtime
+  current_mtime=$(stat -c '%Y' "${REPO_ROOT}/pyproject.toml" 2>/dev/null || echo "0")
+  if [ -d "$wheels_dir" ] && [ "$(ls -A "$wheels_dir" 2>/dev/null)" ] \
+     && [ -f "$stamp_file" ] && [ "$(cat "$stamp_file")" = "$current_mtime" ]; then
+    info "Provisa wheels cached — skipping."
+    return
+  fi
+  rm -rf "$wheels_dir"
+  mkdir -p "$wheels_dir"
+  info "Building provisa wheels for linux/amd64 (requires network on build host)..."
+  docker run --rm --platform linux/amd64 \
+    -v "${REPO_ROOT}:/src:ro" \
+    -v "${wheels_dir}:/wheels" \
+    python:3.12-slim \
+    pip wheel --no-cache-dir --wheel-dir /wheels /src
+  echo "$current_mtime" > "${wheels_dir}/.pyproject_mtime"
+  ok "Provisa wheels built ($(ls "$wheels_dir" | wc -l | tr -d ' ') wheels)."
+}
+
 # ── Prerequisites ──────────────────────────────────────────────────────────────
 check_prereqs() {
   if ! command -v curl &>/dev/null; then
@@ -151,6 +174,13 @@ build_appdir() {
   cp "${REPO_ROOT}/main.py"        "${APPDIR}/provisa-source/"
   cp "${REPO_ROOT}/pyproject.toml" "${APPDIR}/provisa-source/"
   cp -r "${REPO_ROOT}/provisa"    "${APPDIR}/provisa-source/provisa"
+  # Embed pre-built wheels so Dockerfile pip install needs no network
+  local wheels_src="${SCRIPT_DIR}/tmp-provisa-wheels"
+  if [ ! -d "$wheels_src" ] || [ -z "$(ls -A "$wheels_src" 2>/dev/null)" ]; then
+    err "No wheels found in ${wheels_src} — run build_provisa_wheels() first."
+    exit 1
+  fi
+  cp -r "$wheels_src" "${APPDIR}/provisa-source/wheels"
 
   # Copy CLI and launch scripts
   cp "${REPO_ROOT}/scripts/provisa"         "${APPDIR}/provisa-cli"
@@ -196,6 +226,7 @@ main() {
 
   check_prereqs
   bundle_docker
+  build_provisa_wheels
   save_images
   build_appdir
   create_appimage

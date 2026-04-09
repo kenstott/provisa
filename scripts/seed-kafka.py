@@ -20,13 +20,14 @@ Uses customer_id keys from the PG demo dataset (1-20).
 
 import json
 import random
-import time
 from datetime import datetime, timedelta
 
 from confluent_kafka import Producer
 
+import os
+
 TOPIC = "support.tickets"
-BOOTSTRAP = "localhost:9092"
+BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 
 CATEGORIES = ["billing", "technical", "shipping", "returns", "account"]
 PRIORITIES = ["low", "medium", "high", "critical"]

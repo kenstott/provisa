@@ -187,10 +187,15 @@ download_otel_agent() {
 # Dockerfile can use --no-index --find-links /wheels with no PyPI access.
 build_provisa_wheels() {
   local wheels_dir="${SCRIPT_DIR}/tmp-provisa-wheels"
-  if [ -d "$wheels_dir" ] && [ "$(ls -A "$wheels_dir" 2>/dev/null)" ]; then
+  local stamp_file="${wheels_dir}/.pyproject_mtime"
+  local current_mtime
+  current_mtime=$(stat -f '%m' "${REPO_ROOT}/pyproject.toml" 2>/dev/null || echo "0")
+  if [ -d "$wheels_dir" ] && [ "$(ls -A "$wheels_dir" 2>/dev/null)" ] \
+     && [ -f "$stamp_file" ] && [ "$(cat "$stamp_file")" = "$current_mtime" ]; then
     info "Provisa wheels cached — skipping."
     return
   fi
+  rm -rf "$wheels_dir"
   mkdir -p "$wheels_dir"
   info "Building provisa wheels for linux/arm64 (requires network on build host)..."
   docker run --rm --platform linux/arm64 \
@@ -198,6 +203,7 @@ build_provisa_wheels() {
     -v "${wheels_dir}:/wheels" \
     python:3.12-slim \
     pip wheel --no-cache-dir --wheel-dir /wheels /src
+  echo "$current_mtime" > "${wheels_dir}/.pyproject_mtime"
   ok "Provisa wheels built ($(ls "$wheels_dir" | wc -l | tr -d ' ') wheels)."
 }
 
