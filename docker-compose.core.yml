@@ -19,8 +19,8 @@ services:
       test: ["CMD-SHELL", "pg_isready -U provisa"]
       interval: 5s
       timeout: 5s
-      retries: 15
-      start_period: 30s
+      retries: 30
+      start_period: 60s
 
   pgbouncer:
     image: edoburu/pgbouncer:latest
@@ -46,8 +46,8 @@ services:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
-      retries: 15
-      start_period: 30s
+      retries: 30
+      start_period: 60s
 
   redis:
     image: redis:7-alpine
@@ -57,8 +57,8 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
-      retries: 15
-      start_period: 30s
+      retries: 30
+      start_period: 60s
 
   trino:
     image: trinodb/trino:480
@@ -78,9 +78,9 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "trino --execute 'SELECT 1' || exit 1"]
       interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 30s
+      timeout: 10s
+      retries: 42
+      start_period: 120s
 
   trino-worker:
     image: trinodb/trino:480
@@ -117,8 +117,8 @@ services:
       test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/8480' || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 15s
+      retries: 18
+      start_period: 60s
 
 volumes:
   pg_data:
