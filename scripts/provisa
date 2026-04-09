@@ -82,7 +82,7 @@ compose_cmd() {
 
 # Compose files: airgap overlay added when running in Lima to replace build: with image:
 _build_compose_files() {
-    local files="-f ${PROJECT_DIR}/docker-compose.yml -f ${PROJECT_DIR}/docker-compose.prod.yml"
+    local files="-f ${PROJECT_DIR}/docker-compose.core.yml -f ${PROJECT_DIR}/docker-compose.app.yml"
     if { [ "$RUNTIME" = "lima" ] || [ "$RUNTIME" = "virtualbox" ] || [ "$RUNTIME" = "bundled" ]; } && [ -f "${PROJECT_DIR}/docker-compose.airgap.yml" ]; then
         files="${files} -f ${PROJECT_DIR}/docker-compose.airgap.yml"
     fi

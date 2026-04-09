@@ -1,5 +1,5 @@
 # Airgapped overlay — replaces build: directives with pre-built local images.
-# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.airgap.yml up
+# Usage: docker compose -f docker-compose.core.yml -f docker-compose.app.yml -f docker-compose.airgap.yml up
 # Used by the provisa CLI when runtime: lima (macOS DMG install).
 #
 # OTel (Trino): first-launch.sh downloads the OTel Java agent jar and sets

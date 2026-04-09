@@ -453,13 +453,13 @@ build_provisa_image() {
 # to find them inside the VM.
 stage_compose() {
   local dest="${PROVISA_HOME}/compose"
-  if [ -d "$dest" ] && [ -f "${dest}/docker-compose.yml" ]; then
+  if [ -d "$dest" ] && [ -f "${dest}/docker-compose.core.yml" ]; then
     return 0
   fi
   mkdir -p "$dest"
   for f in \
-    docker-compose.yml \
-    docker-compose.prod.yml \
+    docker-compose.core.yml \
+    docker-compose.app.yml \
     docker-compose.airgap.yml; do
     if [ -f "${RESOURCES}/${f}" ]; then
       cp "${RESOURCES}/${f}" "${dest}/${f}"

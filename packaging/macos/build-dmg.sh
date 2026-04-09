@@ -251,8 +251,8 @@ save_images() {
 embed_compose() {
   local res="${APP_BUNDLE}/Contents/Resources"
   mkdir -p "$res"
-  cp "${REPO_ROOT}/docker-compose.yml" "${res}/docker-compose.yml"
-  cp "${REPO_ROOT}/docker-compose.prod.yml" "${res}/docker-compose.prod.yml"
+  cp "${REPO_ROOT}/docker-compose.core.yml" "${res}/docker-compose.core.yml"
+  cp "${REPO_ROOT}/docker-compose.app.yml" "${res}/docker-compose.app.yml"
   cp "${REPO_ROOT}/docker-compose.airgap.yml" "${res}/docker-compose.airgap.yml"
   cp -r "${REPO_ROOT}/config" "${res}/config"
   cp -r "${REPO_ROOT}/db" "${res}/db"

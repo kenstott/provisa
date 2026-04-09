@@ -1,12 +1,5 @@
-# Production override: adds Provisa container.
-# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up
-#
-# External config DB:  set CONFIG_DB_HOST, CONFIG_DB_PORT, CONFIG_DB_USER,
-#                      CONFIG_DB_PASSWORD, CONFIG_DB_NAME to point at an
-#                      existing Postgres instance on another box.
-#
-# External Redis:      set REDIS_URL (e.g. redis://192.168.1.5:6379) to use a
-#                      shared Redis instance instead of the bundled one.
+# Provisa application — overlay onto core.yml.
+# Usage: docker compose -f docker-compose.core.yml -f docker-compose.app.yml up
 services:
   provisa:
     build: .

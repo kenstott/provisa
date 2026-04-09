@@ -1,0 +1,128 @@
+# Runtime deps only — no host ports (all internal to the docker network).
+# Usage: docker compose -f docker-compose.core.yml [-f docker-compose.app.yml] up
+services:
+  postgres:
+    image: postgres:16
+    command: >
+      postgres
+      -c wal_level=logical
+      -c max_replication_slots=10
+      -c max_wal_senders=10
+    environment:
+      POSTGRES_DB: provisa
+      POSTGRES_USER: provisa
+      POSTGRES_PASSWORD: provisa
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U provisa"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: provisa
+      POOL_MODE: transaction
+      LISTEN_PORT: 6432
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  minio:
+    image: minio/minio:latest
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+
+  trino:
+    image: trinodb/trino:480
+    volumes:
+      - ./trino/etc/config.properties:/etc/trino/config.properties:ro
+      - ./trino/etc/jvm.config:/etc/trino/jvm.config:ro
+      - ./trino/etc/node.properties:/etc/trino/node.properties:ro
+      - ./trino/catalog:/etc/trino/catalog
+      - ./trino/kafka:/etc/trino/kafka:ro
+      - trino_cache:/data/trino/cache
+      - ./observability/trino-otel:/etc/trino/otel:ro
+    environment:
+      JAVA_TOOL_OPTIONS: "${TRINO_JAVA_TOOL_OPTIONS:-}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "trino --execute 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  trino-worker:
+    image: trinodb/trino:480
+    entrypoint: ["/etc/trino/worker/entrypoint.sh"]
+    volumes:
+      - ./trino/etc/worker/config.properties:/etc/trino/config.properties:ro
+      - ./trino/etc/jvm.config:/etc/trino/jvm.config:ro
+      - ./trino/etc/worker/entrypoint.sh:/etc/trino/worker/entrypoint.sh:ro
+      - ./trino/catalog:/etc/trino/catalog
+      - ./trino/kafka:/etc/trino/kafka:ro
+      - trino_worker_cache:/data/trino/cache
+      - ./observability/trino-otel:/etc/trino/otel:ro
+    depends_on:
+      trino:
+        condition: service_healthy
+    deploy:
+      replicas: 0
+
+  zaychik:
+    build: ./zaychik
+    environment:
+      TF_TRINO_HOST: trino
+      TF_TRINO_PORT: 8080
+      TF_TRINO_SSL: "false"
+      TF_FLIGHT_HOST: 0.0.0.0
+      TF_FLIGHT_PORT: 8480
+      TF_FLIGHT_SSL: "false"
+      TF_FLIGHT_AUTH_TYPE: trino
+      TF_FLIGHT_BATCH_SIZE: 10000
+    depends_on:
+      trino:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/8480' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  pg_data:
+  minio_data:
+  redis_data:
+  trino_cache:
+  trino_worker_cache:
