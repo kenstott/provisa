@@ -187,6 +187,11 @@ download_otel_agent() {
 # Dockerfile can use --no-index --find-links /wheels with no PyPI access.
 build_provisa_wheels() {
   local wheels_dir="${SCRIPT_DIR}/tmp-provisa-wheels"
+  # Skip if .whl files are already present (e.g. downloaded from CI artifact by pull-images job)
+  if [ -d "$wheels_dir" ] && ls "${wheels_dir}"/*.whl &>/dev/null 2>&1; then
+    info "Provisa wheels present ($(ls "${wheels_dir}"/*.whl | wc -l | tr -d ' ') wheels) — skipping build."
+    return
+  fi
   local stamp_file="${wheels_dir}/.pyproject_mtime"
   local current_mtime
   current_mtime=$(stat -f '%m' "${REPO_ROOT}/pyproject.toml" 2>/dev/null || echo "0")
