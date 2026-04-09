@@ -31,6 +31,9 @@ _KAFKA_TYPES = {"kafka"}
 # Debezium CDC sources (MySQL, SQL Server, Oracle, PostgreSQL via Debezium)
 _DEBEZIUM_TYPES = {"debezium"}
 
+# Ingest sources — watermark polling via SQLAlchemy (Phase AS)
+_INGEST_TYPES = {"ingest"}
+
 # All other SQL-ish sources fall back to polling
 _POLLING_TYPES = {
     "mysql", "singlestore", "mariadb", "sqlserver", "oracle", "duckdb",
@@ -66,6 +69,14 @@ def get_provider(source_type: str, config: dict[str, Any]) -> NotificationProvid
         return KafkaNotificationProvider(
             bootstrap_servers=config["bootstrap_servers"],
             group_id=config.get("group_id", "provisa-subscriptions"),
+        )
+
+    if source_type in _INGEST_TYPES:
+        from provisa.ingest.provider import IngestPollingProvider
+
+        return IngestPollingProvider(
+            engine=config["engine"],
+            poll_interval=config.get("poll_interval", 5.0),
         )
 
     if source_type in _DEBEZIUM_TYPES:

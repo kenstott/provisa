@@ -466,5 +466,62 @@
 - **REQ-328** (2026-04-08): Full governance is applied to gRPC remote source results: RLS, column masking, domain access control, and column visibility are enforced in Stage 2 identically to local table results. The remote gRPC server has no knowledge of Provisa's governance rules. Part of Phase AR.
 - **REQ-329** (2026-04-08): Proto schema refresh is triggered on demand via an admin mutation. On refresh, Provisa re-parses the proto, updates virtual table and tracked function registrations, and preserves any RLS/masking rules applied on top. Proto import paths (for well-known types such as `google/protobuf/timestamp.proto`) are stored at registration time and re-used on refresh. Part of Phase AR.
 
+## Ingest Sources — Governed HTTP Push Receiver (REQ-331–337)
+- **REQ-331** (2026-04-09): A new `ingest` source type allows external services (OTEL Collector, Fluentd, custom webhooks, etc.) to POST JSON events to Provisa via `POST /events/ingest/{source_id}/{table}`. Provisa owns the write path and persists events to a steward-configured backing relational store. Part of Phase AS.
+- **REQ-332** (2026-04-09): Each ingest source specifies a SQLAlchemy-compatible connection (dialect, host, port, database, username/password). Provisa creates one `AsyncEngine` per source at startup and reuses it across all requests. The `dialect` field on the `sources` table carries the SQLAlchemy driver string (e.g. `postgresql+asyncpg`, `mysql+aiomysql`). Part of Phase AS.
+- **REQ-333** (2026-04-09): Stewards define the schema for each ingest table as a list of columns with `column_name`, `data_type` (SQL type, allowlisted), and `path` (dot-notation extraction path into the POST payload). Provisa auto-generates and executes `CREATE TABLE IF NOT EXISTS` DDL at startup using these definitions. System columns `_received_at` and `_updated_at` (TIMESTAMPTZ) are always injected. Part of Phase AS.
+- **REQ-334** (2026-04-09): The `path` field on `table_columns` uses dot-notation to walk nested JSON payloads. Array index segments are supported (e.g. `resourceLogs.0.resource.attributes`). If `path` is absent, the column name is used as the top-level key. Missing paths yield NULL. Part of Phase AS.
+- **REQ-335** (2026-04-09): The ingest endpoint accepts a single JSON object or a JSON array of objects per request. Each event in the array is extracted and written as a separate row. Returns HTTP 202 with a count of inserted rows. Source or table not found returns 404; engine unavailable returns 503. Part of Phase AS.
+- **REQ-336** (2026-04-09): Ingest tables are subscribable via the standard SSE endpoint (`GET /data/subscribe/{table}`). The subscription provider polls `_updated_at` watermark at a configurable interval (default: 5 s). Full governance is applied: RLS row filtering and column masking are enforced identically to local table subscriptions. Part of Phase AS.
+- **REQ-337** (2026-04-09): `table_columns.data_type TEXT` stores the steward-declared SQL type for ingest columns. This field is also used by future schema introspection tooling for sources where Trino is not available (ingest, API sources). Part of Phase AS.
+
 ## Infrastructure & Observability
 - **REQ-330** (2026-04-08): Development observability stack available in docker-compose under `observability` profile (opt-in). OTel Collector receives OTLP on 4317/4318 and exports metrics to Prometheus and traces to Tempo. Grafana on port 3100 with Prometheus and Tempo datasources pre-provisioned and a Provisa dashboard included. Provisa app configured via `OTEL_EXPORTER_OTLP_ENDPOINT` env var (default: `http://localhost:4317`).
+
+## Implementation Phases
+
+### Phase AS — Ingest Sources (REQ-331–337)
+**Status:** Complete
+
+**Modules:**
+- `provisa/ingest/__init__.py` — package
+- `provisa/ingest/ddl.py` — DDL generation and dot-notation path extraction
+- `provisa/ingest/engine.py` — SQLAlchemy AsyncEngine per source, startup init
+- `provisa/ingest/router.py` — `POST /events/ingest/{source_id}/{table}` FastAPI endpoint
+- `provisa/ingest/provider.py` — `IngestPollingProvider` (watermark polling via SQLAlchemy)
+
+**Schema changes:**
+- `table_columns.data_type TEXT` — steward-declared SQL type for ingest columns (also added to migration DO block)
+
+**Model changes:**
+- `SourceType.ingest` added to `provisa/core/models.py`
+
+**Wiring:**
+- `AppState.ingest_engines` — `{source_id: AsyncEngine}`
+- `AppState.ingest_tables` — `{source_id: {table_name: [col_defs]}}`
+- Startup: load all `ingest` sources from DB, create engines, run DDL, populate state
+- `subscriptions/registry.py` — `_INGEST_TYPES = {"ingest"}` → `IngestPollingProvider`
+- `api/data/subscribe.py` — ingest branch passes `engine` to provider config
+- `api/app.py` — registers ingest router at startup
+
+**Tests:**
+- `tests/unit/test_ingest_ddl.py` — DDL generation and path extraction
+- `tests/unit/test_ingest_router.py` — row extraction helpers
+
+**Reference OTEL use case:**
+```yaml
+sources:
+  - id: otel-logs
+    type: ingest
+    dialect: postgresql+asyncpg
+    host: localhost
+    port: 5432
+    database: provisa_ingest
+    username: provisa
+```
+OTEL Collector config:
+```yaml
+exporters:
+  otlphttp/provisa:
+    endpoint: http://provisa:8000/events/ingest/otel-logs/logs
+```

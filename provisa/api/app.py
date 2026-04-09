@@ -86,6 +86,9 @@ class AppState:
     graphql_remote_sources: dict[str, dict] = {}  # source_id → GraphQL remote registration
     openapi_specs: dict[str, dict] = {}  # source_id → OpenAPI spec registration
     grpc_remote_sources: dict[str, dict] = {}  # source_id → gRPC remote registration
+    # Phase AS — Ingest sources
+    ingest_engines: dict[str, object] = {}  # source_id → AsyncEngine
+    ingest_tables: dict[str, dict[str, list[dict]]] = {}  # source_id → {table_name → [col defs]}
 
 
 state = AppState()
@@ -281,6 +284,63 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 use_pgbouncer=src.use_pgbouncer,
                 pgbouncer_port=src.pgbouncer_port,
             )
+
+    # Phase AS: Initialize ingest engines and DDL for ingest sources
+    try:
+        from provisa.ingest.engine import get_engine as _get_ingest_engine
+        from provisa.ingest.ddl import generate_create_table as _gen_ddl
+        from provisa.core.secrets import resolve_secrets as _resolve_secrets
+        import logging as _logging
+        _ingest_log = _logging.getLogger(__name__)
+        async with state.pg_pool.acquire() as _pg_conn:
+            _ingest_sources = await _pg_conn.fetch(
+                "SELECT id, host, port, database, username, dialect FROM sources WHERE type = 'ingest'"
+            )
+        for _isrc in _ingest_sources:
+            _sid = _isrc["id"]
+            _pw = _resolve_secrets(None)  # password resolved via secrets provider if needed
+            _eng = _get_ingest_engine(
+                source_id=_sid,
+                dialect=_isrc["dialect"] or "postgresql+asyncpg",
+                host=_isrc["host"] or "localhost",
+                port=_isrc["port"] or 5432,
+                database=_isrc["database"] or "",
+                username=_isrc["username"] or "",
+                password=_pw or "",
+            )
+            state.ingest_engines[_sid] = _eng
+            # Load tables + columns for this ingest source
+            async with state.pg_pool.acquire() as _pg_conn:
+                _itables = await _pg_conn.fetch(
+                    """
+                    SELECT rt.table_name, tc.column_name, tc.path, tc.data_type
+                    FROM registered_tables rt
+                    JOIN table_columns tc ON tc.table_id = rt.id
+                    WHERE rt.source_id = $1
+                    ORDER BY rt.table_name, tc.id
+                    """,
+                    _sid,
+                )
+            _tbl_map: dict[str, list[dict]] = {}
+            for _row in _itables:
+                _tn = _row["table_name"]
+                _tbl_map.setdefault(_tn, []).append({
+                    "column_name": _row["column_name"],
+                    "path": _row["path"],
+                    "data_type": _row["data_type"],
+                })
+            state.ingest_tables[_sid] = _tbl_map
+            # Run CREATE TABLE IF NOT EXISTS for each ingest table
+            for _tn, _cols in _tbl_map.items():
+                _ddl = _gen_ddl(_tn, _cols)
+                try:
+                    async with _eng.begin() as _conn:
+                        await _conn.execute(__import__("sqlalchemy").text(_ddl))
+                except Exception as _exc:
+                    _ingest_log.warning("Ingest DDL failed for %s.%s: %s", _sid, _tn, _exc)
+    except Exception:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("Ingest source init failed", exc_info=True)
 
     # REQ-221: Fetch enum types from all PostgreSQL sources
     from provisa.compiler.enum_detect import build_enum_types
@@ -936,6 +996,13 @@ def create_app() -> FastAPI:
     app.include_router(data_router)
     app.include_router(dev_router)
     app.include_router(sdl_router)
+
+    # Ingest push receiver (Phase AS)
+    try:
+        from provisa.ingest.router import router as ingest_router
+        app.include_router(ingest_router)
+    except ImportError:
+        pass
 
     # SSE subscription endpoint (Phase AB2)
     try:

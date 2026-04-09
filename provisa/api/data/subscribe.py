@@ -89,6 +89,9 @@ async def _provider_sse_generator(
         ks = state.kafka_table_configs.get(table)
         bootstrap = getattr(ks, "bootstrap_servers", "localhost:9092") if ks else "localhost:9092"
         provider_config["bootstrap_servers"] = bootstrap
+    elif source_type == "ingest":
+        ingest_engine = state.ingest_engines.get(source_id) if state.ingest_engines else None
+        provider_config["engine"] = ingest_engine
     else:
         provider_config["pool"] = state.pg_pool
         if tbl_meta is not None:

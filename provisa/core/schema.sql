@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS table_columns (
     alias       TEXT,
     description TEXT,
     path        TEXT,
+    data_type   TEXT,
     writable_by  TEXT[] NOT NULL DEFAULT '{}',
     unmasked_to  TEXT[] NOT NULL DEFAULT '{}',
     mask_type    TEXT CHECK (mask_type IN ('regex', 'constant', 'truncate')),
@@ -77,6 +78,7 @@ DO $$ BEGIN
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_value TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_precision TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS native_filter_type TEXT;
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS data_type TEXT;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_enabled BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS path TEXT;

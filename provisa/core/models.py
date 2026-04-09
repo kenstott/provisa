@@ -61,6 +61,8 @@ class SourceType(str, Enum):
     graphql_remote = "graphql_remote"
     openapi = "openapi"
     grpc_remote = "grpc_remote"
+    # Push receiver — external services POST JSON events (Phase AS)
+    ingest = "ingest"
 
 
 class GovernanceLevel(str, Enum):
