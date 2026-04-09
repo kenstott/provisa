@@ -191,7 +191,7 @@ start_lima() {
 import_images() {
   info "Importing bundled container images (no network required)..."
   local count=0
-  for gz_file in "${IMAGES_DIR}"/*.tar.gz; do
+  for gz_file in "${PROVISA_HOME}/images"/*.tar.gz; do
     [ -f "$gz_file" ] || continue
     local name
     name="$(basename "$gz_file")"
