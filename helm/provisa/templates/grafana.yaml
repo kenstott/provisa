@@ -1,0 +1,77 @@
+{{- if .Values.observability.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-grafana-datasources
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        uid: prometheus
+        url: http://{{ .Release.Name }}-prometheus:{{ .Values.observability.prometheus.port }}
+        access: proxy
+        isDefault: true
+      - name: Tempo
+        type: tempo
+        uid: tempo
+        url: http://{{ .Release.Name }}-tempo:{{ .Values.observability.tempo.httpPort }}
+        access: proxy
+        jsonData:
+          tracesToLogsV2:
+            datasourceUid: prometheus
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-grafana
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: "{{ .Values.observability.grafana.image }}:{{ .Values.observability.grafana.tag }}"
+          ports:
+            - containerPort: {{ .Values.observability.grafana.port }}
+              name: http
+          env:
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: "{{ .Values.observability.grafana.adminPassword }}"
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "false"
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: data
+              mountPath: /var/lib/grafana
+      volumes:
+        - name: datasources
+          configMap:
+            name: {{ .Release.Name }}-grafana-datasources
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-grafana
+spec:
+  selector:
+    app: grafana
+  type: {{ .Values.observability.grafana.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.observability.grafana.port }}
+      targetPort: http
+{{- end }}

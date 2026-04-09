@@ -88,7 +88,7 @@ ingress:
     secretName: provisa-tls
 
 observability:
-  enabled: false  # set to true to deploy the full OTel stack
+  enabled: false  # set to true to deploy otel-collector, tempo, prometheus, grafana
 
   otelCollector:
     image: otel/opentelemetry-collector-contrib
@@ -97,33 +97,21 @@ observability:
     otlpHttpPort: 4318
     prometheusPort: 8889
 
+  tempo:
+    image: grafana/tempo
+    tag: "2.4.1"
+    httpPort: 3200
+    otlpGrpcPort: 4317
+
   prometheus:
-    enabled: true
-    server:
-      persistentVolume:
-        enabled: false
-    alertmanager:
-      enabled: false
-    pushgateway:
-      enabled: false
-    extraScrapeConfigs: |
-      - job_name: otel-collector
-        static_configs:
-          - targets: ["{{ .Release.Name }}-otel-collector:{{ .Values.observability.otelCollector.prometheusPort }}"]
+    image: prom/prometheus
+    tag: "v2.51.2"
+    port: 9090
 
   grafana:
-    enabled: true
+    image: grafana/grafana
+    tag: "10.4.2"
+    port: 3000
     adminPassword: provisa
     service:
       type: ClusterIP
-      port: 80
-    datasources:
-      datasources.yaml:
-        apiVersion: 1
-        datasources:
-          - name: Prometheus
-            type: prometheus
-            uid: prometheus
-            url: http://{{ .Release.Name }}-prometheus-server
-            access: proxy
-            isDefault: true

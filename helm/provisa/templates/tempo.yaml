@@ -1,0 +1,82 @@
+{{- if .Values.observability.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-tempo-config
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: {{ .Values.observability.tempo.httpPort }}
+    distributor:
+      receivers:
+        otlp:
+          protocols:
+            grpc:
+              endpoint: 0.0.0.0:{{ .Values.observability.tempo.otlpGrpcPort }}
+    ingester:
+      max_block_duration: 5m
+    compactor:
+      compaction:
+        block_retention: 48h
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /var/tempo/blocks
+        wal:
+          path: /var/tempo/wal
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-tempo
+  labels:
+    app: tempo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tempo
+  template:
+    metadata:
+      labels:
+        app: tempo
+    spec:
+      containers:
+        - name: tempo
+          image: "{{ .Values.observability.tempo.image }}:{{ .Values.observability.tempo.tag }}"
+          args: ["-config.file=/etc/tempo.yaml"]
+          ports:
+            - containerPort: {{ .Values.observability.tempo.httpPort }}
+              name: http
+            - containerPort: {{ .Values.observability.tempo.otlpGrpcPort }}
+              name: otlp-grpc
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tempo.yaml
+              subPath: tempo.yaml
+            - name: data
+              mountPath: /var/tempo
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-tempo-config
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-tempo
+spec:
+  selector:
+    app: tempo
+  ports:
+    - name: http
+      port: {{ .Values.observability.tempo.httpPort }}
+      targetPort: http
+    - name: otlp-grpc
+      port: {{ .Values.observability.tempo.otlpGrpcPort }}
+      targetPort: otlp-grpc
+{{- end }}

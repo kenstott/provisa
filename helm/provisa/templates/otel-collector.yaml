@@ -17,6 +17,10 @@ data:
       prometheus:
         endpoint: 0.0.0.0:{{ .Values.observability.otelCollector.prometheusPort }}
         namespace: provisa
+      otlp/tempo:
+        endpoint: {{ .Release.Name }}-tempo:{{ .Values.observability.tempo.otlpGrpcPort }}
+        tls:
+          insecure: true
       debug:
         verbosity: basic
     processors:
@@ -26,7 +30,7 @@ data:
         traces:
           receivers: [otlp]
           processors: [batch]
-          exporters: [debug]
+          exporters: [otlp/tempo, debug]
         metrics:
           receivers: [otlp]
           processors: [batch]
