@@ -143,6 +143,42 @@ filter_output() {
     fi
 }
 
+# ── Compose ps helper ── works with both nerdctl and docker compose ─────────
+# nerdctl compose ps does not support Go template --format; use --format json.
+# Emits "service\tstate\thealth" or "service\tstate\tstatus" lines.
+# Usage: _compose_ps [health|status]
+_compose_ps() {
+    local mode="${1:-health}"
+    local raw
+    # shellcheck disable=SC2086
+    raw="$($(get_compose) $COMPOSE_FILES ps --format json 2>/dev/null)" || raw=""
+    [ -z "$raw" ] && return
+    python3 - "$mode" "$raw" <<'PYEOF'
+import sys, json
+mode, raw = sys.argv[1], sys.argv[2]
+try:
+    items = json.loads(raw)
+    if isinstance(items, dict): items = [items]
+except json.JSONDecodeError:
+    items = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if line:
+            try: items.append(json.loads(line))
+            except: pass
+for c in items:
+    svc = c.get('Service') or c.get('service') or ''
+    raw_state  = c.get('State')  or c.get('state')  or ''
+    raw_status = c.get('Status') or c.get('status') or ''
+    if not raw_state:
+        raw_state = 'running' if raw_status.startswith('Up') else ('exited' if 'Exited' in raw_status else raw_status)
+    health = c.get('Health') or c.get('health') or ''
+    third  = health if mode == 'health' else raw_status
+    if svc:
+        print(svc + '\t' + raw_state + '\t' + third)
+PYEOF
+}
+
 # ── Health check helpers ────────────────────────────────────────────────────
 wait_for_healthy() {
     local timeout="${1:-120}"
@@ -154,8 +190,7 @@ wait_for_healthy() {
     while [ "$elapsed" -lt "$timeout" ]; do
         local all_healthy=true
         local ps_output
-        # shellcheck disable=SC2086
-        ps_output="$($(get_compose) $COMPOSE_FILES ps --format '{{.Service}}\t{{.State}}\t{{.Health}}' 2>/dev/null || true)"
+        ps_output="$(_compose_ps health)"
 
         if [ -z "$ps_output" ]; then
             all_healthy=false
@@ -236,8 +271,7 @@ cmd_status() {
     printf "═══════════════════════════════════════════\n"
 
     local ps_output
-    # shellcheck disable=SC2086
-    ps_output="$($(get_compose) $COMPOSE_FILES ps --format '{{.Service}}\t{{.State}}\t{{.Status}}' 2>/dev/null || true)"
+    ps_output="$(_compose_ps status)"
 
     if [ -z "$ps_output" ]; then
         printf "${DIM}No services running.${NC}\n"

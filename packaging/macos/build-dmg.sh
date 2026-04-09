@@ -203,11 +203,12 @@ build_provisa_wheels() {
   rm -rf "$wheels_dir"
   mkdir -p "$wheels_dir"
   info "Building provisa wheels for linux/arm64 (requires network on build host)..."
+  # Copy source to writable tmpfs inside container — egg-info can't be written to :ro mount
   docker run --rm --platform linux/arm64 \
     -v "${REPO_ROOT}:/src:ro" \
     -v "${wheels_dir}:/wheels" \
     python:3.12-slim \
-    pip wheel --no-cache-dir --wheel-dir /wheels /src
+    bash -c "cp -r /src /tmp/src && pip wheel --no-cache-dir --wheel-dir /wheels /tmp/src"
   echo "$current_mtime" > "${wheels_dir}/.pyproject_mtime"
   ok "Provisa wheels built ($(ls "$wheels_dir" | wc -l | tr -d ' ') wheels)."
 }

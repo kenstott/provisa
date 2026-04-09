@@ -455,10 +455,8 @@ build_provisa_image() {
 # to find them inside the VM.
 stage_compose() {
   local dest="${PROVISA_HOME}/compose"
-  if [ -d "$dest" ] && [ -f "${dest}/docker-compose.core.yml" ]; then
-    return 0
-  fi
   mkdir -p "$dest"
+  # Always overwrite compose YAMLs — never allow stale files from a prior install
   for f in \
     docker-compose.core.yml \
     docker-compose.app.yml \
@@ -467,8 +465,9 @@ stage_compose() {
       cp "${RESOURCES}/${f}" "${dest}/${f}"
     fi
   done
+  # Stage support dirs only if not present (preserve user edits)
   for d in config db trino observability; do
-    if [ -d "${RESOURCES}/${d}" ]; then
+    if [ ! -d "${dest}/${d}" ] && [ -d "${RESOURCES}/${d}" ]; then
       cp -r "${RESOURCES}/${d}" "${dest}/${d}"
     fi
   done
@@ -540,9 +539,6 @@ YAML
 install_cli() {
   local cli_src="${RESOURCES}/provisa-cli"
   local cli_dst="/usr/local/bin/provisa"
-  if [ -f "$cli_dst" ]; then
-    return 0
-  fi
   info "Installing provisa CLI to /usr/local/bin/..."
   if [ -w /usr/local/bin ]; then
     cp "$cli_src" "$cli_dst"
@@ -556,8 +552,11 @@ install_cli() {
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
   if [ -f "$SENTINEL" ]; then
-    # Already set up — if re-run from DMG, still update the /Applications copy
+    # Already set up — update bundle, CLI, and compose YAMLs to latest version
     install_to_applications
+    install_guest_agent
+    stage_compose
+    install_cli
     exit 0
   fi
 
