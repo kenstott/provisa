@@ -24,6 +24,7 @@ services:
       start_period: 30s
 
   mongodb:
+    profiles: [dev]
     image: mongo:7
     ports:
       - "27017:27017"
@@ -70,6 +71,7 @@ services:
       start_period: 30s
 
   kafka:
+    profiles: [dev]
     image: confluentinc/cp-kafka:7.6.0
     ports:
       - "9092:9092"
@@ -95,6 +97,7 @@ services:
       start_period: 30s
 
   schema-registry:
+    profiles: [dev]
     image: confluentinc/cp-schema-registry:7.6.0
     ports:
       - "8081:8081"
@@ -106,6 +109,7 @@ services:
         condition: service_healthy
 
   debezium-connect:
+    profiles: [dev]
     image: quay.io/debezium/connect:2.7
     ports:
       - "8083:8083"
@@ -154,12 +158,14 @@ services:
       - ./trino/catalog:/etc/trino/catalog
       - ./trino/kafka:/etc/trino/kafka:ro
       - trino_cache:/data/trino/cache
+      # OTel Java agent dir: start-ui.sh --observability downloads the jar here
+      - ./observability/trino-otel:/etc/trino/otel:ro
+    environment:
+      # Set TRINO_JAVA_TOOL_OPTIONS to activate OTel agent (requires observability/otel-javaagent.jar).
+      # start-ui.sh --observability sets this automatically.
+      JAVA_TOOL_OPTIONS: "${TRINO_JAVA_TOOL_OPTIONS:-}"
     depends_on:
       postgres:
-        condition: service_healthy
-      mongodb:
-        condition: service_healthy
-      kafka:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "trino --execute 'SELECT 1' || exit 1"]
@@ -192,6 +198,7 @@ services:
       start_period: 15s
 
   elasticsearch:
+    profiles: [dev]
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
     ports:
       - "9200:9200"
@@ -218,6 +225,9 @@ services:
       - ./trino/catalog:/etc/trino/catalog
       - ./trino/kafka:/etc/trino/kafka:ro
       - trino_worker_cache:/data/trino/cache
+      - ./observability/trino-otel:/etc/trino/otel:ro
+    environment:
+      JAVA_TOOL_OPTIONS: "${TRINO_JAVA_TOOL_OPTIONS:-}"
     depends_on:
       trino:
         condition: service_healthy
@@ -244,6 +254,58 @@ services:
       retries: 15
       start_period: 60s
 
+  # Optional: OpenTelemetry observability stack
+  # Start with: docker compose --profile observability up
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.99.0
+    profiles: ["observability"]
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus metrics endpoint
+    volumes:
+      - ./observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    command: ["--config=/etc/otel-collector-config.yaml"]
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    profiles: ["observability"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - otel-collector
+
+  tempo:
+    image: grafana/tempo:2.4.1
+    profiles: ["observability"]
+    ports:
+      - "3200:3200"   # Tempo HTTP
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - tempo_data:/var/tempo
+    configs:
+      - source: tempo_config
+        target: /etc/tempo.yaml
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    profiles: ["observability"]
+    ports:
+      - "3100:3000"   # 3100 avoids conflict with UI dev server on 3000
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - tempo
+
   # Optional: Apache Jena Fuseki (SPARQL) for Phase AO integration tests
   # Start with: docker compose up fuseki
   fuseki:
@@ -269,3 +331,30 @@ volumes:
   trino_cache:
   trino_worker_cache:
   neo4j_data:
+  prometheus_data:
+  tempo_data:
+  grafana_data:
+
+configs:
+  tempo_config:
+    content: |
+      server:
+        http_listen_port: 3200
+      distributor:
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+      ingester:
+        max_block_duration: 5m
+      compactor:
+        compaction:
+          block_retention: 48h
+      storage:
+        trace:
+          backend: local
+          local:
+            path: /var/tempo/blocks
+          wal:
+            path: /var/tempo/wal
