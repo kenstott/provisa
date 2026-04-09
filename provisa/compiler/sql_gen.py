@@ -100,6 +100,7 @@ class ColumnRef:
     column: str  # physical column name
     field_name: str  # GraphQL field name
     nested_in: str | None  # relationship field name, or None for root
+    cardinality: str | None = None  # "many-to-one", "one-to-many", or None for root
 
 
 @dataclass
@@ -491,6 +492,7 @@ def _collect_nested_columns(
     sources: set[str],
     alias_counter: int,
     use_catalog: bool,
+    cardinality: str | None = None,
 ) -> int:
     """Recursively collect columns and JOINs from nested selections."""
     for nested_sel in selections:
@@ -535,6 +537,7 @@ def _collect_nested_columns(
                     sources,
                     alias_counter,
                     use_catalog,
+                    cardinality=nested_join_meta.cardinality,
                 )
         else:
             # Scalar column from the parent join
@@ -549,6 +552,7 @@ def _collect_nested_columns(
                 column=nested_name,
                 field_name=nested_response_key,
                 nested_in=nesting_path,
+                cardinality=cardinality,
             ))
     return alias_counter
 
@@ -617,6 +621,7 @@ def _compile_root_field(
                     sources,
                     alias_counter,
                     use_catalog,
+                    cardinality=join_meta.cardinality,
                 )
         else:
             # Scalar field — check for JSON path extraction

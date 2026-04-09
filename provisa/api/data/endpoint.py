@@ -113,8 +113,12 @@ import re as _re
 def _inject_probe_limit(sql: str, limit: int) -> str:
     """Inject or tighten a LIMIT clause for threshold probing.
 
-    If the query already has a LIMIT, use the smaller of the two.
+    If the query already has a literal LIMIT, use the smaller of the two.
+    If the query already has a parameterized LIMIT ($N), leave it unchanged.
     """
+    # Parameterized limit already present — user-supplied, leave as-is
+    if _re.search(r"\bLIMIT\s+\$\d+", sql, _re.IGNORECASE):
+        return sql
     limit_match = _re.search(r"\bLIMIT\s+(\d+)", sql, _re.IGNORECASE)
     if limit_match:
         existing = int(limit_match.group(1))
@@ -874,13 +878,86 @@ def _check_writable_by(table_meta, columns: list[str], role_id: str):
             )
 
 
+_ACTION_FILTER_ARGS = {"where", "order_by", "limit", "offset"}
+
+
+def _apply_action_filters(rows: list[dict], args: dict) -> list[dict]:
+    """Apply where/order_by/limit/offset post-processing to action result rows."""
+    where = args.get("where")
+    if where and isinstance(where, dict):
+        def _matches(row: dict) -> bool:
+            for field, condition in where.items():
+                val = row.get(field)
+                if isinstance(condition, dict):
+                    for op, cmp in condition.items():
+                        if op == "_eq" and val != cmp:
+                            return False
+                        elif op == "_neq" and val == cmp:
+                            return False
+                        elif op == "_gt" and not (val is not None and val > cmp):
+                            return False
+                        elif op == "_gte" and not (val is not None and val >= cmp):
+                            return False
+                        elif op == "_lt" and not (val is not None and val < cmp):
+                            return False
+                        elif op == "_lte" and not (val is not None and val <= cmp):
+                            return False
+                        elif op == "_in" and val not in (cmp or []):
+                            return False
+                        elif op == "_nin" and val in (cmp or []):
+                            return False
+                        elif op == "_like" and not (isinstance(val, str) and _like_match(val, cmp)):
+                            return False
+                        elif op == "_ilike" and not (isinstance(val, str) and _like_match(val.lower(), (cmp or "").lower())):
+                            return False
+                else:
+                    if val != condition:
+                        return False
+            return True
+        rows = [r for r in rows if _matches(r)]
+
+    order_by = args.get("order_by")
+    if order_by and isinstance(order_by, list):
+        import re
+        sort_keys = []
+        for spec in order_by:
+            if isinstance(spec, str):
+                m = re.match(r"^(\w+)\s*(asc|desc)?$", spec.strip(), re.IGNORECASE)
+                if m:
+                    sort_keys.append((m.group(1), (m.group(2) or "asc").lower() == "desc"))
+            elif isinstance(spec, dict):
+                for col, direction in spec.items():
+                    sort_keys.append((col, str(direction).lower() == "desc"))
+        for col, reverse in reversed(sort_keys):
+            rows = sorted(rows, key=lambda r, c=col: (r.get(c) is None, r.get(c)), reverse=reverse)
+
+    offset = args.get("offset")
+    if offset:
+        rows = rows[int(offset):]
+
+    limit = args.get("limit")
+    if limit is not None:
+        rows = rows[:int(limit)]
+
+    return rows
+
+
+def _like_match(value: str, pattern: str) -> bool:
+    import re
+    regex = re.escape(pattern).replace(r"\%", ".*").replace(r"\_", ".")
+    return bool(re.fullmatch(regex, value, re.DOTALL))
+
+
 async def _execute_action_field(field_name: str, field_node, state, variables: dict | None) -> list:
     """Execute a tracked function or webhook field, return rows list."""
     from provisa.compiler.sql_gen import _extract_value
-    args: dict = {}
+    raw_args: dict = {}
     if hasattr(field_node, "arguments") and field_node.arguments:
         for arg in field_node.arguments:
-            args[arg.name.value] = _extract_value(arg.value, variables)
+            raw_args[arg.name.value] = _extract_value(arg.value, variables)
+
+    filter_args = {k: raw_args.pop(k) for k in list(raw_args) if k in _ACTION_FILTER_ARGS}
+    args = raw_args
 
     fn = state.tracked_functions.get(field_name)
     if fn:
@@ -899,7 +976,8 @@ async def _execute_action_field(field_name: str, field_node, state, variables: d
         result = await state.source_pools.execute(src_id, sql, params)
         from provisa.executor.serialize import _convert_value
         cols = result.column_names
-        return [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
+        rows = [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
+        return _apply_action_filters(rows, filter_args)
 
     wh = state.tracked_webhooks.get(field_name)
     if wh:
@@ -909,7 +987,8 @@ async def _execute_action_field(field_name: str, field_node, state, variables: d
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.request(method, url, json=args)
         body = resp.json()
-        return body if isinstance(body, list) else [body]
+        rows = body if isinstance(body, list) else [body]
+        return _apply_action_filters(rows, filter_args)
 
     raise HTTPException(status_code=400, detail=f"Unknown action field: {field_name!r}")
 

@@ -449,12 +449,16 @@ def _build_action_fields(
     def _gql_scalar(type_str: str):
         return _ACTION_SCALAR_MAP.get(type_str, GraphQLString)
 
-    def _build_args(arguments: list[dict]) -> dict[str, GraphQLArgument]:
-        return {
-            a["name"]: GraphQLArgument(_gql_scalar(a.get("type", "String")))
-            for a in arguments
-            if a.get("name")
-        }
+    def _build_args(arguments: list[dict], response_fields: set[str] | None = None) -> dict[str, GraphQLArgument]:
+        result = {}
+        for a in arguments:
+            if not a.get("name"):
+                continue
+            name = a["name"]
+            if response_fields and name in response_fields:
+                name = f"_{name}"
+            result[name] = GraphQLArgument(_gql_scalar(a.get("type", "String")))
+        return result
 
     for func in si.functions:
         visible_to = func.get("visible_to") or []
@@ -464,10 +468,6 @@ def _build_action_fields(
         if not all_access and domain_id and domain_id not in accessible:
             continue
 
-        args = _build_args(
-            func["arguments"] if isinstance(func["arguments"], list)
-            else []
-        )
         returns_str = func.get("returns", "")
         # returns_str is "schema.table" — look up the GraphQL object type
         parts = returns_str.split(".", 1) if returns_str else []
@@ -481,7 +481,20 @@ def _build_action_fields(
                 gql_return = _json_schema_to_gql_type(return_schema, type_name) or GraphQLString
             else:
                 gql_return = GraphQLString
+            ret_type = None
 
+        # Detect collision between function arg names and return type field names
+        ret_fields: set[str] = set(ret_type.fields.keys()) if ret_type and hasattr(ret_type, "fields") else set()
+        args = _build_args(
+            func["arguments"] if isinstance(func["arguments"], list) else [],
+            response_fields=ret_fields,
+        )
+
+        if func.get("kind", "mutation") == "query":
+            args["limit"] = GraphQLArgument(GraphQLInt)
+            args["offset"] = GraphQLArgument(GraphQLInt)
+            args["where"] = GraphQLArgument(JSONScalar)
+            args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(GraphQLString)))
         gql_field = GraphQLField(gql_return, args=args, description=func.get("description"))
         field_key = func["name"]
         if si.domain_prefix and domain_id:
@@ -499,9 +512,6 @@ def _build_action_fields(
         if not all_access and domain_id and domain_id not in accessible:
             continue
 
-        args = _build_args(
-            wh["arguments"] if isinstance(wh["arguments"], list) else []
-        )
         returns_str = wh.get("returns") or ""
         inline = wh.get("inline_return_type") or []
 
@@ -523,9 +533,21 @@ def _build_action_fields(
             }
             wh_obj = GraphQLObjectType(wh_type_name, lambda f=inline_fields: f)
             gql_return = GraphQLList(GraphQLNonNull(wh_obj))
+            ret_type = None
         else:
+            ret_type = None
             gql_return = GraphQLString
 
+        wh_ret_fields: set[str] = set(ret_type.fields.keys()) if ret_type and hasattr(ret_type, "fields") else set()
+        args = _build_args(
+            wh["arguments"] if isinstance(wh["arguments"], list) else [],
+            response_fields=wh_ret_fields,
+        )
+        if wh.get("kind", "mutation") == "query":
+            args["limit"] = GraphQLArgument(GraphQLInt)
+            args["offset"] = GraphQLArgument(GraphQLInt)
+            args["where"] = GraphQLArgument(JSONScalar)
+            args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(GraphQLString)))
         gql_field = GraphQLField(gql_return, args=args, description=wh.get("description"))
         field_key = wh["name"]
         if si.domain_prefix and domain_id:

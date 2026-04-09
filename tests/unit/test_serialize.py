@@ -99,6 +99,65 @@ class TestSerializeNestedRows:
         assert row["product"] == {"name": "Widget"}
 
 
+class TestSerializeOneToMany:
+    def test_one_to_many_groups_rows(self):
+        """One-to-many relationship: multiple child rows collapsed under one parent."""
+        columns = [
+            ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
+            ColumnRef(alias="t0", column="name", field_name="name", nested_in=None),
+            ColumnRef(alias="t1", column="id", field_name="id", nested_in="orders", cardinality="one-to-many"),
+            ColumnRef(alias="t1", column="amount", field_name="amount", nested_in="orders", cardinality="one-to-many"),
+        ]
+        rows = [
+            (1, "Alice", 10, 100),
+            (1, "Alice", 11, 200),
+            (1, "Alice", 12, 300),
+        ]
+        result = serialize_rows(rows, columns, "customers")
+        data = result["data"]["customers"]
+        assert len(data) == 1
+        assert data[0]["id"] == 1
+        assert data[0]["name"] == "Alice"
+        assert len(data[0]["orders"]) == 3
+        assert {"id": 10, "amount": 100} in data[0]["orders"]
+        assert {"id": 11, "amount": 200} in data[0]["orders"]
+        assert {"id": 12, "amount": 300} in data[0]["orders"]
+
+    def test_one_to_many_no_children_returns_empty_list(self):
+        """LEFT JOIN with no matching child rows returns [] not null."""
+        columns = [
+            ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
+            ColumnRef(alias="t1", column="id", field_name="id", nested_in="orders", cardinality="one-to-many"),
+        ]
+        rows = [(1, None)]
+        result = serialize_rows(rows, columns, "customers")
+        data = result["data"]["customers"]
+        assert len(data) == 1
+        assert data[0]["orders"] == []
+
+    def test_one_to_many_multiple_parents(self):
+        """Multiple parents each with their own children."""
+        columns = [
+            ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
+            ColumnRef(alias="t1", column="oid", field_name="oid", nested_in="orders", cardinality="one-to-many"),
+        ]
+        rows = [
+            (1, 10),
+            (1, 11),
+            (2, None),
+            (3, 20),
+        ]
+        result = serialize_rows(rows, columns, "customers")
+        data = result["data"]["customers"]
+        assert len(data) == 3
+        c1 = next(r for r in data if r["id"] == 1)
+        assert c1["orders"] == [{"oid": 10}, {"oid": 11}]
+        c2 = next(r for r in data if r["id"] == 2)
+        assert c2["orders"] == []
+        c3 = next(r for r in data if r["id"] == 3)
+        assert c3["orders"] == [{"oid": 20}]
+
+
 class TestSerializeAggregate:
     def test_aggregate_with_nodes(self):
         """serialize_aggregate merges aggregate row and nodes rows into correct shape."""
