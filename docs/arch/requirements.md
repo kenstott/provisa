@@ -290,6 +290,9 @@
   ```
 - **REQ-210** (2026-04-03): Webhook mutations support inline return type definitions (not backed by a registered table) for cases where the webhook returns a custom shape. Inline types define fields with names and GraphQL types. Part of Phase AC (Commands).
 - **REQ-211** (2026-04-03): Function and webhook argument types map to GraphQL input types. Arguments are validated at parse time. SQL injection prevented via parameterized calls for DB functions and JSON serialization for webhooks. Part of Phase AC (Commands).
+- **REQ-360** (2026-04-09): Action query fields (tracked functions and webhooks with `exposed_as: query`) must support standard filter/sort/pagination GraphQL arguments: `where`, `order_by`, `limit`, `offset` — applied as Python post-processing after the function executes and results are materialized.
+- **REQ-361** (2026-04-09): Action query fields returning a known table type must resolve nested relationship fields by batching lookups against the related source table and merging results back onto each row. Relationship resolution applies the same governance rules (column visibility, RLS, column masking) as direct table queries.
+- **REQ-362** (2026-04-09): One-to-many relationships on action result rows must return an array field; many-to-one relationships must return an object field or null. Relationship cardinality is sourced from the JoinMeta declarations that define the table relationships.
 
 ## Commands UI
 - **REQ-242** (2026-04-03): Admin UI "Commands" page listing all registered functions and webhooks. Grouped by type (DB Function / Webhook). Shows source, domain, exposed_as (mutation/query), governance level, return table, argument count. Part of Phase AC (Commands).
