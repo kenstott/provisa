@@ -743,7 +743,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         ]
 
         from provisa.compiler.naming import domain_to_sql_name as _d2sql
-        _dp = raw_config.get("schema", {}).get("domain_prefix", False) if raw_config else False
+        _dp = raw_config.get("naming", {}).get("domain_prefix", False) if raw_config else False
         state.tracked_functions = {}
         for f in tracked_functions:
             state.tracked_functions[f["name"]] = f

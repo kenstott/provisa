@@ -69,6 +69,8 @@ Every REQ is assigned to a phase. Cross-cutting requirements (REQ-064, REQ-065, 
 | AM: Live Query Engine | REQ-260, REQ-282, REQ-283, REQ-284, REQ-285, REQ-286, REQ-287 |
 | AN: Automatic Persisted Queries (APQ) | REQ-288, REQ-289, REQ-290, REQ-291, REQ-292 |
 | AO: Query-API Sources (Neo4j & SPARQL) | REQ-295, REQ-296, REQ-297, REQ-298, REQ-299 |
+| AU: Cypher Query Frontend | REQ-345, REQ-346, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-352, REQ-353 |
+| AV: Natural Language Query Service | REQ-354, REQ-355, REQ-356, REQ-357, REQ-358, REQ-359 |
 | Dropped | REQ-017 (NoSQL Parquet materialization — Trino native connectors handle this) |
 | Not implementation | REQ-072, REQ-073, REQ-074 (commercial positioning) |
 
@@ -4086,3 +4088,409 @@ python -m pytest tests/integration/test_grpc_remote_source.py -x -q
 | `tests/unit/test_grpc_remote_mapper.py` | Create |
 | `tests/unit/test_grpc_remote_loader.py` | Create |
 | `tests/integration/test_grpc_remote_source.py` | Create |
+
+---
+
+### Phase AU — Cypher Query Frontend (REQ-345–353)
+
+**Rationale:** Provisa's registered tables and relationships form a graph by composition. Each domain steward defines relationships from their own perspective — finance registers customer→account→transaction, logistics registers order→shipment→carrier — without coordinating with other domains. No single steward plans the full graph; it accumulates. Cypher lets consumers traverse across those perspectives without knowing the join chain, revealing connections that were never explicitly modeled by any one team.
+
+Critically, registered relationships are not conceptual — they are backed by real join columns with real data. A path query returns actual rows. `shortestPath((c:Customer)-[*]-(t:SupportTicket))` answers "how is customer X connected to this support ticket?" traversing whatever chain of registered relationships exists — order, line item, product, incident — without the consumer needing to know the intermediate tables. The answer is real, not inferred.
+
+This also makes data lineage queryable as a first-class concern: Provisa already knows source→table→column→relationship→target by construction. Path queries expose that lineage graph directly. `shortestPath` in particular provides cross-domain discoverability that SQL recursive CTEs can express but nobody writes by hand.
+
+**Cypher as IR for natural language:** Few analysts know Cypher, but that is not the primary adoption path. The intended consumer stack is `Natural language → LLM → Cypher → SQL → Trino`. Cypher serves as the intermediate representation between the LLM and the SQL compiler. This is a better IR than GraphQL for graph-shaped questions because Cypher's semantics map directly to what the user asked — a path question stays a path query through the whole pipeline, rather than being flattened into nested field selections. Cypher is also inspectable: an LLM-generated Cypher query is readable and correctable by a technically-minded user in a way that LLM-generated SQL from natural language often is not.
+
+**Goal:** Accept Cypher SELECT queries at a dedicated endpoint, compile them to Trino SQL via a three-stage pipeline, and return results — including typed Node/Edge/Path objects for graph variable projections.
+
+**Pipeline:**
+```
+POST /query/cypher (Cypher + $params)
+  → Stage 1: Cypher parser + translator → SQL (via SQLGlot AST)
+       path_translator injects _path_id, _depth, _direction columns for recursive CTEs
+  → Stage 2: governance rewrites (RLS, masking, visibility) — unchanged
+  → Stage 3: graph type rewriter → CAST(ROW(...) AS JSON) for node/edge columns
+  → Trino executor → flat rows (JSON strings for graph columns, scalars for properties)
+  → assembler → deserialize JSON columns → Node / Edge objects
+               → group by _path_id, order by _depth → Path objects
+  → response: typed Node / Edge / Path / scalar columns per row
+```
+
+#### Modules
+
+**`provisa/cypher/`**
+
+| File | Purpose |
+|------|---------|
+| `__init__.py` | Package stub |
+| `parser.py` | Lex and parse Cypher into an internal AST. Rejects write clauses (`CREATE`, `MERGE`, `SET`, `DELETE`, `DETACH`, `REMOVE`) and APOC references at parse time. |
+| `translator.py` | Walk the Cypher AST and emit a SQLGlot SQL AST. `MATCH` → `JOIN`; `OPTIONAL MATCH` → `LEFT JOIN`; `WHERE` → `WHERE`; `RETURN` → `SELECT`; `ORDER BY` / `SKIP` / `LIMIT` → SQL equivalents; `WITH` → CTE/subquery. Resolves node labels and relationship types via `CypherLabelMap`. |
+| `path_translator.py` | Translates `shortestPath`, `allShortestPaths`, and `[*1..n]` variable-length patterns to Trino `WITH RECURSIVE` CTEs against the steward-declared adjacency relation. Rejects unbounded `[*]`. |
+| `graph_rewriter.py` | Stage 3 SQLGlot AST rewrite pass. Detects node/edge/path variable references in the `SELECT` list and wraps their projected columns as `CAST(ROW(...) AS JSON)`. Runs after Stage 2, before execution. Does not modify scalar property projections. |
+| `graph_types.py` | GraphQL type definitions for `Node`, `Edge`, `Path`. Registered into the schema at startup. |
+| `label_map.py` | `CypherLabelMap` — built from `CompilationContext` at query time. `TableMeta.type_name` → node label; columns → properties; `JoinMeta` → relationship types and join columns. No separate config or registration step. |
+| `params.py` | Translates Cypher named parameters (`$param`) to Trino positional parameters (`$1`, `$2`, ...). Infers parameter types from `CypherLabelMap` schema. Rejects queries with unbound parameters that have no default. |
+| `assembler.py` | Post-execution response assembler. Deserializes JSON columns from Trino rows into typed `Node`, `Edge`, and `Path` Python objects. For path queries, groups rows by `_path_id` (injected by `path_translator.py`) and assembles ordered node/edge sequences into a single `Path` per group. |
+
+**`provisa/api/rest/cypher_router.py`**
+- `POST /query/cypher` — accepts `{ query: str, params: dict }`, runs the three-stage pipeline, passes raw Trino rows through `assembler.py`, returns typed response.
+
+#### Component Design
+
+**`parser.py`**
+```python
+@dataclass
+class CypherAST:
+    match_clauses: list[MatchClause]       # MATCH / OPTIONAL MATCH
+    where: WhereClause | None
+    with_clauses: list[WithClause]         # WITH pipeline steps
+    return_clause: ReturnClause
+    order_by: list[OrderItem]
+    skip: int | None
+    limit: int | None
+
+def parse_cypher(query: str) -> CypherAST
+    # raises CypherParseError for write clauses or APOC references
+```
+
+**`translator.py`**
+```python
+def cypher_to_sql(
+    ast: CypherAST,
+    label_map: CypherLabelMap,
+    params: dict[str, Any],
+) -> tuple[exp.Select, list[str]]          # (SQLGlot AST, ordered param list)
+```
+- One SQL SELECT per Cypher query (no multi-statement output)
+- Variable bindings track which SQL alias corresponds to each Cypher node/rel variable
+- Node label → `TableMeta` lookup; property → column name lookup — both via `label_map`
+
+**`graph_rewriter.py`**
+```python
+def apply_graph_rewrites(
+    sql_ast: exp.Select,
+    graph_vars: dict[str, GraphVarKind],   # variable name → Node | Edge | Path
+    label_map: CypherLabelMap,
+) -> exp.Select
+```
+- `GraphVarKind`: enum `NODE | EDGE | PATH`
+- For each graph var in SELECT list: replace bare column reference with `CAST(ROW(id_col, label_lit, prop1, prop2, ...) AS JSON) AS var_name`
+- Path vars: aggregate node/edge rows into `CAST(ROW(nodes_array, edges_array) AS JSON)`
+
+**`label_map.py`**
+```python
+@dataclass
+class NodeMapping:
+    label: str                             # PascalCase GraphQL type name (= Cypher label)
+    table_id: int
+    source_id: str
+    id_column: str
+    properties: dict[str, str]             # cypher prop name → SQL column name (from TableMeta)
+
+@dataclass
+class RelationshipMapping:
+    rel_type: str                          # Cypher relationship type (derived from JoinMeta)
+    source_label: str
+    target_label: str
+    join_source_column: str
+    join_target_column: str
+
+class CypherLabelMap:
+    nodes: dict[str, NodeMapping]
+    relationships: dict[str, RelationshipMapping]
+
+    @classmethod
+    def from_schema(cls, ctx: CompilationContext) -> CypherLabelMap
+        # builds label map from existing registered tables and relationships in Provisa
+        # TableMeta.type_name → node label; JoinMeta → relationship type
+        # no separate config — the Provisa schema IS the graph schema
+```
+
+**`assembler.py`**
+```python
+@dataclass
+class Node:
+    id: str
+    label: str
+    properties: dict[str, Any]
+
+@dataclass
+class Edge:
+    id: str
+    type: str
+    start_node: Node
+    end_node: Node
+    properties: dict[str, Any]
+
+@dataclass
+class Path:
+    nodes: list[Node]
+    edges: list[Edge]
+
+def assemble_rows(
+    raw_rows: list[dict],
+    graph_vars: dict[str, GraphVarKind],   # which columns hold Node/Edge/Path JSON
+) -> list[dict]
+```
+- Iterates raw Trino rows
+- For each column named in `graph_vars`:
+  - `NODE` → parse JSON string → `Node`
+  - `EDGE` → parse JSON string → `Edge` (with embedded start/end `Node`)
+  - `PATH` → rows share `_path_id`; group, sort by `_depth`, zip nodes and edges into `Path`
+- Scalar columns passed through unchanged
+- Path grouping collapses multiple Trino rows into one result row per path
+
+#### GraphQL Schema — Graph Types
+
+```graphql
+type Node {
+  id: ID!
+  label: String!
+  properties: JSON
+}
+
+type Edge {
+  id: ID!
+  type: String!
+  startNode: Node!
+  endNode: Node!
+  properties: JSON
+}
+
+type Path {
+  nodes: [Node!]!
+  edges: [Edge!]!
+}
+
+type CypherResult {
+  columns: [String!]!
+  rows: [JSON!]!               # each row: dict of column → scalar | Node | Edge | Path
+}
+```
+
+#### Label Map Derivation
+
+No separate config. `CypherLabelMap.from_schema(ctx)` derives the graph schema entirely from the existing `CompilationContext`:
+
+| Cypher concept | Provisa source |
+|---|---|
+| Node label (`:Person`) | `TableMeta.type_name` (PascalCase GraphQL type) |
+| Node property (`n.name`) | Column name from `TableMeta` field list |
+| Relationship type (`:WORKS_AT`) | `JoinMeta` key `(source_type, field_name)`, uppercased |
+| Relationship direction | `JoinMeta.cardinality` |
+| Join columns | `JoinMeta.source_column` / `JoinMeta.target_column` |
+
+The consumer writes Cypher using the same type names already visible in the Provisa GraphQL schema — no additional registration step.
+
+#### Tests
+
+**Unit — `tests/unit/test_cypher_parser.py`**
+- Valid MATCH/WHERE/RETURN parsed correctly
+- `CREATE` clause → `CypherParseError`
+- `MERGE` clause → `CypherParseError`
+- `SET` clause → `CypherParseError`
+- APOC call (`apoc.util.sleep`) → `CypherParseError`
+- `OPTIONAL MATCH` parsed as optional flag on clause
+- Path pattern `shortestPath(...)` parsed into `PathClause`
+- Unbounded `[*]` → `CypherParseError`
+- Named parameters `$name` extracted correctly
+
+**Unit — `tests/unit/test_cypher_translator.py`**
+- `MATCH (n:Person) RETURN n.name` → `SELECT n.name FROM {schema}.{table} AS n` (column name from `TableMeta`)
+- `OPTIONAL MATCH` → `LEFT JOIN`
+- `WHERE n.age > $min` → `WHERE n.age > $1` with param list `[min]`
+- `ORDER BY`, `SKIP`, `LIMIT` → SQL equivalents
+- `WITH` intermediate → CTE
+- Labels mapping to different Trino sources → `CypherCrossSourceError`
+
+**Unit — `tests/unit/test_cypher_graph_rewriter.py`**
+- Node variable in RETURN → `CAST(ROW(...) AS JSON)` column
+- Scalar property in RETURN → untouched
+- Edge variable → ROW wrapping with startNode/endNode
+- Path variable → nested ROW aggregation
+- Mixed node + scalar return → only node column rewritten
+
+**Unit — `tests/unit/test_cypher_assembler.py`**
+- Node JSON column → `Node` dataclass with correct `id`, `label`, `properties`
+- Edge JSON column → `Edge` dataclass with embedded `start_node` / `end_node`
+- Scalar column → passed through unchanged
+- Mixed row (node + scalar) → node deserialized, scalar untouched
+- Path rows sharing `_path_id` → collapsed into single `Path` with ordered `nodes` / `edges`
+- Multiple paths in result (different `_path_id`) → one `Path` object per group
+- Empty path (no hops) → `Path(nodes=[start], edges=[])`
+- Malformed JSON in graph column → `CypherAssemblyError`
+
+**Unit — `tests/unit/test_cypher_path_translator.py`**
+- `shortestPath((a:Person)-[:WORKS_AT*..5]->(b:Company))` → `WITH RECURSIVE` CTE
+- Depth limit enforced in generated SQL
+- `allShortestPaths` → recursive CTE returning all minimum-cost paths
+
+**Integration — `tests/integration/test_cypher_endpoint.py`**
+- `POST /query/cypher` with valid query → rows returned
+- RETURN scalar property → plain column in response
+- RETURN node variable → `Node` object in response
+- RETURN path → `Path` object in response
+- Write clause → 400 with parse error
+- APOC reference → 400 with parse error
+- Cross-source query → 400 with routing error
+- Named parameters bound correctly
+
+#### Verification
+```
+python -m pytest tests/unit/test_cypher_parser.py -x -q
+python -m pytest tests/unit/test_cypher_translator.py -x -q
+python -m pytest tests/unit/test_cypher_graph_rewriter.py -x -q
+python -m pytest tests/unit/test_cypher_path_translator.py -x -q
+python -m pytest tests/unit/test_cypher_assembler.py -x -q
+python -m pytest tests/integration/test_cypher_endpoint.py -x -q
+```
+
+#### Files
+| File | Action |
+|------|--------|
+| `provisa/cypher/__init__.py` | Create |
+| `provisa/cypher/parser.py` | Create |
+| `provisa/cypher/translator.py` | Create |
+| `provisa/cypher/path_translator.py` | Create |
+| `provisa/cypher/graph_rewriter.py` | Create |
+| `provisa/cypher/graph_types.py` | Create |
+| `provisa/cypher/label_map.py` | Create |
+| `provisa/cypher/params.py` | Create |
+| `provisa/cypher/assembler.py` | Create |
+| `provisa/api/rest/cypher_router.py` | Create |
+| `provisa/api/app.py` | Modify (register cypher_router, add graph types to schema) |
+| `tests/unit/test_cypher_parser.py` | Create |
+| `tests/unit/test_cypher_translator.py` | Create |
+| `tests/unit/test_cypher_graph_rewriter.py` | Create |
+| `tests/unit/test_cypher_path_translator.py` | Create |
+| `tests/unit/test_cypher_assembler.py` | Create |
+| `tests/integration/test_cypher_endpoint.py` | Create |
+
+---
+
+### Phase AV — Natural Language Query Service (REQ-354–359)
+
+**Rationale:** Text-to-SQL is commodity. The differentiator here is three-target generation (SQL, GraphQL, Cypher) against a governed, semantically modeled schema. Cypher output for graph-shaped questions is not available in any comparable tool. Role-scoped schema context means the LLM cannot generate queries referencing data the consumer is not permitted to see. Compiler-driven refinement replaces heuristic result quality checks with deterministic validation — the loop terminates on correctness, not guesswork.
+
+**Pipeline:**
+```
+POST /query/nl { q, role }
+  → job_id returned immediately
+  → background: three parallel generation loops
+      Cypher loop:   LLM → Cypher  → compile-validate → refine on error → valid
+      GraphQL loop:  LLM → GraphQL → compile-validate → refine on error → valid
+      SQL loop:      LLM → SQL     → compile-validate → refine on error → valid
+  → execute all valid queries in parallel via standard pipeline (Stage 2 governance)
+  → result available via GET /query/nl/{job_id} or SSE
+  → { cypher: {query, result}, graphql: {query, result}, sql: {query, result} }
+```
+
+#### Modules
+
+**`provisa/nl/`**
+
+| File | Purpose |
+|------|---------|
+| `__init__.py` | Package stub |
+| `job.py` | `NlJob` dataclass and job store (Redis-backed). States: `pending`, `running`, `complete`, `failed`. |
+| `prompt.py` | Builds LLM prompt per target language. Injects role-scoped GraphQL SDL as schema context. Includes compiler error from previous iteration as correction signal. |
+| `loop.py` | Single generation loop. Calls LLM, validates via compiler, retries on error up to `MAX_ITERATIONS` (default: 5). Returns `(query_text, error)` — one will be None. |
+| `runner.py` | Orchestrates three parallel loops via `asyncio.gather`. On completion, executes all valid queries in parallel, assembles final result, writes to job store. |
+| `executor.py` | Executes a validated query text through the appropriate Provisa pipeline (Cypher → Phase AU pipeline; GraphQL → existing compiler; SQL → Stage 2 + Trino). |
+
+**`provisa/api/rest/nl_router.py`**
+- `POST /query/nl` — submit NL query, return `{ job_id }`
+- `GET /query/nl/{job_id}` — poll for result
+- `GET /query/nl/{job_id}/stream` — SSE stream, emits each branch result as it completes
+
+#### Component Design
+
+**`prompt.py`**
+```python
+def build_prompt(
+    nl_query: str,
+    target: Literal["cypher", "graphql", "sql"],
+    schema_sdl: str,           # role-scoped SDL from existing schema generator
+    prior_error: str | None,   # compiler error from previous iteration
+) -> str
+```
+- Schema context is the GraphQL SDL already generated per role — no new schema serialization needed
+- Prior error included verbatim so the LLM can self-correct against the exact compiler message
+- Target-specific instructions: Cypher prompt includes label/relationship conventions; SQL prompt specifies Trino dialect; GraphQL prompt specifies available query fields
+
+**`loop.py`**
+```python
+async def generation_loop(
+    nl_query: str,
+    target: Literal["cypher", "graphql", "sql"],
+    schema_sdl: str,
+    compiler: Callable[[str], CompileResult],
+    llm: LLMClient,
+    max_iterations: int = 5,
+) -> tuple[str | None, str | None]   # (valid_query, final_error)
+```
+- Each iteration: build prompt → call LLM → validate via `compiler(query)` → if valid return; if invalid pass error to next iteration
+- Compiler validation is parse + compile only — no Trino execution until query is confirmed valid
+- `CompileResult`: `{ valid: bool, error: str | None }`
+
+**`runner.py`**
+```python
+async def run_nl_job(job_id: str, nl_query: str, role: str, app_state) -> None
+```
+- Fetches role-scoped SDL from schema generator
+- Launches three `generation_loop` coroutines via `asyncio.gather`
+- For each valid query: calls `executor.execute(query, target, role)`
+- Writes branch results to job store as each completes (partial results available mid-job)
+- Marks job complete when all three branches finish (success or exhausted)
+
+#### Tests
+
+**Unit — `tests/unit/test_nl_prompt.py`**
+- Prompt includes SDL schema context
+- Prior error included in refinement prompt
+- Target-specific instructions present per branch
+- Role-scoped SDL excludes invisible tables
+
+**Unit — `tests/unit/test_nl_loop.py`**
+- Valid query on first attempt → returns immediately, no retry
+- Invalid query → compiler error fed back → retry → valid on second attempt → returns
+- Persistent invalid query → exhausts `max_iterations` → returns `(None, last_error)`
+- Compiler called once per iteration
+
+**Unit — `tests/unit/test_nl_runner.py`**
+- Three loops launched in parallel
+- One branch exhausted → other two still execute and return results
+- All three valid → all three executed, result assembled correctly
+- Job store updated with partial results as branches complete
+
+**Integration — `tests/integration/test_nl_endpoint.py`**
+- `POST /query/nl` returns `job_id`
+- `GET /query/nl/{job_id}` returns pending then complete
+- Result contains all three branches
+- Failed branch has `query: null, error: <message>`
+- Generated queries respect role visibility (invisible table not referenced)
+- Valid generated query promotable to persisted query registry
+
+#### Verification
+```
+python -m pytest tests/unit/test_nl_prompt.py -x -q
+python -m pytest tests/unit/test_nl_loop.py -x -q
+python -m pytest tests/unit/test_nl_runner.py -x -q
+python -m pytest tests/integration/test_nl_endpoint.py -x -q
+```
+
+#### Files
+| File | Action |
+|------|--------|
+| `provisa/nl/__init__.py` | Create |
+| `provisa/nl/job.py` | Create |
+| `provisa/nl/prompt.py` | Create |
+| `provisa/nl/loop.py` | Create |
+| `provisa/nl/runner.py` | Create |
+| `provisa/nl/executor.py` | Create |
+| `provisa/api/rest/nl_router.py` | Create |
+| `provisa/api/app.py` | Modify (register nl_router) |
+| `tests/unit/test_nl_prompt.py` | Create |
+| `tests/unit/test_nl_loop.py` | Create |
+| `tests/unit/test_nl_runner.py` | Create |
+| `tests/integration/test_nl_endpoint.py` | Create |

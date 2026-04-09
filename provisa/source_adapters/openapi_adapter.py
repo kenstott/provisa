@@ -58,10 +58,15 @@ async def fetch(
 
     url = base_url.rstrip("/") + query.path
     path_params = {p["name"] for p in query.path_params}
-    query_params = {k: v for k, v in args.items() if k not in path_params}
+    # Args may have leading '_' on keys when name collides with a visible column (schema_gen renames)
+    def _get_arg(name: str):
+        return args.get(name, args.get(f"_{name}"))
+    query_params = {k.lstrip("_") if k.lstrip("_") in path_params else k: v
+                   for k, v in args.items() if k.lstrip("_") not in path_params}
     for p_name in path_params:
-        if p_name in args:
-            url = url.replace(f"{{{p_name}}}", str(args[p_name]))
+        val = _get_arg(p_name)
+        if val is not None:
+            url = url.replace(f"{{{p_name}}}", str(val))
 
     headers = _build_auth_headers(auth_config)
     async with httpx.AsyncClient(timeout=30.0) as client:
