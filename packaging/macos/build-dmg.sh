@@ -162,6 +162,25 @@ download_vm_images() {
   ok "Base VM image ready."
 }
 
+# ── Download OTel Java agent for Trino (bundled for airgapped install) ───────
+# Downloaded at build time (network available on build host); bundled in Resources
+# so first-launch.sh can copy it into ~/.provisa/compose/observability/trino-otel/
+# without any network access at install time.
+download_otel_agent() {
+  local dest="${APP_BUNDLE}/Contents/Resources/observability/trino-otel"
+  local jar="${dest}/opentelemetry-javaagent.jar"
+  if [ -f "$jar" ]; then
+    info "OTel Java agent cached — skipping."
+    return
+  fi
+  mkdir -p "$dest"
+  info "Downloading OTel Java agent for Trino..."
+  curl -fL \
+    "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar" \
+    -o "$jar"
+  ok "OTel Java agent bundled ($(du -sh "$jar" | cut -f1))."
+}
+
 # ── Pre-build provisa wheels for linux/arm64 (airgapped pip install) ─────────
 # Wheels are built inside a linux/arm64 container on the build host (network
 # available here, not at install time). Bundled into provisa-source/wheels/ so
@@ -209,13 +228,13 @@ save_images() {
       continue
     fi
     info "  Pulling + saving: ${img}"
-    docker pull "$img"
+    docker pull --platform linux/arm64 "$img"
     docker save "$img" | gzip -9 > "$out"
     ok "  Saved: ${out}"
   done
-  # Build and save zaychik (custom image)
+  # Build and save zaychik (custom image, arm64)
   info "  Building + saving zaychik..."
-  docker build -t provisa/zaychik:local "${REPO_ROOT}/zaychik"
+  docker build --platform linux/arm64 -t provisa/zaychik:local "${REPO_ROOT}/zaychik"
   docker save provisa/zaychik:local | gzip -9 > "${IMAGES_DIR}/zaychik-local.tar.gz"
   ok "  Saved zaychik."
 
@@ -438,6 +457,7 @@ main() {
   download_vm_images
   save_images
   build_provisa_wheels
+  download_otel_agent
 
   embed_compose
   embed_scripts

@@ -197,10 +197,10 @@ jobs:
             tag="${img##*/}"
             tag="${tag//:/-}"
             tag="${tag//\//-}"
-            docker pull "$img"
+            docker pull --platform linux/arm64 "$img"
             docker save "$img" | gzip -9 > "images/${tag}.tar.gz"
           done
-          docker build -t provisa/zaychik:local ./zaychik
+          docker build --platform linux/arm64 -t provisa/zaychik:local ./zaychik
           docker save provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
           # provisa/provisa:local is built at first-launch on each platform — not bundled.
 
