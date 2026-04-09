@@ -37,6 +37,9 @@ _INGEST_TYPES = {"ingest"}
 # WebSocket feed sources — connect to external WS URL, receive pushed events
 _WEBSOCKET_TYPES = {"websocket"}
 
+# RSS/Atom feed sources — poll HTTP feed, watermark by pubDate/updated
+_RSS_TYPES = {"rss"}
+
 # All other SQL-ish sources fall back to polling
 _POLLING_TYPES = {
     "mysql", "singlestore", "mariadb", "sqlserver", "oracle", "duckdb",
@@ -90,6 +93,14 @@ def get_provider(source_type: str, config: dict[str, Any]) -> NotificationProvid
             subscribe_payload=config.get("subscribe_payload"),
             event_path=config.get("event_path"),
             reconnect_interval=config.get("reconnect_interval", 5.0),
+        )
+
+    if source_type in _RSS_TYPES:
+        from provisa.subscriptions.rss_provider import RSSNotificationProvider
+
+        return RSSNotificationProvider(
+            url=config["url"],
+            poll_interval=config.get("poll_interval", 300.0),
         )
 
     if source_type in _DEBEZIUM_TYPES:

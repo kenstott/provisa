@@ -92,6 +92,19 @@ async def _provider_sse_generator(
     elif source_type == "ingest":
         ingest_engine = state.ingest_engines.get(source_id) if state.ingest_engines else None
         provider_config["engine"] = ingest_engine
+    elif source_type == "rss":
+        rss_src = state.rss_sources.get(source_id) if state.rss_sources else None
+        if rss_src:
+            hints = getattr(rss_src, "federation_hints", {}) or {}
+            feed_url = hints.get("feed_url")
+            if not feed_url:
+                use_ssl = hints.get("use_ssl", "true").lower() == "true"
+                scheme = "https" if use_ssl else "http"
+                path = getattr(rss_src, "path", None) or "/"
+                feed_url = f"{scheme}://{rss_src.host}:{rss_src.port}{path}"
+            provider_config["url"] = feed_url
+            if hints.get("poll_interval"):
+                provider_config["poll_interval"] = float(hints["poll_interval"])
     elif source_type == "websocket":
         ws_src = state.websocket_sources.get(source_id) if state.websocket_sources else None
         if ws_src:

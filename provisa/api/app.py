@@ -91,6 +91,8 @@ class AppState:
     ingest_tables: dict[str, dict[str, list[dict]]] = {}  # source_id → {table_name → [col defs]}
     # WebSocket sources
     websocket_sources: dict[str, object] = {}  # source_id → Source
+    # RSS/Atom feed sources
+    rss_sources: dict[str, object] = {}  # source_id → Source
 
 
 state = AppState()
@@ -344,10 +346,12 @@ async def _load_and_build(config_path: str | None = None) -> None:
         import logging as _logging
         _logging.getLogger(__name__).warning("Ingest source init failed", exc_info=True)
 
-    # WebSocket sources — register for SSE subscription dispatch
+    # WebSocket + RSS sources — register for SSE subscription dispatch
     for _src in config.sources:
         if _src.type.value == "websocket":
             state.websocket_sources[_src.id] = _src
+        elif _src.type.value == "rss":
+            state.rss_sources[_src.id] = _src
 
     # REQ-221: Fetch enum types from all PostgreSQL sources
     from provisa.compiler.enum_detect import build_enum_types

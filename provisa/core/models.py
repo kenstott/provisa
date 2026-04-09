@@ -49,6 +49,7 @@ class SourceType(str, Enum):
     # Streaming
     kafka = "kafka"
     websocket = "websocket"  # External WebSocket feed — connect, subscribe, receive events
+    rss = "rss"             # RSS 2.0 / Atom feed — poll, watermark by pubDate/updated
     # Graph / Semantic
     neo4j = "neo4j"
     sparql = "sparql"

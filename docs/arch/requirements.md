@@ -525,3 +525,13 @@ exporters:
   otlphttp/provisa:
     endpoint: http://provisa:8000/events/ingest/otel-logs/logs
 ```
+
+### Phase AT — WebSocket & RSS Sources (REQ-338–344)
+
+- **REQ-338** (2026-04-09): `websocket` is a supported source type. Connects to a WebSocket server, optionally sends a JSON subscribe payload on connect, receives JSON messages as a stream of ChangeEvents.
+- **REQ-339** (2026-04-09): WebSocket provider auto-reconnects on disconnect or error with configurable `reconnect_interval` (default: 5 s). The reconnect loop runs until `close()` is called.
+- **REQ-340** (2026-04-09): WebSocket message fields: `op` (insert/update/delete, default insert), `_ts`/`timestamp` (ISO 8601 or Unix epoch float, default now), all other fields become the row. `event_path` dot-notation extracts a sub-object from the message before mapping.
+- **REQ-341** (2026-04-09): WebSocket source connection URL is constructed from `host`, `port`, `path`, and `use_ssl` (federation_hints). `subscribe_payload` (JSON string in federation_hints) is sent on connect. `event_path` (federation_hints) selects a sub-field of each message.
+- **REQ-342** (2026-04-09): `rss` is a supported source type. Polls an RSS 2.0 or Atom feed URL at a configurable interval (default: 300 s = 5 min). Only items with a publication date newer than the last-seen watermark are emitted as ChangeEvents with `operation="insert"`.
+- **REQ-343** (2026-04-09): RSS parser handles both RSS 2.0 (`<item>`) and Atom (`<entry>`) formats. Fields extracted: `title`, `link`, `description`/`summary`, `published` (pubDate/updated), `id` (guid/id). Dates accept RFC 2822 and ISO 8601 formats; unparseable dates fall back to `datetime.now(utc)`.
+- **REQ-344** (2026-04-09): RSS source URL is resolved from `federation_hints.feed_url` if present, otherwise built from `host`, `port`, `path`, and `use_ssl`. `poll_interval` (federation_hints) overrides the default.
