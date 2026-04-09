@@ -261,9 +261,7 @@ class TestPollingProvider:
         conn = FakePollingConn([rows, []])
         pool = FakePollingPool(conn)
 
-        provider = PollingNotificationProvider(
-            pool=pool, poll_interval=0.01, soft_delete_column=None
-        )
+        provider = PollingNotificationProvider(pool=pool, poll_interval=0.01)
         events = []
         count = 0
         async for ev in provider.watch("orders"):
@@ -276,35 +274,6 @@ class TestPollingProvider:
         assert len(events) == 1
         assert events[0].operation == "update"
         assert events[0].row["name"] == "a"
-
-    @pytest.mark.asyncio
-    async def test_detects_soft_delete(self):
-        from provisa.subscriptions.polling_provider import PollingNotificationProvider
-
-        now = datetime.now(timezone.utc)
-        rows = [FakeRow({"id": 1, "updated_at": now, "deleted_at": now})]
-        conn = FakePollingConn([rows, []])
-        pool = FakePollingPool(conn)
-
-        provider = PollingNotificationProvider(
-            pool=pool, poll_interval=0.01, soft_delete_column="deleted_at"
-        )
-        events = []
-        async for ev in provider.watch("orders"):
-            events.append(ev)
-            await provider.close()
-            break
-
-        assert events[0].operation == "delete"
-
-    @pytest.mark.asyncio
-    async def test_warns_no_soft_delete(self, caplog):
-        from provisa.subscriptions.polling_provider import PollingNotificationProvider
-
-        import logging
-        with caplog.at_level(logging.WARNING):
-            PollingNotificationProvider(pool=MagicMock(), soft_delete_column=None)
-        assert "no soft-delete column" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -430,9 +399,3 @@ class TestRegistry:
         with pytest.raises(ValueError, match="No subscription provider"):
             get_provider("unknown_db", {})
 
-    def test_polling_with_soft_delete(self):
-        provider = get_provider(
-            "mysql",
-            {"pool": MagicMock(), "soft_delete_column": "deleted_at"},
-        )
-        assert provider._soft_delete_column == "deleted_at"

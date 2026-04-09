@@ -19,13 +19,12 @@ from __future__ import annotations
 import logging
 import re
 
-from opentelemetry import trace as _otel_trace
-
 from provisa.compiler.sql_gen import CompiledQuery
 from provisa.mv.models import MVDefinition
+from provisa.otel_compat import get_tracer as _get_tracer
 
 log = logging.getLogger(__name__)
-_tracer = _otel_trace.get_tracer(__name__)
+_tracer = _get_tracer(__name__)
 
 
 def _extract_tables_from_sql(sql: str) -> list[tuple[str, str | None]]:

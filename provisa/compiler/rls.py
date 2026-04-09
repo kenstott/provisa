@@ -19,11 +19,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from opentelemetry import trace as _otel_trace
-
 from provisa.compiler.sql_gen import CompiledQuery, CompilationContext
+from provisa.otel_compat import get_tracer as _get_tracer
 
-_tracer = _otel_trace.get_tracer(__name__)
+_tracer = _get_tracer(__name__)
 
 
 @dataclass

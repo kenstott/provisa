@@ -21,10 +21,10 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from opentelemetry import trace as _otel_trace
+from provisa.otel_compat import get_tracer as _get_tracer
 
 log = logging.getLogger(__name__)
-_tracer = _otel_trace.get_tracer(__name__)
+_tracer = _get_tracer(__name__)
 
 
 @dataclass(frozen=True)

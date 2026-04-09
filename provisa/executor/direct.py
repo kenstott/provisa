@@ -17,14 +17,13 @@ from __future__ import annotations
 
 import logging
 
-from opentelemetry import trace as _otel_trace
-
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.pool import SourcePool
 from provisa.executor.trino import QueryResult
+from provisa.otel_compat import get_tracer as _get_tracer
 
 log = logging.getLogger(__name__)
-_tracer = _otel_trace.get_tracer(__name__)
+_tracer = _get_tracer(__name__)
 
 
 async def execute_direct(
