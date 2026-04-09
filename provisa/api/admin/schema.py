@@ -47,6 +47,39 @@ async def _get_pool():
     return state.pg_pool
 
 
+async def _ensure_openapi_spec(source_id: str) -> bool:
+    """Lazy-load an OpenAPI spec into state from the DB source record if missing."""
+    from provisa.api.app import state
+    if getattr(state, "openapi_specs", {}).get(source_id):
+        return True
+    pool = await _get_pool()
+    if not pool:
+        return False
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT type, path FROM sources WHERE id = $1", source_id)
+    if not row or row["type"] != "openapi" or not row["path"]:
+        return False
+    try:
+        from provisa.openapi.loader import load_spec
+        from provisa.openapi.mapper import parse_spec
+        spec = load_spec(row["path"])
+        servers = spec.get("servers", [])
+        base_url = servers[0].get("url", "") if servers else ""
+        if not hasattr(state, "openapi_specs"):
+            state.openapi_specs = {}
+        state.openapi_specs[source_id] = {
+            "spec_path": row["path"],
+            "spec": spec,
+            "base_url": base_url,
+            "domain_id": "",
+            "auth_config": None,
+            "cache_ttl": 300,
+        }
+        return True
+    except Exception:
+        return False
+
+
 async def _rebuild_schemas():
     from provisa.api.app import _rebuild_schemas as rebuild
     await rebuild()
@@ -102,7 +135,7 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
     col_rows = await conn.fetch(
         "SELECT id, column_name, visible_to, writable_by, unmasked_to, "
         "mask_type, mask_pattern, mask_replace, mask_value, mask_precision, "
-        "alias, description "
+        "alias, description, native_filter_type "
         "FROM table_columns WHERE table_id = $1 ORDER BY id", row["id"],
     )
     columns = [
@@ -117,6 +150,7 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
             mask_value=r.get("mask_value"),
             mask_precision=r.get("mask_precision"),
             alias=r.get("alias"), description=r.get("description"),
+            native_filter_type=r.get("native_filter_type"),
         )
         for r in col_rows
     ]
@@ -214,6 +248,7 @@ class Query:
                     expected_row_count=r.get("expected_row_count"),
                     owner_team=r.get("owner_team"),
                     expiry_date=str(r["expiry_date"]) if r.get("expiry_date") else None,
+                    visible_to=list(r.get("visible_to") or []),
                 )
                 for r in rows
             ]
@@ -222,7 +257,7 @@ class Query:
     async def available_schemas(self, source_id: str) -> list[str]:
         """List schemas available in a source's Trino catalog."""
         from provisa.api.app import state
-        if getattr(state, "openapi_specs", {}).get(source_id):
+        if await _ensure_openapi_spec(source_id):
             return ["openapi"]
         catalog = source_id.replace("-", "_")
         # Admin/platform schemas to hide from data UI
@@ -249,7 +284,7 @@ class Query:
         For OpenAPI sources, returns GET operations as virtual tables.
         """
         from provisa.api.app import state
-        if getattr(state, "openapi_specs", {}).get(source_id) and schema_name == "openapi":
+        if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
             from provisa.openapi.mapper import parse_spec
             spec = state.openapi_specs[source_id]["spec"]
             queries, _ = parse_spec(spec)
@@ -289,7 +324,7 @@ class Query:
         For OpenAPI sources: returns non-GET operations (POST/PUT/PATCH/DELETE).
         """
         from provisa.api.app import state
-        if getattr(state, "openapi_specs", {}).get(source_id) and schema_name == "openapi":
+        if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
             from provisa.openapi.mapper import parse_spec
             spec = state.openapi_specs[source_id]["spec"]
             _, mutations = parse_spec(spec)
@@ -330,7 +365,7 @@ class Query:
         For OpenAPI sources: derives columns from the operation's response schema + params.
         """
         from provisa.api.app import state
-        if getattr(state, "openapi_specs", {}).get(source_id) and schema_name == "openapi":
+        if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
             from provisa.openapi.mapper import parse_spec
             from provisa.openapi.register import _schema_to_columns
             spec = state.openapi_specs[source_id]["spec"]
@@ -340,11 +375,14 @@ class Query:
                 return []
             cols = _schema_to_columns(q.response_schema)
             existing = {c["name"] for c in cols}
-            for p in q.path_params + q.query_params:
+            for p in q.path_params:
                 if p["name"] not in existing:
-                    cols.append({"name": p["name"], "type": p.get("type", "string")})
+                    cols.append({"name": p["name"], "type": p.get("type", "string"), "native_filter_type": "path_param"})
+            for p in q.query_params:
+                if p["name"] not in existing:
+                    cols.append({"name": p["name"], "type": p.get("type", "string"), "native_filter_type": "query_param"})
             return [
-                AvailableColumnType(name=c["name"], data_type=c["type"], comment=None)
+                AvailableColumnType(name=c["name"], data_type=c["type"], comment=None, native_filter_type=c.get("native_filter_type"))
                 for c in cols
             ]
         catalog = source_id.replace("-", "_")
@@ -647,18 +685,28 @@ class Mutation:
                 mask_precision=c.mask_precision,
                 alias=c.alias,
                 description=c.description,
+                native_filter_type=c.native_filter_type,
             )
             for c in input.columns
         ]
+        alias = input.alias or None
+        if not alias:
+            from provisa.compiler.naming import apply_convention
+            async with pool.acquire() as conn:
+                src = await conn.fetchrow("SELECT naming_convention FROM sources WHERE id = $1", input.source_id)
+            convention = (src["naming_convention"] if src else None) or "snake_case"
+            alias = apply_convention(input.table_name, convention)
+
         model = TableModel(
             source_id=input.source_id,
             domain_id=input.domain_id,
             schema_name=input.schema_name,
             table_name=input.table_name,
             governance=governance,
-            alias=input.alias,
+            alias=alias,
             description=input.description,
             columns=columns,
+            watermark_column=input.watermark_column,
         )
         async with pool.acquire() as conn:
             table_id = await table_repo.upsert(conn, model)
@@ -699,6 +747,7 @@ class Mutation:
                 mask_precision=c.mask_precision,
                 alias=c.alias,
                 description=c.description,
+                native_filter_type=c.native_filter_type,
             )
             for c in input.columns
         ]
@@ -711,6 +760,7 @@ class Mutation:
             alias=input.alias,
             description=input.description,
             columns=columns,
+            watermark_column=input.watermark_column,
         )
         async with pool.acquire() as conn:
             table_id = await table_repo.upsert(conn, model)
@@ -820,18 +870,36 @@ class Mutation:
         return MutationResult(success=False, message=f"Relationship {id!r} not found")
 
     @strawberry.mutation
-    async def approve_query(self, query_id: int, approver_id: str = "admin") -> MutationResult:
+    async def approve_query(
+        self,
+        query_id: int,
+        approver_id: str = "admin",
+        visible_to: list[str] = strawberry.field(default_factory=list),
+    ) -> MutationResult:
         from provisa.registry.store import approve
         pool = await _get_pool()
         async with pool.acquire() as conn:
             try:
-                stable_id = await approve(conn, query_id, approver_id)
+                stable_id = await approve(conn, query_id, approver_id, visible_to=visible_to)
                 return MutationResult(
                     success=True,
                     message=f"Query approved with stable ID: {stable_id}",
                 )
             except Exception as e:
                 return MutationResult(success=False, message=str(e))
+
+    @strawberry.mutation
+    async def set_query_visible_to(self, query_id: int, visible_to: list[str]) -> MutationResult:
+        """Update which roles can subscribe to an approved persisted query."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE persisted_queries SET visible_to = $1 WHERE id = $2",
+                visible_to, query_id,
+            )
+            if result == "UPDATE 1":
+                return MutationResult(success=True, message="visible_to updated")
+            return MutationResult(success=False, message=f"Query {query_id} not found")
 
 
     # ── Admin: Cache Configuration ──

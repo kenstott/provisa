@@ -30,7 +30,6 @@ router = APIRouter(prefix="/admin/openapi", tags=["admin", "openapi"])
 class OpenAPIRegisterRequest(BaseModel):
     spec_path: str
     source_id: str
-    namespace: str = ""
     domain_id: str = ""
     base_url: str = ""
     auth_config: dict | None = None
@@ -44,7 +43,6 @@ class OpenAPIPreviewRequest(BaseModel):
 async def _load_and_register(
     source_id: str,
     spec_path: str,
-    namespace: str,
     domain_id: str,
     auth_config: dict | None,
     cache_ttl: int,
@@ -95,7 +93,6 @@ async def _load_and_register(
         "spec_path": spec_path,
         "spec": spec,
         "base_url": resolved_base_url,
-        "namespace": namespace,
         "domain_id": domain_id,
         "auth_config": auth_config,
         "cache_ttl": cache_ttl,
@@ -109,7 +106,7 @@ async def register_openapi_source(body: OpenAPIRegisterRequest):
     """Load an OpenAPI spec and auto-register tables and tracked functions."""
     try:
         spec, n_tables, n_mutations = await _load_and_register(
-            body.source_id, body.spec_path, body.namespace, body.domain_id,
+            body.source_id, body.spec_path, body.domain_id,
             body.auth_config, body.cache_ttl, base_url=body.base_url,
         )
     except HTTPException:
@@ -143,7 +140,6 @@ async def refresh_openapi_source(source_id: str):
         spec, n_tables, n_mutations = await _load_and_register(
             source_id,
             reg["spec_path"],
-            reg.get("namespace", ""),
             reg.get("domain_id", ""),
             reg.get("auth_config"),
             reg.get("cache_ttl", 300),
@@ -228,12 +224,11 @@ async def put_openapi_spec(source_id: str, request: Request):
 
     specs = getattr(state, "openapi_specs", {})
     existing = specs.get(source_id, {})
-    namespace = existing.get("namespace", "")
     domain_id = existing.get("domain_id", "")
 
     async with state.pg_pool.acquire() as conn:
         n_tables, n_mutations = await auto_register_openapi_source(
-            source_id, spec, conn, namespace, domain_id
+            source_id, spec, conn, domain_id
         )
 
     if not hasattr(state, "openapi_specs"):

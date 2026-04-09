@@ -45,7 +45,6 @@ from provisa.compiler.rls import RLSContext, inject_rls
 from provisa.compiler.sampling import apply_sampling, get_sample_size
 from provisa.compiler.sql_gen import compile_query
 from provisa.executor.formats.arrow import rows_to_arrow_table
-from provisa.executor.trino import execute_trino
 from provisa.executor.direct import execute_direct
 from provisa.security.rights import Capability, has_capability
 from provisa.transpiler.router import Route, decide_route
@@ -516,19 +515,13 @@ class ProvisaFlightServer(flight.FlightServerBase):
         trino_sql = transpile_to_trino(compiled_for_exec.sql)
 
         # Streaming via Zaychik (true end-to-end Arrow, no materialization)
-        if self._state.flight_client is not None:
-            from provisa.executor.trino_flight import execute_trino_flight_stream
-            try:
-                arrow_schema, batch_gen = execute_trino_flight_stream(
-                    self._state.flight_client, trino_sql, compiled_for_exec.params,
-                )
-                return flight.GeneratorStream(arrow_schema, batch_gen)
-            except Exception:
-                log.warning("Flight SQL streaming failed, using REST path")
-
-        # REST path — execute via Trino REST, stream as Arrow batches
-        result = execute_trino(
-            self._state.trino_conn, trino_sql, compiled_for_exec.params,
+        if self._state.flight_client is None:
+            raise flight.FlightServerError(
+                "Zaychik Flight SQL proxy is not configured. "
+                "Set ZAYCHIK_HOST/ZAYCHIK_PORT and ensure the service is running."
+            )
+        from provisa.executor.trino_flight import execute_trino_flight_stream
+        arrow_schema, batch_gen = execute_trino_flight_stream(
+            self._state.flight_client, trino_sql, compiled_for_exec.params,
         )
-        table = rows_to_arrow_table(result.rows, compiled.columns)
-        return flight.RecordBatchStream(table)
+        return flight.GeneratorStream(arrow_schema, batch_gen)

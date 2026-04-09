@@ -97,6 +97,16 @@ function MultiSelect({ options, value, onChange }: {
   );
 }
 
+function toSnakeCase(name: string): string {
+  let s = name.replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2");
+  s = s.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
+  return s.toLowerCase();
+}
+
+function normalizeDomain(domain: string): string {
+  return domain.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
+}
+
 const NAMING_CONVENTIONS = [
   { value: "", label: "Inherit (source)" },
   { value: "none", label: "none" },
@@ -105,10 +115,19 @@ const NAMING_CONVENTIONS = [
   { value: "PascalCase", label: "PascalCase" },
 ];
 
+const CDC_TYPES = new Set(["postgresql", "mongodb", "kafka", "debezium"]);
+
+function isWatermarkEligible(dataType: string): boolean {
+  const t = dataType.toLowerCase();
+  return t.includes("timestamp") || t.includes("datetime") || t.includes("date") ||
+    t === "bigint" || t === "int8" || t === "integer" || t === "int4" || t === "int" ||
+    t === "int2" || t === "smallint" || t === "long" || t === "numeric" || t === "number";
+}
+
 interface ColumnForm {
   name: string;
-  visibleTo: string;
-  writableBy: string;
+  visibleTo: string[];
+  writableBy: string[];
   unmaskedTo: string;
   maskType: string;
   maskPattern: string;
@@ -118,6 +137,8 @@ interface ColumnForm {
   alias: string;
   description: string;
   selected: boolean;
+  nativeFilterType: string | null;
+  dataType: string;
 }
 
 export function TablesPage() {
@@ -137,8 +158,9 @@ export function TablesPage() {
   const [tableName, setTableName] = useState("");
   const [tableAlias, setTableAlias] = useState("");
   const [tableDescription, setTableDescription] = useState("");
-  const [governance, setGovernance] = useState("open");
+  const [governance, setGovernance] = useState("pre-approved");
   const [columns, setColumns] = useState<ColumnForm[]>([]);
+  const [watermarkColumn, setWatermarkColumn] = useState<string>("");
 
   // Discovery state
   const [availableSchemas, setAvailableSchemas] = useState<string[]>([]);
@@ -249,27 +271,49 @@ export function TablesPage() {
     if (meta?.comment) setTableDescription(meta.comment);
   }, [tableName, availableTables]);
 
+  // Auto-generate alias from table name using snake_case convention
+  useEffect(() => {
+    if (!tableName) { setTableAlias(""); return; }
+    const snake = toSnakeCase(tableName);
+    if (snake !== tableName) setTableAlias(snake);
+    else setTableAlias("");
+  }, [tableName]);
+
   useEffect(() => {
     setColumns([]);
+    setWatermarkColumn("");
     if (!sourceId || !schemaName || !tableName) return;
     setLoadingColumns(true);
     fetchAvailableColumnsMetadata(sourceId, schemaName, tableName)
-      .then((cols) =>
-        setColumns(cols.map((c) => ({
-          name: c.name,
-          visibleTo: "",
-          writableBy: "",
-          unmaskedTo: "",
-          maskType: "",
-          maskPattern: "",
-          maskReplace: "",
-          maskValue: "",
-          maskPrecision: "",
-          alias: "",
-          description: c.comment || "",
-          selected: true,
-        })))
-      )
+      .then((cols) => {
+        const formed = cols.map((c) => {
+          const snake = toSnakeCase(c.name);
+          return {
+            name: c.name,
+            visibleTo: roles.map((r) => r.id),
+            writableBy: [],
+            unmaskedTo: "",
+            maskType: "",
+            maskPattern: "",
+            maskReplace: "",
+            maskValue: "",
+            maskPrecision: "",
+            alias: snake !== c.name ? snake : "",
+            description: c.comment || "",
+            selected: true,
+            nativeFilterType: c.nativeFilterType,
+            dataType: c.dataType,
+          };
+        });
+        setColumns(formed);
+        const sourceType = sources.find((s) => s.id === sourceId)?.type ?? "";
+        if (!CDC_TYPES.has(sourceType)) {
+          const autoWm = formed.find(
+            (c) => (c.name === "updated_at" || c.name === "updated") && isWatermarkEligible(c.dataType)
+          );
+          if (autoWm) setWatermarkColumn(autoWm.name);
+        }
+      })
       .catch(() => setColumns([]))
       .finally(() => setLoadingColumns(false));
   }, [sourceId, schemaName, tableName]);
@@ -280,8 +324,8 @@ export function TablesPage() {
       .filter((c) => c.selected)
       .map((c) => ({
         name: c.name,
-        visibleTo: c.visibleTo.trim() ? c.visibleTo.split(",").map((s) => s.trim()) : [],
-        writableBy: c.writableBy.trim() ? c.writableBy.split(",").map((s) => s.trim()) : [],
+        visibleTo: c.visibleTo,
+        writableBy: c.writableBy,
         unmaskedTo: c.unmaskedTo.trim() ? c.unmaskedTo.split(",").map((s) => s.trim()) : [],
         maskType: c.maskType || undefined,
         maskPattern: c.maskPattern || undefined,
@@ -290,9 +334,10 @@ export function TablesPage() {
         maskPrecision: c.maskPrecision || undefined,
         alias: c.alias || undefined,
         description: c.description || undefined,
+        nativeFilterType: c.nativeFilterType || undefined,
       }));
-    if (!sourceId || !domainId || !schemaName || !tableName) {
-      setError("Source, domain, schema, and table name are required.");
+    if (!sourceId || !schemaName || !tableName) {
+      setError("Source, schema, and table name are required.");
       return;
     }
     if (selectedCols.length === 0) {
@@ -304,13 +349,14 @@ export function TablesPage() {
         sourceId, domainId, schemaName, tableName, governance,
         alias: tableAlias || undefined,
         description: tableDescription || undefined,
+        watermarkColumn: watermarkColumn || null,
         columns: selectedCols,
       });
       if (!result.success) { setError(result.message); return; }
       setShowForm(false);
       setSourceId(""); setDomainId(""); setSchemaName(""); setTableName("");
       setTableAlias(""); setTableDescription("");
-      setGovernance("open"); setColumns([]);
+      setGovernance("pre-approved"); setColumns([]); setWatermarkColumn("");
       reload();
     } catch (e: any) { setError(e.message); }
   };
@@ -320,7 +366,7 @@ export function TablesPage() {
     try { await deleteTable(id); reload(); } catch (e: any) { setError(e.message); }
   };
 
-  const updateCol = (i: number, key: keyof ColumnForm, value: string | boolean) => {
+  const updateCol = (i: number, key: keyof ColumnForm, value: string | boolean | string[]) => {
     const next = [...columns];
     next[i] = { ...next[i], [key]: value };
     setColumns(next);
@@ -334,19 +380,11 @@ export function TablesPage() {
     setEditingTable(null);
   };
 
-  const updateEditCol = (i: number, key: string, value: string) => {
+  const updateEditCol = (i: number, key: string, value: string | string[]) => {
     if (!editingTable) return;
     const next = { ...editingTable };
     next.columns = [...next.columns];
-    if (key === "visibleTo") {
-      next.columns[i] = { ...next.columns[i], visibleTo: value.split(",").map((s) => s.trim()).filter(Boolean) };
-    } else if (key === "writableBy") {
-      next.columns[i] = { ...next.columns[i], writableBy: value.split(",").map((s) => s.trim()).filter(Boolean) };
-    } else if (key === "unmaskedTo") {
-      next.columns[i] = { ...next.columns[i], unmaskedTo: value.split(",").map((s) => s.trim()).filter(Boolean) };
-    } else {
-      next.columns[i] = { ...next.columns[i], [key]: value };
-    }
+    next.columns[i] = { ...next.columns[i], [key]: value };
     setEditingTable(next);
   };
 
@@ -363,6 +401,7 @@ export function TablesPage() {
         governance: editingTable.governance,
         alias: editingTable.alias || undefined,
         description: editingTable.description || undefined,
+        watermarkColumn: editingTable.watermarkColumn || null,
         columns: editingTable.columns.map((c) => ({
           name: c.columnName,
           visibleTo: c.visibleTo,
@@ -375,6 +414,7 @@ export function TablesPage() {
           maskPrecision: c.maskPrecision || undefined,
           alias: c.alias || undefined,
           description: c.description || undefined,
+          nativeFilterType: c.nativeFilterType || undefined,
         })),
       });
       if (!result.success) { setError(result.message); return; }
@@ -432,7 +472,7 @@ export function TablesPage() {
           </label>
           <label>
             Alias <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(optional)</span>
-            <input value={tableAlias} onChange={(e) => setTableAlias(e.target.value)} placeholder="GraphQL name override" />
+            <input value={tableAlias} onChange={(e) => setTableAlias(e.target.value)} placeholder="Semantic name override" />
           </label>
           <label>
             Description <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(optional)</span>
@@ -441,11 +481,21 @@ export function TablesPage() {
           <label>
             Governance
             <select value={governance} onChange={(e) => setGovernance(e.target.value)}>
-              <option value="open">open</option>
-              <option value="restricted">restricted</option>
-              <option value="confidential">confidential</option>
+              <option value="pre-approved">pre-approved</option>
+              <option value="registry-required">registry-required</option>
             </select>
           </label>
+          {sourceId && !CDC_TYPES.has(sources.find((s) => s.id === sourceId)?.type ?? "") && (
+            <label>
+              Watermark Column <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(for subscriptions)</span>
+              <select value={watermarkColumn} onChange={(e) => setWatermarkColumn(e.target.value)} disabled={columns.length === 0}>
+                <option value="">None (no subscriptions)</option>
+                {columns.filter((c) => c.selected && isWatermarkEligible(c.dataType)).map((c) => (
+                  <option key={c.name} value={c.name}>{c.name} ({c.dataType})</option>
+                ))}
+              </select>
+            </label>
+          )}
           <label style={{ gridColumn: "1 / -1" }}>
             Columns {loadingColumns && "(loading...)"}
             {columns.length > 0 && (
@@ -468,16 +518,16 @@ export function TablesPage() {
                         onChange={(e) => updateCol(i, "selected", e.target.checked)}
                       />
                       <span className="col-name">{col.name}</span>
-                      <input
+                      <MultiSelect
+                        options={roles.map((r) => ({ id: r.id, label: r.id }))}
                         value={col.visibleTo}
-                        onChange={(e) => updateCol(i, "visibleTo", e.target.value)}
-                        placeholder="roles (csv)"
+                        onChange={(selected) => updateCol(i, "visibleTo", selected)}
                         className="col-flex-input"
                       />
-                      <input
+                      <MultiSelect
+                        options={roles.map((r) => ({ id: r.id, label: r.id }))}
                         value={col.writableBy}
-                        onChange={(e) => updateCol(i, "writableBy", e.target.value)}
-                        placeholder="roles (csv)"
+                        onChange={(selected) => updateCol(i, "writableBy", selected)}
                         className="col-flex-input"
                       />
                       <select
@@ -564,8 +614,7 @@ export function TablesPage() {
       <table className="data-table">
         <thead>
           <tr>
-            <th>ID</th><th>Source</th><th>Domain</th><th>Schema</th>
-            <th>Table</th><th>Alias</th><th>Description</th>
+            <th>ID</th><th>Source</th><th>Table</th>
             <th>Governance</th><th>Naming</th><th>Cache TTL</th><th>Effective TTL</th><th>Cols</th><th></th>
           </tr>
         </thead>
@@ -577,11 +626,14 @@ export function TablesPage() {
                 <tr onClick={() => { setExpanded(expanded === t.id ? null : t.id); if (expanded === t.id) cancelEditing(); }} className="clickable">
                   <td>{t.id}</td>
                   <td>{t.sourceId}</td>
-                  <td>{t.domainId}</td>
-                  <td>{t.schemaName}</td>
-                  <td>{t.tableName}</td>
-                  <td>{t.alias || ""}</td>
-                  <td className="reasoning-cell">{t.description || ""}</td>
+                  <td style={{ fontFamily: "monospace", fontSize: "0.9rem" }}>
+                    {[t.domainId ? normalizeDomain(t.domainId) : "", t.schemaName, t.alias || t.tableName].filter(Boolean).join(".")}
+                    {t.description && (
+                      <div style={{ fontFamily: "inherit", fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
+                        {t.description}
+                      </div>
+                    )}
+                  </td>
                   <td>{t.governance}</td>
                   <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                     {NAMING_CONVENTIONS.find((nc) => nc.value === (t.namingConvention ?? ""))?.label ?? t.namingConvention ?? "Inherit (source)"}
@@ -625,7 +677,14 @@ export function TablesPage() {
                               {t.columns.map((c) => (
                                 <Fragment key={c.id}>
                                   <tr>
-                                    <td><code>{c.columnName}</code></td>
+                                    <td>
+                                      <code>{c.columnName}</code>
+                                      {c.nativeFilterType && (
+                                        <span style={{ marginLeft: "0.4rem", fontSize: "0.65rem", padding: "0.1rem 0.35rem", borderRadius: "0.25rem", background: c.nativeFilterType === "path_param" ? "hsl(var(--color-warning) / 0.2)" : "hsl(var(--color-info) / 0.2)", color: c.nativeFilterType === "path_param" ? "hsl(var(--color-warning))" : "hsl(var(--color-info))", fontFamily: "monospace" }}>
+                                          {c.nativeFilterType === "path_param" ? "path" : "query"}
+                                        </span>
+                                      )}
+                                    </td>
                                     <td>{c.alias || ""}</td>
                                     <td className="reasoning-cell">{c.description || ""}</td>
                                     <td>{c.visibleTo.length > 0 ? c.visibleTo.join(", ") : "all"}</td>
@@ -646,6 +705,11 @@ export function TablesPage() {
                               ))}
                             </tbody>
                           </table>
+                          {t.watermarkColumn && (
+                            <div style={{ padding: "0.5rem 0.75rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                              Watermark column: <code>{t.watermarkColumn}</code>
+                            </div>
+                          )}
                           <div style={{ display: "flex", justifyContent: "flex-start", padding: "0.5rem" }}>
                             <button
                               className="btn-secondary"
@@ -663,7 +727,7 @@ export function TablesPage() {
                               <input
                                 value={editingTable.alias || ""}
                                 onChange={(e) => setEditingTable({ ...editingTable, alias: e.target.value || null })}
-                                placeholder="GraphQL name override"
+                                placeholder="Semantic name override"
                               />
                             </label>
                             <label>
@@ -696,6 +760,20 @@ export function TablesPage() {
                                 rows={2}
                               />
                             </label>
+                            {!CDC_TYPES.has(sources.find((s) => s.id === editingTable.sourceId)?.type ?? "") && (
+                              <label>
+                                Watermark Column <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(for subscriptions)</span>
+                                <select
+                                  value={editingTable.watermarkColumn || ""}
+                                  onChange={(e) => setEditingTable({ ...editingTable, watermarkColumn: e.target.value || null })}
+                                >
+                                  <option value="">None (no subscriptions)</option>
+                                  {editingTable.columns.map((c) => (
+                                    <option key={c.columnName} value={c.columnName}>{c.columnName}</option>
+                                  ))}
+                                </select>
+                              </label>
+                            )}
                           </div>
                           <table className="data-table" style={{ margin: "0 0 0.5rem" }}>
                             <thead>
@@ -707,7 +785,14 @@ export function TablesPage() {
                               {editingTable.columns.map((c, i) => (
                                 <Fragment key={c.id}>
                                   <tr>
-                                    <td><code>{c.columnName}</code></td>
+                                    <td>
+                                      <code>{c.columnName}</code>
+                                      {c.nativeFilterType && (
+                                        <span style={{ marginLeft: "0.4rem", fontSize: "0.65rem", padding: "0.1rem 0.35rem", borderRadius: "0.25rem", background: c.nativeFilterType === "path_param" ? "hsl(var(--color-warning) / 0.2)" : "hsl(var(--color-info) / 0.2)", color: c.nativeFilterType === "path_param" ? "hsl(var(--color-warning))" : "hsl(var(--color-info))", fontFamily: "monospace" }}>
+                                          {c.nativeFilterType === "path_param" ? "path" : "query"}
+                                        </span>
+                                      )}
+                                    </td>
                                     <td>
                                       <input
                                         value={c.alias || ""}
@@ -727,14 +812,14 @@ export function TablesPage() {
                                       <MultiSelect
                                         options={roles.map((r) => ({ id: r.id, label: r.id }))}
                                         value={c.visibleTo}
-                                        onChange={(selected) => updateEditCol(i, "visibleTo", selected.join(","))}
+                                        onChange={(selected) => updateEditCol(i, "visibleTo", selected)}
                                       />
                                     </td>
                                     <td>
                                       <MultiSelect
                                         options={roles.map((r) => ({ id: r.id, label: r.id }))}
                                         value={c.writableBy}
-                                        onChange={(selected) => updateEditCol(i, "writableBy", selected.join(","))}
+                                        onChange={(selected) => updateEditCol(i, "writableBy", selected)}
                                       />
                                     </td>
                                     <td>
@@ -797,7 +882,7 @@ export function TablesPage() {
                                         <MultiSelect
                                           options={roles.map((r) => ({ id: r.id, label: r.id }))}
                                           value={c.unmaskedTo}
-                                          onChange={(selected) => updateEditCol(i, "unmaskedTo", selected.join(","))}
+                                          onChange={(selected) => updateEditCol(i, "unmaskedTo", selected)}
                                         />
                                       </td>
                                     </tr>

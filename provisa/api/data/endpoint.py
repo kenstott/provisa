@@ -377,12 +377,24 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
 
 
 async def _execute_api_source(compiled, state, source_id, root_field, ck, output_format):
-    """Execute a query against an API source via the api_source pipeline.
+    """Execute a query against an API source in two phases.
 
-    Looks up the endpoint by root_field table name, calls handle_api_query
-    (which uses its own cache layer), and returns formatted rows.
+    Phase 1 — REST call: native filter args (api_args) build the URL.
+              The full API response is materialized as Parquet in Trino Iceberg
+              (results.api_cache) so subsequent queries with the same native args
+              hit Trino directly without re-fetching.
+
+    Phase 2 — Trino SQL: the compiled WHERE/ORDER BY/LIMIT are applied by Trino
+              against the cached Parquet table.  The FROM clause is rewritten
+              from the logical table ref to the cache table.
     """
     from provisa.api_source.router_integration import handle_api_query
+    from provisa.api_source.trino_cache import (
+        cache_table_name, ensure_cache_schema, table_exists,
+        create_and_insert, rewrite_from_cache, schedule_drop,
+    )
+    from provisa.executor.trino import execute_trino
+    from provisa.transpiler.transpile import transpile_to_trino
 
     # Find the API endpoint matching this query's table
     table_meta = None
@@ -402,50 +414,67 @@ async def _execute_api_source(compiled, state, source_id, root_field, ck, output
 
     api_source = state.api_sources.get(source_id)
 
-    # Extract WHERE params from compiled SQL params (positional → named)
-    # API sources use param names from column definitions
-    params: dict = {}
-    if compiled.params:
-        # Map positional params to endpoint column param_names
-        filterable_cols = [
-            c for c in endpoint.columns
-            if c.param_name is not None
-        ]
-        for i, val in enumerate(compiled.params):
-            if i < len(filterable_cols):
-                params[filterable_cols[i].param_name] = val
+    # Resolve native filter args (path/query params) — may be "_"-prefixed on collision.
+    url_params: dict = compiled.api_args.copy() if compiled.api_args else {}
+    param_name_map: dict = {}
+    for c in endpoint.columns:
+        if c.param_name:
+            param_name_map[c.name] = c.param_name
+            param_name_map[f"_{c.name}"] = c.param_name
+    url_params = {param_name_map.get(k, k): v for k, v in url_params.items()}
 
-    # Use PG pool connection for cache operations
-    conn = None
-    if state.pg_pool is not None:
-        conn = await state.pg_pool.acquire()
+    # Compute stable cache table name from the REST call signature.
+    cache_tbl = cache_table_name(source_id, table_name, url_params)
 
-    try:
-        result = await handle_api_query(
-            endpoint=endpoint,
-            params=params,
-            conn=conn,
-            source=api_source,
-            source_ttl=state.source_cache.get(source_id, {}).get("cache_ttl"),
-            global_ttl=state.cache_default_ttl,
+    # --- Phase 1: materialize if cache miss ---
+    ensure_cache_schema(state.trino_conn)
+    if not table_exists(state.trino_conn, cache_tbl):
+        conn = None
+        if state.pg_pool is not None:
+            conn = await state.pg_pool.acquire()
+        try:
+            result = await handle_api_query(
+                endpoint=endpoint,
+                params=url_params,
+                conn=conn,
+                source=api_source,
+                source_ttl=state.source_cache.get(source_id, {}).get("cache_ttl"),
+                global_ttl=state.cache_default_ttl,
+            )
+        finally:
+            if conn is not None:
+                await state.pg_pool.release(conn)
+
+        log.info("[API CACHE] miss — %d rows from REST, materializing", len(result.rows))
+        create_and_insert(state.trino_conn, cache_tbl, result.rows, endpoint.columns)
+
+        # Schedule TTL cleanup
+        ttl = (
+            state.source_cache.get(source_id, {}).get("cache_ttl")
+            or state.cache_default_ttl
+            or endpoint.ttl
         )
-    finally:
-        if conn is not None:
-            await state.pg_pool.release(conn)
+        from provisa.executor.redirect import RedirectConfig
+        redirect_config = RedirectConfig.from_env()
+        asyncio.create_task(
+            schedule_drop(state.trino_conn, cache_tbl, ttl, redirect_config)
+        )
+    else:
+        log.info("[API CACHE] hit — %s", cache_tbl)
 
-    rows = result.rows
-    log.info(
-        "[QUERY %s] API source returned %d rows (cached=%s)",
-        root_field, len(rows), result.from_cache,
-    )
+    # --- Phase 2: apply WHERE/ORDER BY/LIMIT via Trino ---
+    rewritten_sql = rewrite_from_cache(compiled.sql, cache_tbl)
+    trino_sql = transpile_to_trino(rewritten_sql)
+    trino_result = execute_trino(state.trino_conn, trino_sql, compiled.params)
 
-    # Build column refs for serialization
     from provisa.compiler.sql_gen import ColumnRef
     columns = [
         ColumnRef(alias=None, column=c.name, field_name=c.name, nested_in=None)
         for c in endpoint.columns
+        if not c.param_type  # exclude native filter (path/query param) columns
     ]
 
+    rows = [dict(zip([c.column for c in columns], row)) for row in trino_result.rows]
     response_data = _format_response(rows, columns, root_field, output_format)
     if isinstance(response_data, dict):
         field_rows = response_data.get("data", {}).get(root_field, [])

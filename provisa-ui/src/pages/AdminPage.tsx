@@ -31,7 +31,7 @@ import { SystemHealth } from "../components/admin/SystemHealth";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
 
 const FORMAT_OPTIONS = ["parquet", "orc", "json", "ndjson", "csv", "arrow"];
-const TABS = ["Overview", "Materialized Views", "Cache", "Scheduled Tasks", "System Health"] as const;
+const TABS = ["Overview", "Materialized Views", "Cache", "Scheduled Tasks", "System Health", "Observability"] as const;
 type Tab = typeof TABS[number];
 
 /** Admin overview page — dashboard, config management, platform settings. */
@@ -374,6 +374,97 @@ export function AdminPage() {
       {activeTab === "Cache" && <CacheManager />}
       {activeTab === "Scheduled Tasks" && <ScheduledTasks />}
       {activeTab === "System Health" && <SystemHealth />}
+      {activeTab === "Observability" && settings && (
+        <ObservabilityTab settings={settings} setSettings={setSettings} />
+      )}
+      </div>
+    </div>
+  );
+}
+
+interface ObsTabProps {
+  settings: import("../api/admin").PlatformSettings;
+  setSettings: (s: import("../api/admin").PlatformSettings) => void;
+}
+
+function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const update = (key: keyof typeof settings.otel, value: unknown) =>
+    setSettings({ ...settings, otel: { ...settings.otel, [key]: value } });
+
+  const save = async () => {
+    setSaving(true);
+    setMsg("");
+    try {
+      const result = await updateSettings({ otel: settings.otel });
+      setMsg(`Saved: ${result.updated.join(", ")}`);
+    } catch (e: unknown) {
+      setMsg(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const active = Boolean(settings.otel.endpoint);
+
+  return (
+    <div className="settings-grid">
+      <div className="settings-section">
+        <h4>OpenTelemetry Tracing</h4>
+        <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "1rem" }}>
+          Status: <strong style={{ color: active ? "var(--success)" : "var(--text-muted)" }}>
+            {active ? `Exporting → ${settings.otel.endpoint}` : "Active (spans dropped — no collector configured)"}
+          </strong>
+        </p>
+        <label>
+          OTLP Collector Endpoint
+          <input
+            type="text"
+            value={settings.otel.endpoint}
+            onChange={(e) => update("endpoint", e.target.value)}
+            placeholder="http://otel-collector:4317"
+          />
+          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            Leave empty to generate traces without exporting. Override with OTEL_EXPORTER_OTLP_ENDPOINT env var.
+          </span>
+        </label>
+        <label>
+          Service Name
+          <input
+            type="text"
+            value={settings.otel.service_name}
+            onChange={(e) => update("service_name", e.target.value)}
+            placeholder="provisa"
+          />
+          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            Override with OTEL_SERVICE_NAME env var.
+          </span>
+        </label>
+        <label>
+          Sample Rate
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step={0.01}
+            value={settings.otel.sample_rate}
+            onChange={(e) => update("sample_rate", parseFloat(e.target.value) || 0)}
+          />
+          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            0.0–1.0. 1.0 = 100% of traces sampled.
+          </span>
+        </label>
+        <div style={{ marginTop: "1rem", display: "flex", gap: "0.75rem", alignItems: "center" }}>
+          <button className="btn-primary" onClick={save} disabled={saving}>
+            {saving ? "Saving..." : "Save"}
+          </button>
+          {msg && <span className="upload-msg">{msg}</span>}
+        </div>
+        <p style={{ marginTop: "1.5rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
+          Note: endpoint and service_name changes take effect on next restart. Sample rate is applied immediately.
+        </p>
       </div>
     </div>
   );

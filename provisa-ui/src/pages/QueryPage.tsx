@@ -213,6 +213,7 @@ export function SyncedExplorerContent() {
       checkboxUnchecked={checkboxUnchecked}
       checkboxChecked={checkboxChecked}
       styles={explorerStyles}
+      title=""
     />
   );
 }

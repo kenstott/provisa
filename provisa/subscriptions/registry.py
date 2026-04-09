@@ -86,7 +86,7 @@ def get_provider(source_type: str, config: dict[str, Any]) -> NotificationProvid
         return PollingNotificationProvider(
             pool=config["pool"],
             poll_interval=config.get("poll_interval", 5.0),
-            soft_delete_column=config.get("soft_delete_column"),
+            watermark_column=config.get("watermark_column", "updated_at"),
         )
 
     raise ValueError(f"No subscription provider for source_type={source_type!r}")

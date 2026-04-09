@@ -359,6 +359,11 @@ discovery:
   min_confidence: 0.7      # minimum confidence threshold for candidates
   api_key: ${env:ANTHROPIC_API_KEY}
 
+observability:
+  endpoint: ""            # OTLP gRPC collector (e.g. http://otel-collector:4317). Empty = drop spans.
+  service_name: provisa   # override with OTEL_SERVICE_NAME env var
+  sample_rate: 1.0        # 0.0–1.0 fraction of traces to sample
+
 rls_rules:
   - table_id: orders
     role_id: analyst

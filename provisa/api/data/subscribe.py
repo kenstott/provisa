@@ -71,6 +71,14 @@ async def _provider_sse_generator(
     from provisa.api.app import state
     from provisa.subscriptions.registry import get_provider
 
+    # Resolve table-level subscription config (watermark_column, soft_delete_column, etc.)
+    tbl_meta = None
+    for ctx in state.contexts.values():
+        tables = getattr(ctx, "tables", {})
+        if table in tables:
+            tbl_meta = tables[table]
+            break
+
     provider_config: dict = {}
     if source_type == "postgresql":
         provider_config["pool"] = state.pg_pool
@@ -83,6 +91,10 @@ async def _provider_sse_generator(
         provider_config["bootstrap_servers"] = bootstrap
     else:
         provider_config["pool"] = state.pg_pool
+        if tbl_meta is not None:
+            wc = getattr(tbl_meta, "watermark_column", None)
+            if wc:
+                provider_config["watermark_column"] = wc
 
     provider = get_provider(source_type, provider_config)
 
@@ -210,6 +222,9 @@ async def subscribe(
     """
     from provisa.api.app import state
 
+    auth_role = getattr(request.state, "role", None)
+    role_id = auth_role or x_provisa_role
+
     # --- Live query path (Phase AM) ---
     if query_id is not None:
         live_engine = getattr(state, "live_engine", None)
@@ -220,6 +235,18 @@ async def subscribe(
                 status_code=404,
                 detail=f"Live query {query_id!r} not registered",
             )
+
+        # Check visible_to access for approved persisted queries
+        if state.pg_pool is not None and role_id:
+            async with state.pg_pool.acquire() as _conn:
+                _row = await _conn.fetchrow(
+                    "SELECT visible_to FROM persisted_queries WHERE stable_id = $1 AND status = 'approved'",
+                    query_id,
+                )
+            if _row is not None:
+                _visible = list(_row["visible_to"] or [])
+                if _visible and "*" not in _visible and role_id not in _visible:
+                    raise HTTPException(status_code=403, detail="Access denied to this query")
 
         disconnect = asyncio.Event()
 
@@ -265,9 +292,6 @@ async def subscribe(
 
     if state.pg_pool is None:
         raise HTTPException(status_code=503, detail="Database pool not available")
-
-    auth_role = getattr(request.state, "role", None)
-    role_id = auth_role or x_provisa_role
 
     # Validate table exists in role's schema
     table_found = False

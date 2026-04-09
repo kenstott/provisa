@@ -207,6 +207,7 @@ class Column(BaseModel):
     alias: str | None = None  # GraphQL field name override
     description: str | None = None  # GraphQL field description
     path: str | None = None  # JSON extraction path (e.g. "payload.order_id")
+    native_filter_type: str | None = None  # "path_param" | "query_param" for OpenAPI sources
 
 
 class ColumnPreset(BaseModel):
@@ -252,6 +253,7 @@ class Table(BaseModel):
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
     relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
     live: LiveDeliveryConfig | None = None  # live query delivery config (Phase AM)
+    watermark_column: str | None = None  # column used by polling subscription provider
 
 
 class HotTablesConfig(BaseModel):
@@ -398,6 +400,22 @@ class AuthConfig(BaseModel):
     default_role: str = "analyst"
 
 
+class OtelConfig(BaseModel):
+    """OpenTelemetry tracing configuration.
+
+    endpoint: OTLP gRPC collector address (e.g. http://otel-collector:4317).
+    Empty string means spans are generated but silently dropped.
+    Overridden at runtime by OTEL_EXPORTER_OTLP_ENDPOINT env var.
+
+    service_name: reported service name. Overridden by OTEL_SERVICE_NAME env var.
+    sample_rate: fraction of traces to sample (1.0 = 100%).
+    """
+
+    endpoint: str = ""
+    service_name: str = "provisa"
+    sample_rate: float = 1.0
+
+
 class ServerConfig(BaseModel):
     """Server network configuration.
 
@@ -433,3 +451,4 @@ class ProvisaConfig(BaseModel):
     webhooks: list[Webhook] = Field(default_factory=list)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     hot_tables: HotTablesConfig = Field(default_factory=HotTablesConfig)
+    observability: OtelConfig = Field(default_factory=OtelConfig)

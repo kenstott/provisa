@@ -42,6 +42,7 @@ export interface TableColumn {
   maskPrecision: string | null;
   alias: string | null;
   description: string | null;
+  nativeFilterType: string | null;
 }
 
 export interface RegisteredTable {
@@ -55,6 +56,7 @@ export interface RegisteredTable {
   description: string | null;
   cacheTtl: number | null;
   namingConvention: string | null;
+  watermarkColumn: string | null;
   columns: TableColumn[];
 }
 

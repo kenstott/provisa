@@ -48,6 +48,7 @@ class RegisteredTableType:
     description: str | None
     cache_ttl: int | None
     naming_convention: str | None
+    watermark_column: str | None
     columns: list[TableColumnType]
 
 
@@ -65,6 +66,7 @@ class TableColumnType:
     mask_precision: str | None
     alias: str | None
     description: str | None
+    native_filter_type: str | None = None
 
 
 @strawberry.type
@@ -78,6 +80,7 @@ class AvailableColumnType:
     name: str
     data_type: str
     comment: str | None
+    native_filter_type: str | None = None
 
 
 @strawberry.type
@@ -145,6 +148,7 @@ class ColumnInput:
     mask_precision: str | None = None
     alias: str | None = None
     description: str | None = None
+    native_filter_type: str | None = None
 
 
 @strawberry.input
@@ -157,6 +161,7 @@ class TableInput:
     columns: list[ColumnInput]
     alias: str | None = None
     description: str | None = None
+    watermark_column: str | None = None
 
 
 @strawberry.input
@@ -206,6 +211,7 @@ class PersistedQueryType:
     expected_row_count: str | None
     owner_team: str | None
     expiry_date: str | None
+    visible_to: list[str]
 
 
 @strawberry.type

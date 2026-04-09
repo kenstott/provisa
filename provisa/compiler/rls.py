@@ -19,7 +19,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from opentelemetry import trace as _otel_trace
+
 from provisa.compiler.sql_gen import CompiledQuery, CompilationContext
+
+_tracer = _otel_trace.get_tracer(__name__)
 
 
 @dataclass
@@ -63,43 +67,46 @@ def inject_rls(
 
     Returns a new CompiledQuery with the modified SQL.
     """
-    if not rls.has_rules():
-        return compiled
+    with _tracer.start_as_current_span("rls.inject") as span:
+        if not rls.has_rules():
+            span.set_attribute("rls.rules_applied", 0)
+            return compiled
 
-    # Find which tables in the query have RLS rules
-    filters: list[str] = []
+        # Find which tables in the query have RLS rules
+        filters: list[str] = []
 
-    # Check root table
-    root_table = ctx.tables.get(compiled.root_field)
-    if root_table and root_table.table_id in rls.rules:
-        filter_expr = rls.rules[root_table.table_id]
-        # Qualify column refs with alias if the query uses aliases
-        if _has_alias(compiled.sql):
-            filter_expr = _qualify_filter(filter_expr, "t0")
-        filters.append(f"({filter_expr})")
-
-    # Check joined tables — find their aliases from the SQL
-    for (type_name, field_name), join_meta in ctx.joins.items():
-        if type_name == root_table.type_name and join_meta.target.table_id in rls.rules:
-            filter_expr = rls.rules[join_meta.target.table_id]
-            alias = _find_join_alias(compiled.sql, join_meta.target.table_name)
-            if alias:
-                filter_expr = _qualify_filter(filter_expr, alias)
+        # Check root table
+        root_table = ctx.tables.get(compiled.root_field)
+        if root_table and root_table.table_id in rls.rules:
+            filter_expr = rls.rules[root_table.table_id]
+            # Qualify column refs with alias if the query uses aliases
+            if _has_alias(compiled.sql):
+                filter_expr = _qualify_filter(filter_expr, "t0")
             filters.append(f"({filter_expr})")
 
-    if not filters:
-        return compiled
+        # Check joined tables — find their aliases from the SQL
+        for (type_name, field_name), join_meta in ctx.joins.items():
+            if type_name == root_table.type_name and join_meta.target.table_id in rls.rules:
+                filter_expr = rls.rules[join_meta.target.table_id]
+                alias = _find_join_alias(compiled.sql, join_meta.target.table_name)
+                if alias:
+                    filter_expr = _qualify_filter(filter_expr, alias)
+                filters.append(f"({filter_expr})")
 
-    rls_clause = " AND ".join(filters)
-    sql = _inject_where(compiled.sql, rls_clause)
+        span.set_attribute("rls.rules_applied", len(filters))
+        if not filters:
+            return compiled
 
-    return CompiledQuery(
-        sql=sql,
-        params=compiled.params,
-        root_field=compiled.root_field,
-        columns=compiled.columns,
-        sources=compiled.sources,
-    )
+        rls_clause = " AND ".join(filters)
+        sql = _inject_where(compiled.sql, rls_clause)
+
+        return CompiledQuery(
+            sql=sql,
+            params=compiled.params,
+            root_field=compiled.root_field,
+            columns=compiled.columns,
+            sources=compiled.sources,
+        )
 
 
 def _has_alias(sql: str) -> bool:

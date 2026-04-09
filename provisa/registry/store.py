@@ -54,6 +54,7 @@ async def approve(
     approver_id: str,
     routing_hint: str | None = None,
     cache_ttl: int | None = None,
+    visible_to: list[str] | None = None,
 ) -> str:
     """Approve a query. Assigns a stable ID. Returns the stable ID."""
     stable_id = str(uuid.uuid4())
@@ -62,10 +63,10 @@ async def approve(
         UPDATE persisted_queries
         SET status = 'approved', stable_id = $1, approved_by = $2,
             approved_at = NOW(), routing_hint = $3, cache_ttl = $4,
-            updated_at = NOW()
-        WHERE id = $5
+            visible_to = $5, updated_at = NOW()
+        WHERE id = $6
         """,
-        stable_id, approver_id, routing_hint, cache_ttl, query_id,
+        stable_id, approver_id, routing_hint, cache_ttl, visible_to or [], query_id,
     )
     await _log(conn, query_id, "approved", approver_id)
     return stable_id

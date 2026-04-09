@@ -29,6 +29,15 @@ dependencies = [
     "motor",
     "elasticsearch>=8,<9",
     "aiokafka",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp-proto-grpc",
+    "opentelemetry-instrumentation-fastapi",
+    "opentelemetry-instrumentation-httpx",
+    "opentelemetry-instrumentation-asyncpg",
+    "opentelemetry-instrumentation-redis",
+    "opentelemetry-instrumentation-pymongo",
+    "opentelemetry-instrumentation-elasticsearch",
+    "opentelemetry-instrumentation-grpc",
 ]
 
 [project.optional-dependencies]

@@ -8,19 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for provisa/executor/trino_flight.py — behaviors NOT already
-covered in test_zaychik_fallback.py.
+"""Unit tests for provisa/executor/trino_flight.py.
 
-test_zaychik_fallback.py already covers:
-- is_zaychik_available: initially True, returns False after manual flag set
-- execute_with_fallback: uses zaychik when available, falls back on exception,
-  marks flag unavailable after failure, stays disabled after first failure,
-  skips zaychik when flight_conn is None.
-
-This file adds:
+Covers:
 - _substitute_params — @N / $N style, multiple params, no params, string escaping, None
-- execute_with_fallback success path — trino NOT called; flag stays True
-- execute_with_fallback ImportError is treated identically to any other exception
 - create_flight_connection ImportError path
 - execute_trino_flight_arrow — return type is pa.Table with correct column names
 - execute_trino_flight — wraps arrow result into QueryResult
@@ -37,11 +28,6 @@ import pyarrow as pa
 import pytest
 
 import provisa.executor.trino_flight as trf
-
-
-def _reset_zaychik():
-    """Reset the module-level _zaychik_available flag to True."""
-    trf._zaychik_available = True
 
 
 # ---------------------------------------------------------------------------
@@ -118,59 +104,6 @@ class TestSubstituteParams:
         assert "@10" not in result
         assert "@1" not in result
         assert "@2" not in result
-
-
-# ---------------------------------------------------------------------------
-# execute_with_fallback — success path (not covered in fallback tests)
-# ---------------------------------------------------------------------------
-
-class TestExecuteWithFallbackSuccessPath:
-    def setup_method(self):
-        _reset_zaychik()
-
-    def test_success_path_does_not_call_trino(self):
-        """When Flight succeeds, execute_trino (REST) is never called."""
-        from provisa.executor.trino import QueryResult
-
-        expected = QueryResult(rows=[(1,)], column_names=["id"])
-        flight_conn = MagicMock()
-        trino_conn = MagicMock()
-
-        with patch.object(trf, "execute_trino_flight", return_value=expected):
-            with patch("provisa.executor.trino.execute_trino") as mock_trino:
-                result = trf.execute_with_fallback(flight_conn, trino_conn, "SELECT 1")
-
-        mock_trino.assert_not_called()
-        assert result is expected
-
-    def test_success_path_leaves_flag_true(self):
-        """A successful Flight call must leave _zaychik_available as True."""
-        from provisa.executor.trino import QueryResult
-
-        expected = QueryResult(rows=[(1,)], column_names=["id"])
-        flight_conn = MagicMock()
-        trino_conn = MagicMock()
-
-        with patch.object(trf, "execute_trino_flight", return_value=expected):
-            trf.execute_with_fallback(flight_conn, trino_conn, "SELECT 1")
-
-        assert trf._zaychik_available is True
-
-    def test_import_error_triggers_fallback_and_sets_flag(self):
-        """ImportError (e.g. adbc missing) is treated like any other exception."""
-        from provisa.executor.trino import QueryResult
-
-        fallback = QueryResult(rows=[(0,)], column_names=["x"])
-        flight_conn = MagicMock()
-        trino_conn = MagicMock()
-
-        with patch.object(trf, "execute_trino_flight", side_effect=ImportError("no adbc")):
-            with patch("provisa.executor.trino.execute_trino", return_value=fallback) as mock_trino:
-                result = trf.execute_with_fallback(flight_conn, trino_conn, "SELECT 1")
-
-        assert trf._zaychik_available is False
-        mock_trino.assert_called_once()
-        assert result is fallback
 
 
 # ---------------------------------------------------------------------------

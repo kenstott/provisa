@@ -20,13 +20,14 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
     table_id = await conn.fetchval(
         """
         INSERT INTO registered_tables
-            (source_id, domain_id, schema_name, table_name, governance, alias, description)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+            (source_id, domain_id, schema_name, table_name, governance, alias, description, watermark_column)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (source_id, schema_name, table_name) DO UPDATE SET
             domain_id = EXCLUDED.domain_id,
             governance = EXCLUDED.governance,
             alias = EXCLUDED.alias,
-            description = EXCLUDED.description
+            description = EXCLUDED.description,
+            watermark_column = EXCLUDED.watermark_column
         RETURNING id
         """,
         table.source_id,
@@ -36,6 +37,7 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
         table.governance.value,
         getattr(table, "alias", None),
         getattr(table, "description", None),
+        getattr(table, "watermark_column", None),
     )
 
     # Replace columns: delete existing, insert new
@@ -45,8 +47,8 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
             """
             INSERT INTO table_columns (table_id, column_name, visible_to, writable_by, unmasked_to,
                 mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
-                alias, description, path)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                alias, description, path, native_filter_type)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             """,
             table_id,
             col.name,
@@ -61,6 +63,7 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
             getattr(col, "alias", None),
             getattr(col, "description", None),
             getattr(col, "path", None),
+            getattr(col, "native_filter_type", None),
         )
     return table_id
 
@@ -71,7 +74,7 @@ async def get(conn: asyncpg.Connection, table_id: int) -> dict | None:
         return None
     result = dict(row)
     cols = await conn.fetch(
-        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision FROM table_columns WHERE table_id = $1 ORDER BY id",
+        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type FROM table_columns WHERE table_id = $1 ORDER BY id",
         table_id,
     )
     result["columns"] = [dict(c) for c in cols]
@@ -94,7 +97,7 @@ async def get_by_name(
         return None
     result = dict(row)
     cols = await conn.fetch(
-        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision FROM table_columns WHERE table_id = $1 ORDER BY id",
+        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type FROM table_columns WHERE table_id = $1 ORDER BY id",
         result["id"],
     )
     result["columns"] = [dict(c) for c in cols]
@@ -126,7 +129,7 @@ async def list_all(conn: asyncpg.Connection) -> list[dict]:
     for row in rows:
         r = dict(row)
         cols = await conn.fetch(
-            "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision FROM table_columns WHERE table_id = $1 ORDER BY id",
+            "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type FROM table_columns WHERE table_id = $1 ORDER BY id",
             r["id"],
         )
         r["columns"] = [dict(c) for c in cols]

@@ -35,6 +35,8 @@ from provisa.core.secrets import resolve_secrets
 from provisa.executor.pool import SourcePool
 from provisa.compiler.mask_inject import MaskingRules
 from provisa.cache.store import CacheStore, NoopCacheStore, RedisCacheStore
+from provisa.api.admin.db_queries import fetch_tables as _fetch_tables, fetch_relationships as _fetch_relationships, parse_mask_value as _parse_mask_value
+from provisa.api.otel_setup import setup_otel as _setup_otel
 from provisa.mv.registry import MVRegistry
 from provisa.cache.warm_tables import WarmTableManager
 from provisa.apq.cache import APQCache, NoopAPQCache
@@ -87,23 +89,6 @@ class AppState:
 
 
 state = AppState()
-
-
-def _parse_mask_value(raw: str | None) -> object:
-    """Parse a stored mask value string back to a Python value."""
-    if raw is None:
-        return None
-    if raw == "None":
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        pass
-    try:
-        return float(raw)
-    except ValueError:
-        pass
-    return raw
 
 
 async def _load_and_build(config_path: str | None = None) -> None:
@@ -310,6 +295,31 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 except Exception:
                     pass
     state.pg_enum_types = build_enum_types(_enum_registry)
+
+    # Reload OpenAPI specs from DB into state (survives hot reloads and restarts)
+    async with state.pg_pool.acquire() as conn:
+        openapi_rows = await conn.fetch(
+            "SELECT id, path FROM sources WHERE type = 'openapi' AND path IS NOT NULL AND path != ''"
+        )
+    from provisa.openapi.loader import load_spec
+    from provisa.openapi.mapper import parse_spec as _parse_spec
+    state.openapi_specs = {}
+    for _row in openapi_rows:
+        try:
+            _spec = load_spec(_row["path"])
+            _servers = _spec.get("servers", [])
+            _base_url = _servers[0].get("url", "") if _servers else ""
+            state.openapi_specs[_row["id"]] = {
+                "spec_path": _row["path"],
+                "spec": _spec,
+                "base_url": _base_url,
+                "domain_id": "",
+                "auth_config": None,
+                "cache_ttl": 300,
+            }
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("Failed to reload OpenAPI spec for %s: %s", _row["id"], exc)
 
     # Load materialized view definitions
     from provisa.mv.models import MVDefinition, JoinPattern, SDLConfig
@@ -532,6 +542,62 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         column_types = introspect_tables(state.trino_conn, tables, sources, kafka_physical)
         col_types_converted: dict[int, list[ColumnMetadata]] = column_types
 
+        # Build ColumnMetadata for OpenAPI source tables from spec (no Trino catalog)
+        # Always reload specs from DB on every rebuild (hot reload + restarts).
+        from provisa.openapi.mapper import parse_spec as _parse_openapi_spec
+        from provisa.openapi.register import _schema_to_columns as _openapi_cols
+        from provisa.openapi.loader import load_spec as _load_openapi_spec
+        import logging as _log
+        _reloaded_specs: dict[str, dict] = {}
+        for _tbl in tables:
+            if _tbl["id"] in col_types_converted:
+                continue
+            if sources.get(_tbl["source_id"], {}).get("type") != "openapi":
+                continue
+            _src_id = _tbl["source_id"]
+            if _src_id not in _reloaded_specs:
+                _spec_path = sources.get(_src_id, {}).get("path", "")
+                if not _spec_path:
+                    continue
+                try:
+                    _reloaded_specs[_src_id] = {"spec": _load_openapi_spec(_spec_path)}
+                except Exception as _exc:
+                    _log.getLogger(__name__).warning(
+                        "Failed to load OpenAPI spec for %s from %s: %s",
+                        _src_id, _spec_path, _exc,
+                    )
+                    continue
+            _reg = _reloaded_specs.get(_src_id)
+            if not _reg:
+                continue
+            try:
+                _queries, _ = _parse_openapi_spec(_reg["spec"])
+                _q = next((q for q in _queries if q.operation_id == _tbl["table_name"]), None)
+                if _q is None:
+                    continue
+                _cols = _openapi_cols(_q.response_schema)
+                _existing = {c["name"] for c in _cols}
+                for _p in _q.path_params + _q.query_params:
+                    if _p["name"] not in _existing:
+                        _cols.append({"name": _p["name"], "type": _p.get("type", "string")})
+                col_types_converted[_tbl["id"]] = [
+                    ColumnMetadata(column_name=c["name"], data_type=c["type"], is_nullable=True)
+                    for c in _cols
+                ]
+            except Exception as _exc:
+                _log.getLogger(__name__).warning(
+                    "Failed to build OpenAPI column types for %s: %s", _tbl["table_name"], _exc
+                )
+
+        # Publish reloaded specs back to state so executor/admin endpoints see current versions
+        if _reloaded_specs:
+            _cur = getattr(state, "openapi_specs", {})
+            for _sid, _sreg in _reloaded_specs.items():
+                _full = _cur.get(_sid, {})
+                _full["spec"] = _sreg["spec"]
+                _cur[_sid] = _full
+            state.openapi_specs = _cur
+
         # Load API sources and endpoints (Phase U)
         from provisa.api_source.loader import load_api_sources
         state.api_endpoints, state.api_sources = await load_api_sources(
@@ -620,6 +686,12 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 prefixed = f"{_d2sql(w['domain_id'])}__{w['name']}"
                 state.tracked_webhooks[prefixed] = w
 
+        approved_query_rows = await conn.fetch(
+            "SELECT id, stable_id, query_text, target_tables, business_purpose "
+            "FROM persisted_queries WHERE status = 'approved' AND stable_id IS NOT NULL"
+        )
+        approved_queries = [dict(r) for r in approved_query_rows]
+
         for role in roles:
             state.roles[role["id"]] = role
             si = SchemaInput(
@@ -636,6 +708,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 functions=tracked_functions,
                 webhooks=tracked_webhooks,
                 enum_types=state.pg_enum_types,
+                approved_queries=approved_queries,
             )
             try:
                 state.schemas[role["id"]] = generate_schema(si)
@@ -653,48 +726,6 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 state.proto_files[role["id"]] = generate_proto(si)
             except ValueError:
                 pass
-
-
-async def _fetch_tables(conn: asyncpg.Connection) -> list[dict]:
-    """Fetch registered tables with columns."""
-    rows = await conn.fetch(
-        "SELECT id, source_id, domain_id, schema_name, table_name, governance, "
-        "alias, description "
-        "FROM registered_tables ORDER BY id"
-    )
-    tables = []
-    for row in rows:
-        table = dict(row)
-        col_rows = await conn.fetch(
-            "SELECT column_name, visible_to, writable_by, unmasked_to, "
-            "mask_type, alias, description, path "
-            "FROM table_columns WHERE table_id = $1 ORDER BY id",
-            row["id"],
-        )
-        table["columns"] = [
-            {
-                "column_name": r["column_name"],
-                "visible_to": list(r["visible_to"]),
-                "writable_by": list(r.get("writable_by") or []),
-                "unmasked_to": list(r.get("unmasked_to") or []),
-                "mask_type": r.get("mask_type"),
-                "alias": r["alias"],
-                "description": r["description"],
-                "path": r["path"],
-            }
-            for r in col_rows
-        ]
-        tables.append(table)
-    return tables
-
-
-async def _fetch_relationships(conn: asyncpg.Connection) -> list[dict]:
-    """Fetch relationships."""
-    rows = await conn.fetch(
-        "SELECT id, source_table_id, target_table_id, source_column, "
-        "target_column, cardinality FROM relationships"
-    )
-    return [dict(r) for r in rows]
 
 
 @asynccontextmanager
@@ -888,6 +919,7 @@ def create_app() -> FastAPI:
     from provisa.api.admin.schema import admin_schema
 
     app = FastAPI(title="Provisa", lifespan=lifespan)
+    _setup_otel(app)
 
     app.add_middleware(
         CORSMiddleware,
@@ -960,140 +992,11 @@ def create_app() -> FastAPI:
     from provisa.api.admin.crawl_router import router as crawl_router
     app.include_router(crawl_router)
 
-    @app.get("/admin/config")
-    async def download_config():
-        """Download the current config YAML."""
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-        path = Path(config_path)
-        if not path.exists():
-            from fastapi import HTTPException
-            raise HTTPException(status_code=404, detail="Config file not found")
-        from fastapi.responses import Response
-        return Response(
-            content=path.read_text(),
-            media_type="application/x-yaml",
-            headers={"Content-Disposition": f"attachment; filename={path.name}"},
-        )
-
-    @app.put("/admin/config")
-    async def upload_config(request):
-        """Upload a revised config YAML and reload."""
-        body = await request.body()
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-        path = Path(config_path)
-        # Write a backup before overwriting
-        if path.exists():
-            backup = path.with_suffix(".yaml.bak")
-            backup.write_text(path.read_text())
-        path.write_bytes(body)
-        # Reload config
-        try:
-            await _load_and_build(config_path)
-            return {"success": True, "message": "Config uploaded and reloaded"}
-        except Exception as e:
-            return {"success": False, "message": str(e)}
+    from provisa.api.admin.settings_router import router as settings_router
+    app.include_router(settings_router)
 
     from provisa.api.admin.views import router as views_router
     app.include_router(views_router)
-
-    @app.get("/admin/settings")
-    async def get_settings():
-        """Return current platform settings."""
-        from provisa.executor.redirect import RedirectConfig
-        from provisa.compiler.sampling import get_sample_size
-        rc = RedirectConfig.from_env()
-        # Read domain_prefix from config
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-        domain_prefix = False
-        try:
-            with open(config_path) as f:
-                cfg = yaml.safe_load(f)
-            naming_cfg = cfg.get("naming", {})
-            domain_prefix = naming_cfg.get("domain_prefix", False)
-            convention = naming_cfg.get("convention", "snake_case")
-        except Exception:
-            pass
-        return {
-            "redirect": {
-                "enabled": rc.enabled,
-                "threshold": rc.threshold,
-                "default_format": rc.default_format,
-                "ttl": rc.ttl,
-            },
-            "sampling": {
-                "default_sample_size": get_sample_size(),
-            },
-            "cache": {
-                "default_ttl": state.cache_default_ttl,
-            },
-            "naming": {
-                "domain_prefix": domain_prefix,
-                "convention": convention,
-            },
-        }
-
-    @app.put("/admin/settings")
-    async def update_settings(request):
-        """Update platform settings at runtime."""
-        body = await request.json()
-        updated = []
-
-        if "redirect" in body:
-            r = body["redirect"]
-            if "enabled" in r:
-                os.environ["PROVISA_REDIRECT_ENABLED"] = str(r["enabled"]).lower()
-                updated.append("redirect.enabled")
-            if "threshold" in r:
-                os.environ["PROVISA_REDIRECT_THRESHOLD"] = str(r["threshold"])
-                updated.append("redirect.threshold")
-            if "default_format" in r:
-                os.environ["PROVISA_REDIRECT_FORMAT"] = r["default_format"]
-                updated.append("redirect.default_format")
-            if "ttl" in r:
-                os.environ["PROVISA_REDIRECT_TTL"] = str(r["ttl"])
-                updated.append("redirect.ttl")
-
-        if "sampling" in body:
-            s = body["sampling"]
-            if "default_sample_size" in s:
-                os.environ["PROVISA_SAMPLE_SIZE"] = str(s["default_sample_size"])
-                updated.append("sampling.default_sample_size")
-
-        if "cache" in body:
-            c = body["cache"]
-            if "default_ttl" in c:
-                state.cache_default_ttl = int(c["default_ttl"])
-                updated.append("cache.default_ttl")
-
-        if "naming" in body:
-            n = body["naming"]
-            needs_reload = False
-            config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-            path = Path(config_path)
-            with open(path) as f:
-                cfg = yaml.safe_load(f)
-            if "domain_prefix" in n:
-                cfg.setdefault("naming", {})["domain_prefix"] = bool(n["domain_prefix"])
-                updated.append("naming.domain_prefix")
-                needs_reload = True
-            if "convention" in n:
-                valid = ("none", "snake_case", "camelCase", "PascalCase")
-                if n["convention"] not in valid:
-                    return {"success": False, "message": f"Invalid convention: {n['convention']!r}"}
-                cfg.setdefault("naming", {})["convention"] = n["convention"]
-                updated.append("naming.convention")
-                needs_reload = True
-            if needs_reload:
-                backup = path.with_suffix(".yaml.bak")
-                backup.write_text(path.read_text())
-                with open(path, "w") as f:
-                    yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
-                try:
-                    await _load_and_build(config_path)
-                except Exception:
-                    pass
-
-        return {"success": True, "updated": updated}
 
     @app.api_route("/health", methods=["GET", "HEAD"])
     async def health():

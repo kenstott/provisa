@@ -19,10 +19,13 @@ from __future__ import annotations
 import logging
 import re
 
+from opentelemetry import trace as _otel_trace
+
 from provisa.compiler.sql_gen import CompiledQuery
 from provisa.mv.models import MVDefinition
 
 log = logging.getLogger(__name__)
+_tracer = _otel_trace.get_tracer(__name__)
 
 
 def _extract_tables_from_sql(sql: str) -> list[tuple[str, str | None]]:
@@ -112,51 +115,59 @@ def rewrite_if_mv_match(
     Supports both full match (all JOINs covered) and partial match
     (MV covers a subset of JOINs, remaining JOINs preserved) (REQ-083).
     """
-    if not fresh_mvs:
+    with _tracer.start_as_current_span("mv.rewrite") as span:
+        span.set_attribute("mv.candidates", len(fresh_mvs))
+
+        if not fresh_mvs:
+            span.set_attribute("mv.hit", False)
+            return compiled
+
+        root_info = _find_root_table(compiled.sql)
+        if not root_info:
+            span.set_attribute("mv.hit", False)
+            return compiled
+
+        _, root_table, _ = root_info
+        joins = _extract_join_info(compiled.sql)
+
+        if not joins:
+            span.set_attribute("mv.hit", False)
+            return compiled
+
+        # For each fresh MV, check if it covers any of the query's join patterns
+        for mv in fresh_mvs:
+            if not mv.join_pattern or not mv.is_fresh:
+                continue
+
+            # Find which joins this MV covers
+            matched_indices = []
+            for i, join in enumerate(joins):
+                if _match_join_to_mv(root_table, join, mv):
+                    matched_indices.append(i)
+
+            if not matched_indices:
+                continue
+
+            if len(matched_indices) == len(joins):
+                # Full match — rewrite entirely to MV
+                log.info("MV %s fully matches query joins, rewriting", mv.id)
+                span.set_attribute("mv.hit", True)
+                span.set_attribute("mv.id", str(mv.id))
+                span.set_attribute("mv.match_type", "full")
+                return _rewrite_to_mv(compiled, mv, joins)
+            else:
+                # Partial match (REQ-083) — rewrite covered portion, keep rest
+                log.info(
+                    "MV %s partially matches query (%d/%d joins), rewriting",
+                    mv.id, len(matched_indices), len(joins),
+                )
+                span.set_attribute("mv.hit", True)
+                span.set_attribute("mv.id", str(mv.id))
+                span.set_attribute("mv.match_type", "partial")
+                return _partial_rewrite_to_mv(compiled, mv, joins, matched_indices)
+
+        span.set_attribute("mv.hit", False)
         return compiled
-
-    root_info = _find_root_table(compiled.sql)
-    if not root_info:
-        return compiled
-
-    _, root_table, _ = root_info
-    joins = _extract_join_info(compiled.sql)
-
-    if not joins:
-        return compiled
-
-    # For each fresh MV, check if it covers any of the query's join patterns
-    for mv in fresh_mvs:
-        if not mv.join_pattern or not mv.is_fresh:
-            continue
-
-        # Find which joins this MV covers
-        matched_indices = []
-        for i, join in enumerate(joins):
-            if _match_join_to_mv(root_table, join, mv):
-                matched_indices.append(i)
-
-        if not matched_indices:
-            continue
-
-        if len(matched_indices) == len(joins):
-            # Full match — rewrite entirely to MV
-            log.info(
-                "MV %s fully matches query joins, rewriting",
-                mv.id,
-            )
-            return _rewrite_to_mv(compiled, mv, joins)
-        else:
-            # Partial match (REQ-083) — rewrite covered portion, keep rest
-            log.info(
-                "MV %s partially matches query (%d/%d joins), rewriting",
-                mv.id, len(matched_indices), len(joins),
-            )
-            return _partial_rewrite_to_mv(
-                compiled, mv, joins, matched_indices,
-            )
-
-    return compiled
 
 
 def _rewrite_to_mv(

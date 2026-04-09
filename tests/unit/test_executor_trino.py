@@ -9,7 +9,7 @@
 # permission from the copyright holder.
 
 """Unit tests for Trino execution layer, QueryResult, parameter substitution,
-Flight SQL fallback flag, trino_write CTAS helpers, and trino_flight utilities.
+trino_write CTAS helpers, and trino_flight utilities.
 """
 
 from __future__ import annotations
@@ -23,11 +23,7 @@ from provisa.executor.trino_write import (
     is_trino_native_format,
 )
 import provisa.executor.trino_flight as _flight_mod
-from provisa.executor.trino_flight import (
-    _substitute_params,
-    execute_with_fallback,
-    is_zaychik_available,
-)
+from provisa.executor.trino_flight import _substitute_params
 
 
 # ---------------------------------------------------------------------------
@@ -256,79 +252,3 @@ class TestSubstituteParams:
         assert "@1" not in result
 
 
-# ---------------------------------------------------------------------------
-# trino_flight — Zaychik availability flag
-# ---------------------------------------------------------------------------
-
-class TestZaychikAvailabilityFlag:
-    def setup_method(self):
-        # Reset module-level flag before each test
-        _flight_mod._zaychik_available = True
-
-    def test_initially_available(self):
-        assert is_zaychik_available() is True
-
-    def test_after_reset_available(self):
-        _flight_mod._zaychik_available = True
-        assert is_zaychik_available() is True
-
-    def test_flag_can_be_set_false(self):
-        _flight_mod._zaychik_available = False
-        assert is_zaychik_available() is False
-
-    def test_execute_with_fallback_skips_flight_when_unavailable(self):
-        """When _zaychik_available is False, execute_with_fallback uses Trino REST."""
-        _flight_mod._zaychik_available = False
-
-        called_flight = []
-        called_trino = []
-
-        class FakeFlightConn:
-            pass
-
-        class FakeTrinoConn:
-            pass
-
-        def _fake_trino(conn, sql, params=None):
-            called_trino.append(sql)
-            return QueryResult(rows=[(1,)], column_names=["n"])
-
-        import provisa.executor.trino as _trino_mod
-        original = _trino_mod.execute_trino
-        _trino_mod.execute_trino = _fake_trino
-
-        try:
-            result = execute_with_fallback(
-                FakeFlightConn(), FakeTrinoConn(), "SELECT 1 AS n",
-            )
-        finally:
-            _trino_mod.execute_trino = original
-            _flight_mod._zaychik_available = True
-
-        assert result.rows == [(1,)]
-        assert len(called_trino) == 1
-        assert len(called_flight) == 0
-
-    def test_execute_with_fallback_none_flight_conn_uses_trino(self):
-        """When flight_conn is None, always falls back to Trino REST."""
-        _flight_mod._zaychik_available = True
-
-        called_trino = []
-
-        def _fake_trino(conn, sql, params=None):
-            called_trino.append(sql)
-            return QueryResult(rows=[(99,)], column_names=["v"])
-
-        import provisa.executor.trino as _trino_mod
-        original = _trino_mod.execute_trino
-        _trino_mod.execute_trino = _fake_trino
-
-        try:
-            result = execute_with_fallback(
-                None, object(), "SELECT 99 AS v",
-            )
-        finally:
-            _trino_mod.execute_trino = original
-
-        assert result.rows == [(99,)]
-        assert len(called_trino) == 1

@@ -33,12 +33,23 @@ async function fetchPending(): Promise<PendingQuery[]> {
   return all.filter((q) => q.status === "pending");
 }
 
-async function approveQuery(id: number): Promise<void> {
+async function fetchRoleIds(): Promise<string[]> {
+  const resp = await fetch(`${API_BASE}/admin/graphql`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query: `{ roles { id } }` }),
+  });
+  const json = await resp.json();
+  return (json.data?.roles ?? []).map((r: { id: string }) => r.id);
+}
+
+async function approveQuery(id: number, visibleTo: string[]): Promise<void> {
+  const visibleToArg = JSON.stringify(visibleTo);
   await fetch(`${API_BASE}/admin/graphql`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      query: `mutation { approveQuery(queryId: ${id}) { success } }`,
+      query: `mutation { approveQuery(queryId: ${id}, visibleTo: ${visibleToArg}) { success } }`,
     }),
   });
 }
@@ -59,6 +70,8 @@ export function ApprovalsPage() {
   const [loading, setLoading] = useState(true);
   const [rejectId, setRejectId] = useState<number | null>(null);
   const [reason, setReason] = useState("");
+  const [roleIds, setRoleIds] = useState<string[]>([]);
+  const [visibleTo, setVisibleTo] = useState<Record<number, string[]>>({});
 
   const load = () => {
     setLoading(true);
@@ -66,6 +79,25 @@ export function ApprovalsPage() {
   };
 
   useEffect(load, []);
+  useEffect(() => { fetchRoleIds().then(setRoleIds); }, []);
+
+  const toggleRole = (queryId: number, roleId: string) => {
+    setVisibleTo((prev) => {
+      const current = prev[queryId] ?? [];
+      const updated = current.includes(roleId)
+        ? current.filter((r) => r !== roleId)
+        : [...current, roleId];
+      return { ...prev, [queryId]: updated };
+    });
+  };
+
+  const toggleAll = (queryId: number) => {
+    setVisibleTo((prev) => {
+      const current = prev[queryId] ?? [];
+      const updated = current.includes("*") ? current.filter((r) => r !== "*") : [...current, "*"];
+      return { ...prev, [queryId]: updated };
+    });
+  };
 
   const handleReject = async () => {
     if (rejectId === null || !reason.trim()) return;
@@ -94,11 +126,34 @@ export function ApprovalsPage() {
                 <span className="submitted-by">by {q.developerId || "unknown"}</span>
               </div>
               <pre className="approval-query">{q.queryText}</pre>
+              <div className="visible-to-select">
+                <label>Subscribe access (visible to):</label>
+                <div className="role-checkboxes">
+                  <label key="*">
+                    <input
+                      type="checkbox"
+                      checked={(visibleTo[q.id] ?? []).includes("*")}
+                      onChange={() => toggleAll(q.id)}
+                    />
+                    All roles (*)
+                  </label>
+                  {roleIds.map((rid) => (
+                    <label key={rid}>
+                      <input
+                        type="checkbox"
+                        checked={(visibleTo[q.id] ?? []).includes(rid)}
+                        onChange={() => toggleRole(q.id, rid)}
+                      />
+                      {rid}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <div className="approval-actions">
                 <ConfirmDialog
-                  title={`Approve query "${q.name}"?`}
+                  title={`Approve query "${q.queryText.slice(0, 40)}..."?`}
                   consequence="This query will become available for production use."
-                  onConfirm={async () => { await approveQuery(q.id); load(); }}
+                  onConfirm={async () => { await approveQuery(q.id, visibleTo[q.id] ?? []); load(); }}
                 >
                   {(open) => <button className="approve" onClick={open}>Approve</button>}
                 </ConfirmDialog>

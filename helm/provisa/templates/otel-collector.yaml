@@ -1,0 +1,91 @@
+{{- if .Values.observability.enabled }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-otel-collector-config
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:{{ .Values.observability.otelCollector.otlpGrpcPort }}
+          http:
+            endpoint: 0.0.0.0:{{ .Values.observability.otelCollector.otlpHttpPort }}
+    exporters:
+      prometheus:
+        endpoint: 0.0.0.0:{{ .Values.observability.otelCollector.prometheusPort }}
+        namespace: provisa
+      debug:
+        verbosity: basic
+    processors:
+      batch:
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [debug]
+        metrics:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [prometheus]
+        logs:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [debug]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-otel-collector
+  labels:
+    app: otel-collector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      containers:
+        - name: otel-collector
+          image: "{{ .Values.observability.otelCollector.image }}:{{ .Values.observability.otelCollector.tag }}"
+          args: ["--config=/etc/otel/config.yaml"]
+          ports:
+            - containerPort: {{ .Values.observability.otelCollector.otlpGrpcPort }}
+              name: otlp-grpc
+            - containerPort: {{ .Values.observability.otelCollector.otlpHttpPort }}
+              name: otlp-http
+            - containerPort: {{ .Values.observability.otelCollector.prometheusPort }}
+              name: prometheus
+          volumeMounts:
+            - name: config
+              mountPath: /etc/otel
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Release.Name }}-otel-collector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-otel-collector
+spec:
+  selector:
+    app: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: {{ .Values.observability.otelCollector.otlpGrpcPort }}
+      targetPort: otlp-grpc
+    - name: otlp-http
+      port: {{ .Values.observability.otelCollector.otlpHttpPort }}
+      targetPort: otlp-http
+    - name: prometheus
+      port: {{ .Values.observability.otelCollector.prometheusPort }}
+      targetPort: prometheus
+{{- end }}

@@ -76,10 +76,13 @@ DO $$ BEGIN
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_replace TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_value TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_precision TEXT;
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS native_filter_type TEXT;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_enabled BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS path TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS visible_to TEXT[] NOT NULL DEFAULT '{}';
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

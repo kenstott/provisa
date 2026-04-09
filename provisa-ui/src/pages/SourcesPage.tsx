@@ -240,7 +240,6 @@ export function SourcesPage() {
   // OpenAPI-specific state
   const [openapiSpecPath, setOpenapiSpecPath] = useState("");
   const [openapiBaseUrl, setOpenapiBaseUrl] = useState("");
-  const [openapiNamespace, setOpenapiNamespace] = useState("");
   const [openapiCacheTtl, setOpenapiCacheTtl] = useState("300");
   const [openapiPreview, setOpenapiPreview] = useState<{ queries: any[]; mutations: any[] } | null>(null);
   const [openapiPreviewing, setOpenapiPreviewing] = useState(false);
@@ -308,7 +307,6 @@ export function SourcesPage() {
           spec_path: openapiSpecPath,
           base_url: openapiBaseUrl || undefined,
           source_id: form.id,
-          namespace: openapiNamespace,
           domain_id: "",
           auth_config: authType !== "none" ? { type: authType, ...authFields } : null,
           cache_ttl: parseInt(openapiCacheTtl, 10) || 300,
@@ -318,7 +316,6 @@ export function SourcesPage() {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
         throw new Error(body.detail ?? resp.statusText);
       }
-      await createSource({ id: form.id, type: form.type, host: form.host, port: form.port, database: form.database, username: form.username, password: form.password, path: null });
       handleCancelForm();
       load();
     } catch (err: any) {
@@ -558,9 +555,6 @@ export function SourcesPage() {
           </label>
           <label style={{ gridColumn: "1 / -1" }}>Base URL <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>(leave blank to use servers[0].url from spec)</span>
             <input value={openapiBaseUrl} onChange={(e) => setOpenapiBaseUrl(e.target.value)} placeholder="https://api.example.com (optional override)" />
-          </label>
-          <label>Namespace
-            <input value={openapiNamespace} onChange={(e) => setOpenapiNamespace(e.target.value)} placeholder="myapi" />
           </label>
           <label>Cache TTL (seconds)
             <input type="number" min={0} value={openapiCacheTtl} onChange={(e) => setOpenapiCacheTtl(e.target.value)} placeholder="300" />

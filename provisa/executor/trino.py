@@ -19,8 +19,10 @@ import logging
 from dataclasses import dataclass
 
 import trino
+from opentelemetry import trace as _otel_trace
 
 log = logging.getLogger(__name__)
+_tracer = _otel_trace.get_tracer(__name__)
 
 
 @dataclass
@@ -51,34 +53,39 @@ def execute_trino(
     Returns:
         QueryResult with rows and column names.
     """
-    # Trino Python client uses ? for parameter placeholders.
-    # After SQLGlot transpilation, PG $N becomes Trino @N.
-    # Replace both @N and $N with ? in reverse order to avoid $1 matching $10.
-    exec_sql = sql
-    if params:
-        for i in range(len(params), 0, -1):
-            exec_sql = exec_sql.replace(f"@{i}", "?")
-            exec_sql = exec_sql.replace(f"${i}", "?")
+    with _tracer.start_as_current_span("trino.execute") as span:
+        # Trino Python client uses ? for parameter placeholders.
+        # After SQLGlot transpilation, PG $N becomes Trino @N.
+        # Replace both @N and $N with ? in reverse order to avoid $1 matching $10.
+        exec_sql = sql
+        if params:
+            for i in range(len(params), 0, -1):
+                exec_sql = exec_sql.replace(f"@{i}", "?")
+                exec_sql = exec_sql.replace(f"${i}", "?")
 
-    # Inject session properties before the main query when hints are present.
-    if session_hints:
+        span.set_attribute("db.system", "trino")
+        span.set_attribute("db.statement", exec_sql[:1000])
+
+        # Inject session properties before the main query when hints are present.
+        if session_hints:
+            cur = conn.cursor()
+            for key, value in session_hints.items():
+                safe_key = key.replace("'", "")
+                safe_value = value.replace("'", "")
+                set_sql = f"SET SESSION {safe_key} = '{safe_value}'"
+                log.info("[EXEC TRINO] session hint: %s", set_sql)
+                cur.execute(set_sql)
+
+        log.info("[EXEC TRINO] sql=%s", exec_sql[:200])
         cur = conn.cursor()
-        for key, value in session_hints.items():
-            safe_key = key.replace("'", "")
-            safe_value = value.replace("'", "")
-            set_sql = f"SET SESSION {safe_key} = '{safe_value}'"
-            log.info("[EXEC TRINO] session hint: %s", set_sql)
-            cur.execute(set_sql)
+        if params:
+            cur.execute(exec_sql, params)
+        else:
+            cur.execute(exec_sql)
 
-    log.info("[EXEC TRINO] sql=%s", exec_sql[:200])
-    cur = conn.cursor()
-    if params:
-        cur.execute(exec_sql, params)
-    else:
-        cur.execute(exec_sql)
+        rows = cur.fetchall()
+        column_names = [desc[0] for desc in cur.description] if cur.description else []
 
-    rows = cur.fetchall()
-    column_names = [desc[0] for desc in cur.description] if cur.description else []
-
-    log.info("[EXEC TRINO] rows=%d", len(rows))
-    return QueryResult(rows=rows, column_names=column_names)
+        span.set_attribute("db.row_count", len(rows))
+        log.info("[EXEC TRINO] rows=%d", len(rows))
+        return QueryResult(rows=rows, column_names=column_names)

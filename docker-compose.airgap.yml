@@ -1,6 +1,11 @@
 # Airgapped overlay — replaces build: directives with pre-built local images.
 # Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.airgap.yml up
 # Used by the provisa CLI when runtime: lima (macOS DMG install).
+#
+# OTel (Trino): first-launch.sh downloads the OTel Java agent jar and sets
+# TRINO_JAVA_TOOL_OPTIONS in the compose .env when the jar is available.
+# OTEL_TRACES_EXPORTER defaults to "none" — spans dropped unless a collector is configured.
+# To export: set OTEL_EXPORTER_OTLP_ENDPOINT and OTEL_TRACES_EXPORTER=otlp.
 services:
   zaychik:
     build: null
@@ -9,3 +14,10 @@ services:
   provisa:
     build: null
     image: provisa/provisa:local
+
+  trino:
+    environment:
+      # JAVA_TOOL_OPTIONS is inherited from docker-compose.yml: "${TRINO_JAVA_TOOL_OPTIONS:-}"
+      # first-launch.sh writes TRINO_JAVA_TOOL_OPTIONS to .env when agent jar is present.
+      OTEL_TRACES_EXPORTER: "${OTEL_TRACES_EXPORTER:-none}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"

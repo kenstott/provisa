@@ -17,11 +17,14 @@ from __future__ import annotations
 
 import logging
 
+from opentelemetry import trace as _otel_trace
+
 from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.pool import SourcePool
 from provisa.executor.trino import QueryResult
 
 log = logging.getLogger(__name__)
+_tracer = _otel_trace.get_tracer(__name__)
 
 
 async def execute_direct(
@@ -41,7 +44,11 @@ async def execute_direct(
     Returns:
         QueryResult with rows and column names.
     """
-    log.info("[EXEC DIRECT] source=%s | sql=%s", source_id, sql[:200])
-    result = await pool.execute(source_id, sql, params)
-    log.info("[EXEC DIRECT] source=%s | rows=%d", source_id, len(result.rows))
-    return result
+    with _tracer.start_as_current_span("direct.execute") as span:
+        span.set_attribute("db.source_id", source_id)
+        span.set_attribute("db.statement", sql[:1000])
+        log.info("[EXEC DIRECT] source=%s | sql=%s", source_id, sql[:200])
+        result = await pool.execute(source_id, sql, params)
+        span.set_attribute("db.row_count", len(result.rows))
+        log.info("[EXEC DIRECT] source=%s | rows=%d", source_id, len(result.rows))
+        return result

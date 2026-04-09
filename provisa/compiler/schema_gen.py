@@ -39,7 +39,7 @@ from provisa.compiler.aggregate_gen import build_aggregate_types
 from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import apply_convention, domain_to_sql_name, generate_name, to_type_name
-from provisa.compiler.type_map import FILTER_TYPE_MAP, trino_to_graphql
+from provisa.compiler.type_map import FILTER_TYPE_MAP, JSONScalar, trino_to_graphql
 
 
 @dataclass
@@ -60,6 +60,7 @@ class SchemaInput:
     functions: list[dict] = field(default_factory=list)  # tracked DB functions
     webhooks: list[dict] = field(default_factory=list)  # tracked webhooks
     enum_types: dict = field(default_factory=dict)  # pg_name → GraphQLEnumType (REQ-221)
+    approved_queries: list[dict] = field(default_factory=list)  # approved persisted queries for subscription SDL
 
 
 @dataclass
@@ -75,6 +76,7 @@ class _TableInfo:
     table_name: str  # original DB table name
     visible_columns: list[dict]  # [{column_name, visible_to, alias?, description?}]
     column_metadata: dict[str, ColumnMetadata]  # column_name → metadata
+    native_filter_columns: list[dict] = field(default_factory=list)  # [{column_name, native_filter_type}]
     alias: str | None = None  # explicit GraphQL name override
     description: str | None = None  # GraphQL type/field description
     naming_convention: str = "snake_case"  # resolved convention for this table
@@ -145,19 +147,27 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
 
         table_id = table["id"]
         if table_id not in si.column_types:
-            raise ValueError(
-                f"No Trino column metadata for table {table['table_name']!r} "
-                f"(id={table_id}). Run introspection first."
+            import logging as _log
+            _log.getLogger(__name__).warning(
+                "No column metadata for table %r (id=%s) — skipping.", table["table_name"], table_id
             )
+            continue
         col_meta = {m.column_name: m for m in si.column_types[table_id]}
 
-        # Filter columns by role visibility
+        # Filter columns by role visibility; split native filter cols from regular cols
         visible_cols = [
             c for c in table["columns"]
-            if role["id"] in c["visible_to"]
+            if role["id"] in c["visible_to"] and not c.get("native_filter_type")
+        ]
+        # Native filter cols are API parameters (path/query params), not data columns.
+        # They are always exposed as query args regardless of visible_to — the role
+        # only needs access to the table itself.
+        native_filter_cols = [
+            c for c in table["columns"]
+            if c.get("native_filter_type")
         ]
 
-        if not visible_cols:
+        if not visible_cols and not native_filter_cols:
             continue
 
         # Resolve naming convention: table → source → global
@@ -184,6 +194,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
             schema_name=table["schema_name"],
             table_name=table["table_name"],
             visible_columns=visible_cols,
+            native_filter_columns=native_filter_cols,
             column_metadata=col_meta,
             alias=table.get("alias"),
             description=table.get("description"),
@@ -527,6 +538,58 @@ def _build_action_fields(
     return extra_query, extra_mutation
 
 
+_CDC_SOURCES: frozenset[str] = frozenset({"postgresql", "mongodb", "kafka", "debezium"})
+
+
+def _build_subscription_fields(
+    si: SchemaInput,
+    tables: list[_TableInfo],
+    gql_types: dict[int, GraphQLObjectType],
+) -> dict[str, GraphQLField]:
+    """Build Subscription root fields.
+
+    Includes pre-approved tables that have a watermark column set (polling-based)
+    or whose source supports native CDC (postgresql, mongodb, kafka, debezium).
+    Tables in `tables` are already filtered by role visibility.
+
+    Also includes approved persisted queries the role has been granted access to
+    via the visible_to field (REQ-022–REQ-026).
+    """
+    raw_by_id = {t["id"]: t for t in si.tables}
+    fields: dict[str, GraphQLField] = {}
+    role_id = si.role["id"]
+
+    for t in tables:
+        raw = raw_by_id.get(t.table_id, {})
+        if raw.get("governance") != "pre-approved":
+            continue
+        source_type = (si.source_types or {}).get(t.source_id, "")
+        if source_type not in _CDC_SOURCES and not raw.get("watermark_column"):
+            continue
+        fields[t.field_name] = GraphQLField(
+            GraphQLList(GraphQLNonNull(gql_types[t.table_id])),
+            description=t.description,
+        )
+
+    # Approved persisted queries the role can subscribe to
+    for q in si.approved_queries:
+        visible_to = q.get("visible_to") or []
+        if visible_to and "*" not in visible_to and role_id not in visible_to:
+            continue
+        stable_id = q.get("stable_id") or ""
+        if not stable_id:
+            continue
+        # stable_id is a UUID — sanitize to a valid GraphQL field name
+        field_name = "q_" + stable_id.replace("-", "_")
+        desc = q.get("business_purpose") or q.get("query_text", "")[:80]
+        fields[field_name] = GraphQLField(
+            GraphQLList(GraphQLNonNull(JSONScalar)),
+            description=desc,
+        )
+
+    return fields
+
+
 def generate_schema(si: SchemaInput) -> GraphQLSchema:
     """Generate a graphql-core schema for a specific role.
 
@@ -639,6 +702,22 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             )
             args["distinct_on"] = GraphQLArgument(
                 GraphQLList(GraphQLNonNull(distinct_enum))
+            )
+
+        # Native filter args: path params (required) and query params (optional).
+        # Follow Hasura DDN convention: direct top-level args, no prefix unless there is
+        # a name collision with a response body field, in which case prefix with "_".
+        _response_field_names = set(visible_col_names) | {"where", "order_by", "limit", "offset", "distinct_on"}
+        for nfc in t.native_filter_columns:
+            col_name = nfc["column_name"]
+            arg_name = f"_{col_name}" if col_name in _response_field_names else col_name
+            meta = t.column_metadata.get(col_name)
+            nfc_gql_type = trino_to_graphql(meta.data_type) if meta else GraphQLString
+            scalar = nfc_gql_type.of_type if isinstance(nfc_gql_type, GraphQLList) else nfc_gql_type
+            required = nfc.get("native_filter_type") == "path_param"
+            args[arg_name] = GraphQLArgument(
+                GraphQLNonNull(scalar) if required else scalar,
+                description=f"Native API filter ({nfc.get('native_filter_type', 'query_param')})",
             )
 
         query_fields[t.field_name] = GraphQLField(
@@ -772,4 +851,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
     if mutation_fields:
         mutation_type = GraphQLObjectType("Mutation", lambda: mutation_fields)
 
-    return GraphQLSchema(query=query_type, mutation=mutation_type)
+    subscription_fields = _build_subscription_fields(si, tables, gql_types)
+    subscription_type = GraphQLObjectType("Subscription", lambda: subscription_fields) if subscription_fields else None
+
+    return GraphQLSchema(query=query_type, mutation=mutation_type, subscription=subscription_type)

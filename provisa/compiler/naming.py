@@ -40,15 +40,30 @@ def domain_to_sql_name(domain_id: str) -> str:
     return re.sub(r"[^a-zA-Z0-9]", "_", domain_id).strip("_")
 
 
+def _to_snake_case(name: str) -> str:
+    """Convert camelCase or PascalCase to snake_case."""
+    name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+    name = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+    return name.lower()
+
+
 def apply_convention(name: str, convention: str) -> str | None:
     """Apply a naming convention to produce an alias.
 
-    Returns None if convention is 'none' or 'snake_case' (no alias needed,
-    since DB names are typically already snake_case).
-    Returns the aliased name for camelCase or PascalCase.
+    For snake_case: converts PascalCase names to snake_case.
+      camelCase names (lowercase-first with internal uppercase) are preserved —
+      converting them would misrepresent the original DB column name (REQ-157).
+    For camelCase/PascalCase: converts snake_case names to the target case.
+    Returns None if the name is already in the target form (no alias needed).
     """
-    if convention in ("none", "snake_case"):
+    if convention == "none":
         return None
+    if convention == "snake_case":
+        # camelCase names (e.g. "mixedCase") must not be renamed — preserve original DB case
+        if name and name[0].islower() and any(c.isupper() for c in name):
+            return None
+        result = _to_snake_case(name)
+        return result if result != name else None
     if convention == "camelCase":
         result = _to_camel_case(name)
         return result if result != name else None

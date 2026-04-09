@@ -17,7 +17,7 @@ from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation, parse_spec
 log = logging.getLogger(__name__)
 
 _OPENAPI_TYPE_MAP = {
-    "string": "text",
+    "string": "varchar",
     "integer": "integer",
     "number": "numeric",
     "boolean": "boolean",
@@ -48,7 +48,6 @@ async def upsert_table(
     source_id: str,
     query: OpenAPIQuery,
     conn,
-    namespace: str = "",
     domain_id: str = "",
 ) -> None:
     """Register an OpenAPI GET operation as a virtual table."""
@@ -56,13 +55,16 @@ async def upsert_table(
     from provisa.core.repositories import table as table_repo
 
     columns = _schema_to_columns(query.response_schema)
-    # Add path params and query params as filterable columns if not already present
+    # Add path/query params as native-filter columns if not already in response schema
     existing_names = {c["name"] for c in columns}
-    for p in query.path_params + query.query_params:
+    for p in query.path_params:
         if p["name"] not in existing_names:
-            columns.append({"name": p["name"], "type": _openapi_to_provisa_type(p.get("type"))})
+            columns.append({"name": p["name"], "type": _openapi_to_provisa_type(p.get("type")), "native_filter_type": "path_param"})
+    for p in query.query_params:
+        if p["name"] not in existing_names:
+            columns.append({"name": p["name"], "type": _openapi_to_provisa_type(p.get("type")), "native_filter_type": "query_param"})
 
-    table_name = f"{namespace}__{query.operation_id}" if namespace else query.operation_id
+    table_name = query.operation_id
 
     tbl = Table(
         source_id=source_id,
@@ -74,6 +76,7 @@ async def upsert_table(
             Column(
                 name=c["name"],
                 visible_to=[],
+                native_filter_type=c.get("native_filter_type"),
             )
             for c in columns
         ],
@@ -87,14 +90,13 @@ async def upsert_tracked_function(
     source_id: str,
     mutation: OpenAPIMutation,
     conn,
-    namespace: str = "",
     domain_id: str = "",
 ) -> None:
     """Register an OpenAPI non-GET operation as a tracked function."""
     input_cols = _schema_to_columns(mutation.input_schema)
     return_cols = _schema_to_columns(mutation.response_schema)
 
-    fn_name = f"{namespace}__{mutation.operation_id}" if namespace else mutation.operation_id
+    fn_name = mutation.operation_id
     arguments = json.dumps([{"name": c["name"], "type": c["type"]} for c in input_cols])
     return_schema = json.dumps(return_cols) if return_cols else None
 
@@ -127,13 +129,12 @@ async def auto_register_openapi_source(
     source_id: str,
     spec: dict,
     conn,
-    namespace: str = "",
     domain_id: str = "",
 ) -> tuple[int, int]:
     """Parse spec and upsert virtual tables + tracked functions. Returns (n_tables, n_mutations)."""
     queries, mutations = parse_spec(spec)
     for q in queries:
-        await upsert_table(source_id, q, conn, namespace, domain_id)
+        await upsert_table(source_id, q, conn, domain_id)
     for m in mutations:
-        await upsert_tracked_function(source_id, m, conn, namespace, domain_id)
+        await upsert_tracked_function(source_id, m, conn, domain_id)
     return len(queries), len(mutations)

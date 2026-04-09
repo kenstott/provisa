@@ -17,9 +17,13 @@ Table aliases (t0, t1, ...) used when JOINs are present.
 
 from __future__ import annotations
 
+import json as _json
 import re as _re
 
 from dataclasses import dataclass, field
+from opentelemetry import trace as _otel_trace
+
+_tracer = _otel_trace.get_tracer(__name__)
 
 from graphql import (
     BooleanValueNode,
@@ -120,6 +124,8 @@ class CompiledQuery:
     nodes_params: list = field(default_factory=list)
     # Alias for the "aggregate" response key (e.g. "derived: aggregate" → "derived")
     agg_alias: str = "aggregate"
+    # Native filter args for API-routed sources (path/query params extracted from GQL args)
+    api_args: dict = field(default_factory=dict)
 
 
 # --- Build CompilationContext from SchemaInput ---
@@ -703,6 +709,20 @@ def _compile_root_field(
     if "offset" in args:
         sql += f" OFFSET {collector.add(int(args['offset']))}"
 
+    # Collect native filter args (any arg not handled by SQL compilation above)
+    _STANDARD_ARGS = {"where", "order_by", "limit", "offset", "distinct_on"}
+    api_args = {k: v for k, v in args.items() if k not in _STANDARD_ARGS}
+
+    # Prepend a self-describing hint comment for external drivers (JDBC/ODBC/Arrow Flight).
+    # Any driver that receives the compiled SQL can parse this to discover the REST call.
+    # Format: -- @native_filter {"source_id": "...", "operation_id": "...", "args": {...}}
+    if api_args:
+        hint = _json.dumps(
+            {"source_id": table.source_id, "operation_id": table.table_name, "args": api_args},
+            separators=(",", ":"),
+        )
+        sql = f"-- @native_filter {hint}\n{sql}"
+
     return CompiledQuery(
         sql=sql,
         params=collector.params,
@@ -710,6 +730,7 @@ def _compile_root_field(
         canonical_field=field_node.name.value,
         columns=columns,
         sources=sources,
+        api_args=api_args,
     )
 
 
@@ -1118,18 +1139,21 @@ def compile_query(
                     raise ValueError(
                         f"Unknown root query field: {field_name!r}"
                     )
-                if field_name.endswith("_aggregate"):
-                    compiled = _compile_aggregate_field(
-                        sel, ctx, variables, use_catalog,
-                    )
-                elif field_name.endswith("_connection"):
-                    compiled = _compile_connection_field(
-                        sel, ctx, variables, use_catalog,
-                    )
-                else:
-                    compiled = _compile_root_field(
-                        sel, ctx, variables, use_catalog,
-                    )
+                with _tracer.start_as_current_span("compiler.compile_query") as span:
+                    span.set_attribute("graphql.field", field_name)
+                    if field_name.endswith("_aggregate"):
+                        compiled = _compile_aggregate_field(
+                            sel, ctx, variables, use_catalog,
+                        )
+                    elif field_name.endswith("_connection"):
+                        compiled = _compile_connection_field(
+                            sel, ctx, variables, use_catalog,
+                        )
+                    else:
+                        compiled = _compile_root_field(
+                            sel, ctx, variables, use_catalog,
+                        )
+                    span.set_attribute("db.statement", compiled.sql[:1000])
                 # Track source tables for warm-table promotion (REQ-AD5)
                 table_meta = ctx.tables.get(field_name)
                 if table_meta:
@@ -1142,3 +1166,24 @@ def compile_query(
                 results.append(compiled)
 
     return results
+
+
+_NATIVE_FILTER_RE = _re.compile(
+    r"^--\s*@native_filter\s+(\{.+\})\s*$", _re.MULTILINE
+)
+
+
+def parse_native_filter_hint(sql: str) -> dict | None:
+    """Extract the @native_filter hint from a compiled SQL string.
+
+    Returns {"source_id": ..., "operation_id": ..., "args": {...}} or None.
+    Intended for external drivers (JDBC/ODBC/Arrow Flight) that receive compiled
+    SQL and need to know which REST call to make before executing the query.
+    """
+    m = _NATIVE_FILTER_RE.search(sql)
+    if not m:
+        return None
+    try:
+        return _json.loads(m.group(1))
+    except Exception:
+        return None

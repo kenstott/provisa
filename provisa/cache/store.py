@@ -21,7 +21,10 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from opentelemetry import trace as _otel_trace
+
 log = logging.getLogger(__name__)
+_tracer = _otel_trace.get_tracer(__name__)
 
 
 @dataclass(frozen=True)
@@ -103,44 +106,53 @@ class RedisCacheStore(CacheStore):
             )
 
     async def get(self, key: str) -> CachedResult | None:
-        try:
-            await self._connect()
-            rkey = self.PREFIX + key
-            pipe = self._redis.pipeline()
-            pipe.get(rkey)
-            pipe.get(rkey + ":meta")
-            data, meta = await pipe.execute()
-            if data is None or meta is None:
+        with _tracer.start_as_current_span("cache.get") as span:
+            span.set_attribute("cache.key", key)
+            try:
+                await self._connect()
+                rkey = self.PREFIX + key
+                pipe = self._redis.pipeline()
+                pipe.get(rkey)
+                pipe.get(rkey + ":meta")
+                data, meta = await pipe.execute()
+                if data is None or meta is None:
+                    span.set_attribute("cache.hit", False)
+                    return None
+                import json
+                meta_dict = json.loads(meta)
+                span.set_attribute("cache.hit", True)
+                return CachedResult(
+                    data=data,
+                    cached_at=meta_dict["cached_at"],
+                    ttl=meta_dict["ttl"],
+                )
+            except Exception:
+                log.warning("Redis get failed, treating as cache miss", exc_info=True)
+                span.set_attribute("cache.hit", False)
                 return None
-            import json
-            meta_dict = json.loads(meta)
-            return CachedResult(
-                data=data,
-                cached_at=meta_dict["cached_at"],
-                ttl=meta_dict["ttl"],
-            )
-        except Exception:
-            log.warning("Redis get failed, treating as cache miss", exc_info=True)
-            return None
 
     async def set(self, key: str, data: bytes, ttl: int, table_ids: set[int] | None = None) -> None:
-        try:
-            await self._connect()
-            import json
-            rkey = self.PREFIX + key
-            meta = json.dumps({"cached_at": time.time(), "ttl": ttl}).encode()
-            pipe = self._redis.pipeline()
-            pipe.setex(rkey, ttl, data)
-            pipe.setex(rkey + ":meta", ttl, meta)
-            # Track which tables this cache entry covers (for invalidation)
-            if table_ids:
-                for tid in table_ids:
-                    tkey = self.TABLE_PREFIX + str(tid)
-                    pipe.sadd(tkey, key)
-                    pipe.expire(tkey, ttl + 60)  # slightly longer than cache TTL
-            await pipe.execute()
-        except Exception:
-            log.warning("Redis set failed, query result not cached", exc_info=True)
+        with _tracer.start_as_current_span("cache.set") as span:
+            span.set_attribute("cache.key", key)
+            span.set_attribute("cache.ttl", ttl)
+            span.set_attribute("cache.size_bytes", len(data))
+            try:
+                await self._connect()
+                import json
+                rkey = self.PREFIX + key
+                meta = json.dumps({"cached_at": time.time(), "ttl": ttl}).encode()
+                pipe = self._redis.pipeline()
+                pipe.setex(rkey, ttl, data)
+                pipe.setex(rkey + ":meta", ttl, meta)
+                # Track which tables this cache entry covers (for invalidation)
+                if table_ids:
+                    for tid in table_ids:
+                        tkey = self.TABLE_PREFIX + str(tid)
+                        pipe.sadd(tkey, key)
+                        pipe.expire(tkey, ttl + 60)  # slightly longer than cache TTL
+                await pipe.execute()
+            except Exception:
+                log.warning("Redis set failed, query result not cached", exc_info=True)
 
     async def invalidate_by_pattern(self, pattern: str) -> int:
         try:
