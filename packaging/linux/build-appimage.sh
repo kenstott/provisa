@@ -26,6 +26,11 @@ err()  { printf "${RED}[build-appimage]${NC} %s\n" "$*" >&2; }
 build_provisa_wheels() {
   local wheels_dir="${SCRIPT_DIR}/tmp-provisa-wheels"
   local stamp_file="${wheels_dir}/.pyproject_mtime"
+  # Skip if .whl files are already present (e.g. downloaded from CI artifact)
+  if [ -d "$wheels_dir" ] && ls "${wheels_dir}"/*.whl &>/dev/null 2>&1; then
+    info "Provisa wheels present ($(ls "${wheels_dir}"/*.whl | wc -l | tr -d ' ') wheels) — skipping build."
+    return
+  fi
   local current_mtime
   current_mtime=$(stat -c '%Y' "${REPO_ROOT}/pyproject.toml" 2>/dev/null || echo "0")
   if [ -d "$wheels_dir" ] && [ "$(ls -A "$wheels_dir" 2>/dev/null)" ] \
@@ -36,11 +41,12 @@ build_provisa_wheels() {
   rm -rf "$wheels_dir"
   mkdir -p "$wheels_dir"
   info "Building provisa wheels for linux/amd64 (requires network on build host)..."
+  # Copy source to writable tmpfs inside container — egg-info can't be written to :ro mount
   docker run --rm --platform linux/amd64 \
     -v "${REPO_ROOT}:/src:ro" \
     -v "${wheels_dir}:/wheels" \
     python:3.12-slim \
-    pip wheel --no-cache-dir --wheel-dir /wheels /src
+    bash -c "cp -r /src /tmp/src && pip wheel --no-cache-dir --wheel-dir /wheels /tmp/src"
   echo "$current_mtime" > "${wheels_dir}/.pyproject_mtime"
   ok "Provisa wheels built ($(ls "$wheels_dir" | wc -l | tr -d ' ') wheels)."
 }
