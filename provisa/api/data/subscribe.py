@@ -92,6 +92,23 @@ async def _provider_sse_generator(
     elif source_type == "ingest":
         ingest_engine = state.ingest_engines.get(source_id) if state.ingest_engines else None
         provider_config["engine"] = ingest_engine
+    elif source_type == "websocket":
+        ws_src = state.websocket_sources.get(source_id) if state.websocket_sources else None
+        if ws_src:
+            hints = getattr(ws_src, "federation_hints", {}) or {}
+            use_ssl = hints.get("use_ssl", "false").lower() == "true"
+            scheme = "wss" if use_ssl else "ws"
+            path = getattr(ws_src, "path", None) or "/"
+            provider_config["url"] = f"{scheme}://{ws_src.host}:{ws_src.port}{path}"
+            raw_payload = hints.get("subscribe_payload")
+            if raw_payload:
+                import json as _json
+                try:
+                    provider_config["subscribe_payload"] = _json.loads(raw_payload)
+                except (ValueError, TypeError):
+                    pass
+            if hints.get("event_path"):
+                provider_config["event_path"] = hints["event_path"]
     else:
         provider_config["pool"] = state.pg_pool
         if tbl_meta is not None:

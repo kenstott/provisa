@@ -48,6 +48,7 @@ class SourceType(str, Enum):
     accumulo = "accumulo"
     # Streaming
     kafka = "kafka"
+    websocket = "websocket"  # External WebSocket feed — connect, subscribe, receive events
     # Graph / Semantic
     neo4j = "neo4j"
     sparql = "sparql"

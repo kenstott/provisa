@@ -34,6 +34,9 @@ _DEBEZIUM_TYPES = {"debezium"}
 # Ingest sources — watermark polling via SQLAlchemy (Phase AS)
 _INGEST_TYPES = {"ingest"}
 
+# WebSocket feed sources — connect to external WS URL, receive pushed events
+_WEBSOCKET_TYPES = {"websocket"}
+
 # All other SQL-ish sources fall back to polling
 _POLLING_TYPES = {
     "mysql", "singlestore", "mariadb", "sqlserver", "oracle", "duckdb",
@@ -77,6 +80,16 @@ def get_provider(source_type: str, config: dict[str, Any]) -> NotificationProvid
         return IngestPollingProvider(
             engine=config["engine"],
             poll_interval=config.get("poll_interval", 5.0),
+        )
+
+    if source_type in _WEBSOCKET_TYPES:
+        from provisa.subscriptions.websocket_provider import WebSocketNotificationProvider
+
+        return WebSocketNotificationProvider(
+            url=config["url"],
+            subscribe_payload=config.get("subscribe_payload"),
+            event_path=config.get("event_path"),
+            reconnect_interval=config.get("reconnect_interval", 5.0),
         )
 
     if source_type in _DEBEZIUM_TYPES:

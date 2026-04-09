@@ -29,6 +29,7 @@ dependencies = [
     "motor",
     "elasticsearch>=8,<9",
     "aiokafka",
+    "websockets>=11.0",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",
     "opentelemetry-instrumentation-fastapi",
