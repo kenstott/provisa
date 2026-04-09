@@ -257,6 +257,7 @@ embed_compose() {
   cp -r "${REPO_ROOT}/config" "${res}/config"
   cp -r "${REPO_ROOT}/db" "${res}/db"
   cp -r "${REPO_ROOT}/trino" "${res}/trino"
+  cp -r "${REPO_ROOT}/observability" "${res}/observability"
   cp "${REPO_ROOT}/scripts/provisa" "${res}/provisa-cli"
   chmod +x "${res}/provisa-cli"
   # Bundle provisa source so first-launch can build provisa/provisa:local inside Lima
@@ -463,9 +464,8 @@ main() {
   download_vm_images
   save_images
   build_provisa_wheels
-  download_otel_agent
-
-  embed_compose
+  embed_compose        # copies observability/ from repo; must run before download_otel_agent
+  download_otel_agent  # adds opentelemetry-javaagent.jar into Resources/observability/trino-otel/
   embed_scripts
   sign_app
   notarize_app   # notarize the small .app before images are added

@@ -465,18 +465,14 @@ stage_compose() {
       cp "${RESOURCES}/${f}" "${dest}/${f}"
     fi
   done
-  for d in config db trino; do
+  for d in config db trino observability; do
     if [ -d "${RESOURCES}/${d}" ]; then
       cp -r "${RESOURCES}/${d}" "${dest}/${d}"
     fi
   done
-  # Stage OTel agent (bundled in DMG by build-dmg.sh; bind-mounted into Trino container)
-  local bundle_otel="${RESOURCES}/observability/trino-otel"
+  # dest_otel used below for OTel jar detection
   local dest_otel="${dest}/observability/trino-otel"
   mkdir -p "$dest_otel"
-  if [ -d "$bundle_otel" ]; then
-    cp -r "${bundle_otel}/." "$dest_otel/"
-  fi
   # Write TRINO_JAVA_TOOL_OPTIONS to compose .env when the jar is present.
   # docker-compose.yml passes this to Trino: JAVA_TOOL_OPTIONS: "${TRINO_JAVA_TOOL_OPTIONS:-}"
   local env_file="${dest}/.env"
