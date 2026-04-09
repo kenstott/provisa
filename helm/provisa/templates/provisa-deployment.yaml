@@ -19,7 +19,10 @@ spec:
           image: "{{ .Values.provisa.image.repository }}:{{ .Values.provisa.image.tag }}"
           imagePullPolicy: {{ .Values.provisa.image.pullPolicy }}
           ports:
-            - containerPort: {{ .Values.provisa.port }}
+            - name: http
+              containerPort: {{ .Values.provisa.port }}
+            - name: flight
+              containerPort: {{ .Values.provisa.flightPort }}
           env:
             - name: PG_HOST
               value: {{ if .Values.postgresql.host }}{{ .Values.postgresql.host }}{{ else }}{{ .Release.Name }}-postgresql{{ end }}
@@ -38,9 +41,19 @@ spec:
               value: "{{ .Release.Name }}-trino-coordinator"
             - name: TRINO_PORT
               value: "{{ .Values.trino.port }}"
+            - name: TRINO_FLIGHT_PORT
+              value: "8480"
+            - name: FLIGHT_PORT
+              value: "{{ .Values.provisa.flightPort }}"
             {{- range $key, $val := .Values.provisa.env }}
             - name: {{ $key }}
               value: "{{ $val }}"
+            {{- end }}
+            {{- if .Values.observability.enabled }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://{{ .Release.Name }}-otel-collector:{{ .Values.observability.otelCollector.otlpGrpcPort }}"
+            - name: OTEL_SERVICE_NAME
+              value: "provisa"
             {{- end }}
           volumeMounts:
             - name: config

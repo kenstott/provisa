@@ -11,8 +11,6 @@ services:
       POSTGRES_DB: provisa
       POSTGRES_USER: provisa
       POSTGRES_PASSWORD: provisa
-    ports:
-      - "5432:5432"
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - pg_data:/var/lib/postgresql/data
@@ -26,8 +24,6 @@ services:
   mongodb:
     profiles: [dev]
     image: mongo:7
-    ports:
-      - "27017:27017"
     volumes:
       - ./db/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
       - mongo_data:/data/db
@@ -40,8 +36,6 @@ services:
 
   pgbouncer:
     image: edoburu/pgbouncer:latest
-    ports:
-      - "6432:6432"
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -54,9 +48,6 @@ services:
 
   minio:
     image: minio/minio:latest
-    ports:
-      - "9000:9000"
-      - "9001:9001"
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
@@ -73,8 +64,6 @@ services:
   kafka:
     profiles: [dev]
     image: confluentinc/cp-kafka:7.6.0
-    ports:
-      - "9092:9092"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
@@ -99,8 +88,6 @@ services:
   schema-registry:
     profiles: [dev]
     image: confluentinc/cp-schema-registry:7.6.0
-    ports:
-      - "8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
@@ -111,8 +98,6 @@ services:
   debezium-connect:
     profiles: [dev]
     image: quay.io/debezium/connect:2.7
-    ports:
-      - "8083:8083"
     environment:
       BOOTSTRAP_SERVERS: kafka:29092
       GROUP_ID: debezium-connect
@@ -136,8 +121,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -149,8 +132,6 @@ services:
 
   trino:
     image: trinodb/trino:480
-    ports:
-      - "8080:8080"
     volumes:
       - ./trino/etc/config.properties:/etc/trino/config.properties:ro
       - ./trino/etc/jvm.config:/etc/trino/jvm.config:ro
@@ -158,12 +139,8 @@ services:
       - ./trino/catalog:/etc/trino/catalog
       - ./trino/kafka:/etc/trino/kafka:ro
       - trino_cache:/data/trino/cache
-      # OTel Java agent dir: start-ui.sh --observability downloads the jar here
+      # OTel Java agent dir: start-ui.sh --observability patches jvm.config and stores jar here
       - ./observability/trino-otel:/etc/trino/otel:ro
-    environment:
-      # Set TRINO_JAVA_TOOL_OPTIONS to activate OTel agent (requires observability/otel-javaagent.jar).
-      # start-ui.sh --observability sets this automatically.
-      JAVA_TOOL_OPTIONS: "${TRINO_JAVA_TOOL_OPTIONS:-}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -176,8 +153,6 @@ services:
 
   zaychik:
     build: ./zaychik
-    ports:
-      - "8480:8480"
     environment:
       TF_TRINO_HOST: trino
       TF_TRINO_PORT: 8080
@@ -200,8 +175,6 @@ services:
   elasticsearch:
     profiles: [dev]
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
-    ports:
-      - "9200:9200"
     environment:
       discovery.type: single-node
       xpack.security.enabled: "false"
@@ -226,8 +199,6 @@ services:
       - ./trino/kafka:/etc/trino/kafka:ro
       - trino_worker_cache:/data/trino/cache
       - ./observability/trino-otel:/etc/trino/otel:ro
-    environment:
-      JAVA_TOOL_OPTIONS: "${TRINO_JAVA_TOOL_OPTIONS:-}"
     depends_on:
       trino:
         condition: service_healthy
@@ -239,9 +210,6 @@ services:
   neo4j:
     image: neo4j:5.19
     profiles: ["neo4j"]
-    ports:
-      - "7474:7474"   # HTTP (used by integration tests)
-      - "7687:7687"   # Bolt
     environment:
       NEO4J_AUTH: none
       NEO4J_PLUGINS: '["apoc"]'
@@ -259,10 +227,6 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.99.0
     profiles: ["observability"]
-    ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
-      - "8889:8889"   # Prometheus metrics endpoint
     volumes:
       - ./observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
     command: ["--config=/etc/otel-collector-config.yaml"]
@@ -270,8 +234,6 @@ services:
   prometheus:
     image: prom/prometheus:v2.51.2
     profiles: ["observability"]
-    ports:
-      - "9090:9090"
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -281,8 +243,6 @@ services:
   tempo:
     image: grafana/tempo:2.4.1
     profiles: ["observability"]
-    ports:
-      - "3200:3200"   # Tempo HTTP
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - tempo_data:/var/tempo
@@ -311,8 +271,6 @@ services:
   fuseki:
     image: atomgraph/fuseki:latest
     profiles: ["sparql"]
-    ports:
-      - "3030:3030"
     command: ["--mem", "/provisa"]
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3030/$/ping || exit 1"]

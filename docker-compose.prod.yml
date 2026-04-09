@@ -8,14 +8,11 @@
 # External Redis:      set REDIS_URL (e.g. redis://192.168.1.5:6379) to use a
 #                      shared Redis instance instead of the bundled one.
 services:
-  postgres:
-    ports:
-      - "${CONFIG_DB_BIND:-127.0.0.1}:5432:5432"
-
   provisa:
     build: .
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
+      - "${FLIGHT_PORT:-8815}:8815"
     environment:
       PG_HOST: "${CONFIG_DB_HOST:-postgres}"
       PG_PORT: "${CONFIG_DB_PORT:-5432}"
@@ -24,7 +21,11 @@ services:
       PG_PASSWORD: "${CONFIG_DB_PASSWORD:-provisa}"
       TRINO_HOST: trino
       TRINO_PORT: 8080
+      TRINO_FLIGHT_PORT: 8480
+      FLIGHT_PORT: "${FLIGHT_PORT:-8815}"
       REDIS_URL: "${REDIS_URL:-redis://redis:6379}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+      OTEL_SERVICE_NAME: "${OTEL_SERVICE_NAME:-provisa}"
     depends_on:
       postgres:
         condition: service_healthy

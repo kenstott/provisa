@@ -7,6 +7,7 @@ provisa:
     tag: latest
     pullPolicy: IfNotPresent
   port: 8000
+  flightPort: 8815
   resources:
     requests:
       cpu: 250m
@@ -85,3 +86,44 @@ ingress:
   tls:
     enabled: false
     secretName: provisa-tls
+
+observability:
+  enabled: false  # set to true to deploy the full OTel stack
+
+  otelCollector:
+    image: otel/opentelemetry-collector-contrib
+    tag: "0.99.0"
+    otlpGrpcPort: 4317
+    otlpHttpPort: 4318
+    prometheusPort: 8889
+
+  prometheus:
+    enabled: true
+    server:
+      persistentVolume:
+        enabled: false
+    alertmanager:
+      enabled: false
+    pushgateway:
+      enabled: false
+    extraScrapeConfigs: |
+      - job_name: otel-collector
+        static_configs:
+          - targets: ["{{ .Release.Name }}-otel-collector:{{ .Values.observability.otelCollector.prometheusPort }}"]
+
+  grafana:
+    enabled: true
+    adminPassword: provisa
+    service:
+      type: ClusterIP
+      port: 80
+    datasources:
+      datasources.yaml:
+        apiVersion: 1
+        datasources:
+          - name: Prometheus
+            type: prometheus
+            uid: prometheus
+            url: http://{{ .Release.Name }}-prometheus-server
+            access: proxy
+            isDefault: true

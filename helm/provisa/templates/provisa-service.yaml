@@ -6,7 +6,12 @@ spec:
   selector:
     app: provisa
   ports:
-    - port: {{ .Values.provisa.port }}
+    - name: http
+      port: {{ .Values.provisa.port }}
       targetPort: {{ .Values.provisa.port }}
+      protocol: TCP
+    - name: flight
+      port: {{ .Values.provisa.flightPort }}
+      targetPort: {{ .Values.provisa.flightPort }}
       protocol: TCP
   type: ClusterIP
