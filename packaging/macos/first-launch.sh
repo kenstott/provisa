@@ -27,7 +27,7 @@ LIMACTL_REAL="${BUNDLE_DIR}/MacOS/bin/${BIN_ARCH}/limactl"
 # so Lima resolves share/lima/ relative to ~/.provisa/bin/, not inside the bundle.
 LIMACTL="${PROVISA_HOME}/bin/limactl"
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; NC='\033[0m'
+RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 info() { printf "${CYAN}[provisa]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[provisa]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[provisa]${NC} %s\n" "$*" >&2; }
