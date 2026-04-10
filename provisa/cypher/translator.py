@@ -55,6 +55,8 @@ from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMa
 from provisa.cypher.comprehension import rewrite_list_comprehensions
 from provisa.cypher.path_functions import PathFunctionsMixin
 from provisa.cypher.path_comprehension import PathComprehensionMixin
+from provisa.cypher.select_builder import SelectBuilderMixin
+from provisa.cypher.correlated_call import CorrelatedCallMixin
 
 
 class GraphVarKind(str, Enum):
@@ -96,7 +98,7 @@ def cypher_calls_to_sql_list(
     return results
 
 
-class _Translator(PathFunctionsMixin, PathComprehensionMixin):
+class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin, CorrelatedCallMixin):
     def __init__(
         self,
         ast: CypherAST,
@@ -124,6 +126,12 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin):
         self._shortestpath_is_all: bool = False
         # Counter for unique UNNEST alias names across the translation
         self._unwind_count: int = 0
+        # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
+        self._path_vars: dict[str, tuple[str, str, bool]] = {}
+        # vars from outer scope bound via CALL { WITH x ... } — skip as FROM source
+        self._lateral_bound: set[str] = set()
+        # ON conditions from lateral-bound first-node relationships → added as WHERE
+        self._lateral_conditions: list[exp.Expression] = []
 
     def translate(self) -> tuple[exp.Select, list[str], dict[str, GraphVarKind]]:
         if self._ast.return_clause is None:
@@ -206,6 +214,10 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin):
         else:
             raise CypherTranslateError("Query has no data source")
 
+        # Correlated CALL subqueries → CROSS JOIN LATERAL
+        lateral_joins = self._translate_correlated_calls(self._ast.call_subqueries)
+        joins = list(joins) + lateral_joins
+
         select_exprs = self._build_select(self._ast.return_clause)
         where_expr = self._build_where(stage_where)
         order_exprs = self._build_order_by(self._ast.order_by)
@@ -217,6 +229,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin):
             query = query.join(join["table"], on=join["on"], join_type=join["join_type"])
         if where_expr:
             query = query.where(where_expr)
+        for lat_cond in self._lateral_conditions:
+            query = query.where(lat_cond)
 
         # UNION ALL extra branches from multi-path shortestPath/allShortestPaths.
         # Each schema path is its own SQL query; WHERE/SELECT are identical across branches.
@@ -373,11 +387,13 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin):
                         self._domain_nodes[node.variable] = "__all__"
                         self._var_table[node.variable] = (node.variable, None)
 
-            # First node → FROM
+            # First node → FROM (skip if lateral-bound — FROM comes from tgt instead)
             if from_expr is None and nodes:
                 first_node = nodes[0]
                 fv = first_node.variable
-                if fv and fv in self._cte_sources:
+                if fv and fv in self._lateral_bound:
+                    pass  # lateral-bound: FROM will be set when processing the first rel's tgt
+                elif fv and fv in self._cte_sources:
                     sql_alias = self._var_table[fv][0]
                     from_expr = exp.Table(this=exp.Identifier(this=sql_alias))
                 elif fv and fv in self._domain_nodes:
@@ -480,7 +496,6 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin):
                     src_table_ref = src_var or src_nm.table_name
 
                 if backward:
-                    # FK is on tgt_node (rel's source_label); PK is on src_node (rel's target_label)
                     on_cond = exp.EQ(
                         this=exp.Column(
                             this=exp.Identifier(this=rel_mapping.join_source_column, quoted=True),
@@ -503,46 +518,22 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin):
                         ),
                     )
 
-                joins.append({
-                    "table": join_table,
-                    "on": on_cond,
-                    "join_type": join_type,
-                })
+                # Lateral-bound src: tgt becomes FROM; condition becomes WHERE predicate
+                if src_var and src_var in self._lateral_bound and from_expr is None:
+                    from_expr = join_table
+                    self._lateral_conditions.append(on_cond)
+                else:
+                    joins.append({
+                        "table": join_table,
+                        "on": on_cond,
+                        "join_type": join_type,
+                    })
 
         if from_expr is None:
             raise CypherTranslateError("No MATCH clause produced a FROM table")
 
         return from_expr, joins
 
-    def _build_select(self, return_clause: ReturnClause) -> list[exp.Expression]:
-        exprs: list[exp.Expression] = []
-        for item in return_clause.items:
-            expr_text = item.expression.strip()
-            alias = item.alias
-
-            # Check if bare variable (node reference)
-            if _is_bare_variable(expr_text) and expr_text in self._var_table:
-                var_info = self._var_table[expr_text]
-                if var_info[1] is not None:
-                    self._graph_vars[alias or expr_text] = GraphVarKind.NODE
-                    # Emit all columns for this node
-                    table_alias = var_info[0]  # may be a CTE name
-                    col = exp.Star()
-                    tbl_col = exp.Column(this=col, table=exp.Identifier(this=table_alias))
-                    if alias:
-                        exprs.append(exp.alias_(tbl_col, alias))
-                    else:
-                        exprs.append(tbl_col)
-                    continue
-
-            # Property access: n.prop
-            parsed = self._parse_expr(expr_text)
-            if alias:
-                exprs.append(exp.alias_(parsed, alias))
-            else:
-                exprs.append(parsed)
-
-        return exprs
 
     def _build_where(self, where: WhereClause | None) -> exp.Expression | None:
         if where is None:

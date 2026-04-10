@@ -104,6 +104,7 @@ class MatchStep:
 @dataclass
 class CallSubquery:
     body: "CypherAST"
+    imported_vars: list[str] = field(default_factory=list)  # vars from outer scope via WITH
 
 
 @dataclass
@@ -664,9 +665,37 @@ class _Parser:
             inner_tokens.append(self._advance())
         if depth != 0:
             raise CypherParseError("Unterminated CALL { subquery — missing closing '}'")
-        inner_parser = _Parser(inner_tokens, self._raw)
+
+        # Detect correlated form: first tokens are WITH <ident>, <ident> MATCH ...
+        # These bare identifiers are outer-scope variable imports, not a pipeline WITH.
+        # Keywords are also tokenized as IDENT, so stop at any known Cypher keyword.
+        _CYPHER_KEYWORDS = {
+            "MATCH", "OPTIONAL", "WHERE", "RETURN", "WITH", "UNWIND",
+            "ORDER", "SKIP", "LIMIT", "CALL", "UNION", "CREATE", "DELETE",
+            "SET", "REMOVE", "MERGE", "FOREACH",
+        }
+        imported_vars: list[str] = []
+        body_tokens = inner_tokens
+        if inner_tokens and inner_tokens[0].value.upper() == "WITH":
+            i = 1
+            while i < len(inner_tokens):
+                tok = inner_tokens[i]
+                if tok.type == "IDENT" and tok.value.upper() not in _CYPHER_KEYWORDS:
+                    imported_vars.append(tok.value)
+                    i += 1
+                elif tok.type == "COMMA":
+                    i += 1
+                else:
+                    break
+            # Only treat as correlated if followed immediately by MATCH
+            if imported_vars and i < len(inner_tokens) and inner_tokens[i].value.upper() == "MATCH":
+                body_tokens = inner_tokens[i:]  # strip the leading WITH <vars>
+            else:
+                imported_vars = []  # not correlated — reset
+
+        inner_parser = _Parser(body_tokens, self._raw)
         inner_ast = inner_parser.parse()
-        return CallSubquery(body=inner_ast)
+        return CallSubquery(body=inner_ast, imported_vars=imported_vars)
 
     # --- ORDER BY ---
 

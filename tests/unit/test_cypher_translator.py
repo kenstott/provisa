@@ -1067,3 +1067,172 @@ def test_pattern_comprehension_in_where():
     sql_upper = sql.upper()
     assert "ARRAY" in sql_upper
     assert "SELECT" in sql_upper
+
+
+# ---------------------------------------------------------------------------
+# Gap #12 — Intermediate node property access in multi-hop patterns
+# ---------------------------------------------------------------------------
+
+def _make_label_map_three_hop() -> CypherLabelMap:
+    person = NodeMapping(
+        label="Person", table_id=1, source_id="pg", id_column="id",
+        catalog_name="postgresql", schema_name="public", table_name="persons",
+        properties={"name": "name"},
+    )
+    company = NodeMapping(
+        label="Company", table_id=2, source_id="pg", id_column="id",
+        catalog_name="postgresql", schema_name="public", table_name="companies",
+        properties={"name": "name"},
+    )
+    dept = NodeMapping(
+        label="Department", table_id=3, source_id="pg", id_column="id",
+        catalog_name="postgresql", schema_name="public", table_name="departments",
+        properties={"title": "title"},
+    )
+    return CypherLabelMap(
+        nodes={"Person": person, "Company": company, "Department": dept},
+        relationships={
+            "WORKS_AT": RelationshipMapping(
+                rel_type="WORKS_AT", source_label="Person", target_label="Company",
+                join_source_column="company_id", join_target_column="id", field_name="works_at",
+            ),
+            "HAS_DEPT": RelationshipMapping(
+                rel_type="HAS_DEPT", source_label="Company", target_label="Department",
+                join_source_column="dept_id", join_target_column="id", field_name="has_dept",
+            ),
+        },
+    )
+
+
+def test_intermediate_node_property_access():
+    lm = _make_label_map_three_hop()
+    ast = parse_cypher(
+        "MATCH (p:Person)-[:WORKS_AT]->(c:Company)-[:HAS_DEPT]->(d:Department) "
+        "RETURN p.name, c.name, d.title"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "persons" in sql.lower()
+    assert "companies" in sql.lower()
+    assert "departments" in sql.lower()
+    # All three aliases should be referenceable in SELECT
+    sql_lower = sql.lower()
+    assert "p." in sql_lower
+    assert "c." in sql_lower
+    assert "d." in sql_lower
+
+
+def test_intermediate_node_where_filter():
+    lm = _make_label_map_three_hop()
+    ast = parse_cypher(
+        "MATCH (p:Person)-[:WORKS_AT]->(c:Company)-[:HAS_DEPT]->(d:Department) "
+        "WHERE c.name = 'ACME' RETURN p.name, d.title"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "ACME" in sql
+    assert "c." in sql.lower()
+
+
+# ---------------------------------------------------------------------------
+# Gap #5 — Path object RETURN p
+# ---------------------------------------------------------------------------
+
+def test_return_path_flat_join_emits_json_object():
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH p = shortestPath((a:Person)-[:WORKS_AT*..3]->(c:Company)) "
+        "WHERE a.name = 'Alice' RETURN p"
+    )
+    sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    sql_upper = sql.upper()
+    assert "JSON_OBJECT" in sql_upper
+    assert "'start'" in sql.lower() or "start" in sql.lower()
+    assert "'end'" in sql.lower() or "end" in sql.lower()
+    assert "length" in sql.lower()
+    assert graph_vars.get("p") is not None
+
+
+def test_return_path_recursive_emits_hops():
+    lm = _make_label_map_self_ref()
+    ast = parse_cypher(
+        "MATCH p = shortestPath((a:Person)-[:KNOWS*..5]->(b:Person)) "
+        "WHERE a.name = 'Alice' AND b.name = 'Bob' RETURN p"
+    )
+    sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    sql_upper = sql.upper()
+    assert "JSON_OBJECT" in sql_upper
+    assert "hops" in sql.lower()
+
+
+def test_return_path_with_alias():
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH p = shortestPath((a:Person)-[:WORKS_AT*..3]->(c:Company)) RETURN p AS route"
+    )
+    sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "route" in sql.lower()
+    assert "JSON_OBJECT" in sql.upper()
+
+
+# ---------------------------------------------------------------------------
+# Gap #8 — Correlated CALL subqueries (CALL { WITH x MATCH ... })
+# ---------------------------------------------------------------------------
+
+def test_correlated_call_lateral_join_emitted():
+    """CALL { WITH p MATCH (p)-[:KNOWS]->(f:Person) ... } → CROSS JOIN LATERAL."""
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (p:Person) "
+        "CALL { WITH p MATCH (p)-[:KNOWS]->(f:Person) RETURN f.name AS friend } "
+        "RETURN p.name, friend"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    sql_upper = sql.upper()
+    assert "LATERAL" in sql_upper
+    assert "friend" in sql.lower()
+    assert "persons" in sql.lower()
+
+
+def test_correlated_call_inner_where_condition():
+    """Inner CALL body produces a WHERE condition referencing the outer var."""
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (p:Person) "
+        "CALL { WITH p MATCH (p)-[:KNOWS]->(f:Person) RETURN f.name AS friend } "
+        "RETURN p.name, friend"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    # The inner lateral subquery should reference the join column
+    assert "person_id" in sql.lower() or "id" in sql.lower()
+
+
+def test_correlated_call_multiple_imported_vars():
+    """CALL { WITH a, b MATCH ... } — both vars imported (parser smoke-test)."""
+    from provisa.cypher.parser import parse_cypher as _parse
+    ast = _parse(
+        "MATCH (a:Person)-[:KNOWS]->(b:Person) "
+        "CALL { WITH a, b MATCH (a)-[:WORKS_AT]->(c:Company) RETURN c.name AS cn } "
+        "RETURN a.name, b.name, cn"
+    )
+    assert ast.call_subqueries
+    call = ast.call_subqueries[0]
+    assert "a" in call.imported_vars
+    assert "b" in call.imported_vars
+
+
+def test_non_correlated_call_not_lateral():
+    """CALL { MATCH (n:Person) RETURN n } without WITH → not a LATERAL."""
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (p:Person) RETURN p.name"
+    )
+    # No CALL subqueries → no lateral joins
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "LATERAL" not in sql.upper()

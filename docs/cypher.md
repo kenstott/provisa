@@ -155,13 +155,13 @@ These are intentional, not implementation gaps.
 
 These are known gaps that are technically feasible.
 
-5. **Path object (`RETURN p`).** When a path variable is assigned (`MATCH p = shortestPath(...)`) and returned, the translator currently returns the start and end node columns only. A full path object — `{ nodes: [...], relationships: [...], length: N }` — can be generated as a JSON column (flat JOINs via `JSON_OBJECT`; recursive CTEs via a `path_json` accumulator column) but is not yet emitted.
+5. **Path object (`RETURN p`).** Supported. When a path variable is assigned (`MATCH p = shortestPath(...)`) and returned, the translator emits `JSON_OBJECT('start', src.id, 'end', tgt.id, 'length', N)` — where `N` is `_t.hops` for recursive CTE paths and `1` for flat JOIN paths. The return item is typed as `GraphVarKind.PATH` in the graph vars map. Aliases (`RETURN p AS route`) are supported.
 
 6. **`length(p)`.** Supported. For recursive CTE paths (`shortestPath` on self-referential relationships), `length(p)` rewrites to `_t.hops`. For flat JOIN paths, `length(p)` returns `1` (single hop).
 
 7. **`UNWIND`.** Implemented. See Clauses table above.
 
-8. **Correlated `CALL` subqueries.** `CALL { WITH x MATCH ... }` passing variables into a subquery is not supported. Top-level `CALL { ... }` blocks (used for multi-statement decomposition) are handled by `cypher_calls_to_sql_list`.
+8. **Correlated `CALL` subqueries.** Supported. `CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` translates to `CROSS JOIN LATERAL (SELECT ...)`. The outer-scope variables (`x`) are pre-bound in the inner translator, the first relationship's target becomes the inner `FROM`, and the join condition is pushed into the lateral `WHERE`. Multiple imported vars (`WITH a, b`) are supported. Non-correlated top-level `CALL { ... }` blocks (without `WITH`) continue to be handled by `cypher_calls_to_sql_list`.
 
 9. **Pattern comprehensions.** `[(a)-[:R]->(b) | b.name]` inline path comprehensions are supported. Translated to `ARRAY(SELECT b."name" FROM ... WHERE a.fk = b.pk)` correlated subqueries. Both explicit rel-type and inferred (type-resolved) forms are handled.
 
@@ -169,7 +169,7 @@ These are known gaps that are technically feasible.
 
 11. **`IN` list predicate.** `WHERE n.status IN ['active', 'pending']` is supported. Cypher bracket syntax is rewritten to SQL parenthesis form before parsing.
 
-12. **Intermediate node property access in multi-hop patterns.** In `MATCH (a)-[]->(b)-[]->(c)`, `b` is bound and its properties are accessible. However, when `b` is an intermediate alias generated during schema-path resolution (`_hop1`), returning `b.name` will not resolve correctly unless `b` is explicitly named in the Cypher pattern.
+12. **Intermediate node property access in multi-hop patterns.** Supported when the intermediate node is explicitly named in the Cypher pattern (`MATCH (a)-[]->(b)-[]->(c)` — `b.name` resolves correctly). Auto-generated intermediate aliases (`_hop1`) used in schema-path resolution are not addressable; name all nodes you intend to reference.
 
 ### Behaviour notes
 

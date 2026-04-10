@@ -1,0 +1,116 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 8f2c4a7e-1b5d-4e9a-3c6f-7d0b2e4a8f1c
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""SelectBuilderMixin — SELECT clause and path object construction.
+
+Extracted from translator.py to stay under 1000 lines.
+Mixed into _Translator; relies on _var_table, _graph_vars, _path_vars,
+_shortestpath_hops_col, and _parse_expr.
+"""
+
+from __future__ import annotations
+
+import sqlglot.expressions as exp
+
+from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+from provisa.cypher.parser import ReturnClause
+
+
+def _is_bare_variable(text: str) -> bool:
+    import re
+    return bool(re.match(r'^[A-Za-z_]\w*$', text))
+
+
+class SelectBuilderMixin:
+    """Mixin for _Translator: builds SELECT expressions and path objects."""
+
+    _var_table: dict
+    _graph_vars: dict
+    _path_vars: dict
+    _shortestpath_hops_col: exp.Expression | None
+    _lm: CypherLabelMap
+
+    def _build_path_object(self, path_var: str) -> exp.Expression:
+        """Emit a JSON path object for RETURN p.
+
+        Flat-JOIN paths: JSON_OBJECT('start', src.id, 'end', tgt.id, 'length', 1)
+        Recursive CTE paths: JSON_OBJECT('start', src.id, 'end', tgt.id, 'length', hops)
+        """
+        src_var, tgt_var, is_recursive = self._path_vars[path_var]
+        src_nm: NodeMapping | None = self._var_table.get(src_var, (src_var, None))[1]
+        tgt_nm: NodeMapping | None = self._var_table.get(tgt_var, (tgt_var, None))[1]
+        src_id_col = src_nm.id_column if src_nm else "id"
+        tgt_id_col = tgt_nm.id_column if tgt_nm else "id"
+        src_id = exp.Column(
+            this=exp.Identifier(this=src_id_col, quoted=True),
+            table=exp.Identifier(this=src_var),
+        )
+        if is_recursive and self._shortestpath_hops_col is not None:
+            tgt_id = exp.Column(
+                this=exp.Identifier(this="cur_id"),
+                table=exp.Identifier(this="_t"),
+            )
+            length_val: exp.Expression = self._shortestpath_hops_col
+        else:
+            tgt_id = exp.Column(
+                this=exp.Identifier(this=tgt_id_col, quoted=True),
+                table=exp.Identifier(this=tgt_var),
+            )
+            length_val = exp.Literal.number(1)
+        return exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[
+                exp.Literal.string("start"), src_id,
+                exp.Literal.string("end"), tgt_id,
+                exp.Literal.string("length"), length_val,
+            ],
+        )
+
+    def _build_select(self, return_clause: ReturnClause) -> list[exp.Expression]:
+        from provisa.cypher.translator import GraphVarKind  # avoid circular at module level
+        exprs: list[exp.Expression] = []
+        for item in return_clause.items:
+            expr_text = item.expression.strip()
+            alias = item.alias
+
+            # Path variable: RETURN p where p = shortestPath(...)
+            if _is_bare_variable(expr_text) and expr_text in self._path_vars:
+                self._graph_vars[alias or expr_text] = GraphVarKind.PATH
+                path_expr = self._build_path_object(expr_text)
+                if alias:
+                    exprs.append(exp.alias_(path_expr, alias))
+                else:
+                    exprs.append(exp.alias_(path_expr, expr_text))
+                continue
+
+            # Bare node variable: RETURN n
+            if _is_bare_variable(expr_text) and expr_text in self._var_table:
+                var_info = self._var_table[expr_text]
+                if var_info[1] is not None:
+                    self._graph_vars[alias or expr_text] = GraphVarKind.NODE
+                    table_alias = var_info[0]
+                    tbl_col = exp.Column(
+                        this=exp.Star(),
+                        table=exp.Identifier(this=table_alias),
+                    )
+                    if alias:
+                        exprs.append(exp.alias_(tbl_col, alias))
+                    else:
+                        exprs.append(tbl_col)
+                    continue
+
+            # Property access or expression
+            parsed = self._parse_expr(expr_text)
+            if alias:
+                exprs.append(exp.alias_(parsed, alias))
+            else:
+                exprs.append(parsed)
+
+        return exprs

@@ -33,6 +33,7 @@ class PathFunctionsMixin:
     _recursive_ctes: list          # list[(cte_name, exp.Expression)]
     _shortestpath_hops_col: exp.Expression | None
     _shortestpath_is_all: bool
+    _path_vars: dict               # path_var → (src_var, tgt_var, is_recursive)
 
     def _translate_path_function(
         self, clause: MatchClause
@@ -94,6 +95,10 @@ class PathFunctionsMixin:
             src_type == tgt_type
             or any(r.source_label == r.target_label for r in allowed_rels)
         )
+
+        # Register path variable for RETURN p support
+        if clause.variable and src_var and tgt_var:
+            self._path_vars[clause.variable] = (src_var, tgt_var, needs_recursive)
 
         if needs_recursive:
             base_rels = [r for r in allowed_rels if r.source_label == src_type]
