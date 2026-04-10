@@ -1236,3 +1236,244 @@ def test_non_correlated_call_not_lateral():
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "LATERAL" not in sql.upper()
+
+
+# ---------------------------------------------------------------------------
+# G5 — Node label alternation (n:A|B)
+# ---------------------------------------------------------------------------
+
+def test_node_label_alternation():
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person|Company) RETURN n.name")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "UNION" in sql.upper()
+    assert "persons" in sql.lower()
+    assert "companies" in sql.lower()
+
+
+# ---------------------------------------------------------------------------
+# G2 — EXISTS { MATCH ... } subquery predicate
+# ---------------------------------------------------------------------------
+
+def test_exists_subquery_in_where():
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) WHERE EXISTS { MATCH (n)-[:KNOWS]->(m:Person) } RETURN n.name"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "EXISTS" in sql.upper()
+    assert "SELECT" in sql.upper()
+
+
+# ---------------------------------------------------------------------------
+# G3 — COUNT { MATCH ... } subquery expression
+# ---------------------------------------------------------------------------
+
+def test_count_subquery_in_return():
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) RETURN n.name, COUNT { MATCH (n)-[:KNOWS]->(m:Person) } AS friend_count"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "count" in sql.lower()
+    assert "friend_count" in sql.lower()
+
+
+# ---------------------------------------------------------------------------
+# G4 — COLLECT { MATCH ... RETURN ... } subquery expression
+# ---------------------------------------------------------------------------
+
+def test_collect_subquery_in_return():
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) RETURN n.name, COLLECT { MATCH (n)-[:KNOWS]->(m:Person) RETURN m.name } AS friends"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "ARRAY" in sql.upper()
+    assert "friends" in sql.lower()
+
+
+# ---------------------------------------------------------------------------
+# G8 — left() / right() functions
+# ---------------------------------------------------------------------------
+
+def test_left_function():
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) RETURN left(n.name, 3) AS prefix")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "left" in sql.lower()
+
+
+def test_right_function():
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) RETURN right(n.name, 3) AS suffix")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "right" in sql.lower()
+
+
+# ---------------------------------------------------------------------------
+# G10 — size() polymorphism
+# ---------------------------------------------------------------------------
+
+def test_size_on_string_literal():
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) RETURN size('hello') AS len")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "char_length" in sql.lower()
+
+
+def test_size_on_list_expr():
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) RETURN size(collect(n.name)) AS cnt")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "cardinality" in sql.lower()
+
+
+# ---------------------------------------------------------------------------
+# G11 — count(DISTINCT x) passes through correctly
+# ---------------------------------------------------------------------------
+
+def test_count_distinct():
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) RETURN count(DISTINCT n.name) AS cnt")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "count" in sql.lower()
+    assert "distinct" in sql.lower()
+
+
+def test_reduce_basic():
+    """reduce(total = 0, x IN collect(n.age) | total + x) → Trino reduce form."""
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) RETURN reduce(total = 0, x IN collect(n.age) | total + x) AS sum_age"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "reduce" in sql.lower()
+
+
+def test_reduce_string_concat():
+    """reduce emits Trino lambda form: reduce(list, init, (acc, x) -> expr, acc -> acc)."""
+    from provisa.cypher.comprehension import rewrite_reduce
+    result = rewrite_reduce("reduce(acc = '', x IN names | acc || x)")
+    assert result == "reduce(names, '', (acc, x) -> acc || x, acc -> acc)"
+
+
+# ---------------------------------------------------------------------------
+# G9 — Legacy {param} syntax
+# ---------------------------------------------------------------------------
+
+def test_legacy_param_syntax():
+    """Legacy {param} syntax is normalized to $param before parsing."""
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) WHERE n.age > {min} RETURN n.name")
+    sql_ast, param_names, _ = cypher_to_sql(ast, lm, {"min": 30})
+    assert "min" in param_names
+
+
+def test_legacy_param_syntax_multiple():
+    """Multiple legacy {param} references are all normalized."""
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) WHERE n.age > {min} AND n.age < {max} RETURN n.name"
+    )
+    sql_ast, param_names, _ = cypher_to_sql(ast, lm, {"min": 20, "max": 60})
+    assert "min" in param_names
+    assert "max" in param_names
+
+
+# ---------------------------------------------------------------------------
+# G1 — Implicit GROUP BY
+# ---------------------------------------------------------------------------
+
+def test_group_by_implicit_single_key():
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN c.name, count(n) AS cnt"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "GROUP BY" in sql.upper()
+
+
+def test_group_by_implicit_multiple_keys():
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) RETURN n.age, n.name, count(*) AS cnt"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "GROUP BY" in sql.upper()
+    sql_upper = sql.upper()
+    assert "AGE" in sql_upper
+    assert "NAME" in sql_upper
+
+
+def test_no_group_by_without_agg():
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) RETURN n.name, n.age")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "GROUP BY" not in sql.upper()
+
+
+def test_group_by_collect():
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) RETURN n.age, collect(n.name) AS names"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "GROUP BY" in sql.upper()
+
+
+def test_with_clause_group_by():
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) WITH n.age AS age, count(*) AS cnt RETURN age, cnt"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "GROUP BY" in sql.upper()
+
+
+# --- type(r) resolution ---
+
+def test_type_function_in_return():
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (p:Person)-[r:KNOWS]->(f:Person) RETURN type(r)"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "'KNOWS'" in sql
+
+
+def test_type_function_in_where():
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (p:Person)-[r]->(c:Company) WHERE type(r) = 'WORKS_AT' RETURN p.name"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "'WORKS_AT'" in sql
+
+
+def test_type_function_unbound_passthrough():
+    """type(x) where x is not a known rel var passes through without crash."""
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (p:Person) RETURN p.name"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert sql is not None

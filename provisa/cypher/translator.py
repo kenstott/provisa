@@ -57,6 +57,7 @@ from provisa.cypher.path_functions import PathFunctionsMixin
 from provisa.cypher.path_comprehension import PathComprehensionMixin
 from provisa.cypher.select_builder import SelectBuilderMixin
 from provisa.cypher.correlated_call import CorrelatedCallMixin
+from provisa.cypher.subquery_exprs import SubqueryExprsMixin
 
 
 class GraphVarKind(str, Enum):
@@ -98,7 +99,7 @@ def cypher_calls_to_sql_list(
     return results
 
 
-class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin, CorrelatedCallMixin):
+class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin, CorrelatedCallMixin, SubqueryExprsMixin):
     def __init__(
         self,
         ast: CypherAST,
@@ -132,6 +133,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         self._lateral_bound: set[str] = set()
         # ON conditions from lateral-bound first-node relationships → added as WHERE
         self._lateral_conditions: list[exp.Expression] = []
+        # relationship variable → resolved rel_type string (for type(r) resolution)
+        self._rel_var_types: dict[str, str] = {}
 
     def translate(self) -> tuple[exp.Select, list[str], dict[str, GraphVarKind]]:
         if self._ast.return_clause is None:
@@ -168,6 +171,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 stage_query = stage_query.join(join["table"], on=join["on"], join_type=join["join_type"])
             if where_expr:
                 stage_query = stage_query.where(where_expr)
+            with_group_exprs = self._build_group_by_for_with(with_clause.items)
+            if with_group_exprs:
+                stage_query = stage_query.group_by(*with_group_exprs)
 
             # Apply WITH ... WHERE as outer filter
             if with_clause.where is not None:
@@ -231,6 +237,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             query = query.where(where_expr)
         for lat_cond in self._lateral_conditions:
             query = query.where(lat_cond)
+        group_exprs = self._build_group_by(self._ast.return_clause)
+        if group_exprs:
+            query = query.group_by(*group_exprs)
 
         # UNION ALL extra branches from multi-path shortestPath/allShortestPaths.
         # Each schema path is its own SQL query; WHERE/SELECT are identical across branches.
@@ -374,7 +383,19 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             # Register all nodes
             for node in nodes:
                 if node.variable and node.variable not in self._var_table:
-                    if node.labels:
+                    if node.label_alternation and len(node.labels) > 1:
+                        # Cypher 5 (n:A|B) — build ad-hoc domain for alternation
+                        ad_hoc = f"__alt_{node.variable}__"
+                        if ad_hoc not in self._lm.domains:
+                            from provisa.cypher.label_map import CypherLabelMap
+                            self._lm = CypherLabelMap(
+                                nodes=self._lm.nodes,
+                                relationships=self._lm.relationships,
+                                domains={**self._lm.domains, ad_hoc: node.labels},
+                            )
+                        self._domain_nodes[node.variable] = ad_hoc
+                        self._var_table[node.variable] = (node.variable, None)
+                    elif node.labels:
                         type_label, domain_label = self._resolve_node_type(node.labels)
                         if type_label:
                             self._var_table[node.variable] = (node.variable, self._lm.nodes[type_label])
@@ -478,6 +499,10 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 if rel_mapping is None:
                     continue
 
+                # Record relationship variable → rel_type for type(r) resolution
+                if rel.variable:
+                    self._rel_var_types[rel.variable] = rel_mapping.rel_type
+
                 join_type = "LEFT" if clause.optional else "INNER"
                 tgt_alias = tgt_var or tgt_nm.table_name
 
@@ -546,6 +571,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         expr_text = _rewrite_in_list(expr_text)
         expr_text = _rewrite_property_access(expr_text)
         expr_text = _rewrite_string_predicates(expr_text)
+        expr_text = self._rewrite_subquery_exprs(expr_text)
         try:
             parsed = sqlglot.parse_one(expr_text, dialect="trino")
             return parsed.transform(_rewrite_cypher_fn_node)
@@ -586,6 +612,15 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 return f"ARRAY[{keys}]"
             return m.group(0)
 
+        def _type_repl(m: re.Match) -> str:
+            var = m.group(1).strip()
+            rel_type = self._rel_var_types.get(var)
+            if rel_type is not None:
+                return f"'{rel_type}'"
+            return m.group(0)
+
+        # type(r) → 'REL_TYPE' literal (resolved at compile time from semantic layer)
+        text = re.sub(r'\btype\s*\(\s*([A-Za-z_]\w*)\s*\)', _type_repl, text, flags=re.IGNORECASE)
         # exists(n.prop) → (n.prop) IS NOT NULL
         text = re.sub(r'\bexists\s*\(([^()]+)\)', r'(\1) IS NOT NULL', text, flags=re.IGNORECASE)
         # id(var) → var."id_col"
@@ -612,6 +647,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         text = _rewrite_in_list(text)
         text = _rewrite_property_access(text)
         text = _rewrite_string_predicates(text)
+        text = self._rewrite_subquery_exprs(text)
         try:
             parsed = sqlglot.parse_one(text, dialect="trino")
             return parsed.transform(_rewrite_cypher_fn_node)
@@ -646,6 +682,25 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 else:
                     exprs.append(parsed)
         return exprs
+
+    def _build_group_by(self, return_clause: ReturnClause) -> list[exp.Expression]:
+        items = return_clause.items
+        if not any(_has_aggregate(item.expression) for item in items):
+            return []
+        return [
+            self._parse_expr(item.expression.strip())
+            for item in items
+            if not _has_aggregate(item.expression)
+        ]
+
+    def _build_group_by_for_with(self, items: list[ReturnItem]) -> list[exp.Expression]:
+        if not any(_has_aggregate(item.expression) for item in items):
+            return []
+        return [
+            self._parse_expr(item.expression.strip())
+            for item in items
+            if not _has_aggregate(item.expression)
+        ]
 
     def _update_var_table_for_with(self, items: list[ReturnItem], cte_name: str) -> None:
         new_var_table: dict[str, tuple[str, Any]] = {}
@@ -756,6 +811,16 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         return re.sub(r"\$([A-Za-z_]\w*)", _replace, text)
 
 
+_AGG_FN_RE = re.compile(
+    r'\b(count|sum|avg|min|max|collect|stdev|stdevp|percentilecont|percentiledisc)\s*\(',
+    re.IGNORECASE,
+)
+
+
+def _has_aggregate(text: str) -> bool:
+    return bool(_AGG_FN_RE.search(text))
+
+
 def _is_bare_variable(expr: str) -> bool:
     return bool(re.match(r"^[A-Za-z_]\w*$", expr.strip()))
 
@@ -782,7 +847,6 @@ _CYPHER_FN_RENAMES: dict[str, str] = {
     "REVERSE": "reverse",
     "REPLACE": "replace",
     "SPLIT": "split",
-    "SIZE": "cardinality",  # Cypher size() on lists; use length() for strings directly
     "RANGE": "sequence",    # Cypher range(start, end[, step]) → sequence(start, end[, step])
     "LOG": "ln",            # Neo4j log() = natural log = Trino ln()
     "LOG2": "log2",
@@ -877,6 +941,14 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:
             return exp.Anonymous(this="ln", expressions=[base])
         return node
 
+    # exp.Left / exp.Right — SQLGlot parses left()/right() as these; emit as Anonymous
+    # so Trino receives LEFT(str, n) rather than a SUBSTRING expansion.
+    if isinstance(node, exp.Left):
+        return exp.Anonymous(this="left", expressions=[node.this, node.expression])
+
+    if isinstance(node, exp.Right):
+        return exp.Anonymous(this="right", expressions=[node.this, node.expression])
+
     # Handle built-in exp.Substring — adjust 0-indexed Cypher start to 1-indexed SQL
     if isinstance(node, exp.Substring):
         start = node.args.get("start")
@@ -911,6 +983,12 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:
             this=exp.Anonymous(this="cardinality", expressions=args),
             expression=exp.Literal.number(0),
         )
+
+    if name == "SIZE" and args:
+        arg = args[0]
+        if isinstance(arg, exp.Literal) and arg.is_string:
+            return exp.Anonymous(this="char_length", expressions=args)
+        return exp.Anonymous(this="cardinality", expressions=args)
 
     if name in _CYPHER_FN_RENAMES:
         return exp.Anonymous(this=_CYPHER_FN_RENAMES[name], expressions=args)

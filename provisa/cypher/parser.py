@@ -34,6 +34,7 @@ class NodePattern:
     variable: str | None
     labels: list[str]
     properties: dict[str, Any]
+    label_alternation: bool = False
 
 
 @dataclass
@@ -422,15 +423,22 @@ class _Parser:
             if next_t and next_t.type in ("COLON", "RPAREN", "LBRACE", "COMMA"):
                 variable = self._advance().value
 
+        label_alternation = False
         while self._peek() and self._peek().type == "COLON":
             self._advance()
             labels.append(self._expect("IDENT").value)
+            # Support Cypher 5 label alternation: (n:A|B)
+            while self._peek() and self._peek().type == "PIPE":
+                self._advance()  # consume |
+                labels.append(self._expect("IDENT").value)
+                label_alternation = True
 
         if self._peek() and self._peek().type == "LBRACE":
             props = self._parse_map_literal()
 
         self._expect("RPAREN")
-        return NodePattern(variable=variable, labels=labels, properties=props)
+        return NodePattern(variable=variable, labels=labels, properties=props,
+                           label_alternation=label_alternation)
 
     def _parse_rel_and_node(self) -> tuple[RelPattern, NodePattern]:
         direction = "right"
@@ -561,13 +569,23 @@ class _Parser:
         # WITH is a stop keyword but must not stop STARTS WITH / ENDS WITH predicates
         _string_pred_prefixes = {"STARTS", "ENDS"}
         parts: list[str] = []
+        depth = 0  # track { } depth for EXISTS/COUNT/COLLECT { } subqueries
         while self._peek():
-            kw = self._peek_val()
-            if kw in _clause_kws:
-                if kw == "WITH" and parts and parts[-1].upper() in _string_pred_prefixes:
-                    pass  # part of a string predicate — keep consuming
+            t = self._peek()
+            if t.type == "LBRACE":
+                depth += 1
+            elif t.type == "RBRACE":
+                if depth > 0:
+                    depth -= 1
                 else:
-                    break
+                    break  # unmatched } — stop
+            elif depth == 0:
+                kw = t.value.upper() if t.type == "IDENT" else ""
+                if kw in _clause_kws:
+                    if kw == "WITH" and parts and parts[-1].upper() in _string_pred_prefixes:
+                        pass  # part of a string predicate — keep consuming
+                    else:
+                        break
             parts.append(self._advance().value)
         return WhereClause(expression=" ".join(parts))
 
@@ -725,6 +743,11 @@ class _Parser:
 # Public entry point
 # ---------------------------------------------------------------------------
 
+def _normalize_legacy_params(text: str) -> str:
+    """Rewrite legacy {param} syntax to $param."""
+    return re.sub(r'\{([A-Za-z_]\w*)\}', r'$\1', text)
+
+
 def parse_cypher(query: str) -> CypherAST:
     """Parse a read-only Cypher query into a CypherAST.
 
@@ -746,6 +769,7 @@ def parse_cypher(query: str) -> CypherAST:
             "APOC procedure references are not allowed in Provisa Cypher queries."
         )
 
+    query = _normalize_legacy_params(query)
     tokens = _tokenize(query)
     parser = _Parser(tokens, query)
     return parser.parse()

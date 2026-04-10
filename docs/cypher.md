@@ -58,6 +58,7 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 | `labels(n)` | ✓ | `ARRAY['Label']` |
 | `keys(n)` | ✓ | `ARRAY['prop1', 'prop2', …]` |
 | `length(p)` | ✓ | `_t.hops` for recursive CTE paths; `1` for flat JOIN paths |
+| `type(r)` | ✓ | Resolved at compile time to `'REL_TYPE'` string literal; no runtime column |
 | `CASE WHEN … THEN … ELSE … END` | ✓ | Direct (searched and simple forms) |
 
 ### Aggregation Functions

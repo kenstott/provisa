@@ -22,6 +22,35 @@ Supported rewrites:
 
 from __future__ import annotations
 
+import re
+
+_REDUCE_RE = re.compile(
+    r'\breduce\s*\(\s*'
+    r'([A-Za-z_]\w*)'          # group 1: accumulator var
+    r'\s*=\s*'
+    r'([^,]+?)'                 # group 2: initial value
+    r'\s*,\s*'
+    r'([A-Za-z_]\w*)'          # group 3: element var
+    r'\s+IN\s+'
+    r'([^|]+?)'                 # group 4: list expression
+    r'\s*\|\s*'
+    r'([^)]+)'                  # group 5: body expression
+    r'\s*\)',
+    re.IGNORECASE,
+)
+
+
+def rewrite_reduce(text: str) -> str:
+    """Rewrite Cypher reduce(acc = init, x IN list | expr) → Trino reduce(list, init, (acc, x) -> expr, acc -> acc)."""
+    def _replace(m: re.Match) -> str:
+        acc = m.group(1).strip()
+        init = m.group(2).strip()
+        var = m.group(3).strip()
+        lst = m.group(4).strip()
+        body = m.group(5).strip()
+        return f"reduce({lst}, {init}, ({acc}, {var}) -> {body}, {acc} -> {acc})"
+    return _REDUCE_RE.sub(_replace, text)
+
 
 class _ComprehensionParser:
     def __init__(self, text: str) -> None:
@@ -228,5 +257,7 @@ class _ComprehensionParser:
 
 
 def rewrite_list_comprehensions(text: str) -> str:
-    """Rewrite Cypher list comprehensions to SQLGlot-parseable lambda syntax."""
-    return _ComprehensionParser(text).rewrite()
+    """Rewrite Cypher list comprehensions and reduce() to SQLGlot-parseable lambda syntax."""
+    text = _ComprehensionParser(text).rewrite()
+    text = rewrite_reduce(text)
+    return text
