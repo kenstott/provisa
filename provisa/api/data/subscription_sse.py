@@ -55,6 +55,7 @@ async def handle_subscription_sse(
     role,
     role_id: str,
     raw_request: Request,
+    directives=None,
 ) -> StreamingResponse | JSONResponse:
     """Execute a GraphQL subscription and stream results as SSE.
 
@@ -110,11 +111,32 @@ async def handle_subscription_sse(
 
     schema = state.schemas[role_id]
 
-    # Kafka sink redirect — X-Provisa-Sink: kafka://[broker:port]/topic
+    # Resolve directives: extract from AST if not passed in (e.g. direct SSE calls)
+    if directives is None:
+        from provisa.compiler.directives import extract_directives, extract_directives_from_sql_comments, merge_directives
+        from graphql.language import print_ast as _print_ast
+        _sql_directives = extract_directives_from_sql_comments(print_ast(document))
+        directives = merge_directives(_sql_directives, extract_directives(document))
+
+    # Watermark column: @watermark field directive overrides state.table_watermarks
+    _watermark_override = directives.watermark_column if directives else None
+
+    # Kafka sink redirect — @sink directive or X-Provisa-Sink header
+    sink_topic = (directives.sink_topic if directives else None) or None
+    sink_broker = (directives.sink_broker if directives else None) or None
     sink_header = raw_request.headers.get("x-provisa-sink", "")
-    if sink_header:
+    if not sink_topic and sink_header:
+        # Parse header URI into topic/broker for _launch_kafka_sink
+        try:
+            _parsed = urlparse(sink_header)
+            sink_topic = _parsed.path.lstrip("/") or None
+            sink_broker = _parsed.netloc or None
+        except Exception:
+            pass
+    if sink_topic:
+        _broker = sink_broker or os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
         return await _launch_kafka_sink(
-            sink_header=sink_header,
+            sink_header=f"kafka://{_broker}/{sink_topic}",
             table_name=table_name,
             table_meta=table_meta,
             source_id=source_id,
@@ -161,16 +183,22 @@ async def handle_subscription_sse(
                 yield f"data: {json.dumps({'errors': [{'message': str(exc)}]})}\n\n"
                 return
 
+            # Effective watermark: @watermark field directive > table registration
+            effective_watermark = (
+                _watermark_override
+                or (state.table_watermarks or {}).get(table_name)
+            )
+
             # Watch for table changes — pg_notify triggers preferred; poll as fallback
             use_polling_fallback = (
                 source_type == "postgresql"
                 and table_name not in (state.pg_notify_tables or set())
-                and table_name in (state.table_watermarks or {})
+                and effective_watermark is not None
             )
             use_trino_polling = (
                 not use_polling_fallback
                 and source_type != "postgresql"
-                and table_name in (state.table_watermarks or {})
+                and effective_watermark is not None
             )
 
             provider_config: dict = {}
@@ -178,7 +206,7 @@ async def handle_subscription_sse(
             if use_polling_fallback:
                 effective_source_type = "polling_fallback"
                 provider_config["pool"] = state.pg_pool
-                provider_config["watermark_column"] = state.table_watermarks[table_name]
+                provider_config["watermark_column"] = effective_watermark
             elif use_trino_polling:
                 effective_source_type = "trino_polling"
             elif source_type == "postgresql" and state.pg_pool:
@@ -203,7 +231,7 @@ async def handle_subscription_sse(
                         catalog=table_meta.catalog_name or "hive",
                         schema=table_meta.schema_name or "default",
                         table=table_meta.table_name,
-                        watermark_column=state.table_watermarks[table_name],
+                        watermark_column=effective_watermark,
                     )
                 else:
                     from provisa.subscriptions.registry import get_provider

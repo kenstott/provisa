@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from graphql import (
     GraphQLArgument,
     GraphQLBoolean,
+    GraphQLDirective,
     GraphQLEnumType,
     GraphQLEnumValue,
     GraphQLField,
@@ -33,7 +34,9 @@ from graphql import (
     GraphQLScalarType,
     GraphQLSchema,
     GraphQLString,
+    specified_directives,
 )
+from graphql.language import DirectiveLocation
 
 from provisa.compiler.aggregate_gen import build_aggregate_types
 from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
@@ -97,6 +100,81 @@ OrderDirection = GraphQLEnumType(
         "desc_nulls_last": GraphQLEnumValue("desc_nulls_last"),
     },
 )
+
+# --- Provisa directive enums ---
+
+RouteEngineEnum = GraphQLEnumType(
+    "RouteEngine",
+    {
+        "FEDERATED": GraphQLEnumValue("FEDERATED", description="Route via Trino federation"),
+        "DIRECT": GraphQLEnumValue("DIRECT", description="Route directly to source"),
+    },
+    description="Execution engine routing hint for @route.",
+)
+
+JoinStrategyEnum = GraphQLEnumType(
+    "JoinStrategy",
+    {
+        "BROADCAST": GraphQLEnumValue("BROADCAST", description="Broadcast join distribution"),
+        "PARTITIONED": GraphQLEnumValue("PARTITIONED", description="Partitioned (hash) join distribution"),
+    },
+    description="Join distribution strategy hint for @join.",
+)
+
+# Directive locations
+_QS = [DirectiveLocation.QUERY, DirectiveLocation.SUBSCRIPTION]
+_QMS = [DirectiveLocation.QUERY, DirectiveLocation.MUTATION, DirectiveLocation.SUBSCRIPTION]
+
+PROVISA_DIRECTIVES = [
+    GraphQLDirective(
+        name="route",
+        locations=_QMS,
+        args={"engine": GraphQLArgument(GraphQLNonNull(RouteEngineEnum), description="FEDERATED or DIRECT")},
+        description="Override execution engine routing.",
+    ),
+    GraphQLDirective(
+        name="join",
+        locations=_QS,
+        args={"strategy": GraphQLArgument(GraphQLNonNull(JoinStrategyEnum), description="BROADCAST or PARTITIONED")},
+        description="Set Trino join distribution strategy.",
+    ),
+    GraphQLDirective(
+        name="reorder",
+        locations=_QS,
+        args={"enabled": GraphQLArgument(GraphQLNonNull(GraphQLBoolean), description="Set false to disable join reordering")},
+        description="Control Trino join reordering.",
+    ),
+    GraphQLDirective(
+        name="broadcastSize",
+        locations=_QS,
+        args={"size": GraphQLArgument(GraphQLNonNull(GraphQLString), description="Max broadcast table size, e.g. '100MB'")},
+        description="Override max broadcast table size for Trino.",
+    ),
+    GraphQLDirective(
+        name="watermark",
+        locations=[DirectiveLocation.FIELD],
+        args={},
+        description="Mark field as the watermark column for subscription polling.",
+    ),
+    GraphQLDirective(
+        name="sink",
+        locations=[DirectiveLocation.SUBSCRIPTION],
+        args={
+            "topic": GraphQLArgument(GraphQLNonNull(GraphQLString), description="Kafka topic name"),
+            "broker": GraphQLArgument(GraphQLString, description="Kafka bootstrap server (host:port)"),
+        },
+        description="Redirect subscription output to a Kafka topic.",
+    ),
+    GraphQLDirective(
+        name="redirect",
+        locations=_QS,
+        args={
+            "format": GraphQLArgument(GraphQLString, description="Output format: parquet, csv, arrow"),
+            "threshold": GraphQLArgument(GraphQLInt, description="Row count threshold to trigger redirect"),
+        },
+        description="Redirect large results to object store.",
+    ),
+]
 
 # --- Relay-style connection types for cursor pagination (REQ-218) ---
 
@@ -876,4 +954,10 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
     subscription_fields = _build_subscription_fields(si, tables, gql_types)
     subscription_type = GraphQLObjectType("Subscription", lambda: subscription_fields) if subscription_fields else None
 
-    return GraphQLSchema(query=query_type, mutation=mutation_type, subscription=subscription_type)
+    return GraphQLSchema(
+        query=query_type,
+        mutation=mutation_type,
+        subscription=subscription_type,
+        directives=[*specified_directives, *PROVISA_DIRECTIVES],
+        types=[RouteEngineEnum, JoinStrategyEnum],
+    )

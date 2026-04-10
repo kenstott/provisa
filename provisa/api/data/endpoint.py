@@ -31,6 +31,7 @@ from pydantic import BaseModel
 from provisa.cache.key import cache_key
 from provisa.cache.middleware import build_cache_headers, check_cache, store_result
 from provisa.compiler.hints import extract_graphql_hints, graphql_hints_to_session_props
+from provisa.compiler.directives import extract_directives, extract_directives_from_sql_comments, merge_directives
 from provisa.compiler.mask_inject import inject_masking
 from provisa.compiler.mutation_gen import (
     compile_mutation,
@@ -248,9 +249,8 @@ async def graphql_endpoint(
     if not request.query:
         raise HTTPException(status_code=400, detail="query is required")
 
-    graphql_hints = extract_graphql_hints(request.query)
-    raw_route_hint = graphql_hints.get("route")
-    steward_hint = "trino" if raw_route_hint == "federated" else raw_route_hint
+    # Legacy comment hints (kept for backwards compat) — merge with directive hints below
+    _legacy_hints = extract_graphql_hints(request.query)
 
     schema = state.schemas[role_id]
     ctx = state.contexts[role_id]
@@ -263,6 +263,17 @@ async def graphql_endpoint(
         raise HTTPException(status_code=400, detail=str(e))
     except GraphQLSyntaxError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # Extract directives: legacy comments < SQL comments < GraphQL directives
+    _comment_directives = extract_directives_from_sql_comments(request.query)
+    _ast_directives = extract_directives(document)
+    directives = merge_directives(_comment_directives, _ast_directives)
+    # Fall back to legacy @provisa comment hints if no directive route set
+    if directives.steward_hint is None and _legacy_hints.get("route"):
+        raw = _legacy_hints["route"]
+        directives.route = "FEDERATED" if raw == "federated" else "DIRECT" if raw == "direct" else None
+
+    steward_hint = directives.steward_hint
 
     # Apply variable defaults declared in the operation for any missing variables (§6.4.1)
     effective_variables = coerce_variable_defaults(document, request.variables)
@@ -302,16 +313,25 @@ async def graphql_endpoint(
         from provisa.api.data.subscription_sse import handle_subscription_sse
         return await handle_subscription_sse(
             document, ctx, rls, state, effective_variables, role, role_id, raw_request,
+            directives=directives,
         )
 
     output_format = _parse_accept(accept)
-    redirect_format = _parse_accept(x_provisa_redirect_format) if x_provisa_redirect_format else None
+
+    # @redirect directive overrides HTTP headers; headers take precedence if both present
+    directive_redirect_format = _parse_accept(directives.redirect_format) if directives.redirect_format else None
+    redirect_format = (
+        _parse_accept(x_provisa_redirect_format) if x_provisa_redirect_format
+        else directive_redirect_format
+    )
+    directive_redirect_threshold = directives.redirect_threshold
 
     # Redirect-Format without a threshold implies force redirect.
     # Redirect-Format with a threshold is conditional on row count.
     # X-Provisa-Redirect: true is still supported as an explicit force.
     force_redirect = (x_provisa_redirect or "").lower() == "true"
-    if redirect_format and x_provisa_redirect_threshold is None:
+    effective_threshold = x_provisa_redirect_threshold or directive_redirect_threshold
+    if redirect_format and effective_threshold is None:
         force_redirect = True
 
     if is_mut:
@@ -322,10 +342,10 @@ async def graphql_endpoint(
         response = await _handle_query(
             document, ctx, rls, state, effective_variables, role, output_format, role_id,
             force_redirect=force_redirect,
-            redirect_threshold=x_provisa_redirect_threshold,
+            redirect_threshold=effective_threshold,
             redirect_format=redirect_format,
             steward_hint=steward_hint,
-            query_session_props=graphql_hints_to_session_props(graphql_hints),
+            query_session_props=directives.to_session_props(),
         )
 
     # AN (REQ-291): store APQ hash only after successful execution — never cache rejected queries

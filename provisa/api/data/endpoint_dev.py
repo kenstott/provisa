@@ -22,10 +22,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import Response
-from graphql import GraphQLSyntaxError
+from graphql import GraphQLSyntaxError, parse as gql_parse_raw
 from pydantic import BaseModel
 
-from provisa.compiler.hints import extract_graphql_hints, graphql_comments_to_sql, graphql_hints_to_session_props
+from provisa.compiler.directives import extract_directives, extract_directives_from_sql_comments, merge_directives
+from provisa.compiler.hints import graphql_comments_to_sql
 from provisa.compiler.mask_inject import inject_masking
 from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
 from provisa.compiler.rls import RLSContext, inject_rls
@@ -177,10 +178,13 @@ async def compile_endpoint(
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
     role = state.roles.get(role_id)
 
-    graphql_hints = extract_graphql_hints(request.query)
-    raw_route_hint = graphql_hints.get("route")
-    # Normalise user-facing alias
-    steward_hint = "trino" if raw_route_hint == "federated" else raw_route_hint
+    _comment_directives = extract_directives_from_sql_comments(request.query)
+    try:
+        _ast_directives = extract_directives(gql_parse_raw(request.query))
+    except Exception:
+        _ast_directives = _comment_directives.__class__()
+    directives = merge_directives(_comment_directives, _ast_directives)
+    steward_hint = directives.steward_hint
     sql_comment_prefix = graphql_comments_to_sql(request.query)
 
     try:
@@ -254,7 +258,7 @@ async def compile_endpoint(
             optimizations.append(
                 f"Materialized view rewrite: sources → {', '.join(sorted(new_sources))}"
             )
-        if raw_route_hint == "direct":
+        if directives.route == "DIRECT":
             if len(compiled.sources) > 1:
                 warnings.append(
                     "route=direct ignored: query spans multiple sources and requires federation"
@@ -263,11 +267,9 @@ async def compile_endpoint(
                 warnings.append(
                     "route=direct ignored: source has no direct driver"
                 )
-        elif raw_route_hint and raw_route_hint != "federated":
-            warnings.append(f"Unknown route hint: {raw_route_hint!r}")
-        session_props = graphql_hints_to_session_props(graphql_hints)
+        session_props = directives.to_session_props()
         for k, v in session_props.items():
-            optimizations.append(f"Federation hint: {k}={v} (via # @provisa)")
+            optimizations.append(f"Federation hint: {k}={v} (via @provisa directive)")
         if sampling:
             optimizations.append("Sampling applied (role lacks FULL_RESULTS capability)")
 
