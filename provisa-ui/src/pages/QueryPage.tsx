@@ -11,7 +11,8 @@
 import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import * as monaco from "monaco-editor";
 import { GraphiQL } from "graphiql";
-import { createGraphiQLFetcher } from "@graphiql/toolkit";
+import { createGraphiQLFetcher, type Fetcher } from "@graphiql/toolkit";
+import { parse, getOperationAST } from "graphql";
 import "@graphiql/react/style.css";
 import "@graphiql/plugin-explorer/style.css";
 import "@graphiql/plugin-doc-explorer/style.css";
@@ -347,13 +348,81 @@ export function QueryPage() {
     threshold: redirectThreshold,
   };
 
-  const fetcher = useMemo(() => {
+  const fetcher = useMemo((): Fetcher | null => {
     if (!role) return null;
-    return createGraphiQLFetcher({
+    const roleId = role.id;
+    const base = createGraphiQLFetcher({
       url: `/data/graphql`,
-      headers: { "X-Provisa-Role": role.id },
+      headers: { "X-Provisa-Role": roleId },
       fetch: createProvisaFetch(settingsRef),
     });
+    return async function* (request, opts) {
+      // Detect subscription operations and stream via SSE
+      let isSubscription = false;
+      try {
+        const doc = parse(request.query ?? "");
+        const op = getOperationAST(doc, request.operationName ?? undefined);
+        isSubscription = op?.operation === "subscription";
+      } catch {
+        // unparseable — fall through to server
+      }
+
+      if (isSubscription) {
+        const controller = new AbortController();
+        try {
+          const response = await fetch("/data/graphql", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "text/event-stream",
+              "X-Provisa-Role": roleId,
+            },
+            body: JSON.stringify({
+              query: request.query,
+              variables: request.variables,
+              operationName: request.operationName,
+            }),
+            signal: controller.signal,
+          });
+          if (!response.ok || !response.body) {
+            yield { errors: [{ message: `HTTP ${response.status}` }] };
+            return;
+          }
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const chunks = buffer.split("\n\n");
+            buffer = chunks.pop() ?? "";
+            for (const chunk of chunks) {
+              const dataLine = chunk.split("\n").find((l) => l.startsWith("data: "));
+              if (!dataLine) continue;
+              const raw = dataLine.slice(6).trim();
+              if (!raw) continue;
+              try {
+                yield JSON.parse(raw);
+              } catch {
+                // skip malformed
+              }
+            }
+          }
+        } finally {
+          controller.abort();
+        }
+        return;
+      }
+
+      // Non-subscription: use standard fetcher
+      const result = base(request, opts);
+      if (result && typeof (result as any)[Symbol.asyncIterator] === "function") {
+        yield* result as AsyncIterable<any>;
+      } else {
+        yield await (result as Promise<any>);
+      }
+    };
   }, [role?.id]);
 
   const provisaPlugin = useMemo(() => {

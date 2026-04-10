@@ -288,11 +288,21 @@ async def graphql_endpoint(
         result = gql_execute(schema, document, variable_values=effective_variables)
         return JSONResponse({"data": result.data})
 
-    # Detect mutation vs query
+    # Detect operation type
     is_mut = any(
         hasattr(d, "operation") and d.operation == OperationType.MUTATION
         for d in document.definitions
     )
+    is_sub = any(
+        hasattr(d, "operation") and d.operation == OperationType.SUBSCRIPTION
+        for d in document.definitions
+    )
+
+    if is_sub:
+        from provisa.api.data.subscription_sse import handle_subscription_sse
+        return await handle_subscription_sse(
+            document, ctx, rls, state, effective_variables, role, role_id, raw_request,
+        )
 
     output_format = _parse_accept(accept)
     redirect_format = _parse_accept(x_provisa_redirect_format) if x_provisa_redirect_format else None

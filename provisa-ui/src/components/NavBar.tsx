@@ -25,14 +25,14 @@ export function NavBar() {
         <CapabilityGate capability="table_registration">
           <Link to="/tables">Tables</Link>
         </CapabilityGate>
-        <CapabilityGate capability="relationship_registration">
-          <Link to="/relationships">Relationships</Link>
-        </CapabilityGate>
         <CapabilityGate capability="table_registration">
           <Link to="/views">Views</Link>
         </CapabilityGate>
         <CapabilityGate capability="admin">
           <Link to="/commands">Commands</Link>
+        </CapabilityGate>
+        <CapabilityGate capability="relationship_registration">
+          <Link to="/relationships">Relationships</Link>
         </CapabilityGate>
         <CapabilityGate capability="security_config">
           <Link to="/security">Security</Link>

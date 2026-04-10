@@ -161,6 +161,7 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         alias=row.get("alias"), description=row.get("description"),
         cache_ttl=row.get("cache_ttl"),
         naming_convention=row.get("naming_convention"),
+        watermark_column=row.get("watermark_column"),
         columns=columns,
     )
 
