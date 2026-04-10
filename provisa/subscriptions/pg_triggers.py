@@ -51,8 +51,14 @@ async def ensure_pg_notify_triggers(
     conn: Any,
     tables: list[dict],
     source_types: dict[str, str],
-) -> None:
-    """Idempotently install notify triggers on all pre-approved PostgreSQL tables."""
+) -> set[str]:
+    """Idempotently install notify triggers on all pre-approved PostgreSQL tables.
+
+    Returns the set of table_names where triggers were successfully installed.
+    Tables where installation fails (e.g. insufficient privilege) are omitted;
+    callers should fall back to polling for those tables.
+    """
+    installed: set[str] = set()
     for tbl in tables:
         if tbl.get("governance") != "pre-approved":
             continue
@@ -63,6 +69,12 @@ async def ensure_pg_notify_triggers(
         table = tbl["table_name"]
         try:
             await conn.execute(_trigger_sql(schema, table))
+            installed.add(table)
             log.debug("Installed notify trigger on %s.%s", schema, table)
         except Exception as exc:
-            log.warning("Failed to install notify trigger on %s.%s: %s", schema, table, exc)
+            log.warning(
+                "Failed to install notify trigger on %s.%s: %s — "
+                "subscription will fall back to polling",
+                schema, table, exc,
+            )
+    return installed

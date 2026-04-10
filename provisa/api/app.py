@@ -93,6 +93,8 @@ class AppState:
     websocket_sources: dict[str, object] = {}  # source_id → Source
     # RSS/Atom feed sources
     rss_sources: dict[str, object] = {}  # source_id → Source
+    pg_notify_tables: set[str] = set()  # table_names with pg_notify triggers installed
+    table_watermarks: dict[str, str] = {}  # table_name → watermark_column (for polling fallback)
 
 
 state = AppState()
@@ -583,7 +585,12 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
 
         # Install LISTEN/NOTIFY triggers on pre-approved PostgreSQL tables
         from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
-        await ensure_pg_notify_triggers(conn, tables, state.source_types)
+        state.pg_notify_tables = await ensure_pg_notify_triggers(conn, tables, state.source_types)
+        state.table_watermarks = {
+            tbl["table_name"]: tbl["watermark_column"]
+            for tbl in tables
+            if tbl.get("watermark_column")
+        }
         naming_rules = [
             dict(r) for r in await conn.fetch(
                 "SELECT pattern, replacement FROM naming_rules"

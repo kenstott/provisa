@@ -134,24 +134,43 @@ async def handle_subscription_sse(
                 yield f"data: {json.dumps({'errors': [{'message': str(exc)}]})}\n\n"
                 return
 
-            # Watch for table changes
+            # Watch for table changes — pg_notify triggers preferred; poll as fallback
+            use_polling_fallback = (
+                source_type == "postgresql"
+                and table_name not in (state.pg_notify_tables or set())
+                and table_name in (state.table_watermarks or {})
+            )
+
             provider_config: dict = {}
-            if source_type == "postgresql" and state.pg_pool:
+            effective_source_type = source_type
+            if use_polling_fallback:
+                effective_source_type = "polling_fallback"
+                provider_config["pool"] = state.pg_pool
+                provider_config["watermark_column"] = state.table_watermarks[table_name]
+            elif source_type == "postgresql" and state.pg_pool:
                 provider_config["pool"] = state.pg_pool
             elif source_type == "mongodb":
                 source_pool = state.source_pools.get(source_id) if state.source_pools else None
                 provider_config["database"] = source_pool
 
             try:
-                from provisa.subscriptions.registry import get_provider
-                provider = get_provider(source_type, provider_config)
+                if use_polling_fallback:
+                    from provisa.subscriptions.polling_provider import PollingNotificationProvider
+                    provider = PollingNotificationProvider(
+                        pool=provider_config["pool"],
+                        watermark_column=provider_config["watermark_column"],
+                    )
+                else:
+                    from provisa.subscriptions.registry import get_provider
+                    provider = get_provider(source_type, provider_config)
             except Exception as exc:
                 log.warning("Subscription provider unavailable: %s", exc)
                 return
 
             try:
                 use_many = (
-                    source_type == "postgresql"
+                    not use_polling_fallback
+                    and source_type == "postgresql"
                     and len(all_watch_tables) > 1
                     and hasattr(provider, "watch_many")
                 )

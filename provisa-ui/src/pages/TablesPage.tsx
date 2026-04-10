@@ -485,11 +485,20 @@ export function TablesPage() {
               <option value="registry-required">registry-required</option>
             </select>
           </label>
-          {sourceId && !CDC_TYPES.has(sources.find((s) => s.id === sourceId)?.type ?? "") && (
+          {sourceId && (
             <label>
-              Watermark Column <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(for subscriptions)</span>
+              Watermark Column{" "}
+              <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
+                {CDC_TYPES.has(sources.find((s) => s.id === sourceId)?.type ?? "")
+                  ? "(optional — polling fallback if triggers unavailable)"
+                  : "(required for subscriptions)"}
+              </span>
               <select value={watermarkColumn} onChange={(e) => setWatermarkColumn(e.target.value)} disabled={columns.length === 0}>
-                <option value="">None (no subscriptions)</option>
+                <option value="">
+                  {CDC_TYPES.has(sources.find((s) => s.id === sourceId)?.type ?? "")
+                    ? "None (use triggers)"
+                    : "None (no subscriptions)"}
+                </option>
                 {columns.filter((c) => c.selected && isWatermarkEligible(c.dataType)).map((c) => (
                   <option key={c.name} value={c.name}>{c.name} ({c.dataType})</option>
                 ))}
@@ -760,14 +769,23 @@ export function TablesPage() {
                                 rows={2}
                               />
                             </label>
-                            {!CDC_TYPES.has(sources.find((s) => s.id === editingTable.sourceId)?.type ?? "") && (
+                            {(
                               <label>
-                                Watermark Column <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(for subscriptions)</span>
+                                Watermark Column{" "}
+                                <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
+                                  {CDC_TYPES.has(sources.find((s) => s.id === editingTable.sourceId)?.type ?? "")
+                                    ? "(optional — polling fallback if triggers unavailable)"
+                                    : "(required for subscriptions)"}
+                                </span>
                                 <select
                                   value={editingTable.watermarkColumn || ""}
                                   onChange={(e) => setEditingTable({ ...editingTable, watermarkColumn: e.target.value || null })}
                                 >
-                                  <option value="">None (no subscriptions)</option>
+                                  <option value="">
+                                    {CDC_TYPES.has(sources.find((s) => s.id === editingTable.sourceId)?.type ?? "")
+                                      ? "None (use triggers)"
+                                      : "None (no subscriptions)"}
+                                  </option>
                                   {editingTable.columns.map((c) => (
                                     <option key={c.columnName} value={c.columnName}>{c.columnName}</option>
                                   ))}
