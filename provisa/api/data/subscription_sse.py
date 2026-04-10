@@ -15,10 +15,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from typing import AsyncGenerator
+from urllib.parse import urlparse
 
 from fastapi import Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from graphql.language.ast import OperationDefinitionNode, SelectionSetNode
 from graphql.language import print_ast
 
@@ -53,12 +55,17 @@ async def handle_subscription_sse(
     role,
     role_id: str,
     raw_request: Request,
-) -> StreamingResponse:
+) -> StreamingResponse | JSONResponse:
     """Execute a GraphQL subscription and stream results as SSE.
 
     The client sends POST /data/graphql with Accept: text/event-stream.
     Each table change triggers a re-execution of the equivalent query and
     streams the result as `data: {json}\\n\\n`.
+
+    If the request includes ``X-Provisa-Sink: kafka://[broker:port]/topic``,
+    results are published to the named Kafka topic instead of streamed back.
+    The response is ``202 Accepted`` and the sink runs as a background task
+    for the lifetime of the server process.
     """
     # Extract subscription field names and selection set
     sub_fields: list[str] = []
@@ -103,6 +110,26 @@ async def handle_subscription_sse(
 
     schema = state.schemas[role_id]
 
+    # Kafka sink redirect — X-Provisa-Sink: kafka://[broker:port]/topic
+    sink_header = raw_request.headers.get("x-provisa-sink", "")
+    if sink_header:
+        return await _launch_kafka_sink(
+            sink_header=sink_header,
+            table_name=table_name,
+            table_meta=table_meta,
+            source_id=source_id,
+            source_type=source_type,
+            all_watch_tables=all_watch_tables,
+            query_text=query_text,
+            schema=schema,
+            ctx=ctx,
+            rls=rls,
+            state=state,
+            variables=variables,
+            role=role,
+            role_id=role_id,
+        )
+
     disconnect = asyncio.Event()
 
     async def _on_disconnect() -> None:
@@ -140,6 +167,11 @@ async def handle_subscription_sse(
                 and table_name not in (state.pg_notify_tables or set())
                 and table_name in (state.table_watermarks or {})
             )
+            use_trino_polling = (
+                not use_polling_fallback
+                and source_type != "postgresql"
+                and table_name in (state.table_watermarks or {})
+            )
 
             provider_config: dict = {}
             effective_source_type = source_type
@@ -147,6 +179,8 @@ async def handle_subscription_sse(
                 effective_source_type = "polling_fallback"
                 provider_config["pool"] = state.pg_pool
                 provider_config["watermark_column"] = state.table_watermarks[table_name]
+            elif use_trino_polling:
+                effective_source_type = "trino_polling"
             elif source_type == "postgresql" and state.pg_pool:
                 provider_config["pool"] = state.pg_pool
             elif source_type == "mongodb":
@@ -159,6 +193,17 @@ async def handle_subscription_sse(
                     provider = PollingNotificationProvider(
                         pool=provider_config["pool"],
                         watermark_column=provider_config["watermark_column"],
+                    )
+                elif use_trino_polling:
+                    import os
+                    from provisa.subscriptions.trino_polling_provider import TrinoPollingProvider
+                    provider = TrinoPollingProvider(
+                        host=os.environ.get("TRINO_HOST", "localhost"),
+                        port=int(os.environ.get("TRINO_PORT", "8080")),
+                        catalog=table_meta.catalog_name or "hive",
+                        schema=table_meta.schema_name or "default",
+                        table=table_meta.table_name,
+                        watermark_column=state.table_watermarks[table_name],
                     )
                 else:
                     from provisa.subscriptions.registry import get_provider
@@ -219,4 +264,139 @@ def _error_stream(payload: dict) -> StreamingResponse:
         _gen(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+def _parse_sink_uri(sink_header: str) -> tuple[str, str]:
+    """Parse ``kafka://[broker:port]/topic`` → (bootstrap_servers, topic).
+
+    If broker is omitted, falls back to ``KAFKA_BOOTSTRAP_SERVERS`` env var
+    or ``localhost:9092``.
+    """
+    parsed = urlparse(sink_header)
+    topic = parsed.path.lstrip("/")
+    if not topic:
+        raise ValueError(f"No topic in sink URI: {sink_header!r}")
+    broker = parsed.netloc or os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    return broker, topic
+
+
+async def _launch_kafka_sink(
+    sink_header: str,
+    table_name: str,
+    table_meta,
+    source_id: str,
+    source_type: str,
+    all_watch_tables: list[str],
+    query_text: str,
+    schema,
+    ctx,
+    rls,
+    state,
+    variables: dict | None,
+    role,
+    role_id: str,
+) -> JSONResponse:
+    """Start a background task that publishes subscription results to Kafka.
+
+    Returns ``202 Accepted`` immediately. The sink runs for the lifetime of
+    the server process (or until shutdown).
+    """
+    try:
+        broker, topic = _parse_sink_uri(sink_header)
+    except ValueError as exc:
+        return JSONResponse(status_code=400, content={"error": str(exc)})
+
+    async def _run_query() -> dict:
+        from provisa.compiler.parser import parse_query as _parse
+        from provisa.api.data.endpoint import _handle_query
+        q_doc = _parse(schema, query_text, variables)
+        result = await _handle_query(q_doc, ctx, rls, state, variables, role, "json", role_id)
+        if hasattr(result, "body"):
+            return json.loads(result.body)
+        return result
+
+    async def _sink_loop() -> None:
+        from provisa.kafka.sink import KafkaProducer
+        producer = KafkaProducer(bootstrap_servers=broker)
+        log.info("Kafka sink started: %s → %s", table_name, topic)
+
+        use_polling_fallback = (
+            source_type == "postgresql"
+            and table_name not in (state.pg_notify_tables or set())
+            and table_name in (state.table_watermarks or {})
+        )
+        use_trino_polling = (
+            not use_polling_fallback
+            and source_type != "postgresql"
+            and table_name in (state.table_watermarks or {})
+        )
+
+        try:
+            if use_polling_fallback:
+                from provisa.subscriptions.polling_provider import PollingNotificationProvider
+                provider = PollingNotificationProvider(
+                    pool=state.pg_pool,
+                    watermark_column=state.table_watermarks[table_name],
+                )
+            elif use_trino_polling:
+                from provisa.subscriptions.trino_polling_provider import TrinoPollingProvider
+                provider = TrinoPollingProvider(
+                    host=os.environ.get("TRINO_HOST", "localhost"),
+                    port=int(os.environ.get("TRINO_PORT", "8080")),
+                    catalog=table_meta.catalog_name or "hive",
+                    schema=table_meta.schema_name or "default",
+                    table=table_meta.table_name,
+                    watermark_column=state.table_watermarks[table_name],
+                )
+            else:
+                from provisa.subscriptions.registry import get_provider
+                provider_config: dict = {}
+                if source_type == "postgresql" and state.pg_pool:
+                    provider_config["pool"] = state.pg_pool
+                elif source_type == "mongodb":
+                    source_pool = state.source_pools.get(source_id) if state.source_pools else None
+                    provider_config["database"] = source_pool
+                provider = get_provider(source_type, provider_config)
+        except Exception as exc:
+            log.warning("Kafka sink: provider unavailable: %s", exc)
+            return
+
+        try:
+            use_many = (
+                not use_polling_fallback
+                and not use_trino_polling
+                and source_type == "postgresql"
+                and len(all_watch_tables) > 1
+                and hasattr(provider, "watch_many")
+            )
+            watcher = (
+                provider.watch_many(all_watch_tables) if use_many
+                else provider.watch(table_name)
+            )
+            async for _event in watcher:
+                try:
+                    data = await _run_query()
+                    rows = data.get("data", data) if isinstance(data, dict) else data
+                    payload = rows if isinstance(rows, list) else [rows]
+                    await producer.publish_rows(topic, payload, columns=[])
+                    log.debug("Kafka sink: published to %s", topic)
+                except Exception as exc:
+                    log.warning("Kafka sink publish failed: %s", exc)
+        finally:
+            try:
+                await provider.close()
+            except Exception:
+                pass
+            producer.close()
+            log.info("Kafka sink stopped: %s → %s", table_name, topic)
+
+    asyncio.create_task(_sink_loop())
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "streaming",
+            "sink": sink_header,
+            "table": table_name,
+        },
     )

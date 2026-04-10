@@ -9,10 +9,35 @@ Subscriptions can target either a **registered table** or a **persisted query**:
 | Source | Delivery modes available |
 |--------|-------------------------|
 | Table (PostgreSQL) | `listen` (LISTEN/NOTIFY), `cdc` (Debezium), `poll` |
-| Table (non-PG, e.g. Trino-federated) | `poll` only |
+| Table (non-PG, e.g. Trino-federated view) | Trino poll only |
 | Persisted query | `poll` only |
 
 A persisted query subscription uses the same poll engine as a non-CDC table subscription. `watermark_column` is required for all poll delivery.
+
+### PostgreSQL trigger auto-installation
+
+Provisa automatically installs `AFTER INSERT OR UPDATE OR DELETE` triggers on all **pre-approved** PostgreSQL tables at startup. These triggers call `pg_notify('provisa_{table}', ...)` so that raw DML (not just Provisa mutations) is picked up by subscriptions.
+
+If trigger installation fails (e.g. insufficient privilege — the database role must own the table), Provisa falls back to watermark polling for that table, provided a `watermark_column` is configured. A warning is logged.
+
+### Cross-datasource view subscriptions (Trino)
+
+For views that join multiple datasources via Trino, add a `watermark_column` to the table registration. The column must exist in the view SQL (it need not appear in the GraphQL schema):
+
+```sql
+-- Example: federated view with derived watermark
+CREATE OR REPLACE VIEW orders_with_segments AS
+SELECT o.*, s.name AS segment_name,
+       GREATEST(o.updated_at, s.updated_at) AS _watermark
+FROM postgresql.public.orders o
+JOIN mysql.crm.customer_segments s ON o.customer_id = s.customer_id;
+```
+
+Register with `watermark_column: _watermark`. Provisa polls Trino using `WHERE _watermark > <last_seen>`.
+
+### Nested relationship subscriptions
+
+When the subscription field selects fields from joined tables (via registered relationships), Provisa watches **all** involved physical tables simultaneously. A change to any joined table re-fires the subscription query.
 
 ## Endpoint
 
@@ -90,9 +115,42 @@ sources:
         cdc_topic: debezium.public.orders
 ```
 
-## Kafka Sink as a Second Output
+## Kafka Sink Redirect
 
-A persisted query (or poll-based table subscription) can simultaneously publish to a Kafka topic. SSE subscription and Kafka sink are both outputs of the same Live Query Engine. Each output tracks its watermark independently.
+Any GraphQL subscription can be redirected to a Kafka topic instead of streaming back to the client. Add the `X-Provisa-Sink` header to the subscription request:
+
+```
+POST /data/graphql
+Authorization: Bearer <token>
+Content-Type: application/json
+X-Provisa-Sink: kafka://broker:9092/my-topic
+```
+
+The server responds `202 Accepted` immediately and starts a background task that:
+1. Watches for table changes using the same provider resolution as SSE (LISTEN/NOTIFY → asyncpg poll → Trino poll)
+2. Re-executes the equivalent query on each change
+3. Publishes the result as a JSON message to the named Kafka topic
+
+The sink runs for the lifetime of the server process. Restart the server to stop it (persistent sink registration via the admin API is planned).
+
+**URI format:** `kafka://[broker:port]/topic`
+
+- If `broker:port` is omitted, `KAFKA_BOOTSTRAP_SERVERS` env var is used (default: `localhost:9092`)
+- `topic` is required
+
+**Example (curl):**
+```bash
+curl -X POST http://localhost:8000/data/graphql \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "X-Provisa-Sink: kafka://kafka:9092/orders-live" \
+  -d '{"query": "subscription { orders { id status amount } }"}'
+# → 202 {"status":"streaming","sink":"kafka://kafka:9092/orders-live","table":"orders"}
+```
+
+### Kafka Sink as a Config-Level Second Output
+
+A persisted query (or poll-based table subscription) can simultaneously publish to a Kafka topic via `provisa.yaml`. SSE subscription and Kafka sink are both outputs of the same Live Query Engine. Each output tracks its watermark independently.
 
 ```yaml
 persisted_queries:
