@@ -2,6 +2,12 @@
 # Includes: CDC stack (Kafka/Debezium), alternative DBs, observability (Grafana/Tempo/OTel).
 # Usage: docker compose -f docker-compose.core.yml -f docker-compose.dev.yml [-f docker-compose.app.yml] up
 services:
+  # Wire app to OTel collector when running with the observability stack
+  provisa:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      OTEL_SERVICE_NAME: "${OTEL_SERVICE_NAME:-provisa}"
+
   # Expose core service ports for direct access during development
   postgres:
     ports:
@@ -150,6 +156,9 @@ services:
     volumes:
       - ./observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
     command: ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "4317:4317"   # OTLP gRPC — host backend → collector
+      - "4318:4318"   # OTLP HTTP — host backend → collector
 
   prometheus:
     image: prom/prometheus:v2.51.2

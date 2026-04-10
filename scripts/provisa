@@ -80,11 +80,25 @@ compose_cmd() {
     fi
 }
 
+# ── Observability flag ───────────────────────────────────────────────────────
+OBSERVABILITY=false
+_ARGS=()
+for _arg in "$@"; do
+    case "$_arg" in
+        --observability) OBSERVABILITY=true ;;
+        *) _ARGS+=("$_arg") ;;
+    esac
+done
+set -- "${_ARGS[@]+"${_ARGS[@]}"}"
+
 # Compose files: airgap overlay added when running in Lima to replace build: with image:
 _build_compose_files() {
     local files="-f ${PROJECT_DIR}/docker-compose.core.yml -f ${PROJECT_DIR}/docker-compose.app.yml"
     if { [ "$RUNTIME" = "lima" ] || [ "$RUNTIME" = "virtualbox" ] || [ "$RUNTIME" = "bundled" ]; } && [ -f "${PROJECT_DIR}/docker-compose.airgap.yml" ]; then
         files="${files} -f ${PROJECT_DIR}/docker-compose.airgap.yml"
+    fi
+    if [ "$OBSERVABILITY" = "true" ] && [ -f "${PROJECT_DIR}/docker-compose.dev.yml" ]; then
+        files="${files} -f ${PROJECT_DIR}/docker-compose.dev.yml"
     fi
     echo "$files"
 }
@@ -247,6 +261,9 @@ cmd_start() {
         if [ "$AUTO_OPEN" = "true" ]; then
             printf "\nRun ${BOLD}provisa open${NC} to open the UI.\n"
         fi
+        if [ "$OBSERVABILITY" = "true" ]; then
+            printf "Grafana: ${BOLD}http://localhost:3100${NC}\n"
+        fi
     else
         warn "Some services may still be starting."
         printf "Run ${BOLD}provisa status${NC} to check service health.\n"
@@ -394,6 +411,7 @@ cmd_help() {
     printf "Usage: ${BOLD}provisa${NC} <command>\n\n"
     printf "Commands:\n"
     printf "  ${BOLD}start${NC}       Start all Provisa services\n"
+    printf "    ${DIM}--observability${NC}  Also start Grafana, Prometheus, Tempo, OTel collector\n"
     printf "  ${BOLD}stop${NC}        Stop all Provisa services\n"
     printf "  ${BOLD}restart${NC}     Restart all Provisa services\n"
     printf "  ${BOLD}status${NC}      Show service status and health\n"
