@@ -250,6 +250,11 @@ cmd_start() {
         info "Starting ${FED_WORKERS} federation worker(s)..."
     fi
 
+    if [ "$OBSERVABILITY" = "true" ]; then
+        export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}"
+        export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-provisa}"
+    fi
+
     # shellcheck disable=SC2086
     $(get_compose) $COMPOSE_FILES up -d $scale_arg 2>&1 | filter_output
 
