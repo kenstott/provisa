@@ -580,6 +580,10 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     async with state.pg_pool.acquire() as conn:
         tables = await _fetch_tables(conn)
         relationships = await _fetch_relationships(conn)
+
+        # Install LISTEN/NOTIFY triggers on pre-approved PostgreSQL tables
+        from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
+        await ensure_pg_notify_triggers(conn, tables, state.source_types)
         naming_rules = [
             dict(r) for r in await conn.fetch(
                 "SELECT pattern, replacement FROM naming_rules"

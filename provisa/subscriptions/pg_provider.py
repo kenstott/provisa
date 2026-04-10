@@ -74,5 +74,51 @@ class PgNotificationProvider(NotificationProvider):
             await self._pool.release(self._conn)
             self._conn = None
 
+    async def watch_many(
+        self, tables: list[str]
+    ) -> AsyncGenerator[ChangeEvent, None]:
+        """Listen on multiple table channels; any change event triggers a yield."""
+        channels = [f"{CHANNEL_PREFIX}{t}" for t in tables]
+        queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
+
+        def _on_notify(conn: object, pid: int, ch: str, payload: str) -> None:
+            queue.put_nowait((ch, payload))
+
+        self._conn = await self._pool.acquire()
+        try:
+            for ch in channels:
+                await self._conn.add_listener(ch, _on_notify)
+            log.info("PgProvider: listening on %s", channels)
+
+            while True:
+                try:
+                    ch, payload = await asyncio.wait_for(queue.get(), timeout=30.0)
+                except asyncio.TimeoutError:
+                    continue
+
+                try:
+                    parsed = json.loads(payload)
+                except (json.JSONDecodeError, TypeError):
+                    log.warning("PgProvider: invalid JSON payload: %s", payload)
+                    continue
+
+                table = ch[len(CHANNEL_PREFIX):]
+                op = parsed.get("op", "unknown").lower()
+                row = parsed.get("row", {})
+                yield ChangeEvent(
+                    operation=op,
+                    table=table,
+                    row=row,
+                    timestamp=datetime.now(timezone.utc),
+                )
+        finally:
+            for ch in channels:
+                try:
+                    await self._conn.remove_listener(ch, _on_notify)
+                except Exception:
+                    log.debug("Failed to remove listener on %s", ch, exc_info=True)
+            await self._pool.release(self._conn)
+            self._conn = None
+
     async def close(self) -> None:
         self._conn = None

@@ -19,10 +19,29 @@ from typing import AsyncGenerator
 
 from fastapi import Request
 from fastapi.responses import StreamingResponse
-from graphql.language.ast import OperationDefinitionNode
+from graphql.language.ast import OperationDefinitionNode, SelectionSetNode
 from graphql.language import print_ast
 
 log = logging.getLogger(__name__)
+
+
+def _collect_related_tables(
+    selection_set: SelectionSetNode, type_name: str, ctx
+) -> set[str]:
+    """Recursively collect physical table names referenced via joins in the selection."""
+    tables: set[str] = set()
+    for sel in selection_set.selections:
+        if not hasattr(sel, "name"):
+            continue
+        join_key = (type_name, sel.name.value)
+        if join_key in ctx.joins:
+            join_meta = ctx.joins[join_key]
+            tables.add(join_meta.target.table_name)
+            if sel.selection_set:
+                tables |= _collect_related_tables(
+                    sel.selection_set, join_meta.target.type_name, ctx
+                )
+    return tables
 
 
 async def handle_subscription_sse(
@@ -64,6 +83,19 @@ async def handle_subscription_sse(
     table_name = table_meta.table_name
     source_id = table_meta.source_id
     source_type = (state.source_types or {}).get(source_id, "postgresql")
+
+    # Collect all tables referenced in the selection (root + related via joins)
+    ctx = state.contexts[role_id]
+    related_tables = _collect_related_tables(
+        sub_selection.selections[0].selection_set,  # type: ignore[union-attr]
+        table_meta.type_name,
+        ctx,
+    ) if (
+        sub_selection.selections
+        and hasattr(sub_selection.selections[0], "selection_set")
+        and sub_selection.selections[0].selection_set
+    ) else set()
+    all_watch_tables = [table_name] + sorted(related_tables - {table_name})
 
     # Convert subscription selection set → equivalent query string
     selection_text = print_ast(sub_selection)
@@ -118,7 +150,17 @@ async def handle_subscription_sse(
                 return
 
             try:
-                async for _event in provider.watch(table_name):
+                use_many = (
+                    source_type == "postgresql"
+                    and len(all_watch_tables) > 1
+                    and hasattr(provider, "watch_many")
+                )
+                watcher = (
+                    provider.watch_many(all_watch_tables)
+                    if use_many
+                    else provider.watch(table_name)
+                )
+                async for _event in watcher:
                     if disconnect.is_set():
                         break
                     try:
