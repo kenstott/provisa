@@ -9,15 +9,15 @@ The semantic layer distinction is important. Provisa uses GraphQL as a universal
 Provisa is designed to be highly performant for operational needs and highly scalable for enterprise analytical needs. A single platform serves both without sacrificing speed or scalability.
 
 ```
-Config YAML → PG Metadata → Trino Catalogs
+Config YAML → PG Metadata → Federation Catalogs
                                ↓
-         Trino INFORMATION_SCHEMA → Schema Generator → GraphQL SDL (per role)
+         Federation engine metadata → Schema Generator → GraphQL SDL (per role)
                                      ↓
                      Query → Parser → SQL Compiler → Transpiler
                                      ↓
                              Router (Smart Dispatch)
                          /           |            \
-                    Trino       Direct PG      Direct MySQL/etc.
+                    Federation  Direct PG      Direct MySQL/etc.
                          \           |            /
                               Executor Pool
                                      ↓
@@ -39,7 +39,7 @@ Provisa exposes three query interfaces, each serving a different client type:
 | 8815 | Arrow Flight (gRPC) | `do_get` with JSON ticket | Data tools (Pandas, DuckDB, Spark) |
 | 50051 | Protobuf gRPC | Typed service RPCs | Service-to-service with typed contracts |
 
-All three interfaces apply the same security pipeline (RLS, masking, sampling, role checks). Clients never talk to Trino directly.
+All three interfaces apply the same security pipeline (RLS, masking, sampling, role checks). Clients never talk directly to the federation engine.
 
 ### HTTP (port 8001)
 
@@ -54,7 +54,7 @@ Native Arrow columnar transport over gRPC. Clients send a JSON ticket:
 and receive Arrow RecordBatches streamed lazily. When the Zaychik Flight SQL proxy is available, data flows as a stream of Arrow record batches end-to-end:
 
 ```
-Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik ←(JDBC)← Trino
+Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik ←(JDBC)← Federation Engine
 ```
 
 The full result is never materialized in Provisa memory — batches are forwarded as they arrive. This makes Arrow Flight an **unbounded** path suitable for arbitrarily large results.
@@ -77,9 +77,9 @@ parse → compile → RLS inject → masking inject → MV rewrite → sampling
 5. **MV Rewrite**: Substitute JOIN patterns with materialized view tables
 6. **Sampling**: Cap LIMIT for non-full_results roles
 7. **Cache Check**: Look up Redis for identical query+role+RLS key
-8. **Route**: Single RDBMS → direct driver; multi-source/NoSQL → Trino
+8. **Route**: Single RDBMS → direct driver; multi-source/NoSQL → Federation engine
 9. **Transpile**: SQLGlot converts PG SQL to target dialect
-10. **Execute**: Via direct driver pool, Trino REST, or Trino Flight SQL
+10. **Execute**: Via direct driver pool, federation REST, or federation Flight SQL
 11. **Cache Store**: Store result in Redis with TTL
 12. **Serialize**: Flat SQL rows → nested GraphQL JSON (or Arrow pass-through)
 13. **Format/Redirect**: Inline response or S3 redirect (see below)
@@ -91,20 +91,20 @@ GraphQL queries with multiple root fields (e.g., `{ orders { id } customers { na
 - Fields above the threshold are redirected, with per-field entries in `redirects`
 - Binary formats (Parquet, Arrow) are only supported for single-root queries
 
-## Trino Execution Paths
+## Federation Execution Paths
 
 | Path | Transport | Via | When used |
 |------|-----------|-----|-----------|
-| REST | `trino` Python client (HTTP :8080) | Direct to Trino | Default, always available |
-| Flight SQL | `adbc-driver-flightsql` (gRPC :8480) | Zaychik proxy → Trino JDBC | When Zaychik is running |
-| CTAS | `trino` Python client (HTTP :8080) | Direct to Trino, writes Iceberg to S3 | Parquet/ORC redirect |
+| REST | federation engine client (HTTP :8080) | Direct query | Default, always available |
+| Flight SQL | `adbc-driver-flightsql` (gRPC :8480) | Zaychik proxy → JDBC | When Zaychik is running |
+| CTAS | federation engine client (HTTP :8080) | Direct write, Iceberg to S3 | Parquet/ORC redirect |
 
 ### Zaychik Arrow Flight SQL Proxy
 
-Trino does not natively support the Arrow Flight SQL protocol. [Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) is a Java proxy that implements the Arrow Flight SQL gRPC interface, translates requests to Trino JDBC queries, and streams results back as Arrow record batches.
+The federation engine does not natively support the Arrow Flight SQL protocol. [Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) is a Java proxy that implements the Arrow Flight SQL gRPC interface, translates requests to JDBC queries, and streams results back as Arrow record batches.
 
 ```
-ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Trino → results → Arrow batches → client
+ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → results → Arrow batches → client
 ```
 
 The Provisa Flight server (port 8815) connects to Zaychik as an ADBC client, enabling streaming Arrow end-to-end without materializing results.
@@ -121,10 +121,10 @@ Results exceeding a row threshold are redirected to S3-compatible storage (MinIO
 
 | Mode | How it works | Data touches Provisa? |
 |------|-------------|----------------------|
-| **CTAS** (Parquet, ORC) | Trino writes directly to S3 via `CREATE TABLE AS SELECT` | No |
+| **CTAS** (Parquet, ORC) | Federation engine writes directly to S3 via `CREATE TABLE AS SELECT` | No |
 | **Provisa upload** (JSON, NDJSON, CSV, Arrow IPC) | Provisa serializes and uploads via boto3 | Yes |
 
-For Trino-native formats, Provisa never handles the data — Trino workers write files directly to MinIO/S3. This is the preferred path for large analytical exports.
+For CTAS-native formats, Provisa never handles the data — the federation engine writes files directly to MinIO/S3. This is the preferred path for large analytical exports.
 
 ### Redirect Headers
 
@@ -161,14 +161,14 @@ For Trino-native formats, Provisa never handles the data — Trino workers write
 ## Routing Decision Tree
 
 ```
-Multi-source query? → Trino
-NoSQL source (MongoDB, Cassandra)? → Trino
-Uses path columns on non-PG source? → Trino
+Multi-source query? → Federation engine
+NoSQL source (MongoDB, Cassandra)? → Federation engine
+Uses path columns on non-PG source? → Federation engine
 Single RDBMS with driver? → Direct (sub-100ms target)
-Single RDBMS without driver? → Trino
-Steward hint "trino"? → Trino (override)
+Single RDBMS without driver? → Federation engine
+Steward hint "federated"? → Federation engine (override)
 Steward hint "direct"? → Direct (if possible)
-Redirect to Parquet/ORC? → Trino (CTAS, regardless of source count)
+Redirect to Parquet/ORC? → Federation engine (CTAS, regardless of source count)
 ```
 
 ## Federation Query Optimization
@@ -219,7 +219,7 @@ MVs transparently optimize expensive queries by pre-computing and caching result
 
 ### Auto-Materialization
 
-Cross-source JOINs are the most expensive queries (always federated through Trino). Relationships with `materialize: true` automatically generate MV definitions at startup:
+Cross-source JOINs are the most expensive queries (always federated). Relationships with `materialize: true` automatically generate MV definitions at startup:
 
 ```yaml
 relationships:
@@ -243,7 +243,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
   └──── mutation hits source table ────────────────┘
 ```
 
-The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and executes `CREATE TABLE AS SELECT` (first run) or `DELETE + INSERT` (subsequent) against the MV target table via Trino.
+The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and executes `CREATE TABLE AS SELECT` (first run) or `DELETE + INSERT` (subsequent) against the MV target table via the federation engine.
 
 ## Module Map
 
@@ -258,22 +258,22 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `compiler/` | GraphQL parser, SQL generator, RLS, masking, sampling |
 | `compiler/federation.py` | Apollo Federation v2 subgraph support |
 | `transpiler/` | SQLGlot transpilation, routing logic |
-| `executor/` | Trino/direct execution, serialization, output formats |
-| `executor/trino_flight.py` | ADBC Flight SQL client for Trino |
-| `executor/trino_write.py` | CTAS-based redirect (Trino writes to S3) |
+| `executor/` | Federated/direct execution, serialization, output formats |
+| `executor/trino_flight.py` | ADBC Flight SQL client for the federation engine |
+| `executor/ctas_write.py` | CTAS-based redirect (federation engine writes to S3) |
 | `executor/redirect.py` | S3 redirect logic, Provisa-side upload |
-| `registry/` | Persisted query store, approval, governance |
+| `registry/` | Governed query store, approval, governance |
 | `security/` | Visibility, rights, column masking |
 | `cache/` | Redis-backed query result caching (hot tier) |
 | `mv/` | Materialized view registry, refresh, SQL rewriter |
 | `events/` | Dataset change events and trigger dispatch |
 | `webhooks/` | Outbound webhook execution for mutations and events |
 | `scheduler/` | APScheduler-based background job management — cron and interval triggers that fire webhooks, mutations, or Kafka sink publishes |
-| `apq/` | Apollo APQ wire protocol — Redis-backed persisted query hash cache, governance-gated, separate from the governed query registry |
+| `apq/` | Apollo APQ wire protocol — Redis-backed governed query hash cache, governance-gated, separate from the governed query registry |
 | `compiler/cursor.py` | Relay-style cursor pagination — `first`/`after`/`last`/`before` arguments and `pageInfo` generation on all list queries |
 | `compiler/aggregate_gen.py` | Auto-generated `{table}_aggregate` query types with `count`, `sum`, `avg`, `min`, `max` sub-fields and filtered `nodes` access |
 | `compiler/enum_detect.py` | Enum table auto-detection — small lookup tables (≤ threshold rows) exposed as GraphQL enum types rather than string scalars |
-| `compiler/hints.py` | Federation performance hints — query-level routing directives embedded as SQL comments (`/* @provisa route=trino */`) that override automatic routing |
+| `compiler/hints.py` | Federation performance hints — query-level routing directives embedded as SQL comments (`/* @provisa route=federated */`) that override automatic routing |
 | `compiler/mutation_gen.py` | Mutation compiler; column presets — server-side static or session-variable values applied on insert/update, not exposed in the mutation input type |
 | `auth/approval_hook.py` | ABAC approval hook — pluggable external authorization called before query execution; webhook, gRPC, and unix_socket transports; per-table/source/global scope; configurable fallback policy |
 | `subscriptions/` | SSE subscription state and delivery |
@@ -301,13 +301,13 @@ The admin Strawberry GraphQL API is mounted at `/admin/graphql` (HTTP port 8001)
 | Config download/upload | Export or replace the full Provisa YAML config |
 | Relationship editor | Create, update, delete relationship definitions |
 | AI FK discovery | Trigger Claude-powered FK candidate analysis |
-| Query approval | Approve, reject, or deprecate persisted queries |
+| Query approval | Approve, reject, or deprecate governed queries |
 | Schema introspection | Browse published tables, columns, and roles |
 | View management | Register and manage materialized view definitions |
 
 ## Auto-Generated REST & JSON:API Endpoints
 
-Approved persisted queries are optionally exposed as REST and JSON:API endpoints alongside the GraphQL interface.
+Approved governed queries are optionally exposed as REST and JSON:API endpoints alongside the GraphQL interface.
 
 | Interface | Mount path | Spec |
 |-----------|-----------|------|
@@ -347,7 +347,7 @@ Four background loops start during app lifespan (`api/app.py`):
 | Service | Interval | Purpose |
 |---------|----------|---------|
 | MV refresh loop | 30 s | Polls `get_due_for_refresh()`, executes CTAS or DELETE+INSERT on stale MVs |
-| Warm table manager | Configurable | Promotes frequently-queried tables to Trino Iceberg local SSD cache |
+| Warm table manager | Configurable | Promotes frequently-queried tables to Iceberg local SSD cache |
 | Hot table loader | Configurable | Loads small reference tables into in-memory cache for sub-millisecond access |
 | API source poller | Per-source interval | Re-fetches and re-caches remote REST/GraphQL/gRPC sources |
 
@@ -356,7 +356,7 @@ Four background loops start during app lifespan (`api/app.py`):
 | Tier | Storage | Promotion criteria | Access latency |
 |------|---------|-------------------|----------------|
 | Hot | In-process memory | Row count < threshold, or is a relationship target | <1 ms |
-| Warm | Trino Iceberg on local SSD | Query frequency threshold exceeded | ~5–20 ms |
+| Warm | Iceberg on local SSD | Query frequency threshold exceeded | ~5–20 ms |
 | Cold | Remote source | Default | 50–500 ms |
 
 ## Metadata Import (Hasura v2 / DDN)
@@ -389,9 +389,9 @@ All list queries support Relay-style cursor pagination via `compiler/cursor.py`.
 
 Every registered table gets an auto-generated `{table}_aggregate` root field (`compiler/aggregate_gen.py`). The aggregate type exposes `count`, `sum`, `avg`, `min`, `max` per numeric column, and `nodes` for filtered row access with full field selection (same RLS/masking as the base query). Aggregate queries are eligible for Aggregate MV routing — see `mv/aggregate_catalog.py`.
 
-## Automatic Persisted Queries (APQ)
+## Automatic Governed Queries (APQ)
 
-`apq/cache.py` implements the Apollo APQ wire protocol. When a client sends only a query hash (`extensions.persistedQuery`), Provisa looks it up in Redis. On a miss it returns a `PersistedQueryNotFound` error; the client retries with the full query body, which Provisa stores. APQ is governance-gated — only hashes registered in the persisted query registry (or in test mode) are accepted. This is separate from result caching (`cache/`).
+`apq/cache.py` implements the Apollo APQ wire protocol. When a client sends only a query hash (`extensions.persistedQuery`), Provisa looks it up in Redis. On a miss it returns a `PersistedQueryNotFound` error; the client retries with the full query body, which Provisa stores. APQ is governance-gated — only hashes registered in the governed query registry (or in test mode) are accepted. This is separate from result caching (`cache/`).
 
 ## Inherited Roles
 
@@ -420,13 +420,13 @@ Roles in `core/models.py` can reference a `parent_role_id`. `flatten_roles()` re
 `compiler/hints.py` parses steward hints embedded in GraphQL queries as SQL comments using Provisa's comment syntax:
 
 ```graphql
-# @provisa route=trino
+# @provisa route=federated
 { orders { id amount } }
 ```
 
 | Hint | Effect |
 |------|--------|
-| `route=trino` | Force federation through Trino, bypassing direct-driver routing |
+| `route=federated` | Force federation through the federation engine, bypassing direct-driver routing |
 | `route=direct` | Force direct-driver execution |
 
 ## Column Presets in Mutations
@@ -458,7 +458,7 @@ Provisa is a thin compilation and routing layer — it adds single-digit millise
 | **Arrow Flight streaming (gRPC :8815)** | **No** | **Unbounded — streaming via Zaychik** |
 | Protobuf gRPC inline (:50051) | Yes | Medium results, service-to-service |
 | Redirect: Provisa upload (JSON, CSV, NDJSON, Arrow IPC) | Yes | Medium results, file download |
-| **Redirect: CTAS (Parquet, ORC)** | **No** | **Unbounded — Trino writes to S3** |
+| **Redirect: CTAS (Parquet, ORC)** | **No** | **Unbounded — federation engine writes to S3** |
 
 ### Threshold Probing
 
@@ -466,7 +466,7 @@ For threshold-based redirect, Provisa injects `LIMIT threshold + 1` into the que
 
 For large analytical workloads, use either:
 - **Arrow Flight** (port 8815) for streaming to data tools — batches flow through Provisa without materializing
-- **Parquet/ORC redirect** for file-based exports — Trino writes directly to S3, Provisa returns a presigned URL
+- **Parquet/ORC redirect** for file-based exports — the federation engine writes directly to S3, Provisa returns a presigned URL
 
 ## Infrastructure
 
@@ -475,8 +475,8 @@ For large analytical workloads, use either:
 | Provisa API | (host process) | 8001 | HTTP/REST endpoint |
 | Provisa Flight | (host process) | 8815 | Arrow Flight gRPC server |
 | Provisa gRPC | (host process) | 50051 | Protobuf gRPC server |
-| Trino | `trinodb/trino:480` | 8080 | Query federation engine |
-| Zaychik | `provisa-zaychik` (built from source) | 8480 | Arrow Flight SQL proxy for Trino |
+| Federation Engine | `trinodb/trino:480` | 8080 | Query federation engine |
+| Zaychik | `provisa-zaychik` (built from source) | 8480 | Arrow Flight SQL proxy for federation engine |
 | PostgreSQL | `postgres:16` | 5432 | Config metadata + Iceberg catalog |
 | MongoDB | `mongo:7` | 27017 | Demo NoSQL data source |
 | MinIO | `minio/minio` | 9000/9001 | S3-compatible object storage |

@@ -12,12 +12,12 @@
 docker compose up -d
 ```
 
-This starts PostgreSQL, Trino, Redis, MinIO, PgBouncer, Kafka, and the Zaychik Arrow Flight proxy. Trino takes ~30 seconds to become ready.
+This starts PostgreSQL, the federation engine, Redis, MinIO, PgBouncer, Kafka, and the Zaychik Arrow Flight proxy. The federation engine takes ~30 seconds to become ready.
 
 Check readiness:
 ```bash
 docker compose ps          # all services should be healthy
-curl http://localhost:8080/v1/info   # Trino: {"starting":false,...}
+curl http://localhost:8080/v1/info   # Federation engine: {"starting":false,...}
 ```
 
 ## 2. Install Provisa
@@ -66,7 +66,7 @@ uvicorn main:app --reload --port 8001
 
 On startup Provisa:
 1. Loads `config.yaml`
-2. Registers Trino dynamic catalogs for each source
+2. Registers dynamic catalogs for each source
 3. Generates per-role GraphQL schemas from `INFORMATION_SCHEMA`
 4. Starts background services (MV refresh, cache warm-up)
 

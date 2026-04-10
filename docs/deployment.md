@@ -15,7 +15,7 @@ Services started:
 |---------|------|---------|
 | PostgreSQL | 5432 | Config metadata + Iceberg catalog |
 | PgBouncer | 6432 | Connection pooling |
-| Trino | 8080 | Query federation engine |
+| Federation Engine | 8080 | Query federation engine |
 | Zaychik | 8480 | Arrow Flight SQL proxy |
 | Redis | 6379 | Query result cache |
 | MinIO | 9000/9001 | S3-compatible object storage |
@@ -62,7 +62,7 @@ helm install provisa provisa/provisa \
 | `replicaCount` | `2` | Provisa API replicas (stateless) |
 | `config.pgHost` | `postgres` | PostgreSQL host |
 | `config.redisHost` | `redis` | Redis host |
-| `trino.enabled` | `true` | Deploy Trino sub-chart |
+| `trino.enabled` | `true` | Deploy the federation engine sub-chart |
 | `zaychik.enabled` | `true` | Deploy Zaychik sub-chart |
 | `s3.endpoint` | | S3-compatible endpoint URL |
 | `s3.bucket` | `provisa-results` | Bucket for large result redirect |
@@ -85,7 +85,7 @@ Provisa is stateless — all query state is in PostgreSQL and Redis. Scale horiz
 kubectl scale deployment/provisa --replicas=5 --namespace provisa
 ```
 
-Trino scales independently via its own Helm chart. Add worker nodes to increase federation throughput.
+The federation engine scales independently via its own Helm chart. Add worker nodes to increase federation throughput.
 
 ---
 
@@ -178,5 +178,5 @@ provisa logs        # Tail service logs
 | `PROVISA_REDIRECT_ENDPOINT` | | S3-compatible endpoint URL |
 | `PROVISA_REDIRECT_TTL` | `3600` | Presigned URL TTL (seconds) |
 | `REDIS_URL` | `redis://localhost:6379` | Redis connection URL |
-| `TRINO_HOST` | `localhost` | Trino host |
-| `TRINO_PORT` | `8080` | Trino HTTP port |
+| `TRINO_HOST` | `localhost` | Federation engine host |
+| `TRINO_PORT` | `8080` | Federation engine HTTP port |

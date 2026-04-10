@@ -159,7 +159,7 @@ columns:
 
 The path format is `source_column.key1.key2...`. The compiler generates `json_extract_scalar(source_column, '$.key1.key2')` in the SQL.
 
-**Routing impact:** Path columns use PostgreSQL JSON operators (`->>`), which are natively supported by direct PG routing. For non-PostgreSQL sources (MySQL, SQL Server, etc.), queries with path columns are automatically routed through Trino, where SQLGlot transpiles `->>'key'` to `json_extract_scalar`. Mutations are unaffected since path columns are read-only computed fields.
+**Routing impact:** Path columns use PostgreSQL JSON operators (`->>`), which are natively supported by direct PG routing. For non-PostgreSQL sources (MySQL, SQL Server, etc.), queries with path columns are automatically routed through the federation engine, where SQLGlot transpiles `->>'key'` to `json_extract_scalar`. Mutations are unaffected since path columns are read-only computed fields.
 
 ### Masking Types
 
@@ -192,7 +192,7 @@ relationships:
 
 ### Auto-Materialization
 
-Set `materialize: true` on a relationship to automatically generate a materialized view for cross-source JOINs. This avoids expensive federated queries through Trino by pre-computing the JOIN result.
+Set `materialize: true` on a relationship to automatically generate a materialized view for cross-source JOINs. This avoids expensive federated queries by pre-computing the JOIN result.
 
 - Only cross-source relationships generate MVs (same-source JOINs are already fast)
 - The MV starts stale and is populated by the background refresh loop
@@ -234,7 +234,7 @@ Roles with `parent_role_id` inherit capabilities and domain access from the pare
 | `relationship_registration` | Define relationships |
 | `security_config` | Configure RLS, masking |
 | `query_development` | Execute queries |
-| `query_approval` | Approve persisted queries |
+| `query_approval` | Approve governed queries |
 | `full_results` | Bypass sampling limits |
 | `admin` | All capabilities |
 
@@ -301,7 +301,7 @@ views:
 | `sql` | Yes | SQL SELECT statement defining the view |
 | `domain_id` | Yes | Domain for schema visibility |
 | `governance` | No | `pre-approved` (default) or `registry-required` |
-| `materialize` | No | `true` = periodic CTAS refresh, `false` = live Trino view |
+| `materialize` | No | `true` = periodic CTAS refresh, `false` = live federated view |
 | `refresh_interval` | No | Seconds between refreshes (materialized only, default 300) |
 | `description` | No | Appears in GraphQL SDL |
 | `alias` | No | Override GraphQL name |
@@ -310,7 +310,7 @@ views:
 ### Materialized vs Live
 
 - **`materialize: true`**: Provisa creates a table via CTAS and refreshes it on a schedule. Faster queries but data may be stale by up to `refresh_interval` seconds.
-- **`materialize: false`**: Provisa creates a Trino view. Queries always return live data but may be slower for complex aggregations.
+- **`materialize: false`**: Provisa creates a federated view. Queries always return live data but may be slower for complex aggregations.
 
 Views go through the same governance pipeline as tables — RLS, masking, sampling, role-based visibility, approval workflow. This ensures no new semantics can be added to the platform without steward oversight.
 
@@ -621,8 +621,8 @@ Relationship ordering is supported via nested objects:
 | `PG_DATABASE` | `provisa` | PostgreSQL database |
 | `PG_USER` | `provisa` | PostgreSQL user |
 | `PG_PASSWORD` | `provisa` | PostgreSQL password |
-| `TRINO_HOST` | `localhost` | Trino host |
-| `TRINO_PORT` | `8080` | Trino HTTP port |
+| `TRINO_HOST` | `localhost` | Federation engine host |
+| `TRINO_PORT` | `8080` | Federation engine HTTP port |
 | `REDIS_URL` | — | Redis connection URL |
 | `PROVISA_SAMPLE_SIZE` | `100` | Default sampling limit |
 | `TRINO_FLIGHT_PORT` | `8480` | Zaychik Flight SQL proxy port |

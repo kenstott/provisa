@@ -11,7 +11,7 @@
 | `relationship_registration` | Define FK relationships |
 | `security_config` | Configure RLS, masking |
 | `query_development` | Execute queries |
-| `query_approval` | Approve persisted queries |
+| `query_approval` | Approve governed queries |
 | `full_results` | Bypass sampling limits |
 | `admin` | Superuser — grants all |
 

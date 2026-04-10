@@ -88,7 +88,7 @@ mutation {
 }
 ```
 
-### Persisted Query Approval
+### Governed Query Approval
 
 List pending queries:
 ```graphql

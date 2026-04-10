@@ -88,14 +88,14 @@ When a redirect format is specified (or the result exceeds the row threshold), r
 
 | Redirect Format | Written by | Scalability |
 |----------------|-----------|-------------|
-| `application/vnd.apache.parquet` | Trino (CTAS) | Unlimited — data never passes through Provisa |
-| `application/x-orc` | Trino (CTAS) | Unlimited — data never passes through Provisa |
+| `application/vnd.apache.parquet` | federated CTAS | Unlimited — data never passes through Provisa |
+| `application/x-orc` | federated CTAS | Unlimited — data never passes through Provisa |
 | `application/json` | Provisa | Memory-bound — result must fit in Provisa process memory |
 | `application/x-ndjson` | Provisa | Memory-bound |
 | `text/csv` | Provisa | Memory-bound |
 | `application/vnd.apache.arrow.stream` | Provisa | Memory-bound |
 
-For large analytical exports, always use Parquet or ORC redirect — Trino workers write directly to S3 in parallel without any data passing through Provisa.
+For large analytical exports, always use Parquet or ORC redirect — the federation engine writes directly to S3 in parallel without any data passing through Provisa.
 
 **Examples:**
 
@@ -114,7 +114,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `POST /data/submit`
 
-Submit a named query for approval. The query enters the persisted query registry with status `pending`.
+Submit a named query for approval. The query enters the governed query registry with status `pending`.
 
 **Headers:** `X-Role: <role_id>` (required)
 
@@ -274,12 +274,12 @@ The Flight SQL endpoint supports three connection modes, specified as a connecti
 | Mode | Schema | Shows | Query Execution |
 |------|--------|-------|----------------|
 | `catalog` | Domain IDs | Registered tables with aliases and descriptions | No (metadata only) |
-| `approved` | `approved` | Approved persisted queries as virtual views | Yes |
+| `approved` | `approved` | Approved governed queries as virtual views | Yes |
 | Default (no mode) | N/A | Full query execution through governance pipeline | Yes |
 
 `mode=catalog` exposes the user's visible semantic layer as a read-only JDBC catalog. Domains map to JDBC schemas, registered tables map to JDBC tables, columns include types and descriptions. Useful for external tools (Collibra, Alation, reasoning agents) that need schema discovery without query execution.
 
-`mode=approved` exposes each approved persisted query as one or more views named `{stableId}__{rootField}`. Multi-root queries produce multiple views.
+`mode=approved` exposes each approved governed query as one or more views named `{stableId}__{rootField}`. Multi-root queries produce multiple views.
 
 **Ticket format** (JSON):
 ```json
@@ -300,9 +300,9 @@ for batch in reader:
 table = client.do_get(ticket).read_all()
 ```
 
-The full security pipeline (RLS, masking, sampling) is applied. When the Zaychik Flight SQL proxy is available (port 8480), Arrow record batches stream end-to-end from Trino through Provisa to the client without materializing the full result in memory.
+The full security pipeline (RLS, masking, sampling) is applied. When the Zaychik Flight SQL proxy is available (port 8480), Arrow record batches stream end-to-end through Provisa to the client without materializing the full result in memory.
 
-**Scalability:** Unbounded when Zaychik is available (streaming). Falls back to materializing in memory via Trino REST if Zaychik is unavailable.
+**Scalability:** Unbounded when Zaychik is available (streaming). Falls back to materializing in memory via the federation engine if Zaychik is unavailable.
 
 ## Protobuf gRPC Endpoint
 
@@ -315,7 +315,7 @@ Port `50051`. Server reflection enabled.
 
 ## JDBC Driver
 
-Provisa includes a JDBC driver (`provisa-jdbc-0.1.0.jar`) that exposes approved persisted queries as virtual tables for BI tools (Tableau, PowerBI, DBeaver, etc.).
+Provisa includes a JDBC driver (`provisa-jdbc-0.1.0.jar`) that exposes approved governed queries as virtual tables for BI tools (Tableau, PowerBI, DBeaver, etc.).
 
 **Connection URL:** `jdbc:provisa://host:port[?mode=approved|catalog]`
 

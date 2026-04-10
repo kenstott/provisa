@@ -37,7 +37,7 @@ Authentication uses standard JDBC `user` / `password` properties. Provisa authen
 
 ### Driver Modes
 
-**`approved` mode**: Each approved persisted query appears as a virtual table. Column names, types, and row counts reflect the governed query output. RLS is enforced per the authenticated role.
+**`approved` mode**: Each approved governed query appears as a virtual table. Column names, types, and row counts reflect the governed query output. RLS is enforced per the authenticated role.
 
 **`catalog` mode**: All published tables appear for schema discovery. Used by data catalog tools (Collibra, Atlan, Alation) to scan and classify Provisa's logical data model.
 
