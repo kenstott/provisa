@@ -108,7 +108,15 @@ DO $$ BEGIN
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS function_arg TEXT;
     ALTER TABLE relationships ALTER COLUMN target_table_id DROP NOT NULL;
     ALTER TABLE relationships ALTER COLUMN target_column DROP NOT NULL;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS alias TEXT;
 EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+-- Uniqueness constraint: one alias per (source_table, alias) pair
+DO $$ BEGIN
+    ALTER TABLE relationships ADD CONSTRAINT relationships_source_alias_unique
+        UNIQUE (source_table_id, alias);
+EXCEPTION WHEN duplicate_table THEN NULL;
 END $$;
 
 CREATE TABLE IF NOT EXISTS roles (

@@ -756,10 +756,11 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
                     target = table_lookup.get(rel["target_table_id"])
                     if target:
                         target_type = gql_types[target.table_id]
+                        field_name = rel.get("alias") or target.field_name
                         if rel["cardinality"] == "many-to-one":
-                            fields[target.field_name] = GraphQLField(target_type)
+                            fields[field_name] = GraphQLField(target_type)
                         elif rel["cardinality"] == "one-to-many":
-                            fields[target.field_name] = GraphQLField(
+                            fields[field_name] = GraphQLField(
                                 GraphQLList(GraphQLNonNull(target_type))
                             )
 

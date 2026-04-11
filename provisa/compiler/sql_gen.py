@@ -229,8 +229,9 @@ def build_context(si: object) -> CompilationContext:
         src_col_type = _lookup_column_type(si, src_id, rel["source_column"])
         tgt_col_type = _lookup_column_type(si, tgt_id, rel["target_column"])
 
-        # The relationship field on the source type uses target's field_name
-        ctx.joins[(src_info.type_name, tgt_info.field_name)] = JoinMeta(
+        # The relationship field on the source type uses alias if set, else target's field_name
+        rel_field_name = rel.get("alias") or tgt_info.field_name
+        ctx.joins[(src_info.type_name, rel_field_name)] = JoinMeta(
             source_column=rel["source_column"],
             target_column=rel["target_column"],
             source_column_type=src_col_type,

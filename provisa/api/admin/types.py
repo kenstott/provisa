@@ -106,6 +106,7 @@ class RelationshipType:
     refresh_interval: int
     target_function_name: str | None
     function_arg: str | None
+    alias: str | None
 
 
 @strawberry.type
@@ -194,6 +195,7 @@ class RelationshipInput:
     refresh_interval: int = 300
     target_function_name: str | None = None
     function_arg: str | None = None
+    alias: str | None = None  # e.g. WORKS_FOR; unique per (source_table, alias)
 
 
 @strawberry.input

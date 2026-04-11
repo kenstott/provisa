@@ -287,6 +287,7 @@ class Relationship(BaseModel):
     refresh_interval: int = 300  # MV refresh interval in seconds
     target_function_name: str | None = None  # computed relationship: DB function name
     function_arg: str | None = None  # which function arg receives source_column value
+    alias: str | None = None  # human-readable relationship type (e.g. WORKS_FOR); unique per source table
 
 
 class Role(BaseModel):

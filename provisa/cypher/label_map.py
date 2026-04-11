@@ -41,6 +41,7 @@ class RelationshipMapping:
     join_source_column: str
     join_target_column: str
     field_name: str        # GraphQL field name that defines this join
+    alias: str | None = None  # relationship alias from config (e.g. WORKS_FOR)
 
 
 class CypherLabelMap:
@@ -52,6 +53,7 @@ class CypherLabelMap:
         relationships: dict[str, RelationshipMapping],
         domains: dict[str, list[str]] | None = None,
         nodes_by_table: dict[str, list[str]] | None = None,
+        aliases: dict[str, list[RelationshipMapping]] | None = None,
     ) -> None:
         self.nodes = nodes
         # keyed by rel_type (can map multiple if different source/target pairs)
@@ -60,6 +62,8 @@ class CypherLabelMap:
         self.domains: dict[str, list[str]] = domains or {}
         # table_label (PascalCase) → [type_name, ...]
         self.nodes_by_table: dict[str, list[str]] = nodes_by_table or {}
+        # rel_type → all RelationshipMappings with that type (supports UNION fan-out)
+        self.aliases: dict[str, list[RelationshipMapping]] = aliases or {}
 
     def node(self, label: str) -> NodeMapping:
         try:
@@ -171,18 +175,22 @@ class CypherLabelMap:
             nodes_by_table.setdefault(table_label, []).append(table_meta.type_name)
 
         # Build relationship mappings from join metadata
+        aliases: dict[str, list[RelationshipMapping]] = {}
         for (source_type_name, gql_field_name), join_meta in ctx_typed.joins.items():
             rel_type = _to_rel_type(gql_field_name)
-            relationships[rel_type] = RelationshipMapping(
+            rm = RelationshipMapping(
                 rel_type=rel_type,
                 source_label=source_type_name,
                 target_label=join_meta.target.type_name,
                 join_source_column=join_meta.source_column,
                 join_target_column=join_meta.target_column,
                 field_name=gql_field_name,
+                alias=gql_field_name if gql_field_name != gql_field_name.lower() else None,
             )
+            relationships[rel_type] = rm
+            aliases.setdefault(rel_type, []).append(rm)
 
-        return cls(nodes=nodes, relationships=relationships, domains=domains, nodes_by_table=nodes_by_table)
+        return cls(nodes=nodes, relationships=relationships, domains=domains, nodes_by_table=nodes_by_table, aliases=aliases)
 
 
 _ID_EXACT = {"id", "_id", "pk", "oid"}

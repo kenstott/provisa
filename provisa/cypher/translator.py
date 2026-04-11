@@ -470,19 +470,26 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     if tgt_nm and tgt_var:
                         self._var_table[tgt_var] = (tgt_var, tgt_nm)
 
+                # Early rel_mapping for domain-node path and anonymous node inference
+                rel_mapping = None
+                if rel.types:
+                    _rt_early = rel.types[0].upper()
+                    _early_matches = self._lm.aliases.get(_rt_early, [])
+                    if not _early_matches:
+                        _rm_early = self._lm.relationships.get(_rt_early)
+                        _early_matches = [_rm_early] if _rm_early else []
+                    rel_mapping = _early_matches[0] if _early_matches else None
+
                 # Anonymous nodes with no variable/labels: infer from relationship type
-                if (src_nm is None or tgt_nm is None) and rel.types:
-                    _rt = rel.types[0].upper()
-                    _rm = self._lm.relationships.get(_rt)
-                    if _rm:
-                        if src_nm is None:
-                            src_nm = self._lm.nodes.get(_rm.source_label)
-                            if src_nm and src_var:
-                                self._var_table[src_var] = (src_var, src_nm)
-                        if tgt_nm is None:
-                            tgt_nm = self._lm.nodes.get(_rm.target_label)
-                            if tgt_nm and tgt_var:
-                                self._var_table[tgt_var] = (tgt_var, tgt_nm)
+                if (src_nm is None or tgt_nm is None) and rel_mapping:
+                    if src_nm is None:
+                        src_nm = self._lm.nodes.get(rel_mapping.source_label)
+                        if src_nm and src_var:
+                            self._var_table[src_var] = (src_var, src_nm)
+                    if tgt_nm is None:
+                        tgt_nm = self._lm.nodes.get(rel_mapping.target_label)
+                        if tgt_nm and tgt_var:
+                            self._var_table[tgt_var] = (tgt_var, tgt_nm)
 
                 # Set FROM from anonymous src if still unset
                 if from_expr is None and src_nm is not None:
@@ -524,8 +531,17 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
 
                 if rel.types:
                     rel_type = rel.types[0].upper()
-                    rm = self._lm.relationships.get(rel_type)
-                    candidates: list[tuple] = [(rm, backward)] if rm else []
+                    # Phase 1: exact rel_type match
+                    # Phase 2: alias index (supports UNION fan-out for shared aliases)
+                    alias_matches = self._lm.aliases.get(rel_type, [])
+                    if not alias_matches:
+                        rm = self._lm.relationships.get(rel_type)
+                        alias_matches = [rm] if rm else []
+                    if not alias_matches:
+                        raise CypherTranslateError(
+                            f"Unknown relationship type or alias: {rel_type!r}"
+                        )
+                    candidates: list[tuple] = [(m, backward) for m in alias_matches]
                 else:
                     if bidir:
                         fwd = self._lm.relationships_for(src_nm.type_name, tgt_nm.type_name)

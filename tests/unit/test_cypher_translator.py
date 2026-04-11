@@ -709,3 +709,102 @@ def test_anonymous_src_named_tgt_relationship():
     sql = sql_ast.sql(dialect="trino")
     assert "persons" in sql.lower()
     assert "companies" in sql.lower()
+
+
+# ---------------------------------------------------------------------------
+# Relationship alias tests (REQ-390, REQ-391)
+# ---------------------------------------------------------------------------
+
+def _make_label_map_with_alias() -> CypherLabelMap:
+    """Label map where Employee-[WORKS_FOR]->Department uses an alias."""
+    employee = NodeMapping(
+        label="Employee", type_name="Hr_Employee", domain_label="Hr", table_label="Employee",
+        table_id=10, source_id="pg-main", id_column="id",
+        catalog_name="postgresql", schema_name="hr", table_name="employees",
+        properties={"id": "id", "name": "name", "dept_id": "dept_id"},
+    )
+    dept = NodeMapping(
+        label="Department", type_name="Hr_Department", domain_label="Hr", table_label="Department",
+        table_id=11, source_id="pg-main", id_column="id",
+        catalog_name="postgresql", schema_name="hr", table_name="departments",
+        properties={"id": "id", "name": "name"},
+    )
+    # WORKS_FOR is the alias; field_name in GraphQL is also "WORKS_FOR" after alias is applied
+    rm = RelationshipMapping(
+        rel_type="WORKS_FOR",
+        source_label="Employee",
+        target_label="Department",
+        join_source_column="dept_id",
+        join_target_column="id",
+        field_name="WORKS_FOR",
+        alias="WORKS_FOR",
+    )
+    rels = {"WORKS_FOR": rm}
+    aliases = {"WORKS_FOR": [rm]}
+    return CypherLabelMap(nodes={"Employee": employee, "Department": dept},
+                          relationships=rels, aliases=aliases)
+
+
+def _make_label_map_shared_alias() -> CypherLabelMap:
+    """Two source/target pairs sharing the same alias REPORTS_TO — triggers UNION ALL."""
+    emp = NodeMapping(
+        label="Employee", type_name="Hr_Employee", domain_label="Hr", table_label="Employee",
+        table_id=20, source_id="pg-main", id_column="id",
+        catalog_name="postgresql", schema_name="hr", table_name="employees",
+        properties={"id": "id", "manager_id": "manager_id"},
+    )
+    mgr = NodeMapping(
+        label="Manager", type_name="Hr_Manager", domain_label="Hr", table_label="Manager",
+        table_id=21, source_id="pg-main", id_column="id",
+        catalog_name="postgresql", schema_name="hr", table_name="managers",
+        properties={"id": "id", "director_id": "director_id"},
+    )
+    director = NodeMapping(
+        label="Director", type_name="Hr_Director", domain_label="Hr", table_label="Director",
+        table_id=22, source_id="pg-main", id_column="id",
+        catalog_name="postgresql", schema_name="hr", table_name="directors",
+        properties={"id": "id"},
+    )
+    rm1 = RelationshipMapping(
+        rel_type="REPORTS_TO", source_label="Employee", target_label="Manager",
+        join_source_column="manager_id", join_target_column="id",
+        field_name="REPORTS_TO", alias="REPORTS_TO",
+    )
+    rm2 = RelationshipMapping(
+        rel_type="REPORTS_TO", source_label="Manager", target_label="Director",
+        join_source_column="director_id", join_target_column="id",
+        field_name="REPORTS_TO", alias="REPORTS_TO",
+    )
+    rels = {"REPORTS_TO": rm2}  # last wins in single dict
+    aliases = {"REPORTS_TO": [rm1, rm2]}
+    nodes = {"Employee": emp, "Manager": mgr, "Director": director}
+    return CypherLabelMap(nodes=nodes, relationships=rels, aliases=aliases)
+
+
+def test_alias_rel_type_resolves_via_aliases_index():
+    """REQ-390: query using alias rel type is resolved correctly."""
+    lm = _make_label_map_with_alias()
+    ast = parse_cypher("MATCH (e:Employee)-[:WORKS_FOR]->(d:Department) RETURN e.name, d.name")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "employees" in sql.lower()
+    assert "departments" in sql.lower()
+    assert "dept_id" in sql.lower()
+
+
+def test_shared_alias_produces_union_all():
+    """REQ-391: alias shared by multiple source/target pairs generates UNION ALL."""
+    lm = _make_label_map_shared_alias()
+    ast = parse_cypher("MATCH (n)-[:REPORTS_TO]->(m) RETURN n.id, m.id")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "UNION ALL" in sql.upper()
+
+
+def test_unknown_rel_type_raises_error():
+    """REQ-390: unknown relationship type raises CypherTranslateError."""
+    from provisa.cypher.translator import CypherTranslateError
+    lm = _make_label_map_with_alias()
+    ast = parse_cypher("MATCH (e:Employee)-[:UNKNOWN_REL]->(d:Department) RETURN e.name")
+    with pytest.raises(CypherTranslateError, match="Unknown relationship type or alias"):
+        cypher_to_sql(ast, lm, {})

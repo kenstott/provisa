@@ -32,35 +32,44 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
             raise ValueError(f"Target table not registered: {rel.target_table_id}")
         target_tbl_id = target_tbl["id"]
 
-    await conn.execute(
-        """
-        INSERT INTO relationships (id, source_table_id, target_table_id,
-                                   source_column, target_column, cardinality,
-                                   materialize, refresh_interval,
-                                   target_function_name, function_arg)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        ON CONFLICT (id) DO UPDATE SET
-            source_table_id = EXCLUDED.source_table_id,
-            target_table_id = EXCLUDED.target_table_id,
-            source_column = EXCLUDED.source_column,
-            target_column = EXCLUDED.target_column,
-            cardinality = EXCLUDED.cardinality,
-            materialize = EXCLUDED.materialize,
-            refresh_interval = EXCLUDED.refresh_interval,
-            target_function_name = EXCLUDED.target_function_name,
-            function_arg = EXCLUDED.function_arg
-        """,
-        rel.id,
-        source_tbl["id"],
-        target_tbl_id,
-        rel.source_column,
-        rel.target_column or None,
-        rel.cardinality.value,
-        rel.materialize,
-        rel.refresh_interval,
-        rel.target_function_name,
-        rel.function_arg,
-    )
+    try:
+        await conn.execute(
+            """
+            INSERT INTO relationships (id, source_table_id, target_table_id,
+                                       source_column, target_column, cardinality,
+                                       materialize, refresh_interval,
+                                       target_function_name, function_arg, alias)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            ON CONFLICT (id) DO UPDATE SET
+                source_table_id = EXCLUDED.source_table_id,
+                target_table_id = EXCLUDED.target_table_id,
+                source_column = EXCLUDED.source_column,
+                target_column = EXCLUDED.target_column,
+                cardinality = EXCLUDED.cardinality,
+                materialize = EXCLUDED.materialize,
+                refresh_interval = EXCLUDED.refresh_interval,
+                target_function_name = EXCLUDED.target_function_name,
+                function_arg = EXCLUDED.function_arg,
+                alias = EXCLUDED.alias
+            """,
+            rel.id,
+            source_tbl["id"],
+            target_tbl_id,
+            rel.source_column,
+            rel.target_column or None,
+            rel.cardinality.value,
+            rel.materialize,
+            rel.refresh_interval,
+            rel.target_function_name,
+            rel.function_arg,
+            rel.alias or None,
+        )
+    except Exception as e:
+        if "relationships_source_alias_unique" in str(e):
+            raise ValueError(
+                f"Alias {rel.alias!r} already exists for source table {rel.source_table_id!r}"
+            ) from e
+        raise
 
 
 async def get(conn: asyncpg.Connection, rel_id: str) -> dict | None:

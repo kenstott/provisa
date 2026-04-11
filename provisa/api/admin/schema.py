@@ -892,6 +892,7 @@ class Mutation:
             refresh_interval=input.refresh_interval,
             target_function_name=input.target_function_name or None,
             function_arg=input.function_arg or None,
+            alias=input.alias or None,
         )
         async with pool.acquire() as conn:
             await rel_repo.upsert(conn, model)
