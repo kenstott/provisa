@@ -20,7 +20,10 @@ from dataclasses import dataclass, field
 
 @dataclass
 class NodeMapping:
-    label: str            # PascalCase GraphQL type name (= Cypher label)
+    label: str            # Cypher label string, e.g. "SalesAnalytics:Orders" or "Orders"
+    type_name: str        # internal lookup key, e.g. "SalesAnalytics_Orders"
+    domain_label: str | None  # PascalCase domain part, e.g. "SalesAnalytics"; None if no domain
+    table_label: str      # PascalCase table part, e.g. "Orders"
     table_id: int
     source_id: str
     id_column: str        # primary key column (first column if no explicit pk)
@@ -48,12 +51,15 @@ class CypherLabelMap:
         nodes: dict[str, NodeMapping],
         relationships: dict[str, RelationshipMapping],
         domains: dict[str, list[str]] | None = None,
+        nodes_by_table: dict[str, list[str]] | None = None,
     ) -> None:
         self.nodes = nodes
         # keyed by rel_type (can map multiple if different source/target pairs)
         self.relationships = relationships
-        # domain_name → [type_label, ...]
+        # domain_label (PascalCase) → [type_name, ...]
         self.domains: dict[str, list[str]] = domains or {}
+        # table_label (PascalCase) → [type_name, ...]
+        self.nodes_by_table: dict[str, list[str]] = nodes_by_table or {}
 
     def node(self, label: str) -> NodeMapping:
         try:
@@ -115,6 +121,8 @@ class CypherLabelMap:
 
         nodes: dict[str, NodeMapping] = {}
         relationships: dict[str, RelationshipMapping] = {}
+        domains: dict[str, list[str]] = {}
+        nodes_by_table: dict[str, list[str]] = {}
 
         ctx_typed: CompilationContext = ctx  # type: ignore[assignment]
 
@@ -129,14 +137,23 @@ class CypherLabelMap:
                 target_pk[tname] = join_meta.target_column
 
         # Build node mappings from table metadata
+        # Skip _connection and _aggregate synthetic variants registered for GraphQL pagination
         for field_name, table_meta in ctx_typed.tables.items():
+            if field_name.endswith("_connection") or field_name.endswith("_aggregate"):
+                continue
             col_list = ctx_typed.aggregate_columns.get(table_meta.table_id, [])
             col_names = [c for c, _ in col_list]
             id_col = _resolve_id_column(table_meta.type_name, col_names, target_pk)
             props: dict[str, str] = {c: c for c in col_names}
 
+            domain_label, table_label = _split_cypher_labels(field_name)
+            cypher_label = f"{domain_label}:{table_label}" if domain_label else table_label
+
             nodes[table_meta.type_name] = NodeMapping(
-                label=table_meta.type_name,
+                label=cypher_label,
+                type_name=table_meta.type_name,
+                domain_label=domain_label,
+                table_label=table_label,
                 table_id=table_meta.table_id,
                 source_id=table_meta.source_id,
                 id_column=id_col,
@@ -145,6 +162,13 @@ class CypherLabelMap:
                 table_name=table_meta.table_name,
                 properties=props,
             )
+
+            # Populate domain index
+            if domain_label:
+                domains.setdefault(domain_label, []).append(table_meta.type_name)
+
+            # Populate table index
+            nodes_by_table.setdefault(table_label, []).append(table_meta.type_name)
 
         # Build relationship mappings from join metadata
         for (source_type_name, gql_field_name), join_meta in ctx_typed.joins.items():
@@ -158,7 +182,7 @@ class CypherLabelMap:
                 field_name=gql_field_name,
             )
 
-        return cls(nodes=nodes, relationships=relationships)
+        return cls(nodes=nodes, relationships=relationships, domains=domains, nodes_by_table=nodes_by_table)
 
 
 _ID_EXACT = {"id", "_id", "pk", "oid"}
@@ -211,3 +235,20 @@ def _resolve_id_column(
 def _to_rel_type(field_name: str) -> str:
     """Convert a snake_case GraphQL field name to UPPER_SNAKE relationship type."""
     return field_name.upper()
+
+
+def _split_cypher_labels(field_name: str) -> tuple[str | None, str]:
+    """Derive (domain_label, table_label) from a GQL field name.
+
+    "sales_analytics__orders" → ("SalesAnalytics", "Orders")
+    "orders"                  → (None, "Orders")
+    """
+    import re
+
+    def _pascal(s: str) -> str:
+        return "".join(p.capitalize() for p in re.split(r"[_\-]+", s) if p)
+
+    if "__" in field_name:
+        domain_part, table_part = field_name.split("__", 1)
+        return _pascal(domain_part), _pascal(table_part)
+    return None, _pascal(field_name)

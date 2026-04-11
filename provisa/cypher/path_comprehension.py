@@ -69,11 +69,11 @@ class PathComprehensionMixin:
             if rel_type:
                 rel_mapping = self._lm.relationships.get(rel_type)
             elif src_nm:
-                candidates = self._lm.relationships_for(src_nm.label, tgt_label or "")
+                candidates = self._lm.relationships_for(src_nm.type_name, tgt_label or "")
                 if not candidates and tgt_label:
                     candidates = [
                         r for r in self._lm.relationships.values()
-                        if r.source_label == (src_nm.label if src_nm else None)
+                        if r.source_label == (src_nm.type_name if src_nm else None)
                         and r.target_label == tgt_label
                     ]
                 if candidates:

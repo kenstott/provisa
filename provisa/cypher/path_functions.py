@@ -321,7 +321,7 @@ class PathFunctionsMixin:
         # ------------------------------------------------------------------
         base_branches: list[exp.Select] = []
         for rel in allowed_rels:
-            if rel.source_label != src_nm.label:
+            if rel.source_label != src_nm.type_name:
                 continue
             src_node_m = self._lm.nodes.get(rel.source_label)
             tgt_node_m = self._lm.nodes.get(rel.target_label)
@@ -337,7 +337,7 @@ class PathFunctionsMixin:
                         ),
                         alias="src_id",
                     ),
-                    exp.alias_(exp.Literal.string(tgt_node_m.label), alias="cur_type"),
+                    exp.alias_(exp.Literal.string(tgt_node_m.type_name), alias="cur_type"),
                     exp.alias_(
                         exp.Column(
                             this=exp.Identifier(this=tgt_node_m.id_column, quoted=True),
@@ -381,7 +381,7 @@ class PathFunctionsMixin:
                         this=exp.Identifier(this="src_id"),
                         table=exp.Identifier(this="t"),
                     ),
-                    exp.alias_(exp.Literal.string(tgt_node_m.label), alias="cur_type"),
+                    exp.alias_(exp.Literal.string(tgt_node_m.type_name), alias="cur_type"),
                     exp.alias_(
                         exp.Column(
                             this=exp.Identifier(this=tgt_node_m.id_column, quoted=True),
@@ -425,7 +425,7 @@ class PathFunctionsMixin:
                                 this=exp.Identifier(this="cur_type"),
                                 table=exp.Identifier(this="t"),
                             ),
-                            expression=exp.Literal.string(src_node_m.label),
+                            expression=exp.Literal.string(src_node_m.type_name),
                         ),
                     ),
                     join_type="INNER",

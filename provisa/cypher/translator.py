@@ -72,6 +72,11 @@ class CypherTranslateError(Exception):
     pass
 
 
+class CypherCrossSourceError(CypherTranslateError):
+    """Raised when a Cypher query spans multiple incompatible data sources."""
+    pass
+
+
 def cypher_to_sql(
     ast: CypherAST,
     label_map: CypherLabelMap,
@@ -137,6 +142,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         self._lateral_conditions: list[exp.Expression] = []
         # relationship variable → resolved rel_type string (for type(r) resolution)
         self._rel_var_types: dict[str, str] = {}
+        # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm)
+        self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping"]] = {}
 
     def translate(self) -> tuple[exp.Select, list[str], dict[str, GraphVarKind]]:
         if self._ast.return_clause is None:
@@ -463,6 +470,32 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     if tgt_nm and tgt_var:
                         self._var_table[tgt_var] = (tgt_var, tgt_nm)
 
+                # Anonymous nodes with no variable/labels: infer from relationship type
+                if (src_nm is None or tgt_nm is None) and rel.types:
+                    _rt = rel.types[0].upper()
+                    _rm = self._lm.relationships.get(_rt)
+                    if _rm:
+                        if src_nm is None:
+                            src_nm = self._lm.nodes.get(_rm.source_label)
+                            if src_nm and src_var:
+                                self._var_table[src_var] = (src_var, src_nm)
+                        if tgt_nm is None:
+                            tgt_nm = self._lm.nodes.get(_rm.target_label)
+                            if tgt_nm and tgt_var:
+                                self._var_table[tgt_var] = (tgt_var, tgt_nm)
+
+                # Set FROM from anonymous src if still unset
+                if from_expr is None and src_nm is not None:
+                    src_alias = src_var or src_nm.table_name
+                    from_expr = exp.alias_(
+                        exp.Table(
+                            this=exp.Identifier(this=src_nm.table_name, quoted=True),
+                            db=exp.Identifier(this=src_nm.schema_name, quoted=True),
+                            catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
+                        ),
+                        alias=src_alias,
+                    )
+
                 if src_nm is None or tgt_nm is None:
                     # domain-only JOIN target: use subquery
                     if tgt_var and tgt_var in self._domain_nodes and rel_mapping is not None:
@@ -495,14 +528,14 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     candidates: list[tuple] = [(rm, backward)] if rm else []
                 else:
                     if bidir:
-                        fwd = self._lm.relationships_for(src_nm.label, tgt_nm.label)
-                        bwd = self._lm.relationships_for(tgt_nm.label, src_nm.label)
+                        fwd = self._lm.relationships_for(src_nm.type_name, tgt_nm.type_name)
+                        bwd = self._lm.relationships_for(tgt_nm.type_name, src_nm.type_name)
                         candidates = [(m, False) for m in fwd] + [(m, True) for m in bwd]
                     elif backward:
-                        fwd_cands = self._lm.relationships_for(tgt_nm.label, src_nm.label)
+                        fwd_cands = self._lm.relationships_for(tgt_nm.type_name, src_nm.type_name)
                         candidates = [(m, True) for m in fwd_cands]
                     else:
-                        fwd_cands = self._lm.relationships_for(src_nm.label, tgt_nm.label)
+                        fwd_cands = self._lm.relationships_for(src_nm.type_name, tgt_nm.type_name)
                         candidates = [(m, False) for m in fwd_cands]
 
                 if not candidates:
@@ -552,6 +585,10 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 primary_rm, primary_bwd = candidates[0]
                 if rel.variable:
                     self._rel_var_types[rel.variable] = primary_rm.rel_type
+                    _src_alias = src_var or (src_nm.table_name if src_nm else None)
+                    _tgt_alias = tgt_var or (tgt_nm.table_name if tgt_nm else None)
+                    if _src_alias and _tgt_alias and src_nm and tgt_nm:
+                        self._rel_var_endpoints[rel.variable] = (_src_alias, src_nm, _tgt_alias, tgt_nm)
 
                 primary_join = _make_rel_join(primary_rm, primary_bwd)
 
@@ -718,15 +755,63 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         self._cte_sources = set(new_var_table.keys())
 
     def _resolve_node_type(self, labels: list[str]) -> tuple[str | None, str | None]:
-        """Return (type_label, domain_label). Raises on ambiguity."""
-        type_labels = [l for l in labels if l in self._lm.nodes]
-        domain_labels = [l for l in labels if l in self._lm.domains]
-        if len(type_labels) > 1:
-            raise CypherTranslateError(f"Ambiguous labels — multiple type labels: {type_labels}")
-        if not type_labels and not domain_labels:
-            raise CypherTranslateError(f"Unknown label(s): {labels}")
-        return (type_labels[0] if type_labels else None,
-                domain_labels[0] if domain_labels else None)
+        """Return (type_name_key, domain_label). Raises on ambiguity.
+
+        Handles all label combinations regardless of order:
+          (n:SalesAnalytics:Orders)  — domain + table
+          (n:Orders:SalesAnalytics)  — reversed (AND'd, same result)
+          (n:Orders)                 — table only (unique or union)
+          (n:SalesAnalytics)         — domain only (union over all tables in domain)
+          (n:SalesAnalytics_Orders)  — legacy full type_name (backward compat)
+        """
+        # Classify each label
+        full_type: list[str] = [l for l in labels if l in self._lm.nodes]
+        domain_hits: list[str] = [l for l in labels if l in self._lm.domains]
+        table_hits: list[str] = [l for l in labels if l in self._lm.nodes_by_table]
+
+        # Legacy: full type_name used directly (e.g. SalesAnalytics_Orders)
+        if full_type:
+            if len(full_type) > 1:
+                raise CypherTranslateError(f"Ambiguous labels — multiple full type labels: {full_type}")
+            return full_type[0], domain_hits[0] if domain_hits else None
+
+        # Domain + table (any order): intersect to get unique type_name
+        if domain_hits and table_hits:
+            domain_set = set(self._lm.domains[domain_hits[0]])
+            table_set = set(self._lm.nodes_by_table[table_hits[0]])
+            candidates = domain_set & table_set
+            if len(candidates) == 1:
+                return candidates.pop(), domain_hits[0]
+            if len(candidates) > 1:
+                raise CypherTranslateError(
+                    f"Ambiguous: labels {labels} match multiple types: {sorted(candidates)}"
+                )
+            raise CypherTranslateError(
+                f"No node type found for labels {labels}"
+            )
+
+        # Table only: resolve if unambiguous, otherwise build domain-style union
+        if table_hits and not domain_hits:
+            candidates = self._lm.nodes_by_table[table_hits[0]]
+            if len(candidates) == 1:
+                return candidates[0], None
+            # Ambiguous table label across domains — treat as ad-hoc domain union
+            ad_hoc = f"__tbl_{table_hits[0]}__"
+            if ad_hoc not in self._lm.domains:
+                from provisa.cypher.label_map import CypherLabelMap
+                self._lm = CypherLabelMap(
+                    nodes=self._lm.nodes,
+                    relationships=self._lm.relationships,
+                    domains={**self._lm.domains, ad_hoc: candidates},
+                    nodes_by_table=self._lm.nodes_by_table,
+                )
+            return None, ad_hoc
+
+        # Domain only
+        if domain_hits:
+            return None, domain_hits[0]
+
+        raise CypherTranslateError(f"Unknown label(s): {labels}")
 
     def _collect_var_props(self, var: str) -> list[str]:
         """Return ordered list of property names referenced as var.prop in the AST."""
@@ -766,8 +851,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             if nm is None:
                 continue
             select_items: list[exp.Expression] = [
-                exp.alias_(exp.Literal.string(label), alias="__label"),
-                exp.Column(this=exp.Identifier(this=nm.id_column, quoted=True)),
+                exp.alias_(exp.Literal.string(nm.label), alias="__label"),
+                exp.alias_(exp.Column(this=exp.Identifier(this=nm.id_column, quoted=True)), alias="__id"),
             ]
             for prop in props:
                 sql_col = nm.properties.get(prop)
@@ -787,7 +872,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         db=exp.Identifier(this=nm.schema_name, quoted=True),
                         catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
                     ),
-                    alias=f"_{label.lower()}",
+                    alias=f"_{nm.type_name.lower()}",
                 )
             )
             branches.append(branch)

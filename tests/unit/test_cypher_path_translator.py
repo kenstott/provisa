@@ -20,6 +20,9 @@ from provisa.cypher.path_translator import PathTranslateError, path_to_recursive
 def _make_label_map() -> CypherLabelMap:
     person_meta = NodeMapping(
         label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
         table_id=1,
         source_id="pg-main",
         id_column="id",
@@ -30,6 +33,9 @@ def _make_label_map() -> CypherLabelMap:
     )
     company_meta = NodeMapping(
         label="Company",
+        type_name="Company",
+        domain_label=None,
+        table_label="Company",
         table_id=2,
         source_id="pg-main",
         id_column="id",

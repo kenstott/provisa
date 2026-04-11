@@ -21,6 +21,9 @@ from provisa.cypher.translator import GraphVarKind
 def _make_label_map() -> CypherLabelMap:
     person_meta = NodeMapping(
         label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
         table_id=1,
         source_id="pg-main",
         id_column="id",

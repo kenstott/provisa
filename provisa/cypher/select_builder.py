@@ -36,6 +36,73 @@ class SelectBuilderMixin:
     _path_vars: dict
     _shortestpath_hops_col: exp.Expression | None
     _lm: CypherLabelMap
+    _rel_var_types: dict
+    _rel_var_endpoints: dict
+
+    def _build_edge_object(
+        self,
+        rel_type: str,
+        src_alias: str,
+        src_nm: NodeMapping,
+        tgt_alias: str,
+        tgt_nm: NodeMapping,
+    ) -> exp.Expression:
+        """Emit a JSON edge object for RETURN r.
+
+        JSON_OBJECT('id', src.id || '-' || tgt.id,
+                    'type', 'REL_TYPE',
+                    'startNode', JSON_OBJECT('id', src.id, 'label', 'SrcLabel'),
+                    'endNode', JSON_OBJECT('id', tgt.id, 'label', 'TgtLabel'))
+        """
+        src_id_col = exp.Column(
+            this=exp.Identifier(this=src_nm.id_column, quoted=True),
+            table=exp.Identifier(this=src_alias),
+        )
+        tgt_id_col = exp.Column(
+            this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
+            table=exp.Identifier(this=tgt_alias),
+        )
+        # Composite id: CAST(src.id AS VARCHAR) || '-' || CAST(tgt.id AS VARCHAR)
+        edge_id = exp.DPipe(
+            this=exp.DPipe(
+                this=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR")),
+                expression=exp.Literal.string("-"),
+            ),
+            expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR")),
+        )
+        start_node = exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[
+                exp.Literal.string("id"),
+                exp.Column(
+                    this=exp.Identifier(this=src_nm.id_column, quoted=True),
+                    table=exp.Identifier(this=src_alias),
+                ),
+                exp.Literal.string("label"),
+                exp.Literal.string(src_nm.label),
+            ],
+        )
+        end_node = exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[
+                exp.Literal.string("id"),
+                exp.Column(
+                    this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
+                    table=exp.Identifier(this=tgt_alias),
+                ),
+                exp.Literal.string("label"),
+                exp.Literal.string(tgt_nm.label),
+            ],
+        )
+        return exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[
+                exp.Literal.string("id"), edge_id,
+                exp.Literal.string("type"), exp.Literal.string(rel_type),
+                exp.Literal.string("startNode"), start_node,
+                exp.Literal.string("endNode"), end_node,
+            ],
+        )
 
     def _build_path_object(self, path_var: str) -> exp.Expression:
         """Emit a JSON path object for RETURN p.
@@ -90,6 +157,20 @@ class SelectBuilderMixin:
                     exprs.append(exp.alias_(path_expr, expr_text))
                 continue
 
+            # Bare relationship variable: RETURN r
+            if _is_bare_variable(expr_text) and hasattr(self, "_rel_var_types") and expr_text in self._rel_var_types:
+                self._graph_vars[alias or expr_text] = GraphVarKind.EDGE
+                endpoints = getattr(self, "_rel_var_endpoints", {}).get(expr_text)
+                if endpoints:
+                    src_alias, src_nm, tgt_alias, tgt_nm = endpoints
+                    rel_type = self._rel_var_types[expr_text]
+                    edge_expr = self._build_edge_object(rel_type, src_alias, src_nm, tgt_alias, tgt_nm)
+                else:
+                    edge_expr = exp.Null()
+                out = alias or expr_text
+                exprs.append(exp.alias_(edge_expr, out))
+                continue
+
             # Bare node variable: RETURN n
             if _is_bare_variable(expr_text) and expr_text in self._var_table:
                 var_info = self._var_table[expr_text]
@@ -99,6 +180,18 @@ class SelectBuilderMixin:
                     tbl_col = exp.Column(
                         this=exp.Star(),
                         table=exp.Identifier(this=table_alias),
+                    )
+                    if alias:
+                        exprs.append(exp.alias_(tbl_col, alias))
+                    else:
+                        exprs.append(tbl_col)
+                    continue
+                # Domain-only node (var_info[1] is None): select all from the subquery alias
+                if hasattr(self, "_domain_nodes") and expr_text in self._domain_nodes:
+                    self._graph_vars[alias or expr_text] = GraphVarKind.NODE
+                    tbl_col = exp.Column(
+                        this=exp.Star(),
+                        table=exp.Identifier(this=expr_text),
                     )
                     if alias:
                         exprs.append(exp.alias_(tbl_col, alias))

@@ -97,12 +97,15 @@ def build_governance_context(
                 all_visible = False
         gov.visible_columns[table_id] = None if all_visible else frozenset(visible)
 
-    # table_map from compilation context
+    # table_map from compilation context — physical and semantic refs
+    from provisa.compiler.naming import domain_to_sql_name
     for meta in ctx.tables.values():
         key_full = f"{meta.schema_name}.{meta.table_name}"
         key_short = meta.table_name
+        key_semantic = f"{domain_to_sql_name(meta.domain_id)}.{meta.field_name}"
         gov.table_map[key_full] = meta.table_id
         gov.table_map[key_short] = meta.table_id
+        gov.table_map[key_semantic] = meta.table_id
 
     return gov
 

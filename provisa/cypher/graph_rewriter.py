@@ -57,10 +57,11 @@ def apply_graph_rewrites(
             # Find node meta: prefer alias_to_node lookup, then direct search
             node_meta = alias_to_node.get(graph_var) or _find_node_meta(graph_var, table_ref, label_map)
             out_alias = alias_name or graph_var
+            tbl = table_ref or graph_var
             if node_meta is not None:
-                rewritten = _build_row_cast(graph_var, node_meta)
+                rewritten = _build_row_cast(tbl, node_meta)
             else:
-                rewritten = exp.Column(this=exp.Star(), table=exp.Identifier(this=graph_var))
+                rewritten = _build_domain_json(tbl)
             new_expressions.append(exp.alias_(rewritten, out_alias))
         else:
             new_expressions.append(sel_expr)
@@ -69,7 +70,7 @@ def apply_graph_rewrites(
 
 
 def _build_row_cast(tbl: str, node_meta: object) -> exp.Expression:
-    """Build CAST(ROW(id, label, props...) AS JSON) for a graph variable."""
+    """Build JSON_OBJECT('id', ..., 'label', ..., props...) for a graph variable."""
     from provisa.cypher.label_map import NodeMapping
     nm: NodeMapping = node_meta  # type: ignore[assignment]
 
@@ -77,19 +78,39 @@ def _build_row_cast(tbl: str, node_meta: object) -> exp.Expression:
         this=exp.Identifier(this=nm.id_column, quoted=True),
         table=exp.Identifier(this=tbl),
     )
-    label_lit = exp.Literal.string(nm.label)
-    row_args: list[exp.Expression] = [id_col, label_lit]
-
+    kv: list[exp.Expression] = [
+        exp.JSONKeyValue(this=exp.Literal.string("id"), expression=id_col),
+        exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
+    ]
     for col_name in nm.properties.values():
-        row_args.append(
-            exp.Column(
+        kv.append(exp.JSONKeyValue(
+            this=exp.Literal.string(col_name),
+            expression=exp.Column(
                 this=exp.Identifier(this=col_name, quoted=True),
                 table=exp.Identifier(this=tbl),
-            )
-        )
+            ),
+        ))
+    return exp.JSONObject(expressions=kv)
 
-    row_expr = exp.Anonymous(this="ROW", expressions=row_args)
-    return exp.Cast(this=row_expr, to=exp.DataType.build("JSON"))
+
+def _build_domain_json(var: str) -> exp.Expression:
+    """Build JSON_OBJECT for a domain-union node (subquery with __id and __label)."""
+    return exp.JSONObject(expressions=[
+        exp.JSONKeyValue(
+            this=exp.Literal.string("id"),
+            expression=exp.Column(
+                this=exp.Identifier(this="__id", quoted=True),
+                table=exp.Identifier(this=var),
+            ),
+        ),
+        exp.JSONKeyValue(
+            this=exp.Literal.string("label"),
+            expression=exp.Column(
+                this=exp.Identifier(this="__label", quoted=True),
+                table=exp.Identifier(this=var),
+            ),
+        ),
+    ])
 
 
 def _extract_alias_mappings(sql_ast: exp.Select, label_map: CypherLabelMap) -> dict[str, object]:

@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration tests for POST /query/cypher.
+"""Integration tests for POST /data/cypher.
 
 These tests require the full Provisa stack (postgres + federation engine).
 Run with docker-compose up before executing.
@@ -37,15 +37,15 @@ def client():
 
 
 def test_cypher_endpoint_reachable(client):
-    """Verify the /query/cypher endpoint exists and responds."""
-    resp = client.post("/query/cypher", json={"query": "MATCH (n) RETURN n LIMIT 1"})
+    """Verify the /data/cypher endpoint exists and responds."""
+    resp = client.post("/data/cypher", json={"query": "MATCH (n) RETURN n LIMIT 1"})
     # 200 or 400 (no schema) or 503 (schema not loaded) — not 404
     assert resp.status_code != 404, f"Endpoint not found: {resp.text}"
 
 
 def test_write_clause_rejected(client):
     resp = client.post(
-        "/query/cypher",
+        "/data/cypher",
         json={"query": "CREATE (n:Person {name: 'Eve'})"},
     )
     assert resp.status_code == 400
@@ -56,7 +56,7 @@ def test_write_clause_rejected(client):
 
 def test_apoc_rejected(client):
     resp = client.post(
-        "/query/cypher",
+        "/data/cypher",
         json={"query": "MATCH (n) RETURN apoc.util.sleep(100)"},
     )
     assert resp.status_code == 400
@@ -66,7 +66,7 @@ def test_apoc_rejected(client):
 
 def test_parse_error_returns_400(client):
     resp = client.post(
-        "/query/cypher",
+        "/data/cypher",
         json={"query": "MERGE (n:Person {name: 'Eve'})"},
     )
     assert resp.status_code == 400
@@ -76,7 +76,7 @@ def test_parse_error_returns_400(client):
 def test_valid_query_returns_columns_and_rows(client):
     """Query that should succeed if any table is registered."""
     resp = client.post(
-        "/query/cypher",
+        "/data/cypher",
         json={"query": "MATCH (n) RETURN n LIMIT 1"},
     )
     # Either success or schema-not-loaded — not a 500 from a bug
@@ -93,7 +93,7 @@ def test_valid_query_returns_columns_and_rows(client):
 
 def test_named_params_bound_correctly(client):
     resp = client.post(
-        "/query/cypher",
+        "/data/cypher",
         json={
             "query": "MATCH (n) WHERE n.id = $node_id RETURN n LIMIT 1",
             "params": {"node_id": "1"},
