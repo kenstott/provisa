@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { useRef, useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import cytoscape from "cytoscape";
 import type { Core, NodeSingular } from "cytoscape";
 
@@ -87,45 +88,103 @@ export interface FrameData {
 // ── Inspector panel ───────────────────────────────────────────────────────────
 interface InspectorProps {
   selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null;
+  colorOverrides: Record<string, string>;
+  onColorChange: (label: string, color: string) => void;
+  width: number;
+  onResizeStart: (e: React.MouseEvent) => void;
 }
 
-function Inspector({ selected }: InspectorProps) {
+function Inspector({ selected, colorOverrides, onColorChange, width, onResizeStart }: InspectorProps) {
+  const [inspView, setInspView] = useState<"details" | "table" | "json">("details");
+  const [showPalette, setShowPalette] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
+  const viewSel = hovered && (
+    <div className="gf-insp-viewsel">
+      {(["details", "table", "json"] as const).map((v) => (
+        <button key={v} className={`gf-insp-viewbtn ${inspView === v ? "active" : ""}`}
+                onClick={() => setInspView(v)} title={v}>
+          {v === "details" ? "⊡" : v === "table" ? "⊞" : "{}"}
+        </button>
+      ))}
+    </div>
+  );
+
   if (!selected) {
     return (
-      <div className="gf-inspector gf-inspector-empty">
+      <div className="gf-inspector gf-inspector-empty" style={{ width }}
+           onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+        <div className="gf-inspector-resize-handle" onMouseDown={onResizeStart} />
+        {viewSel}
         <div className="gf-inspector-hint">Click a node or relationship to inspect</div>
       </div>
     );
   }
+
   const isN = selected.kind === "node";
-  const label = isN ? selected.data.label : selected.data.type;
-  const color = labelColor(label);
+  const label = isN ? selected.data.label : (selected.data as GEdge).type;
+  const color = colorOverrides[label] ?? labelColor(label);
   const props = selected.data.properties;
+  const allFields: Record<string, unknown> = {
+    id: selected.data.id,
+    ...(isN ? { label: (selected.data as GNode).label } : { type: (selected.data as GEdge).type }),
+    ...props,
+  };
 
   return (
-    <div className="gf-inspector">
-      <div className="gf-inspector-badge" style={{ background: color }}>
-        {isN ? selected.data.label : selected.data.type}
+    <div className="gf-inspector" style={{ width }}
+         onMouseEnter={() => setHovered(true)}
+         onMouseLeave={() => { setHovered(false); setShowPalette(false); }}>
+      <div className="gf-inspector-resize-handle" onMouseDown={onResizeStart} />
+      {viewSel}
+      <div style={{ position: "relative", alignSelf: "flex-start" }}>
+        <div className="gf-inspector-badge" style={{ background: color, cursor: "pointer" }}
+             title="Click to change color" onClick={() => setShowPalette((p) => !p)}>
+          {label}
+        </div>
+        {showPalette && (
+          <div className="gf-color-palette">
+            {PALETTE.map((c) => (
+              <button key={c} className="gf-color-swatch"
+                      style={{ background: c, outline: color === c ? "2px solid #fff" : "none" }}
+                      onClick={() => { onColorChange(label, c); setShowPalette(false); }} />
+            ))}
+          </div>
+        )}
       </div>
       <div className="gf-inspector-kind">{isN ? "Node" : "Relationship"}</div>
       <div className="gf-inspector-id">id: {selected.data.id}</div>
       {!isN && (
         <div className="gf-inspector-endpoints">
-          <span style={{ color: labelColor(selected.data.startNode.label) }}>
-            {selected.data.startNode.label}
+          <span style={{ color: colorOverrides[(selected.data as GEdge).startNode.label] ?? labelColor((selected.data as GEdge).startNode.label) }}>
+            {(selected.data as GEdge).startNode.label}
           </span>
           {" → "}
-          <span style={{ color: labelColor(selected.data.endNode.label) }}>
-            {selected.data.endNode.label}
+          <span style={{ color: colorOverrides[(selected.data as GEdge).endNode.label] ?? labelColor((selected.data as GEdge).endNode.label) }}>
+            {(selected.data as GEdge).endNode.label}
           </span>
         </div>
       )}
-      {Object.keys(props).length === 0 ? (
-        <div className="gf-inspector-no-props">No properties</div>
-      ) : (
+      {inspView === "details" && (
+        Object.keys(props).length === 0 ? (
+          <div className="gf-inspector-no-props">No properties</div>
+        ) : (
+          <table className="gf-inspector-table">
+            <tbody>
+              {Object.entries(props).map(([k, v]) => (
+                <tr key={k}>
+                  <td className="gf-prop-key">{k}</td>
+                  <td className="gf-prop-val">{String(v)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      )}
+      {inspView === "table" && (
         <table className="gf-inspector-table">
           <tbody>
-            {Object.entries(props).map(([k, v]) => (
+            {Object.entries(allFields).map(([k, v]) => (
               <tr key={k}>
                 <td className="gf-prop-key">{k}</td>
                 <td className="gf-prop-val">{String(v)}</td>
@@ -133,6 +192,9 @@ function Inspector({ selected }: InspectorProps) {
             ))}
           </tbody>
         </table>
+      )}
+      {inspView === "json" && (
+        <pre className="gf-inspector-json">{JSON.stringify(selected.data, null, 2)}</pre>
       )}
     </div>
   );
@@ -143,11 +205,14 @@ interface CanvasProps {
   nodes: Map<string, GNode>;
   edges: Map<string, GEdge>;
   onSelect: (item: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null) => void;
+  colorOverrides: Record<string, string>;
 }
 
-function GraphCanvas({ nodes, edges, onSelect }: CanvasProps) {
+function GraphCanvas({ nodes, edges, onSelect, colorOverrides }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  const colorOverridesRef = useRef(colorOverrides);
+  colorOverridesRef.current = colorOverrides;
 
   const fitView = useCallback(() => cyRef.current?.fit(undefined, 40), []);
 
@@ -173,7 +238,10 @@ function GraphCanvas({ nodes, edges, onSelect }: CanvasProps) {
         {
           selector: "node",
           style: {
-            "background-color": (ele: NodeSingular) => labelColor(ele.data("label") as string),
+            "background-color": (ele: NodeSingular) => {
+              const lbl = ele.data("label") as string;
+              return colorOverridesRef.current[lbl] ?? labelColor(lbl);
+            },
             "label": (ele: NodeSingular) => {
               const n = ele.data("_node") as GNode | undefined;
               if (!n) return String(ele.data("label") ?? "");
@@ -257,6 +325,16 @@ function GraphCanvas({ nodes, edges, onSelect }: CanvasProps) {
     };
   }, [nodes, edges]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Update node colors when colorOverrides changes without rebuilding the graph
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.nodes().forEach((node) => {
+      const lbl = node.data("label") as string;
+      node.style("background-color", colorOverridesRef.current[lbl] ?? labelColor(lbl));
+    });
+  }, [colorOverrides]);
+
   return (
     <div className="gf-canvas-wrap">
       <div ref={containerRef} className="gf-canvas" />
@@ -270,6 +348,12 @@ function GraphCanvas({ nodes, edges, onSelect }: CanvasProps) {
 }
 
 // ── Table view ────────────────────────────────────────────────────────────────
+function cellText(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
 function TableView({ columns, rows }: { columns: string[]; rows: Record<string, unknown>[] }) {
   if (rows.length === 0) return <div className="gf-table-empty">No rows</div>;
   return (
@@ -282,7 +366,7 @@ function TableView({ columns, rows }: { columns: string[]; rows: Record<string, 
           {rows.map((r, i) => (
             <tr key={i}>
               {columns.map((c) => (
-                <td key={c}>{JSON.stringify(r[c])}</td>
+                <td key={c}>{cellText(r[c])}</td>
               ))}
             </tr>
           ))}
@@ -296,78 +380,122 @@ function TableView({ columns, rows }: { columns: string[]; rows: Record<string, 
 interface GraphFrameProps {
   frame: FrameData;
   onClose: (id: string) => void;
+  onRerun: (id: string, query: string) => void;
 }
 
-export function GraphFrame({ frame, onClose }: GraphFrameProps) {
-  const [view, setView] = useState<"graph" | "table">("graph");
+export function GraphFrame({ frame, onClose, onRerun }: GraphFrameProps) {
+  const [view, setView] = useState<"graph" | "table" | "json">("graph");
   const [selected, setSelected] = useState<{ kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [colorOverrides, setColorOverrides] = useState<Record<string, string>>({});
+  const [inspectorWidth, setInspectorWidth] = useState(260);
+  const [editQuery, setEditQuery] = useState(frame.query);
+  const inspWidthRef = useRef(inspectorWidth);
+  inspWidthRef.current = inspectorWidth;
+
+  const handleColorChange = (label: string, color: string) =>
+    setColorOverrides((prev) => ({ ...prev, [label]: color }));
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = inspWidthRef.current;
+    const onMove = (me: MouseEvent) => {
+      setInspectorWidth(Math.max(160, Math.min(480, startW + (startX - me.clientX))));
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }, []);
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
-  const activeView = hasGraph ? view : "table";
+  const activeView: "graph" | "table" | "json" = hasGraph ? view : (view === "json" ? "json" : "table");
 
-  return (
-    <div className="gf-frame">
-      {/* Header */}
-      <div className="gf-header">
-        <div className="gf-header-query">{frame.query}</div>
-        <div className="gf-header-meta">
-          {frame.status === "loading" && <span className="gf-loading">Running…</span>}
-          {frame.status === "done" && (
-            <span className="gf-meta-text">
-              {frame.nodes.size} nodes · {frame.edges.size} rels
-              {frame.elapsed !== undefined && ` · ${frame.elapsed}ms`}
-            </span>
-          )}
-          {frame.status === "error" && <span className="gf-meta-error">Error</span>}
-        </div>
-        <div className="gf-header-actions">
-          {hasGraph && (
-            <>
-              <button
-                className={`gf-view-btn ${activeView === "graph" ? "active" : ""}`}
-                onClick={() => setView("graph")}
-                title="Graph view"
-              >
-                ⬡
-              </button>
-              <button
-                className={`gf-view-btn ${activeView === "table" ? "active" : ""}`}
-                onClick={() => setView("table")}
-                title="Table view"
-              >
-                ⊞
-              </button>
-            </>
-          )}
+  const renderHeader = (isModal: boolean) => (
+    <div className="gf-header">
+      <input
+        className="gf-header-query-input"
+        value={editQuery}
+        onChange={(e) => setEditQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onRerun(frame.id, editQuery.trim()); }
+        }}
+        spellCheck={false}
+      />
+      <div className="gf-header-meta">
+        {frame.status === "loading" && <span className="gf-loading">Running…</span>}
+        {frame.status === "done" && (
+          <span className="gf-meta-text">
+            {frame.nodes.size} nodes · {frame.edges.size} rels
+            {frame.elapsed !== undefined && ` · ${frame.elapsed}ms`}
+          </span>
+        )}
+        {frame.status === "error" && <span className="gf-meta-error">Error</span>}
+      </div>
+      <div className="gf-header-actions">
+        <button className="gf-run-inline-btn" onClick={() => onRerun(frame.id, editQuery.trim())} title="Run">▶</button>
+        {hasGraph && (
+          <button className={`gf-view-btn ${activeView === "graph" ? "active" : ""}`}
+                  onClick={() => setView("graph")} title="Graph">⬡</button>
+        )}
+        <button className={`gf-view-btn ${activeView === "table" ? "active" : ""}`}
+                onClick={() => setView("table")} title="Table">⊞</button>
+        <button className={`gf-view-btn ${activeView === "json" ? "active" : ""}`}
+                onClick={() => setView("json")} title="JSON">{"{}"}</button>
+        {!isModal && (
+          <button className="gf-icon-btn" onClick={() => setExpanded(true)} title="Expand">⤢</button>
+        )}
+        {isModal && (
+          <button className="gf-icon-btn" onClick={() => setExpanded(false)} title="Exit full screen">⤡</button>
+        )}
+        {!isModal && (
           <button className="gf-icon-btn" onClick={() => setCollapsed((c) => !c)} title={collapsed ? "Expand" : "Collapse"}>
             {collapsed ? "▼" : "▲"}
           </button>
-          <button className="gf-icon-btn" onClick={() => onClose(frame.id)} title="Close">✕</button>
-        </div>
+        )}
+        <button className="gf-icon-btn" onClick={() => onClose(frame.id)} title="Close">✕</button>
       </div>
+    </div>
+  );
 
-      {/* Body */}
-      {!collapsed && (
-        <div className="gf-body">
-          {frame.status === "error" && (
-            <div className="gf-error">{frame.error}</div>
-          )}
-          {frame.status !== "error" && activeView === "graph" && (
-            <div className="gf-graph-area">
-              <GraphCanvas
-                nodes={frame.nodes}
-                edges={frame.edges}
-                onSelect={setSelected}
-              />
-              <Inspector selected={selected} />
-            </div>
-          )}
-          {frame.status !== "error" && activeView === "table" && (
-            <TableView columns={frame.columns} rows={frame.rows} />
-          )}
+  const frameBody = (
+    <div className="gf-body">
+      {frame.status === "error" && <div className="gf-error">{frame.error}</div>}
+      {frame.status !== "error" && activeView === "graph" && (
+        <div className="gf-graph-area">
+          <GraphCanvas nodes={frame.nodes} edges={frame.edges} onSelect={setSelected} colorOverrides={colorOverrides} />
+          <Inspector selected={selected} colorOverrides={colorOverrides} onColorChange={handleColorChange}
+                     width={inspectorWidth} onResizeStart={handleResizeStart} />
         </div>
       )}
+      {frame.status !== "error" && activeView === "table" && (
+        <TableView columns={frame.columns} rows={frame.rows} />
+      )}
+      {frame.status !== "error" && activeView === "json" && (
+        <pre className="gf-json-view">{JSON.stringify(frame.rows, null, 2)}</pre>
+      )}
     </div>
+  );
+
+  return (
+    <>
+      <div className="gf-frame">
+        {renderHeader(false)}
+        {!collapsed && !expanded && frameBody}
+      </div>
+      {expanded && createPortal(
+        <div className="gf-modal-overlay" onClick={() => setExpanded(false)}>
+          <div className="gf-modal-frame" onClick={(e) => e.stopPropagation()}>
+            {renderHeader(true)}
+            {frameBody}
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }

@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -45,19 +45,38 @@ class CypherRequest(BaseModel):
     params: dict[str, Any] = {}
 
 
-@router.post("/query/cypher")
-async def cypher_query(body: CypherRequest, request: Request) -> JSONResponse:
+@router.post("/data/cypher")
+async def cypher_query(
+    body: CypherRequest,
+    request: Request,
+    query_id: str | None = Query(None),
+) -> JSONResponse:
     """Execute a Cypher read query and return typed rows."""
     from provisa.api.app import state
-    from provisa.cypher.parser import parse_cypher, CypherParseError
-    from provisa.cypher.label_map import CypherLabelMap
-    from provisa.cypher.translator import cypher_to_sql, CypherCrossSourceError, CypherTranslateError
-    from provisa.cypher.graph_rewriter import apply_graph_rewrites
-    from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
-    from provisa.cypher.assembler import assemble_rows, to_serializable
-    from provisa.compiler.rls import RLSContext
-    from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_trino_physical
-    from provisa.compiler.stage2 import apply_governance, build_governance_context
+
+    if query_id:
+        from provisa.api.flight.catalog import fetch_approved_queries_async
+        from provisa.api.data.endpoint_dev import QueryRequest, unified_query_endpoint
+        queries = await fetch_approved_queries_async(state)
+        matched = next((q for q in queries if q.stable_id == query_id), None)
+        if matched is None:
+            return JSONResponse(status_code=404, content={"error": f"Approved query not found: {query_id!r}"})
+        query_req = QueryRequest(query=matched.query_text or "", role=_resolve_role_id(request, state))
+        return await unified_query_endpoint(request, query_req, x_provisa_role=None)
+
+    try:
+        from provisa.cypher.parser import parse_cypher, CypherParseError
+        from provisa.cypher.label_map import CypherLabelMap
+        from provisa.cypher.translator import cypher_to_sql, CypherCrossSourceError, CypherTranslateError
+        from provisa.cypher.graph_rewriter import apply_graph_rewrites
+        from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
+        from provisa.cypher.assembler import assemble_rows, to_serializable
+        from provisa.compiler.rls import RLSContext
+        from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_trino_physical
+        from provisa.compiler.stage2 import apply_governance, build_governance_context
+    except Exception as exc:
+        log.exception("Cypher imports failed")
+        return JSONResponse(status_code=500, content={"error": f"Import failed: {exc}"})
 
     # Resolve role → use default role_id
     role_id = _resolve_role_id(request, state)
@@ -71,7 +90,14 @@ async def cypher_query(body: CypherRequest, request: Request) -> JSONResponse:
         from provisa.cypher.label_map import CypherLabelMap
         label_map = CypherLabelMap.from_schema(ctx)
         if _proc == "db.labels":
-            rows = [{"label": n.label} for n in sorted(label_map.nodes.values(), key=lambda x: x.label)]
+            # Return individual domain labels + table labels (multi-label nodes).
+            # Each node contributes up to two labels; deduplicate and sort.
+            all_labels: set[str] = set()
+            for nm in label_map.nodes.values():
+                if nm.domain_label:
+                    all_labels.add(nm.domain_label)
+                all_labels.add(nm.table_label)
+            rows = [{"label": lbl} for lbl in sorted(all_labels)]
             return JSONResponse(content={"columns": ["label"], "rows": rows})
         if _proc == "db.relationshiptypes":
             rows = [{"relationshipType": r.rel_type} for r in sorted(label_map.relationships.values(), key=lambda x: x.rel_type)]
@@ -108,7 +134,11 @@ async def cypher_query(body: CypherRequest, request: Request) -> JSONResponse:
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
     # Stage 2: Graph type rewriter
-    sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
+    try:
+        sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
+    except Exception as exc:
+        log.exception("Cypher graph rewrite failed")
+        return JSONResponse(status_code=500, content={"error": f"Graph rewrite failed: {exc}"})
 
     # Render to SQL string (postgres dialect; make_semantic_sql handles catalog-qualified refs)
     try:
@@ -119,15 +149,23 @@ async def cypher_query(body: CypherRequest, request: Request) -> JSONResponse:
         return JSONResponse(status_code=500, content={"error": f"SQL generation failed: {exc}"})
 
     # Stage 3: Governance — semantic SQL → apply RLS/masking/visibility
-    rls = state.rls_contexts.get(role_id, RLSContext.empty())
-    gov_ctx = build_governance_context(
-        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
-    )
-    semantic_sql = make_semantic_sql(sql_str, ctx)
-    governed_sql = apply_governance(semantic_sql, gov_ctx)
+    try:
+        rls = state.rls_contexts.get(role_id, RLSContext.empty())
+        gov_ctx = build_governance_context(
+            role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
+        )
+        semantic_sql = make_semantic_sql(sql_str, ctx)
+        governed_sql = apply_governance(semantic_sql, gov_ctx)
+    except Exception as exc:
+        log.exception("Cypher governance failed")
+        return JSONResponse(status_code=500, content={"error": f"Governance failed: {exc}"})
 
     # Stage 4: Rewrite to Trino-physical (catalog.schema.table)
-    exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
+    try:
+        exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
+    except Exception as exc:
+        log.exception("Cypher physical rewrite failed")
+        return JSONResponse(status_code=500, content={"error": f"Physical rewrite failed: {exc}"})
 
     # Transpile to Trino dialect
     try:
@@ -152,13 +190,17 @@ async def cypher_query(body: CypherRequest, request: Request) -> JSONResponse:
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": f"Assembly failed: {exc}"})
 
-    columns = list(rows[0].keys()) if rows else []
-    serializable_rows = [to_serializable(r) for r in assembled]
+    try:
+        columns = list(rows[0].keys()) if rows else []
+        serializable_rows = [to_serializable(r) for r in assembled]
+    except Exception as exc:
+        log.exception("Cypher serialization failed")
+        return JSONResponse(status_code=500, content={"error": f"Serialization failed: {exc}"})
 
     return JSONResponse(content={"columns": columns, "rows": serializable_rows})
 
 
-@router.get("/query/graph-schema")
+@router.get("/data/graph-schema")
 async def graph_schema(request: Request) -> JSONResponse:
     """Return node labels and relationship types for the current role."""
     from provisa.api.app import state
@@ -173,7 +215,9 @@ async def graph_schema(request: Request) -> JSONResponse:
     return JSONResponse(content={
         "node_labels": [
             {
-                "label": n.label,
+                "label": n.label,          # e.g. "SalesAnalytics:Orders"
+                "domain_label": n.domain_label,  # e.g. "SalesAnalytics" or null
+                "table_label": n.table_label,    # e.g. "Orders"
                 "properties": list(n.properties.keys()),
             }
             for n in label_map.nodes.values()
@@ -200,8 +244,6 @@ def _resolve_role_id(request: Request, state: object) -> str:
 
 async def _execute(sql: str, params: list, state: object) -> list[dict]:
     """Execute SQL against the federation engine and return rows as dicts."""
-    from provisa.executor.drivers.postgresql import run_query_pg
-
     trino_conn = getattr(state, "trino_conn", None)
     if trino_conn is None:
         raise RuntimeError("Federation engine not connected")
