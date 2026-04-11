@@ -65,24 +65,58 @@ Auto-generated `.proto` from the data schema. Streaming queries (one message per
 
 ## Request Pipeline
 
-```
-parse → compile → RLS inject → masking inject → MV rewrite → sampling
-  → cache check → route → transpile → execute → cache store → serialize → format
+Three query languages are accepted. All converge at governance after their respective parse/compile steps. Only GraphQL supports writes.
+
+| Interface | Reads | Writes | Capability required |
+|---|---|---|---|
+| GraphQL (`/data/graphql`) | Yes | Yes (mutations) | Standard role |
+| SQL (`/data/sql`) | Yes | No | `query_development` |
+| Cypher (`/data/query`) | Yes | No | Standard role |
+
+```mermaid
+flowchart TD
+    A[GraphQL Request] --> B[Auth / Role Resolution]
+    A2[SQL Request] --> B
+    A3[Cypher Request] --> B
+    B --> C{Governed Query?}
+    C -- queryId --> D[Fetch from Registry]
+    C -- inline --> E[APQ Hash Check]
+    D --> F[Parse & Validate]
+    E --> F
+    F --> G[Extract Directives / Hints]
+    G --> H{Cache Hit?}
+    H -- yes --> R
+    H -- no --> I{Input Type}
+    I -- GraphQL --> I1[Compile → Semantic SQL]
+    I -- SQL --> I2[Parse & Validate SQL\nApply Namespace / Source Binding]
+    I -- Cypher --> I3[Translate Cypher → SQLGlot AST\nResolve Node / Rel Mappings]
+    I1 --> J[Governance: RLS + Masking + Visibility + Sampling]
+    I2 --> J
+    I3 --> J
+    J --> K[MV Rewrite]
+    K --> L{Route}
+    L -- Direct --> M[Transpile → Source Dialect\nExecute via Driver]
+    L -- Trino --> N[Transpile → Trino SQL\nInject Session Hints\nExecute via Trino / Flight]
+    L -- Materialize --> O[Fetch from REST / GraphQL / gRPC\nMaterialize → S3 Parquet\nPost-filter via Trino]
+    L -- Mutation --> P[RLS Injection\nTranspile → Source Dialect\nExecute via Driver\nInvalidate Cache + MV\nEmit Change Event]
+    M --> Q{Redirect?}
+    N --> Q
+    O --> Q
+    Q -- yes --> S[Upload to S3\nReturn Signed URL]
+    Q -- no --> R[Serialize: JSON / CSV / Parquet / Arrow]
+    R --> T[Store in Cache]
+    T --> U[Return to Client]
+    P --> U
 ```
 
-1. **Parse**: Validate GraphQL against role's schema
-2. **Compile**: GraphQL AST → single PG-style SQL (no N+1)
-3. **RLS Inject**: AND per-table, per-role WHERE clauses
-4. **Masking Inject**: Replace SELECT columns with mask expressions
-5. **MV Rewrite**: Substitute JOIN patterns with materialized view tables
-6. **Sampling**: Cap LIMIT for non-full_results roles
-7. **Cache Check**: Look up Redis for identical query+role+RLS key
-8. **Route**: Single RDBMS → direct driver; multi-source/NoSQL → Federation engine
-9. **Transpile**: SQLGlot converts PG SQL to target dialect
-10. **Execute**: Via direct driver pool, federation REST, or federation Flight SQL
-11. **Cache Store**: Store result in Redis with TTL
-12. **Serialize**: Flat SQL rows → nested GraphQL JSON (or Arrow pass-through)
-13. **Format/Redirect**: Inline response or S3 redirect (see below)
+**Route decisions:**
+
+| Route | When |
+|---|---|
+| **Direct** | Single source + has native driver + has Trino connector |
+| **Trino** | Multi-source federation, or source has connector but no driver |
+| **Materialize** | Source has no Trino connector — fetch and cache to S3/PG first |
+| **Mutation** | GraphQL mutation — always direct, never federated |
 
 ### Multi-Root Queries
 

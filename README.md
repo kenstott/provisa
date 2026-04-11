@@ -1,60 +1,58 @@
 # Provisa
 
-Config-driven data virtualization platform. A single governed API over heterogeneous data sources — query it with **GraphQL or SQL**, consume it over gRPC, REST, Arrow Flight, or JDBC. Row-level security, column masking, and query approval apply regardless of which query language you use.
+Config-driven data virtualization platform. A single governed API over heterogeneous data sources — query it with **GraphQL, Cypher, Proto or SQL**, consume it over **gRPC, REST, Arrow Flight, or JDBC**. Row-level security, column masking, and query approval apply regardless of query language or transport.
 
-**Operational performance** — Single-source queries execute directly against the source driver (target: sub-100ms). Multi-source queries federate transparently. Result caching, materialized view rewriting, and Arrow Flight columnar streaming scale with your workload.
+Single-source queries execute directly against the source driver (target: sub-100ms). Multi-source queries federate transparently. Result caching, materialized view rewriting, and Arrow Flight columnar streaming scale with your workload.
 
 ## Features
 
 ### Query & API
-- **GraphQL and SQL** — Both are first-class query languages; governance, RLS, and column masking apply to both; detected automatically by all client interfaces
-- **GraphQL API** — Per-role schemas with field-level visibility, filtering, pagination, relationships
-- **Cursor-based pagination** — Relay-style `first`/`after`/`last`/`before` arguments on all list queries; returns `pageInfo` with `hasNextPage`, `hasPreviousPage`, `startCursor`, `endCursor`
-- **Aggregate queries** — Auto-generated `{table}_aggregate` types with `count`, `sum`, `avg`, `min`, `max` per numeric column and filtered `nodes` access
-- **Apollo APQ** — Apollo Automatic Persisted Queries wire protocol; Redis-backed hash→query cache; Apollo Client gets automatic deduplication via `extensions.persistedQuery` with no code changes
-- **Enum auto-detection** — Small lookup tables (≤ configured threshold rows) are automatically exposed as GraphQL enum types rather than string scalars
-- **gRPC endpoint** — Auto-generated `.proto` from registration model, streaming responses
-- **REST endpoints** — Auto-generated REST routes from approved queries
-- **JSON:API endpoints** — Auto-generated JSON:API routes with pagination, relationships, error objects
-- **SSE subscriptions** — Real-time push via pluggable providers (change events, polling)
+- **GraphQL, Cypher and SQL** — First-class query languages; governance, RLS, and column masking apply to all; auto-detected by all client interfaces
+- **Natural language query** — NL→SQL/Cypher/GraphQL pipeline powered by Claude with an interactive validation loop
+- **GraphQL API** — Per-role schemas with field-level visibility, filtering, cursor-based pagination, and aggregate queries (`count`, `sum`, `avg`, `min`, `max`)
+- **Apollo APQ** — Automatic Persisted Queries; Redis-backed hash→query cache; zero client changes required
+- **Enum auto-detection** — Lookup tables below a configurable row threshold are exposed as GraphQL enum types
+- **gRPC endpoint** — Auto-generated `.proto` from the registration model; streaming responses
+- **REST & JSON:API endpoints** — Auto-generated routes from approved queries; JSON:API includes pagination, relationships, and error objects
+- **Subscriptions** — Near-real-time change events over WebSocket, SSE, or Kafka; backends: PG native, MongoDB native, Debezium CDC, polling
 
 ### Data Sources
-- **Multi-source federation** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, and 30+ more through a single API
-- **Smart routing** — Single-source queries execute directly (sub-100ms); multi-source queries federate transparently via Trino-compatible federation — bring your own Trino or Trino-compatible cluster to scale out
-- **Federation performance hints** — Query-level routing hints embedded as SQL comments override automatic routing decisions for performance tuning
-- **API sources** — Register REST/GraphQL/gRPC endpoints as queryable tables
-- **Remote GraphQL schemas** — Point at any external GraphQL endpoint; Provisa introspects it, auto-registers Query fields as virtual tables and Mutation fields as tracked functions, and caches results in Redis. Full governance (RLS, masking, domain access) applied on top. No per-field remote hop on cache hit — significantly faster than Hasura remote schemas.
-- **OpenAPI auto-registration** — Point at any OpenAPI 3.x or Swagger 2.0 spec (local file path or remote URL); GET operations become virtual query tables, POST/PUT/PATCH/DELETE operations become tracked mutations. If no spec is available, author one manually in the admin UI. GET results are cached in Redis; full governance applied to all results.
-- **Graph sources** — Neo4j (Cypher) and SPARQL 1.1 triplestores registered via admin API; results cached and federable with relational sources
-- **Kafka integration** — Topics as read-only tables, query results as Kafka sinks
-- **Scheduled triggers** — Cron and interval-based triggers (via APScheduler) that fire webhooks, mutations, or Kafka sink publishes; configured via the admin API or YAML config
+- **30+ source types** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, and more through a single API
+- **Smart routing** — Single-source queries bypass federation (sub-100ms); multi-source queries route through Trino-compatible federation — bring your own cluster or use the embedded workers
+- **API sources** — Register REST, GraphQL, gRPC, WebSocket, or RSS endpoints as queryable tables; SPARQL helpers included
+- **Remote schema introspection** — Point at any GraphQL/OpenAPI/gRPC endpoint; Provisa introspects, registers, and caches results in Parquet with full governance applied on top
+- **File sources** — CSV, Parquet, and SQLite files as queryable tables; supports local paths and remote object storage (`s3://`, `ftp://`, `sftp://`)
+- **Kafka integration** — Topics as read-only tables; query results as Kafka sinks
+- **Scheduled triggers** — Cron and interval triggers (APScheduler) that fire webhooks, mutations, or Kafka sink publishes
+- **Federation performance hints** — SQL-comment routing hints override automatic routing decisions
 
 ### Security & Governance
 - **Row-level security** — Per-table, per-role WHERE clause injection
-- **Column masking** — Per-column data masking (regex, constant, truncate) with role-based bypass
-- **Column presets** — Server-side preset values (static or session variable references) applied automatically on insert/update without exposing them in the mutation input type
+- **Column masking** — Per-column masking (regex, constant, truncate) with role-based bypass
+- **Column presets** — Server-side static or session-variable values injected on insert/update; not exposed in mutation input types
 - **Write permissions** — Per-column mutation access control (`writable_by`)
-- **Tracked functions & webhooks** — DB functions and outbound webhooks exposed as GraphQL mutations; return types can be a registered table or a custom JSON Schema shape defined inline
-- **Governed query registry** — Pre-approved named queries with approval workflow, role-scoped execution, and ceiling enforcement. Each approved query is a **virtual table**: scopeable, joinable with other approved queries, and addressable by `stable_id`. Direct execution by name (`GET /data/graphql?queryId=<stable_id>`) returns the full result set over a cacheable GET — complementary to Apollo APQ but independent of it
-- **Inherited roles** — Roles can inherit from a parent role, recursively inheriting RLS rules, column visibility, and masking policies; avoids duplicating permission sets across similar roles
-- **ABAC approval hook** — Pluggable external authorization hook called before query execution; supports webhook, gRPC, and unix_socket transports; scoped per-table, per-source, or globally; configurable fallback policy when hook is unavailable
+- **Inherited roles** — Roles inherit RLS, visibility, and masking from a parent role recursively
+- **Governed query registry** — Approved named queries with approval workflow, ceiling enforcement, and role-scoped execution. Each approved query is a virtual table: scopeable, joinable, and addressable by `stable_id` via a cacheable GET
+- **Tracked functions & webhooks** — DB functions and outbound webhooks exposed as GraphQL mutations with typed return shapes
+- **ABAC approval hook** — Pre-execution authorization hook; webhook, gRPC, or unix_socket transport; per-table, per-source, or global scope; configurable fallback policy
 - **Pluggable auth** — Firebase, Keycloak, OAuth 2.0, simple (testing)
 
 ### Delivery & Performance
 - **Output formats** — JSON, NDJSON, CSV, Parquet, Apache Arrow
-- **Arrow Flight** — gRPC streaming for high-throughput columnar delivery (unbounded, no materialization)
-- **Query caching** — Role+RLS-partitioned result caching
-- **Materialized views** — Transparent SQL rewriting for JOIN optimization
-- **Large result redirect** — Threshold-based S3 redirect for large result sets
+- **Arrow Flight** — High-throughput columnar streaming over gRPC; unbounded, no server-side materialization
+- **Query caching** — Role+RLS-partitioned Redis result cache; APQ hash cache included
+- **Materialized views** — Transparent SQL rewriting for JOIN optimization; FRESH/STALE/REFRESHING lifecycle with scheduled refresh
+- **Large result redirect** — Threshold-based S3 redirect for oversized result sets
+- **OpenTelemetry** — Distributed tracing and metrics across all components; FastAPI, Redis, AsyncPG, gRPC auto-instrumented
 
 ### Administration & Integration
-- **Admin API** — Strawberry GraphQL at `/admin/graphql` — config upload/download, relationship editing, AI-assisted FK suggestions, query approval
-- **GraphQL Voyager** — Built-in interactive schema visualization accessible from the admin UI; renders the role-scoped schema as an interactive entity relationship diagram
-- **LLM relationship discovery** — Claude-powered FK candidate suggestion
-- **JDBC driver** — BI tool integration (Tableau, PowerBI, DBeaver): `approved` and `catalog` modes
-- **Python client** — `pip install provisa-client`; GraphQL queries → DataFrames, Arrow Flight → pyarrow Tables
-- **Hasura v2 import** — Convert Hasura v2 metadata YAML to Provisa config
-- **DDN import** — Convert Hasura DDN supergraph metadata to Provisa config
+- **Admin API** — Strawberry GraphQL at `/admin/graphql`; config upload/download, relationship editing, query approval
+- **GraphQL Voyager** — Interactive role-scoped schema visualization as an entity-relationship diagram
+- **LLM relationship discovery** — Claude-powered foreign key candidate suggestions
+- **JDBC driver** — BI tool integration (Tableau, Power BI, DBeaver) in `approved` or `catalog` mode
+- **Python client** — `pip install provisa-client`; GraphQL/SQL → DataFrames, Arrow Flight → pyarrow Tables, SQLAlchemy dialect, ADBC support
+- **Data ingestion** — HTTP endpoints for pushing JSON event data into the platform
+- **Hasura v2 / DDN import** — Convert Hasura v2 metadata or DDN supergraph YAML to Provisa config
 - **Apollo Federation** — Expose Provisa as an Apollo Federation v2 subgraph
 
 ## Quick Start
@@ -201,7 +199,7 @@ See [docs/python-client.md](docs/python-client.md) for full reference.
 
 | Topic | Doc |
 |-------|-----|
-| Step-by-step getting started | [docs/quickstart.md](docs/quickstart.md) |
+| Developer quick start (running from source) | [docs/quickstart.md](docs/quickstart.md) |
 | Full YAML configuration reference | [docs/configuration.md](docs/configuration.md) |
 | Endpoint reference (GraphQL, REST, Flight, gRPC) | [docs/api-reference.md](docs/api-reference.md) |
 | System design and component map | [docs/architecture.md](docs/architecture.md) |

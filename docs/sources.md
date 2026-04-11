@@ -1,5 +1,23 @@
 # Source Types
 
+## Execution Model
+
+Every query ultimately executes through Trino, which provides federation across all sources. Sources fall into three categories based on their connectivity:
+
+| Category | Has Direct Driver | Has Trino Connector | Examples |
+|---|---|---|---|
+| **Direct-capable** | Yes | Yes | PostgreSQL, MySQL, MariaDB, SingleStore, SQL Server, Oracle, DuckDB |
+| **Trino only** | No | Yes | MongoDB, Cassandra, Redis, Kudu, Accumulo, Kafka, Delta Lake, Iceberg, Hive, Snowflake, BigQuery, Databricks, Redshift, ClickHouse, Elasticsearch, Pinot, Druid, Exasol, Prometheus, Google Sheets |
+| **Materialize → Trino** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, local CSV, SQLite, local Parquet |
+
+**Direct-capable** sources can execute single-source queries via their native driver (sub-100ms), bypassing Trino overhead. They retain full Trino connector support so they participate in federation when joined with other sources.
+
+**Trino only** sources are always queried through Trino's connector layer. No direct driver exists.
+
+**Materialize** sources have no Trino connector. Provisa fetches their data (on startup or at query time) and caches it as Parquet in S3 or in PostgreSQL, making it reachable by Trino for federated queries.
+
+---
+
 ## All Sources
 
 Comprehensive reference for every source type Provisa supports. "Direct driver" means single-source queries execute against the source natively (sub-100ms). "Connector Name" is the federated connector used when the source participates in multi-source JOINs. Both can apply to the same source.
