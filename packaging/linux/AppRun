@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 APPDIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 SENTINEL="${HOME}/.provisa/.first-launch-complete"
+
 if [ ! -f "$SENTINEL" ]; then
-  "${APPDIR}/first-launch.sh"
+  "${APPDIR}/first-launch.sh" "$@"
 fi
+
+# Non-interactive (Terraform/cloud-init): systemd manages startup — exit cleanly.
+if [[ " $* " =~ " --non-interactive " ]]; then
+  exit 0
+fi
+
 exec "${APPDIR}/provisa-cli" "$@"

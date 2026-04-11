@@ -22,33 +22,35 @@ info() { printf "${CYAN}[build-appimage]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[build-appimage]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[build-appimage]${NC} %s\n" "$*" >&2; }
 
-# ── Pre-build provisa wheels for linux/amd64 (airgapped pip install) ──────────
-build_provisa_wheels() {
-  local wheels_dir="${SCRIPT_DIR}/tmp-provisa-wheels"
-  local stamp_file="${wheels_dir}/.pyproject_mtime"
-  # Skip if .whl files are already present (e.g. downloaded from CI artifact)
-  if [ -d "$wheels_dir" ] && ls "${wheels_dir}"/*.whl &>/dev/null 2>&1; then
-    info "Provisa wheels present ($(ls "${wheels_dir}"/*.whl | wc -l | tr -d ' ') wheels) — skipping build."
-    return
-  fi
+# ── Pre-build provisa image for linux/amd64 and save as tarball ───────────────
+# Source is never bundled into the AppImage — only the compiled image ships.
+build_provisa_image() {
+  local out="${IMAGES_DIR}/provisa-local.tar.gz"
+  local stamp_file="${IMAGES_DIR}/.provisa_mtime"
   local current_mtime
   current_mtime=$(stat -c '%Y' "${REPO_ROOT}/pyproject.toml" 2>/dev/null || echo "0")
-  if [ -d "$wheels_dir" ] && [ "$(ls -A "$wheels_dir" 2>/dev/null)" ] \
-     && [ -f "$stamp_file" ] && [ "$(cat "$stamp_file")" = "$current_mtime" ]; then
-    info "Provisa wheels cached — skipping."
+
+  if [ -f "$out" ] && [ -f "$stamp_file" ] && [ "$(cat "$stamp_file")" = "$current_mtime" ]; then
+    info "provisa-local.tar.gz cached — skipping build."
     return
   fi
-  rm -rf "$wheels_dir"
-  mkdir -p "$wheels_dir"
-  info "Building provisa wheels for linux/amd64 (requires network on build host)..."
-  # Copy source to writable tmpfs inside container — egg-info can't be written to :ro mount
-  docker run --rm --platform linux/amd64 \
-    -v "${REPO_ROOT}:/src:ro" \
-    -v "${wheels_dir}:/wheels" \
-    python:3.12-slim \
-    bash -c "cp -r /src /tmp/src && pip wheel --no-cache-dir --wheel-dir /wheels /tmp/src"
-  echo "$current_mtime" > "${wheels_dir}/.pyproject_mtime"
-  ok "Provisa wheels built ($(ls "$wheels_dir" | wc -l | tr -d ' ') wheels)."
+
+  if ! command -v docker &>/dev/null; then
+    err "docker not found — required to pre-build provisa image on packaging host"
+    exit 1
+  fi
+
+  info "Building provisa/provisa:local for linux/amd64 (source stays on build host)..."
+  docker build \
+    --platform linux/amd64 \
+    --tag provisa/provisa:local \
+    "${REPO_ROOT}"
+
+  info "Saving provisa/provisa:local → $(basename "$out")..."
+  mkdir -p "$IMAGES_DIR"
+  docker save provisa/provisa:local | gzip -9 > "$out"
+  echo "$current_mtime" > "$stamp_file"
+  ok "provisa image saved: ${out}"
 }
 
 # ── Prerequisites ──────────────────────────────────────────────────────────────
@@ -134,10 +136,6 @@ save_images() {
     docker save "$img" | gzip -9 > "$out"
     ok "  Saved: ${out}"
   done
-  info "  Building + saving zaychik..."
-  docker build -t provisa/zaychik:local "${REPO_ROOT}/zaychik"
-  docker save provisa/zaychik:local | gzip -9 > "${IMAGES_DIR}/zaychik-local.tar.gz"
-  ok "  Saved zaychik."
 }
 
 # ── Build AppDir ───────────────────────────────────────────────────────────────
@@ -160,9 +158,8 @@ build_appdir() {
      "${APPDIR}/bin/"
   chmod +x "${APPDIR}/bin/"*
 
-  # Copy image tarballs — exclude provisa-local.tar.gz (built at first-launch)
+  # Copy all image tarballs including provisa-local.tar.gz (pre-built, no source shipped)
   for f in "${IMAGES_DIR}"/*.tar.gz; do
-    [[ "$(basename "$f")" == "provisa-local.tar.gz" ]] && continue
     cp "$f" "${APPDIR}/images/"
   done
 
@@ -173,20 +170,6 @@ build_appdir() {
   cp -r "${REPO_ROOT}/config"                "${APPDIR}/compose/config"
   cp -r "${REPO_ROOT}/db"                    "${APPDIR}/compose/db"
   cp -r "${REPO_ROOT}/trino"                 "${APPDIR}/compose/trino"
-
-  # Bundle provisa source for first-launch image build
-  mkdir -p "${APPDIR}/provisa-source"
-  cp "${REPO_ROOT}/Dockerfile"    "${APPDIR}/provisa-source/"
-  cp "${REPO_ROOT}/main.py"        "${APPDIR}/provisa-source/"
-  cp "${REPO_ROOT}/pyproject.toml" "${APPDIR}/provisa-source/"
-  cp -r "${REPO_ROOT}/provisa"    "${APPDIR}/provisa-source/provisa"
-  # Embed pre-built wheels so Dockerfile pip install needs no network
-  local wheels_src="${SCRIPT_DIR}/tmp-provisa-wheels"
-  if [ ! -d "$wheels_src" ] || [ -z "$(ls -A "$wheels_src" 2>/dev/null)" ]; then
-    err "No wheels found in ${wheels_src} — run build_provisa_wheels() first."
-    exit 1
-  fi
-  cp -r "$wheels_src" "${APPDIR}/provisa-source/wheels"
 
   # Copy CLI and launch scripts
   cp "${REPO_ROOT}/scripts/provisa"         "${APPDIR}/provisa-cli"
@@ -232,7 +215,7 @@ main() {
 
   check_prereqs
   bundle_docker
-  build_provisa_wheels
+  build_provisa_image
   save_images
   build_appdir
   create_appimage

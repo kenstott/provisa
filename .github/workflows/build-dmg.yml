@@ -18,6 +18,7 @@ jobs:
       dmg_name: ${{ steps.meta.outputs.dmg_name }}
       linux_name: ${{ steps.meta.outputs.linux_name }}
       windows_name: ${{ steps.meta.outputs.windows_name }}
+      ova_name: ${{ steps.meta.outputs.ova_name }}
       jdbc_name: ${{ steps.meta.outputs.jdbc_name }}
       py_version: ${{ steps.meta.outputs.py_version }}
     steps:
@@ -48,6 +49,7 @@ jobs:
           echo "dmg_name=Provisa-${TAG}-macOS.dmg"                  >> "$GITHUB_OUTPUT"
           echo "linux_name=Provisa-${TAG}-linux-x86_64.AppImage"    >> "$GITHUB_OUTPUT"
           echo "windows_name=Provisa-${TAG}-windows-x64.exe"        >> "$GITHUB_OUTPUT"
+          echo "ova_name=Provisa-${TAG}-runtime.ova"                 >> "$GITHUB_OUTPUT"
           echo "jdbc_name=provisa-jdbc-${TAG}.jar"                   >> "$GITHUB_OUTPUT"
           echo "py_version=$PY_VERSION"                              >> "$GITHUB_OUTPUT"
 
@@ -169,6 +171,30 @@ jobs:
         with:
           name: provisa-runtime-ova
           path: provisa-runtime.ova
+          retention-days: 1
+          compression-level: 0
+
+  rename-ova:
+    name: Rename OVA with version
+    runs-on: ubuntu-latest
+    needs: [metadata, build-vm-image]
+    steps:
+      - name: Download OVA artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: provisa-runtime-ova
+          path: ova-dist/
+
+      - name: Rename OVA
+        run: |
+          mv ova-dist/provisa-runtime.ova \
+             "ova-dist/${{ needs.metadata.outputs.ova_name }}"
+
+      - name: Upload versioned OVA
+        uses: actions/upload-artifact@v4
+        with:
+          name: ova-dist
+          path: "ova-dist/${{ needs.metadata.outputs.ova_name }}"
           retention-days: 1
           compression-level: 0
 
@@ -468,7 +494,7 @@ jobs:
   publish-release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
-    needs: [metadata, build-dmg, build-linux, build-windows, build-jdbc, build-python-client, build-vm-image]
+    needs: [metadata, build-dmg, build-linux, build-windows, build-jdbc, build-python-client, rename-ova]
     permissions:
       contents: write
     steps:
@@ -502,6 +528,12 @@ jobs:
           name: python-client-dist
           path: release-assets/
 
+      - name: Download OVA
+        uses: actions/download-artifact@v4
+        with:
+          name: ova-dist
+          path: release-assets/
+
       - name: Delete existing release if present
         run: gh release delete "${{ github.ref_name }}" --yes || true
         env:
@@ -517,6 +549,7 @@ jobs:
             release-assets/${{ needs.metadata.outputs.dmg_name }}
             release-assets/${{ needs.metadata.outputs.linux_name }}
             release-assets/${{ needs.metadata.outputs.windows_name }}
+            release-assets/${{ needs.metadata.outputs.ova_name }}
             release-assets/${{ needs.metadata.outputs.jdbc_name }}
             release-assets/*.whl
           body: |
@@ -527,6 +560,7 @@ jobs:
             | `${{ needs.metadata.outputs.dmg_name }}` | macOS (Apple Silicon + Intel, airgapped) |
             | `${{ needs.metadata.outputs.linux_name }}` | Linux x86_64 (airgapped AppImage) |
             | `${{ needs.metadata.outputs.windows_name }}` | Windows x64 (airgapped installer) |
+            | `${{ needs.metadata.outputs.ova_name }}` | Alpine Linux OVA (VMware / VirtualBox runtime) |
             | `${{ needs.metadata.outputs.jdbc_name }}` | JDBC driver — Tableau, PowerBI, DBeaver |
             | `provisa_client-${{ needs.metadata.outputs.py_version }}-py3-none-any.whl` | Python client |
 
