@@ -16,7 +16,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from provisa.api.data.endpoint_dev import EnforcementMetadata, _build_enforcement_metadata
+from provisa.api.admin.dev_queries import EnforcementMetadata, _build_enforcement_metadata
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import (
     ColumnRef,

@@ -26,14 +26,15 @@ async def submit(
     developer_id: str,
     parameter_schema: dict | None = None,
     permitted_outputs: list[str] | None = None,
+    compiled_cypher: str | None = None,
 ) -> int:
     """Submit a query for approval. Returns the query ID."""
     row = await conn.fetchrow(
         """
         INSERT INTO persisted_queries
             (query_text, compiled_sql, target_tables, parameter_schema,
-             permitted_outputs, developer_id)
-        VALUES ($1, $2, $3, $4, $5, $6)
+             permitted_outputs, developer_id, compiled_cypher)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id
         """,
         query_text,
@@ -42,6 +43,7 @@ async def submit(
         json.dumps(parameter_schema) if parameter_schema else None,
         permitted_outputs or ["json"],
         developer_id,
+        compiled_cypher,
     )
     query_id = row["id"]
     await _log(conn, query_id, "submitted", developer_id)
@@ -89,6 +91,42 @@ async def deprecate(
     )
     await _log(conn, query_id, "deprecated", actor_id,
                reason=f"replacement: {replacement_stable_id}" if replacement_stable_id else None)
+
+
+async def reject(
+    conn: asyncpg.Connection,
+    query_id: int,
+    actor_id: str,
+    reason: str,
+) -> None:
+    """Reject a pending query with a mandatory reason."""
+    await conn.execute(
+        """
+        UPDATE persisted_queries
+        SET status = 'rejected', updated_at = NOW()
+        WHERE id = $1
+        """,
+        query_id,
+    )
+    await _log(conn, query_id, "rejected", actor_id, reason=reason)
+
+
+async def revoke(
+    conn: asyncpg.Connection,
+    query_id: int,
+    actor_id: str,
+) -> None:
+    """Revoke an approved query, returning it to pending for re-review."""
+    await conn.execute(
+        """
+        UPDATE persisted_queries
+        SET status = 'pending', stable_id = NULL, approved_by = NULL,
+            approved_at = NULL, updated_at = NOW()
+        WHERE id = $1
+        """,
+        query_id,
+    )
+    await _log(conn, query_id, "revoked", actor_id)
 
 
 async def flag_for_review(
