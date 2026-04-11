@@ -585,6 +585,10 @@ exporters:
 
   In approved mode, **data sources** are restricted to approved operations — but result manipulation is freely permitted. SQL: only approved virtual views as sources; JOINs, WHERE, GROUP BY, ORDER BY across those views are allowed; direct table references rejected. Cypher: `CALL approvedOp()` is the only data source; `MATCH` and direct node/relationship patterns are blocked; `YIELD`, `WITH`, `WHERE`, `RETURN`, `ORDER BY`, aggregation, and combining multiple `CALL`s are all permitted. GraphQL: approved-queries-only schema; unrecognised root fields rejected. gRPC/proto: approved-queries-only proto; unrecognised RPCs rejected. Part of Phase AW.
 
+## Semantic Layer / Semantic Model
+- **REQ-362** (2026-04-11): Provisa maintains one internal governed model — the **Semantic Layer** — that is the single source of truth for all metadata surfaces. The Semantic Layer is analogous to Hasura DDN's internal representation: governance is applied once to the model, and all surface representations (GraphQL schema, .proto file, Cypher labels/type catalogue, SQL column list) are derived from it. Governance rule: a role must have `domain_access` to the table's domain AND at least one visible column (`visible_to` includes the role) for the table to appear in any metadata surface. Tables passing this filter appear with only the columns the role can see — no full schema leakage.
+- **REQ-363** (2026-04-11): The SQLAlchemy dialect introspects table and column metadata via `POST /data/graphql` (GraphQL introspection query) instead of any admin or unfiltered endpoint. This ensures the dialect's `get_table_names()` and `get_columns()` responses are role-governed: the GraphQL server applies the Semantic Layer filter before returning the introspection result, so callers see only tables and columns their role is permitted to access.
+
 ## Phase AW Implementation Status
 
 Gaps resolved (2026-04-11):

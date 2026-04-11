@@ -63,6 +63,39 @@ from provisa_client.sqlalchemy_dialect import ProvisaDialect
 BASE = "http://localhost:8001"
 
 
+# Shared introspection response (mirrors /data/graphql GraphQL introspection format)
+_INTROSPECT_RESPONSE = {
+    "data": {
+        "__schema": {
+            "queryType": {
+                "fields": [
+                    {"name": "orders", "type": {"name": None, "kind": "LIST", "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None}}},
+                ]
+            },
+            "types": [
+                {"name": "Orders", "kind": "OBJECT", "fields": [{"name": "id"}, {"name": "amount"}]},
+                {"name": "String", "kind": "SCALAR", "fields": None},
+            ],
+        }
+    }
+}
+
+_SINGLE_COL_RESPONSE = {
+    "data": {
+        "__schema": {
+            "queryType": {
+                "fields": [
+                    {"name": "orders", "type": {"name": None, "kind": "LIST", "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None}}},
+                ]
+            },
+            "types": [
+                {"name": "Orders", "kind": "OBJECT", "fields": [{"name": "id"}]},
+            ],
+        }
+    }
+}
+
+
 # ---------------------------------------------------------------------------
 # get_columns()
 # ---------------------------------------------------------------------------
@@ -72,25 +105,8 @@ class TestGetColumns:
     @respx.mock
     def test_returns_columns_for_matching_table(self):
         """get_columns() returns a list of column dicts for the named table."""
-        respx.post(f"{BASE}/admin/graphql").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "data": {
-                        "semanticModel": {
-                            "tables": [
-                                {
-                                    "name": "orders",
-                                    "columns": [
-                                        {"name": "id", "dataType": "integer"},
-                                        {"name": "amount", "dataType": "decimal"},
-                                    ],
-                                }
-                            ]
-                        }
-                    }
-                },
-            )
+        respx.post(f"{BASE}/data/graphql").mock(
+            return_value=httpx.Response(200, json=_INTROSPECT_RESPONSE)
         )
         dialect = ProvisaDialect()
         mock_conn = MagicMock()
@@ -105,24 +121,8 @@ class TestGetColumns:
     @respx.mock
     def test_column_dicts_have_required_keys(self):
         """Each column dict returned by get_columns() must have name, type, nullable."""
-        respx.post(f"{BASE}/admin/graphql").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "data": {
-                        "semanticModel": {
-                            "tables": [
-                                {
-                                    "name": "orders",
-                                    "columns": [
-                                        {"name": "id", "dataType": "integer"},
-                                    ],
-                                }
-                            ]
-                        }
-                    }
-                },
-            )
+        respx.post(f"{BASE}/data/graphql").mock(
+            return_value=httpx.Response(200, json=_SINGLE_COL_RESPONSE)
         )
         dialect = ProvisaDialect()
         mock_conn = MagicMock()
@@ -138,19 +138,8 @@ class TestGetColumns:
     @respx.mock
     def test_returns_empty_list_when_table_not_found(self):
         """get_columns() returns [] when the table_name is not in the schema."""
-        respx.post(f"{BASE}/admin/graphql").mock(
-            return_value=httpx.Response(
-                200,
-                json={
-                    "data": {
-                        "semanticModel": {
-                            "tables": [
-                                {"name": "orders", "columns": []}
-                            ]
-                        }
-                    }
-                },
-            )
+        respx.post(f"{BASE}/data/graphql").mock(
+            return_value=httpx.Response(200, json=_INTROSPECT_RESPONSE)
         )
         dialect = ProvisaDialect()
         mock_conn = MagicMock()
@@ -162,7 +151,7 @@ class TestGetColumns:
     @respx.mock
     def test_returns_empty_list_on_http_error(self):
         """get_columns() returns [] gracefully when the server returns an error."""
-        respx.post(f"{BASE}/admin/graphql").mock(
+        respx.post(f"{BASE}/data/graphql").mock(
             return_value=httpx.Response(500)
         )
         dialect = ProvisaDialect()

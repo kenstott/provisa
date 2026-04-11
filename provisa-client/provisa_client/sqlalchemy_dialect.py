@@ -76,21 +76,52 @@ class ProvisaDialect(DefaultDialect):
 
     _TIMEOUT = 10.0  # seconds
 
+    # Introspection query: root query fields (table names) + all object types (columns).
+    # Sent to /data/graphql so full role governance is applied before responding.
+    _INTROSPECT_GQL = """{
+      __schema {
+        queryType {
+          fields {
+            name
+            type { name kind ofType { name kind ofType { name } } }
+          }
+        }
+        types { name kind fields { name } }
+      }
+    }"""
+
+    @staticmethod
+    def _unwrap_type_name(type_info: dict | None) -> str | None:
+        """Unwrap LIST/NON_NULL wrappers to the named object type."""
+        while type_info:
+            if type_info.get("name"):
+                return type_info["name"]
+            type_info = type_info.get("ofType")
+        return None
+
+    def _fetch_schema(self, base_url: str, role: str) -> dict:
+        """Fetch and cache the role-scoped schema via /data/graphql introspection."""
+        if not hasattr(self, "_schema_cache"):
+            self._schema_cache: dict = {}
+        key = (base_url, role)
+        if key not in self._schema_cache:
+            try:
+                r = httpx.post(
+                    f"{base_url}/data/graphql",
+                    json={"query": self._INTROSPECT_GQL},
+                    headers={"Content-Type": "application/json", "X-Role": role},
+                    timeout=self._TIMEOUT,
+                )
+                r.raise_for_status()
+                self._schema_cache[key] = r.json().get("data", {}).get("__schema", {})
+            except (httpx.HTTPError, httpx.TimeoutException, KeyError):
+                self._schema_cache[key] = {}
+        return self._schema_cache[key]
+
     def get_table_names(self, connection: Any, schema: str | None = None, **kw: Any) -> list[str]:
         base_url, role = self._get_base_url_and_role(connection)
-        try:
-            r = httpx.post(
-                f"{base_url}/admin/graphql",
-                json={"query": "{ persistedQueries { stableId status } }"},
-                headers={"Content-Type": "application/json", "X-Role": role},
-                timeout=self._TIMEOUT,
-            )
-            r.raise_for_status()
-            body = r.json()
-            queries = body.get("data", {}).get("persistedQueries", [])
-            return [q["stableId"] for q in queries if isinstance(q, dict) and q.get("stableId")]
-        except (httpx.HTTPError, httpx.TimeoutException, KeyError):
-            return []
+        fields = self._fetch_schema(base_url, role).get("queryType", {}).get("fields", [])
+        return [f["name"] for f in fields if f.get("name")]
 
     def get_columns(
         self,
@@ -100,41 +131,25 @@ class ProvisaDialect(DefaultDialect):
         **kw: Any,
     ) -> list[dict]:
         base_url, role = self._get_base_url_and_role(connection)
-        query = """
-        {
-          semanticModel {
-            tables {
-              name
-              columns {
-                name
-                dataType
-              }
-            }
-          }
-        }
-        """
-        try:
-            r = httpx.post(
-                f"{base_url}/admin/graphql",
-                json={"query": query},
-                headers={"Content-Type": "application/json", "X-Role": role},
-                timeout=self._TIMEOUT,
-            )
-            r.raise_for_status()
-            body = r.json()
-            tables = body.get("data", {}).get("semanticModel", {}).get("tables", [])
-            for table in tables:
-                if table.get("name") == table_name:
-                    return [
-                        {
-                            "name": col["name"],
-                            "type": sqltypes.String(),
-                            "nullable": True,
-                        }
-                        for col in table.get("columns", [])
-                    ]
-        except (httpx.HTTPError, httpx.TimeoutException, KeyError):
-            pass
+        schema_data = self._fetch_schema(base_url, role)
+
+        # Resolve the GraphQL object type for this root field
+        type_name = None
+        for f in schema_data.get("queryType", {}).get("fields", []):
+            if f.get("name") == table_name:
+                type_name = self._unwrap_type_name(f.get("type"))
+                break
+        if not type_name:
+            return []
+
+        # Return fields of that type (role-filtered by the introspection response)
+        for t in schema_data.get("types", []):
+            if t.get("name") == type_name and t.get("kind") == "OBJECT":
+                return [
+                    {"name": col["name"], "type": sqltypes.String(), "nullable": True}
+                    for col in (t.get("fields") or [])
+                    if col.get("name")
+                ]
         return []
 
     def has_table(

@@ -101,38 +101,46 @@ def test_create_connect_args_query_params():
     assert kwargs["mode"] == "catalog"
 
 
+# Shared introspection response used by multiple tests
+_INTROSPECT_RESPONSE = {
+    "data": {
+        "__schema": {
+            "queryType": {
+                "fields": [
+                    {"name": "orders", "type": {"name": None, "kind": "LIST", "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None}}},
+                    {"name": "users", "type": {"name": None, "kind": "LIST", "ofType": {"name": "Users", "kind": "OBJECT", "ofType": None}}},
+                ]
+            },
+            "types": [
+                {"name": "Orders", "kind": "OBJECT", "fields": [{"name": "id"}, {"name": "amount"}]},
+                {"name": "Users", "kind": "OBJECT", "fields": [{"name": "id"}, {"name": "name"}]},
+                {"name": "String", "kind": "SCALAR", "fields": None},
+            ],
+        }
+    }
+}
+
+
 # ── get_table_names() ─────────────────────────────────────────────────────────
 
 @respx.mock
-def test_get_table_names_returns_stable_ids():
-    respx.post(f"{BASE}/admin/graphql").mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "data": {
-                    "persistedQueries": [
-                        {"stableId": "get_orders", "status": "approved"},
-                        {"stableId": "get_users", "status": "approved"},
-                    ]
-                }
-            },
-        )
+def test_get_table_names_returns_role_scoped_tables():
+    respx.post(f"{BASE}/data/graphql").mock(
+        return_value=httpx.Response(200, json=_INTROSPECT_RESPONSE)
     )
     dialect = ProvisaDialect()
     mock_conn = MagicMock()
-    mock_conn.connection._base_url = BASE
-    mock_conn.connection._role = "admin"
 
     with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "admin")):
         names = dialect.get_table_names(mock_conn)
 
-    assert "get_orders" in names
-    assert "get_users" in names
+    assert "orders" in names
+    assert "users" in names
 
 
 @respx.mock
 def test_get_table_names_returns_empty_on_error():
-    respx.post(f"{BASE}/admin/graphql").mock(
+    respx.post(f"{BASE}/data/graphql").mock(
         return_value=httpx.Response(500)
     )
     dialect = ProvisaDialect()
@@ -142,6 +150,50 @@ def test_get_table_names_returns_empty_on_error():
         names = dialect.get_table_names(mock_conn)
 
     assert names == []
+
+
+@respx.mock
+def test_get_columns_returns_role_scoped_columns():
+    respx.post(f"{BASE}/data/graphql").mock(
+        return_value=httpx.Response(200, json=_INTROSPECT_RESPONSE)
+    )
+    dialect = ProvisaDialect()
+    mock_conn = MagicMock()
+
+    with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "admin")):
+        cols = dialect.get_columns(mock_conn, "orders")
+
+    assert [c["name"] for c in cols] == ["id", "amount"]
+
+
+@respx.mock
+def test_get_columns_unknown_table_returns_empty():
+    respx.post(f"{BASE}/data/graphql").mock(
+        return_value=httpx.Response(200, json=_INTROSPECT_RESPONSE)
+    )
+    dialect = ProvisaDialect()
+    mock_conn = MagicMock()
+
+    with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "admin")):
+        cols = dialect.get_columns(mock_conn, "nonexistent")
+
+    assert cols == []
+
+
+@respx.mock
+def test_get_table_names_uses_data_endpoint_not_admin():
+    """Introspection must go to /data/graphql (role-governed), not /admin/graphql."""
+    route = respx.post(f"{BASE}/data/graphql").mock(
+        return_value=httpx.Response(200, json=_INTROSPECT_RESPONSE)
+    )
+    dialect = ProvisaDialect()
+    mock_conn = MagicMock()
+
+    with patch.object(dialect, "_get_base_url_and_role", return_value=(BASE, "analyst")):
+        dialect.get_table_names(mock_conn)
+
+    assert route.called
+    assert route.calls[0].request.headers["x-role"] == "analyst"
 
 
 # ── has_table() ───────────────────────────────────────────────────────────────
