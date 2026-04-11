@@ -58,6 +58,8 @@ from provisa.cypher.path_comprehension import PathComprehensionMixin
 from provisa.cypher.select_builder import SelectBuilderMixin
 from provisa.cypher.correlated_call import CorrelatedCallMixin
 from provisa.cypher.subquery_exprs import SubqueryExprsMixin
+from provisa.cypher.map_projection import MapProjectionMixin
+from provisa.cypher.group_by import GroupByMixin, _has_aggregate
 
 
 class GraphVarKind(str, Enum):
@@ -99,7 +101,7 @@ def cypher_calls_to_sql_list(
     return results
 
 
-class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin, CorrelatedCallMixin, SubqueryExprsMixin):
+class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin, CorrelatedCallMixin, SubqueryExprsMixin, MapProjectionMixin, GroupByMixin):
     def __init__(
         self,
         ast: CypherAST,
@@ -565,6 +567,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             return None
         expr_text = self._rewrite_params_in_expr(where.expression)
         expr_text = self._rewrite_cte_vars(expr_text)
+        expr_text = self._rewrite_map_projections(expr_text)
         expr_text = self._rewrite_graph_fns(expr_text)
         expr_text = self._rewrite_path_comprehensions(expr_text)
         expr_text = rewrite_list_comprehensions(expr_text)
@@ -641,6 +644,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         """Parse a Cypher expression fragment into a SQLGlot expression."""
         text = self._rewrite_params_in_expr(text)
         text = self._rewrite_cte_vars(text)
+        text = self._rewrite_map_projections(text)
         text = self._rewrite_graph_fns(text)
         text = self._rewrite_path_comprehensions(text)
         text = rewrite_list_comprehensions(text)
@@ -682,25 +686,6 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 else:
                     exprs.append(parsed)
         return exprs
-
-    def _build_group_by(self, return_clause: ReturnClause) -> list[exp.Expression]:
-        items = return_clause.items
-        if not any(_has_aggregate(item.expression) for item in items):
-            return []
-        return [
-            self._parse_expr(item.expression.strip())
-            for item in items
-            if not _has_aggregate(item.expression)
-        ]
-
-    def _build_group_by_for_with(self, items: list[ReturnItem]) -> list[exp.Expression]:
-        if not any(_has_aggregate(item.expression) for item in items):
-            return []
-        return [
-            self._parse_expr(item.expression.strip())
-            for item in items
-            if not _has_aggregate(item.expression)
-        ]
 
     def _update_var_table_for_with(self, items: list[ReturnItem], cte_name: str) -> None:
         new_var_table: dict[str, tuple[str, Any]] = {}
@@ -811,14 +796,6 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         return re.sub(r"\$([A-Za-z_]\w*)", _replace, text)
 
 
-_AGG_FN_RE = re.compile(
-    r'\b(count|sum|avg|min|max|collect|stdev|stdevp|percentilecont|percentiledisc)\s*\(',
-    re.IGNORECASE,
-)
-
-
-def _has_aggregate(text: str) -> bool:
-    return bool(_AGG_FN_RE.search(text))
 
 
 def _is_bare_variable(expr: str) -> bool:

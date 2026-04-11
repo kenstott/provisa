@@ -1477,3 +1477,52 @@ def test_type_function_unbound_passthrough():
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert sql is not None
+
+
+# --- G6: Map projections ---
+
+def test_map_projection_dot_props():
+    """n { .name, .age } → MAP(ARRAY['name','age'], ARRAY[n."name",n."age"])"""
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) RETURN n { .name, .age }")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "MAP" in sql.upper()
+    assert "'name'" in sql
+    assert "'age'" in sql
+    assert 'n."name"' in sql
+    assert 'n."age"' in sql
+
+
+def test_map_projection_star():
+    """n { .* } → MAP with all known properties expanded from schema."""
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) RETURN n { .* }")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "MAP" in sql.upper()
+    # Person has name and age
+    assert "'name'" in sql
+    assert "'age'" in sql
+
+
+def test_map_projection_star_with_extra():
+    """n { .*, extra: expr } → MAP with all props plus named key."""
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) RETURN n { .*, score: 42 }")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "MAP" in sql.upper()
+    assert "'score'" in sql
+    assert "'name'" in sql
+    assert "'age'" in sql
+
+
+def test_map_projection_named_key():
+    """n { key: expr } → MAP(ARRAY['key'], ARRAY[expr])"""
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n:Person) RETURN n { fullName: n.name }")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "MAP" in sql.upper()
+    assert "'fullName'" in sql
