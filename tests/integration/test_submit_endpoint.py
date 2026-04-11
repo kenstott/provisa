@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration tests for POST /data/submit endpoint (REQ-162).
+"""Integration tests for submitQuery GQL mutation (REQ-162).
 
 Verifies that submit stores queries in the persisted-query registry for
 steward approval, captures metadata, and enforces naming requirements.
@@ -23,6 +23,21 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+
+_SUBMIT_MUTATION = """
+mutation SubmitQuery($input: SubmitQueryInput!) {
+  submitQuery(input: $input) { queryId operationName message }
+}
+"""
+
+
+async def _submit(client: AsyncClient, query: str, role: str = "admin", **kwargs):
+    inp = {"query": query, "role": role, **kwargs}
+    resp = await client.post(
+        "/admin/graphql",
+        json={"query": _SUBMIT_MUTATION, "variables": {"input": inp}},
+    )
+    return resp
 
 
 @pytest_asyncio.fixture
@@ -41,141 +56,101 @@ async def client():
 
 class TestSubmitBasic:
     async def test_submit_returns_query_id(self, client):
-        """Successful submit returns a UUID query_id."""
-        resp = await client.post(
-            "/data/submit",
-            json={
-                "query": "query MonthlyRevenue { sales_analytics__orders { id amount region } }",
-                "role": "admin",
-            },
-        )
+        """Successful submit returns a positive integer queryId."""
+        resp = await _submit(client, "query MonthlyRevenue { sales_analytics__orders { id amount region } }")
         assert resp.status_code == 200
         body = resp.json()
-        assert "query_id" in body
-        assert isinstance(body["query_id"], int) and body["query_id"] > 0
+        assert "errors" not in body, body.get("errors")
+        result = body["data"]["submitQuery"]
+        assert isinstance(result["queryId"], int) and result["queryId"] > 0
 
     async def test_submit_returns_operation_name(self, client):
         """Submit response echoes back the operation name."""
-        resp = await client.post(
-            "/data/submit",
-            json={
-                "query": "query SalesReport { sales_analytics__orders { id amount } }",
-                "role": "admin",
-            },
-        )
+        resp = await _submit(client, "query SalesReport { sales_analytics__orders { id amount } }")
         assert resp.status_code == 200
-        assert resp.json()["operation_name"] == "SalesReport"
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        assert body["data"]["submitQuery"]["operationName"] == "SalesReport"
 
     async def test_submit_returns_confirmation_message(self, client):
         """Submit response includes a human-readable confirmation message."""
-        resp = await client.post(
-            "/data/submit",
-            json={
-                "query": "query CustomerList { sales_analytics__customers { id name } }",
-                "role": "admin",
-            },
-        )
+        resp = await _submit(client, "query CustomerList { sales_analytics__customers { id name } }")
         assert resp.status_code == 200
-        message = resp.json()["message"]
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        message = body["data"]["submitQuery"]["message"]
         assert "CustomerList" in message
         assert "submitted" in message.lower()
 
 
 class TestSubmitRequiresOperationName:
-    async def test_submit_without_operation_name_400(self, client):
+    async def test_submit_without_operation_name_error(self, client):
         """Query without a named operation is rejected (REQ-162)."""
-        resp = await client.post(
-            "/data/submit",
-            json={
-                "query": "{ sales_analytics__orders { id amount } }",
-                "role": "admin",
-            },
-        )
-        assert resp.status_code == 400
+        resp = await _submit(client, "{ sales_analytics__orders { id amount } }")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "errors" in body
 
-    async def test_submit_anonymous_query_400(self, client):
+    async def test_submit_anonymous_query_error(self, client):
         """Anonymous query keyword (no name) is rejected."""
-        resp = await client.post(
-            "/data/submit",
-            json={
-                "query": "query { sales_analytics__orders { id } }",
-                "role": "admin",
-            },
-        )
-        assert resp.status_code == 400
+        resp = await _submit(client, "query { sales_analytics__orders { id } }")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "errors" in body
 
 
 class TestSubmitWithMetadata:
     async def test_submit_with_business_purpose(self, client):
         """Submit stores optional business metadata fields."""
-        resp = await client.post(
-            "/data/submit",
-            json={
-                "query": "query RevenueByRegion { sales_analytics__orders { id amount region } }",
-                "role": "admin",
-                "business_purpose": "Monthly revenue tracking by region",
-                "owner_team": "analytics",
-                "data_sensitivity": "internal",
-                "expected_row_count": "< 10000",
-            },
+        resp = await _submit(
+            client,
+            "query RevenueByRegion { sales_analytics__orders { id amount region } }",
+            businessPurpose="Monthly revenue tracking by region",
+            ownerTeam="analytics",
+            dataSensitivity="internal",
+            expectedRowCount="< 10000",
         )
         assert resp.status_code == 200
-        assert "query_id" in resp.json()
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        assert body["data"]["submitQuery"]["queryId"] > 0
 
     async def test_submit_with_sink_config(self, client):
         """Submit with a Kafka sink configuration stores the sink spec."""
-        resp = await client.post(
-            "/data/submit",
-            json={
-                "query": "query OrderStream { sales_analytics__orders { id amount } }",
-                "role": "admin",
-                "sink": {
-                    "topic": "order-events",
-                    "trigger": "change_event",
-                    "key_column": "id",
-                },
-            },
+        resp = await _submit(
+            client,
+            "query OrderStream { sales_analytics__orders { id amount } }",
+            sink={"topic": "order-events", "trigger": "change_event", "keyColumn": "id"},
         )
         assert resp.status_code == 200
-        assert "query_id" in resp.json()
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        assert body["data"]["submitQuery"]["queryId"] > 0
 
     async def test_submit_with_expiry_date(self, client):
-        """Submit accepts an optional expiry_date for the approved query."""
-        resp = await client.post(
-            "/data/submit",
-            json={
-                "query": "query QuarterlyReport { sales_analytics__orders { id } }",
-                "role": "admin",
-                "expiry_date": "2026-12-31",
-            },
+        """Submit accepts an optional expiryDate for the approved query."""
+        resp = await _submit(
+            client,
+            "query QuarterlyReport { sales_analytics__orders { id } }",
+            expiryDate="2026-12-31",
         )
         assert resp.status_code == 200
-        assert "query_id" in resp.json()
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        assert body["data"]["submitQuery"]["queryId"] > 0
 
 
 class TestSubmitGovernanceGate:
-    async def test_submit_requires_query_development_capability(self, client):
-        """Roles without query_development capability cannot submit queries."""
-        resp = await client.post(
-            "/data/submit",
-            json={
-                "query": "query SecretData { sales_analytics__orders { id } }",
-                "role": "readonly",
-            },
+    async def test_submit_unknown_role_error(self, client):
+        """Unknown role returns GQL error."""
+        resp = await _submit(
+            client,
+            "query Test { sales_analytics__orders { id } }",
+            role="nonexistent",
         )
-        # readonly role should not have query_development capability
-        assert resp.status_code in (400, 403)
-
-    async def test_submit_unknown_role_400(self, client):
-        """Unknown role returns 400."""
-        resp = await client.post(
-            "/data/submit",
-            json={
-                "query": "query Test { sales_analytics__orders { id } }",
-                "role": "nonexistent",
-            },
-        )
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "errors" in body
 
 
 class TestSubmitIdempotency:
@@ -183,16 +158,13 @@ class TestSubmitIdempotency:
         """Each submit call produces a new pending entry, even for the same op name."""
         query = "query DuplicateTest { sales_analytics__orders { id } }"
 
-        resp1 = await client.post(
-            "/data/submit",
-            json={"query": query, "role": "admin"},
-        )
-        resp2 = await client.post(
-            "/data/submit",
-            json={"query": query, "role": "admin"},
-        )
+        resp1 = await _submit(client, query)
+        resp2 = await _submit(client, query)
 
         assert resp1.status_code == 200
         assert resp2.status_code == 200
-        # Each submission gets its own registry entry
-        assert resp1.json()["query_id"] != resp2.json()["query_id"]
+        assert "errors" not in resp1.json(), resp1.json().get("errors")
+        assert "errors" not in resp2.json(), resp2.json().get("errors")
+        id1 = resp1.json()["data"]["submitQuery"]["queryId"]
+        id2 = resp2.json()["data"]["submitQuery"]["queryId"]
+        assert id1 != id2

@@ -14,7 +14,7 @@ from provisa.cache.policy import CachePolicy, resolve_policy
 
 
 class TestResolvePolicy:
-    def test_unapproved_query_returns_none(self):
+    def test_non_approved_query_returns_none(self):
         policy, ttl = resolve_policy(stable_id=None, cache_ttl=None)
         assert policy == CachePolicy.NONE
         assert ttl == 0

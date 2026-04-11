@@ -32,6 +32,7 @@ Usage::
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass, field
 
@@ -177,9 +178,17 @@ class LiveEngine:
                 # Get current watermark
                 watermark = await get_watermark(conn, query_id)
 
-                # Build incremental SQL by injecting watermark filter
+                # Build incremental SQL by injecting watermark filter.
+                # compiled_sql may be a JSON array for multi-root queries; use
+                # the first statement since the watermark column lives in one table.
+                _raw_sql = record.get("compiled_sql", query_text)
+                try:
+                    _parsed = json.loads(_raw_sql)
+                    _base_sql = _parsed[0] if isinstance(_parsed, list) and _parsed else _raw_sql
+                except (json.JSONDecodeError, TypeError):
+                    _base_sql = _raw_sql
                 incremental_sql = _build_incremental_sql(
-                    record.get("compiled_sql", query_text),
+                    _base_sql,
                     job.watermark_column,
                     watermark,
                 )

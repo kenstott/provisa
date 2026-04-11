@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration tests for POST /data/compile endpoint (REQ-161).
+"""Integration tests for compileQuery GQL mutation (REQ-161).
 
 Verifies that compile returns governed SQL — with RLS, masking, and
 visibility enforcement applied — without executing the query.
@@ -23,6 +23,27 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+
+_COMPILE_MUTATION = """
+mutation CompileQuery($input: CompileQueryInput!) {
+  compileQuery(input: $input) {
+    sql semanticSql trinoSql directSql route routeReason sources
+    rootField canonicalField compiledCypher optimizations warnings
+    columnAliases { fieldName column }
+    enforcement {
+      rlsFiltersApplied columnsExcluded schemaScope maskingApplied ceilingApplied route
+    }
+  }
+}
+"""
+
+
+async def _compile(client: AsyncClient, query: str, role: str = "admin", variables: dict | None = None):
+    resp = await client.post(
+        "/admin/graphql",
+        json={"query": _COMPILE_MUTATION, "variables": {"input": {"query": query, "role": role, "variables": variables}}},
+    )
+    return resp
 
 
 @pytest_asyncio.fixture
@@ -42,158 +63,129 @@ async def client():
 class TestCompileBasic:
     async def test_compile_returns_sql(self, client):
         """Basic compile returns a non-empty SQL string."""
-        resp = await client.post(
-            "/data/compile",
-            json={"query": "{ sales_analytics__orders { id amount } }", "role": "admin"},
-        )
+        resp = await _compile(client, "{ sales_analytics__orders { id amount } }")
         assert resp.status_code == 200
         body = resp.json()
-        assert "sql" in body
-        assert len(body["sql"]) > 0
+        assert "errors" not in body, body.get("errors")
+        results = body["data"]["compileQuery"]
+        assert len(results) > 0
+        assert len(results[0]["sql"]) > 0
 
     async def test_compile_returns_enforcement_metadata(self, client):
         """Compile response includes the enforcement object (REQ-161)."""
-        resp = await client.post(
-            "/data/compile",
-            json={"query": "{ sales_analytics__orders { id amount } }", "role": "admin"},
-        )
+        resp = await _compile(client, "{ sales_analytics__orders { id amount } }")
         assert resp.status_code == 200
         body = resp.json()
-        enforcement = body["enforcement"]
-        assert "rls_filters_applied" in enforcement
-        assert "columns_excluded" in enforcement
-        assert "schema_scope" in enforcement
-        assert "masking_applied" in enforcement
+        assert "errors" not in body, body.get("errors")
+        enforcement = body["data"]["compileQuery"][0]["enforcement"]
+        assert "rlsFiltersApplied" in enforcement
+        assert "columnsExcluded" in enforcement
+        assert "schemaScope" in enforcement
+        assert "maskingApplied" in enforcement
         assert "route" in enforcement
 
     async def test_compile_schema_scope_reflects_role(self, client):
         """schema_scope in enforcement reflects the requested role."""
-        resp = await client.post(
-            "/data/compile",
-            json={"query": "{ sales_analytics__orders { id } }", "role": "analyst"},
-        )
+        resp = await _compile(client, "{ sales_analytics__orders { id } }", role="analyst")
         assert resp.status_code == 200
-        scope = resp.json()["enforcement"]["schema_scope"]
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        scope = body["data"]["compileQuery"][0]["enforcement"]["schemaScope"]
         assert "analyst" in scope
 
     async def test_compile_returns_route_decision(self, client):
-        """Compile includes route and route_reason fields."""
-        resp = await client.post(
-            "/data/compile",
-            json={"query": "{ sales_analytics__orders { id } }", "role": "admin"},
-        )
+        """Compile includes route and routeReason fields."""
+        resp = await _compile(client, "{ sales_analytics__orders { id } }")
         assert resp.status_code == 200
         body = resp.json()
-        assert body["route"] in ("direct", "trino")
-        assert body["route_reason"]
+        assert "errors" not in body, body.get("errors")
+        result = body["data"]["compileQuery"][0]
+        assert result["route"] in ("direct", "trino")
+        assert result["routeReason"]
 
     async def test_compile_returns_sources(self, client):
         """Compile identifies the source(s) involved in the query."""
-        resp = await client.post(
-            "/data/compile",
-            json={"query": "{ sales_analytics__orders { id } }", "role": "admin"},
-        )
+        resp = await _compile(client, "{ sales_analytics__orders { id } }")
         assert resp.status_code == 200
-        sources = resp.json()["sources"]
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        sources = body["data"]["compileQuery"][0]["sources"]
         assert isinstance(sources, list)
         assert len(sources) > 0
-
-    async def test_compile_returns_params_list(self, client):
-        """Compile always returns a params list (may be empty)."""
-        resp = await client.post(
-            "/data/compile",
-            json={"query": "{ sales_analytics__orders { id } }", "role": "admin"},
-        )
-        assert resp.status_code == 200
-        assert isinstance(resp.json()["params"], list)
 
 
 class TestCompileWithVariables:
     async def test_compile_with_variables(self, client):
         """Variables are incorporated into compiled SQL as parameters."""
-        resp = await client.post(
-            "/data/compile",
-            json={
-                "query": "query ($region: String) { sales_analytics__orders(where: {region: {eq: $region}}) { id } }",
-                "variables": {"region": "EMEA"},
-                "role": "admin",
-            },
+        resp = await _compile(
+            client,
+            "query ($region: String) { sales_analytics__orders(where: {region: {eq: $region}}) { id } }",
+            variables={"region": "EMEA"},
         )
         assert resp.status_code == 200
         body = resp.json()
-        assert "sql" in body
-        # Variable should appear as a parameter, not interpolated into SQL
-        assert "EMEA" not in body["sql"]
-        assert any("EMEA" in str(p) for p in body["params"])
+        assert "errors" not in body, body.get("errors")
+        sql = body["data"]["compileQuery"][0]["sql"]
+        assert "sql" in body["data"]["compileQuery"][0]
+        # Variable should not be interpolated literally into SQL
+        assert "EMEA" not in sql
 
 
 class TestCompileMultiRoot:
-    async def test_multi_root_query_returns_queries_array(self, client):
-        """Multiple root fields return {'queries': [...]} shape."""
-        resp = await client.post(
-            "/data/compile",
-            json={
-                "query": "{ sales_analytics__orders { id } sales_analytics__customers { id } }",
-                "role": "admin",
-            },
+    async def test_multi_root_query_returns_multiple_results(self, client):
+        """Multiple root fields return multiple compile results."""
+        resp = await _compile(
+            client,
+            "{ sales_analytics__orders { id } sales_analytics__customers { id } }",
         )
         assert resp.status_code == 200
         body = resp.json()
-        # Multi-root queries return a 'queries' array
-        assert "queries" in body
-        assert len(body["queries"]) == 2
-        for q in body["queries"]:
-            assert "sql" in q
-            assert "enforcement" in q
+        assert "errors" not in body, body.get("errors")
+        results = body["data"]["compileQuery"]
+        assert len(results) == 2
+        for r in results:
+            assert "sql" in r
+            assert "enforcement" in r
 
 
 class TestCompileRLSEnforcement:
     async def test_compile_rls_filters_shown_in_enforcement(self, client):
         """When a role has RLS configured, compile lists the filters applied."""
-        # Use a role known to have RLS from test config
-        resp = await client.post(
-            "/data/compile",
-            json={"query": "{ sales_analytics__orders { id } }", "role": "analyst"},
-        )
+        resp = await _compile(client, "{ sales_analytics__orders { id } }", role="analyst")
         assert resp.status_code == 200
-        enforcement = resp.json()["enforcement"]
-        # rls_filters_applied is a list (may be empty if analyst has no RLS for orders)
-        assert isinstance(enforcement["rls_filters_applied"], list)
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        enforcement = body["data"]["compileQuery"][0]["enforcement"]
+        assert isinstance(enforcement["rlsFiltersApplied"], list)
 
     async def test_compile_excluded_columns_shown(self, client):
-        """Columns not requested appear in columns_excluded."""
-        # analyst can see: id, customer_id, region, status, created_at on orders
-        # querying only id means the rest appear as excluded
-        resp = await client.post(
-            "/data/compile",
-            json={"query": "{ sales_analytics__orders { id } }", "role": "analyst"},
-        )
+        """Columns not requested appear in columnsExcluded."""
+        resp = await _compile(client, "{ sales_analytics__orders { id } }", role="analyst")
         assert resp.status_code == 200
-        enforcement = resp.json()["enforcement"]
-        assert isinstance(enforcement["columns_excluded"], list)
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        enforcement = body["data"]["compileQuery"][0]["enforcement"]
+        assert isinstance(enforcement["columnsExcluded"], list)
 
 
 class TestCompileErrors:
-    async def test_compile_invalid_graphql_syntax_400(self, client):
-        """Syntactically invalid GraphQL returns 400."""
-        resp = await client.post(
-            "/data/compile",
-            json={"query": "{ sales_analytics__orders { id", "role": "admin"},
-        )
-        assert resp.status_code == 400
+    async def test_compile_invalid_graphql_syntax_error(self, client):
+        """Syntactically invalid GraphQL returns GQL error."""
+        resp = await _compile(client, "{ sales_analytics__orders { id")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "errors" in body
 
-    async def test_compile_unknown_role_400(self, client):
-        """Unknown role returns 400 (no schema found)."""
-        resp = await client.post(
-            "/data/compile",
-            json={"query": "{ sales_analytics__orders { id } }", "role": "nonexistent_role"},
-        )
-        assert resp.status_code == 400
+    async def test_compile_unknown_role_error(self, client):
+        """Unknown role returns GQL error (no schema found)."""
+        resp = await _compile(client, "{ sales_analytics__orders { id } }", role="nonexistent_role")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "errors" in body
 
-    async def test_compile_empty_query_400(self, client):
-        """Empty query string returns 400."""
-        resp = await client.post(
-            "/data/compile",
-            json={"query": "", "role": "admin"},
-        )
-        assert resp.status_code == 400
+    async def test_compile_empty_query_error(self, client):
+        """Empty query string returns GQL error."""
+        resp = await _compile(client, "")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "errors" in body

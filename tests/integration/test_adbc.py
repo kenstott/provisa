@@ -246,16 +246,27 @@ class TestLiveAdbcExecution:
           }
         }
         """
+        _submit_mutation = """
+        mutation SubmitQuery($input: SubmitQueryInput!) {
+          submitQuery(input: $input) { queryId operationName message }
+        }
+        """
         for op_name, query_text in self._GOVERNED_QUERIES.items():
             try:
                 submit_resp = httpx.post(
-                    f"{base}/data/submit",
-                    json={"query": query_text, "role": "admin"},
+                    f"{base}/admin/graphql",
+                    json={
+                        "query": _submit_mutation,
+                        "variables": {"input": {"query": query_text, "role": "admin"}},
+                    },
                     timeout=10,
                 )
                 if submit_resp.status_code != 200:
                     continue
-                query_id = submit_resp.json()["query_id"]
+                body = submit_resp.json()
+                if "errors" in body:
+                    continue
+                query_id = body["data"]["submitQuery"]["queryId"]
                 httpx.post(
                     f"{base}/admin/graphql",
                     json={

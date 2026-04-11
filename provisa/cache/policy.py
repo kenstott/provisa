@@ -52,7 +52,7 @@ def resolve_policy(
     Returns:
         (policy, ttl_seconds) tuple.
     """
-    # Unapproved / test-mode queries are never cached
+    # Non-approved / test-mode queries are never cached
     if stable_id is None:
         return CachePolicy.NONE, 0
 

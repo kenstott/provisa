@@ -35,31 +35,41 @@ async def client():
             yield c
 
 
+_SUBMIT_MUTATION = """
+mutation SubmitQuery($input: SubmitQueryInput!) {
+  submitQuery(input: $input) { queryId operationName message }
+}
+"""
+
+
 class TestKafkaSinkConfiguration:
     async def test_submit_query_with_sink(self, client):
         """Submit a query with Kafka sink configuration."""
         resp = await client.post(
-            "/data/submit",
+            "/admin/graphql",
             json={
-                "query": "query KafkaSinkTest { sales_analytics__orders(limit: 5) { id amount region } }",
-                "operation_name": "KafkaSinkTest",
-                "developer_id": "e2e-kafka-test",
-                "business_purpose": "E2E Kafka sink test",
-                "data_sensitivity": "internal",
-                "sink": {
-                    "topic": "test-sink-orders",
-                    "trigger": "manual",
-                    "key_column": "region",
+                "query": _SUBMIT_MUTATION,
+                "variables": {
+                    "input": {
+                        "query": "query KafkaSinkTest { sales_analytics__orders(limit: 5) { id amount region } }",
+                        "role": "admin",
+                        "businessPurpose": "E2E Kafka sink test",
+                        "dataSensitivity": "internal",
+                        "sink": {
+                            "topic": "test-sink-orders",
+                            "trigger": "manual",
+                            "keyColumn": "region",
+                        },
+                    }
                 },
             },
-            headers={"X-Role": "admin"},
         )
-        if resp.status_code == 503:
-            pytest.skip("Backend not fully initialized")
         assert resp.status_code == 200
-        data = resp.json()
-        assert "query_id" in data
-        assert "KafkaSinkTest" in data.get("message", "")
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        result = body["data"]["submitQuery"]
+        assert result["queryId"] > 0
+        assert "KafkaSinkTest" in result["message"]
 
     async def test_persisted_query_has_sink_config(self, client):
         """Approved queries with sinks should store the sink configuration."""
