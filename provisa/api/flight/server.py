@@ -58,10 +58,15 @@ _SQL_LIMIT = re.compile(r"\bLIMIT\s+(\d+)", re.IGNORECASE)
 _GQL_OP_NAME = re.compile(r"\bquery\s+(\w+)")
 _WHERE_INT = re.compile(r'\b(\w+)\s*=\s*(-?\d+(?:\.\d+)?)\b')
 _WHERE_STR = re.compile(r"\b(\w+)\s*=\s*'([^']*)'")
+_CYPHER_PREFIX = re.compile(r"^\s*(MATCH|OPTIONAL\s+MATCH|CALL|WITH|MERGE|CREATE|RETURN)\b", re.IGNORECASE)
 
 
 def _is_sql(query: str) -> bool:
     return bool(_SQL_PREFIX.match(query))
+
+
+def _is_cypher(query: str) -> bool:
+    return bool(_CYPHER_PREFIX.match(query))
 
 
 def _parse_where_variables(sql: str) -> dict:
@@ -226,15 +231,32 @@ class ProvisaFlightServer(flight.FlightServerBase):
     # ------------------------------------------------------------------
 
     def do_get(self, context, ticket):
-        """Execute a query from the ticket and return Arrow record batches."""
-        mode = self._parse_mode(ticket.ticket)
+        """Execute a query from the ticket and return Arrow record batches.
+
+        Dispatch logic:
+          1. If ticket contains 'query' → execute it; mode controls the schema:
+               catalog / default → full governed schema (Stage 2 RLS/masking)
+               approved          → approved query op names as virtual tables
+          2. No 'query' → metadata fetch based on mode:
+               catalog  → table/column listing
+               approved → approved query listing
+        """
+        try:
+            request = json.loads(ticket.ticket.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+            raise flight.FlightServerError(f"Invalid ticket: {e}")
+
+        mode = request.get("mode", "default")
+
+        if request.get("query"):
+            return self._execute_query(request, mode)
 
         if mode == "catalog":
             return self._do_get_catalog(ticket)
         if mode == "approved":
             return self._do_get_approved(ticket)
 
-        return self._do_get_default(ticket)
+        raise flight.FlightServerError("Ticket must include 'query'")
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -473,19 +495,241 @@ class ProvisaFlightServer(flight.FlightServerBase):
             table = table.slice(0, limit)
         return flight.RecordBatchStream(table)
 
-    def _do_get_default(self, ticket):
-        """Execute a GraphQL or SQL query ticket and return Arrow record batches."""
-        try:
-            request = json.loads(ticket.ticket.decode("utf-8"))
-        except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            raise flight.FlightServerError(f"Invalid ticket: {e}")
+    def _do_get_cypher(self, request: dict) -> flight.RecordBatchStream:
+        """Execute a Cypher query ticket and return Arrow record batches."""
+        import json as _json
+        import sqlglot
+        from provisa.cypher.parser import parse_cypher, CypherParseError
+        from provisa.cypher.label_map import CypherLabelMap
+        from provisa.cypher.translator import cypher_to_sql, CypherCrossSourceError, CypherTranslateError
+        from provisa.cypher.graph_rewriter import apply_graph_rewrites
+        from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
+        from provisa.cypher.assembler import assemble_rows, to_serializable
+        from provisa.compiler.rls import RLSContext
+        from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_trino_physical
+        from provisa.compiler.stage2 import apply_governance, build_governance_context
 
         query_text = request.get("query", "")
-        if _is_sql(query_text):
-            return self._do_get_sql(request)
+        role_id = request.get("role", "admin")
+        params = request.get("params") or {}
 
+        if role_id not in self._state.contexts:
+            raise flight.FlightServerError(f"No schema for role {role_id!r}")
+
+        ctx = self._state.contexts[role_id]
+        rls = self._state.rls_contexts.get(role_id, RLSContext.empty())
+
+        try:
+            ast = parse_cypher(query_text)
+        except CypherParseError as exc:
+            raise flight.FlightServerError(f"Cypher parse error: {exc}")
+
+        label_map = CypherLabelMap.from_schema(ctx)
+
+        param_names = collect_param_names(query_text)
+        try:
+            bind_params(param_names, params)
+        except CypherParamError as exc:
+            raise flight.FlightServerError(f"Cypher param error: {exc}")
+
+        try:
+            sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, params)
+        except (CypherCrossSourceError, CypherTranslateError) as exc:
+            raise flight.FlightServerError(f"Cypher translate error: {exc}")
+
+        sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
+
+        try:
+            sql_str = sql_ast.sql(dialect="postgres")
+        except Exception as exc:
+            raise flight.FlightServerError(f"Cypher SQL render failed: {exc}")
+
+        gov_ctx = build_governance_context(
+            role_id, rls, self._state.masking_rules, ctx,
+            getattr(self._state, "tables", []),
+        )
+        semantic_sql = make_semantic_sql(sql_str, ctx)
+        governed_sql = apply_governance(semantic_sql, gov_ctx)
+        exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
+
+        try:
+            trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
+        except Exception as exc:
+            raise flight.FlightServerError(f"Cypher transpile failed: {exc}")
+
+        resolved_params = [params.get(name) for name in ordered_params]
+
+        trino_conn = getattr(self._state, "trino_conn", None)
+        if trino_conn is None:
+            raise flight.FlightServerError("Federation engine not connected")
+
+        def _run() -> list[dict]:
+            cursor = trino_conn.cursor()
+            try:
+                cursor.execute(trino_sql, resolved_params or [])
+                cols = [d[0] for d in (cursor.description or [])]
+                return [dict(zip(cols, row)) for row in cursor.fetchall()]
+            finally:
+                cursor.close()
+
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            raw_rows = pool.submit(_run).result()
+
+        assembled = assemble_rows(raw_rows, graph_vars)
+        serialized = [to_serializable(r) for r in assembled]
+
+        if not serialized:
+            columns = list(graph_vars.keys()) if graph_vars else []
+            empty = {col: pa.array([], type=pa.utf8()) for col in columns}
+            return flight.RecordBatchStream(pa.table(empty))
+
+        col_names = list(serialized[0].keys())
+        col_data: dict[str, list] = {c: [] for c in col_names}
+        for row in serialized:
+            for col in col_names:
+                val = row.get(col)
+                col_data[col].append(
+                    json.dumps(val) if isinstance(val, (dict, list)) else val
+                )
+        return flight.RecordBatchStream(pa.table(col_data))
+
+    def _execute_query(self, request: dict, mode: str) -> flight.RecordBatchStream:
+        """Dispatch a query to the correct handler based on language × mode.
+
+        catalog / default + SQL  → governed schema (Stage 2 RLS/masking/visibility)
+        approved         + SQL  → approved query op names as virtual tables
+        any mode         + Cypher → governed Cypher pipeline
+        any mode         + GraphQL → compiled GraphQL pipeline
+        stable_id        → fetch approved query, detect language, re-dispatch
+        """
+        stable_id = request.get("stable_id")
+        if stable_id:
+            queries = asyncio.run_coroutine_threadsafe(
+                fetch_approved_queries_async(self._state), self._main_loop
+            ).result()
+            matched = next((q for q in queries if q.stable_id == stable_id), None)
+            if matched is None:
+                raise flight.FlightServerError(f"Approved query not found: {stable_id!r}")
+            new_request = {k: v for k, v in request.items() if k != "stable_id"}
+            new_request["query"] = matched.query_text or ""
+            return self._execute_query(new_request, "approved")
+
+        query_text = request.get("query", "")
+        if _is_cypher(query_text):
+            return self._do_get_cypher(request)
+        if _is_sql(query_text):
+            if mode == "approved":
+                return self._do_get_sql(request)
+            return self._do_get_sql_governed(request)
+        return self._do_get_graphql(request, mode)
+
+    def _do_get_sql_governed(self, request: dict) -> flight.RecordBatchStream:
+        """Execute SQL through Stage 2 governance against the full role schema.
+
+        Used for catalog and default modes. Applies RLS, column masking, and
+        visibility rules for the request role before execution.
+        """
+        import sqlglot
+        import sqlglot.expressions as exp
+        from provisa.compiler.rls import RLSContext
+        from provisa.compiler.sql_gen import rewrite_semantic_to_physical
+        from provisa.compiler.stage2 import apply_governance, build_governance_context, extract_sources
+        from provisa.executor.direct import execute_direct
+        from provisa.executor.trino import execute_trino
+
+        sql = request.get("query", "")
+        role_id = request.get("role", "admin")
+
+        if role_id not in self._state.contexts:
+            raise flight.FlightServerError(f"No schema for role {role_id!r}")
+
+        ctx = self._state.contexts[role_id]
+        rls = self._state.rls_contexts.get(role_id, RLSContext.empty())
+        role = self._state.roles.get(role_id)
+
+        try:
+            parsed_tree = sqlglot.parse_one(sql, read="postgres")
+        except Exception as exc:
+            raise flight.FlightServerError(f"SQL parse error: {exc}")
+
+        gov_ctx = build_governance_context(
+            role_id, rls, self._state.masking_rules, ctx,
+            getattr(self._state, "tables", []),
+        )
+
+        forbidden = [
+            (f"{t.db}.{t.name}" if t.db else t.name)
+            for t in parsed_tree.find_all(exp.Table)
+            if (f"{t.db}.{t.name}" if t.db else t.name) not in gov_ctx.table_map
+            and t.name not in gov_ctx.table_map
+        ]
+        if forbidden:
+            raise flight.FlightServerError(
+                f"Tables not accessible for role {role_id!r}: {', '.join(forbidden)}"
+            )
+
+        governed = apply_governance(sql, gov_ctx)
+        sources = extract_sources(governed, gov_ctx, ctx)
+        _default_source = next(
+            (sid for sid, t in self._state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
+            next(iter(self._state.source_pools), "pg"),
+        )
+        decision = decide_route(
+            sources=sources or {_default_source},
+            source_types=self._state.source_types,
+            source_dialects=self._state.source_dialects,
+        )
+        physical = rewrite_semantic_to_physical(governed, ctx)
+
+        if decision.route == Route.TRINO:
+            sql_to_run = transpile_to_trino(physical)
+            result = asyncio.run_coroutine_threadsafe(
+                execute_trino(sql_to_run, []), self._main_loop
+            ).result()
+        else:
+            sql_to_run = transpile(physical, decision.dialect or "postgres")
+            result = asyncio.run_coroutine_threadsafe(
+                execute_direct(
+                    self._state.source_pools,
+                    decision.source_id or _default_source,
+                    sql_to_run, [],
+                ),
+                self._main_loop,
+            ).result()
+
+        from provisa.compiler.sql_gen import ColumnRef
+        columns = [ColumnRef(field_name=c, column=c) for c in result.column_names]
+        table = rows_to_arrow_table(result.rows, columns)
+        return flight.RecordBatchStream(table)
+
+    def _do_get_graphql(self, request: dict, mode: str = "default") -> flight.RecordBatchStream:
+        """Execute a GraphQL query ticket and return Arrow record batches.
+
+        In approved mode, the operation name must match an approved query entry.
+        """
+        if mode == "approved":
+            query_text = request.get("query", "")
+            m = _GQL_OP_NAME.search(query_text)
+            op_name = m.group(1) if m else None
+            if not op_name:
+                raise flight.FlightServerError(
+                    "approved mode requires a named GraphQL operation"
+                )
+            approved = fetch_approved_queries(self._state)
+            approved_names = {
+                mm.group(1)
+                for q in approved
+                if (mm := _GQL_OP_NAME.search(q.query_text or ""))
+            }
+            if op_name not in approved_names:
+                raise flight.FlightServerError(
+                    f"Operation {op_name!r} is not an approved query"
+                )
+
+        ticket_bytes = json.dumps(request).encode("utf-8")
         document, ctx, rls, role, compiled, decision, variables = \
-            self._compile_query(ticket.ticket)
+            self._compile_query(ticket_bytes)
 
         compiled_for_exec = compiled
         sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
@@ -505,7 +749,6 @@ class ProvisaFlightServer(flight.FlightServerBase):
             table = rows_to_arrow_table(result.rows, compiled.columns)
             return flight.RecordBatchStream(table)
 
-        # Trino path — recompile with catalog-qualified names
         compiled_for_exec = compile_query(
             document, ctx, variables, use_catalog=True,
         )[0]
@@ -514,7 +757,6 @@ class ProvisaFlightServer(flight.FlightServerBase):
             compiled_for_exec = apply_sampling(compiled_for_exec, get_sample_size())
         trino_sql = transpile_to_trino(compiled_for_exec.sql)
 
-        # Streaming via Zaychik (true end-to-end Arrow, no materialization)
         if self._state.flight_client is None:
             raise flight.FlightServerError(
                 "Zaychik Flight SQL proxy is not configured. "
