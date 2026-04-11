@@ -45,7 +45,7 @@ export function SystemHealth() {
         <tr>
           <td>Trino</td>
           <td><StatusDot ok={health.trinoConnected} /> {health.trinoConnected ? "Connected" : "Disconnected"}</td>
-          <td></td>
+          <td>{health.trinoConnected ? `${health.trinoWorkerCount} worker${health.trinoWorkerCount !== 1 ? "s" : ""} (${health.trinoActiveWorkers} active)` : ""}</td>
         </tr>
         <tr>
           <td>PostgreSQL Pool</td>

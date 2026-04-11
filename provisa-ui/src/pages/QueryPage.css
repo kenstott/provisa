@@ -119,6 +119,49 @@ body.graphiql-dark .graphiql-dialog {
   font-size: 12px;
 }
 
+.provisa-tools-last-submission {
+  border: 1px solid hsl(142, 40%, 30%);
+  border-radius: 6px;
+  background: hsl(142, 20%, 12%);
+  padding: 8px 10px;
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.provisa-tools-last-submission-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.provisa-tools-dismiss {
+  background: none;
+  border: none;
+  color: hsl(224, 10%, 60%);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.provisa-tools-dismiss:hover {
+  color: hsl(224, 10%, 90%);
+}
+
+.provisa-tools-last-submission-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: hsl(224, 10%, 80%);
+}
+
+.provisa-tools-last-submission-msg {
+  color: hsl(142, 71%, 45%);
+  margin-top: 2px;
+}
+
 .provisa-tools-sql {
   display: flex;
   flex-direction: column;
@@ -141,6 +184,16 @@ body.graphiql-dark .graphiql-dialog {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.provisa-tools-expandable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.provisa-tools-chevron {
+  font-size: 11px;
+  color: hsl(224, 10%, 50%);
 }
 
 .provisa-tools-label {
@@ -168,15 +221,25 @@ body.graphiql-dark .graphiql-dialog {
 
 .provisa-tools-code {
   background: hsl(224, 20%, 12%);
-  padding: 10px;
   border-radius: 4px;
   font-family: monospace;
   font-size: 12px;
-  white-space: pre;
-  overflow-x: auto;
-  overflow-y: auto;
+  overflow: auto;
   max-height: 300px;
   margin: 0;
+}
+
+.provisa-tools-code .cm-editor,
+.provisa-tools-cypher-editor .cm-editor {
+  border: none;
+  outline: none;
+}
+
+.provisa-tools-cypher-editor {
+  font-family: monospace;
+  font-size: 12px;
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 .provisa-tools-metadata {
@@ -317,6 +380,24 @@ body.graphiql-dark .graphiql-dialog {
   color: hsl(142, 71%, 45%);
   list-style: disc;
 }
+
+/* Submit-for-approval modal footer buttons */
+.modal-actions button {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  background: hsl(224, 20%, 28%);
+  color: hsl(224, 10%, 85%);
+}
+.modal-actions button:hover { background: hsl(224, 20%, 35%); }
+.modal-actions button.submit-btn {
+  background: hsl(239, 84%, 50%);
+  color: white;
+}
+.modal-actions button.submit-btn:hover { background: hsl(239, 84%, 60%); }
+.modal-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* Response panel layout for table/JSON toggle */
 .graphiql-container .graphiql-response {

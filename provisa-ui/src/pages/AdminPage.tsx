@@ -31,7 +31,7 @@ import { SystemHealth } from "../components/admin/SystemHealth";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
 
 const FORMAT_OPTIONS = ["parquet", "orc", "json", "ndjson", "csv", "arrow"];
-const TABS = ["Overview", "Materialized Views", "Cache", "Scheduled Tasks", "System Health", "Observability"] as const;
+const TABS = ["Overview", "Domains", "Materialized Views", "Cache", "Scheduled Tasks", "System Health", "Observability"] as const;
 type Tab = typeof TABS[number];
 
 /** Admin overview page — dashboard, config management, platform settings. */
@@ -174,31 +174,6 @@ export function AdminPage() {
                 <div className="stat-label">{label}</div>
               </div>
             ))}
-          </div>
-
-          <h3>Domains</h3>
-          {domainMsg && <div className="success" style={{ marginBottom: "0.5rem" }}>{domainMsg}</div>}
-          <table className="data-table" style={{ marginBottom: "1rem" }}>
-            <thead><tr><th>ID</th><th>Description</th><th></th></tr></thead>
-            <tbody>
-              {domains.length === 0 && (
-                <tr><td colSpan={3} style={{ color: "var(--text-muted)", textAlign: "center" }}>No domains defined</td></tr>
-              )}
-              {domains.map((d) => (
-                <tr key={d.id}>
-                  <td>{d.id}</td>
-                  <td>{d.description || "—"}</td>
-                  <td>
-                    <button className="btn-danger" style={{ padding: "0.2rem 0.5rem", fontSize: "0.8rem" }} onClick={() => handleDeleteDomain(d.id)}>Delete</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "1.5rem" }}>
-            <input value={newDomainId} onChange={(e) => setNewDomainId(e.target.value)} placeholder="domain-id" style={{ width: "160px" }} />
-            <input value={newDomainDesc} onChange={(e) => setNewDomainDesc(e.target.value)} placeholder="description (optional)" style={{ flex: 1 }} />
-            <button className="btn-primary" onClick={handleAddDomain} disabled={!newDomainId.trim()}>Add Domain</button>
           </div>
 
           <h3>Platform Settings</h3>
@@ -370,6 +345,33 @@ export function AdminPage() {
         </>
       )}
 
+      {activeTab === "Domains" && (
+        <>
+          {domainMsg && <div className="success" style={{ marginBottom: "0.5rem" }}>{domainMsg}</div>}
+          <table className="data-table" style={{ marginBottom: "1rem" }}>
+            <thead><tr><th>ID</th><th>Description</th><th></th></tr></thead>
+            <tbody>
+              {domains.length === 0 && (
+                <tr><td colSpan={3} style={{ color: "var(--text-muted)", textAlign: "center" }}>No domains defined</td></tr>
+              )}
+              {domains.map((d) => (
+                <tr key={d.id}>
+                  <td>{d.id}</td>
+                  <td>{d.description || "—"}</td>
+                  <td>
+                    <button className="btn-danger" style={{ padding: "0.2rem 0.5rem", fontSize: "0.8rem" }} onClick={() => handleDeleteDomain(d.id)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <input value={newDomainId} onChange={(e) => setNewDomainId(e.target.value)} placeholder="domain-id" style={{ width: "160px", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }} />
+            <input value={newDomainDesc} onChange={(e) => setNewDomainDesc(e.target.value)} placeholder="description (optional)" style={{ flex: 1, background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }} />
+            <button className="btn-primary" onClick={handleAddDomain} disabled={!newDomainId.trim()}>Add Domain</button>
+          </div>
+        </>
+      )}
       {activeTab === "Materialized Views" && <MVManager />}
       {activeTab === "Cache" && <CacheManager />}
       {activeTab === "Scheduled Tasks" && <ScheduledTasks />}
@@ -385,6 +387,87 @@ export function AdminPage() {
 interface ObsTabProps {
   settings: import("../api/admin").PlatformSettings;
   setSettings: (s: import("../api/admin").PlatformSettings) => void;
+}
+
+interface TraceEntry {
+  ts: number;
+  trace_id: string;
+  span_id: string;
+  name: string;
+  status: string;
+  duration_ms: number | null;
+  attrs: Record<string, unknown>;
+}
+
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8001";
+
+function TraceFeed() {
+  const [traces, setTraces] = useState<TraceEntry[]>([]);
+  const [paused, setPaused] = useState(false);
+  const [selected, setSelected] = useState<TraceEntry | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
+
+  useEffect(() => {
+    let alive = true;
+    const poll = async () => {
+      if (!alive || pausedRef.current) return;
+      try {
+        const resp = await fetch(`${API_BASE}/admin/traces/recent?limit=50`);
+        const json = await resp.json();
+        if (alive && !pausedRef.current) setTraces(json.traces ?? []);
+      } catch { /* ignore */ }
+    };
+    poll();
+    const id = setInterval(poll, 2000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
+  const statusColor = (s: string) =>
+    s === "OK" ? "var(--success)" : s === "ERROR" ? "var(--error, #e55)" : "var(--text-muted)";
+
+  return (
+    <div className="trace-feed">
+      <div className="trace-feed-header">
+        <span>Live Traces</span>
+        <button
+          className="trace-pause-btn"
+          onClick={() => setPaused((p) => !p)}
+          title={paused ? "Resume" : "Pause"}
+        >
+          {paused ? "▶ Resume" : "⏸ Pause"}
+        </button>
+      </div>
+      <div className="trace-feed-list" ref={listRef}>
+        {traces.length === 0 ? (
+          <div className="trace-empty">No spans yet — make a request to see traces.</div>
+        ) : (
+          traces.map((t) => (
+            <div
+              key={t.span_id}
+              className={`trace-row${selected?.span_id === t.span_id ? " trace-row--selected" : ""}`}
+              onClick={() => setSelected(selected?.span_id === t.span_id ? null : t)}
+            >
+              <span className="trace-name">{t.name}</span>
+              <span className="trace-status" style={{ color: statusColor(t.status) }}>{t.status}</span>
+              <span className="trace-dur">{t.duration_ms != null ? `${t.duration_ms}ms` : "—"}</span>
+              {selected?.span_id === t.span_id && (
+                <div className="trace-detail" onClick={(e) => e.stopPropagation()}>
+                  <div><strong>Trace:</strong> <code>{t.trace_id}</code></div>
+                  <div><strong>Span:</strong> <code>{t.span_id}</code></div>
+                  <div><strong>Time:</strong> {new Date(t.ts * 1000).toLocaleTimeString()}</div>
+                  {Object.keys(t.attrs).length > 0 && (
+                    <pre className="trace-attrs">{JSON.stringify(t.attrs, null, 2)}</pre>
+                  )}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
 }
 
 function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
@@ -410,7 +493,7 @@ function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
   const active = Boolean(settings.otel.endpoint);
 
   return (
-    <div className="settings-grid">
+    <div className="observability-layout">
       <div className="settings-section">
         <h4>OpenTelemetry Tracing</h4>
         <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "1rem" }}>
@@ -466,6 +549,7 @@ function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
           Note: endpoint and service_name changes take effect on next restart. Sample rate is applied immediately.
         </p>
       </div>
+      <TraceFeed />
     </div>
   );
 }

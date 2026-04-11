@@ -187,11 +187,16 @@ const explorerStyles = {
 export function SyncedExplorerContent() {
   const { setOperationName, run } = useGraphiQLActions();
   const schema = useGraphiQL((s) => s.schema);
+  const activeTabIndex = useGraphiQL((s) => s.activeTabIndex);
+  // Canonical per-tab query from the store — reliable during tab switches
+  const tabQuery = useGraphiQL((s) => s.tabs[s.activeTabIndex]?.query ?? "");
   const [liveQuery, setQuery] = useOptimisticState(useOperationsEditorState());
-  // initialQuery is set from storage (graphiql:query or tabState) during provider init.
-  // Use it as fallback before the editor populates liveQuery.
-  const initialQuery = useGraphiQL((s) => s.initialQuery);
-  const query = liveQuery || initialQuery;
+  // During a tab switch, liveQuery is still synced to the previous tab's editor.
+  // Use tabQuery as the source of truth on the first render after a switch.
+  const prevTabIndexRef = useRef(activeTabIndex);
+  const isTabSwitching = prevTabIndexRef.current !== activeTabIndex;
+  if (isTabSwitching) prevTabIndexRef.current = activeTabIndex;
+  const query = isTabSwitching ? tabQuery : (liveQuery || tabQuery);
 
   const handleRunOperation = useCallback(
     (operationName?: string) => {
@@ -203,6 +208,7 @@ export function SyncedExplorerContent() {
 
   return (
     <Explorer
+      key={activeTabIndex}
       schema={schema}
       query={query}
       onEdit={setQuery}
@@ -416,11 +422,12 @@ export function QueryPage() {
       }
 
       // Non-subscription: use standard fetcher
-      const result = base(request, opts);
+      // base() is async, so it returns Promise<AsyncGenerator|ExecutionResult>
+      const result = await base(request, opts);
       if (result && typeof (result as any)[Symbol.asyncIterator] === "function") {
         yield* result as AsyncIterable<any>;
       } else {
-        yield await (result as Promise<any>);
+        yield result;
       }
     };
   }, [role?.id]);

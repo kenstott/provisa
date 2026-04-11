@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Link } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { CapabilityGate } from "./CapabilityGate";
 import { RoleSelector } from "./RoleSelector";
 
@@ -16,38 +16,41 @@ export function NavBar() {
   return (
     <nav className="navbar">
       <div className="navbar-brand">
-        <Link to="/">Provisa</Link>
+        <NavLink to="/">Provisa</NavLink>
       </div>
       <div className="navbar-links">
         <CapabilityGate capability="source_registration">
-          <Link to="/sources">Sources</Link>
+          <NavLink to="/sources">Sources</NavLink>
         </CapabilityGate>
         <CapabilityGate capability="table_registration">
-          <Link to="/tables">Tables</Link>
+          <NavLink to="/tables">Tables</NavLink>
         </CapabilityGate>
         <CapabilityGate capability="table_registration">
-          <Link to="/views">Views</Link>
+          <NavLink to="/views">Views</NavLink>
         </CapabilityGate>
         <CapabilityGate capability="admin">
-          <Link to="/commands">Commands</Link>
+          <NavLink to="/commands">Commands</NavLink>
         </CapabilityGate>
         <CapabilityGate capability="relationship_registration">
-          <Link to="/relationships">Relationships</Link>
+          <NavLink to="/relationships">Relationships</NavLink>
         </CapabilityGate>
         <CapabilityGate capability="security_config">
-          <Link to="/security">Security</Link>
+          <NavLink to="/security">Security</NavLink>
         </CapabilityGate>
         <CapabilityGate capability="query_development">
-          <Link to="/schema">Schema Explorer</Link>
+          <NavLink to="/schema">Schema</NavLink>
         </CapabilityGate>
         <CapabilityGate capability="query_development">
-          <Link to="/query">Query</Link>
+          <NavLink to="/graph">Graph</NavLink>
+        </CapabilityGate>
+        <CapabilityGate capability="query_development">
+          <NavLink to="/query">Query</NavLink>
         </CapabilityGate>
         <CapabilityGate capability="query_approval">
-          <Link to="/approvals">Approvals</Link>
+          <NavLink to="/approvals">Approvals</NavLink>
         </CapabilityGate>
         <CapabilityGate capability="admin">
-          <Link to="/admin">Admin</Link>
+          <NavLink to="/admin">Admin</NavLink>
         </CapabilityGate>
       </div>
       <div className="navbar-role">

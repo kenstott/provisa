@@ -69,20 +69,22 @@ export function MVManager() {
             <td className="reasoning-cell" style={{ color: "var(--error)", maxWidth: 200 }}>
               {mv.lastError || ""}
             </td>
-            <td style={{ display: "flex", gap: "0.25rem" }}>
-              <button
-                onClick={() => handleRefresh(mv.id)}
-                disabled={refreshing === mv.id}
-                style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
-              >
-                {refreshing === mv.id ? "..." : "Refresh"}
-              </button>
-              <button
-                onClick={() => handleToggle(mv.id, !mv.enabled)}
-                style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
-              >
-                {mv.enabled ? "Disable" : "Enable"}
-              </button>
+            <td>
+              <div style={{ display: "flex", gap: "0.25rem" }}>
+                <button
+                  onClick={() => handleRefresh(mv.id)}
+                  disabled={refreshing === mv.id}
+                  style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                >
+                  {refreshing === mv.id ? "..." : "Refresh"}
+                </button>
+                <button
+                  onClick={() => handleToggle(mv.id, !mv.enabled)}
+                  style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                >
+                  {mv.enabled ? "Disable" : "Enable"}
+                </button>
+              </div>
             </td>
           </tr>
         ))}

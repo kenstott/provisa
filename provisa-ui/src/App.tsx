@@ -23,6 +23,7 @@ import { AdminPage } from "./pages/AdminPage";
 import { ViewsPage } from "./pages/ViewsPage";
 import { CommandsPage } from "./pages/CommandsPage";
 import { LoginPage } from "./pages/LoginPage";
+import { GraphPage } from "./pages/GraphPage";
 import "./App.css";
 
 // Lazy-load SchemaExplorer — graphql-voyager requires @mui/material and browser globals
@@ -124,6 +125,14 @@ function App() {
                     <Suspense fallback={<div className="page">Loading schema explorer...</div>}>
                       <SchemaExplorer />
                     </Suspense>
+                  </CapabilityGate>
+                }
+              />
+              <Route
+                path="/graph"
+                element={
+                  <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
+                    <GraphPage />
                   </CapabilityGate>
                 }
               />
