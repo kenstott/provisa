@@ -33,7 +33,8 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 | `(n:Label {prop: val})` | ✓ | Inline property filter becomes WHERE |
 | `(a)-[:TYPE]->(b)` | ✓ | Directed, single hop |
 | `(a)<-[:TYPE]-(b)` | ✓ | Backward traversal; join columns reversed |
-| `(a)-[]->(b)` | ✓ | Any relationship between a and b |
+| `(a)-[]->(b)` | ✓ | Any directed relationship a→b; UNION ALL if multiple types match |
+| `(a)-[]-(b)` | ✓ | Bidirectional; expands to UNION ALL of all forward and backward relationships |
 | `(a)-[:TYPE*..N]->(b)` | ✓ | Variable-length with upper bound; recursive CTE for self-referential, flat JOIN otherwise |
 | `(a)-[]->(b)-[]->(c)` | ✓ | Multi-hop chained JOINs |
 | `(n:DomainLabel)` | ✓ | Domain label → UNION ALL subquery over all types in the domain |
@@ -172,7 +173,7 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 
 2. **No relationship properties.** Relationships (`-[r:TYPE]->`) exist solely as join metadata in the semantic layer. They carry no stored attributes, so `WHERE r.since > 2020` or `RETURN r.weight` has no meaning and is not supported.
 
-3. **Bidirectional traversal** `(a)-[]-(b)` rewrites to the forward+backward UNION ALL of all matching directed relationships from the semantic layer. Every relationship in the semantic layer is directional; bidirectional syntax is sugar that expands to both directions.
+3. **Bidirectional traversal** `(a)-[]-(b)` rewrites to the forward+backward UNION ALL of all matching directed relationships from the semantic layer. Every relationship in the semantic layer is directional; bidirectional syntax is sugar that expands to both directions. Extra branches are emitted at the outermost query level — subsequent MATCH patterns in the same query are not duplicated across branches (limitation for multi-MATCH bidirectional).
 
 4. **Recursive paths require a bound.** Variable-length patterns (`[*]`) must include an upper bound (e.g. `[*..10]`). Unbounded traversal is rejected at parse time to prevent runaway recursive CTEs.
 

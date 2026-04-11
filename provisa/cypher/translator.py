@@ -483,78 +483,94 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         joins.append({"table": join_table, "on": on_cond, "join_type": join_type})
                     continue
 
-                # Find matching relationship
-                rel_mapping = None
+                # Find matching relationship(s)
+                # direction=="none" → bidirectional: expand to UNION ALL of all
+                # forward and backward directed relationships from the semantic layer.
+                bidir = rel.direction == "none"
                 backward = rel.direction == "left"
+
                 if rel.types:
                     rel_type = rel.types[0].upper()
-                    rel_mapping = self._lm.relationships.get(rel_type)
+                    rm = self._lm.relationships.get(rel_type)
+                    candidates: list[tuple] = [(rm, backward)] if rm else []
                 else:
-                    # For backward, the rel's source→target is tgt→src in Cypher notation
-                    if backward:
-                        candidates = self._lm.relationships_for(tgt_nm.label, src_nm.label)
+                    if bidir:
+                        fwd = self._lm.relationships_for(src_nm.label, tgt_nm.label)
+                        bwd = self._lm.relationships_for(tgt_nm.label, src_nm.label)
+                        candidates = [(m, False) for m in fwd] + [(m, True) for m in bwd]
+                    elif backward:
+                        fwd_cands = self._lm.relationships_for(tgt_nm.label, src_nm.label)
+                        candidates = [(m, True) for m in fwd_cands]
                     else:
-                        candidates = self._lm.relationships_for(src_nm.label, tgt_nm.label)
-                    if candidates:
-                        rel_mapping = candidates[0]
+                        fwd_cands = self._lm.relationships_for(src_nm.label, tgt_nm.label)
+                        candidates = [(m, False) for m in fwd_cands]
 
-                if rel_mapping is None:
+                if not candidates:
                     continue
-
-                # Record relationship variable → rel_type for type(r) resolution
-                if rel.variable:
-                    self._rel_var_types[rel.variable] = rel_mapping.rel_type
 
                 join_type = "LEFT" if clause.optional else "INNER"
                 tgt_alias = tgt_var or tgt_nm.table_name
-
-                join_table = exp.alias_(
-                    exp.Table(
-                        this=exp.Identifier(this=tgt_nm.table_name, quoted=True),
-                        db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
-                        catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
-                    ),
-                    alias=tgt_alias,
-                )
-
                 if src_var and src_var in self._cte_sources:
                     src_table_ref = self._var_table.get(src_var, (src_var, None))[0]
                 else:
                     src_table_ref = src_var or src_nm.table_name
 
-                if backward:
-                    on_cond = exp.EQ(
-                        this=exp.Column(
-                            this=exp.Identifier(this=rel_mapping.join_source_column, quoted=True),
-                            table=exp.Identifier(this=tgt_alias),
+                def _make_rel_join(rm, is_bwd: bool) -> dict:
+                    jt = exp.alias_(
+                        exp.Table(
+                            this=exp.Identifier(this=tgt_nm.table_name, quoted=True),
+                            db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
+                            catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
                         ),
-                        expression=exp.Column(
-                            this=exp.Identifier(this=rel_mapping.join_target_column, quoted=True),
-                            table=exp.Identifier(this=src_table_ref),
-                        ),
+                        alias=tgt_alias,
                     )
-                else:
-                    on_cond = exp.EQ(
-                        this=exp.Column(
-                            this=exp.Identifier(this=rel_mapping.join_source_column, quoted=True),
-                            table=exp.Identifier(this=src_table_ref),
-                        ),
-                        expression=exp.Column(
-                            this=exp.Identifier(this=rel_mapping.join_target_column, quoted=True),
-                            table=exp.Identifier(this=tgt_alias),
-                        ),
-                    )
+                    if is_bwd:
+                        cond = exp.EQ(
+                            this=exp.Column(
+                                this=exp.Identifier(this=rm.join_source_column, quoted=True),
+                                table=exp.Identifier(this=tgt_alias),
+                            ),
+                            expression=exp.Column(
+                                this=exp.Identifier(this=rm.join_target_column, quoted=True),
+                                table=exp.Identifier(this=src_table_ref),
+                            ),
+                        )
+                    else:
+                        cond = exp.EQ(
+                            this=exp.Column(
+                                this=exp.Identifier(this=rm.join_source_column, quoted=True),
+                                table=exp.Identifier(this=src_table_ref),
+                            ),
+                            expression=exp.Column(
+                                this=exp.Identifier(this=rm.join_target_column, quoted=True),
+                                table=exp.Identifier(this=tgt_alias),
+                            ),
+                        )
+                    return {"table": jt, "on": cond, "join_type": join_type}
+
+                # Primary candidate → main join; extra candidates → UNION ALL branches
+                primary_rm, primary_bwd = candidates[0]
+                if rel.variable:
+                    self._rel_var_types[rel.variable] = primary_rm.rel_type
+
+                primary_join = _make_rel_join(primary_rm, primary_bwd)
+
+                # Snapshot joins BEFORE adding primary (for extra branch construction)
+                joins_before = list(joins)
 
                 # Lateral-bound src: tgt becomes FROM; condition becomes WHERE predicate
                 if src_var and src_var in self._lateral_bound and from_expr is None:
-                    from_expr = join_table
-                    self._lateral_conditions.append(on_cond)
+                    from_expr = primary_join["table"]
+                    self._lateral_conditions.append(primary_join["on"])
                 else:
-                    joins.append({
-                        "table": join_table,
-                        "on": on_cond,
-                        "join_type": join_type,
-                    })
+                    joins.append(primary_join)
+
+                # Bidirectional extra candidates → independent UNION ALL branches
+                for extra_rm, extra_bwd in candidates[1:]:
+                    extra_join = _make_rel_join(extra_rm, extra_bwd)
+                    self._extra_path_branches.append(
+                        (from_expr, joins_before + [extra_join])
+                    )
 
         if from_expr is None:
             raise CypherTranslateError("No MATCH clause produced a FROM table")
@@ -978,7 +994,5 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:
     if name == "SUBSTRING" and len(args) >= 2:
         # Fallback if sqlglot parsed as Anonymous instead of Substring
         start_plus_1 = exp.Add(this=args[1], expression=exp.Literal.number(1))
-        new_args = [args[0], start_plus_1, *args[2:]]
-        return exp.Anonymous(this="substr", expressions=new_args)
-
+        return exp.Anonymous(this="substr", expressions=[args[0], start_plus_1, *args[2:]])
     return node

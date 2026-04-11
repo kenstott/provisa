@@ -1526,3 +1526,66 @@ def test_map_projection_named_key():
     sql = sql_ast.sql(dialect="trino")
     assert "MAP" in sql.upper()
     assert "'fullName'" in sql
+
+
+# ---------------------------------------------------------------------------
+# Bidirectional traversal
+# ---------------------------------------------------------------------------
+
+def _make_label_map_bidirectional() -> CypherLabelMap:
+    """Label map with Person→Company (WORKS_AT) and Company→Person (EMPLOYS)."""
+    person_meta = NodeMapping(
+        label="Person", table_id=1, source_id="pg-main", id_column="id",
+        catalog_name="postgresql", schema_name="public", table_name="persons",
+        properties={"name": "name", "age": "age"},
+    )
+    company_meta = NodeMapping(
+        label="Company", table_id=2, source_id="pg-main", id_column="id",
+        catalog_name="postgresql", schema_name="public", table_name="companies",
+        properties={"name": "name"},
+    )
+    rels = {
+        "WORKS_AT": RelationshipMapping(
+            rel_type="WORKS_AT", source_label="Person", target_label="Company",
+            join_source_column="company_id", join_target_column="id", field_name="works_at",
+        ),
+        "EMPLOYS": RelationshipMapping(
+            rel_type="EMPLOYS", source_label="Company", target_label="Person",
+            join_source_column="employee_id", join_target_column="id", field_name="employs",
+        ),
+    }
+    return CypherLabelMap(nodes={"Person": person_meta, "Company": company_meta}, relationships=rels)
+
+
+def test_bidirectional_single_candidate_no_union():
+    """(a)-[]-(b) with only one direction → no UNION ALL."""
+    lm = _make_label_map()  # only WORKS_AT: Person→Company, no reverse
+    ast = parse_cypher("MATCH (a:Person)-[]-(b:Company) RETURN a.name, b.name")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "UNION" not in sql.upper()
+    assert "persons" in sql.lower()
+    assert "companies" in sql.lower()
+
+
+def test_bidirectional_both_directions_produces_union():
+    """(a)-[]-(b) with forward and backward candidates → UNION ALL."""
+    lm = _make_label_map_bidirectional()  # WORKS_AT (Person→Company) + EMPLOYS (Company→Person)
+    ast = parse_cypher("MATCH (a:Person)-[]-(b:Company) RETURN a.name, b.name")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "UNION" in sql.upper()
+    # Both branches reference both tables
+    assert sql.lower().count("persons") >= 2
+    assert sql.lower().count("companies") >= 2
+
+
+def test_bidirectional_typed_rel_no_expansion():
+    """-[:TYPE]-  with explicit type and direction=none is treated as typed undirected."""
+    lm = _make_label_map_bidirectional()
+    ast = parse_cypher("MATCH (a:Person)-[:WORKS_AT]-(b:Company) RETURN a.name")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    # Explicit type: only one mapping looked up → no extra UNION ALL branch
+    assert "persons" in sql.lower()
+    assert "companies" in sql.lower()
