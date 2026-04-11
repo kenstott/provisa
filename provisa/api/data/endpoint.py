@@ -343,7 +343,7 @@ async def graphql_endpoint(
 
     if is_mut:
         response = await _handle_mutation(
-            document, ctx, rls, state, effective_variables, role_id,
+            document, ctx, rls, state, effective_variables, role_id, raw_request,
         )
     else:
         response = await _handle_query(
@@ -1111,7 +1111,7 @@ def _split_action_fields(document, state) -> tuple[list, list]:
     return action_sels, regular_names
 
 
-async def _handle_mutation(document, ctx, rls, state, variables, role_id):
+async def _handle_mutation(document, ctx, rls, state, variables, role_id, request=None):
     """Handle a GraphQL mutation operation."""
     action_sels, regular_names = _split_action_fields(document, state)
 
@@ -1126,9 +1126,10 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id):
     if action_sels and regular_names:
         raise HTTPException(status_code=400, detail="Cannot mix action fields with table mutations")
 
+    headers = dict(request.headers) if request else None
     try:
         mutations = compile_mutation(
-            document, ctx, state.source_types, variables,
+            document, ctx, state.source_types, variables, headers,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

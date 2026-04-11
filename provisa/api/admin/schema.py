@@ -20,12 +20,18 @@ from provisa.api.admin.types import (
     AvailableColumnType,
     AvailableTableType,
     CacheStatsType,
+    ColumnAliasType,
     ColumnInput,
+    ColumnPresetInput,
+    ColumnPresetType,
+    CompileQueryInput,
+    CompileQueryResult,
     DomainInput,
     DomainType,
+    EnforcementType,
     MutationResult,
     MVType,
-    PersistedQueryType,
+    GovernedQueryType,
     RegisteredTableType,
     RelationshipInput,
     RelationshipType,
@@ -36,6 +42,8 @@ from provisa.api.admin.types import (
     ScheduledTaskType,
     SourceInput,
     SourceType,
+    SubmitQueryInput,
+    SubmitQueryResult,
     SystemHealthType,
     TableColumnType,
     TableInput,
@@ -154,6 +162,10 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         )
         for r in col_rows
     ]
+    presets = [
+        ColumnPresetType(column=p["column"], source=p["source"], name=p.get("name"), value=p.get("value"))
+        for p in (row.get("column_presets") or [])
+    ]
     return RegisteredTableType(
         id=row["id"], source_id=row["source_id"],
         domain_id=row["domain_id"], schema_name=row["schema_name"],
@@ -163,6 +175,7 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         naming_convention=row.get("naming_convention"),
         watermark_column=row.get("watermark_column"),
         columns=columns,
+        column_presets=presets,
     )
 
 
@@ -228,12 +241,12 @@ class Query:
             return [_rls_from_row(r) for r in rows]
 
     @strawberry.field
-    async def persisted_queries(self) -> list[PersistedQueryType]:
+    async def governed_queries(self) -> list[GovernedQueryType]:
         pool = await _get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch("SELECT * FROM persisted_queries ORDER BY id")
             return [
-                PersistedQueryType(
+                GovernedQueryType(
                     id=r["id"], query_text=r["query_text"],
                     compiled_sql=r["compiled_sql"] or "",
                     status=r["status"], stable_id=r.get("stable_id"),
@@ -250,6 +263,11 @@ class Query:
                     owner_team=r.get("owner_team"),
                     expiry_date=str(r["expiry_date"]) if r.get("expiry_date") else None,
                     visible_to=list(r.get("visible_to") or []),
+                    schedule_cron=r.get("schedule_cron"),
+                    schedule_output_type=r.get("schedule_output_type"),
+                    schedule_output_format=r.get("schedule_output_format"),
+                    schedule_destination=r.get("schedule_destination"),
+                    compiled_cypher=r.get("compiled_cypher"),
                 )
                 for r in rows
             ]
@@ -454,12 +472,22 @@ class Query:
         from provisa.cache.store import RedisCacheStore
 
         trino_ok = False
+        trino_worker_count = 0
+        trino_active_workers = 0
         if state.trino_conn is not None:
             try:
                 cursor = state.trino_conn.cursor()
                 cursor.execute("SELECT 1")
                 cursor.fetchone()
                 trino_ok = True
+                cursor.execute(
+                    "SELECT state, count(*) FROM system.runtime.nodes GROUP BY state"
+                )
+                for row in cursor.fetchall():
+                    node_state, cnt = row[0], int(row[1])
+                    trino_worker_count += cnt
+                    if node_state == "active":
+                        trino_active_workers = cnt
             except Exception:
                 pass
 
@@ -476,15 +504,17 @@ class Query:
             except Exception:
                 pass
 
-        flight_ok = state.flight_server is not None if hasattr(state, "flight_server") else False
+        flight_ok = state._flight_server is not None if hasattr(state, "_flight_server") else False
 
         return SystemHealthType(
             trino_connected=trino_ok,
+            trino_worker_count=trino_worker_count,
+            trino_active_workers=trino_active_workers,
             pg_pool_size=pg_size,
             pg_pool_free=pg_free,
             cache_connected=cache_ok,
             flight_server_running=flight_ok,
-            mv_refresh_loop_running=hasattr(state, "_mv_task") and state._mv_task is not None,
+            mv_refresh_loop_running=hasattr(state, "_mv_refresh_task") and state._mv_refresh_task is not None,
         )
 
 
@@ -698,6 +728,11 @@ class Mutation:
             convention = (src["naming_convention"] if src else None) or "snake_case"
             alias = apply_convention(input.table_name, convention)
 
+        from provisa.core.models import ColumnPreset as ColumnPresetModel
+        presets = [
+            ColumnPresetModel(column=cp.column, source=cp.source, name=cp.name, value=cp.value)
+            for cp in input.column_presets
+        ]
         model = TableModel(
             source_id=input.source_id,
             domain_id=input.domain_id,
@@ -708,6 +743,7 @@ class Mutation:
             description=input.description,
             columns=columns,
             watermark_column=input.watermark_column,
+            column_presets=presets,
         )
         async with pool.acquire() as conn:
             table_id = await table_repo.upsert(conn, model)
@@ -752,6 +788,11 @@ class Mutation:
             )
             for c in input.columns
         ]
+        from provisa.core.models import ColumnPreset as ColumnPresetModel
+        presets = [
+            ColumnPresetModel(column=cp.column, source=cp.source, name=cp.name, value=cp.value)
+            for cp in input.column_presets
+        ]
         model = TableModel(
             source_id=input.source_id,
             domain_id=input.domain_id,
@@ -762,6 +803,7 @@ class Mutation:
             description=input.description,
             columns=columns,
             watermark_column=input.watermark_column,
+            column_presets=presets,
         )
         async with pool.acquire() as conn:
             table_id = await table_repo.upsert(conn, model)
@@ -877,17 +919,77 @@ class Mutation:
         approver_id: str = "admin",
         visible_to: list[str] = strawberry.field(default_factory=list),
     ) -> MutationResult:
-        from provisa.registry.store import approve
+        from provisa.registry.store import approve, get_by_id
         pool = await _get_pool()
         async with pool.acquire() as conn:
             try:
+                row = await get_by_id(conn, query_id)
                 stable_id = await approve(conn, query_id, approver_id, visible_to=visible_to)
-                return MutationResult(
-                    success=True,
-                    message=f"Query approved with stable ID: {stable_id}",
-                )
             except Exception as e:
                 return MutationResult(success=False, message=str(e))
+
+        # Register scheduled job if the query requested scheduled delivery
+        schedule_msg = ""
+        if row and row.get("schedule_cron"):
+            try:
+                from provisa.api.app import state
+                from provisa.scheduler.jobs import run_scheduled_query
+                from apscheduler.triggers.cron import CronTrigger
+                if state._scheduler is not None:
+                    job_id = f"query:{stable_id}"
+                    state._scheduler.add_job(
+                        run_scheduled_query,
+                        trigger=CronTrigger.from_crontab(row["schedule_cron"]),
+                        args=[
+                            stable_id,
+                            row.get("schedule_output_type", "redirect"),
+                            row.get("schedule_output_format"),
+                            row.get("schedule_destination"),
+                        ],
+                        id=job_id,
+                        name=f"query:{stable_id}",
+                        replace_existing=True,
+                    )
+                    schedule_msg = f" Scheduled ({row['schedule_cron']}) → {row.get('schedule_output_type')}"
+            except Exception as exc:
+                schedule_msg = f" (schedule registration failed: {exc})"
+
+        return MutationResult(
+            success=True,
+            message=f"Query approved with stable ID: {stable_id}.{schedule_msg}",
+        )
+
+    @strawberry.mutation
+    async def reject_query(self, query_id: int, reason: str, actor_id: str = "admin") -> MutationResult:
+        """Reject a pending query with a mandatory reason."""
+        from provisa.registry.store import reject as _reject
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            try:
+                await _reject(conn, query_id, actor_id, reason)
+                return MutationResult(success=True, message=f"Query {query_id} rejected.")
+            except Exception as e:
+                return MutationResult(success=False, message=str(e))
+
+    @strawberry.mutation
+    async def revoke_query(self, query_id: int, actor_id: str = "admin") -> MutationResult:
+        """Revoke an approved query, returning it to pending for re-review."""
+        from provisa.registry.store import revoke as _revoke
+        from provisa.api.app import state
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            try:
+                row = await conn.fetchrow("SELECT stable_id FROM persisted_queries WHERE id = $1", query_id)
+                await _revoke(conn, query_id, actor_id)
+            except Exception as e:
+                return MutationResult(success=False, message=str(e))
+        # Remove scheduled job if one was registered
+        if row and row["stable_id"] and state._scheduler is not None:
+            try:
+                state._scheduler.remove_job(f"query:{row['stable_id']}")
+            except Exception:
+                pass
+        return MutationResult(success=True, message=f"Query {query_id} approval revoked.")
 
     @strawberry.mutation
     async def set_query_visible_to(self, query_id: int, visible_to: list[str]) -> MutationResult:
@@ -1101,6 +1203,69 @@ class Mutation:
             success=True,
             message=f"ANALYZE completed for {len(analyzed)} table(s) on source {source_id!r}",
         )
+
+
+    @strawberry.mutation
+    async def compile_query(self, input: CompileQueryInput) -> list[CompileQueryResult]:
+        from provisa.api.admin import dev_queries
+        variables = dict(input.variables) if input.variables else None
+        results = await dev_queries.compile_query(input.role, input.query, variables)
+        out = []
+        for r in results:
+            enf = r["enforcement"]
+            out.append(CompileQueryResult(
+                sql=r["sql"],
+                semantic_sql=r["semantic_sql"],
+                trino_sql=r.get("trino_sql"),
+                direct_sql=r.get("direct_sql"),
+                route=r["route"],
+                route_reason=r["route_reason"],
+                sources=r["sources"],
+                root_field=r["root_field"],
+                canonical_field=r["canonical_field"],
+                column_aliases=[
+                    ColumnAliasType(field_name=a["field_name"], column=a["column"])
+                    for a in r["column_aliases"]
+                ],
+                enforcement=EnforcementType(
+                    rls_filters_applied=enf.rls_filters_applied,
+                    columns_excluded=enf.columns_excluded,
+                    schema_scope=enf.schema_scope,
+                    masking_applied=enf.masking_applied,
+                    ceiling_applied=enf.ceiling_applied,
+                    route=enf.route,
+                ),
+                optimizations=r["optimizations"],
+                warnings=r["warnings"],
+                compiled_cypher=r.get("compiled_cypher"),
+            ))
+        return out
+
+    @strawberry.mutation
+    async def submit_query(self, input: SubmitQueryInput) -> SubmitQueryResult:
+        from provisa.api.admin import dev_queries
+        variables = dict(input.variables) if input.variables else None
+        query_id, op_name, message = await dev_queries.submit_query(
+            role_id=input.role,
+            query=input.query,
+            variables=variables,
+            compiled_cypher=input.compiled_cypher,
+            sink_topic=input.sink.topic if input.sink else None,
+            sink_trigger=input.sink.trigger if input.sink else "change_event",
+            sink_key_column=input.sink.key_column if input.sink else None,
+            schedule_cron=input.schedule.cron if input.schedule else None,
+            schedule_output_type=input.schedule.output_type if input.schedule else None,
+            schedule_output_format=input.schedule.output_format if input.schedule else None,
+            schedule_destination=input.schedule.destination if input.schedule else None,
+            business_purpose=input.business_purpose,
+            use_cases=input.use_cases,
+            data_sensitivity=input.data_sensitivity,
+            refresh_frequency=input.refresh_frequency,
+            expected_row_count=input.expected_row_count,
+            owner_team=input.owner_team,
+            expiry_date=input.expiry_date,
+        )
+        return SubmitQueryResult(query_id=query_id, operation_name=op_name, message=message)
 
 
 admin_schema = strawberry.Schema(query=Query, mutation=Mutation)

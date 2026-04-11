@@ -61,6 +61,7 @@ class TableMeta:
     schema_name: str
     table_name: str
     domain_id: str = ""  # semantic domain name (as JDBC clients see it)
+    column_presets: list = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -162,6 +163,7 @@ def build_context(si: object) -> CompilationContext:
     table_lookup = {t.table_id: t for t in tables}
 
     physical_map = getattr(si, "physical_table_map", None) or {}
+    table_preset_map = {td["id"]: list(td.get("column_presets") or []) for td in si.tables}
 
     for t in tables:
         physical_name = physical_map.get(t.table_name, t.table_name)
@@ -174,6 +176,7 @@ def build_context(si: object) -> CompilationContext:
             schema_name=t.schema_name,
             table_name=physical_name,
             domain_id=t.domain_id,
+            column_presets=table_preset_map.get(t.table_id, []),
         )
         ctx.tables[t.field_name] = meta
         # Register aggregate variant pointing to same TableMeta
@@ -462,6 +465,38 @@ def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:
         replacements[_table_ref(meta, use_catalog=True)] = _semantic_table_ref(meta)
     for phys in sorted(replacements, key=len, reverse=True):
         sql = sql.replace(phys, replacements[phys])
+    return sql
+
+
+def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
+    """Replace semantic (domain.field_name) refs with physical (schema.table) refs."""
+    replacements: dict[str, str] = {}
+    seen: set[tuple[str, str]] = set()
+    for meta in ctx.tables.values():
+        key = (meta.schema_name, meta.table_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        semantic = _semantic_table_ref(meta)
+        replacements[semantic] = _table_ref(meta, use_catalog=False)
+    for sem in sorted(replacements, key=len, reverse=True):
+        sql = sql.replace(sem, replacements[sem])
+    return sql
+
+
+def rewrite_semantic_to_trino_physical(sql: str, ctx: CompilationContext) -> str:
+    """Replace semantic (domain.field_name) refs with Trino catalog-qualified refs."""
+    replacements: dict[str, str] = {}
+    seen: set[tuple[str, str, str]] = set()
+    for meta in ctx.tables.values():
+        key = (meta.catalog_name, meta.schema_name, meta.table_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        semantic = _semantic_table_ref(meta)
+        replacements[semantic] = _table_ref(meta, use_catalog=True)
+    for sem in sorted(replacements, key=len, reverse=True):
+        sql = sql.replace(sem, replacements[sem])
     return sql
 
 

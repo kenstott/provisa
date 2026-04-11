@@ -10,6 +10,8 @@
 
 """Table repository — CRUD for registered tables and columns in PG config DB."""
 
+import json
+
 import asyncpg
 
 from provisa.core.models import Column, Table
@@ -20,14 +22,15 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
     table_id = await conn.fetchval(
         """
         INSERT INTO registered_tables
-            (source_id, domain_id, schema_name, table_name, governance, alias, description, watermark_column)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            (source_id, domain_id, schema_name, table_name, governance, alias, description, watermark_column, column_presets)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (source_id, schema_name, table_name) DO UPDATE SET
             domain_id = EXCLUDED.domain_id,
             governance = EXCLUDED.governance,
             alias = EXCLUDED.alias,
             description = EXCLUDED.description,
-            watermark_column = EXCLUDED.watermark_column
+            watermark_column = EXCLUDED.watermark_column,
+            column_presets = EXCLUDED.column_presets
         RETURNING id
         """,
         table.source_id,
@@ -38,6 +41,7 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
         getattr(table, "alias", None),
         getattr(table, "description", None),
         getattr(table, "watermark_column", None),
+        json.dumps([p.model_dump() for p in getattr(table, "column_presets", [])]),
     )
 
     # Replace columns: delete existing, insert new

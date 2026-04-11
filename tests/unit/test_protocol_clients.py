@@ -773,22 +773,27 @@ class TestProvisaDialectGetTableNames:
         mock_conn.connection = inner
         return mock_conn
 
-    def test_returns_stable_ids_from_response(self):
+    def test_returns_field_names_from_introspection(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
         dialect = ProvisaDialect()
         conn = self._make_connection()
         body = {
             "data": {
-                "persistedQueries": [
-                    {"stableId": "q-001", "status": "approved"},
-                    {"stableId": "q-002", "status": "approved"},
-                ]
+                "__schema": {
+                    "queryType": {
+                        "fields": [
+                            {"name": "orders"},
+                            {"name": "users"},
+                        ]
+                    },
+                    "types": [],
+                }
             }
         }
         resp = _make_httpx_response(200, body)
         with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
             names = dialect.get_table_names(conn)
-        assert names == ["q-001", "q-002"]
+        assert names == ["orders", "users"]
 
     def test_http_error_returns_empty_list(self):
         import httpx
@@ -802,22 +807,27 @@ class TestProvisaDialectGetTableNames:
             names = dialect.get_table_names(conn)
         assert names == []
 
-    def test_filters_entries_without_stable_id(self):
+    def test_filters_fields_without_name(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
         dialect = ProvisaDialect()
         conn = self._make_connection()
         body = {
             "data": {
-                "persistedQueries": [
-                    {"stableId": "q-001", "status": "approved"},
-                    {"status": "draft"},  # no stableId
-                ]
+                "__schema": {
+                    "queryType": {
+                        "fields": [
+                            {"name": "orders"},
+                            {},  # no name
+                        ]
+                    },
+                    "types": [],
+                }
             }
         }
         resp = _make_httpx_response(200, body)
         with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
             names = dialect.get_table_names(conn)
-        assert names == ["q-001"]
+        assert names == ["orders"]
 
 
 class TestProvisaDialectGetColumns:
@@ -835,20 +845,15 @@ class TestProvisaDialectGetColumns:
         conn = self._make_connection()
         body = {
             "data": {
-                "semanticModel": {
-                    "tables": [
-                        {
-                            "name": "orders",
-                            "columns": [
-                                {"name": "id", "dataType": "integer"},
-                                {"name": "total", "dataType": "decimal"},
-                            ],
-                        },
-                        {
-                            "name": "customers",
-                            "columns": [{"name": "email", "dataType": "varchar"}],
-                        },
-                    ]
+                "__schema": {
+                    "queryType": {
+                        "fields": [
+                            {"name": "orders", "type": {"name": None, "kind": "LIST", "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None}}},
+                        ]
+                    },
+                    "types": [
+                        {"name": "Orders", "kind": "OBJECT", "fields": [{"name": "id"}, {"name": "total"}]},
+                    ],
                 }
             }
         }
@@ -866,10 +871,15 @@ class TestProvisaDialectGetColumns:
         conn = self._make_connection()
         body = {
             "data": {
-                "semanticModel": {
-                    "tables": [
-                        {"name": "other_table", "columns": [{"name": "x", "dataType": "varchar"}]},
-                    ]
+                "__schema": {
+                    "queryType": {
+                        "fields": [
+                            {"name": "orders", "type": {"name": None, "kind": "LIST", "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None}}},
+                        ]
+                    },
+                    "types": [
+                        {"name": "Orders", "kind": "OBJECT", "fields": [{"name": "id"}]},
+                    ],
                 }
             }
         }
@@ -896,10 +906,15 @@ class TestProvisaDialectGetColumns:
         conn = self._make_connection()
         body = {
             "data": {
-                "semanticModel": {
-                    "tables": [
-                        {"name": "t", "columns": [{"name": "col", "dataType": "varchar"}]},
-                    ]
+                "__schema": {
+                    "queryType": {
+                        "fields": [
+                            {"name": "t", "type": {"name": None, "kind": "LIST", "ofType": {"name": "T", "kind": "OBJECT", "ofType": None}}},
+                        ]
+                    },
+                    "types": [
+                        {"name": "T", "kind": "OBJECT", "fields": [{"name": "col"}]},
+                    ],
                 }
             }
         }
@@ -922,7 +937,7 @@ class TestProvisaDialectHasTable:
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
         dialect = ProvisaDialect()
         conn = self._make_connection()
-        body = {"data": {"persistedQueries": [{"stableId": "my-query"}]}}
+        body = {"data": {"__schema": {"queryType": {"fields": [{"name": "my-query"}]}}}}
         resp = _make_httpx_response(200, body)
         with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
             assert dialect.has_table(conn, "my-query") is True
@@ -931,7 +946,7 @@ class TestProvisaDialectHasTable:
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
         dialect = ProvisaDialect()
         conn = self._make_connection()
-        body = {"data": {"persistedQueries": [{"stableId": "other-query"}]}}
+        body = {"data": {"__schema": {"queryType": {"fields": [{"name": "other-query"}]}}}}
         resp = _make_httpx_response(200, body)
         with patch("provisa_client.sqlalchemy_dialect.httpx.post", return_value=resp):
             assert dialect.has_table(conn, "missing") is False

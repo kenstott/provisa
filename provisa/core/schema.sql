@@ -85,6 +85,7 @@ DO $$ BEGIN
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS path TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS column_presets JSONB NOT NULL DEFAULT '[]';
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -210,6 +211,12 @@ DO $$ BEGIN
     ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS expected_row_count TEXT;
     ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS owner_team TEXT;
     ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS expiry_date DATE;
+    -- Scheduled delivery columns (Phase AX)
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS schedule_cron TEXT;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS schedule_output_type TEXT CHECK (schedule_output_type IN ('redirect', 'webhook', 'kafka'));
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS schedule_output_format TEXT;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS schedule_destination TEXT;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS compiled_cypher TEXT;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

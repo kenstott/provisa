@@ -20,6 +20,7 @@ import type { PlatformSettings } from "../api/admin";
 import type { TableMetadata } from "../api/admin";
 import type { RegisteredTable, Source } from "../types/admin";
 import type { Role } from "../types/auth";
+import { ColumnPresetsEditor } from "../components/admin/ColumnPresetsEditor";
 
 function MultiSelect({ options, value, onChange }: {
   options: { id: string; label: string }[];
@@ -402,6 +403,7 @@ export function TablesPage() {
         alias: editingTable.alias || undefined,
         description: editingTable.description || undefined,
         watermarkColumn: editingTable.watermarkColumn || null,
+        columnPresets: editingTable.columnPresets,
         columns: editingTable.columns.map((c) => ({
           name: c.columnName,
           visibleTo: c.visibleTo,
@@ -793,6 +795,11 @@ export function TablesPage() {
                               </label>
                             )}
                           </div>
+                          <ColumnPresetsEditor
+                            presets={editingTable.columnPresets}
+                            columns={editingTable.columns.map((c) => c.columnName)}
+                            onChange={(presets) => setEditingTable({ ...editingTable, columnPresets: presets })}
+                          />
                           <table className="data-table" style={{ margin: "0 0 0.5rem" }}>
                             <thead>
                               <tr>

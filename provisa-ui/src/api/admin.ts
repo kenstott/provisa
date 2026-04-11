@@ -15,7 +15,7 @@ import type {
   RegisteredTable,
   Relationship,
   RLSRule,
-  PersistedQuery,
+  GovernedQuery,
   MutationResult,
 } from "../types/admin";
 
@@ -67,7 +67,7 @@ export async function deleteDomain(id: string): Promise<void> {
 
 export async function fetchTables(): Promise<RegisteredTable[]> {
   const data = await gql<{ tables: RegisteredTable[] }>(
-    `{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType } } }`
+    `{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType } columnPresets { column source name value } } }`
   );
   return data.tables;
 }
@@ -180,6 +180,7 @@ export async function registerTable(input: {
   description?: string;
   watermarkColumn?: string | null;
   columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null }[];
+  columnPresets?: { column: string; source: string; name?: string | null; value?: string | null }[];
 }): Promise<MutationResult> {
   const data = await gql<{ registerTable: MutationResult }>(
     `mutation($input: TableInput!) { registerTable(input: $input) { success message } }`,
@@ -198,6 +199,7 @@ export async function updateTable(input: {
   description?: string;
   watermarkColumn?: string | null;
   columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null }[];
+  columnPresets?: { column: string; source: string; name?: string | null; value?: string | null }[];
 }): Promise<MutationResult> {
   const data = await gql<{ updateTable: MutationResult }>(
     `mutation($input: TableInput!) { updateTable(input: $input) { success message } }`,
@@ -543,6 +545,7 @@ export interface CompileResult {
   column_aliases: { field_name: string; column: string }[];
   optimizations?: string[];
   warnings?: string[];
+  compiled_cypher?: string | null;
 }
 
 export async function compileQuery(
@@ -550,19 +553,20 @@ export async function compileQuery(
   query: string,
   variables?: Record<string, unknown>,
 ): Promise<CompileResult | { queries: CompileResult[] }> {
-  const resp = await fetch(`${API_BASE_RAW}/data/compile`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Provisa-Role": roleId,
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(text);
-  }
-  return resp.json();
+  const data = await gql<{ compileQuery: CompileResult[] }>(
+    `mutation CompileQuery($input: CompileQueryInput!) {
+      compileQuery(input: $input) {
+        sql semanticSql trinoSql directSql route routeReason sources
+        rootField canonicalField compiledCypher optimizations warnings
+        columnAliases { fieldName column }
+        enforcement { rlsFiltersApplied columnsExcluded schemaScope maskingApplied ceilingApplied route }
+      }
+    }`,
+    { input: { query, role: roleId, variables: variables ?? null } },
+  );
+  const results = data.compileQuery;
+  if (results.length === 1) return results[0];
+  return { queries: results };
 }
 
 export interface SubmitMetadata {
@@ -575,36 +579,40 @@ export interface SubmitMetadata {
   sink?: { topic: string; trigger: string; key_column?: string };
 }
 
+export interface ScheduleDelivery {
+  cron: string;
+  output_type: string;
+  output_format?: string;
+  destination?: string;
+}
+
 export async function submitQuery(
   roleId: string,
   query: string,
   variables?: Record<string, unknown>,
   sink?: { topic: string; trigger: string; key_column?: string },
   metadata?: SubmitMetadata,
+  schedule?: ScheduleDelivery,
+  compiledCypher?: string,
 ): Promise<{ query_id: number; operation_name: string; message: string }> {
-  const body: Record<string, unknown> = { query, variables };
-  if (sink) body.sink = sink;
-  if (metadata) {
-    if (metadata.business_purpose) body.business_purpose = metadata.business_purpose;
-    if (metadata.use_cases) body.use_cases = metadata.use_cases;
-    if (metadata.data_sensitivity) body.data_sensitivity = metadata.data_sensitivity;
-    if (metadata.refresh_frequency) body.refresh_frequency = metadata.refresh_frequency;
-    if (metadata.expected_row_count) body.expected_row_count = metadata.expected_row_count;
-    if (metadata.owner_team) body.owner_team = metadata.owner_team;
-  }
-  const resp = await fetch(`${API_BASE_RAW}/data/submit`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Provisa-Role": roleId,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(body.detail || resp.statusText);
-  }
-  return resp.json();
+  const input: Record<string, unknown> = { query, role: roleId, variables: variables ?? null };
+  if (compiledCypher) input.compiledCypher = compiledCypher;
+  if (sink) input.sink = { topic: sink.topic, trigger: sink.trigger, keyColumn: sink.key_column };
+  if (schedule) input.schedule = { cron: schedule.cron, outputType: schedule.output_type, outputFormat: schedule.output_format, destination: schedule.destination };
+  if (metadata?.business_purpose) input.businessPurpose = metadata.business_purpose;
+  if (metadata?.use_cases) input.useCases = metadata.use_cases;
+  if (metadata?.data_sensitivity) input.dataSensitivity = metadata.data_sensitivity;
+  if (metadata?.refresh_frequency) input.refreshFrequency = metadata.refresh_frequency;
+  if (metadata?.expected_row_count) input.expectedRowCount = metadata.expected_row_count;
+  if (metadata?.owner_team) input.ownerTeam = metadata.owner_team;
+  const data = await gql<{ submitQuery: { queryId: number; operationName: string; message: string } }>(
+    `mutation SubmitQuery($input: SubmitQueryInput!) {
+      submitQuery(input: $input) { queryId operationName message }
+    }`,
+    { input },
+  );
+  const r = data.submitQuery;
+  return { query_id: r.queryId, operation_name: r.operationName, message: r.message };
 }
 
 export async function executeQuery(
@@ -646,6 +654,8 @@ export interface CacheStats {
 
 export interface SystemHealth {
   trinoConnected: boolean;
+  trinoWorkerCount: number;
+  trinoActiveWorkers: number;
   pgPoolSize: number;
   pgPoolFree: number;
   cacheConnected: boolean;
@@ -669,7 +679,7 @@ export async function fetchCacheStats(): Promise<CacheStats> {
 
 export async function fetchSystemHealth(): Promise<SystemHealth> {
   const data = await gql<{ systemHealth: SystemHealth }>(
-    `{ systemHealth { trinoConnected pgPoolSize pgPoolFree cacheConnected flightServerRunning mvRefreshLoopRunning } }`
+    `{ systemHealth { trinoConnected trinoWorkerCount trinoActiveWorkers pgPoolSize pgPoolFree cacheConnected flightServerRunning mvRefreshLoopRunning } }`
   );
   return data.systemHealth;
 }

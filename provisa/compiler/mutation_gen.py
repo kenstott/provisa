@@ -86,6 +86,7 @@ def compile_upsert(
     field_node: FieldNode,
     table: TableMeta,
     variables: dict | None,
+    headers: dict[str, str] | None = None,
 ) -> MutationResult:
     """Compile an upsert mutation to INSERT ... ON CONFLICT ... DO UPDATE SQL."""
     collector = ParamCollector()
@@ -95,6 +96,8 @@ def compile_upsert(
             args[arg.name.value] = _extract_value(arg.value, variables)
 
     input_data = args.get("input", {})
+    if table.column_presets:
+        input_data = apply_column_presets(input_data, table.column_presets, headers)
     if not input_data:
         raise ValueError("upsert mutation requires 'input' argument")
 
@@ -141,6 +144,7 @@ def compile_insert(
     field_node: FieldNode,
     table: TableMeta,
     variables: dict | None,
+    headers: dict[str, str] | None = None,
 ) -> MutationResult:
     """Compile an insert mutation to INSERT SQL."""
     collector = ParamCollector()
@@ -150,6 +154,8 @@ def compile_insert(
             args[arg.name.value] = _extract_value(arg.value, variables)
 
     input_data = args.get("input", {})
+    if table.column_presets:
+        input_data = apply_column_presets(input_data, table.column_presets, headers)
     if not input_data:
         raise ValueError("insert mutation requires 'input' argument")
 
@@ -277,6 +283,7 @@ def compile_mutation(
     ctx: CompilationContext,
     source_types: dict[str, str],
     variables: dict | None = None,
+    headers: dict[str, str] | None = None,
 ) -> list[MutationResult]:
     """Compile a GraphQL mutation document to SQL mutations.
 
@@ -305,9 +312,9 @@ def compile_mutation(
                 )
 
             if op == "upsert":
-                results.append(compile_upsert(sel, table, variables))
+                results.append(compile_upsert(sel, table, variables, headers))
             elif op == "insert":
-                results.append(compile_insert(sel, table, variables))
+                results.append(compile_insert(sel, table, variables, headers))
             elif op == "update":
                 results.append(compile_update(sel, table, variables))
             elif op == "delete":

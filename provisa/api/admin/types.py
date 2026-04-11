@@ -37,6 +37,14 @@ class DomainType:
 
 
 @strawberry.type
+class ColumnPresetType:
+    column: str
+    source: str
+    name: str | None
+    value: str | None
+
+
+@strawberry.type
 class RegisteredTableType:
     id: int
     source_id: str
@@ -50,6 +58,7 @@ class RegisteredTableType:
     naming_convention: str | None
     watermark_column: str | None
     columns: list[TableColumnType]
+    column_presets: list[ColumnPresetType] = strawberry.field(default_factory=list)
 
 
 @strawberry.type
@@ -152,6 +161,14 @@ class ColumnInput:
 
 
 @strawberry.input
+class ColumnPresetInput:
+    column: str
+    source: str
+    name: str | None = None
+    value: str | None = None
+
+
+@strawberry.input
 class TableInput:
     source_id: str
     domain_id: str
@@ -162,6 +179,7 @@ class TableInput:
     alias: str | None = None
     description: str | None = None
     watermark_column: str | None = None
+    column_presets: list[ColumnPresetInput] = strawberry.field(default_factory=list)
 
 
 @strawberry.input
@@ -193,7 +211,7 @@ class RLSRuleInput:
 
 
 @strawberry.type
-class PersistedQueryType:
+class GovernedQueryType:
     id: int
     query_text: str
     compiled_sql: str
@@ -212,6 +230,11 @@ class PersistedQueryType:
     owner_team: str | None
     expiry_date: str | None
     visible_to: list[str]
+    schedule_cron: str | None
+    schedule_output_type: str | None
+    schedule_output_format: str | None
+    schedule_destination: str | None
+    compiled_cypher: str | None
 
 
 @strawberry.type
@@ -238,6 +261,8 @@ class CacheStatsType:
 @strawberry.type
 class SystemHealthType:
     trino_connected: bool
+    trino_worker_count: int
+    trino_active_workers: int
     pg_pool_size: int
     pg_pool_free: int
     cache_connected: bool
@@ -260,3 +285,85 @@ class ScheduledTaskType:
 class MutationResult:
     success: bool
     message: str
+
+
+# --- Compile / Submit types ---
+
+@strawberry.type
+class ColumnAliasType:
+    field_name: str
+    column: str
+
+
+@strawberry.type
+class EnforcementType:
+    rls_filters_applied: list[str]
+    columns_excluded: list[str]
+    schema_scope: str
+    masking_applied: list[str]
+    ceiling_applied: str | None
+    route: str
+
+
+@strawberry.type
+class CompileQueryResult:
+    sql: str
+    semantic_sql: str
+    trino_sql: str | None
+    direct_sql: str | None
+    route: str
+    route_reason: str
+    sources: list[str]
+    root_field: str
+    canonical_field: str
+    column_aliases: list[ColumnAliasType]
+    enforcement: EnforcementType
+    optimizations: list[str]
+    warnings: list[str]
+    compiled_cypher: str | None
+
+
+@strawberry.input
+class CompileQueryInput:
+    query: str
+    role: str
+    variables: strawberry.scalars.JSON | None = None
+
+
+@strawberry.type
+class SubmitQueryResult:
+    query_id: int
+    operation_name: str
+    message: str
+
+
+@strawberry.input
+class SinkInput:
+    topic: str
+    trigger: str = "change_event"
+    key_column: str | None = None
+
+
+@strawberry.input
+class ScheduleInput:
+    cron: str
+    output_type: str | None = None
+    output_format: str | None = None
+    destination: str | None = None
+
+
+@strawberry.input
+class SubmitQueryInput:
+    query: str
+    role: str
+    variables: strawberry.scalars.JSON | None = None
+    compiled_cypher: str | None = None
+    sink: SinkInput | None = None
+    schedule: ScheduleInput | None = None
+    business_purpose: str | None = None
+    use_cases: str | None = None
+    data_sensitivity: str | None = None
+    refresh_frequency: str | None = None
+    expected_row_count: str | None = None
+    owner_team: str | None = None
+    expiry_date: str | None = None

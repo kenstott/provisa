@@ -45,6 +45,13 @@ export interface TableColumn {
   nativeFilterType: string | null;
 }
 
+export interface ColumnPreset {
+  column: string;
+  source: "now" | "header" | "literal";
+  name: string | null;
+  value: string | null;
+}
+
 export interface RegisteredTable {
   id: number;
   sourceId: string;
@@ -58,6 +65,7 @@ export interface RegisteredTable {
   namingConvention: string | null;
   watermarkColumn: string | null;
   columns: TableColumn[];
+  columnPresets: ColumnPreset[];
 }
 
 export interface Relationship {
@@ -82,7 +90,7 @@ export interface RLSRule {
   filterExpr: string;
 }
 
-export interface PersistedQuery {
+export interface GovernedQuery {
   id: number;
   name: string;
   queryText: string;

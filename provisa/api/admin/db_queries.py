@@ -32,7 +32,7 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:
     """Fetch registered tables with columns."""
     rows = await conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name, governance, "
-        "alias, description "
+        "alias, description, column_presets "
         "FROM registered_tables ORDER BY id"
     )
     tables = []
@@ -44,6 +44,7 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:
             "FROM table_columns WHERE table_id = $1 ORDER BY id",
             row["id"],
         )
+        table["column_presets"] = list(row.get("column_presets") or [])
         table["columns"] = [
             {
                 "column_name": r["column_name"],
