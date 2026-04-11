@@ -16,9 +16,31 @@ spec:
       labels:
         app: mongodb
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: mongodb
           image: mongo:7
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 27017
           volumeMounts:
@@ -38,6 +60,11 @@ spec:
               command: ["mongosh", "--eval", "db.adminCommand('ping')"]
             initialDelaySeconds: 10
             periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["mongosh", "--eval", "db.adminCommand('ping')"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
       volumes:
         - name: init-js
           configMap:
@@ -47,9 +74,14 @@ spec:
         name: mongo-data
       spec:
         accessModes: ["ReadWriteOnce"]
+        {{- if .Values.mongodb.storageClass }}
+        storageClassName: {{ .Values.mongodb.storageClass | quote }}
+        {{- else if .Values.global.storageClass }}
+        storageClassName: {{ .Values.global.storageClass | quote }}
+        {{- end }}
         resources:
           requests:
-            storage: 2Gi
+            storage: {{ .Values.mongodb.storage }}
 ---
 apiVersion: v1
 kind: Service

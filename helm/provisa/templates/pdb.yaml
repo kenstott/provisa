@@ -1,0 +1,97 @@
+# PodDisruptionBudgets — ensure minimum availability during node drains and
+# cluster maintenance windows. minAvailable: 1 is safe even for single-replica
+# workloads (drain blocks until a replacement is ready).
+
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-provisa
+spec:
+  minAvailable: {{ .Values.provisa.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: provisa
+{{- if .Values.trino.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-trino-coordinator
+spec:
+  minAvailable: {{ .Values.trino.coordinator.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: trino
+      role: coordinator
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-trino-worker
+spec:
+  minAvailable: {{ .Values.trino.worker.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: trino
+      role: worker
+{{- end }}
+{{- if .Values.postgresql.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-postgresql
+spec:
+  minAvailable: {{ .Values.postgresql.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: postgresql
+{{- end }}
+{{- if .Values.mongodb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-mongodb
+spec:
+  minAvailable: {{ .Values.mongodb.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: mongodb
+{{- end }}
+{{- if .Values.minio.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-minio
+spec:
+  minAvailable: {{ .Values.minio.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: minio
+{{- end }}
+{{- if and .Values.redis.enabled (not .Values.redis.host) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-redis
+spec:
+  minAvailable: {{ .Values.redis.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: redis
+{{- end }}
+{{- if .Values.pgbouncer.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ .Release.Name }}-pgbouncer
+spec:
+  minAvailable: {{ .Values.pgbouncer.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: pgbouncer
+{{- end }}

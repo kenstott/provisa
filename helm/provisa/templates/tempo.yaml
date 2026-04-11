@@ -43,10 +43,32 @@ spec:
       labels:
         app: tempo
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: tempo
           image: "{{ .Values.observability.tempo.image }}:{{ .Values.observability.tempo.tag }}"
           args: ["-config.file=/etc/tempo.yaml"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: {{ .Values.observability.tempo.httpPort }}
               name: http
@@ -58,12 +80,36 @@ spec:
               subPath: tempo.yaml
             - name: data
               mountPath: /var/tempo
+          resources:
+            {{- toYaml .Values.observability.tempo.resources | nindent 12 }}
       volumes:
         - name: config
           configMap:
             name: {{ .Release.Name }}-tempo-config
         - name: data
+          {{- if .Values.observability.tempo.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-tempo-data
+          {{- else }}
           emptyDir: {}
+          {{- end }}
+{{- if .Values.observability.tempo.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-tempo-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.observability.tempo.persistence.storageClass }}
+  storageClassName: {{ .Values.observability.tempo.persistence.storageClass | quote }}
+  {{- else if .Values.global.storageClass }}
+  storageClassName: {{ .Values.global.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.observability.tempo.persistence.size }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service

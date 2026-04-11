@@ -1,0 +1,169 @@
+# Basic NetworkPolicy — allows only the traffic each workload legitimately needs.
+# Ingress controllers and load balancers are covered by the open ingress policy on the
+# provisa pod; all other cross-pod traffic is locked down by default.
+
+# Provisa app: accept HTTP and Flight from anywhere; egress to internal services only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-provisa
+spec:
+  podSelector:
+    matchLabels:
+      app: provisa
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - ports:
+        - port: {{ .Values.provisa.port }}
+        - port: {{ .Values.provisa.flightPort }}
+  egress:
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # PostgreSQL / PgBouncer
+    - to:
+        - podSelector:
+            matchLabels:
+              app: postgresql
+        - podSelector:
+            matchLabels:
+              app: pgbouncer
+      ports:
+        - port: 5432
+        - port: {{ .Values.pgbouncer.port }}
+    # Trino coordinator
+    - to:
+        - podSelector:
+            matchLabels:
+              app: trino
+              role: coordinator
+      ports:
+        - port: {{ .Values.trino.port }}
+    # MongoDB
+    {{- if .Values.mongodb.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: mongodb
+      ports:
+        - port: {{ .Values.mongodb.port }}
+    {{- end }}
+    # MinIO
+    {{- if .Values.minio.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: minio
+      ports:
+        - port: 9000
+    {{- end }}
+    # Redis (in-cluster only; external Redis goes through egress-all)
+    {{- if and .Values.redis.enabled (not .Values.redis.host) }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis
+      ports:
+        - port: {{ .Values.redis.port }}
+    {{- end }}
+    # OTel Collector
+    {{- if .Values.observability.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: otel-collector
+      ports:
+        - port: {{ .Values.observability.otelCollector.otlpGrpcPort }}
+        - port: {{ .Values.observability.otelCollector.otlpHttpPort }}
+    {{- end }}
+---
+# PostgreSQL: only accept connections from provisa and pgbouncer
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-postgresql
+spec:
+  podSelector:
+    matchLabels:
+      app: postgresql
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: provisa
+        - podSelector:
+            matchLabels:
+              app: pgbouncer
+        - podSelector:
+            matchLabels:
+              app: trino
+      ports:
+        - port: 5432
+{{- if .Values.mongodb.enabled }}
+---
+# MongoDB: only accept connections from provisa and trino
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-mongodb
+spec:
+  podSelector:
+    matchLabels:
+      app: mongodb
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: provisa
+        - podSelector:
+            matchLabels:
+              app: trino
+      ports:
+        - port: {{ .Values.mongodb.port }}
+{{- end }}
+{{- if and .Values.redis.enabled (not .Values.redis.host) }}
+---
+# Redis: only accept connections from provisa
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-redis
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: provisa
+      ports:
+        - port: {{ .Values.redis.port }}
+{{- end }}
+{{- if .Values.minio.enabled }}
+---
+# MinIO: only accept connections from provisa
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-minio
+spec:
+  podSelector:
+    matchLabels:
+      app: minio
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: provisa
+      ports:
+        - port: 9000
+        - port: 9001
+{{- end }}

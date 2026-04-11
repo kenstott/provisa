@@ -14,10 +14,42 @@ spec:
       labels:
         app: provisa
     spec:
+      serviceAccountName: {{ .Release.Name }}-provisa
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.provisa.podAntiAffinity }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: provisa
+                topologyKey: kubernetes.io/hostname
+      {{- end }}
       containers:
         - name: provisa
           image: "{{ .Values.provisa.image.repository }}:{{ .Values.provisa.image.tag }}"
           imagePullPolicy: {{ .Values.provisa.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: http
               containerPort: {{ .Values.provisa.port }}
@@ -48,6 +80,19 @@ spec:
             {{- range $key, $val := .Values.provisa.env }}
             - name: {{ $key }}
               value: "{{ $val }}"
+            {{- end }}
+            {{- if .Values.redis.enabled }}
+            - name: REDIS_HOST
+              value: {{ if .Values.redis.host }}{{ .Values.redis.host }}{{ else }}{{ .Release.Name }}-redis{{ end }}
+            - name: REDIS_PORT
+              value: "{{ .Values.redis.port }}"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: redis-password
+            - name: REDIS_TLS
+              value: "{{ .Values.redis.tls }}"
             {{- end }}
             {{- if .Values.observability.enabled }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT

@@ -56,10 +56,30 @@ spec:
       labels:
         app: otel-collector
     spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: otel-collector
           image: "{{ .Values.observability.otelCollector.image }}:{{ .Values.observability.otelCollector.tag }}"
           args: ["--config=/etc/otel/config.yaml"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: {{ .Values.observability.otelCollector.otlpGrpcPort }}
               name: otlp-grpc
@@ -70,6 +90,8 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/otel
+          resources:
+            {{- toYaml .Values.observability.otelCollector.resources | nindent 12 }}
       volumes:
         - name: config
           configMap:

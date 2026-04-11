@@ -1,5 +1,16 @@
 # Provisa Helm chart values
 
+# Global settings applied across all workloads
+global:
+  # imagePullSecrets: [{name: registry-credentials}]
+  imagePullSecrets: []
+  # storageClass: "" uses cluster default; set to e.g. "fast-ssd" for enterprise clusters
+  storageClass: ""
+  # Node selector applied to all pods (e.g. {workload: data-platform})
+  nodeSelector: {}
+  # Tolerations applied to all pods
+  tolerations: []
+
 provisa:
   replicaCount: 2
   image:
@@ -8,6 +19,12 @@ provisa:
     pullPolicy: IfNotPresent
   port: 8000
   flightPort: 8815
+  flightService:
+    # ClusterIP  — internal only, use kubectl port-forward for local dev
+    # LoadBalancer — cloud provider assigns an external IP (recommended for production)
+    # NodePort    — accessible at any node IP on a fixed high port
+    type: LoadBalancer
+    nodePort: ""  # optional; leave blank to auto-assign when type=NodePort
   resources:
     requests:
       cpu: 250m
@@ -19,6 +36,15 @@ provisa:
     PROVISA_MODE: production
     PROVISA_CONFIG: /app/config/provisa.yaml
   configMap: provisa-config
+  # Prefer scheduling replicas on different nodes
+  podAntiAffinity: true
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilization: 70
+  pdb:
+    minAvailable: 1
 
 trino:
   enabled: true
@@ -31,6 +57,8 @@ trino:
       limits:
         cpu: "2"
         memory: 4Gi
+    pdb:
+      minAvailable: 1
   worker:
     replicaCount: 2
     autoscaling:
@@ -45,6 +73,8 @@ trino:
       limits:
         cpu: "4"
         memory: 8Gi
+    pdb:
+      minAvailable: 1
   image:
     repository: trinodb/trino
     tag: "439"
@@ -56,32 +86,57 @@ postgresql:
   port: 5432
   database: provisa
   username: provisa
-  password: provisa  # override via --set or secrets
+  password: provisa  # override via --set or a secrets manager
+  storageClass: ""   # "" = use cluster default; set for enterprise (e.g. "standard-ssd")
+  storage: 5Gi
+  pdb:
+    minAvailable: 1
 
 pgbouncer:
   enabled: true
+  tag: "1.23.1-p0"
   port: 6432
   poolMode: transaction
   defaultPoolSize: 20
   maxClientConn: 200
+  pdb:
+    minAvailable: 1
 
 mongodb:
   enabled: true
   port: 27017
+  storageClass: ""
+  storage: 2Gi
+  pdb:
+    minAvailable: 1
 
 minio:
   enabled: true
+  tag: "RELEASE.2024-04-28T17-11-00Z"
   accessKey: minioadmin
   secretKey: minioadmin
+  storageClass: ""
+  storage: 10Gi
+  pdb:
+    minAvailable: 1
 
 redis:
-  enabled: false
-  host: ""
+  enabled: true
+  host: ""        # set to external host (ElastiCache, Azure Cache, Memorystore) to skip in-cluster deployment
   port: 6379
+  password: "provisa"  # always set; in-cluster Redis starts with --requirepass
+  tls: false
+  tag: "7.2"
+  storageClass: ""
+  storage: 1Gi
+  pdb:
+    minAvailable: 1
 
 ingress:
   enabled: false
-  className: nginx
+  # className: "" uses the cluster default ingress controller.
+  # Set explicitly to match your cluster: "nginx", "traefik", "haproxy", "alb", etc.
+  className: ""
   host: provisa.example.com
   tls:
     enabled: false
@@ -96,17 +151,46 @@ observability:
     otlpGrpcPort: 4317
     otlpHttpPort: 4318
     prometheusPort: 8889
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
 
   tempo:
     image: grafana/tempo
     tag: "2.4.1"
     httpPort: 3200
     otlpGrpcPort: 4317
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    persistence:
+      enabled: false   # set true for durable trace retention
+      size: 5Gi
+      storageClass: ""
 
   prometheus:
     image: prom/prometheus
     tag: "v2.51.2"
     port: 9090
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    persistence:
+      enabled: false   # set true for durable metric retention
+      size: 10Gi
+      storageClass: ""
 
   grafana:
     image: grafana/grafana
@@ -115,3 +199,14 @@ observability:
     adminPassword: provisa
     service:
       type: ClusterIP
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    persistence:
+      enabled: false   # set true to persist dashboards/state
+      size: 1Gi
+      storageClass: ""

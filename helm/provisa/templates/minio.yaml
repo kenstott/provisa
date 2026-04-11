@@ -1,12 +1,13 @@
 {{- if .Values.minio.enabled }}
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: {{ .Release.Name }}-minio
   labels:
     app: minio
 spec:
   replicas: 1
+  serviceName: {{ .Release.Name }}-minio
   selector:
     matchLabels:
       app: minio
@@ -15,18 +16,48 @@ spec:
       labels:
         app: minio
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: minio
-          image: minio/minio:latest
+          image: "minio/minio:{{ .Values.minio.tag }}"
           args: ["server", "/data", "--console-address", ":9001"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 9000
+              name: api
             - containerPort: 9001
+              name: console
           env:
             - name: MINIO_ROOT_USER
-              value: "{{ .Values.minio.accessKey }}"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: minio-access-key
             - name: MINIO_ROOT_PASSWORD
-              value: "{{ .Values.minio.secretKey }}"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: minio-secret-key
           volumeMounts:
             - name: minio-data
               mountPath: /data
@@ -37,9 +68,31 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-      volumes:
-        - name: minio-data
-          emptyDir: {}
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+  volumeClaimTemplates:
+    - metadata:
+        name: minio-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- if .Values.minio.storageClass }}
+        storageClassName: {{ .Values.minio.storageClass | quote }}
+        {{- else if .Values.global.storageClass }}
+        storageClassName: {{ .Values.global.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.minio.storage }}
 ---
 apiVersion: v1
 kind: Service

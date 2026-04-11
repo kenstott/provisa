@@ -15,14 +15,45 @@ spec:
       labels:
         app: pgbouncer
     spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: pgbouncer
-          image: edoburu/pgbouncer:latest
+          image: "edoburu/pgbouncer:{{ .Values.pgbouncer.tag }}"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 5432
           env:
-            - name: DATABASE_URL
-              value: "postgres://{{ .Values.postgresql.username }}:{{ .Values.postgresql.password }}@{{ if .Values.postgresql.host }}{{ .Values.postgresql.host }}{{ else }}{{ .Release.Name }}-postgresql{{ end }}:{{ .Values.postgresql.port }}/{{ .Values.postgresql.database }}"
+            - name: DB_HOST
+              value: {{ if .Values.postgresql.host }}{{ .Values.postgresql.host }}{{ else }}{{ .Release.Name }}-postgresql{{ end }}
+            - name: DB_PORT
+              value: "{{ .Values.postgresql.port }}"
+            - name: DB_USER
+              value: "{{ .Values.postgresql.username }}"
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: pg-password
+            - name: DB_NAME
+              value: "{{ .Values.postgresql.database }}"
             - name: POOL_MODE
               value: "{{ .Values.pgbouncer.poolMode }}"
             - name: MAX_CLIENT_CONN

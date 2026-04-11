@@ -29,12 +29,34 @@ spec:
       labels:
         app: prometheus
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: prometheus
           image: "{{ .Values.observability.prometheus.image }}:{{ .Values.observability.prometheus.tag }}"
           args:
             - "--config.file=/etc/prometheus/prometheus.yml"
             - "--storage.tsdb.path=/prometheus"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: {{ .Values.observability.prometheus.port }}
               name: http
@@ -43,12 +65,36 @@ spec:
               mountPath: /etc/prometheus
             - name: data
               mountPath: /prometheus
+          resources:
+            {{- toYaml .Values.observability.prometheus.resources | nindent 12 }}
       volumes:
         - name: config
           configMap:
             name: {{ .Release.Name }}-prometheus-config
         - name: data
+          {{- if .Values.observability.prometheus.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-prometheus-data
+          {{- else }}
           emptyDir: {}
+          {{- end }}
+{{- if .Values.observability.prometheus.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Release.Name }}-prometheus-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.observability.prometheus.persistence.storageClass }}
+  storageClassName: {{ .Values.observability.prometheus.persistence.storageClass | quote }}
+  {{- else if .Values.global.storageClass }}
+  storageClassName: {{ .Values.global.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.observability.prometheus.persistence.size }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service

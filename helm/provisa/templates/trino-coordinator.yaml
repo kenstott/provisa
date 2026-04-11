@@ -19,9 +19,31 @@ spec:
         app: trino
         role: coordinator
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: trino
           image: "{{ .Values.trino.image.repository }}:{{ .Values.trino.image.tag }}"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: {{ .Values.trino.port }}
           env:
@@ -32,10 +54,10 @@ spec:
               mountPath: /etc/trino/config.properties
               subPath: coordinator-config.properties
             {{- if .Values.postgresql.enabled }}
-            - name: config
+            - name: catalog-secret
               mountPath: /etc/trino/catalog/sales_pg.properties
               subPath: sales_pg.properties
-            - name: config
+            - name: catalog-secret
               mountPath: /etc/trino/catalog/analytics_pg.properties
               subPath: analytics_pg.properties
             {{- end }}
@@ -46,10 +68,27 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.trino.coordinator.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /v1/info
+              port: {{ .Values.trino.port }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v1/info
+              port: {{ .Values.trino.port }}
+            initialDelaySeconds: 60
+            periodSeconds: 30
       volumes:
         - name: config
           configMap:
             name: {{ .Release.Name }}-trino-config
+        {{- if .Values.postgresql.enabled }}
+        - name: catalog-secret
+          secret:
+            secretName: {{ .Release.Name }}-trino-catalog
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service

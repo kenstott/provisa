@@ -1,3 +1,4 @@
+# HTTP API service — ClusterIP, sits behind the ingress controller
 apiVersion: v1
 kind: Service
 metadata:
@@ -10,8 +11,24 @@ spec:
       port: {{ .Values.provisa.port }}
       targetPort: {{ .Values.provisa.port }}
       protocol: TCP
+  type: ClusterIP
+---
+# Arrow Flight service — type is configurable (LoadBalancer recommended for production).
+# gRPC cannot be routed through a standard HTTP ingress without TLS + gRPC annotations,
+# so Flight gets its own service with an externally-routable type.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-provisa-flight
+spec:
+  selector:
+    app: provisa
+  ports:
     - name: flight
       port: {{ .Values.provisa.flightPort }}
       targetPort: {{ .Values.provisa.flightPort }}
       protocol: TCP
-  type: ClusterIP
+      {{- if and (eq .Values.provisa.flightService.type "NodePort") .Values.provisa.flightService.nodePort }}
+      nodePort: {{ .Values.provisa.flightService.nodePort }}
+      {{- end }}
+  type: {{ .Values.provisa.flightService.type }}

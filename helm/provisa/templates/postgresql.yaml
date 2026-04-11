@@ -16,9 +16,31 @@ spec:
       labels:
         app: postgresql
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.global.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: postgres
           image: postgres:16
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 5432
           env:
@@ -31,6 +53,8 @@ spec:
                 secretKeyRef:
                   name: {{ .Release.Name }}-secrets
                   key: pg-password
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           volumeMounts:
             - name: pg-data
               mountPath: /var/lib/postgresql/data
@@ -48,6 +72,11 @@ spec:
               command: ["pg_isready", "-U", "{{ .Values.postgresql.username }}"]
             initialDelaySeconds: 5
             periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "{{ .Values.postgresql.username }}"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
       volumes:
         - name: init-sql
           configMap:
@@ -57,9 +86,14 @@ spec:
         name: pg-data
       spec:
         accessModes: ["ReadWriteOnce"]
+        {{- if .Values.postgresql.storageClass }}
+        storageClassName: {{ .Values.postgresql.storageClass | quote }}
+        {{- else if .Values.global.storageClass }}
+        storageClassName: {{ .Values.global.storageClass | quote }}
+        {{- end }}
         resources:
           requests:
-            storage: 5Gi
+            storage: {{ .Values.postgresql.storage }}
 ---
 apiVersion: v1
 kind: Service
