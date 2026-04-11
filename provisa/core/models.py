@@ -40,6 +40,7 @@ class SourceType(str, Enum):
     delta_lake = "delta_lake"
     iceberg = "iceberg"
     hive = "hive"
+    hive_s3 = "hive_s3"  # S3-backed Hive via Trino hive connector (TRINO_ONLY)
     # NoSQL
     mongodb = "mongodb"
     cassandra = "cassandra"
@@ -96,6 +97,10 @@ SOURCE_TO_CONNECTOR: dict[str, str] = {
     "hive": "hive",
     "druid": "druid",
     "exasol": "exasol",
+    # TRINO_ONLY lake sources — connector-only, no direct driver, no SQLGlot dialect (REQ-229)
+    "iceberg": "iceberg",
+    "hive_s3": "hive",
+    "delta_lake": "delta_lake",
 }
 
 # Map source types to SQLGlot dialect names (enables direct-route single-source queries)
@@ -116,6 +121,12 @@ SOURCE_TO_DIALECT: dict[str, str] = {
     "druid": "druid",
     "exasol": "exasol",
 }
+
+# Source types that are TRINO_ONLY — no direct driver, no SQLGlot dialect (REQ-229)
+TRINO_ONLY_SOURCES: set[str] = {"iceberg", "hive_s3", "delta_lake"}
+
+# Source types that support time-travel via Trino FOR TIMESTAMP/VERSION AS OF (REQ-372)
+TIME_TRAVEL_SOURCES: set[str] = {"iceberg", "delta_lake"}
 
 
 _SAFE_ID_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")

@@ -38,7 +38,7 @@ VIRTUAL_SOURCES: set[str] = {
     # NoSQL
     "mongodb", "cassandra", "redis", "kudu", "accumulo",
     # Data Lake
-    "delta_lake", "iceberg", "hive",
+    "delta_lake", "iceberg", "hive", "hive_s3",
     # Specialized
     "google_sheets", "prometheus",
     # Streaming

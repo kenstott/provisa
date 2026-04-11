@@ -16,7 +16,8 @@ and that transpile() produces valid output for each.
 
 import pytest
 
-from provisa.core.models import SOURCE_TO_DIALECT, SourceType
+from provisa.core.models import SOURCE_TO_CONNECTOR, SOURCE_TO_DIALECT, TRINO_ONLY_SOURCES, SourceType
+from provisa.transpiler.router import VIRTUAL_SOURCES
 from provisa.transpiler.transpile import transpile
 
 # The eight new dialects added in Phase AA1 (REQ-229)
@@ -194,3 +195,48 @@ class TestTranspileAllNewDialects:
         dialect = SOURCE_TO_DIALECT[source_type]
         sql = transpile(_LIMIT_SELECT, dialect)
         assert "LIMIT" in sql
+
+
+# --- TRINO_ONLY lake/file sources (REQ-229 extension) ---
+
+_TRINO_ONLY = {"iceberg", "hive_s3", "delta_lake"}
+
+
+class TestTrinoOnlySources:
+    """iceberg, hive_s3, delta_lake: connector entry required, no dialect entry (REQ-229)."""
+
+    @pytest.mark.parametrize("source_type", sorted(_TRINO_ONLY))
+    def test_has_connector_entry(self, source_type):
+        assert source_type in SOURCE_TO_CONNECTOR, (
+            f"{source_type!r} missing from SOURCE_TO_CONNECTOR"
+        )
+
+    @pytest.mark.parametrize("source_type", sorted(_TRINO_ONLY))
+    def test_no_dialect_entry(self, source_type):
+        assert source_type not in SOURCE_TO_DIALECT, (
+            f"{source_type!r} must not have a SOURCE_TO_DIALECT entry (TRINO_ONLY)"
+        )
+
+    @pytest.mark.parametrize("source_type", sorted(_TRINO_ONLY))
+    def test_in_virtual_sources(self, source_type):
+        assert source_type in VIRTUAL_SOURCES, (
+            f"{source_type!r} must be in VIRTUAL_SOURCES so it always routes to Trino"
+        )
+
+    @pytest.mark.parametrize("source_type", sorted(_TRINO_ONLY))
+    def test_in_trino_only_sources_set(self, source_type):
+        assert source_type in TRINO_ONLY_SOURCES
+
+    @pytest.mark.parametrize("source_type", sorted(_TRINO_ONLY))
+    def test_source_type_enum_covers_trino_only(self, source_type):
+        enum_values = {m.value for m in SourceType}
+        assert source_type in enum_values, f"SourceType enum missing {source_type!r}"
+
+    def test_iceberg_connector(self):
+        assert SOURCE_TO_CONNECTOR["iceberg"] == "iceberg"
+
+    def test_hive_s3_uses_hive_connector(self):
+        assert SOURCE_TO_CONNECTOR["hive_s3"] == "hive"
+
+    def test_delta_lake_connector(self):
+        assert SOURCE_TO_CONNECTOR["delta_lake"] == "delta_lake"

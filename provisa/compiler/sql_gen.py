@@ -41,6 +41,7 @@ from graphql import (
 from provisa.compiler.aggregate_gen import _is_comparable, _is_numeric
 from provisa.compiler.params import ParamCollector
 from provisa.cache.warm_tables import QueryCounter
+from provisa.core.models import TIME_TRAVEL_SOURCES
 
 # Module-level query counter for warm-table tracking (REQ-AD5)
 query_counter = QueryCounter()
@@ -62,6 +63,7 @@ class TableMeta:
     table_name: str
     domain_id: str = ""  # semantic domain name (as JDBC clients see it)
     column_presets: list = field(default_factory=list)
+    source_type: str = ""  # source type string (e.g. "iceberg", "postgresql") for time-travel
 
 
 @dataclass(frozen=True)
@@ -167,6 +169,7 @@ def build_context(si: object) -> CompilationContext:
 
     for t in tables:
         physical_name = physical_map.get(t.table_name, t.table_name)
+        src_type = (si.source_types or {}).get(t.source_id, "")
         meta = TableMeta(
             table_id=t.table_id,
             field_name=t.field_name,
@@ -177,6 +180,7 @@ def build_context(si: object) -> CompilationContext:
             table_name=physical_name,
             domain_id=t.domain_id,
             column_presets=table_preset_map.get(t.table_id, []),
+            source_type=src_type,
         )
         ctx.tables[t.field_name] = meta
         # Register aggregate variant pointing to same TableMeta
@@ -705,17 +709,36 @@ def _compile_root_field(
     else:
         from_clause = ref
 
+    # Process arguments before building SQL so as_of can modify the FROM clause
+    args = {}
+    if field_node.arguments:
+        for arg in field_node.arguments:
+            args[arg.name.value] = _extract_value(arg.value, variables)
+
+    # Time-travel: append FOR TIMESTAMP/VERSION AS OF to table ref in FROM clause (REQ-372)
+    if "as_of" in args:
+        if table.source_type not in TIME_TRAVEL_SOURCES:
+            raise ValueError(
+                f"as_of is not supported for source type {table.source_type!r}; "
+                f"only iceberg and delta_lake sources support time-travel"
+            )
+        as_of_val = args["as_of"]
+        # Numeric → version; string → timestamp
+        try:
+            version = int(as_of_val)
+            time_travel_clause = f" FOR VERSION AS OF {version}"
+        except (TypeError, ValueError):
+            time_travel_clause = f" FOR TIMESTAMP AS OF TIMESTAMP '{as_of_val}'"
+        if use_aliases:
+            from_clause = f'{ref}{time_travel_clause} {_q(root_alias)}'
+        else:
+            from_clause = f'{ref}{time_travel_clause}'
+
     sql = f'SELECT {", ".join(select_parts)} FROM {from_clause}'
 
     # JOIN clauses
     for join_clause in join_clauses:
         sql += f" {join_clause}"
-
-    # Process arguments
-    args = {}
-    if field_node.arguments:
-        for arg in field_node.arguments:
-            args[arg.name.value] = _extract_value(arg.value, variables)
 
     # DISTINCT ON — inject after SELECT keyword
     if "distinct_on" in args:
@@ -750,7 +773,7 @@ def _compile_root_field(
         sql += f" OFFSET {collector.add(int(args['offset']))}"
 
     # Collect native filter args (any arg not handled by SQL compilation above)
-    _STANDARD_ARGS = {"where", "order_by", "limit", "offset", "distinct_on"}
+    _STANDARD_ARGS = {"where", "order_by", "limit", "offset", "distinct_on", "as_of"}
     api_args = {k: v for k, v in args.items() if k not in _STANDARD_ARGS}
 
     # Prepend a self-describing hint comment for external drivers (JDBC/ODBC/Arrow Flight).
