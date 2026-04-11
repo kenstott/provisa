@@ -313,6 +313,38 @@ export function GraphPage() {
     setFrames((f) => f.filter((fr) => fr.id !== id));
   }, []);
 
+  const rerunFrame = useCallback(async (id: string, query: string) => {
+    if (!query) return;
+    const start = Date.now();
+    setFrames((f) => f.map((fr) =>
+      fr.id === id
+        ? { ...fr, query, status: "loading", nodes: new Map(), edges: new Map(), rows: [], columns: [], elapsed: undefined, error: undefined }
+        : fr
+    ));
+    try {
+      const res = await fetch("/data/cypher", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, params: {} }),
+      });
+      const elapsed = Date.now() - start;
+      if (!res.ok) {
+        const text = await res.text();
+        let msg: string;
+        try { msg = (JSON.parse(text) as { error?: string }).error ?? text; } catch { msg = text; }
+        setFrames((f) => f.map((fr) => fr.id === id ? { ...fr, status: "error", error: msg } : fr));
+        return;
+      }
+      const data = await res.json();
+      const rows: Record<string, unknown>[] = data.rows ?? [];
+      const columns: string[] = data.columns ?? [];
+      const { nodes, edges } = extractElements(rows);
+      setFrames((f) => f.map((fr) => fr.id === id ? { ...fr, status: "done", nodes, edges, rows, columns, elapsed } : fr));
+    } catch (err) {
+      setFrames((f) => f.map((fr) => fr.id === id ? { ...fr, status: "error", error: String(err) } : fr));
+    }
+  }, []);
+
   const handleHistorySelect = useCallback((q: string) => setHistoryQuery(q), []);
   const handleLabelClick = useCallback((label: string) => {
     runQuery(`MATCH (n:${label}) RETURN n LIMIT 25`);
@@ -352,7 +384,7 @@ export function GraphPage() {
             </div>
           )}
           {frames.map((frame) => (
-            <GraphFrame key={frame.id} frame={frame} onClose={closeFrame} />
+            <GraphFrame key={frame.id} frame={frame} onClose={closeFrame} onRerun={rerunFrame} />
           ))}
         </div>
       </div>
