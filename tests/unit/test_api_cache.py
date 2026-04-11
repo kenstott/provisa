@@ -8,118 +8,111 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Tests for API source cache (Phase U)."""
+"""Tests for API source caching via Trino Iceberg (Phase U, REQ-309/318/327)."""
 
 import pytest
 
-from provisa.api_source.cache import (
-    _params_hash,
-    generate_cache_table_ddl,
-    resolve_ttl,
+from provisa.api_source.cache import DEFAULT_TTL, resolve_ttl
+from provisa.api_source.trino_cache import (
+    CACHE_CATALOG,
+    CACHE_SCHEMA,
+    cache_table_name,
+    rewrite_from_cache,
 )
-from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint
-
-
-def _make_endpoint(**kwargs) -> ApiEndpoint:
-    defaults = {
-        "id": 1,
-        "source_id": "test-api",
-        "path": "/users",
-        "method": "GET",
-        "table_name": "users",
-        "columns": [
-            ApiColumn(name="id", type=ApiColumnType.integer),
-            ApiColumn(name="name", type=ApiColumnType.string),
-            ApiColumn(name="data", type=ApiColumnType.jsonb),
-        ],
-        "ttl": 300,
-    }
-    defaults.update(kwargs)
-    return ApiEndpoint(**defaults)
-
-
-# --- Cache key generation ---
-
-def test_params_hash_deterministic():
-    """Same inputs produce the same hash."""
-    h1 = _params_hash(1, {"a": 1, "b": 2})
-    h2 = _params_hash(1, {"b": 2, "a": 1})
-    assert h1 == h2
-
-
-def test_params_hash_different_endpoint():
-    """Different endpoint IDs produce different hashes."""
-    h1 = _params_hash(1, {"a": 1})
-    h2 = _params_hash(2, {"a": 1})
-    assert h1 != h2
-
-
-def test_params_hash_different_params():
-    """Different params produce different hashes."""
-    h1 = _params_hash(1, {"a": 1})
-    h2 = _params_hash(1, {"a": 2})
-    assert h1 != h2
-
-
-def test_params_hash_empty():
-    """Empty params produce a valid hash."""
-    h = _params_hash(1, {})
-    assert isinstance(h, str)
-    assert len(h) == 64  # SHA-256 hex
 
 
 # --- TTL resolution ---
 
 def test_ttl_endpoint_wins():
-    """Endpoint TTL takes priority."""
     assert resolve_ttl(60, 120, 300) == 60
 
 
 def test_ttl_source_fallback():
-    """Source TTL used when endpoint TTL is None."""
     assert resolve_ttl(None, 120, 300) == 120
 
 
 def test_ttl_global_fallback():
-    """Global TTL used when both endpoint and source are None."""
     assert resolve_ttl(None, None, 300) == 300
 
 
 def test_ttl_default():
-    """Default 300s when all are None."""
-    assert resolve_ttl(None, None, None) == 300
+    assert resolve_ttl(None, None, None) == DEFAULT_TTL
 
 
-# --- Cache table DDL ---
+# --- Cache table name ---
 
-def test_generate_cache_table_ddl():
-    """DDL includes all columns with correct PG types."""
-    endpoint = _make_endpoint()
-    ddl = generate_cache_table_ddl(endpoint)
-
-    assert "api_cache_users" in ddl
-    assert "_cache_id SERIAL PRIMARY KEY" in ddl
-    assert "_endpoint_id INTEGER NOT NULL" in ddl
-    assert "_params_hash TEXT NOT NULL" in ddl
-    assert "_cached_at TIMESTAMPTZ" in ddl
-    assert "id BIGINT" in ddl
-    assert "name TEXT" in ddl
-    assert "data JSONB" in ddl
+def test_cache_table_name_deterministic():
+    """Same inputs always produce the same name."""
+    n1 = cache_table_name("src", "/users", {"page": 1})
+    n2 = cache_table_name("src", "/users", {"page": 1})
+    assert n1 == n2
 
 
-def test_generate_cache_table_ddl_boolean():
-    """Boolean columns get BOOLEAN type."""
-    endpoint = _make_endpoint(columns=[
-        ApiColumn(name="active", type=ApiColumnType.boolean),
-    ])
-    ddl = generate_cache_table_ddl(endpoint)
-    assert "active BOOLEAN" in ddl
+def test_cache_table_name_param_order_stable():
+    """Param ordering does not change the name."""
+    n1 = cache_table_name("src", "/users", {"a": 1, "b": 2})
+    n2 = cache_table_name("src", "/users", {"b": 2, "a": 1})
+    assert n1 == n2
 
 
-def test_generate_cache_table_ddl_number():
-    """Number columns get DOUBLE PRECISION type."""
-    endpoint = _make_endpoint(columns=[
-        ApiColumn(name="score", type=ApiColumnType.number),
-    ])
-    ddl = generate_cache_table_ddl(endpoint)
-    assert "score DOUBLE PRECISION" in ddl
+def test_cache_table_name_different_source():
+    n1 = cache_table_name("src-a", "/users", {})
+    n2 = cache_table_name("src-b", "/users", {})
+    assert n1 != n2
+
+
+def test_cache_table_name_different_path():
+    n1 = cache_table_name("src", "/users", {})
+    n2 = cache_table_name("src", "/orders", {})
+    assert n1 != n2
+
+
+def test_cache_table_name_different_params():
+    n1 = cache_table_name("src", "/users", {"page": 1})
+    n2 = cache_table_name("src", "/users", {"page": 2})
+    assert n1 != n2
+
+
+def test_cache_table_name_format():
+    """Name must start with 'r_' and be a valid identifier."""
+    name = cache_table_name("src", "/endpoint", {})
+    assert name.startswith("r_")
+    assert len(name) == 2 + 16  # r_ + 16 hex chars
+
+
+# --- SQL FROM rewrite ---
+
+def test_rewrite_from_cache_simple():
+    sql = 'SELECT "id" FROM "public"."users"'
+    result = rewrite_from_cache(sql, "r_abc123")
+    assert f"{CACHE_CATALOG}.{CACHE_SCHEMA}" in result
+    assert "r_abc123" in result
+    assert "SELECT" in result
+
+
+def test_rewrite_from_cache_preserves_where():
+    sql = 'SELECT "id" FROM "public"."users" WHERE "active" = TRUE'
+    result = rewrite_from_cache(sql, "r_abc123")
+    assert "WHERE" in result
+    assert "active" in result
+
+
+def test_rewrite_from_cache_preserves_limit():
+    sql = 'SELECT "id" FROM "public"."users" LIMIT 10 OFFSET 0'
+    result = rewrite_from_cache(sql, "r_abc123")
+    assert "LIMIT" in result
+    assert "10" in result
+
+
+def test_rewrite_from_cache_preserves_order_by():
+    sql = 'SELECT "id", "name" FROM "public"."users" ORDER BY "name" ASC'
+    result = rewrite_from_cache(sql, "r_tbl9")
+    assert "ORDER BY" in result
+    assert "r_tbl9" in result
+
+
+def test_rewrite_from_cache_catalog_schema():
+    sql = 'SELECT "x" FROM "db"."tbl"'
+    result = rewrite_from_cache(sql, "r_xyz")
+    assert CACHE_CATALOG in result
+    assert CACHE_SCHEMA in result

@@ -14,7 +14,7 @@ Covers:
 - GraphQL query forwarding via 'QUERY' method
 - gRPC: _build_request_parts with variable param type
 - Pagination: offset, page_number (new — caller tests only have link_header + cursor)
-- Per-source cache: resolve_ttl, _params_hash, generate_cache_table_ddl edge cases
+- Per-source cache: resolve_ttl, cache_table_name, create_and_insert (Trino Iceberg DDL)
 - api_source transforms: from_unix_timestamp, cents_to_decimal, apply_transform
 - introspect helpers: _path_to_table_name, _unwrap_type, _grpc_message_to_columns
 """
@@ -28,9 +28,13 @@ import pytest
 
 from provisa.api_source.cache import (
     DEFAULT_TTL,
-    _params_hash,
-    generate_cache_table_ddl,
     resolve_ttl,
+)
+from provisa.api_source.trino_cache import (
+    CACHE_CATALOG,
+    CACHE_SCHEMA,
+    cache_table_name,
+    create_and_insert,
 )
 from provisa.api_source.caller import (
     _apply_auth,
@@ -745,53 +749,54 @@ class TestCacheResolverExpanded:
     def test_resolve_ttl_source_beats_global(self):
         assert resolve_ttl(source_ttl=200, global_ttl=999) == 200
 
-    def test_params_hash_is_64_hex_chars(self):
-        h = _params_hash(1, {"key": "value"})
-        assert len(h) == 64
-        assert all(c in "0123456789abcdef" for c in h)
+    def test_cache_table_name_format(self):
+        name = cache_table_name("src", "/endpoint", {"key": "value"})
+        assert name.startswith("r_")
+        assert len(name) == 2 + 16  # r_ + 16 hex chars
 
-    def test_params_hash_order_independent(self):
-        h1 = _params_hash(5, {"b": 2, "a": 1})
-        h2 = _params_hash(5, {"a": 1, "b": 2})
-        assert h1 == h2
+    def test_cache_table_name_order_independent(self):
+        n1 = cache_table_name("src", "/ep", {"b": 2, "a": 1})
+        n2 = cache_table_name("src", "/ep", {"a": 1, "b": 2})
+        assert n1 == n2
 
-    def test_params_hash_different_endpoints_differ(self):
-        assert _params_hash(1, {}) != _params_hash(2, {})
+    def test_cache_table_name_different_sources_differ(self):
+        n1 = cache_table_name("src-a", "/ep", {})
+        n2 = cache_table_name("src-b", "/ep", {})
+        assert n1 != n2
 
-    def test_generate_ddl_if_not_exists_clause(self):
-        endpoint = _make_endpoint(
-            table_name="events",
-            columns=[ApiColumn(name="ts", type=ApiColumnType.string)],
-        )
-        ddl = generate_cache_table_ddl(endpoint)
-        assert "IF NOT EXISTS" in ddl
-        assert "api_cache_events" in ddl
+    def test_create_and_insert_ddl_uses_iceberg_parquet(self):
+        """create_and_insert builds CREATE TABLE with PARQUET format and S3 location."""
+        executed: list[str] = []
 
-    def test_generate_ddl_all_column_types(self):
-        endpoint = _make_endpoint(
-            table_name="mixed",
-            columns=[
-                ApiColumn(name="s", type=ApiColumnType.string),
-                ApiColumn(name="i", type=ApiColumnType.integer),
-                ApiColumn(name="n", type=ApiColumnType.number),
-                ApiColumn(name="b", type=ApiColumnType.boolean),
-                ApiColumn(name="j", type=ApiColumnType.jsonb),
-            ],
-        )
-        ddl = generate_cache_table_ddl(endpoint)
-        assert "s TEXT" in ddl
-        assert "i BIGINT" in ddl
-        assert "n DOUBLE PRECISION" in ddl
-        assert "b BOOLEAN" in ddl
-        assert "j JSONB" in ddl
+        class FakeCursor:
+            def execute(self, sql, *args):
+                executed.append(sql)
+            def fetchall(self):
+                return []
 
-    def test_generate_ddl_metadata_columns_present(self):
-        endpoint = _make_endpoint(columns=[])
-        ddl = generate_cache_table_ddl(endpoint)
-        assert "_cache_id SERIAL PRIMARY KEY" in ddl
-        assert "_endpoint_id INTEGER NOT NULL" in ddl
-        assert "_params_hash TEXT NOT NULL" in ddl
-        assert "_cached_at TIMESTAMPTZ" in ddl
+        class FakeConn:
+            def cursor(self):
+                return FakeCursor()
+
+        cols = [
+            ApiColumn(name="id", type=ApiColumnType.integer),
+            ApiColumn(name="name", type=ApiColumnType.string),
+            ApiColumn(name="score", type=ApiColumnType.number),
+            ApiColumn(name="active", type=ApiColumnType.boolean),
+            ApiColumn(name="meta", type=ApiColumnType.jsonb),
+        ]
+        create_and_insert(FakeConn(), "r_test01", [], cols)
+        assert executed, "no SQL was executed"
+        create_sql = executed[0]
+        assert "CREATE TABLE IF NOT EXISTS" in create_sql
+        assert f"{CACHE_CATALOG}.{CACHE_SCHEMA}" in create_sql
+        assert "PARQUET" in create_sql
+        assert "s3a://" in create_sql
+        assert '"id" BIGINT' in create_sql
+        assert '"name" VARCHAR' in create_sql
+        assert '"score" DOUBLE' in create_sql
+        assert '"active" BOOLEAN' in create_sql
+        assert '"meta" VARCHAR' in create_sql
 
 
 # ---------------------------------------------------------------------------

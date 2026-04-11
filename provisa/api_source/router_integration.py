@@ -10,25 +10,34 @@
 
 """Routing integration for API sources (Phase U).
 
-Flow: check cache -> hit? return cached rows -> miss? call API -> flatten -> write cache -> return.
+Flow: check Trino Iceberg cache → hit? return cache reference → miss? call API
+→ flatten → materialize in Iceberg (S3 Parquet) → schedule TTL DROP → return rows.
+
+Phase 2 SQL (WHERE/ORDER BY/LIMIT) is applied by the caller via rewrite_from_cache().
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import asyncio
+from dataclasses import dataclass, field
 
-import asyncpg
-
-from provisa.api_source.cache import check_cache, resolve_ttl, write_cache
+from provisa.api_source.cache import resolve_ttl
 from provisa.api_source.caller import call_api
 from provisa.api_source.flattener import flatten_response
 from provisa.api_source.models import ApiEndpoint, ApiSource, ApiSourceType
+from provisa.api_source.trino_cache import (
+    cache_table_name,
+    create_and_insert,
+    schedule_drop,
+    table_exists,
+)
 
 
 @dataclass
 class QueryResult:
     rows: list[dict]
     from_cache: bool
+    cache_table: str | None = field(default=None)
 
 
 def is_api_source(source_id: str, source_types: dict[str, str]) -> bool:
@@ -40,24 +49,22 @@ def is_api_source(source_id: str, source_types: dict[str, str]) -> bool:
 async def handle_api_query(
     endpoint: ApiEndpoint,
     params: dict,
-    conn: asyncpg.Connection,
+    conn,
     source: ApiSource | None = None,
     source_ttl: int | None = None,
     global_ttl: int | None = None,
 ) -> QueryResult:
-    """Execute an API query with caching.
+    """Execute an API query with Trino Iceberg caching.
 
-    1. Check cache (if endpoint has an ID)
-    2. On hit: return cached rows
-    3. On miss: call API -> flatten response -> write cache -> return
+    1. Derive stable Iceberg table name from source + path + native params
+    2. If table exists in Trino: return cache reference (phase 2 SQL applied by caller)
+    3. On miss: call API → flatten → materialize as Parquet on S3 → schedule DROP after TTL
     """
     ttl = resolve_ttl(endpoint.ttl, source_ttl, global_ttl)
+    tbl = cache_table_name(endpoint.source_id, endpoint.path, params)
 
-    # Check cache
-    if endpoint.id is not None:
-        cached = await check_cache(conn, endpoint, params, ttl)
-        if cached is not None:
-            return QueryResult(rows=cached, from_cache=True)
+    if table_exists(conn, tbl):
+        return QueryResult(rows=[], from_cache=True, cache_table=tbl)
 
     # Cache miss: call API
     base_url = source.base_url if source else ""
@@ -65,14 +72,12 @@ async def handle_api_query(
 
     pages = await call_api(endpoint, params, base_url=base_url, auth=auth)
 
-    # Flatten all pages
     all_rows: list[dict] = []
     for page_data in pages:
         rows = flatten_response(page_data, endpoint.response_root, endpoint.columns)
         all_rows.extend(rows)
 
-    # Write to cache
-    if endpoint.id is not None:
-        await write_cache(conn, endpoint, params, all_rows, ttl)
+    create_and_insert(conn, tbl, all_rows, endpoint.columns)
+    asyncio.ensure_future(schedule_drop(conn, tbl, ttl))
 
-    return QueryResult(rows=all_rows, from_cache=False)
+    return QueryResult(rows=all_rows, from_cache=False, cache_table=tbl)
