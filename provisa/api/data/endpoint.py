@@ -10,8 +10,9 @@
 
 """/data/graphql endpoint (REQ-043).
 
-Pipeline: parse -> compile -> RLS inject -> masking -> MV rewrite -> sampling
-  -> cache check -> route -> transpile -> execute -> cache store -> serialize.
+Pipeline: parse -> compile -> MV rewrite -> sampling -> make_semantic_sql
+  -> governance (RLS/masking/visibility) -> cache check -> route
+  -> rewrite_to_physical -> transpile -> execute -> cache store -> serialize.
 Mutations: parse -> compile_mutation -> RLS inject -> direct execute (never Trino).
 """
 
@@ -23,7 +24,7 @@ import logging
 
 import httpx
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 from graphql import GraphQLSyntaxError, OperationType
 from pydantic import BaseModel
@@ -32,15 +33,17 @@ from provisa.cache.key import cache_key
 from provisa.cache.middleware import build_cache_headers, check_cache, store_result
 from provisa.compiler.hints import extract_graphql_hints, graphql_hints_to_session_props
 from provisa.compiler.directives import extract_directives, extract_directives_from_sql_comments, merge_directives
-from provisa.compiler.mask_inject import inject_masking
 from provisa.compiler.mutation_gen import (
     compile_mutation,
     inject_rls_into_mutation,
 )
 from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
-from provisa.compiler.rls import RLSContext, inject_rls
+from provisa.compiler.rls import RLSContext
 from provisa.compiler.sampling import apply_sampling, get_sample_size
-from provisa.compiler.sql_gen import compile_query, make_semantic_sql
+from provisa.compiler.sql_gen import (
+    compile_query, make_semantic_sql,
+    rewrite_semantic_to_physical, rewrite_semantic_to_trino_physical,
+)
 from provisa.executor.direct import execute_direct
 from provisa.executor.serialize import serialize_aggregate, serialize_rows
 from provisa.executor.trino import execute_trino
@@ -164,6 +167,7 @@ async def graphql_endpoint(
     x_provisa_redirect: str | None = Header(None),
     x_provisa_redirect_threshold: int | None = Header(None),
     x_provisa_redirect_format: str | None = Header(None),
+    query_id: str | None = Query(None),
 ):
     """Execute a GraphQL query or mutation. Content negotiation via Accept header.
 
@@ -198,6 +202,9 @@ async def graphql_endpoint(
             raise HTTPException(status_code=403, detail=str(e))
 
     # --- Governed Query path (queryId, Phase AN) ---
+    # URL ?queryId= takes precedence over body field for HTTP GET-style approved lookups
+    if query_id:
+        request = GraphQLRequest(queryId=query_id, variables=request.variables, role=request.role)
     if request.queryId:
         if state.pg_pool is None:
             raise HTTPException(status_code=503, detail="Database pool not available")
@@ -358,14 +365,14 @@ async def graphql_endpoint(
 
 
 async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs):
-    """Apply RLS, masking, MV rewrite, Kafka filters, and sampling to a compiled query."""
+    """Apply governance, MV rewrite, Kafka filters, and sampling to a compiled query."""
+    from provisa.compiler.stage2 import apply_governance, build_governance_context
+
     if state.view_sql_map:
         from provisa.compiler.view_expand import expand_views
         compiled = expand_views(compiled, state.view_sql_map)
 
-    compiled = inject_rls(compiled, ctx, rls)
-
-    # ABAC approval hook (Phase AE) — after RLS, before execution
+    # ABAC approval hook (Phase AE)
     if hasattr(state, "approval_hook") and state.approval_hook is not None:
         from provisa.auth.approval_hook import ApprovalRequest, should_check
         table_ids = {m.table_id for m in ctx.tables.values() if m.field_name == compiled.root_field}
@@ -382,8 +389,6 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
             resp = await state.approval_hook.evaluate(req)
             if not resp.approved:
                 raise HTTPException(status_code=403, detail=f"Approval denied: {resp.reason}")
-
-    compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
 
     original_sources = set(compiled.sources)
     compiled = rewrite_if_mv_match(compiled, fresh_mvs)
@@ -406,6 +411,14 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
     sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
     if sampling:
         compiled = apply_sampling(compiled, get_sample_size())
+
+    # Governance: compile → semantic SQL → apply RLS/masking/visibility
+    gov_ctx = build_governance_context(
+        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
+    )
+    compiled.sql = apply_governance(make_semantic_sql(compiled.sql, ctx), gov_ctx)
+    if compiled.nodes_sql is not None:
+        compiled.nodes_sql = apply_governance(make_semantic_sql(compiled.nodes_sql, ctx), gov_ctx)
 
     return compiled, mv_used
 
@@ -519,8 +532,8 @@ async def _execute_api_source(compiled, state, source_id, root_field, ck, output
 
 
 async def _execute_one_field(
-    compiled, ctx, rls, state, variables, role, role_id,
-    document, fresh_mvs, output_format,
+    compiled, ctx, rls, state, role, role_id,
+    fresh_mvs, output_format,
     *, force_redirect, redirect_config, effective_redirect_format, probe_limit,
     steward_hint: str | None = None,
     query_session_props: dict | None = None,
@@ -581,11 +594,7 @@ async def _execute_one_field(
                 execute_ctas_redirect, presign_ctas_result,
                 cleanup_result_table, schedule_s3_cleanup,
             )
-            # Recompile with catalog for Trino CTAS
-            catalog_compiled = _recompile_for_trino_single(
-                compiled, document, ctx, rls, state, variables, role_id, role, fresh_mvs,
-            )
-            trino_sql = transpile_to_trino(catalog_compiled.sql)
+            trino_sql = transpile_to_trino(rewrite_semantic_to_trino_physical(compiled.sql, ctx))
             ctas_result = execute_ctas_redirect(
                 state.trino_conn, trino_sql, effective_redirect_format,
             )
@@ -616,7 +625,7 @@ async def _execute_one_field(
                     status_code=503,
                     detail=f"No connection pool for source {decision.source_id!r}",
                 )
-            exec_sql = compiled.sql
+            exec_sql = rewrite_semantic_to_physical(compiled.sql, ctx)
             if probe_limit is not None:
                 exec_sql = _inject_probe_limit(exec_sql, probe_limit)
             target_sql = transpile(exec_sql, decision.dialect or "postgres")
@@ -624,13 +633,9 @@ async def _execute_one_field(
                 state.source_pools, decision.source_id, target_sql, compiled.params,
             )
         else:
-            # Recompile with catalog-qualified names for Trino
-            catalog_compiled = _recompile_for_trino_single(
-                compiled, document, ctx, rls, state, variables, role_id, role, fresh_mvs,
-            )
             if state.trino_conn is None:
                 raise HTTPException(status_code=503, detail="Trino not connected")
-            exec_sql = catalog_compiled.sql
+            exec_sql = rewrite_semantic_to_trino_physical(compiled.sql, ctx)
             if probe_limit is not None:
                 exec_sql = _inject_probe_limit(exec_sql, probe_limit)
 
@@ -638,7 +643,7 @@ async def _execute_one_field(
             from provisa.compiler.hints import extract_hints
             exec_sql, comment_hints = extract_hints(exec_sql)
             session_hints: dict[str, str] = {}
-            for sid in catalog_compiled.sources:
+            for sid in compiled.sources:
                 src_hints = getattr(state, "source_federation_hints", {}).get(sid, {})
                 session_hints.update(src_hints)
             session_hints.update(query_session_props or {})  # @provisa hints
@@ -646,10 +651,9 @@ async def _execute_one_field(
 
             trino_sql = transpile_to_trino(exec_sql)
             result = execute_trino(
-                state.trino_conn, trino_sql, catalog_compiled.params,
+                state.trino_conn, trino_sql, compiled.params,
                 session_hints=session_hints or None,
             )
-            compiled = catalog_compiled  # use catalog columns for serialization
     except HTTPException:
         raise
     except Exception as e:
@@ -665,12 +669,12 @@ async def _execute_one_field(
         try:
             # Re-execute without probe limit
             if decision.route == Route.DIRECT and decision.source_id:
-                target_sql = transpile(compiled.sql, decision.dialect or "postgres")
+                target_sql = transpile(rewrite_semantic_to_physical(compiled.sql, ctx), decision.dialect or "postgres")
                 full_result = await execute_direct(
                     state.source_pools, decision.source_id, target_sql, compiled.params,
                 )
             else:
-                full_trino_sql = transpile_to_trino(compiled.sql)
+                full_trino_sql = transpile_to_trino(rewrite_semantic_to_trino_physical(compiled.sql, ctx))
                 full_result = execute_trino(
                     state.trino_conn, full_trino_sql, compiled.params,
                     session_hints=session_hints or None,
@@ -702,12 +706,12 @@ async def _execute_one_field(
     if compiled.nodes_sql is not None:
         try:
             if decision.route == Route.DIRECT and decision.source_id:
-                nodes_target_sql = transpile(compiled.nodes_sql, decision.dialect or "postgres")
+                nodes_target_sql = transpile(rewrite_semantic_to_physical(compiled.nodes_sql, ctx), decision.dialect or "postgres")
                 nodes_result = await execute_direct(
                     state.source_pools, decision.source_id, nodes_target_sql, compiled.nodes_params,
                 )
             else:
-                nodes_trino_sql = transpile_to_trino(compiled.nodes_sql)
+                nodes_trino_sql = transpile_to_trino(rewrite_semantic_to_trino_physical(compiled.nodes_sql, ctx))
                 nodes_result = execute_trino(state.trino_conn, nodes_trino_sql, compiled.nodes_params)
         except Exception as e:
             log.exception("Nodes query execution failed for %s", root_field)
@@ -756,28 +760,6 @@ async def _execute_one_field(
 
     return root_field, field_rows, None, ck, None
 
-
-def _recompile_for_trino_single(compiled, document, ctx, rls, state, variables, role_id, role, fresh_mvs):
-    """Recompile a single root field with catalog-qualified names for Trino."""
-    catalog_queries = compile_query(document, ctx, variables, use_catalog=True)
-    # Find the matching root field
-    for cq in catalog_queries:
-        if cq.root_field == compiled.root_field:
-            catalog_compiled = cq
-            break
-    else:
-        catalog_compiled = catalog_queries[0]
-
-    if state.view_sql_map:
-        from provisa.compiler.view_expand import expand_views
-        catalog_compiled = expand_views(catalog_compiled, state.view_sql_map)
-    catalog_compiled = inject_rls(catalog_compiled, ctx, rls)
-    catalog_compiled = inject_masking(catalog_compiled, ctx, state.masking_rules, role_id)
-    catalog_compiled = rewrite_if_mv_match(catalog_compiled, fresh_mvs)
-    sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
-    if sampling:
-        catalog_compiled = apply_sampling(catalog_compiled, get_sample_size())
-    return catalog_compiled
 
 
 async def _handle_query(document, ctx, rls, state, variables, role, output_format="json", role_id="admin", *, force_redirect=False, redirect_threshold=None, redirect_format=None, steward_hint: str | None = None, query_session_props: dict | None = None):
@@ -835,8 +817,8 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
     # --- Single root field: preserve existing behavior for binary formats ---
     if len(prepared) == 1:
         root_field, field_rows, redirect_info, ck, cached_entry = await _execute_one_field(
-            prepared[0], ctx, rls, state, variables, role, role_id,
-            document, fresh_mvs, output_format,
+            prepared[0], ctx, rls, state, role, role_id,
+            fresh_mvs, output_format,
             force_redirect=force_redirect,
             redirect_config=redirect_config,
             effective_redirect_format=effective_redirect_format,
@@ -867,8 +849,8 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
 
     for compiled in prepared:
         root_field, field_rows, redirect_info, ck, cached_entry = await _execute_one_field(
-            compiled, ctx, rls, state, variables, role, role_id,
-            document, fresh_mvs, "json",  # multi-field always uses JSON
+            compiled, ctx, rls, state, role, role_id,
+            fresh_mvs, "json",  # multi-field always uses JSON
             force_redirect=force_redirect,
             redirect_config=redirect_config,
             effective_redirect_format=effective_redirect_format,

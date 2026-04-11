@@ -52,15 +52,15 @@ class ProvisaClient:
 
     def query(
         self,
-        gql: str,
+        query: str,
         variables: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Execute a GraphQL query. Returns the raw response dict."""
-        payload: dict[str, Any] = {"query": gql}
+        """Execute a GraphQL, SQL, or Cypher query. Returns the raw response dict."""
+        payload: dict[str, Any] = {"query": query}
         if variables:
             payload["variables"] = variables
         r = httpx.post(
-            f"{self._base}/data/graphql",
+            f"{self._base}/data/query",
             json=payload,
             headers=self._http_headers(),
         )
@@ -69,30 +69,36 @@ class ProvisaClient:
 
     def query_df(
         self,
-        gql: str,
+        query: str,
         variables: dict[str, Any] | None = None,
     ):
-        """Execute a GraphQL query. Returns a pandas DataFrame from the first root field."""
+        """Execute a GraphQL, SQL, or Cypher query. Returns a pandas DataFrame.
+
+        GraphQL responses (``{data: {field: [...]}}``): extracts the first root field.
+        SQL/Cypher responses (``{columns: [...], rows: [...]}``) are mapped directly.
+        """
         import pandas as pd
 
-        result = self.query(gql, variables)
+        result = self.query(query, variables)
         if "errors" in result:
             raise RuntimeError(result["errors"])
+        if "columns" in result and "rows" in result:
+            return pd.DataFrame(result["rows"], columns=result["columns"])
         root = next(iter(result.get("data", {}).values()))
         return pd.DataFrame(root)
 
     async def aquery(
         self,
-        gql: str,
+        query: str,
         variables: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """Async variant of query()."""
-        payload: dict[str, Any] = {"query": gql}
+        """Async variant of query(). Supports GraphQL, SQL, and Cypher."""
+        payload: dict[str, Any] = {"query": query}
         if variables:
             payload["variables"] = variables
         async with httpx.AsyncClient() as client:
             r = await client.post(
-                f"{self._base}/data/graphql",
+                f"{self._base}/data/query",
                 json=payload,
                 headers=self._http_headers(),
             )
@@ -105,28 +111,28 @@ class ProvisaClient:
         host = urlparse(self._base).hostname or "localhost"
         return fl.connect(f"grpc://{host}:{self._flight_port}")
 
-    def _flight_ticket(self, gql: str, variables: dict[str, Any] | None) -> fl.Ticket:
-        data: dict[str, Any] = {"query": gql, "role": self._role}
+    def _flight_ticket(self, query: str, variables: dict[str, Any] | None) -> fl.Ticket:
+        data: dict[str, Any] = {"query": query, "role": self._role}
         if variables:
             data["variables"] = variables
         return fl.Ticket(json.dumps(data).encode())
 
     def flight(
         self,
-        gql: str,
+        query: str,
         variables: dict[str, Any] | None = None,
     ) -> pa.Table:
-        """Execute a GraphQL query via Arrow Flight. Returns a pyarrow Table."""
-        reader = self._flight_client().do_get(self._flight_ticket(gql, variables))
+        """Execute a GraphQL, SQL, or Cypher query via Arrow Flight. Returns a pyarrow Table."""
+        reader = self._flight_client().do_get(self._flight_ticket(query, variables))
         return reader.read_all()
 
     def flight_df(
         self,
-        gql: str,
+        query: str,
         variables: dict[str, Any] | None = None,
     ):
-        """Execute a GraphQL query via Arrow Flight. Returns a pandas DataFrame."""
-        return self.flight(gql, variables).to_pandas()
+        """Execute a GraphQL, SQL, or Cypher query via Arrow Flight. Returns a pandas DataFrame."""
+        return self.flight(query, variables).to_pandas()
 
     def flight_governed(
         self,

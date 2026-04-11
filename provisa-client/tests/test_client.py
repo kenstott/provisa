@@ -27,7 +27,7 @@ def client():
 
 @respx.mock
 def test_query_returns_raw_response(client):
-    respx.post(f"{BASE}/data/graphql").mock(
+    respx.post(f"{BASE}/data/query").mock(
         return_value=httpx.Response(200, json={"data": {"orders": [{"id": 1}]}})
     )
     result = client.query("{ orders { id } }")
@@ -36,7 +36,7 @@ def test_query_returns_raw_response(client):
 
 @respx.mock
 def test_query_sends_auth_and_role_headers(client):
-    route = respx.post(f"{BASE}/data/graphql").mock(
+    route = respx.post(f"{BASE}/data/query").mock(
         return_value=httpx.Response(200, json={"data": {"x": []}})
     )
     client.query("{ x { id } }")
@@ -47,7 +47,7 @@ def test_query_sends_auth_and_role_headers(client):
 
 @respx.mock
 def test_query_sends_variables(client):
-    route = respx.post(f"{BASE}/data/graphql").mock(
+    route = respx.post(f"{BASE}/data/query").mock(
         return_value=httpx.Response(200, json={"data": {"orders": []}})
     )
     client.query("query Q($id: ID!) { orders(id: $id) { id } }", {"id": "42"})
@@ -58,7 +58,7 @@ def test_query_sends_variables(client):
 @respx.mock
 def test_query_no_token(capfd):
     c = ProvisaClient(BASE, role="guest")
-    route = respx.post(f"{BASE}/data/graphql").mock(
+    route = respx.post(f"{BASE}/data/query").mock(
         return_value=httpx.Response(200, json={"data": {"x": []}})
     )
     c.query("{ x { id } }")
@@ -69,8 +69,8 @@ def test_query_no_token(capfd):
 # ── query_df() ───────────────────────────────────────────────────────────────
 
 @respx.mock
-def test_query_df_returns_dataframe(client):
-    respx.post(f"{BASE}/data/graphql").mock(
+def test_query_df_returns_dataframe_graphql(client):
+    respx.post(f"{BASE}/data/query").mock(
         return_value=httpx.Response(
             200, json={"data": {"orders": [{"id": 1, "amount": 9.99}, {"id": 2, "amount": 4.50}]}}
         )
@@ -82,8 +82,21 @@ def test_query_df_returns_dataframe(client):
 
 
 @respx.mock
+def test_query_df_returns_dataframe_sql(client):
+    respx.post(f"{BASE}/data/query").mock(
+        return_value=httpx.Response(
+            200, json={"columns": ["id", "amount"], "rows": [{"id": 1, "amount": 9.99}, {"id": 2, "amount": 4.50}]}
+        )
+    )
+    df = client.query_df("SELECT id, amount FROM orders")
+    assert list(df.columns) == ["id", "amount"]
+    assert len(df) == 2
+    assert df["id"].tolist() == [1, 2]
+
+
+@respx.mock
 def test_query_df_raises_on_graphql_errors(client):
-    respx.post(f"{BASE}/data/graphql").mock(
+    respx.post(f"{BASE}/data/query").mock(
         return_value=httpx.Response(
             200, json={"errors": [{"message": "field 'bad' not found"}]}
         )
@@ -97,7 +110,7 @@ def test_query_df_raises_on_graphql_errors(client):
 @pytest.mark.asyncio
 @respx.mock
 async def test_aquery_returns_response(client):
-    respx.post(f"{BASE}/data/graphql").mock(
+    respx.post(f"{BASE}/data/query").mock(
         return_value=httpx.Response(200, json={"data": {"orders": [{"id": 99}]}})
     )
     result = await client.aquery("{ orders { id } }")
@@ -107,7 +120,7 @@ async def test_aquery_returns_response(client):
 @pytest.mark.asyncio
 @respx.mock
 async def test_aquery_sends_role_header(client):
-    route = respx.post(f"{BASE}/data/graphql").mock(
+    route = respx.post(f"{BASE}/data/query").mock(
         return_value=httpx.Response(200, json={"data": {"x": []}})
     )
     await client.aquery("{ x { id } }")

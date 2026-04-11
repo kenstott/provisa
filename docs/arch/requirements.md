@@ -557,3 +557,43 @@ exporters:
 - **REQ-357** (2026-04-09): Once all three generation loops produce valid queries, all three are executed in parallel via the standard Provisa pipeline (Stage 2 governance applies to each). The response includes all three query texts and their results: `{ cypher: { query, result }, graphql: { query, result }, sql: { query, result } }`. A branch that exhausts its iteration limit returns `{ query: null, result: null, error: "<last compiler error>" }` for that branch without blocking the response. Part of Phase AV.
 - **REQ-358** (2026-04-09): The NL query service is differentiated from commodity text-to-SQL tools by: (1) three-target generation (SQL, GraphQL, Cypher) — Cypher output for graph-shaped questions is not available in any comparable tool; (2) role-scoped schema context — the LLM cannot generate queries referencing data the consumer is not permitted to see; (3) compiler-driven refinement loop — deterministic validation replaces heuristic result quality checks. Part of Phase AV.
 - **REQ-359** (2026-04-09): Any valid query produced by the NL service may be promoted directly to the persisted query registry by the consumer. The NL service acts as a governed query authoring assistant — generated queries enter the standard approval workflow rather than bypassing it. Part of Phase AV.
+
+## Unified Query Entry Point — Client × Language Matrix (Phase AW)
+- **REQ-360** (2026-04-11): Catalog mode — every client supports every applicable query language via a single unified query path. The full matrix is:
+
+  | Client | SQL | GraphQL | Cypher | Proto (gRPC) |
+  |---|---|---|---|---|
+  | ProvisaClient (REST) | `query(sql)` → `POST /data/query` auto-detect | `query(gql)` → `POST /data/query` auto-detect; `query_df()` extracts `data.*` for GraphQL responses | `query(cypher)` → `POST /data/query` auto-detect | n/a |
+  | ProvisaClient (Flight) | `flight(query)` → server auto-detects SQL | `flight(query)` → server auto-detects GraphQL; `flight_df()` returns DataFrame | `flight(query)` → server auto-detects Cypher | n/a |
+  | Raw HTTP | `POST /data/query` or `POST /data/sql` | `POST /data/query` or `POST /data/graphql` — first-class GraphQL endpoint | `POST /data/query` or `POST /data/cypher` | n/a |
+  | gRPC stub | n/a | n/a | n/a | `Query{Table}(Request) → stream Row` — first-class gRPC endpoint; proto schema is the governed contract |
+  | DB-API / SQLAlchemy / ADBC | SQL only (SQL-native interface) | n/a | n/a | n/a |
+  | JDBC driver | SQL only (SQL-native interface) | n/a | n/a | n/a |
+
+  `ProvisaClient.query()` and `ProvisaClient.flight()` are symmetric: both accept any query language and rely on server-side `_detect_target()` auto-detection. Response shape differs by language — GraphQL returns `{ data }`, SQL/Cypher return `{ columns, rows }` — so `query_df()` handles GraphQL shape specifically. Language auto-detection on `POST /data/query` and Arrow Flight is handled by `_detect_target()` (graphql/sql/cypher). Part of Phase AW.
+
+- **REQ-361** (2026-04-11): Approved mode — every client can execute approved persisted queries (identified by `stable_id`) via a uniform `?queryId=` mechanism on all HTTP endpoints and a `stable_id` field in Arrow Flight tickets. The full matrix is:
+
+  | Client | SQL | GraphQL | Cypher | Proto (gRPC) |
+  |---|---|---|---|---|
+  | ProvisaClient (REST) | `?queryId=<stable_id>` on `POST /data/sql` | approved-queries-only GraphQL schema — each approved query becomes a `Query` field; schema is the contract | `CALL approvedOp($p) YIELD ...` — approved ops as named procedures; `MATCH` and direct node/rel patterns blocked; result manipulation free | n/a |
+  | ProvisaClient (Flight) | `flight_governed(stable_id)` — `stable_id` field in ticket | `flight_governed(stable_id)` — `stable_id` field in ticket | `flight_governed(stable_id)` — `stable_id` field in ticket | n/a |
+  | Raw HTTP | `?queryId=` on `POST /data/sql`, or `FROM ApprovedOp` in SQL text | approved-queries-only GraphQL schema at `POST /data/graphql` — each approved query becomes a `Query` field; or `?queryId=` to execute by id | `CALL approvedOp($p) YIELD ...` at `POST /data/cypher`; `MATCH` blocked; result manipulation free | n/a |
+  | gRPC stub | n/a | n/a | n/a | `Query{ApprovedOp}(Request) → stream Row` — proto schema generated from approved queries only; each approved query becomes a typed RPC |
+  | DB-API / SQLAlchemy / ADBC | `SELECT * FROM ApprovedOp` virtual view; direct table access blocked; JOINs and filters on virtual views permitted | n/a | n/a | n/a |
+  | JDBC driver | `SELECT * FROM ApprovedOp` virtual view; direct table access blocked; JOINs and filters on virtual views permitted | n/a | n/a | n/a |
+
+  In approved mode, **data sources** are restricted to approved operations — but result manipulation is freely permitted. SQL: only approved virtual views as sources; JOINs, WHERE, GROUP BY, ORDER BY across those views are allowed; direct table references rejected. Cypher: `CALL approvedOp()` is the only data source; `MATCH` and direct node/relationship patterns are blocked; `YIELD`, `WITH`, `WHERE`, `RETURN`, `ORDER BY`, aggregation, and combining multiple `CALL`s are all permitted. GraphQL: approved-queries-only schema; unrecognised root fields rejected. gRPC/proto: approved-queries-only proto; unrecognised RPCs rejected. Part of Phase AW.
+
+## Phase AW Implementation Status
+
+Gaps resolved (2026-04-11):
+- **Gap 1** (`provisa-client/provisa_client/client.py`): `query()` and `aquery()` now post to `POST /data/query` (language-agnostic). `query_df()` handles both GraphQL `{data}` and SQL/Cypher `{columns, rows}` response shapes. Tests updated.
+- **Gap 2** (`provisa/api/data/endpoint.py`): `POST /data/graphql` now accepts `?queryId=` as URL query parameter (symmetry with `GET /data/graphql?queryId=` and all other endpoints). `Query` import added.
+
+Future work (not yet implemented):
+- **Gap 3**: Cypher approved mode — `CALL approvedOp($p) YIELD ...` dispatch, `MATCH` blocking. Requires Cypher parser extension for named procedure resolution.
+- **Gap 4**: gRPC proto scoped to approved queries per role — `generate_approved_proto()` in `provisa/grpc/proto_gen.py`.
+- **Gap 5**: Approved-queries-only GraphQL schema — schema generated from approved ops only; unrecognised fields rejected.
+- **Gap 6**: SQL virtual views for approved mode — `FROM ApprovedOp` as virtual table; direct table access blocked.
+- **Gap 7**: DB-API / ADBC / JDBC direct table blocking in approved mode.
