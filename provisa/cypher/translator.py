@@ -837,6 +837,7 @@ _CYPHER_FN_RENAMES: dict[str, str] = {
     "TOUPPER": "upper",
     "LTRIM": "ltrim",
     "RTRIM": "rtrim",
+    "TRIM": "trim",
     "REVERSE": "reverse",
     "REPLACE": "replace",
     "SPLIT": "split",
@@ -853,7 +854,7 @@ _CYPHER_FN_RENAMES: dict[str, str] = {
 # Cast functions: Cypher fn (uppercase) → (sql_type, use_try_cast)
 _CYPHER_CAST_FNS: dict[str, tuple[str, bool]] = {
     "TOSTRING": ("VARCHAR", False),
-    "TOSTRINGORNNULL": ("VARCHAR", True),
+    "TOSTRINGORNULL": ("VARCHAR", True),
     "TOINTEGER": ("BIGINT", True),
     "TOINTEGERORNULL": ("BIGINT", True),
     "TOFLOAT": ("DOUBLE", True),
