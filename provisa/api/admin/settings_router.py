@@ -176,6 +176,16 @@ async def update_settings(request: Request):
     return {"success": True, "updated": updated}
 
 
+@router.get("/admin/traces/recent")
+async def get_recent_traces(limit: int = 50):
+    """Return the last N completed spans from the in-memory buffer."""
+    try:
+        from provisa.api.otel_setup import span_buffer
+        return {"traces": span_buffer.recent(min(limit, 200))}
+    except Exception:
+        return {"traces": []}
+
+
 def _write_config(path: Path, cfg: dict) -> None:
     backup = path.with_suffix(".yaml.bak")
     backup.write_text(path.read_text())

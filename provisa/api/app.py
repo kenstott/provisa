@@ -95,6 +95,7 @@ class AppState:
     rss_sources: dict[str, object] = {}  # source_id → Source
     pg_notify_tables: set[str] = set()  # table_names with pg_notify triggers installed
     table_watermarks: dict[str, str] = {}  # table_name → watermark_column (for polling fallback)
+    _scheduler: object | None = None  # APScheduler instance for scheduled queries
 
 
 state = AppState()
@@ -933,6 +934,38 @@ async def lifespan(app: FastAPI):
         except Exception:
             _log.exception("APQ cache initialization failed")
 
+    # Start scheduler for config-based triggers and approved query schedules (Phase AX)
+    try:
+        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        scheduler = AsyncIOScheduler()
+        # Register config-based triggers if present
+        _cfg_triggers = []
+        try:
+            _raw = yaml.safe_load(open(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")).read())
+            if isinstance(_raw, dict):
+                from provisa.core.config_loader import parse_config_dict
+                _cfg = parse_config_dict(_raw)
+                _cfg_triggers = _cfg.scheduler.triggers if _cfg.scheduler else []
+        except Exception:
+            pass
+        from provisa.scheduler.jobs import build_scheduler
+        _cfg_scheduler = build_scheduler(_cfg_triggers)
+        if _cfg_scheduler:
+            for job in _cfg_scheduler.get_jobs():
+                scheduler.add_job(
+                    job.func,
+                    trigger=job.trigger,
+                    args=job.args,
+                    id=job.id,
+                    name=job.name,
+                    replace_existing=True,
+                )
+        scheduler.start()
+        state._scheduler = scheduler
+        _log.info("APScheduler started")
+    except Exception:
+        _log.exception("APScheduler startup failed")
+
     yield
 
     # Stop Arrow Flight server
@@ -982,6 +1015,13 @@ async def lifespan(app: FastAPI):
         await state.apq_cache.close()
     except Exception:
         pass
+
+    # Stop scheduler (Phase AX)
+    if state._scheduler is not None:
+        try:
+            state._scheduler.shutdown(wait=False)
+        except Exception:
+            pass
 
     await state.cache_store.close()
     await state.source_pools.close_all()
@@ -1086,6 +1126,27 @@ def create_app() -> FastAPI:
 
     from provisa.api.admin.views import router as views_router
     app.include_router(views_router)
+
+    # Cypher query endpoint (Phase AU)
+    try:
+        from provisa.api.rest.cypher_router import router as cypher_router
+        app.include_router(cypher_router)
+    except ImportError:
+        pass
+
+    # Neo4j Browser compatibility layer (Query API v2 + discovery)
+    try:
+        from provisa.api.rest.neo4j_compat_router import router as neo4j_compat_router
+        app.include_router(neo4j_compat_router)
+    except ImportError:
+        pass
+
+    # Natural Language query endpoint (Phase AV)
+    try:
+        from provisa.api.rest.nl_router import router as nl_router
+        app.include_router(nl_router)
+    except ImportError:
+        pass
 
     @app.api_route("/health", methods=["GET", "HEAD"])
     async def health():
