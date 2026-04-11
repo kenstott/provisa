@@ -1,0 +1,593 @@
+/* Graph page — Neo4j Browser-style layout */
+
+/* ── Page shell ─────────────────────────────────────────────────────────────── */
+.graph-page {
+  display: flex;
+  height: calc(100vh - 52px);
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────────── */
+.graph-sidebar {
+  display: flex;
+  flex-shrink: 0;
+  background: #111318;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  position: relative;
+}
+
+.graph-sidebar-resizer {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.graph-sidebar-resizer:hover {
+  background: var(--primary);
+  opacity: 0.5;
+}
+
+.graph-sidebar-tabs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0;
+  background: #0d0f15;
+  border-right: 1px solid var(--border);
+  width: 40px;
+  flex-shrink: 0;
+}
+
+.graph-sidebar-tab {
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.graph-sidebar-tab:hover {
+  background: #1e2130;
+  color: var(--text);
+}
+
+.graph-sidebar-tab.active {
+  background: #1a1d27;
+  color: var(--primary);
+}
+
+.graph-sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem 0.5rem;
+}
+
+.graph-schema-section {
+  margin-bottom: 1.25rem;
+}
+
+.graph-schema-heading {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  padding: 0 0.25rem;
+}
+
+.graph-schema-empty {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 0 0.25rem;
+}
+
+/* Node label pills */
+.graph-label-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.graph-label-item {
+  display: flex;
+}
+
+.graph-label-pill {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #fff;
+  cursor: default;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.graph-label-count {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+/* Relationship types */
+.graph-rel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.graph-rel-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.graph-rel-item--clickable {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0.1rem 0.25rem;
+  margin: 0 -0.25rem;
+  transition: background 0.15s;
+}
+
+.graph-rel-item--clickable:hover {
+  background: #1e2130;
+}
+
+.graph-rel-arrow {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.graph-rel-type {
+  color: var(--text);
+  font-family: "SF Mono", "Fira Code", monospace;
+}
+
+/* History */
+.graph-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.graph-history-item {
+  font-size: 0.72rem;
+  font-family: "SF Mono", "Fira Code", monospace;
+  color: var(--text-muted);
+  padding: 0.3rem 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid transparent;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.graph-history-item:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+/* ── Main content ─────────────────────────────────────────────────────────────── */
+.graph-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Query bar ─────────────────────────────────────────────────────────────────── */
+.graph-query-bar {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  background: #111318;
+  border-bottom: 1px solid var(--border);
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.graph-query-prompt {
+  padding: 0.55rem 0.75rem;
+  color: var(--primary);
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.5;
+  flex-shrink: 0;
+  user-select: none;
+  border-right: 1px solid var(--border);
+}
+
+.graph-query-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  padding: 0.5rem 0.75rem;
+  resize: none;
+  overflow-y: auto;
+  min-height: 36px;
+  max-height: 160px;
+}
+
+.graph-query-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.graph-run-btn {
+  padding: 0 1rem;
+  background: var(--primary);
+  border: none;
+  color: #fff;
+  font-size: 0.95rem;
+  cursor: pointer;
+  align-self: stretch;
+  transition: background 0.15s;
+  flex-shrink: 0;
+  min-width: 44px;
+}
+
+.graph-run-btn:hover {
+  background: var(--primary-hover);
+}
+
+/* ── Frame stream ─────────────────────────────────────────────────────────────── */
+.graph-stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.graph-stream-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.graph-stream-empty-icon {
+  font-size: 3rem;
+  opacity: 0.2;
+}
+
+.graph-stream-hint {
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+/* ── Frame ─────────────────────────────────────────────────────────────────────── */
+.gf-frame {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface);
+  flex-shrink: 0;
+}
+
+.gf-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: #0d0f15;
+  border-bottom: 1px solid var(--border);
+  min-height: 38px;
+}
+
+.gf-header-query {
+  flex: 1;
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gf-header-meta {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+}
+
+.gf-meta-text {
+  color: var(--text-muted);
+}
+
+.gf-meta-error {
+  color: var(--destructive);
+}
+
+.gf-loading {
+  color: var(--primary);
+  animation: pulse 1.2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.gf-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.gf-view-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.gf-view-btn:hover {
+  background: #1e2130;
+  color: var(--text);
+}
+
+.gf-view-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.gf-icon-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.gf-icon-btn:hover {
+  background: #1e2130;
+  color: var(--text);
+}
+
+/* ── Frame body ─────────────────────────────────────────────────────────────────── */
+.gf-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.gf-error {
+  padding: 0.75rem 1rem;
+  color: var(--destructive);
+  font-size: 0.82rem;
+  background: #160a0a;
+  border-radius: 0 0 6px 6px;
+}
+
+/* ── Graph area ─────────────────────────────────────────────────────────────────── */
+.gf-graph-area {
+  display: flex;
+  height: 460px;
+}
+
+.gf-canvas-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.gf-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.gf-canvas-controls {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gf-ctrl-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: rgba(15, 17, 23, 0.85);
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.gf-ctrl-btn:hover {
+  background: var(--surface);
+}
+
+/* ── Inspector ─────────────────────────────────────────────────────────────────── */
+.gf-inspector {
+  width: 260px;
+  flex-shrink: 0;
+  padding: 0.75rem;
+  border-left: 1px solid var(--border);
+  background: #111318;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow-y: auto;
+}
+
+.gf-inspector-empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.gf-inspector-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+  font-style: italic;
+}
+
+.gf-inspector-badge {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 20px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  align-self: flex-start;
+}
+
+.gf-inspector-kind {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.gf-inspector-id {
+  font-size: 0.7rem;
+  font-family: "SF Mono", "Fira Code", monospace;
+  color: var(--text-muted);
+}
+
+.gf-inspector-endpoints {
+  font-size: 0.75rem;
+}
+
+.gf-inspector-no-props {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.gf-inspector-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.77rem;
+  margin-top: 0.25rem;
+}
+
+.gf-inspector-table tr {
+  border-bottom: 1px solid var(--border);
+}
+
+.gf-inspector-table tr:last-child {
+  border-bottom: none;
+}
+
+.gf-prop-key {
+  color: var(--text-muted);
+  padding: 0.3rem 0.5rem 0.3rem 0;
+  vertical-align: top;
+  white-space: nowrap;
+  width: 42%;
+}
+
+.gf-prop-val {
+  color: var(--text);
+  padding: 0.3rem 0;
+  word-break: break-all;
+}
+
+/* ── Table view ─────────────────────────────────────────────────────────────────── */
+.gf-table-wrap {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 360px;
+}
+
+.gf-table-empty {
+  padding: 1rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-style: italic;
+}
+
+.gf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.gf-table th {
+  background: #0d0f15;
+  color: var(--text-muted);
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+.gf-table td {
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid #1e2130;
+  color: var(--text);
+  vertical-align: top;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gf-table tr:last-child td {
+  border-bottom: none;
+}
+
+.gf-table tr:hover td {
+  background: #1a1d27;
+}
