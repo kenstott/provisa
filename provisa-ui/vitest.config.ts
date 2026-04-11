@@ -15,12 +15,17 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
-      'graphiql-explorer': path.resolve(
-        __dirname,
-        'src/plugins/graphiql-explorer-fork.cjs'
-      ),
-    },
+    alias: [
+      {
+        find: 'graphiql-explorer',
+        replacement: path.resolve(__dirname, 'src/plugins/graphiql-explorer-fork.cjs'),
+      },
+      // Exact match only — sub-paths like monaco-editor/esm/... must remain resolvable
+      {
+        find: /^monaco-editor$/,
+        replacement: path.resolve(__dirname, 'src/__mocks__/monaco-editor.ts'),
+      },
+    ],
   },
   test: {
     environment: 'jsdom',

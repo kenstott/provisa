@@ -147,7 +147,7 @@ export async function setupMocks(page: Page, overrides?: Partial<{
     if (query.includes("relationships")) data.relationships = relationships;
     if (query.includes("roles")) data.roles = roles;
     if (query.includes("rlsRules")) data.rlsRules = rlsRules;
-    if (query.includes("persistedQueries")) data.persistedQueries = pendingQueries;
+    if (query.includes("governedQueries")) data.governedQueries = pendingQueries;
     if (query.includes("availableSchemas")) data.availableSchemas = schemas;
     if (query.includes("availableTables")) data.availableTables = availableTables;
     if (query.includes("availableColumns")) data.availableColumnsMetadata = columnsMeta;
@@ -172,6 +172,16 @@ export async function setupMocks(page: Page, overrides?: Partial<{
       if (query.includes("deleteRelationship")) data.deleteRelationship = { success: true, message: "Deleted" };
       if (query.includes("approveQuery")) data.approveQuery = { success: true };
       if (query.includes("rejectQuery")) data.rejectQuery = { success: true };
+      if (query.includes("compileQuery")) data.compileQuery = [{
+        sql: "SELECT id, total FROM orders WHERE region = 'US'",
+        semanticSql: "SELECT id, total FROM sales.orders WHERE region = 'US'",
+        trinoSql: null, directSql: "SELECT id, total FROM orders WHERE region = 'US'",
+        route: "direct", routeReason: "single source", sources: ["sales-pg"],
+        rootField: "orders", canonicalField: "orders", compiledCypher: null,
+        optimizations: [], warnings: [], columnAliases: [],
+        enforcement: { rlsFiltersApplied: [], columnsExcluded: [], schemaScope: "role:admin", maskingApplied: [], ceilingApplied: null, route: "direct" },
+      }];
+      if (query.includes("submitQuery")) data.submitQuery = { queryId: 42, operationName: "GetOrders", message: "Submitted for approval" };
       if (query.includes("refreshMv")) data.refreshMv = { success: true, message: "MV refreshed" };
       if (query.includes("toggleMv")) data.toggleMv = { success: true, message: "MV toggled" };
       if (query.includes("purgeCache")) data.purgeCache = { success: true, message: "Purged 42 entries" };
@@ -237,21 +247,6 @@ export async function setupMocks(page: Page, overrides?: Partial<{
   });
 
   // Data endpoints
-  await page.route("**/data/compile", async (route) => {
-    await route.fulfill({
-      json: {
-        sql: "SELECT id, total FROM orders WHERE region = 'US'",
-        trino_sql: null, direct_sql: "SELECT id, total FROM orders WHERE region = 'US'",
-        params: [], route: "direct", route_reason: "single source",
-        sources: ["sales-pg"], root_field: "orders",
-      },
-    });
-  });
-
-  await page.route("**/data/submit", async (route) => {
-    await route.fulfill({ json: { query_id: 42, operation_name: "GetOrders", message: "Submitted for approval" } });
-  });
-
   await page.route("**/data/sdl", async (route) => {
     await route.fulfill({ body: "type Query { orders: [Order] }\ntype Order { id: Int total: Float }", contentType: "text/plain" });
   });

@@ -22,7 +22,12 @@ vi.mock("@graphiql/react", async (importOriginal) => {
   return {
     ...actual,
     useGraphiQL: vi.fn((selector: (s: Record<string, unknown>) => unknown) =>
-      selector({ schema: mockSchema, initialQuery: mockInitialQuery }),
+      selector({
+        schema: mockSchema,
+        initialQuery: mockInitialQuery,
+        activeTabIndex: 0,
+        tabs: [{ query: mockInitialQuery }],
+      }),
     ),
     useGraphiQLActions: vi.fn(() => ({
       setOperationName: vi.fn(),

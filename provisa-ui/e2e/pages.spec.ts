@@ -97,6 +97,15 @@ test.describe("Page smoke tests", () => {
     });
   });
 
+  test("/graph — Graph Explorer page loads", async ({ page }) => {
+    await page.route("**/data/cypher", async (route) => {
+      await route.fulfill({ json: { rows: [], columns: [] } });
+    });
+    await page.goto("/graph");
+    await expect(page.locator(".graph-sidebar")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText("Node Labels")).toBeVisible({ timeout: 10000 });
+  });
+
   test("/schema — Schema Explorer page loads", async ({ page }) => {
     await page.goto("/schema");
     await expect(page.locator("iframe[title='GraphQL Voyager']")).toBeVisible({

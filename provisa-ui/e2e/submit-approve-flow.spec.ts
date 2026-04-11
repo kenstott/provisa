@@ -88,17 +88,23 @@ test.describe("Submit and Approve query flow", () => {
   test("approve a submitted query via the Approvals page UI", async ({ page, request }) => {
     // Submit a query via the API so this test is independent
     const queryName = `E2eApprove_${Date.now()}`;
-    const submitResp = await request.post("http://localhost:8001/data/submit", {
-      headers: { "Content-Type": "application/json", "X-Role": "admin" },
+    const submitResp = await request.post("http://localhost:8001/admin/graphql", {
+      headers: { "Content-Type": "application/json" },
       data: {
-        query: `query ${queryName} { sales_analytics__orders(limit: 3) { id region } }`,
-        operation_name: queryName,
-        developer_id: "e2e-test",
-        business_purpose: "E2E test: approve flow",
-        data_sensitivity: "internal",
+        query: `mutation SubmitQuery($input: SubmitQueryInput!) { submitQuery(input: $input) { queryId operationName message } }`,
+        variables: {
+          input: {
+            query: `query ${queryName} { sales_analytics__orders(limit: 3) { id region } }`,
+            role: "admin",
+            businessPurpose: "E2E test: approve flow",
+            dataSensitivity: "internal",
+          },
+        },
       },
     });
     expect(submitResp.ok()).toBeTruthy();
+    const submitBody = await submitResp.json();
+    expect(submitBody.errors).toBeUndefined();
 
     // Navigate to approvals page
     await page.goto("/approvals");
