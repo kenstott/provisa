@@ -90,14 +90,17 @@ interface InspectorProps {
   selected: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null;
   colorOverrides: Record<string, string>;
   onColorChange: (label: string, color: string) => void;
+  onClose: () => void;
   width: number;
   onResizeStart: (e: React.MouseEvent) => void;
 }
 
-function Inspector({ selected, colorOverrides, onColorChange, width, onResizeStart }: InspectorProps) {
+function Inspector({ selected, colorOverrides, onColorChange, onClose, width, onResizeStart }: InspectorProps) {
   const [inspView, setInspView] = useState<"details" | "table" | "json">("details");
   const [showPalette, setShowPalette] = useState(false);
   const [hovered, setHovered] = useState(false);
+
+  if (!selected) return null;
 
   const viewSel = hovered && (
     <div className="gf-insp-viewsel">
@@ -109,17 +112,6 @@ function Inspector({ selected, colorOverrides, onColorChange, width, onResizeSta
       ))}
     </div>
   );
-
-  if (!selected) {
-    return (
-      <div className="gf-inspector gf-inspector-empty" style={{ width }}
-           onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
-        <div className="gf-inspector-resize-handle" onMouseDown={onResizeStart} />
-        {viewSel}
-        <div className="gf-inspector-hint">Click a node or relationship to inspect</div>
-      </div>
-    );
-  }
 
   const isN = selected.kind === "node";
   const label = isN ? selected.data.label : (selected.data as GEdge).type;
@@ -136,6 +128,7 @@ function Inspector({ selected, colorOverrides, onColorChange, width, onResizeSta
          onMouseEnter={() => setHovered(true)}
          onMouseLeave={() => { setHovered(false); setShowPalette(false); }}>
       <div className="gf-inspector-resize-handle" onMouseDown={onResizeStart} />
+      <button className="gf-insp-close" onClick={onClose} title="Close">✕</button>
       {viewSel}
       <div style={{ position: "relative", alignSelf: "flex-start" }}>
         <div className="gf-inspector-badge" style={{ background: color, cursor: "pointer" }}
@@ -469,6 +462,7 @@ export function GraphFrame({ frame, onClose, onRerun }: GraphFrameProps) {
         <div className="gf-graph-area">
           <GraphCanvas nodes={frame.nodes} edges={frame.edges} onSelect={setSelected} colorOverrides={colorOverrides} />
           <Inspector selected={selected} colorOverrides={colorOverrides} onColorChange={handleColorChange}
+                     onClose={() => setSelected(null)}
                      width={inspectorWidth} onResizeStart={handleResizeStart} />
         </div>
       )}

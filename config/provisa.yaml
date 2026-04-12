@@ -2,21 +2,21 @@
 sources:
   - id: sales-pg
     type: postgresql
-    host: postgres
+    host: ${env:POSTGRES_HOST:-localhost}
     port: 5432
     database: provisa
     username: provisa
-    password: ${env:PG_PASSWORD}
+    password: ${env:PG_PASSWORD:-provisa}
   - id: analytics-pg
     type: postgresql
-    host: postgres
+    host: ${env:POSTGRES_HOST:-localhost}
     port: 5432
     database: provisa
     username: provisa
-    password: ${env:PG_PASSWORD}
+    password: ${env:PG_PASSWORD:-provisa}
   - id: reviews-mongo
     type: mongodb
-    host: mongodb
+    host: ${env:MONGODB_HOST:-localhost}
     port: 27017
     database: provisa
     username: ""
@@ -24,7 +24,7 @@ sources:
 
   - id: support-kafka
     type: kafka
-    host: kafka
+    host: ${env:KAFKA_HOST:-localhost}
     port: 29092
     database: default
     username: ""
@@ -208,24 +208,28 @@ relationships:
     source_column: customer_id
     target_column: id
     cardinality: many-to-one
+    alias: PLACED_BY
   - id: customers-to-segments
     source_table_id: customers
     target_table_id: customer_segments
     source_column: id
     target_column: customer_id
     cardinality: one-to-many
+    alias: HAS_SEGMENT
   - id: tickets-to-customers
     source_table_id: ticket_created
     target_table_id: customers
     source_column: customer_id
     target_column: id
     cardinality: many-to-one
+    alias: OPENED_BY
   - id: orders-to-reviews
     source_table_id: orders
     target_table_id: product_reviews
     source_column: product_id
     target_column: product_id
     cardinality: one-to-many
+    alias: HAS_REVIEW
 
 roles:
   - id: admin
@@ -260,12 +264,12 @@ materialized_views:
 
 cache:
   enabled: true
-  redis_url: ${env:REDIS_URL}
+  redis_url: redis://${env:REDIS_HOST:-localhost}:6379
   default_ttl: 300
 
 kafka_sources:
   - id: support-kafka
-    bootstrap_servers: kafka:29092
+    bootstrap_servers: ${env:KAFKA_HOST:-localhost}:29092
     topics:
       - id: ticket_created
         topic: support.tickets

@@ -318,6 +318,42 @@
   text-overflow: ellipsis;
 }
 
+.gf-header-query-input {
+  flex: 1;
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 0.75rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  outline: none;
+  min-width: 0;
+}
+
+.gf-header-query-input:hover {
+  border-color: var(--border);
+}
+
+.gf-header-query-input:focus {
+  border-color: var(--primary);
+  background: #0d0f15;
+}
+
+.gf-run-inline-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.7rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .gf-header-meta {
   flex-shrink: 0;
   font-size: 0.72rem;
@@ -465,11 +501,55 @@
   flex-direction: column;
   gap: 0.5rem;
   overflow-y: auto;
+  position: relative;
 }
 
 .gf-inspector-empty {
   align-items: center;
   justify-content: center;
+}
+
+.gf-insp-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.gf-insp-close:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.gf-insp-viewsel {
+  display: flex;
+  gap: 0.25rem;
+  position: absolute;
+  top: 0.5rem;
+  right: 2rem;
+}
+
+.gf-insp-viewbtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0.15rem 0.3rem;
+  border-radius: 3px;
+}
+
+.gf-insp-viewbtn.active,
+.gf-insp-viewbtn:hover {
+  color: var(--text);
+  background: var(--surface);
 }
 
 .gf-inspector-hint {

@@ -147,6 +147,24 @@ class SelectBuilderMixin:
             expr_text = item.expression.strip()
             alias = item.alias
 
+            # Passthrough variable: pre-built JSON from all-rels union subquery
+            passthrough_vars = getattr(self, "_passthrough_vars", set())
+            all_rels_alias = getattr(self, "_all_rels_alias", "_all_rels")
+            if _is_bare_variable(expr_text) and expr_text in passthrough_vars:
+                # Edge var keeps EDGE kind; node vars get PASSTHROUGH so rewriter skips them
+                rel_var_types = getattr(self, "_rel_var_types", {})
+                if expr_text in rel_var_types:
+                    self._graph_vars[alias or expr_text] = GraphVarKind.EDGE
+                else:
+                    self._graph_vars[alias or expr_text] = GraphVarKind.PASSTHROUGH
+                col = exp.Column(
+                    this=exp.Identifier(this=expr_text, quoted=True),
+                    table=exp.Identifier(this=all_rels_alias),
+                )
+                out = alias or expr_text
+                exprs.append(exp.alias_(col, out))
+                continue
+
             # Path variable: RETURN p where p = shortestPath(...)
             if _is_bare_variable(expr_text) and expr_text in self._path_vars:
                 self._graph_vars[alias or expr_text] = GraphVarKind.PATH

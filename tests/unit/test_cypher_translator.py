@@ -688,6 +688,23 @@ def test_unlabeled_node_produces_union_all_of_all_types():
     assert "companies" in sql.lower()
 
 
+def test_fully_unlabeled_match_produces_all_rels_union():
+    """MATCH (n)-[r]->(m) RETURN n, r, m — all unlabeled; UNION ALL over all rel types."""
+    lm = _make_label_map()
+    ast = parse_cypher("MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 50")
+    sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    from provisa.cypher.translator import GraphVarKind
+    assert graph_vars.get("n") == GraphVarKind.PASSTHROUGH
+    assert graph_vars.get("r") == GraphVarKind.PASSTHROUGH
+    assert graph_vars.get("m") == GraphVarKind.PASSTHROUGH
+    assert "UNION ALL" in sql.upper() or "union all" in sql.lower()
+    # Each relationship type's tables should appear
+    assert "persons" in sql.lower()
+    assert "companies" in sql.lower()
+    assert "LIMIT 50" in sql or "limit 50" in sql.lower()
+
+
 def test_anonymous_nodes_relationship_return_r():
     """MATCH ()-[r:WORKS_AT]->() RETURN r — both endpoints anonymous; infer tables from rel type."""
     lm = _make_label_map()
@@ -808,3 +825,51 @@ def test_unknown_rel_type_raises_error():
     ast = parse_cypher("MATCH (e:Employee)-[:UNKNOWN_REL]->(d:Department) RETURN e.name")
     with pytest.raises(CypherTranslateError, match="Unknown relationship type or alias"):
         cypher_to_sql(ast, lm, {})
+
+
+def _make_label_map_product_reviews() -> CypherLabelMap:
+    """Label map for PRODUCT_CATALOG__PRODUCT_REVIEWS relationship."""
+    product = NodeMapping(
+        label="PRODUCT_CATALOG__PRODUCTS", type_name="PRODUCT_CATALOG__PRODUCTS",
+        domain_label="PRODUCT_CATALOG", table_label="PRODUCTS",
+        table_id=30, source_id="pg-main", id_column="product_id",
+        catalog_name="postgresql", schema_name="product_catalog", table_name="products",
+        properties={"product_id": "product_id", "name": "name"},
+    )
+    review = NodeMapping(
+        label="PRODUCT_CATALOG__PRODUCT_REVIEWS", type_name="PRODUCT_CATALOG__PRODUCT_REVIEWS",
+        domain_label="PRODUCT_CATALOG", table_label="PRODUCT_REVIEWS",
+        table_id=31, source_id="pg-main", id_column="review_id",
+        catalog_name="postgresql", schema_name="product_catalog", table_name="product_reviews",
+        properties={"review_id": "review_id", "product_id": "product_id", "rating": "rating"},
+    )
+    rel = RelationshipMapping(
+        rel_type="PRODUCT_CATALOG__PRODUCT_REVIEWS",
+        source_label="PRODUCT_CATALOG__PRODUCTS",
+        target_label="PRODUCT_CATALOG__PRODUCT_REVIEWS",
+        join_source_column="product_id",
+        join_target_column="product_id",
+        field_name="PRODUCT_CATALOG__PRODUCT_REVIEWS",
+        alias="PRODUCT_CATALOG__PRODUCT_REVIEWS",
+    )
+    nodes = {
+        "PRODUCT_CATALOG__PRODUCTS": product,
+        "PRODUCT_CATALOG__PRODUCT_REVIEWS": review,
+    }
+    rels = {"PRODUCT_CATALOG__PRODUCT_REVIEWS": rel}
+    aliases = {"PRODUCT_CATALOG__PRODUCT_REVIEWS": [rel]}
+    return CypherLabelMap(nodes=nodes, relationships=rels, aliases=aliases)
+
+
+def test_path_returns_start_end_and_relationship():
+    """MATCH p = ()-[r:PRODUCT_CATALOG__PRODUCT_REVIEWS]->() RETURN p LIMIT 25
+    should produce SQL joining source and target tables and include both node columns."""
+    lm = _make_label_map_product_reviews()
+    ast = parse_cypher(
+        "MATCH p = ()-[r:PRODUCT_CATALOG__PRODUCT_REVIEWS]->() RETURN p LIMIT 25"
+    )
+    sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "products" in sql.lower()
+    assert "product_reviews" in sql.lower()
+    assert "p" in graph_vars

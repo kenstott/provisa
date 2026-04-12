@@ -99,6 +99,11 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
         return _parse_node(data)
     if kind == GraphVarKind.EDGE:
         return _parse_edge(data)
+    if kind == GraphVarKind.PASSTHROUGH:
+        # Auto-detect: edge JSON has 'type' + 'startNode'; node JSON has 'label'
+        if "type" in data and ("startNode" in data or "start_node" in data):
+            return _parse_edge(data)
+        return _parse_node(data)
     raise CypherAssemblyError(f"Unknown GraphVarKind {kind!r} for column {col!r}")
 
 

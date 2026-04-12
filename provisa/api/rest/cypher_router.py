@@ -178,6 +178,7 @@ async def cypher_query(
     resolved_params = [body.params.get(name) for name in ordered_params]
 
     # Stage 5: Execute via Trino/federation executor
+    log.debug("Cypher final SQL: %s", trino_sql)
     try:
         rows = await _execute(trino_sql, resolved_params, state)
     except Exception as exc:

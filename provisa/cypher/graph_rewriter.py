@@ -54,6 +54,10 @@ def apply_graph_rewrites(
 
         if graph_var is not None:
             kind = graph_vars[graph_var]
+            # EDGE, PATH, and PASSTHROUGH expressions are pre-built; pass through.
+            if kind in (GraphVarKind.EDGE, GraphVarKind.PATH, GraphVarKind.PASSTHROUGH):
+                new_expressions.append(sel_expr)
+                continue
             # Find node meta: prefer alias_to_node lookup, then direct search
             node_meta = alias_to_node.get(graph_var) or _find_node_meta(graph_var, table_ref, label_map)
             out_alias = alias_name or graph_var
@@ -82,7 +86,10 @@ def _build_row_cast(tbl: str, node_meta: object) -> exp.Expression:
         exp.JSONKeyValue(this=exp.Literal.string("id"), expression=id_col),
         exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
     ]
+    reserved = {nm.id_column, "label"}
     for col_name in nm.properties.values():
+        if col_name in reserved:
+            continue
         kv.append(exp.JSONKeyValue(
             this=exp.Literal.string(col_name),
             expression=exp.Column(

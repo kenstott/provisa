@@ -24,6 +24,9 @@ class SecretsProvider(ABC):
 
 class EnvSecretsProvider(SecretsProvider):
     def resolve(self, reference: str) -> str:
+        if ":-" in reference:
+            var, default = reference.split(":-", 1)
+            return os.environ.get(var, default)
         value = os.environ.get(reference)
         if value is None:
             raise KeyError(f"Environment variable not set: {reference}")

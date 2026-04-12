@@ -66,6 +66,7 @@ class GraphVarKind(str, Enum):
     NODE = "NODE"
     EDGE = "EDGE"
     PATH = "PATH"
+    PASSTHROUGH = "PASSTHROUGH"  # pre-built JSON from rel/node union subquery
 
 
 class CypherTranslateError(Exception):
@@ -144,6 +145,10 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         self._rel_var_types: dict[str, str] = {}
         # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm)
         self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping"]] = {}
+        # vars that are pre-built JSON from an all-rels union subquery
+        self._passthrough_vars: set[str] = set()
+        # alias of the all-rels union subquery (when built)
+        self._all_rels_alias: str | None = None
 
     def translate(self) -> tuple[exp.Select, list[str], dict[str, GraphVarKind]]:
         if self._ast.return_clause is None:
@@ -521,6 +526,19 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                             ),
                         )
                         joins.append({"table": join_table, "on": on_cond, "join_type": join_type})
+                    elif rel_mapping is None:
+                        # Fully unlabeled pattern: UNION ALL over all relationship types
+                        from_expr = self._build_all_rels_union(src_var, rel.variable, tgt_var)
+                        if src_var:
+                            self._domain_nodes.pop(src_var, None)
+                            self._var_table[src_var] = (src_var, None)
+                            self._passthrough_vars.add(src_var)
+                        if rel.variable:
+                            self._passthrough_vars.add(rel.variable)
+                        if tgt_var:
+                            self._domain_nodes.pop(tgt_var, None)
+                            self._var_table[tgt_var] = (tgt_var, None)
+                            self._passthrough_vars.add(tgt_var)
                     continue
 
                 # Find matching relationship(s)
@@ -624,6 +642,24 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     self._extra_path_branches.append(
                         (from_expr, joins_before + [extra_join])
                     )
+
+            # Register path variable (e.g. MATCH p = ()-[r:REL]->())
+            if clause.variable and nodes:
+                _first = nodes[0]
+                _last = nodes[-1]
+                if _first.variable:
+                    _path_src_alias = _first.variable
+                elif rels and rel_mapping is not None:
+                    _path_src_alias = rel_mapping.source_label.lower()
+                else:
+                    _path_src_alias = ""
+                if _last.variable:
+                    _path_tgt_alias = _last.variable
+                elif rels and tgt_nm is not None:
+                    _path_tgt_alias = tgt_nm.table_name
+                else:
+                    _path_tgt_alias = ""
+                self._path_vars[clause.variable] = (_path_src_alias, _path_tgt_alias, False)
 
         if from_expr is None:
             raise CypherTranslateError("No MATCH clause produced a FROM table")
@@ -852,6 +888,103 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     seen.add(p)
         return props
 
+    def _build_all_rels_union(
+        self,
+        src_var: str | None,
+        rel_var: str | None,
+        tgt_var: str | None,
+    ) -> exp.Expression:
+        """Build UNION ALL subquery over all relationship types for fully-unlabeled patterns."""
+        src_col = src_var or "n"
+        rel_col = rel_var or "r"
+        tgt_col = tgt_var or "m"
+        alias = "_all_rels"
+        self._all_rels_alias = alias
+
+        branches: list[exp.Select] = []
+        for rm in self._lm.relationships.values():
+            src_nm = self._lm.nodes.get(rm.source_label)
+            tgt_nm = self._lm.nodes.get(rm.target_label)
+            if src_nm is None or tgt_nm is None:
+                continue
+
+            sa = f"_s_{rm.rel_type.lower()[:20]}"
+            ta = f"_t_{rm.rel_type.lower()[:20]}"
+
+            src_id_col = exp.Column(
+                this=exp.Identifier(this=src_nm.id_column, quoted=True),
+                table=exp.Identifier(this=sa),
+            )
+            tgt_id_col = exp.Column(
+                this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
+                table=exp.Identifier(this=ta),
+            )
+            src_json = exp.JSONObject(expressions=[
+                exp.JSONKeyValue(this=exp.Literal.string("id"), expression=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR"))),
+                exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(src_nm.label)),
+            ])
+            tgt_json = exp.JSONObject(expressions=[
+                exp.JSONKeyValue(this=exp.Literal.string("id"), expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR"))),
+                exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(tgt_nm.label)),
+            ])
+            edge_id = exp.DPipe(
+                this=exp.DPipe(
+                    this=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR")),
+                    expression=exp.Literal.string("-"),
+                ),
+                expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR")),
+            )
+            edge_json = exp.JSONObject(expressions=[
+                exp.JSONKeyValue(this=exp.Literal.string("id"), expression=edge_id),
+                exp.JSONKeyValue(this=exp.Literal.string("type"), expression=exp.Literal.string(rm.rel_type)),
+                exp.JSONKeyValue(this=exp.Literal.string("startNode"), expression=src_json),
+                exp.JSONKeyValue(this=exp.Literal.string("endNode"), expression=tgt_json),
+            ])
+
+            branch = exp.select(
+                exp.alias_(src_json, src_col),
+                exp.alias_(edge_json, rel_col),
+                exp.alias_(tgt_json, tgt_col),
+            ).from_(
+                exp.alias_(
+                    exp.Table(
+                        this=exp.Identifier(this=src_nm.table_name, quoted=True),
+                        db=exp.Identifier(this=src_nm.schema_name, quoted=True),
+                        catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
+                    ),
+                    alias=sa,
+                )
+            ).join(
+                exp.alias_(
+                    exp.Table(
+                        this=exp.Identifier(this=tgt_nm.table_name, quoted=True),
+                        db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
+                        catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
+                    ),
+                    alias=ta,
+                ),
+                on=exp.EQ(
+                    this=exp.Column(
+                        this=exp.Identifier(this=rm.join_source_column, quoted=True),
+                        table=exp.Identifier(this=sa),
+                    ),
+                    expression=exp.Column(
+                        this=exp.Identifier(this=rm.join_target_column, quoted=True),
+                        table=exp.Identifier(this=ta),
+                    ),
+                ),
+                join_type="INNER",
+            )
+            branches.append(branch)
+
+        if not branches:
+            raise CypherTranslateError("No relationship types found in schema")
+
+        union: exp.Expression = branches[0]
+        for b in branches[1:]:
+            union = exp.Union(this=union, expression=b, distinct=False)
+        return exp.alias_(exp.Subquery(this=union), alias=alias)
+
     def _build_domain_union(self, var: str, domain_name: str) -> exp.Expression:
         """Build UNION ALL subquery over all types in a domain."""
         type_labels = (
@@ -868,7 +1001,13 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 continue
             select_items: list[exp.Expression] = [
                 exp.alias_(exp.Literal.string(nm.label), alias="__label"),
-                exp.alias_(exp.Column(this=exp.Identifier(this=nm.id_column, quoted=True)), alias="__id"),
+                exp.alias_(
+                    exp.Cast(
+                        this=exp.Column(this=exp.Identifier(this=nm.id_column, quoted=True)),
+                        to=exp.DataType(this=exp.DataType.Type.VARCHAR),
+                    ),
+                    alias="__id",
+                ),
             ]
             for prop in props:
                 sql_col = nm.properties.get(prop)

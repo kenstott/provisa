@@ -254,10 +254,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
     if cache_config.get("enabled"):
         redis_url = os.environ.get("REDIS_URL", "")
         if not redis_url:
-            redis_url = cache_config.get("redis_url", "")
-            if redis_url.startswith("${env:"):
-                env_key = redis_url[6:-1]
-                redis_url = os.environ.get(env_key, "")
+            redis_url = resolve_secrets(cache_config.get("redis_url", ""))
         if redis_url:
             state.cache_store = RedisCacheStore(redis_url)
         state.cache_default_ttl = cache_config.get("default_ttl", 300)
@@ -278,10 +275,11 @@ async def _load_and_build(config_path: str | None = None) -> None:
             state.source_federation_hints[src.id] = dict(src.federation_hints)
         if has_driver(src.type.value):
             resolved_pw = resolve_secrets(src.password)
+            resolved_host = resolve_secrets(src.host) if src.host else "localhost"
             await state.source_pools.add(
                 source_id=src.id,
                 source_type=src.type.value,
-                host=src.host if src.host != "postgres" else os.environ.get("PG_HOST", "localhost"),
+                host=resolved_host,
                 port=src.port,
                 database=src.database,
                 user=src.username,

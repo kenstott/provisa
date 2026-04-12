@@ -168,15 +168,29 @@ def _get_tables_from_select(
     select_node: exp.Select,
     gov_ctx: GovernanceContext,
 ) -> list[tuple[exp.Table, int | None]]:
-    """Return (table_node, table_id) for each table referenced in FROM/JOINs."""
+    """Return (table_node, table_id) for each direct table in FROM/JOINs.
+
+    Does NOT recurse into subqueries — inner tables inside UNION ALL / derived
+    tables are governed when their own SELECT node is visited.
+    """
+    def _is_inside_subquery(node: exp.Expression) -> bool:
+        current = node.parent
+        while current is not None and current is not select_node:
+            if isinstance(current, exp.Subquery):
+                return True
+            current = current.parent
+        return False
+
     results: list[tuple[exp.Table, int | None]] = []
     from_clause = select_node.args.get("from_") or select_node.args.get("from")
     if from_clause:
         for tbl in from_clause.find_all(exp.Table):
-            results.append((tbl, _table_id_for_node(tbl, gov_ctx)))
+            if not _is_inside_subquery(tbl):
+                results.append((tbl, _table_id_for_node(tbl, gov_ctx)))
     for join in select_node.args.get("joins") or []:
         for tbl in join.find_all(exp.Table):
-            results.append((tbl, _table_id_for_node(tbl, gov_ctx)))
+            if not _is_inside_subquery(tbl):
+                results.append((tbl, _table_id_for_node(tbl, gov_ctx)))
     return results
 
 

@@ -74,7 +74,7 @@ export async function fetchTables(): Promise<RegisteredTable[]> {
 
 export async function fetchRelationships(): Promise<Relationship[]> {
   const data = await gql<{ relationships: Relationship[] }>(
-    `{ relationships { id sourceTableId targetTableId sourceTableName targetTableName sourceColumn targetColumn cardinality materialize refreshInterval targetFunctionName functionArg } }`
+    `{ relationships { id sourceTableId targetTableId sourceTableName targetTableName sourceColumn targetColumn cardinality materialize refreshInterval targetFunctionName functionArg alias } }`
   );
   return data.relationships;
 }
@@ -90,6 +90,7 @@ export async function upsertRelationship(input: {
   refreshInterval: number;
   targetFunctionName?: string | null;
   functionArg?: string | null;
+  alias?: string | null;
 }): Promise<MutationResult> {
   const data = await gql<{ upsertRelationship: MutationResult }>(
     `mutation($input: RelationshipInput!) { upsertRelationship(input: $input) { success message } }`,

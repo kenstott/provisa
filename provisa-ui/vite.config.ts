@@ -67,9 +67,9 @@ export default defineConfig(({ mode }) => ({
   server: {
     port: 3000,
     proxy: {
-      '/data': 'http://localhost:8001',
-      '/admin': 'http://localhost:8001',
-      '/health': 'http://localhost:8001',
+      '/data': 'http://127.0.0.1:8000',
+      '/admin': 'http://127.0.0.1:8000',
+      '/health': 'http://127.0.0.1:8000',
     },
   },
 }))

@@ -129,6 +129,7 @@ def _rel_from_row(row) -> RelationshipType:
         refresh_interval=row.get("refresh_interval", 300),
         target_function_name=row.get("target_function_name"),
         function_arg=row.get("function_arg"),
+        alias=row.get("alias"),
     )
 
 

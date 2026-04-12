@@ -231,9 +231,9 @@ async def init_hot_tables(
     hot_config = raw_config.get("hot_tables", {})
     cache_config = raw_config.get("cache", {})
     redis_url = cache_config.get("redis_url", "")
-    if redis_url.startswith("${env:"):
-        env_key = redis_url[6:-1]
-        redis_url = os.environ.get(env_key, "")
+    if redis_url:
+        from provisa.core.secrets import resolve_secrets
+        redis_url = resolve_secrets(redis_url)
     if not redis_url or not cache_config.get("enabled"):
         return None
 

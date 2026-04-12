@@ -81,6 +81,7 @@ export interface Relationship {
   refreshInterval: number;
   targetFunctionName: string | null;
   functionArg: string | null;
+  alias: string | null;
 }
 
 export interface RLSRule {

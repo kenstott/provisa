@@ -196,7 +196,7 @@ interface QueryBarProps {
 }
 
 function QueryBar({ onRun, initialQuery }: QueryBarProps) {
-  const [query, setQuery] = useState(initialQuery ?? "MATCH (n)-[r]->(m) RETURN n, r, m LIMIT 50");
+  const [query, setQuery] = useState(initialQuery ?? "MATCH (n) RETURN n LIMIT 25");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-grow textarea
