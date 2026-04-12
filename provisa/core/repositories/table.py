@@ -10,8 +10,6 @@
 
 """Table repository — CRUD for registered tables and columns in PG config DB."""
 
-import json
-
 import asyncpg
 
 from provisa.core.models import Column, Table
@@ -41,7 +39,7 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
         getattr(table, "alias", None),
         getattr(table, "description", None),
         getattr(table, "watermark_column", None),
-        json.dumps([p.model_dump() for p in getattr(table, "column_presets", [])]),
+        [p.model_dump() for p in getattr(table, "column_presets", [])],
     )
 
     # Replace columns: delete existing, insert new

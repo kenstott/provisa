@@ -60,7 +60,8 @@ def test_mixed_node_and_scalar():
 # Edge deserialization
 # ---------------------------------------------------------------------------
 
-def test_edge_json_column_deserialized():
+def test_edge_json_column_deserialized_legacy():
+    """Legacy format: id/startNode/endNode."""
     start = {"id": "1", "label": "Person"}
     end = {"id": "2", "label": "Company"}
     edge_data = {
@@ -80,6 +81,30 @@ def test_edge_json_column_deserialized():
     assert edge.start_node.id == "1"
     assert isinstance(edge.end_node, Node)
     assert edge.end_node.id == "2"
+
+
+def test_edge_json_column_deserialized_neo4j():
+    """Neo4j wire format: identity/start/end + startNode/endNode."""
+    start_node = {"id": "1", "label": "Person", "properties": {}}
+    end_node = {"id": "2", "label": "Company", "properties": {}}
+    edge_data = {
+        "identity": "1-2",
+        "start": "1",
+        "end": "2",
+        "type": "WORKS_AT",
+        "properties": {"since": 2020},
+        "startNode": start_node,
+        "endNode": end_node,
+    }
+    rows = [{"rel": json.dumps(edge_data)}]
+    result = assemble_rows(rows, {"rel": GraphVarKind.EDGE})
+    edge = result[0]["rel"]
+    assert isinstance(edge, Edge)
+    assert edge.id == "1-2"
+    assert edge.type == "WORKS_AT"
+    assert edge.start_node.id == "1"
+    assert edge.end_node.id == "2"
+    assert edge.properties == {"since": 2020}
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +166,22 @@ def test_to_serializable_node():
     node = Node(id="1", label="Person", properties={"name": "Alice"})
     s = to_serializable(node)
     assert s == {"id": "1", "label": "Person", "properties": {"name": "Alice"}}
+
+
+def test_to_serializable_edge():
+    start = Node(id="1", label="Person", properties={})
+    end = Node(id="2", label="Company", properties={})
+    edge = Edge(id="1-2", type="WORKS_AT", start_node=start, end_node=end, properties={"since": 2020})
+    s = to_serializable(edge)
+    assert s["identity"] == "1-2"
+    assert s["start"] == "1"
+    assert s["end"] == "2"
+    assert s["type"] == "WORKS_AT"
+    assert s["properties"] == {"since": 2020}
+    assert s["startNode"]["id"] == "1"
+    assert s["startNode"]["label"] == "Person"
+    assert s["endNode"]["id"] == "2"
+    assert s["endNode"]["label"] == "Company"
 
 
 def test_to_serializable_path():

@@ -411,3 +411,16 @@ exporters:
 
 ## Semantic Layer / Semantic Model
 
+
+## GraphQL Alias vs Cypher Alias Separation
+
+Two distinct namespaces for relationship naming:
+
+- **`alias`** (Cypher rel type): stored in `relationships.alias`, uppercase snake-case (e.g. `OPENED_BY`). Used exclusively in Cypher MATCH clauses. Carried through compilation via `JoinMeta.cypher_alias`.
+- **`graphql_alias`** (GraphQL field name): derived from target table name + cardinality at fetch time via `derive_graphql_alias()` in `db_queries.py`. Stored in `relationships.graphql_alias` (nullable; computed on read when NULL). Used exclusively as the GraphQL schema field name (e.g. `openedBy`, `customers`).
+
+These must never be conflated. `alias` must not appear as a GraphQL field name fallback.
+
+`derive_graphql_alias` rules: singularize target table name (inflect + round-trip validation to catch over-singularization), then pluralize for one-to-many or keep singular for many-to-one. Result is camelCase.
+
+`JoinMeta.cypher_alias` bridges the Cypher rel type through compilation without polluting the GraphQL layer. `label_map.py` uses `cypher_alias` if present, else uppercases the GraphQL field name.

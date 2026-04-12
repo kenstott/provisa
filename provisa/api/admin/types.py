@@ -107,6 +107,7 @@ class RelationshipType:
     target_function_name: str | None
     function_arg: str | None
     alias: str | None = None
+    graphql_alias: str | None = None
 
 
 @strawberry.type

@@ -116,20 +116,33 @@ def _role_from_row(row) -> RoleType:
     )
 
 
+from provisa.api.admin.db_queries import derive_graphql_alias as _derive_graphql_alias_fn
+
+
+def _derive_graphql_alias(target_table_name: str, cardinality: str, alias: str | None) -> str | None:
+    return _derive_graphql_alias_fn(target_table_name, cardinality)
+
+
 def _rel_from_row(row) -> RelationshipType:
+    cardinality = row["cardinality"]
+    target_table_name = row.get("target_table_name") or ""
+    alias = row.get("alias")
+    persisted_graphql_alias = row.get("graphql_alias") or None
+    graphql_alias = persisted_graphql_alias or _derive_graphql_alias(target_table_name, cardinality, alias)
     return RelationshipType(
         id=row["id"], source_table_id=row["source_table_id"],
         target_table_id=row.get("target_table_id"),
         source_table_name=row.get("source_table_name", ""),
-        target_table_name=row.get("target_table_name") or "",
+        target_table_name=target_table_name,
         source_column=row["source_column"],
         target_column=row.get("target_column"),
-        cardinality=row["cardinality"],
+        cardinality=cardinality,
         materialize=row.get("materialize", False),
         refresh_interval=row.get("refresh_interval", 300),
         target_function_name=row.get("target_function_name"),
         function_arg=row.get("function_arg"),
-        alias=row.get("alias"),
+        alias=alias,
+        graphql_alias=graphql_alias,
     )
 
 
@@ -894,6 +907,7 @@ class Mutation:
             target_function_name=input.target_function_name or None,
             function_arg=input.function_arg or None,
             alias=input.alias or None,
+            graphql_alias=getattr(input, "graphql_alias", None) or None,
         )
         async with pool.acquire() as conn:
             await rel_repo.upsert(conn, model)

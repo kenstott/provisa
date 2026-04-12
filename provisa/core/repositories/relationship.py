@@ -38,8 +38,8 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
             INSERT INTO relationships (id, source_table_id, target_table_id,
                                        source_column, target_column, cardinality,
                                        materialize, refresh_interval,
-                                       target_function_name, function_arg, alias)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                                       target_function_name, function_arg, alias, graphql_alias)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             ON CONFLICT (id) DO UPDATE SET
                 source_table_id = EXCLUDED.source_table_id,
                 target_table_id = EXCLUDED.target_table_id,
@@ -50,7 +50,8 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
                 refresh_interval = EXCLUDED.refresh_interval,
                 target_function_name = EXCLUDED.target_function_name,
                 function_arg = EXCLUDED.function_arg,
-                alias = EXCLUDED.alias
+                alias = EXCLUDED.alias,
+                graphql_alias = EXCLUDED.graphql_alias
             """,
             rel.id,
             source_tbl["id"],
@@ -63,6 +64,7 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
             rel.target_function_name,
             rel.function_arg,
             rel.alias or None,
+            rel.graphql_alias or None,
         )
     except Exception as e:
         if "relationships_source_alias_unique" in str(e):

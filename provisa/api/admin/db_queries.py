@@ -8,7 +8,42 @@
 
 from __future__ import annotations
 
+import re
+
 import asyncpg
+import inflect
+
+_inflect = inflect.engine()
+
+
+def _to_singular(camel: str) -> str:
+    """Singularize camelCase word using inflect with round-trip validation."""
+    candidate = _inflect.singular_noun(camel)
+    if candidate is False:
+        return camel  # already singular
+    # Validate: if round-trip doesn't reconstruct original, inflect got it wrong
+    if _inflect.plural(candidate) == camel:
+        return candidate
+    return camel
+
+
+def derive_graphql_alias(target_table_name: str, cardinality: str) -> str | None:
+    """Derive GraphQL field name from target table name + cardinality.
+
+    Rules:
+    - camelCase of target_table_name (snake_case → camelCase)
+    - Normalize to singular, then:
+      - one-to-many → pluralize via inflect
+      - many-to-one → keep singular
+    """
+    if not target_table_name:
+        return None
+    parts = re.split(r'[_\s]+', target_table_name.strip())
+    camel = parts[0].lower() + "".join(p.capitalize() for p in parts[1:])
+    singular = _to_singular(camel)
+    if cardinality == "one-to-many":
+        return _inflect.plural(singular)
+    return singular
 
 
 def parse_mask_value(raw: str | None) -> object:
@@ -63,9 +98,21 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:
 
 
 async def fetch_relationships(conn: asyncpg.Connection) -> list[dict]:
-    """Fetch relationships."""
+    """Fetch relationships, computing graphql_alias when not persisted."""
     rows = await conn.fetch(
-        "SELECT id, source_table_id, target_table_id, source_column, "
-        "target_column, cardinality FROM relationships"
+        "SELECT r.id, r.source_table_id, r.target_table_id, r.source_column, "
+        "r.target_column, r.cardinality, r.materialize, r.refresh_interval, "
+        "r.target_function_name, r.function_arg, r.alias, r.graphql_alias, "
+        "t.table_name AS target_table_name "
+        "FROM relationships r "
+        "LEFT JOIN registered_tables t ON t.id = r.target_table_id"
     )
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        d = dict(r)
+        if not d.get("graphql_alias"):
+            d["graphql_alias"] = derive_graphql_alias(
+                d.get("target_table_name") or "", d.get("cardinality") or ""
+            )
+        result.append(d)
+    return result

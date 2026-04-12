@@ -81,22 +81,28 @@ describe("isEdge", () => {
   const startNode = { id: "1", label: "Person", properties: {} };
   const endNode = { id: "2", label: "Order", properties: {} };
 
-  it("returns true for a valid GEdge", () => {
+  it("returns true for a valid GEdge (Neo4j format)", () => {
+    expect(
+      isEdge({ identity: "e1", start: "1", end: "2", type: "PLACED", startNode, endNode, properties: {} }),
+    ).toBe(true);
+  });
+
+  it("returns true for a valid GEdge (legacy id format)", () => {
     expect(
       isEdge({ id: "e1", type: "PLACED", startNode, endNode, properties: {} }),
     ).toBe(true);
   });
 
   it("returns false when type is missing", () => {
-    expect(isEdge({ id: "e1", startNode, endNode, properties: {} })).toBe(false);
+    expect(isEdge({ identity: "e1", startNode, endNode, properties: {} })).toBe(false);
   });
 
   it("returns false when startNode is missing", () => {
-    expect(isEdge({ id: "e1", type: "PLACED", endNode, properties: {} })).toBe(false);
+    expect(isEdge({ identity: "e1", type: "PLACED", endNode, properties: {} })).toBe(false);
   });
 
   it("returns false when endNode is missing", () => {
-    expect(isEdge({ id: "e1", type: "PLACED", startNode, properties: {} })).toBe(false);
+    expect(isEdge({ identity: "e1", type: "PLACED", startNode, properties: {} })).toBe(false);
   });
 
   it("returns false for primitives", () => {
@@ -111,7 +117,9 @@ describe("extractElements", () => {
   const alice: Record<string, unknown> = { id: "n1", label: "Person", properties: { name: "Alice" } };
   const acme: Record<string, unknown> = { id: "n2", label: "Company", properties: { name: "Acme" } };
   const edge: Record<string, unknown> = {
-    id: "e1",
+    identity: "e1",
+    start: "n1",
+    end: "n2",
     type: "WORKS_AT",
     startNode: alice,
     endNode: acme,
@@ -120,21 +128,21 @@ describe("extractElements", () => {
 
   it("extracts a node from a top-level row value", () => {
     const { nodes } = extractElements([{ n: alice }]);
-    expect(nodes.has("n1")).toBe(true);
-    expect(nodes.get("n1")?.label).toBe("Person");
+    expect(nodes.has("Person:n1")).toBe(true);
+    expect(nodes.get("Person:n1")?.label).toBe("Person");
   });
 
   it("extracts an edge and its implied nodes", () => {
     const { nodes, edges } = extractElements([{ r: edge }]);
     expect(edges.has("e1")).toBe(true);
-    expect(nodes.has("n1")).toBe(true);
-    expect(nodes.has("n2")).toBe(true);
+    expect(nodes.has("Person:n1")).toBe(true);
+    expect(nodes.has("Company:n2")).toBe(true);
   });
 
   it("deduplicates nodes that appear multiple times", () => {
     const rows = [{ n: alice }, { n: alice }, { r: edge }];
     const { nodes } = extractElements(rows);
-    expect(nodes.size).toBe(2); // n1 and n2 only
+    expect(nodes.size).toBe(2); // Person:n1 and Company:n2 only
   });
 
   it("handles nested arrays in rows", () => {
@@ -162,11 +170,20 @@ describe("extractElements", () => {
 
   it("preserves edge properties", () => {
     const edgeWithProps: Record<string, unknown> = {
-      id: "e2", type: "KNOWS",
+      identity: "e2", start: "n1", end: "n2", type: "KNOWS",
       startNode: alice, endNode: acme,
       properties: { since: 2020 },
     };
     const { edges } = extractElements([{ r: edgeWithProps }]);
     expect(edges.get("e2")?.properties).toEqual({ since: 2020 });
+  });
+
+  it("nodes with same id but different labels are stored separately", () => {
+    const nodeA: Record<string, unknown> = { id: "1", label: "Orders", properties: {} };
+    const nodeB: Record<string, unknown> = { id: "1", label: "Reviews", properties: {} };
+    const { nodes } = extractElements([{ a: nodeA }, { b: nodeB }]);
+    expect(nodes.size).toBe(2);
+    expect(nodes.has("Orders:1")).toBe(true);
+    expect(nodes.has("Reviews:1")).toBe(true);
   });
 });

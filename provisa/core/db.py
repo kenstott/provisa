@@ -11,8 +11,18 @@
 """asyncpg connection pool factory."""
 
 import asyncio
+import json
 
 import asyncpg
+
+
+async def _init_conn(conn: asyncpg.Connection) -> None:
+    await conn.set_type_codec(
+        "jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+    )
+    await conn.set_type_codec(
+        "json", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+    )
 
 
 async def create_pool(
@@ -33,6 +43,7 @@ async def create_pool(
             password=password,
             min_size=min_size,
             max_size=max_size,
+            init=_init_conn,
         ),
         timeout=10,
     )

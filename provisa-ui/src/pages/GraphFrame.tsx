@@ -33,11 +33,13 @@ export interface GNode {
   properties: Record<string, unknown>;
 }
 export interface GEdge {
-  id: string;
+  identity: string;
+  start: string;
+  end: string;
   type: string;
+  properties: Record<string, unknown>;
   startNode: GNode;
   endNode: GNode;
-  properties: Record<string, unknown>;
 }
 
 export function isNode(v: unknown): v is GNode {
@@ -48,7 +50,7 @@ export function isNode(v: unknown): v is GNode {
 export function isEdge(v: unknown): v is GEdge {
   if (typeof v !== "object" || v === null) return false;
   const o = v as Record<string, unknown>;
-  return "type" in o && "startNode" in o && "endNode" in o;
+  return "type" in o && "startNode" in o && "endNode" in o && ("identity" in o || "id" in o);
 }
 
 export function extractElements(rows: unknown[]): { nodes: Map<string, GNode>; edges: Map<string, GEdge> } {
@@ -59,9 +61,9 @@ export function extractElements(rows: unknown[]): { nodes: Map<string, GNode>; e
     if (isEdge(v)) {
       walk(v.startNode);
       walk(v.endNode);
-      edges.set(v.id, v);
+      edges.set(v.identity, v);
     } else if (isNode(v)) {
-      nodes.set(v.id, v);
+      nodes.set(`${v.label}:${v.id}`, v);
     } else if (Array.isArray(v)) {
       v.forEach(walk);
     } else if (typeof v === "object") {
@@ -117,11 +119,29 @@ function Inspector({ selected, colorOverrides, onColorChange, onClose, width, on
   const label = isN ? selected.data.label : (selected.data as GEdge).type;
   const color = colorOverrides[label] ?? labelColor(label);
   const props = selected.data.properties;
-  const allFields: Record<string, unknown> = {
-    id: selected.data.id,
-    ...(isN ? { label: (selected.data as GNode).label } : { type: (selected.data as GEdge).type }),
-    ...props,
-  };
+
+  const nodeLabel = isN ? (selected.data as GNode).label : "";
+  const colonIdx = nodeLabel.indexOf(":");
+  const domain = colonIdx > 0 ? nodeLabel.slice(0, colonIdx) : null;
+  const typeName = colonIdx > 0 ? nodeLabel.slice(colonIdx + 1) : nodeLabel;
+
+  const allFields: Record<string, unknown> = isN
+    ? {
+        ...(domain ? { domain } : {}),
+        id: (selected.data as GNode).id,
+        label: typeName || nodeLabel,
+        ...props,
+      }
+    : (() => {
+        const e = selected.data as GEdge;
+        const srcLabel = e.startNode.label;
+        const srcColon = srcLabel.indexOf(":");
+        const edgeDomain = srcColon > 0 ? srcLabel.slice(0, srcColon) : (srcLabel || null);
+        return {
+          ...(edgeDomain ? { domain: edgeDomain } : {}),
+          identity: e.identity, start: e.start, end: e.end, type: e.type, ...props,
+        };
+      })();
 
   return (
     <div className="gf-inspector" style={{ width }}
@@ -133,7 +153,7 @@ function Inspector({ selected, colorOverrides, onColorChange, onClose, width, on
       <div style={{ position: "relative", alignSelf: "flex-start" }}>
         <div className="gf-inspector-badge" style={{ background: color, cursor: "pointer" }}
              title="Click to change color" onClick={() => setShowPalette((p) => !p)}>
-          {label}
+          {isN ? (typeName || label) : label}
         </div>
         {showPalette && (
           <div className="gf-color-palette">
@@ -146,33 +166,29 @@ function Inspector({ selected, colorOverrides, onColorChange, onClose, width, on
         )}
       </div>
       <div className="gf-inspector-kind">{isN ? "Node" : "Relationship"}</div>
-      <div className="gf-inspector-id">id: {selected.data.id}</div>
+      <div className="gf-inspector-id">id: {isN ? (selected.data as GNode).id : (selected.data as GEdge).identity}</div>
       {!isN && (
         <div className="gf-inspector-endpoints">
           <span style={{ color: colorOverrides[(selected.data as GEdge).startNode.label] ?? labelColor((selected.data as GEdge).startNode.label) }}>
-            {(selected.data as GEdge).startNode.label}
+            {(selected.data as GEdge).startNode.label || (selected.data as GEdge).start}
           </span>
           {" → "}
           <span style={{ color: colorOverrides[(selected.data as GEdge).endNode.label] ?? labelColor((selected.data as GEdge).endNode.label) }}>
-            {(selected.data as GEdge).endNode.label}
+            {(selected.data as GEdge).endNode.label || (selected.data as GEdge).end}
           </span>
         </div>
       )}
       {inspView === "details" && (
-        Object.keys(props).length === 0 ? (
-          <div className="gf-inspector-no-props">No properties</div>
-        ) : (
-          <table className="gf-inspector-table">
-            <tbody>
-              {Object.entries(props).map(([k, v]) => (
-                <tr key={k}>
-                  <td className="gf-prop-key">{k}</td>
-                  <td className="gf-prop-val">{String(v)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )
+        <table className="gf-inspector-table">
+          <tbody>
+            {Object.entries(allFields).map(([k, v]) => (
+              <tr key={k}>
+                <td className="gf-prop-key">{k}</td>
+                <td className="gf-prop-val">{v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
       {inspView === "table" && (
         <table className="gf-inspector-table">
@@ -213,13 +229,15 @@ function GraphCanvas({ nodes, edges, onSelect, colorOverrides }: CanvasProps) {
     if (!containerRef.current) return;
     const els: cytoscape.ElementDefinition[] = [];
     nodes.forEach((n) => {
-      els.push({ group: "nodes", data: { id: n.id, label: n.label, _node: n } });
+      els.push({ group: "nodes", data: { id: `${n.label}:${n.id}`, label: n.label, _node: n } });
     });
     edges.forEach((e) => {
-      if (nodes.has(e.startNode.id) && nodes.has(e.endNode.id)) {
+      const srcKey = `${e.startNode.label}:${e.startNode.id}`;
+      const tgtKey = `${e.endNode.label}:${e.endNode.id}`;
+      if (nodes.has(srcKey) && nodes.has(tgtKey)) {
         els.push({
           group: "edges",
-          data: { id: e.id, source: e.startNode.id, target: e.endNode.id, label: e.type, _edge: e },
+          data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e },
         });
       }
     });

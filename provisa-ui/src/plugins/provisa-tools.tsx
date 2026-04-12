@@ -138,7 +138,7 @@ function SqlPanel({ compiled, hideSql }: { compiled: CompileResult; hideSql?: bo
             basicSetup={{ lineNumbers: false, foldGutter: true }}
             className="provisa-tools-code"
           />
-          {compiled.params.length > 0 && (
+          {(compiled.params?.length ?? 0) > 0 && (
             <div className="provisa-tools-params">
               <strong>Params:</strong> {JSON.stringify(compiled.params)}
             </div>

@@ -109,6 +109,7 @@ DO $$ BEGIN
     ALTER TABLE relationships ALTER COLUMN target_table_id DROP NOT NULL;
     ALTER TABLE relationships ALTER COLUMN target_column DROP NOT NULL;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS alias TEXT;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

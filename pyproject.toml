@@ -23,6 +23,7 @@ dependencies = [
     "redis[hiredis]",
     "anthropic",
     "apscheduler>=3.10",
+    "inflect",
     "jsonpath-ng",
     "PyJWT[crypto]",
     "bcrypt",

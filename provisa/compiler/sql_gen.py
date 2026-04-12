@@ -76,6 +76,7 @@ class JoinMeta:
     target_column_type: str  # Trino data type on target side
     target: TableMeta
     cardinality: str  # "many-to-one" or "one-to-many"
+    cypher_alias: str | None = None  # Cypher rel type override (e.g. OPENED_BY)
 
 
 @dataclass
@@ -230,7 +231,7 @@ def build_context(si: object) -> CompilationContext:
         tgt_col_type = _lookup_column_type(si, tgt_id, rel["target_column"])
 
         # The relationship field on the source type uses alias if set, else target's field_name
-        rel_field_name = rel.get("alias") or tgt_info.field_name
+        rel_field_name = rel.get("graphql_alias") or tgt_info.field_name
         ctx.joins[(src_info.type_name, rel_field_name)] = JoinMeta(
             source_column=rel["source_column"],
             target_column=rel["target_column"],
@@ -238,6 +239,7 @@ def build_context(si: object) -> CompilationContext:
             target_column_type=tgt_col_type,
             target=tgt_meta,
             cardinality=rel["cardinality"],
+            cypher_alias=rel.get("alias") or None,
         )
 
     return ctx

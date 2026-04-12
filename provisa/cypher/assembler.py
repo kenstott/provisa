@@ -100,8 +100,8 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
     if kind == GraphVarKind.EDGE:
         return _parse_edge(data)
     if kind == GraphVarKind.PASSTHROUGH:
-        # Auto-detect: edge JSON has 'type' + 'startNode'; node JSON has 'label'
-        if "type" in data and ("startNode" in data or "start_node" in data):
+        # Auto-detect: edge JSON has 'type' + ('identity' or 'startNode'); node JSON has 'label'
+        if "type" in data and ("identity" in data or "startNode" in data or "start_node" in data):
             return _parse_edge(data)
         return _parse_node(data)
     raise CypherAssemblyError(f"Unknown GraphVarKind {kind!r} for column {col!r}")
@@ -111,19 +111,37 @@ def _parse_node(data: dict) -> Node:
     return Node(
         id=str(data.get("id", "")),
         label=str(data.get("label", "")),
-        properties={k: v for k, v in data.items() if k not in ("id", "label")},
+        properties=data["properties"] if "properties" in data and isinstance(data["properties"], dict)
+        else {k: v for k, v in data.items() if k not in ("id", "label", "properties")},
     )
 
 
 def _parse_edge(data: dict) -> Edge:
-    start_raw = data.get("startNode") or data.get("start_node") or {}
-    end_raw = data.get("endNode") or data.get("end_node") or {}
+    # Support both Neo4j format (identity/start/end) and legacy format (id/startNode/endNode).
+    has_neo4j = "identity" in data
+    if has_neo4j:
+        edge_id = str(data.get("identity", ""))
+        start_raw = data.get("startNode") or data.get("start_node") or {}
+        end_raw = data.get("endNode") or data.get("end_node") or {}
+        if not isinstance(start_raw, dict):
+            start_raw = {"id": str(data.get("start", "")), "label": "", "properties": {}}
+        if not isinstance(end_raw, dict):
+            end_raw = {"id": str(data.get("end", "")), "label": "", "properties": {}}
+    else:
+        edge_id = str(data.get("id", ""))
+        start_raw = data.get("startNode") or data.get("start_node") or {}
+        end_raw = data.get("endNode") or data.get("end_node") or {}
+        if not isinstance(start_raw, dict):
+            start_raw = {"id": str(start_raw), "label": "", "properties": {}}
+        if not isinstance(end_raw, dict):
+            end_raw = {"id": str(end_raw), "label": "", "properties": {}}
     return Edge(
-        id=str(data.get("id", "")),
+        id=edge_id,
         type=str(data.get("type", "")),
-        start_node=_parse_node(start_raw) if isinstance(start_raw, dict) else Node(id=str(start_raw), label="", properties={}),
-        end_node=_parse_node(end_raw) if isinstance(end_raw, dict) else Node(id=str(end_raw), label="", properties={}),
-        properties={k: v for k, v in data.items() if k not in ("id", "type", "startNode", "endNode", "start_node", "end_node")},
+        start_node=_parse_node(start_raw),
+        end_node=_parse_node(end_raw),
+        properties=data["properties"] if "properties" in data and isinstance(data["properties"], dict)
+        else {k: v for k, v in data.items() if k not in ("id", "identity", "type", "start", "end", "startNode", "endNode", "start_node", "end_node", "properties")},
     )
 
 
@@ -205,11 +223,13 @@ def to_serializable(obj: Any) -> Any:
         return {"id": obj.id, "label": obj.label, "properties": obj.properties}
     if isinstance(obj, Edge):
         return {
-            "id": obj.id,
+            "identity": obj.id,
+            "start": obj.start_node.id,
+            "end": obj.end_node.id,
             "type": obj.type,
+            "properties": obj.properties,
             "startNode": to_serializable(obj.start_node),
             "endNode": to_serializable(obj.end_node),
-            "properties": obj.properties,
         }
     if isinstance(obj, Path):
         return {

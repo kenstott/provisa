@@ -49,10 +49,16 @@ class SelectBuilderMixin:
     ) -> exp.Expression:
         """Emit a JSON edge object for RETURN r.
 
-        JSON_OBJECT('id', src.id || '-' || tgt.id,
-                    'type', 'REL_TYPE',
-                    'startNode', JSON_OBJECT('id', src.id, 'label', 'SrcLabel'),
-                    'endNode', JSON_OBJECT('id', tgt.id, 'label', 'TgtLabel'))
+        Neo4j-compatible format:
+        JSON_OBJECT(
+            'identity', CAST(src.id AS VARCHAR) || '-' || CAST(tgt.id AS VARCHAR),
+            'start', src.id,
+            'end', tgt.id,
+            'type', 'REL_TYPE',
+            'properties', JSON_OBJECT(),
+            'startNode', JSON_OBJECT('id', src.id, 'label', 'SrcLabel', 'properties', JSON_OBJECT()),
+            'endNode', JSON_OBJECT('id', tgt.id, 'label', 'TgtLabel', 'properties', JSON_OBJECT()))
+        startNode/endNode are Provisa extensions for graph visualization.
         """
         src_id_col = exp.Column(
             this=exp.Identifier(this=src_nm.id_column, quoted=True),
@@ -62,14 +68,29 @@ class SelectBuilderMixin:
             this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
             table=exp.Identifier(this=tgt_alias),
         )
-        # Composite id: CAST(src.id AS VARCHAR) || '-' || CAST(tgt.id AS VARCHAR)
-        edge_id = exp.DPipe(
+        # identity: CAST(src.id AS VARCHAR) || '-' || CAST(tgt.id AS VARCHAR)
+        identity = exp.DPipe(
             this=exp.DPipe(
                 this=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR")),
                 expression=exp.Literal.string("-"),
             ),
             expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR")),
         )
+        empty_props = exp.Anonymous(this="JSON_OBJECT", expressions=[])
+
+        def _node_props_expr(alias: str, nm: NodeMapping) -> exp.Expression:
+            """Build JSON_OBJECT(...) for all node properties, or empty if none defined."""
+            if not nm.properties:
+                return empty_props
+            exprs = []
+            for prop_name, col_name in nm.properties.items():
+                exprs.append(exp.Literal.string(prop_name))
+                exprs.append(exp.Column(
+                    this=exp.Identifier(this=col_name, quoted=True),
+                    table=exp.Identifier(this=alias),
+                ))
+            return exp.Anonymous(this="JSON_OBJECT", expressions=exprs)
+
         start_node = exp.Anonymous(
             this="JSON_OBJECT",
             expressions=[
@@ -80,6 +101,8 @@ class SelectBuilderMixin:
                 ),
                 exp.Literal.string("label"),
                 exp.Literal.string(src_nm.label),
+                exp.Literal.string("properties"),
+                _node_props_expr(src_alias, src_nm),
             ],
         )
         end_node = exp.Anonymous(
@@ -92,13 +115,18 @@ class SelectBuilderMixin:
                 ),
                 exp.Literal.string("label"),
                 exp.Literal.string(tgt_nm.label),
+                exp.Literal.string("properties"),
+                _node_props_expr(tgt_alias, tgt_nm),
             ],
         )
         return exp.Anonymous(
             this="JSON_OBJECT",
             expressions=[
-                exp.Literal.string("id"), edge_id,
+                exp.Literal.string("identity"), identity,
+                exp.Literal.string("start"), src_id_col,
+                exp.Literal.string("end"), tgt_id_col,
                 exp.Literal.string("type"), exp.Literal.string(rel_type),
+                exp.Literal.string("properties"), empty_props,
                 exp.Literal.string("startNode"), start_node,
                 exp.Literal.string("endNode"), end_node,
             ],

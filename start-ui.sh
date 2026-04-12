@@ -4,13 +4,13 @@
 
 set -euo pipefail
 
-RESET_VOLUMES=false
-OBSERVABILITY=false
+SEED_DATA=false
+OBSERVABILITY=true
 for arg in "$@"; do
   case "$arg" in
-    --reset-volumes) RESET_VOLUMES=true ;;
-    --observability) OBSERVABILITY=true ;;
-    *) echo "Unknown option: $arg"; echo "Usage: $0 [--reset-volumes] [--observability]"; exit 1 ;;
+    --seed-data) SEED_DATA=true ;;
+    --no-observability) OBSERVABILITY=false ;;
+    *) echo "Unknown option: $arg"; echo "Usage: $0 [--seed-data] [--no-observability]"; exit 1 ;;
   esac
 done
 
@@ -39,16 +39,6 @@ export KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
 # Compose files for dev: core services + dev overlay (ports, kafka, mongo, elasticsearch, observability)
 COMPOSE_FILES="-f docker-compose.core.yml -f docker-compose.dev.yml"
 
-# Recreate data volumes if requested (useful after Docker crashes)
-if [ "$RESET_VOLUMES" = true ]; then
-  echo "WARNING: Resetting all volumes. All data will be lost."
-  sleep 3
-  cd "$SCRIPT_DIR"
-  docker compose $COMPOSE_FILES down --remove-orphans
-  docker compose $COMPOSE_FILES down -v --remove-orphans
-  echo "Data volumes removed. Containers will reinitialize from scratch."
-fi
-
 # Start infrastructure services via Docker Compose
 echo "Starting Docker Compose services..."
 cd "$SCRIPT_DIR"
@@ -75,8 +65,8 @@ if [ "$OBSERVABILITY" = true ]; then
   echo "  Grafana: http://localhost:3100"
 fi
 
-# Seed Kafka with demo data (only if Kafka is running)
-if [ -f "$SCRIPT_DIR/scripts/seed-kafka.py" ] && \
+# Seed Kafka with demo data (only if --seed-data flag passed)
+if [ "$SEED_DATA" = true ] && [ -f "$SCRIPT_DIR/scripts/seed-kafka.py" ] && \
    docker compose $COMPOSE_FILES ps kafka --status running 2>/dev/null | grep -q kafka; then
   echo "Seeding Kafka..."
   "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/seed-kafka.py" 2>/dev/null || true

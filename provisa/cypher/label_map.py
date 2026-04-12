@@ -177,7 +177,9 @@ class CypherLabelMap:
         # Build relationship mappings from join metadata
         aliases: dict[str, list[RelationshipMapping]] = {}
         for (source_type_name, gql_field_name), join_meta in ctx_typed.joins.items():
-            rel_type = _to_rel_type(gql_field_name)
+            # Cypher rel type: use explicit alias (e.g. OPENED_BY) else derive from GraphQL field name
+            cypher_alias = getattr(join_meta, "cypher_alias", None)
+            rel_type = cypher_alias if cypher_alias else _to_rel_type(gql_field_name)
             rm = RelationshipMapping(
                 rel_type=rel_type,
                 source_label=source_type_name,
@@ -185,7 +187,7 @@ class CypherLabelMap:
                 join_source_column=join_meta.source_column,
                 join_target_column=join_meta.target_column,
                 field_name=gql_field_name,
-                alias=gql_field_name if gql_field_name != gql_field_name.lower() else None,
+                alias=cypher_alias,
             )
             relationships[rel_type] = rm
             aliases.setdefault(rel_type, []).append(rm)
