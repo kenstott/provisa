@@ -118,8 +118,12 @@ locals {
     "n2-standard-8"  = 32
     "n2-standard-16" = 64
     "n2-standard-32" = 128
+    "n2-highmem-8"   = 64
+    "n2-highmem-16"  = 128
+    "n2-highmem-32"  = 256
   }
-  effective_ram = var.ram_budget_gb > 0 ? var.ram_budget_gb : lookup(local.machine_ram, var.machine_type, 32)
+  effective_ram        = var.ram_budget_gb > 0 ? var.ram_budget_gb : lookup(local.machine_ram, var.machine_type, 32)
+  effective_worker_ram = var.ram_budget_gb > 0 ? var.ram_budget_gb : lookup(local.machine_ram, var.worker_machine_type, 128)
 
   all_labels = merge(var.labels, { project = "provisa" })
 
@@ -178,7 +182,7 @@ resource "google_compute_instance" "primary" {
 resource "google_compute_instance" "secondary" {
   count        = max(var.node_count - 1, 0)
   name         = "provisa-secondary-${count.index + 1}"
-  machine_type = var.machine_type
+  machine_type = var.worker_machine_type
   zone         = var.zone
   tags         = ["provisa-node"]
   labels       = merge(local.all_labels, { role = "secondary" })
@@ -210,7 +214,7 @@ resource "google_compute_instance" "secondary" {
         --non-interactive \
         --role secondary \
         --primary-ip ${google_compute_instance.primary.network_interface[0].network_ip} \
-        --ram-gb ${local.effective_ram}
+        --ram-gb ${local.effective_worker_ram}
     SHELL
   })
 }

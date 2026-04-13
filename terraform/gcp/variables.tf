@@ -26,14 +26,24 @@ variable "node_count" {
 }
 
 variable "machine_type" {
-  description = "GCP machine type for all nodes"
+  description = "GCP machine type for the primary node"
   type        = string
   default     = "n2-standard-8"
   # Sizing guide:
-  #   n2-standard-4  (4 vCPU,  16 GB) — dev / small datasets, 0 Trino workers
-  #   n2-standard-8  (8 vCPU,  32 GB) — small prod, 1 Trino worker
-  #   n2-standard-16 (16 vCPU, 64 GB) — medium prod, 2 Trino workers
-  #   n2-standard-32 (32 vCPU,128 GB) — large prod, 4 Trino workers
+  #   n2-standard-4  (4 vCPU,  16 GB) — dev / small datasets
+  #   n2-standard-8  (8 vCPU,  32 GB) — small prod
+  #   n2-standard-16 (16 vCPU, 64 GB) — medium prod
+  #   n2-standard-32 (32 vCPU,128 GB) — large prod
+}
+
+variable "worker_machine_type" {
+  description = "GCP machine type for secondary (Trino worker) nodes. Memory-optimized recommended."
+  type        = string
+  default     = "n2-highmem-16"
+  # Sizing guide:
+  #   n2-highmem-8  (8 vCPU,  64 GB)  — small prod, light analytics
+  #   n2-highmem-16 (16 vCPU, 128 GB) — medium prod, recommended default
+  #   n2-highmem-32 (32 vCPU, 256 GB) — large prod, heavy analytics
 }
 
 variable "disk_gb" {

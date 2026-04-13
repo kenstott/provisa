@@ -178,12 +178,17 @@ resource "aws_iam_instance_profile" "provisa" {
 locals {
   # Map instance type to RAM GB for Trino worker calculation
   instance_ram = {
-    "m7i.xlarge"  = 16
-    "m7i.2xlarge" = 32
-    "m7i.4xlarge" = 64
-    "m7i.8xlarge" = 128
+    "m7i.xlarge"   = 16
+    "m7i.2xlarge"  = 32
+    "m7i.4xlarge"  = 64
+    "m7i.8xlarge"  = 128
+    "r7i.2xlarge"  = 64
+    "r7i.4xlarge"  = 128
+    "r7i.8xlarge"  = 256
+    "r7i.12xlarge" = 384
   }
-  effective_ram = var.ram_budget_gb > 0 ? var.ram_budget_gb : lookup(local.instance_ram, var.instance_type, 32)
+  effective_ram        = var.ram_budget_gb > 0 ? var.ram_budget_gb : lookup(local.instance_ram, var.instance_type, 32)
+  effective_worker_ram = var.ram_budget_gb > 0 ? var.ram_budget_gb : lookup(local.instance_ram, var.worker_instance_type, 128)
 
   appimage_url = "s3://${var.appimage_s3_bucket}/${var.appimage_s3_key}"
 
@@ -230,7 +235,7 @@ resource "aws_instance" "primary" {
 resource "aws_instance" "secondary" {
   count                  = max(var.node_count - 1, 0)
   ami                    = data.aws_ami.ubuntu.id
-  instance_type          = var.instance_type
+  instance_type          = var.worker_instance_type
   subnet_id              = aws_subnet.public[count.index % 2].id
   vpc_security_group_ids = [aws_security_group.nodes.id]
   iam_instance_profile   = aws_iam_instance_profile.provisa.name
@@ -249,7 +254,7 @@ resource "aws_instance" "secondary" {
       --non-interactive \
       --role secondary \
       --primary-ip ${aws_instance.primary.private_ip} \
-      --ram-gb ${local.effective_ram}
+      --ram-gb ${local.effective_worker_ram}
   SHELL
 
   tags = { Name = "provisa-secondary-${count.index + 1}" }

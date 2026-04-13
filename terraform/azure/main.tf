@@ -231,8 +231,12 @@ locals {
     "Standard_D8s_v3"  = 32
     "Standard_D16s_v3" = 64
     "Standard_D32s_v3" = 128
+    "Standard_E8s_v3"  = 64
+    "Standard_E16s_v3" = 128
+    "Standard_E32s_v3" = 256
   }
-  effective_ram = var.ram_budget_gb > 0 ? var.ram_budget_gb : lookup(local.vm_ram, var.vm_size, 32)
+  effective_ram        = var.ram_budget_gb > 0 ? var.ram_budget_gb : lookup(local.vm_ram, var.vm_size, 32)
+  effective_worker_ram = var.ram_budget_gb > 0 ? var.ram_budget_gb : lookup(local.vm_ram, var.worker_vm_size, 128)
 
   appimage_url = "https://${var.storage_account_name}.blob.core.windows.net/${var.storage_container}/${var.appimage_blob}"
 
@@ -360,7 +364,7 @@ resource "azurerm_linux_virtual_machine" "secondary" {
   name                = "provisa-secondary-${count.index + 1}"
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
-  size                = var.vm_size
+  size                = var.worker_vm_size
   admin_username      = var.admin_username
   tags                = merge(var.tags, { Project = "provisa", Role = "secondary" })
 
@@ -398,7 +402,7 @@ resource "azurerm_linux_virtual_machine" "secondary" {
 
   custom_data = base64encode(<<-YAML
     ${local.base_cloud_init}
-      - /opt/Provisa.AppImage --non-interactive --role secondary --primary-ip ${azurerm_network_interface.primary.ip_configuration[0].private_ip_address} --ram-gb ${local.effective_ram}
+      - /opt/Provisa.AppImage --non-interactive --role secondary --primary-ip ${azurerm_network_interface.primary.ip_configuration[0].private_ip_address} --ram-gb ${local.effective_worker_ram}
   YAML
   )
 }

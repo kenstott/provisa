@@ -15,14 +15,24 @@ variable "node_count" {
 }
 
 variable "instance_type" {
-  description = "EC2 instance type for all nodes"
+  description = "EC2 instance type for the primary node"
   type        = string
   default     = "m7i.2xlarge"
   # Sizing guide:
-  #   m7i.xlarge   (4 vCPU,  16GB)  — dev / small datasets, 0 Trino workers
-  #   m7i.2xlarge  (8 vCPU,  32GB)  — small prod, 1 Trino worker
-  #   m7i.4xlarge  (16 vCPU, 64GB)  — medium prod, 2 Trino workers
-  #   m7i.8xlarge  (32 vCPU, 128GB) — large prod, 4 Trino workers
+  #   m7i.xlarge   (4 vCPU,  16GB)  — dev / small datasets
+  #   m7i.2xlarge  (8 vCPU,  32GB)  — small prod
+  #   m7i.4xlarge  (16 vCPU, 64GB)  — medium prod
+  #   m7i.8xlarge  (32 vCPU, 128GB) — large prod
+}
+
+variable "worker_instance_type" {
+  description = "EC2 instance type for secondary (Trino worker) nodes. Memory-optimized recommended."
+  type        = string
+  default     = "r7i.4xlarge"
+  # Sizing guide:
+  #   r7i.2xlarge  (8 vCPU,  64GB)  — small prod, light analytics
+  #   r7i.4xlarge  (16 vCPU, 128GB) — medium prod, recommended default
+  #   r7i.8xlarge  (32 vCPU, 256GB) — large prod, heavy analytics
 }
 
 variable "root_volume_gb" {
@@ -35,7 +45,7 @@ variable "ram_budget_gb" {
   description = <<-EOT
     RAM (GB) to allocate to Provisa services on each node.
     0 = use all available RAM on the instance.
-    Determines Trino worker count: ≥96GB→4, ≥48GB→2, ≥24GB→1, <24GB→0.
+    Determines Trino worker count on each node: ≥96GB→4, ≥48GB→2, ≥24GB→1, <24GB→0.
   EOT
   type        = number
   default     = 0

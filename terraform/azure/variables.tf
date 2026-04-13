@@ -21,14 +21,24 @@ variable "node_count" {
 }
 
 variable "vm_size" {
-  description = "Azure VM size for all nodes"
+  description = "Azure VM size for the primary node"
   type        = string
   default     = "Standard_D8s_v3"
   # Sizing guide:
-  #   Standard_D4s_v3  (4 vCPU,  16 GB) — dev / small datasets, 0 Trino workers
-  #   Standard_D8s_v3  (8 vCPU,  32 GB) — small prod, 1 Trino worker
-  #   Standard_D16s_v3 (16 vCPU, 64 GB) — medium prod, 2 Trino workers
-  #   Standard_D32s_v3 (32 vCPU,128 GB) — large prod, 4 Trino workers
+  #   Standard_D4s_v3  (4 vCPU,  16 GB) — dev / small datasets
+  #   Standard_D8s_v3  (8 vCPU,  32 GB) — small prod
+  #   Standard_D16s_v3 (16 vCPU, 64 GB) — medium prod
+  #   Standard_D32s_v3 (32 vCPU,128 GB) — large prod
+}
+
+variable "worker_vm_size" {
+  description = "Azure VM size for secondary (Trino worker) nodes. Memory-optimized recommended."
+  type        = string
+  default     = "Standard_E16s_v3"
+  # Sizing guide:
+  #   Standard_E8s_v3  (8 vCPU,  64 GB)  — small prod, light analytics
+  #   Standard_E16s_v3 (16 vCPU, 128 GB) — medium prod, recommended default
+  #   Standard_E32s_v3 (32 vCPU, 256 GB) — large prod, heavy analytics
 }
 
 variable "os_disk_gb" {

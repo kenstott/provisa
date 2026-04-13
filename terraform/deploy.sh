@@ -127,13 +127,20 @@ AWS)
   REGION=$(ask "AWS region" "us-east-1")
 
   echo
-  printf "Instance sizing guide:\n"
+  printf "Primary node sizing guide (coordinator + app services):\n"
   printf "  m7i.xlarge   (4 vCPU,  16 GB) — dev / small datasets\n"
-  printf "  m7i.2xlarge  (8 vCPU,  32 GB) — small prod, 1 Trino worker\n"
-  printf "  m7i.4xlarge  (16 vCPU, 64 GB) — medium prod, 2 Trino workers\n"
-  printf "  m7i.8xlarge  (32 vCPU,128 GB) — large prod, 4 Trino workers\n"
+  printf "  m7i.2xlarge  (8 vCPU,  32 GB) — small prod\n"
+  printf "  m7i.4xlarge  (16 vCPU, 64 GB) — medium prod\n"
+  printf "  m7i.8xlarge  (32 vCPU,128 GB) — large prod\n"
   echo
-  INSTANCE_TYPE=$(ask "EC2 instance type" "m7i.2xlarge")
+  INSTANCE_TYPE=$(ask "Primary EC2 instance type" "m7i.2xlarge")
+  echo
+  printf "Worker node sizing guide (Trino workers — memory-optimized recommended):\n"
+  printf "  r7i.2xlarge  (8 vCPU,  64 GB)  — small prod, light analytics\n"
+  printf "  r7i.4xlarge  (16 vCPU, 128 GB) — medium prod, recommended default\n"
+  printf "  r7i.8xlarge  (32 vCPU, 256 GB) — large prod, heavy analytics\n"
+  echo
+  WORKER_INSTANCE_TYPE=$(ask "Worker EC2 instance type" "r7i.4xlarge")
   ROOT_VOLUME_GB=$(ask "Root volume size (GB per node)" "100")
   RAM_BUDGET_GB=$(ask "RAM budget GB (0 = all available RAM)" "0")
 
@@ -165,10 +172,11 @@ AWS)
   echo
   printf "${BOLD}Deployment summary${NC}\n"
   printf "══════════════════════════════════════════\n"
-  printf "  Provider:     %s\n" "$PROVIDER"
-  printf "  Region:       %s\n" "$REGION"
-  printf "  Nodes:        %s\n" "$NODE_COUNT"
-  printf "  Instance:     %s\n" "$INSTANCE_TYPE"
+  printf "  Provider:        %s\n" "$PROVIDER"
+  printf "  Region:          %s\n" "$REGION"
+  printf "  Nodes:           %s\n" "$NODE_COUNT"
+  printf "  Primary:         %s\n" "$INSTANCE_TYPE"
+  printf "  Workers:         %s\n" "$WORKER_INSTANCE_TYPE"
   printf "  Disk:         %s GB/node\n" "$ROOT_VOLUME_GB"
   printf "  RAM budget:   %s GB (0=all)\n" "$RAM_BUDGET_GB"
   printf "  AppImage:     s3://%s/%s\n" "$APPIMAGE_S3_BUCKET" "$APPIMAGE_S3_KEY"
@@ -182,10 +190,11 @@ AWS)
 
   TFVARS="${TERRAFORM_DIR}/terraform.tfvars"
   cat > "$TFVARS" <<EOF
-region              = "${REGION}"
-node_count          = ${NODE_COUNT}
-instance_type       = "${INSTANCE_TYPE}"
-root_volume_gb      = ${ROOT_VOLUME_GB}
+region                = "${REGION}"
+node_count            = ${NODE_COUNT}
+instance_type         = "${INSTANCE_TYPE}"
+worker_instance_type  = "${WORKER_INSTANCE_TYPE}"
+root_volume_gb        = ${ROOT_VOLUME_GB}
 ram_budget_gb       = ${RAM_BUDGET_GB}
 appimage_s3_bucket  = "${APPIMAGE_S3_BUCKET}"
 appimage_s3_key     = "${APPIMAGE_S3_KEY}"
@@ -214,13 +223,20 @@ Azure)
   RESOURCE_GROUP=$(ask "Resource group name" "provisa")
 
   echo
-  printf "VM sizing guide:\n"
+  printf "Primary VM sizing guide (coordinator + app services):\n"
   printf "  Standard_D4s_v3  (4 vCPU,  16 GB) — dev / small datasets\n"
-  printf "  Standard_D8s_v3  (8 vCPU,  32 GB) — small prod, 1 Trino worker\n"
-  printf "  Standard_D16s_v3 (16 vCPU, 64 GB) — medium prod, 2 Trino workers\n"
-  printf "  Standard_D32s_v3 (32 vCPU,128 GB) — large prod, 4 Trino workers\n"
+  printf "  Standard_D8s_v3  (8 vCPU,  32 GB) — small prod\n"
+  printf "  Standard_D16s_v3 (16 vCPU, 64 GB) — medium prod\n"
+  printf "  Standard_D32s_v3 (32 vCPU,128 GB) — large prod\n"
   echo
-  VM_SIZE=$(ask "VM size" "Standard_D8s_v3")
+  VM_SIZE=$(ask "Primary VM size" "Standard_D8s_v3")
+  echo
+  printf "Worker VM sizing guide (Trino workers — memory-optimized recommended):\n"
+  printf "  Standard_E8s_v3  (8 vCPU,  64 GB)  — small prod, light analytics\n"
+  printf "  Standard_E16s_v3 (16 vCPU, 128 GB) — medium prod, recommended default\n"
+  printf "  Standard_E32s_v3 (32 vCPU, 256 GB) — large prod, heavy analytics\n"
+  echo
+  WORKER_VM_SIZE=$(ask "Worker VM size" "Standard_E16s_v3")
   OS_DISK_GB=$(ask "OS disk size (GB per node)" "100")
   RAM_BUDGET_GB=$(ask "RAM budget GB (0 = all available RAM)" "0")
 
@@ -260,7 +276,8 @@ Azure)
   printf "  Location:       %s\n" "$LOCATION"
   printf "  Resource group: %s\n" "$RESOURCE_GROUP"
   printf "  Nodes:          %s\n" "$NODE_COUNT"
-  printf "  VM size:        %s\n" "$VM_SIZE"
+  printf "  Primary VM:     %s\n" "$VM_SIZE"
+  printf "  Worker VM:      %s\n" "$WORKER_VM_SIZE"
   printf "  Disk:           %s GB/node\n" "$OS_DISK_GB"
   printf "  RAM budget:     %s GB (0=all)\n" "$RAM_BUDGET_GB"
   printf "  AppImage:       %s/%s/%s\n" "$STORAGE_ACCOUNT" "$STORAGE_CONTAINER" "$APPIMAGE_BLOB"
@@ -277,6 +294,7 @@ location               = "${LOCATION}"
 resource_group_name    = "${RESOURCE_GROUP}"
 node_count             = ${NODE_COUNT}
 vm_size                = "${VM_SIZE}"
+worker_vm_size         = "${WORKER_VM_SIZE}"
 os_disk_gb             = ${OS_DISK_GB}
 ram_budget_gb          = ${RAM_BUDGET_GB}
 storage_account_name   = "${STORAGE_ACCOUNT}"
@@ -309,13 +327,20 @@ GCP)
   GCP_ZONE=$(ask "GCP zone" "${GCP_REGION}-a")
 
   echo
-  printf "Machine sizing guide:\n"
+  printf "Primary machine sizing guide (coordinator + app services):\n"
   printf "  n2-standard-4  (4 vCPU,  16 GB) — dev / small datasets\n"
-  printf "  n2-standard-8  (8 vCPU,  32 GB) — small prod, 1 Trino worker\n"
-  printf "  n2-standard-16 (16 vCPU, 64 GB) — medium prod, 2 Trino workers\n"
-  printf "  n2-standard-32 (32 vCPU,128 GB) — large prod, 4 Trino workers\n"
+  printf "  n2-standard-8  (8 vCPU,  32 GB) — small prod\n"
+  printf "  n2-standard-16 (16 vCPU, 64 GB) — medium prod\n"
+  printf "  n2-standard-32 (32 vCPU,128 GB) — large prod\n"
   echo
-  MACHINE_TYPE=$(ask "Machine type" "n2-standard-8")
+  MACHINE_TYPE=$(ask "Primary machine type" "n2-standard-8")
+  echo
+  printf "Worker machine sizing guide (Trino workers — memory-optimized recommended):\n"
+  printf "  n2-highmem-8  (8 vCPU,  64 GB)  — small prod, light analytics\n"
+  printf "  n2-highmem-16 (16 vCPU, 128 GB) — medium prod, recommended default\n"
+  printf "  n2-highmem-32 (32 vCPU, 256 GB) — large prod, heavy analytics\n"
+  echo
+  WORKER_MACHINE_TYPE=$(ask "Worker machine type" "n2-highmem-16")
   DISK_GB=$(ask "Boot disk size (GB per node)" "100")
   RAM_BUDGET_GB=$(ask "RAM budget GB (0 = all available RAM)" "0")
 
@@ -347,11 +372,12 @@ GCP)
   echo
   printf "${BOLD}Deployment summary${NC}\n"
   printf "══════════════════════════════════════════\n"
-  printf "  Provider:     %s\n" "$PROVIDER"
-  printf "  Project:      %s\n" "$GCP_PROJECT"
-  printf "  Region/Zone:  %s / %s\n" "$GCP_REGION" "$GCP_ZONE"
-  printf "  Nodes:        %s\n" "$NODE_COUNT"
-  printf "  Machine type: %s\n" "$MACHINE_TYPE"
+  printf "  Provider:      %s\n" "$PROVIDER"
+  printf "  Project:       %s\n" "$GCP_PROJECT"
+  printf "  Region/Zone:   %s / %s\n" "$GCP_REGION" "$GCP_ZONE"
+  printf "  Nodes:         %s\n" "$NODE_COUNT"
+  printf "  Primary:       %s\n" "$MACHINE_TYPE"
+  printf "  Workers:       %s\n" "$WORKER_MACHINE_TYPE"
   printf "  Disk:         %s GB/node\n" "$DISK_GB"
   printf "  RAM budget:   %s GB (0=all)\n" "$RAM_BUDGET_GB"
   printf "  AppImage:     gs://%s/%s\n" "$GCS_BUCKET" "$GCS_OBJECT"
@@ -367,8 +393,9 @@ GCP)
 project        = "${GCP_PROJECT}"
 region         = "${GCP_REGION}"
 zone           = "${GCP_ZONE}"
-node_count     = ${NODE_COUNT}
-machine_type   = "${MACHINE_TYPE}"
+node_count           = ${NODE_COUNT}
+machine_type         = "${MACHINE_TYPE}"
+worker_machine_type  = "${WORKER_MACHINE_TYPE}"
 disk_gb        = ${DISK_GB}
 ram_budget_gb  = ${RAM_BUDGET_GB}
 gcs_bucket     = "${GCS_BUCKET}"
