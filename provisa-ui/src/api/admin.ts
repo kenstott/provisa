@@ -584,7 +584,20 @@ export async function compileQuery(
     }`,
     { input: { query, role: roleId, variables: variables ?? null } },
   );
-  const results = data.compileQuery;
+  const results = data.compileQuery.map((r: any) => ({
+    ...r,
+    semantic_sql: r.semanticSql ?? r.semantic_sql,
+    trino_sql: r.trinoSql ?? r.trino_sql,
+    direct_sql: r.directSql ?? r.direct_sql,
+    route_reason: r.routeReason ?? r.route_reason,
+    root_field: r.rootField ?? r.root_field,
+    canonical_field: r.canonicalField ?? r.canonical_field,
+    compiled_cypher: r.compiledCypher ?? r.compiled_cypher,
+    column_aliases: (r.columnAliases ?? r.column_aliases ?? []).map((ca: any) => ({
+      field_name: ca.fieldName ?? ca.field_name,
+      column: ca.column,
+    })),
+  })) as CompileResult[];
   if (results.length === 1) return results[0];
   return { queries: results };
 }

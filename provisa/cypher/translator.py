@@ -456,6 +456,27 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                             ),
                             alias=alias,
                         )
+            elif from_expr is not None and nodes and not rels:
+                # Standalone node in a non-first clause (no relationships) → JOIN
+                # This handles: OPTIONAL MATCH (x) or MATCH (x) with no connecting pattern
+                first_node = nodes[0]
+                fv = first_node.variable
+                if fv and fv not in self._cte_sources and fv in self._domain_nodes:
+                    join_type = "LEFT" if clause.optional else "CROSS"
+                    join_table = self._build_domain_union(fv, self._domain_nodes[fv])
+                    joins.append({"table": join_table, "on": None, "join_type": join_type})
+                elif fv and fv not in self._cte_sources and fv in self._var_table and self._var_table[fv][1]:
+                    nm = self._var_table[fv][1]
+                    join_type = "LEFT" if clause.optional else "CROSS"
+                    join_table = exp.alias_(
+                        exp.Table(
+                            this=exp.Identifier(this=nm.table_name, quoted=True),
+                            db=exp.Identifier(this=nm.schema_name, quoted=True),
+                            catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
+                        ),
+                        alias=fv,
+                    )
+                    joins.append({"table": join_table, "on": None, "join_type": join_type})
 
             # Process relationships → JOINs
             for i, rel in enumerate(rels):

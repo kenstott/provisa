@@ -355,6 +355,19 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
           <button className="modal-close" onClick={closeModal} title="Close">×</button>
         </div>
         <div className="modal-body provisa-tools-metadata">
+          {cypherQuery && (
+            <div className="provisa-tools-cypher" style={{ marginBottom: "0.75rem" }}>
+              <span className="provisa-tools-label" style={{ display: "block", marginBottom: 4 }}>CQL</span>
+              <CodeMirror
+                value={cypherQuery}
+                extensions={cypherExtensions}
+                theme={oneDark}
+                readOnly
+                basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
+                className="provisa-tools-cypher-editor"
+              />
+            </div>
+          )}
           <label>
             <span>Business Purpose <span className="required">*</span></span>
             <textarea
