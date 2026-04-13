@@ -68,10 +68,17 @@ class SelectBuilderMixin:
             this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
             table=exp.Identifier(this=tgt_alias),
         )
-        # identity: CAST(src.id AS VARCHAR) || '-' || CAST(tgt.id AS VARCHAR)
+        # identity: rel_type || ':' || CAST(src.id AS VARCHAR) || '-' || CAST(tgt.id AS VARCHAR)
+        # Include rel_type so edges of different types between same node pair get distinct identities.
         identity = exp.DPipe(
             this=exp.DPipe(
-                this=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR")),
+                this=exp.DPipe(
+                    this=exp.DPipe(
+                        this=exp.Literal.string(rel_type),
+                        expression=exp.Literal.string(":"),
+                    ),
+                    expression=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR")),
+                ),
                 expression=exp.Literal.string("-"),
             ),
             expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR")),

@@ -30,6 +30,25 @@ from provisa.compiler.sql_gen import CompilationContext, TableMeta, _q, _extract
 NOSQL_TYPES: set[str] = {"mongodb", "cassandra"}
 
 
+_INT_TYPES = frozenset({"integer", "int", "int4", "int2", "int8", "bigint", "smallint", "tinyint"})
+_FLOAT_TYPES = frozenset({"float", "double", "real", "decimal", "numeric", "double precision"})
+_BOOL_TYPES = frozenset({"boolean", "bool"})
+
+
+def _coerce_preset_value(raw: str, data_type: str | None) -> object:
+    """Coerce a string preset value to the appropriate Python type."""
+    if data_type is None:
+        return raw
+    base = data_type.lower().split("(")[0].strip()
+    if base in _INT_TYPES:
+        return int(raw)
+    if base in _FLOAT_TYPES:
+        return float(raw)
+    if base in _BOOL_TYPES:
+        return raw.lower() in ("true", "1", "yes")
+    return raw
+
+
 def apply_column_presets(
     input_data: dict,
     presets: list[dict],
@@ -43,14 +62,16 @@ def apply_column_presets(
     for preset in presets:
         col = preset["column"]
         source = preset["source"]
+        data_type = preset.get("data_type")
         if source == "now":
             result[col] = datetime.now(timezone.utc).isoformat()
         elif source == "header":
             header_name = preset.get("name", "")
             if headers and header_name in headers:
-                result[col] = headers[header_name]
+                result[col] = _coerce_preset_value(headers[header_name], data_type)
         elif source == "literal":
-            result[col] = preset.get("value", "")
+            raw = preset.get("value", "")
+            result[col] = _coerce_preset_value(raw, data_type)
     return result
 
 

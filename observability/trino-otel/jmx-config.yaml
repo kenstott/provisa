@@ -1,0 +1,54 @@
+---
+# Federation engine JMX metric collection
+# Scraped by the OTel Java agent and forwarded via OTLP to otel-collector.
+# Metric names deliberately avoid "trino" branding — all visible strings say "federation engine".
+
+rules:
+  - bean: "trino.execution:name=QueryManager"
+    mapping:
+      RunningQueries:
+        metric: "federation.engine.running_queries"
+        type: gauge
+        desc: "Number of queries currently executing in the federation engine"
+        unit: "1"
+      QueuedQueries:
+        metric: "federation.engine.queued_queries"
+        type: gauge
+        desc: "Number of queries waiting for resources in the federation engine"
+        unit: "1"
+      FailedQueries.TotalCount:
+        metric: "federation.engine.failed_queries_total"
+        type: counter
+        desc: "Total failed queries since startup"
+        unit: "1"
+      CompletedQueries.TotalCount:
+        metric: "federation.engine.completed_queries_total"
+        type: counter
+        desc: "Total successfully completed queries since startup"
+        unit: "1"
+
+  - bean: "trino.memory:name=ClusterMemoryManager"
+    mapping:
+      ClusterMemoryFreeBytes:
+        metric: "federation.engine.cluster_memory_free_bytes"
+        type: gauge
+        desc: "Free memory across all federation engine nodes"
+        unit: "By"
+      BlockedNodes:
+        metric: "federation.engine.blocked_nodes"
+        type: gauge
+        desc: "Number of federation engine nodes blocked due to memory pressure"
+        unit: "1"
+
+  - bean: "trino.execution:name=TaskManager"
+    mapping:
+      TotalTaskCount:
+        metric: "federation.engine.total_task_count"
+        type: gauge
+        desc: "Total number of tasks currently managed by the federation engine"
+        unit: "1"
+      RunningTaskCount:
+        metric: "federation.engine.running_task_count"
+        type: gauge
+        desc: "Tasks actively executing in the federation engine"
+        unit: "1"

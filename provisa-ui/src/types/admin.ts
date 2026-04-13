@@ -27,6 +27,15 @@ export interface Source {
 export interface Domain {
   id: string;
   description: string;
+  graphqlAlias?: string | null;
+}
+
+export function domainGqlAlias(domain: Domain): string {
+  if (domain.graphqlAlias) return domain.graphqlAlias.toLowerCase();
+  if (!domain.id) return "";
+  const parts = domain.id.split(/[^a-zA-Z0-9]+/);
+  const acronym = parts.filter(p => p && /[a-zA-Z]/.test(p[0])).map(p => p[0]).join("").toLowerCase();
+  return acronym || domain.id[0]?.toLowerCase() || "";
 }
 
 export interface TableColumn {
@@ -43,6 +52,9 @@ export interface TableColumn {
   alias: string | null;
   description: string | null;
   nativeFilterType: string | null;
+  isPrimaryKey: boolean;
+  isForeignKey: boolean;
+  isAlternateKey: boolean;
 }
 
 export interface ColumnPreset {
@@ -50,6 +62,7 @@ export interface ColumnPreset {
   source: "now" | "header" | "literal";
   name: string | null;
   value: string | null;
+  dataType: string | null;
 }
 
 export interface RegisteredTable {
@@ -82,6 +95,8 @@ export interface Relationship {
   targetFunctionName: string | null;
   functionArg: string | null;
   alias: string | null;
+  graphqlAlias: string | null;
+  computedCypherAlias: string | null;
 }
 
 export interface RLSRule {

@@ -9,18 +9,47 @@
 // permission from the copyright holder.
 
 import { useState, useEffect, useRef, useLayoutEffect, Fragment } from "react";
+import { Trash2, Pencil, Sparkles, Save, X, Copy } from "lucide-react";
 import { createPortal } from "react-dom";
 import {
   fetchTables, fetchSources, fetchDomains, fetchRoles,
   fetchAvailableSchemas, fetchAvailableTables, fetchAvailableColumnsMetadata,
   registerTable, deleteTable, updateTable, updateTableCache, updateTableNaming,
-  purgeCacheByTable, fetchSettings,
+  purgeCacheByTable, fetchSettings, generateTableDescription, generateColumnDescription,
 } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import type { TableMetadata } from "../api/admin";
 import type { RegisteredTable, Source } from "../types/admin";
 import type { Role } from "../types/auth";
 import { ColumnPresetsEditor } from "../components/admin/ColumnPresetsEditor";
+import { FilterInput } from "../components/admin/FilterInput";
+
+function DescriptionField({ value, onChange, placeholder, rows = 2, onGenerate, generating }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  rows?: number;
+  onGenerate?: () => void;
+  generating?: boolean;
+}) {
+  return (
+    <div className="desc-field">
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={rows}
+      />
+      <div className="desc-field-toolbar">
+        <button type="button" title="Copy" onClick={() => navigator.clipboard.writeText(value)}><Copy size={11} /></button>
+        {onGenerate && (
+          <button type="button" title="Generate with AI" onClick={onGenerate} disabled={generating}><Sparkles size={11} /></button>
+        )}
+        <button type="button" title="Clear" onClick={() => onChange("")}><X size={11} /></button>
+      </div>
+    </div>
+  );
+}
 
 function MultiSelect({ options, value, onChange }: {
   options: { id: string; label: string }[];
@@ -104,6 +133,22 @@ function toSnakeCase(name: string): string {
   return s.toLowerCase();
 }
 
+function toCamelCase(name: string): string {
+  return toSnakeCase(name).replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+function toPascalCase(name: string): string {
+  const cc = toCamelCase(name);
+  return cc.charAt(0).toUpperCase() + cc.slice(1);
+}
+
+function applyConvention(name: string, convention: string | null | undefined): string {
+  if (convention === "snake_case") return toSnakeCase(name);
+  if (convention === "camelCase") return toCamelCase(name);
+  if (convention === "PascalCase") return toPascalCase(name);
+  return name;
+}
+
 function normalizeDomain(domain: string): string {
   return domain.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
 }
@@ -140,6 +185,7 @@ interface ColumnForm {
   selected: boolean;
   nativeFilterType: string | null;
   dataType: string;
+  isPrimaryKey: boolean;
 }
 
 export function TablesPage() {
@@ -151,6 +197,7 @@ export function TablesPage() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tableSearch, setTableSearch] = useState("");
 
   // Form state
   const [sourceId, setSourceId] = useState("");
@@ -172,7 +219,10 @@ export function TablesPage() {
 
   // Inline edit state for expanded table
   const [editingTable, setEditingTable] = useState<RegisteredTable | null>(null);
+  const [editingColumnTypes, setEditingColumnTypes] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const [generatingDesc, setGeneratingDesc] = useState(false);
+  const [generatingColDesc, setGeneratingColDesc] = useState<string | null>(null);
 
   // Cache state
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
@@ -304,6 +354,7 @@ export function TablesPage() {
             selected: true,
             nativeFilterType: c.nativeFilterType,
             dataType: c.dataType,
+            isPrimaryKey: c.isPrimaryKey ?? false,
           };
         });
         setColumns(formed);
@@ -336,6 +387,7 @@ export function TablesPage() {
         alias: c.alias || undefined,
         description: c.description || undefined,
         nativeFilterType: c.nativeFilterType || undefined,
+        isPrimaryKey: c.isPrimaryKey || undefined,
       }));
     if (!sourceId || !schemaName || !tableName) {
       setError("Source, schema, and table name are required.");
@@ -375,13 +427,21 @@ export function TablesPage() {
 
   const startEditing = (t: RegisteredTable) => {
     setEditingTable(JSON.parse(JSON.stringify(t)));
+    setEditingColumnTypes({});
+    fetchAvailableColumnsMetadata(t.sourceId, t.schemaName, t.tableName)
+      .then((meta) => {
+        const map: Record<string, string> = {};
+        for (const c of meta) map[c.name] = c.dataType;
+        setEditingColumnTypes(map);
+      })
+      .catch(() => {});
   };
 
   const cancelEditing = () => {
     setEditingTable(null);
   };
 
-  const updateEditCol = (i: number, key: string, value: string | string[]) => {
+  const updateEditCol = (i: number, key: string, value: string | string[] | boolean) => {
     if (!editingTable) return;
     const next = { ...editingTable };
     next.columns = [...next.columns];
@@ -417,6 +477,9 @@ export function TablesPage() {
           alias: c.alias || undefined,
           description: c.description || undefined,
           nativeFilterType: c.nativeFilterType || undefined,
+          isPrimaryKey: c.isPrimaryKey || undefined,
+          isForeignKey: c.isForeignKey || undefined,
+          isAlternateKey: c.isAlternateKey || undefined,
         })),
       });
       if (!result.success) { setError(result.message); return; }
@@ -435,8 +498,9 @@ export function TablesPage() {
     <div className="page">
       <div className="page-header">
         <h2>Registered Tables</h2>
+        <FilterInput value={tableSearch} onChange={setTableSearch} placeholder="Filter by source or table…" />
         <button onClick={() => setShowForm(!showForm)}>
-          {showForm ? "Cancel" : "Register Table"}
+          {showForm ? "Cancel" : "+ Table"}
         </button>
       </div>
 
@@ -514,6 +578,7 @@ export function TablesPage() {
                 <div className="column-editor-header">
                   <span style={{ width: 28 }}></span>
                   <span className="col-name-header">Column</span>
+                  <span style={{ width: 32, textAlign: "center" }}>PK</span>
                   <span className="col-flex-header">Visible To (Read)</span>
                   <span className="col-flex-header">Writable By (R/W)</span>
                   <span className="col-flex-header">Masking</span>
@@ -529,6 +594,13 @@ export function TablesPage() {
                         onChange={(e) => updateCol(i, "selected", e.target.checked)}
                       />
                       <span className="col-name">{col.name}</span>
+                      <input
+                        type="checkbox"
+                        title="Primary Key"
+                        checked={col.isPrimaryKey}
+                        onChange={(e) => updateCol(i, "isPrimaryKey", e.target.checked)}
+                        style={{ width: 32, justifySelf: "center" }}
+                      />
                       <MultiSelect
                         options={roles.map((r) => ({ id: r.id, label: r.id }))}
                         value={col.visibleTo}
@@ -554,7 +626,7 @@ export function TablesPage() {
                       <input
                         value={col.alias}
                         onChange={(e) => updateCol(i, "alias", e.target.value)}
-                        placeholder="alias"
+                        placeholder={applyConvention(col.name, sources.find((s) => s.id === sourceId)?.namingConvention)}
                         className="col-flex-input"
                       />
                       <input
@@ -618,27 +690,32 @@ export function TablesPage() {
               </div>
             )}
           </label>
-          <button onClick={handleSubmit}>Register Table</button>
+          <button onClick={handleSubmit}>+ Table</button>
         </div>
       )}
 
       <table className="data-table">
         <thead>
           <tr>
-            <th>ID</th><th>Source</th><th>Table</th>
+            <th>ID</th><th>Source</th><th>Domain</th><th>Table</th>
             <th>Governance</th><th>Naming</th><th>Cache TTL</th><th>Effective TTL</th><th>Cols</th><th></th>
           </tr>
         </thead>
         <tbody>
-          {tables.map((t) => {
+          {tables.filter((t) => {
+            if (!tableSearch.trim()) return true;
+            const q = tableSearch.toLowerCase();
+            return t.sourceId.toLowerCase().includes(q) || t.tableName.toLowerCase().includes(q);
+          }).map((t) => {
             const isEditing = editingTable?.id === t.id;
             return (
               <Fragment key={t.id}>
                 <tr onClick={() => { setExpanded(expanded === t.id ? null : t.id); if (expanded === t.id) cancelEditing(); }} className="clickable">
                   <td>{t.id}</td>
                   <td>{t.sourceId}</td>
+                  <td>{t.domainId ? normalizeDomain(t.domainId) : ""}</td>
                   <td style={{ fontFamily: "monospace", fontSize: "0.9rem" }}>
-                    {[t.domainId ? normalizeDomain(t.domainId) : "", t.schemaName, t.alias || t.tableName].filter(Boolean).join(".")}
+                    {[t.schemaName, t.alias || t.tableName].filter(Boolean).join(".")}
                     {t.description && (
                       <div style={{ fontFamily: "inherit", fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
                         {t.description}
@@ -656,20 +733,19 @@ export function TablesPage() {
                   <td>{t.columns.length}</td>
                   <td onClick={(e) => e.stopPropagation()}>
                     <div style={{ display: "flex", gap: "0.25rem" }}>
-                      <button
-                        onClick={() => handlePurgeTableCache(t.id)}
-                        disabled={purging[t.id]}
-                        style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
-                      >
-                        {purging[t.id] ? "Purging..." : "Invalidate Cache"}
-                      </button>
-                      <button
-                        className="destructive"
-                        onClick={() => handleDelete(t.id)}
-                        style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
-                      >
-                        Delete
-                      </button>
+                      {(() => {
+                        const srcType = sources.find((s) => s.id === t.sourceId)?.type;
+                        const hasCacheable = srcType === "graphql_remote" || srcType === "openapi" || srcType === "grpc_remote";
+                        return hasCacheable ? (
+                          <button
+                            onClick={() => handlePurgeTableCache(t.id)}
+                            disabled={purging[t.id]}
+                            style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                          >
+                            {purging[t.id] ? "Purging..." : "Invalidate Cache"}
+                          </button>
+                        ) : null;
+                      })()}
                     </div>
                   </td>
                 </tr>
@@ -681,7 +757,7 @@ export function TablesPage() {
                           <table className="data-table" style={{ margin: 0 }}>
                             <thead>
                               <tr>
-                                <th>Column</th><th>Alias</th><th>Description</th><th>Visible To (Read)</th><th>Writable By (R/W)</th><th>Masking</th>
+                                <th>Column</th><th>PK</th><th>Alias</th><th>Description</th><th>Visible To (Read)</th><th>Writable By (R/W)</th><th>Masking</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -695,6 +771,9 @@ export function TablesPage() {
                                           {c.nativeFilterType === "path_param" ? "path" : "query"}
                                         </span>
                                       )}
+                                    </td>
+                                    <td style={{ textAlign: "center" }}>
+                                      {c.isPrimaryKey && <span style={{ fontSize: "0.65rem", padding: "0.1rem 0.3rem", borderRadius: "0.2rem", background: "hsl(var(--color-info) / 0.2)", color: "hsl(var(--color-info))", fontFamily: "monospace" }}>PK</span>}
                                     </td>
                                     <td>{c.alias || ""}</td>
                                     <td className="reasoning-cell">{c.description || ""}</td>
@@ -721,13 +800,17 @@ export function TablesPage() {
                               Watermark column: <code>{t.watermarkColumn}</code>
                             </div>
                           )}
-                          <div style={{ display: "flex", justifyContent: "flex-start", padding: "0.5rem" }}>
+                          <div style={{ display: "flex", justifyContent: "flex-start", padding: "0.5rem", gap: "0.5rem" }}>
                             <button
-                              className="btn-secondary"
+                              className="btn-icon"
+                              title="Edit"
                               onClick={(e) => { e.stopPropagation(); startEditing(t); }}
-                            >
-                              Edit
-                            </button>
+                            ><Pencil size={14} /></button>
+                            <button
+                              className="btn-icon-danger"
+                              title="Delete"
+                              onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
+                            ><Trash2 size={14} /></button>
                           </div>
                         </>
                       ) : (
@@ -764,11 +847,21 @@ export function TablesPage() {
                             </label>
                             <label style={{ gridColumn: "1 / -1" }}>
                               Table Description
-                              <textarea
+                              <DescriptionField
                                 value={editingTable.description || ""}
-                                onChange={(e) => setEditingTable({ ...editingTable, description: e.target.value || null })}
+                                onChange={(v) => setEditingTable({ ...editingTable, description: v || null })}
                                 placeholder="Appears in SDL docs"
                                 rows={2}
+                                generating={generatingDesc}
+                                onGenerate={async () => {
+                                  setGeneratingDesc(true);
+                                  try {
+                                    const desc = await generateTableDescription(editingTable.id);
+                                    if (desc) setEditingTable({ ...editingTable, description: desc });
+                                  } finally {
+                                    setGeneratingDesc(false);
+                                  }
+                                }}
                               />
                             </label>
                             {(
@@ -788,22 +881,33 @@ export function TablesPage() {
                                       ? "None (use triggers)"
                                       : "None (no subscriptions)"}
                                   </option>
-                                  {editingTable.columns.map((c) => (
-                                    <option key={c.columnName} value={c.columnName}>{c.columnName}</option>
+                                  {editingTable.columns.filter((c) => {
+                                    const dt = editingColumnTypes[c.columnName];
+                                    return !dt || isWatermarkEligible(dt);
+                                  }).map((c) => (
+                                    <option key={c.columnName} value={c.columnName}>{c.columnName}{editingColumnTypes[c.columnName] ? ` (${editingColumnTypes[c.columnName]})` : ""}</option>
                                   ))}
                                 </select>
                               </label>
                             )}
                           </div>
-                          <ColumnPresetsEditor
-                            presets={editingTable.columnPresets}
-                            columns={editingTable.columns.map((c) => c.columnName)}
-                            onChange={(presets) => setEditingTable({ ...editingTable, columnPresets: presets })}
-                          />
+                          {(() => {
+                            const NOSQL = new Set(["mongodb", "cassandra"]);
+                            const src = sources.find(s => s.id === editingTable.sourceId);
+                            const isMutable = src && !NOSQL.has((src.type ?? "").toLowerCase());
+                            return isMutable ? (
+                              <ColumnPresetsEditor
+                                presets={editingTable.columnPresets}
+                                columns={editingTable.columns.map((c) => c.columnName)}
+                                columnTypes={editingColumnTypes}
+                                onChange={(presets) => setEditingTable({ ...editingTable, columnPresets: presets })}
+                              />
+                            ) : null;
+                          })()}
                           <table className="data-table" style={{ margin: "0 0 0.5rem" }}>
                             <thead>
                               <tr>
-                                <th>Column</th><th>Alias</th><th>Description</th><th>Visible To (Read)</th><th>Writable By (R/W)</th><th>Masking</th>
+                                <th>Column</th><th>PK</th><th>Alias</th><th>Description</th><th>Visible To (Read)</th><th>Writable By (R/W)</th><th>Masking</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -818,19 +922,35 @@ export function TablesPage() {
                                         </span>
                                       )}
                                     </td>
+                                    <td style={{ textAlign: "center" }}>
+                                      <input
+                                        type="checkbox"
+                                        title="Primary Key"
+                                        checked={c.isPrimaryKey || false}
+                                        onChange={(e) => updateEditCol(i, "isPrimaryKey", e.target.checked)}
+                                      />
+                                    </td>
                                     <td>
                                       <input
                                         value={c.alias || ""}
                                         onChange={(e) => updateEditCol(i, "alias", e.target.value)}
-                                        placeholder="GraphQL alias"
+                                        placeholder={applyConvention(c.columnName, editingTable.namingConvention ?? sources.find((s) => s.id === editingTable.sourceId)?.namingConvention)}
                                       />
                                     </td>
                                     <td>
-                                      <textarea
+                                      <DescriptionField
                                         value={c.description || ""}
-                                        onChange={(e) => updateEditCol(i, "description", e.target.value)}
+                                        onChange={(v) => updateEditCol(i, "description", v)}
                                         placeholder="Column description"
                                         rows={1}
+                                        generating={generatingColDesc === c.columnName}
+                                        onGenerate={async () => {
+                                          setGeneratingColDesc(c.columnName);
+                                          try {
+                                            const desc = await generateColumnDescription(editingTable.id, c.columnName);
+                                            if (desc) updateEditCol(i, "description", desc);
+                                          } finally { setGeneratingColDesc(null); }
+                                        }}
                                       />
                                     </td>
                                     <td>
@@ -917,10 +1037,8 @@ export function TablesPage() {
                             </tbody>
                           </table>
                           <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", padding: "0.75rem 0.5rem" }}>
-                            <button className="btn-secondary" onClick={cancelEditing}>Cancel</button>
-                            <button onClick={handleSaveEdit} disabled={saving}>
-                              {saving ? "Saving..." : "Save"}
-                            </button>
+                            <button className="btn-icon" title="Cancel" onClick={cancelEditing}><X size={14} /></button>
+                            <button className="btn-icon-primary" title="Save" onClick={handleSaveEdit} disabled={saving}><Save size={14} /></button>
                           </div>
                         </>
                       )}

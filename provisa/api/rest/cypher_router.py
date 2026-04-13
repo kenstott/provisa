@@ -32,7 +32,19 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 import re as _re
+import trino.exceptions as _trino_exc
+
 _PROC_RE = _re.compile(r"^\s*CALL\s+(db\.labels|db\.relationshipTypes|db\.propertyKeys)\s*\(\s*\)\s*$", _re.IGNORECASE)
+
+
+def _federation_error(exc: Exception) -> str:
+    """Format execution errors without leaking the Trino backend name."""
+    if isinstance(exc, _trino_exc.TrinoQueryError):
+        parts = [f"type={exc.error_type}", f"name={exc.error_name}", f'message="{exc.message}"']
+        if exc.query_id:
+            parts.append(f"query_id={exc.query_id}")
+        return "FederationUserError(" + ", ".join(parts) + ")"
+    return str(exc)
 
 
 def _detect_procedure(query: str) -> str | None:
@@ -183,7 +195,7 @@ async def cypher_query(
         rows = await _execute(trino_sql, resolved_params, state)
     except Exception as exc:
         log.exception("Cypher execution failed: %s", trino_sql)
-        return JSONResponse(status_code=500, content={"error": f"Execution failed: {exc}"})
+        return JSONResponse(status_code=500, content={"error": f"Execution failed: {_federation_error(exc)}"})
 
     # Assemble
     try:
@@ -220,6 +232,8 @@ async def graph_schema(request: Request) -> JSONResponse:
                 "domain_label": n.domain_label,  # e.g. "SalesAnalytics" or null
                 "table_label": n.table_label,    # e.g. "Orders"
                 "properties": list(n.properties.keys()),
+                "pk_columns": n.pk_columns,      # user-designated PK column names
+                "id_column": n.id_column,        # resolved PK column (heuristic fallback)
             }
             for n in label_map.nodes.values()
         ],

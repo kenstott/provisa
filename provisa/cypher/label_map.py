@@ -15,6 +15,7 @@ No separate config. TableMeta.type_name → node label; JoinMeta → relationshi
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 
@@ -27,6 +28,7 @@ class NodeMapping:
     table_id: int
     source_id: str
     id_column: str        # primary key column (first column if no explicit pk)
+    pk_columns: list[str]  # user-designated PK columns (informational; empty = heuristic only)
     catalog_name: str
     schema_name: str
     table_name: str
@@ -147,10 +149,12 @@ class CypherLabelMap:
                 continue
             col_list = ctx_typed.aggregate_columns.get(table_meta.table_id, [])
             col_names = [c for c, _ in col_list]
-            id_col = _resolve_id_column(table_meta.type_name, col_names, target_pk)
+            user_pks = ctx_typed.pk_columns.get(table_meta.table_id, [])
+            id_col = _resolve_id_column(table_meta.type_name, col_names, target_pk, user_pks)
             props: dict[str, str] = {c: c for c in col_names}
 
-            domain_label, table_label = _split_cypher_labels(field_name)
+            _, table_label = _split_cypher_labels(field_name)
+            domain_label = _pascal(table_meta.domain_id) if getattr(table_meta, "domain_id", None) else None
             cypher_label = f"{domain_label}:{table_label}" if domain_label else table_label
 
             nodes[table_meta.type_name] = NodeMapping(
@@ -161,6 +165,7 @@ class CypherLabelMap:
                 table_id=table_meta.table_id,
                 source_id=table_meta.source_id,
                 id_column=id_col,
+                pk_columns=user_pks,
                 catalog_name=table_meta.catalog_name,
                 schema_name=table_meta.schema_name,
                 table_name=table_meta.table_name,
@@ -204,10 +209,12 @@ def _resolve_id_column(
     type_name: str,
     col_names: list[str],
     target_pk: dict[str, str],
+    user_pks: list[str] | None = None,
 ) -> str:
     """Return the primary-key column name for a node type.
 
     Resolution order (first match wins):
+    0. User-designated PK columns (first entry if multiple).
     1. The column named in a JoinMeta.target_column for this type — explicit FK target.
     2. Exact match against known id names: id, _id, pk, oid.
     3. Single column ending in _id / _pk / _oid (unambiguous).
@@ -215,6 +222,10 @@ def _resolve_id_column(
     5. First column in the column list.
     6. Fallback: "id".
     """
+    # 0. User-designated PK
+    if user_pks:
+        return user_pks[0]
+
     # 1. Explicit join target
     if type_name in target_pk:
         return target_pk[type_name]
@@ -247,17 +258,16 @@ def _to_rel_type(field_name: str) -> str:
     return field_name.upper()
 
 
+def _pascal(s: str) -> str:
+    return "".join(p.capitalize() for p in re.split(r"[_\-]+", s) if p)
+
+
 def _split_cypher_labels(field_name: str) -> tuple[str | None, str]:
     """Derive (domain_label, table_label) from a GQL field name.
 
     "sales_analytics__orders" → ("SalesAnalytics", "Orders")
     "orders"                  → (None, "Orders")
     """
-    import re
-
-    def _pascal(s: str) -> str:
-        return "".join(p.capitalize() for p in re.split(r"[_\-]+", s) if p)
-
     if "__" in field_name:
         domain_part, table_part = field_name.split("__", 1)
         return _pascal(domain_part), _pascal(table_part)

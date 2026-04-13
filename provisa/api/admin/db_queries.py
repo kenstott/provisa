@@ -46,6 +46,31 @@ def derive_graphql_alias(target_table_name: str, cardinality: str) -> str | None
     return singular
 
 
+def derive_cypher_alias(source_column: str, cardinality: str) -> str:
+    """Derive Cypher relationship type from FK column + cardinality.
+
+    Rules:
+    - Strip _id/_fk/_pk suffix from source_column
+    - Singularize with inflect (same helper as derive_graphql_alias)
+    - Prepend direction verb based on cardinality:
+      one-to-many  → HAS_<ENTITY>
+      many-to-one  → BELONGS_TO_<ENTITY>
+      other        → <ENTITY>
+    """
+    col = (source_column or "").strip().lower()
+    for suffix in ("_id", "_fk", "_pk"):
+        if col.endswith(suffix) and len(col) > len(suffix):
+            col = col[: -len(suffix)]
+            break
+    singular = _to_singular(col) if col else col
+    entity = (singular or col).upper()
+    if cardinality == "one-to-many":
+        return f"HAS_{entity}"
+    if cardinality == "many-to-one":
+        return f"BELONGS_TO_{entity}"
+    return entity
+
+
 def parse_mask_value(raw: str | None) -> object:
     """Parse a stored mask value string back to a Python value."""
     if raw is None:
@@ -75,7 +100,7 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:
         table = dict(row)
         col_rows = await conn.fetch(
             "SELECT column_name, visible_to, writable_by, unmasked_to, "
-            "mask_type, alias, description, path "
+            "mask_type, alias, description, path, is_primary_key "
             "FROM table_columns WHERE table_id = $1 ORDER BY id",
             row["id"],
         )
@@ -90,6 +115,7 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:
                 "alias": r["alias"],
                 "description": r["description"],
                 "path": r["path"],
+                "is_primary_key": bool(r.get("is_primary_key") or False),
             }
             for r in col_rows
         ]
@@ -114,5 +140,11 @@ async def fetch_relationships(conn: asyncpg.Connection) -> list[dict]:
             d["graphql_alias"] = derive_graphql_alias(
                 d.get("target_table_name") or "", d.get("cardinality") or ""
             )
+        if not d.get("alias"):
+            d["computed_cypher_alias"] = derive_cypher_alias(
+                d.get("source_column") or "", d.get("cardinality") or ""
+            )
+        else:
+            d["computed_cypher_alias"] = None
         result.append(d)
     return result

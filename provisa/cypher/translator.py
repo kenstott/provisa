@@ -491,10 +491,24 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         src_nm = self._lm.nodes.get(rel_mapping.source_label)
                         if src_nm and src_var:
                             self._var_table[src_var] = (src_var, src_nm)
+                            # If this var was registered as a domain/all union, replace
+                            # from_expr with the concrete table now that type is known
+                            if src_var in self._domain_nodes:
+                                self._domain_nodes.pop(src_var)
+                                from_expr = exp.alias_(
+                                    exp.Table(
+                                        this=exp.Identifier(this=src_nm.table_name, quoted=True),
+                                        db=exp.Identifier(this=src_nm.schema_name, quoted=True),
+                                        catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
+                                    ),
+                                    alias=src_var,
+                                )
                     if tgt_nm is None:
                         tgt_nm = self._lm.nodes.get(rel_mapping.target_label)
                         if tgt_nm and tgt_var:
                             self._var_table[tgt_var] = (tgt_var, tgt_nm)
+                            if tgt_var in self._domain_nodes:
+                                self._domain_nodes.pop(tgt_var)
 
                 # Set FROM from anonymous src if still unset
                 if from_expr is None and src_nm is not None:

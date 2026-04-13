@@ -220,25 +220,36 @@
   border-right: 1px solid var(--border);
 }
 
-.graph-query-input {
+.graph-query-editor-wrap {
+  position: relative;
   flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
-  color: var(--text);
-  font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
-  font-size: 0.85rem;
-  line-height: 1.6;
-  padding: 0.5rem 0.75rem;
-  resize: none;
-  overflow-y: auto;
-  min-height: 36px;
-  max-height: 160px;
+  min-width: 0;
 }
 
-.graph-query-input::placeholder {
-  color: var(--text-muted);
-  opacity: 0.6;
+.graph-query-editor-wrap .gf-copy-query-btn {
+  top: 6px;
+  right: 8px;
+}
+
+.graph-query-input {
+  width: 100%;
+}
+
+.graph-query-input .cm-editor {
+  background: transparent;
+  font-size: 0.85rem;
+  min-height: 36px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.graph-query-input .cm-scroller {
+  font-family: "SF Mono", "Fira Code", monospace;
+  padding: 0.5rem 0.75rem;
+}
+
+.graph-query-input .cm-editor.cm-focused {
+  outline: none;
 }
 
 .graph-run-btn {
@@ -300,7 +311,7 @@
 
 .gf-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
   background: #0d0f15;
@@ -320,24 +331,69 @@
 
 .gf-header-query-input {
   flex: 1;
-  font-family: "SF Mono", "Fira Code", monospace;
-  font-size: 0.75rem;
-  color: var(--text);
-  background: transparent;
+  min-width: 0;
   border: 1px solid transparent;
   border-radius: 4px;
-  padding: 0.2rem 0.4rem;
-  outline: none;
-  min-width: 0;
+  font-size: 0.75rem;
 }
 
 .gf-header-query-input:hover {
   border-color: var(--border);
 }
 
-.gf-header-query-input:focus {
+.gf-header-query-input .cm-editor {
+  background: transparent;
+  font-size: 0.75rem;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.gf-header-query-input .cm-editor.cm-focused {
+  outline: none;
   border-color: var(--primary);
-  background: #0d0f15;
+}
+
+.gf-header-query-input .cm-scroller {
+  font-family: "SF Mono", "Fira Code", monospace;
+}
+
+.gf-query-editor-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.gf-query-editor-wrap .gf-header-query-input {
+  flex: unset;
+  width: 100%;
+}
+
+.gf-copy-query-btn {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  display: none;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: #1a1d26cc;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+}
+
+.gf-query-editor-wrap:hover .gf-copy-query-btn {
+  display: flex;
+}
+
+.gf-copy-query-btn:hover {
+  color: var(--text);
+  border-color: var(--primary);
 }
 
 .gf-run-inline-btn {
@@ -430,6 +486,11 @@
   color: var(--text);
 }
 
+.gf-icon-btn--on {
+  background: #2e5fa3 !important;
+  color: #fff !important;
+}
+
 /* ── Frame body ─────────────────────────────────────────────────────────────────── */
 .gf-body {
   display: flex;
@@ -468,6 +529,12 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.gf-canvas-wrap:hover .gf-canvas-controls {
+  opacity: 1;
 }
 
 .gf-ctrl-btn {
@@ -488,6 +555,72 @@
 
 .gf-ctrl-btn:hover {
   background: var(--surface);
+}
+
+.gf-ctrl-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.gf-ctrl-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+
+/* ── Download dropdown ───────────────────────────────────────────────────────── */
+.gf-dl-wrap {
+  position: relative;
+}
+
+.gf-dl-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: #1a1d27;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  min-width: 80px;
+  z-index: 200;
+  overflow: hidden;
+}
+
+.gf-dl-item {
+  padding: 0.4rem 0.75rem;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.gf-dl-item:hover {
+  background: #2a2d3a;
+}
+
+/* ── Graph image download dropdown (inside GraphCanvas controls) ─────────────── */
+.gf-img-dl-wrap {
+  position: relative;
+}
+
+.gf-img-dl-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1d27;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  min-width: 70px;
+  z-index: 200;
+  overflow: hidden;
 }
 
 /* ── Inspector ─────────────────────────────────────────────────────────────────── */
@@ -622,10 +755,82 @@
 }
 
 /* ── Table view ─────────────────────────────────────────────────────────────────── */
+.gf-table-outer {
+  position: relative;
+  max-height: 360px;
+}
+
+.gf-table-outer[style] {
+  max-height: none;
+}
+
 .gf-table-wrap {
   overflow-x: auto;
   overflow-y: auto;
-  max-height: 360px;
+  height: 100%;
+}
+
+.gf-tbl-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: #1e2130;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.gf-table-outer:hover .gf-tbl-copy-btn {
+  opacity: 1;
+}
+
+.gf-tbl-copy-btn.copied {
+  color: #4caf50;
+  border-color: #4caf50;
+}
+
+.gf-json-wrap {
+  position: relative;
+}
+
+.gf-json-view {
+  overflow: hidden;
+  font-size: 0.78rem;
+}
+
+.gf-json-view .cm-editor {
+  height: 100%;
+}
+
+.gf-json-copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: #1e2130cc;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  z-index: 10;
+}
+
+.gf-json-wrap:hover .gf-json-copy-btn {
+  opacity: 1;
+}
+
+.gf-json-copy-btn.copied {
+  color: #4caf50;
+  border-color: #4caf50;
 }
 
 .gf-table-empty {
@@ -637,7 +842,8 @@
 
 .gf-table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.78rem;
 }
 
@@ -651,6 +857,32 @@
   font-weight: 600;
   position: sticky;
   top: 0;
+  z-index: 1;
+}
+
+.gf-th-rownum {
+  width: 40px;
+  min-width: 40px;
+  position: sticky !important;
+  left: 0;
+  z-index: 2 !important;
+  border-right: 1px solid var(--border);
+}
+
+.gf-td-rownum {
+  width: 40px;
+  min-width: 40px;
+  position: sticky;
+  left: 0;
+  background: #0d0f15;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  text-align: right;
+  padding: 0.35rem 0.5rem;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid #1e2130;
+  user-select: none;
+  z-index: 1;
 }
 
 .gf-table td {
@@ -658,10 +890,15 @@
   border-bottom: 1px solid #1e2130;
   color: var(--text);
   vertical-align: top;
-  max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.gf-table td.gf-td-wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-overflow: clip;
 }
 
 .gf-table tr:last-child td {
@@ -670,4 +907,300 @@
 
 .gf-table tr:hover td {
   background: #1a1d27;
+}
+
+.gf-th-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 8px;
+}
+
+.gf-col-resize {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  user-select: none;
+}
+
+.gf-col-resize:hover,
+.gf-col-resize:active {
+  background: var(--accent, #4a90d9);
+}
+
+/* ── Node context menu ────────────────────────────────────────────────────── */
+.node-ctx-menu {
+  position: fixed;
+  z-index: 9999;
+  background: #1a1d27;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem;
+  width: 350px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+.node-ctx-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fg-muted);
+  margin-bottom: 0.4rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.node-ctx-section-label {
+  font-size: 0.65rem;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.node-ctx-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.node-ctx-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.node-ctx-swatch.active {
+  border-color: #fff;
+}
+
+.node-ctx-swatch:hover {
+  opacity: 0.85;
+  transform: scale(1.15);
+}
+
+.node-ctx-size-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.node-ctx-size-row input[type="range"] {
+  flex: 1;
+  accent-color: var(--primary);
+}
+
+.node-ctx-size-row span {
+  font-size: 0.75rem;
+  color: var(--fg-muted);
+  min-width: 32px;
+  text-align: right;
+}
+
+.node-ctx-select {
+  width: 100%;
+  background: #111318;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.8rem;
+}
+
+/* ── Expanded modal ─────────────────────────────────────────────────────────────── */
+.gf-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.gf-modal-frame {
+  width: 90vw;
+  height: 44px; /* header only — body lives in the real frame below */
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px 8px 0 0;
+  overflow: hidden;
+  pointer-events: auto;
+  position: fixed;
+  top: 5vh;
+  left: 5vw;
+}
+
+/* When expanded, the real gf-frame is promoted to fill the modal area */
+.gf-frame.gf-expanded {
+  position: fixed;
+  top: calc(5vh + 44px);
+  left: 5vw;
+  width: 90vw;
+  height: calc(90vh - 44px);
+  z-index: 1001;
+  border-radius: 0 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gf-frame.gf-expanded .gf-header {
+  display: none;
+}
+
+.gf-frame.gf-expanded .gf-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.gf-frame.gf-expanded .gf-graph-area {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+/* ── Inspector horizontal resize handle ──────────────────────────────────── */
+.gf-inspector-resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.gf-inspector-resize-handle:hover {
+  background: var(--primary);
+  opacity: 0.5;
+}
+
+/* ── Frame bottom resize handle ──────────────────────────────────────────── */
+.gf-frame-resize-handle {
+  height: 4px;
+  cursor: row-resize;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.gf-frame-resize-handle:hover {
+  background: var(--primary);
+  opacity: 0.4;
+}
+
+/* ── Relationship context menu ────────────────────────────────────────────── */
+.rel-ctx-style-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+
+.rel-ctx-style-btn {
+  flex: 1;
+  padding: 4px 0;
+  background: #111318;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  letter-spacing: 2px;
+  transition: background 0.12s, color 0.12s;
+}
+
+.rel-ctx-style-btn:hover {
+  background: #1a1d27;
+  color: var(--text);
+}
+
+.rel-ctx-style-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* ── Color palette (squarish grid) ───────────────────────────────────────── */
+.gf-color-palette {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 100;
+  background: #1a1d27;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px;
+  display: grid;
+  grid-template-columns: repeat(8, 18px);
+  gap: 4px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+.gf-color-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.gf-color-swatch:hover {
+  transform: scale(1.2);
+  border-color: rgba(255,255,255,0.4);
+}
+
+/* ── Node context menu ───────────────────────────────────────────────────────── */
+.gf-node-ctx-menu {
+  position: absolute;
+  z-index: 1000;
+  background: #1a1d26;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 160px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  pointer-events: all;
+}
+
+.gf-node-ctx-item {
+  display: block;
+  width: 100%;
+  padding: 7px 14px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 0.8rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.gf-node-ctx-item:hover {
+  background: rgba(255,255,255,0.07);
+}
+
+.gf-node-ctx-item--danger {
+  color: #f87171;
+}
+
+.gf-node-ctx-item--danger:hover {
+  background: rgba(248,113,113,0.12);
+}
+
+.gf-node-ctx-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 0;
 }

@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import trino.exceptions as _trino_exc
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -33,6 +34,16 @@ from pydantic import BaseModel
 log = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _federation_error(exc: Exception) -> str:
+    """Format execution errors without leaking the Trino backend name."""
+    if isinstance(exc, _trino_exc.TrinoQueryError):
+        parts = [f"type={exc.error_type}", f"name={exc.error_name}", f'message="{exc.message}"']
+        if exc.query_id:
+            parts.append(f"query_id={exc.query_id}")
+        return "FederationUserError(" + ", ".join(parts) + ")"
+    return str(exc)
 
 _NEO4J_VERSION = "5.26.0"
 _NEO4J_EDITION = "community"
@@ -129,7 +140,7 @@ async def neo4j_query_v2(
         rows = await _execute(trino_sql, resolved_params, state)
     except Exception as exc:
         log.exception("Cypher execution failed: %s", trino_sql)
-        return _error_response(f"Execution failed: {exc}", "DatabaseError")
+        return _error_response(f"Execution failed: {_federation_error(exc)}", "DatabaseError")
 
     try:
         assembled = assemble_rows(rows, graph_vars)

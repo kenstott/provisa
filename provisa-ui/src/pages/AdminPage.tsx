@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { Trash2 } from "lucide-react";
 import {
   fetchSources,
   fetchDomains,
@@ -25,6 +26,7 @@ import {
 } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import type { Domain } from "../types/admin";
+import { domainGqlAlias } from "../types/admin";
 import { MVManager } from "../components/admin/MVManager";
 import { CacheManager } from "../components/admin/CacheManager";
 import { SystemHealth } from "../components/admin/SystemHealth";
@@ -41,6 +43,7 @@ export function AdminPage() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [newDomainId, setNewDomainId] = useState("");
   const [newDomainDesc, setNewDomainDesc] = useState("");
+  const [newDomainAlias, setNewDomainAlias] = useState("");
   const [domainMsg, setDomainMsg] = useState("");
   const [loading, setLoading] = useState(true);
   const [configYaml, setConfigYaml] = useState<string | null>(null);
@@ -129,12 +132,13 @@ export function AdminPage() {
 
   const handleAddDomain = async () => {
     if (!newDomainId.trim()) return;
-    await createDomain(newDomainId.trim(), newDomainDesc.trim());
+    await createDomain(newDomainId.trim(), newDomainDesc.trim(), newDomainAlias.trim() || null);
     const updated = await fetchDomains();
     setDomains(updated);
     setStats((s) => ({ ...s, Domains: updated.length }));
     setNewDomainId("");
     setNewDomainDesc("");
+    setNewDomainAlias("");
     setDomainMsg(`Added "${newDomainId.trim()}"`);
   };
 
@@ -349,17 +353,18 @@ export function AdminPage() {
         <>
           {domainMsg && <div className="success" style={{ marginBottom: "0.5rem" }}>{domainMsg}</div>}
           <table className="data-table" style={{ marginBottom: "1rem" }}>
-            <thead><tr><th>ID</th><th>Description</th><th></th></tr></thead>
+            <thead><tr><th>ID</th><th>Description</th><th>GQL Alias</th><th></th></tr></thead>
             <tbody>
               {domains.length === 0 && (
-                <tr><td colSpan={3} style={{ color: "var(--text-muted)", textAlign: "center" }}>No domains defined</td></tr>
+                <tr><td colSpan={4} style={{ color: "var(--text-muted)", textAlign: "center" }}>No domains defined</td></tr>
               )}
               {domains.map((d) => (
                 <tr key={d.id}>
                   <td>{d.id}</td>
                   <td>{d.description || "—"}</td>
+                  <td style={{ color: "var(--text-muted)", fontFamily: "monospace" }}>{domainGqlAlias(d)}</td>
                   <td>
-                    <button className="btn-danger" style={{ padding: "0.2rem 0.5rem", fontSize: "0.8rem" }} onClick={() => handleDeleteDomain(d.id)}>Delete</button>
+                    <button className="btn-icon-danger" title="Delete" onClick={() => handleDeleteDomain(d.id)}><Trash2 size={14} /></button>
                   </td>
                 </tr>
               ))}
@@ -368,6 +373,7 @@ export function AdminPage() {
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
             <input value={newDomainId} onChange={(e) => setNewDomainId(e.target.value)} placeholder="domain-id" style={{ width: "160px", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }} />
             <input value={newDomainDesc} onChange={(e) => setNewDomainDesc(e.target.value)} placeholder="description (optional)" style={{ flex: 1, background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }} />
+            <input value={newDomainAlias} onChange={(e) => setNewDomainAlias(e.target.value)} placeholder={newDomainId.trim() ? `alias (default: ${domainGqlAlias({ id: newDomainId.trim(), description: "" })})` : "gql alias (optional)"} style={{ width: "180px", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }} />
             <button className="btn-primary" onClick={handleAddDomain} disabled={!newDomainId.trim()}>Add Domain</button>
           </div>
         </>

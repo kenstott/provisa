@@ -34,6 +34,7 @@ class SourceType:
 class DomainType:
     id: str
     description: str
+    graphql_alias: str | None = None
 
 
 @strawberry.type
@@ -42,6 +43,7 @@ class ColumnPresetType:
     source: str
     name: str | None
     value: str | None
+    data_type: str | None = None
 
 
 @strawberry.type
@@ -76,6 +78,9 @@ class TableColumnType:
     alias: str | None
     description: str | None
     native_filter_type: str | None = None
+    is_primary_key: bool = False
+    is_foreign_key: bool = False
+    is_alternate_key: bool = False
 
 
 @strawberry.type
@@ -90,6 +95,7 @@ class AvailableColumnType:
     data_type: str
     comment: str | None
     native_filter_type: str | None = None
+    is_primary_key: bool = False
 
 
 @strawberry.type
@@ -108,6 +114,7 @@ class RelationshipType:
     function_arg: str | None
     alias: str | None = None
     graphql_alias: str | None = None
+    computed_cypher_alias: str | None = None
 
 
 @strawberry.type
@@ -144,6 +151,7 @@ class SourceInput:
 class DomainInput:
     id: str
     description: str = ""
+    graphql_alias: str | None = None
 
 
 @strawberry.input
@@ -160,6 +168,9 @@ class ColumnInput:
     alias: str | None = None
     description: str | None = None
     native_filter_type: str | None = None
+    is_primary_key: bool = False
+    is_foreign_key: bool = False
+    is_alternate_key: bool = False
 
 
 @strawberry.input
@@ -168,6 +179,7 @@ class ColumnPresetInput:
     source: str
     name: str | None = None
     value: str | None = None
+    data_type: str | None = None
 
 
 @strawberry.input
@@ -197,6 +209,7 @@ class RelationshipInput:
     target_function_name: str | None = None
     function_arg: str | None = None
     alias: str | None = None  # e.g. WORKS_FOR; unique per (source_table, alias)
+    graphql_alias: str | None = None
 
 
 @strawberry.input

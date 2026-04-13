@@ -59,7 +59,40 @@ if [ "$OBSERVABILITY" = true ]; then
     JVM_CONFIG_PATCHED=true
   fi
 fi
-docker compose $COMPOSE_FILES up -d --wait
+# Run compose up; suppress exit code — Docker bug: a zombie "dead" postgres container
+# (no files on disk, stuck in daemon memory) causes compose to fail and leaves
+# dependent services (pgbouncer, debezium, trino, zaychik) in Created state.
+docker compose $COMPOSE_FILES up -d 2>&1 || true
+
+# Second pass: start any services still in Created state using --no-deps so the
+# zombie postgres dependency check is bypassed.
+CREATED=$(docker ps -a --filter "label=com.docker.compose.project=provisa" \
+  --filter "status=created" \
+  --format '{{.Label "com.docker.compose.service"}}' 2>/dev/null | sort -u | tr '\n' ' ')
+if [ -n "$CREATED" ]; then
+  echo "Starting remaining services: $CREATED"
+  # shellcheck disable=SC2086
+  docker compose $COMPOSE_FILES up -d --no-deps $CREATED 2>&1 || true
+fi
+
+# Wait for critical services to be healthy
+echo -n "Waiting for infrastructure services"
+for i in $(seq 1 120); do
+  PG_OK=$(docker inspect --format '{{.State.Health.Status}}' provisa-postgres-1 2>/dev/null)
+  KF_OK=$(docker inspect --format '{{.State.Health.Status}}' provisa-kafka-1 2>/dev/null)
+  REDIS_OK=$(docker inspect --format '{{.State.Health.Status}}' provisa-redis-1 2>/dev/null)
+  if [ "$PG_OK" = "healthy" ] && [ "$KF_OK" = "healthy" ] && [ "$REDIS_OK" = "healthy" ]; then
+    echo " OK"
+    break
+  fi
+  if [ "$i" -eq 120 ]; then
+    echo " TIMEOUT"
+    echo "Critical services did not become healthy. postgres=$PG_OK kafka=$KF_OK redis=$REDIS_OK"
+    exit 1
+  fi
+  echo -n "."
+  sleep 2
+done
 echo "Docker Compose services are healthy."
 if [ "$OBSERVABILITY" = true ]; then
   echo "  Grafana: http://localhost:3100"
@@ -98,7 +131,7 @@ BACKEND_PID=$!
 
 # Wait for backend to be healthy
 echo -n "  Waiting for backend"
-for i in $(seq 1 30); do
+for i in $(seq 1 60); do
   if curl -sf http://localhost:8001/health > /dev/null 2>&1; then
     echo " OK (PID $BACKEND_PID)"
     break

@@ -9,6 +9,8 @@
 // permission from the copyright holder.
 
 import React, { useState, useEffect, useCallback } from "react";
+import { Trash2, Pencil, Save, X } from "lucide-react";
+import { FilterInput } from "../components/admin/FilterInput";
 import {
   fetchActions,
   saveFunction,
@@ -102,6 +104,7 @@ export function CommandsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
+  const [cmdSearch, setCmdSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>({ ...EMPTY_FORM });
   const [editingName, setEditingName] = useState<string | null>(null);
@@ -470,9 +473,10 @@ export function CommandsPage() {
     <div className="page">
       <div className="page-header">
         <h2>Commands</h2>
+        <FilterInput value={cmdSearch} onChange={setCmdSearch} placeholder="Filter by name…" />
         {!editingName && (
           <button onClick={() => { setShowForm(!showForm); if (showForm) handleCancel(); }}>
-            {showForm ? "Cancel" : "Add Command"}
+            {showForm ? "Cancel" : "+ Command"}
           </button>
         )}
       </div>
@@ -502,6 +506,7 @@ export function CommandsPage() {
           <tr>
             <th>Name</th>
             <th>Source</th>
+            <th>Domain</th>
             <th>Function</th>
             <th>Returns</th>
             <th>Args</th>
@@ -510,9 +515,9 @@ export function CommandsPage() {
         </thead>
         <tbody>
           {functions.length === 0 && (
-            <tr><td colSpan={6} style={{ color: "var(--text-muted)", textAlign: "center" }}>No functions registered</td></tr>
+            <tr><td colSpan={7} style={{ color: "var(--text-muted)", textAlign: "center" }}>No functions registered</td></tr>
           )}
-          {functions.map((fn) => {
+          {functions.filter((fn) => !cmdSearch.trim() || fn.name.toLowerCase().includes(cmdSearch.toLowerCase())).map((fn) => {
             const isExpanded = expandedFn === fn.name;
             const isEditing = editingName === fn.name;
             return (
@@ -526,6 +531,7 @@ export function CommandsPage() {
                 >
                   <td>{fn.name}</td>
                   <td>{fn.sourceId}</td>
+                  <td>{fn.domainId || "—"}</td>
                   <td>{fn.schemaName}.{fn.functionName}</td>
                   <td>{fn.returns || (fn.returnSchema ? "custom schema" : "—")}</td>
                   <td>{fn.arguments.length}</td>
@@ -533,13 +539,13 @@ export function CommandsPage() {
                 </tr>
                 {isExpanded && (
                   <tr>
-                    <td colSpan={6} style={{ padding: "0.75rem 1rem", background: "var(--bg)", borderTop: "1px solid var(--border)" }}>
+                    <td colSpan={7} style={{ padding: "0.75rem 1rem", background: "var(--bg)", borderTop: "1px solid var(--border)" }}>
                       {isEditing ? (
                         <form className="form-card" onSubmit={handleSave} style={{ margin: 0 }}>
                           {renderFormFields()}
                           <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                            <button type="button" className="btn-secondary" onClick={handleCancel}>Cancel</button>
-                            <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Saving..." : "Update"}</button>
+                            <button type="button" className="btn-icon" title="Cancel" onClick={handleCancel}><X size={14} /></button>
+                            <button type="submit" className="btn-icon-primary" title="Save" disabled={saving}><Save size={14} /></button>
                           </div>
                         </form>
                       ) : (
@@ -559,9 +565,10 @@ export function CommandsPage() {
                           </dl>
                           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
                             <button
-                              className="btn-secondary"
+                              className="btn-icon"
+                              title="Edit"
                               onClick={(e) => { e.stopPropagation(); handleEdit("function", fn.name); }}
-                            >Edit</button>
+                            ><Pencil size={14} /></button>
                             <button
                               className="btn-secondary"
                               onClick={(e) => { e.stopPropagation(); handleTest("function", fn.name); }}
@@ -573,7 +580,7 @@ export function CommandsPage() {
                               onConfirm={async () => { await deleteFunction(fn.name); setExpandedFn(null); load(); }}
                             >
                               {(open) => (
-                                <button className="btn-danger" onClick={(e) => { e.stopPropagation(); open(); }}>Delete</button>
+                                <button className="btn-icon-danger" title="Delete" onClick={(e) => { e.stopPropagation(); open(); }}><Trash2 size={14} /></button>
                               )}
                             </ConfirmDialog>
                           </div>
@@ -593,6 +600,7 @@ export function CommandsPage() {
         <thead>
           <tr>
             <th>Name</th>
+            <th>Domain</th>
             <th>URL</th>
             <th>Method</th>
             <th>Timeout</th>
@@ -603,9 +611,9 @@ export function CommandsPage() {
         </thead>
         <tbody>
           {webhooks.length === 0 && (
-            <tr><td colSpan={7} style={{ color: "var(--text-muted)", textAlign: "center" }}>No webhooks registered</td></tr>
+            <tr><td colSpan={8} style={{ color: "var(--text-muted)", textAlign: "center" }}>No webhooks registered</td></tr>
           )}
-          {webhooks.map((wh) => {
+          {webhooks.filter((wh) => !cmdSearch.trim() || wh.name.toLowerCase().includes(cmdSearch.toLowerCase())).map((wh) => {
             const isExpanded = expandedWh === wh.name;
             const isEditing = editingName === wh.name;
             return (
@@ -618,6 +626,7 @@ export function CommandsPage() {
                   style={{ cursor: "pointer", background: isExpanded ? "var(--surface)" : undefined }}
                 >
                   <td>{wh.name}</td>
+                  <td>{wh.domainId || "—"}</td>
                   <td style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis" }}>{wh.url}</td>
                   <td>{wh.method}</td>
                   <td>{wh.timeoutMs}ms</td>
@@ -627,13 +636,13 @@ export function CommandsPage() {
                 </tr>
                 {isExpanded && (
                   <tr>
-                    <td colSpan={7} style={{ padding: "0.75rem 1rem", background: "var(--bg)", borderTop: "1px solid var(--border)" }}>
+                    <td colSpan={8} style={{ padding: "0.75rem 1rem", background: "var(--bg)", borderTop: "1px solid var(--border)" }}>
                       {isEditing ? (
                         <form className="form-card" onSubmit={handleSave} style={{ margin: 0 }}>
                           {renderFormFields()}
                           <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                            <button type="button" className="btn-secondary" onClick={handleCancel}>Cancel</button>
-                            <button type="submit" className="btn-primary" disabled={saving}>{saving ? "Saving..." : "Update"}</button>
+                            <button type="button" className="btn-icon" title="Cancel" onClick={handleCancel}><X size={14} /></button>
+                            <button type="submit" className="btn-icon-primary" title="Save" disabled={saving}><Save size={14} /></button>
                           </div>
                         </form>
                       ) : (
@@ -657,9 +666,10 @@ export function CommandsPage() {
                           </dl>
                           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
                             <button
-                              className="btn-secondary"
+                              className="btn-icon"
+                              title="Edit"
                               onClick={(e) => { e.stopPropagation(); handleEdit("webhook", wh.name); }}
-                            >Edit</button>
+                            ><Pencil size={14} /></button>
                             <button
                               className="btn-secondary"
                               onClick={(e) => { e.stopPropagation(); handleTest("webhook", wh.name); }}
@@ -671,7 +681,7 @@ export function CommandsPage() {
                               onConfirm={async () => { await deleteWebhook(wh.name); setExpandedWh(null); load(); }}
                             >
                               {(open) => (
-                                <button className="btn-danger" onClick={(e) => { e.stopPropagation(); open(); }}>Delete</button>
+                                <button className="btn-icon-danger" title="Delete" onClick={(e) => { e.stopPropagation(); open(); }}><Trash2 size={14} /></button>
                               )}
                             </ConfirmDialog>
                           </div>

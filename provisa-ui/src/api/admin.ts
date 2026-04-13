@@ -52,12 +52,13 @@ export async function fetchSources(): Promise<Source[]> {
 }
 
 export async function fetchDomains(): Promise<Domain[]> {
-  const data = await gql<{ domains: Domain[] }>(`{ domains { id description } }`);
+  const data = await gql<{ domains: Domain[] }>(`{ domains { id description graphqlAlias } }`);
   return data.domains;
 }
 
-export async function createDomain(id: string, description: string): Promise<void> {
-  await gql(`mutation { createDomain(input: { id: ${JSON.stringify(id)}, description: ${JSON.stringify(description)} }) { success message } }`);
+export async function createDomain(id: string, description: string, graphqlAlias?: string | null): Promise<void> {
+  const aliasArg = graphqlAlias ? `, graphqlAlias: ${JSON.stringify(graphqlAlias)}` : "";
+  await gql(`mutation { createDomain(input: { id: ${JSON.stringify(id)}, description: ${JSON.stringify(description)}${aliasArg} }) { success message } }`);
 }
 
 export async function deleteDomain(id: string): Promise<void> {
@@ -67,14 +68,14 @@ export async function deleteDomain(id: string): Promise<void> {
 
 export async function fetchTables(): Promise<RegisteredTable[]> {
   const data = await gql<{ tables: RegisteredTable[] }>(
-    `{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType } columnPresets { column source name value } } }`
+    `{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey } columnPresets { column source name value dataType } } }`
   );
   return data.tables;
 }
 
 export async function fetchRelationships(): Promise<Relationship[]> {
   const data = await gql<{ relationships: Relationship[] }>(
-    `{ relationships { id sourceTableId targetTableId sourceTableName targetTableName sourceColumn targetColumn cardinality materialize refreshInterval targetFunctionName functionArg alias } }`
+    `{ relationships { id sourceTableId targetTableId sourceTableName targetTableName sourceColumn targetColumn cardinality materialize refreshInterval targetFunctionName functionArg alias graphqlAlias computedCypherAlias } }`
   );
   return data.relationships;
 }
@@ -91,6 +92,7 @@ export async function upsertRelationship(input: {
   targetFunctionName?: string | null;
   functionArg?: string | null;
   alias?: string | null;
+  graphqlAlias?: string | null;
 }): Promise<MutationResult> {
   const data = await gql<{ upsertRelationship: MutationResult }>(
     `mutation($input: RelationshipInput!) { upsertRelationship(input: $input) { success message } }`,
@@ -180,8 +182,8 @@ export async function registerTable(input: {
   alias?: string;
   description?: string;
   watermarkColumn?: string | null;
-  columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null }[];
-  columnPresets?: { column: string; source: string; name?: string | null; value?: string | null }[];
+  columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null; isPrimaryKey?: boolean; isForeignKey?: boolean; isAlternateKey?: boolean }[];
+  columnPresets?: { column: string; source: string; name?: string | null; value?: string | null; dataType?: string | null }[];
 }): Promise<MutationResult> {
   const data = await gql<{ registerTable: MutationResult }>(
     `mutation($input: TableInput!) { registerTable(input: $input) { success message } }`,
@@ -199,8 +201,8 @@ export async function updateTable(input: {
   alias?: string;
   description?: string;
   watermarkColumn?: string | null;
-  columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null }[];
-  columnPresets?: { column: string; source: string; name?: string | null; value?: string | null }[];
+  columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null; isPrimaryKey?: boolean; isForeignKey?: boolean; isAlternateKey?: boolean }[];
+  columnPresets?: { column: string; source: string; name?: string | null; value?: string | null; dataType?: string | null }[];
 }): Promise<MutationResult> {
   const data = await gql<{ updateTable: MutationResult }>(
     `mutation($input: TableInput!) { updateTable(input: $input) { success message } }`,
@@ -215,6 +217,22 @@ export async function deleteTable(id: number): Promise<MutationResult> {
     { id }
   );
   return data.deleteTable;
+}
+
+export async function generateColumnDescription(tableId: number, columnName: string): Promise<string> {
+  const data = await gql<{ generateColumnDescription: string }>(
+    `query($tableId: String!, $columnName: String!) { generateColumnDescription(tableId: $tableId, columnName: $columnName) }`,
+    { tableId: String(tableId), columnName }
+  );
+  return data.generateColumnDescription;
+}
+
+export async function generateTableDescription(tableId: number): Promise<string> {
+  const data = await gql<{ generateTableDescription: string }>(
+    `query($tableId: String!) { generateTableDescription(tableId: $tableId) }`,
+    { tableId: String(tableId) }
+  );
+  return data.generateTableDescription;
 }
 
 export async function fetchAvailableSchemas(sourceId: string): Promise<string[]> {
@@ -253,6 +271,7 @@ export interface ColumnMetadata {
   dataType: string;
   comment: string | null;
   nativeFilterType: string | null;
+  isPrimaryKey: boolean;
 }
 
 export async function fetchAvailableColumnsMetadata(
@@ -263,7 +282,7 @@ export async function fetchAvailableColumnsMetadata(
   const data = await gql<{ availableColumnsMetadata: ColumnMetadata[] }>(
     `query($sourceId: String!, $schemaName: String!, $tableName: String!) {
       availableColumnsMetadata(sourceId: $sourceId, schemaName: $schemaName, tableName: $tableName) {
-        name dataType comment nativeFilterType
+        name dataType comment nativeFilterType isPrimaryKey
       }
     }`,
     { sourceId, schemaName, tableName }

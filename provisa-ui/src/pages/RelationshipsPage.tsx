@@ -9,6 +9,8 @@
 // permission from the copyright holder.
 
 import React, { useState, useEffect, useCallback } from "react";
+import { Trash2, Pencil, Sparkles, Save, X } from "lucide-react";
+import { FilterInput } from "../components/admin/FilterInput";
 import {
   fetchRelationships,
   fetchTables,
@@ -53,6 +55,7 @@ const EMPTY_FORM = {
   materialize: false,
   refreshInterval: "300",
   alias: "",
+  graphqlAlias: "",
 };
 
 export function RelationshipsPage() {
@@ -70,6 +73,7 @@ export function RelationshipsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editingRel, setEditingRel] = useState<typeof EMPTY_FORM | null>(null);
+  const [relSearch, setRelSearch] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -125,6 +129,7 @@ export function RelationshipsPage() {
       targetFunctionName: form.targetType === "function" ? form.targetFunctionName : null,
       functionArg: form.targetType === "function" ? form.functionArg : null,
       alias: form.alias || null,
+      graphqlAlias: form.graphqlAlias || null,
     });
     setSaving(null);
     setForm(EMPTY_FORM);
@@ -147,6 +152,7 @@ export function RelationshipsPage() {
       targetFunctionName: editingRel.targetType === "function" ? editingRel.targetFunctionName : null,
       functionArg: editingRel.targetType === "function" ? editingRel.functionArg : null,
       alias: editingRel.alias || null,
+      graphqlAlias: editingRel.graphqlAlias || null,
     });
     if (editingRel.originalId && editingRel.originalId !== editingRel.id) {
       await deleteRelationship(editingRel.originalId);
@@ -215,6 +221,7 @@ export function RelationshipsPage() {
       materialize: rel.materialize,
       refreshInterval: String(rel.refreshInterval ?? 300),
       alias: rel.alias ?? "",
+      graphqlAlias: rel.graphqlAlias ?? "",
     });
   }, [tableDomainById]);
 
@@ -224,17 +231,17 @@ export function RelationshipsPage() {
     <div className="page">
       <div className="page-header">
         <h2>Relationships</h2>
+        <FilterInput value={relSearch} onChange={setRelSearch} placeholder="Filter by source or target…" />
         <div className="page-actions">
           <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? "Cancel" : "Add Relationship"}
+            {showForm ? "Cancel" : "+ Relationship"}
           </button>
           <button
-            className="btn-secondary"
+            className="btn-icon"
+            title={discovering ? "Discovering..." : "Suggest with AI"}
             onClick={handleDiscover}
             disabled={discovering}
-          >
-            {discovering ? "Discovering..." : "Suggest with AI"}
-          </button>
+          ><Sparkles size={14} /></button>
           {rejectedCount > 0 && (
             <button className="btn-secondary" onClick={handleClearRejections}>
               Clear Rejections
@@ -254,8 +261,12 @@ export function RelationshipsPage() {
               <input value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="orders-to-customers" />
             </label>
             <label>
-              Alias (Cypher rel type, UPPER_SNAKE)
+              CQL Alias (UPPER_SNAKE)
               <input value={form.alias} onChange={(e) => setForm({ ...form, alias: e.target.value })} placeholder="PLACED_BY" />
+            </label>
+            <label>
+              GQL Alias (camelCase)
+              <input value={form.graphqlAlias} onChange={(e) => setForm({ ...form, graphqlAlias: e.target.value })} placeholder="e.g. orders" />
             </label>
             <label>
               Source Table
@@ -340,17 +351,21 @@ export function RelationshipsPage() {
         <thead>
           <tr>
             <th>ID</th>
+            <th>Domain</th>
             <th>Source</th>
             <th>Target</th>
-            <th>Alias</th>
+            <th>GQL / CQL Alias</th>
             <th>Cardinality</th>
             <th>Materialize</th>
             <th style={{ whiteSpace: "nowrap" }}>Refresh (s)</th>
-            <th></th>
           </tr>
         </thead>
         <tbody>
-          {rels.map((r) => {
+          {rels.filter((r) => {
+            if (!relSearch.trim()) return true;
+            const q = relSearch.toLowerCase();
+            return r.sourceTable.toLowerCase().includes(q) || r.targetTable.toLowerCase().includes(q);
+          }).map((r) => {
             const id = String(r.id);
             const isExpanded = expanded === id;
             return (
@@ -360,20 +375,18 @@ export function RelationshipsPage() {
                   style={{ cursor: "pointer", background: isExpanded ? "var(--surface)" : undefined }}
                 >
                   <td>{r.id}</td>
-                  <td>{tableDomainById[r.sourceTableId] ? `${tableDomainById[r.sourceTableId]}.${r.sourceTableName}.${r.sourceColumn}` : `${r.sourceTableName}.${r.sourceColumn}`}</td>
-                  <td>{r.targetFunctionName ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})` : (tableDomainById[r.targetTableId!] ? `${tableDomainById[r.targetTableId!]}.${r.targetTableName}.${r.targetColumn}` : `${r.targetTableName}.${r.targetColumn}`)}</td>
-                  <td><code>{r.alias ?? "—"}</code></td>
+                  <td>{tableDomainById[r.sourceTableId] || "—"}</td>
+                  <td>{`${r.sourceTableName}.${r.sourceColumn}`}</td>
+                  <td>{r.targetFunctionName ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})` : `${r.targetTableName}.${r.targetColumn}`}</td>
+                  <td>
+                    <div style={{ fontSize: "0.8rem", lineHeight: 1.4 }}>
+                      <div><span style={{ color: "var(--text-muted)" }}>GQL:</span> <code>{r.graphqlAlias ?? "—"}</code></div>
+                      <div><span style={{ color: "var(--text-muted)" }}>CQL:</span> <code>{r.alias ?? <em style={{ color: "var(--text-muted)" }}>{r.computedCypherAlias ?? "—"}</em>}</code></div>
+                    </div>
+                  </td>
                   <td>{r.cardinality}</td>
                   <td>{r.materialize ? "Yes" : "No"}</td>
-                  <td>{r.refreshInterval}</td>
-                  <td>
-                    <button
-                      className="btn-danger"
-                      onClick={(e) => { e.stopPropagation(); handleDelete(id); }}
-                    >
-                      Delete
-                    </button>
-                  </td>
+                  <td>{r.materialize ? r.refreshInterval : "—"}</td>
                 </tr>
                 {isExpanded && (
                   <tr>
@@ -384,13 +397,15 @@ export function RelationshipsPage() {
                             <dt style={{ color: "var(--text-muted)" }}><strong>ID</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.id}</dd>
                             <dt style={{ color: "var(--text-muted)" }}><strong>Source</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{tableDomainById[r.sourceTableId] ? `${tableDomainById[r.sourceTableId]}.${r.sourceTableName}.${r.sourceColumn}` : `${r.sourceTableName}.${r.sourceColumn}`}</dd>
                             <dt style={{ color: "var(--text-muted)" }}><strong>Target</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.targetFunctionName ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})` : (tableDomainById[r.targetTableId!] ? `${tableDomainById[r.targetTableId!]}.${r.targetTableName}.${r.targetColumn}` : `${r.targetTableName}.${r.targetColumn}`)}</dd>
-                            <dt style={{ color: "var(--text-muted)" }}><strong>Alias</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}><code>{r.alias ?? "—"}</code></dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>GQL Alias</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}><code>{r.graphqlAlias ?? "—"}</code></dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>CQL Alias</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}><code>{r.alias ?? <em style={{ color: "var(--text-muted)" }}>{r.computedCypherAlias ?? "—"}</em>}</code></dd>
                             <dt style={{ color: "var(--text-muted)" }}><strong>Cardinality</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.cardinality}</dd>
                             <dt style={{ color: "var(--text-muted)" }}><strong>Materialize</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.materialize ? "Yes" : "No"}</dd>
-                            <dt style={{ color: "var(--text-muted)" }}><strong>Refresh Interval (s)</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.refreshInterval ?? "—"}</dd>
+                            {r.materialize && <><dt style={{ color: "var(--text-muted)" }}><strong>Refresh Interval (s)</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.refreshInterval ?? "—"}</dd></>}
                           </dl>
                           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                            <button className="btn-secondary" onClick={(e) => { e.stopPropagation(); startEditing(r); }}>Edit</button>
+                            <button className="btn-icon" title="Edit" onClick={(e) => { e.stopPropagation(); startEditing(r); }}><Pencil size={14} /></button>
+                            <button className="btn-icon-danger" title="Delete" onClick={(e) => { e.stopPropagation(); handleDelete(id); }}><Trash2 size={14} /></button>
                           </div>
                         </div>
                       ) : (
@@ -399,8 +414,11 @@ export function RelationshipsPage() {
                             <label>Name
                               <input value={editingRel.id} onChange={(e) => setEditingRel({ ...editingRel, id: e.target.value })} />
                             </label>
-                            <label>Alias (Cypher rel type, UPPER_SNAKE)
-                              <input value={editingRel.alias} onChange={(e) => setEditingRel({ ...editingRel, alias: e.target.value })} placeholder="PLACED_BY" />
+                            <label>CQL Alias (UPPER_SNAKE)
+                              <input value={editingRel.alias} onChange={(e) => setEditingRel({ ...editingRel, alias: e.target.value })} placeholder={r.computedCypherAlias ?? "PLACED_BY"} />
+                            </label>
+                            <label>GQL Alias (camelCase)
+                              <input value={editingRel.graphqlAlias} onChange={(e) => setEditingRel({ ...editingRel, graphqlAlias: e.target.value })} placeholder={r.graphqlAlias ?? ""} />
                             </label>
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
@@ -501,10 +519,8 @@ export function RelationshipsPage() {
                             )}
                           </div>
                           <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                            <button className="btn-secondary" onClick={() => setEditingRel(null)}>Cancel</button>
-                            <button className="btn-primary" onClick={handleEditSave} disabled={!!saving}>
-                              {saving ? "Saving..." : "Save"}
-                            </button>
+                            <button className="btn-icon" title="Cancel" onClick={() => setEditingRel(null)}><X size={14} /></button>
+                            <button className="btn-icon-primary" title="Save" onClick={handleEditSave} disabled={!!saving}><Save size={14} /></button>
                           </div>
                         </div>
                       )}
@@ -552,7 +568,7 @@ export function RelationshipsPage() {
                       </td>
                     </tr>
                     <tr>
-                      <td colSpan={6} style={{ padding: "0.25rem 1rem 0.75rem", color: "var(--text-muted)", fontSize: "0.85rem", fontStyle: "italic", borderTop: "none" }}>
+                      <td colSpan={8} style={{ padding: "0.25rem 1rem 0.75rem", color: "var(--text-muted)", fontSize: "0.85rem", fontStyle: "italic", borderTop: "none" }}>
                         {c.reasoning}
                       </td>
                     </tr>

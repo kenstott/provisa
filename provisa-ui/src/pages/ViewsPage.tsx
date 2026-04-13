@@ -9,6 +9,8 @@
 // permission from the copyright holder.
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Trash2, Pencil, Save, X } from "lucide-react";
+import { FilterInput } from "../components/admin/FilterInput";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -51,6 +53,7 @@ export function ViewsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
+  const [viewSearch, setViewSearch] = useState("");
 
   const sqlSchema = useMemo(() => {
     const schema: Record<string, Record<string, string[]> | string[]> = {};
@@ -245,10 +248,8 @@ export function ViewsPage() {
         </div>
       </label>
       <div className="view-editor-actions">
-        <button className="btn-primary" onClick={handleSave} disabled={saving}>
-          {saving ? "Saving..." : "Save"}
-        </button>
-        <button className="btn-secondary" onClick={handleCancel}>Cancel</button>
+        <button className="btn-icon-primary" title="Save" onClick={handleSave} disabled={saving}><Save size={14} /></button>
+        <button className="btn-icon" title="Cancel" onClick={handleCancel}><X size={14} /></button>
       </div>
     </div>
   );
@@ -259,9 +260,10 @@ export function ViewsPage() {
     <div className="page">
       <div className="page-header">
         <h2>Views</h2>
+        <FilterInput value={viewSearch} onChange={setViewSearch} placeholder="Filter by ID or description…" />
         <div className="page-actions">
           {!isNew && (
-            <button className="btn-primary" onClick={handleNew}>New View</button>
+            <button className="btn-primary" onClick={handleNew}>+ View</button>
           )}
         </div>
       </div>
@@ -287,7 +289,11 @@ export function ViewsPage() {
           </tr>
         </thead>
         <tbody>
-          {views.map((v) => {
+          {views.filter((v) => {
+            if (!viewSearch.trim()) return true;
+            const q = viewSearch.toLowerCase();
+            return v.id.toLowerCase().includes(q) || (v.description ?? "").toLowerCase().includes(q);
+          }).map((v) => {
             const isExpanded = expanded === v.id;
             const isEditing = editing?.id === v.id && !isNew;
             return (
@@ -326,13 +332,13 @@ export function ViewsPage() {
                             <dt style={{ color: "var(--text-muted)" }}><strong>SQL</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}><pre style={{ margin: 0, fontSize: "0.85rem", whiteSpace: "pre-wrap" }}>{v.sql}</pre></dd>
                           </dl>
                           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                            <button className="btn-secondary" onClick={(e) => { e.stopPropagation(); handleEdit(v); }}>Edit</button>
+                            <button className="btn-icon" title="Edit" onClick={(e) => { e.stopPropagation(); handleEdit(v); }}><Pencil size={14} /></button>
                             <button
                               className="btn-secondary"
                               onClick={(e) => { e.stopPropagation(); handleSample(v.id); }}
                               disabled={sampling === v.id}
                             >{sampling === v.id ? "..." : "Sample"}</button>
-                            <button className="btn-danger" onClick={(e) => { e.stopPropagation(); handleDelete(v.id); }}>Delete</button>
+                            <button className="btn-icon-danger" title="Delete" onClick={(e) => { e.stopPropagation(); handleDelete(v.id); }}><Trash2 size={14} /></button>
                           </div>
                         </div>
                       )}

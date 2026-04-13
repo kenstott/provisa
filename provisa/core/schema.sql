@@ -16,9 +16,11 @@ CREATE TABLE IF NOT EXISTS sources (
 );
 
 CREATE TABLE IF NOT EXISTS domains (
-    id          TEXT PRIMARY KEY,
-    description TEXT NOT NULL DEFAULT ''
+    id            TEXT PRIMARY KEY,
+    description   TEXT NOT NULL DEFAULT '',
+    graphql_alias TEXT
 );
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
 
 -- Seed default (no-domain) row so domain_id='' is always a valid FK target
 INSERT INTO domains (id, description) VALUES ('', 'No domain')
@@ -61,6 +63,7 @@ CREATE TABLE IF NOT EXISTS table_columns (
     mask_replace TEXT,
     mask_value   TEXT,
     mask_precision TEXT,
+    is_primary_key BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE (table_id, column_name)
 );
 
@@ -80,6 +83,9 @@ DO $$ BEGIN
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS mask_precision TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS native_filter_type TEXT;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS data_type TEXT;
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS is_primary_key BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS is_foreign_key BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS is_alternate_key BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_enabled BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS path TEXT;

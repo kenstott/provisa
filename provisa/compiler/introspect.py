@@ -103,6 +103,37 @@ def introspect_tables(
     return result
 
 
+def introspect_pk_columns(
+    conn: trino.dbapi.Connection,
+    catalog: str,
+    schema: str,
+    table: str,
+) -> set[str]:
+    """Return set of column names that are part of the PRIMARY KEY constraint.
+
+    Queries TABLE_CONSTRAINTS + KEY_COLUMN_USAGE from INFORMATION_SCHEMA.
+    Returns empty set if the connector does not expose constraint metadata.
+    """
+    cat = _validate_ident(catalog)
+    sch = _escape_literal(schema)
+    tbl = _escape_literal(table)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"SELECT kcu.column_name "
+            f"FROM {cat}.information_schema.table_constraints tc "
+            f"JOIN {cat}.information_schema.key_column_usage kcu "
+            f"  ON tc.constraint_name = kcu.constraint_name "
+            f"  AND tc.table_schema = kcu.table_schema "
+            f"  AND tc.table_name = kcu.table_name "
+            f"WHERE tc.table_schema = '{sch}' AND tc.table_name = '{tbl}' "
+            f"  AND tc.constraint_type = 'PRIMARY KEY'"
+        )
+        return {row[0] for row in cur.fetchall()}
+    except trino.exceptions.TrinoUserError:
+        return set()
+
+
 def introspect_fk_candidates(
     conn: trino.dbapi.Connection,
     catalog: str,

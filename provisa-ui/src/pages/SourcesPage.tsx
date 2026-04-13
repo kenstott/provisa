@@ -9,6 +9,8 @@
 // permission from the copyright holder.
 
 import React, { useState, useEffect } from "react";
+import { Trash2, Pencil, Save, X } from "lucide-react";
+import { FilterInput } from "../components/admin/FilterInput";
 import { fetchSources, deleteSource, createSource, updateSource, renameSource, updateSourceCache, updateSourceNaming, fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -134,6 +136,7 @@ export function SourcesPage() {
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sourceSearch, setSourceSearch] = useState("");
   const [form, setForm] = useState({
     id: "", type: "postgresql", host: "", port: 5432,
     database: "", username: "", password: "",
@@ -714,9 +717,10 @@ export function SourcesPage() {
     <div className="page">
       <div className="page-header">
         <h2>Data Sources</h2>
+        <FilterInput value={sourceSearch} onChange={setSourceSearch} placeholder="Filter by source ID or type…" />
         {!editingSourceId && (
           <button onClick={() => { if (showForm) { handleCancelForm(); } else { setShowForm(true); } }}>
-            {showForm ? "Cancel" : "Add Source"}
+            {showForm ? "Cancel" : "+ Source"}
           </button>
         )}
       </div>
@@ -748,7 +752,11 @@ export function SourcesPage() {
           <tr><th>ID</th><th>Type</th><th>Host</th><th>Port</th><th>Database</th><th>Naming</th><th>Cache</th><th>Effective TTL</th><th></th></tr>
         </thead>
         <tbody>
-          {sources.map((s) => {
+          {sources.filter((s) => {
+            if (!sourceSearch.trim()) return true;
+            const q = sourceSearch.toLowerCase();
+            return s.id.toLowerCase().includes(q) || s.type.toLowerCase().includes(q);
+          }).map((s) => {
             const isExpanded = expanded === s.id;
             const isEditing = editingSourceId === s.id;
             return (
@@ -784,13 +792,6 @@ export function SourcesPage() {
                         {refreshingSourceId === s.id ? "Refreshing..." : "Refresh Schema"}
                       </button>
                     )}
-                    <ConfirmDialog
-                      title={`Delete source "${s.id}"?`}
-                      consequence={`This will remove the data source "${s.id}" and may break tables that reference it.`}
-                      onConfirm={async () => { await deleteSource(s.id); if (expanded === s.id) setExpanded(null); load(); }}
-                    >
-                      {(open) => <button className="destructive" onClick={open}>Delete</button>}
-                    </ConfirmDialog>
                   </td>
                 </tr>
                 {isExpanded && (
@@ -812,8 +813,8 @@ export function SourcesPage() {
                           </label>
                           {renderFormFields()}
                           <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", alignItems: "flex-start", alignSelf: "end" }}>
-                            <button type="button" className="btn-secondary" style={{ padding: "0.5rem 1rem", fontSize: "0.875rem", lineHeight: "1.25" }} onClick={handleCancelForm}>Cancel</button>
-                            <button type="submit" style={{ padding: "0.5rem 1rem", fontSize: "0.875rem", lineHeight: "1.25" }}>Save</button>
+                            <button type="button" className="btn-icon" title="Cancel" onClick={handleCancelForm}><X size={14} /></button>
+                            <button type="submit" className="btn-icon-primary" title="Save"><Save size={14} /></button>
                           </div>
                         </form>
                       ) : (
@@ -837,7 +838,14 @@ export function SourcesPage() {
                             ))}
                           </dl>
                           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                            <button className="btn-secondary" onClick={(e) => { e.stopPropagation(); handleEdit(s); }}>Edit</button>
+                            <button className="btn-icon" title="Edit" onClick={(e) => { e.stopPropagation(); handleEdit(s); }}><Pencil size={14} /></button>
+                            <ConfirmDialog
+                              title={`Delete source "${s.id}"?`}
+                              consequence={`This will remove the data source "${s.id}" and may break tables that reference it.`}
+                              onConfirm={async () => { await deleteSource(s.id); if (expanded === s.id) setExpanded(null); load(); }}
+                            >
+                              {(open) => <button className="btn-icon-danger" title="Delete" onClick={(e) => { e.stopPropagation(); open(); }}><Trash2 size={14} /></button>}
+                            </ConfirmDialog>
                           </div>
                         </div>
                       )}

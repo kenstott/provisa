@@ -9,6 +9,8 @@
 // permission from the copyright holder.
 
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { Trash2, Pencil, Save, X } from "lucide-react";
+import { FilterInput } from "../components/admin/FilterInput";
 import { createPortal } from "react-dom";
 import {
   fetchRoles,
@@ -125,12 +127,14 @@ export function SecurityPage() {
   const [roleForm, setRoleForm] = useState(EMPTY_ROLE);
   const [expandedRole, setExpandedRole] = useState<string | null>(null);
   const [editingRoleInRow, setEditingRoleInRow] = useState<string | null>(null);
+  const [roleSearch, setRoleSearch] = useState("");
 
   // RLS Rules
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [ruleForm, setRuleForm] = useState(EMPTY_RULE);
   const [expandedRule, setExpandedRule] = useState<number | null>(null);
   const [editingRuleInRow, setEditingRuleInRow] = useState<number | null>(null);
+  const [ruleSearch, setRuleSearch] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -277,12 +281,13 @@ export function SecurityPage() {
       {/* Roles Section */}
       <div className="page-header">
         <h2>Roles</h2>
+        <FilterInput value={roleSearch} onChange={setRoleSearch} placeholder="Filter by role ID…" />
         <div className="page-actions">
           <button className="btn-primary" onClick={() => {
             if (showRoleForm) { setShowRoleForm(false); }
             else { setExpandedRole(null); handleNewRole(); }
           }}>
-            {showRoleForm ? "Cancel" : "Add Role"}
+            {showRoleForm ? "Cancel" : "+ Role"}
           </button>
         </div>
       </div>
@@ -326,9 +331,7 @@ export function SecurityPage() {
             />
           </label>
           <div style={{ gridColumn: "1 / -1", display: "flex", justifyContent: "flex-end" }}>
-            <button className="btn-primary" onClick={handleSaveRole} disabled={saving}>
-              {saving ? "Saving..." : "Save"}
-            </button>
+            <button className="btn-icon-primary" title="Save" onClick={handleSaveRole} disabled={saving}><Save size={14} /></button>
           </div>
         </div>
       )}
@@ -338,7 +341,7 @@ export function SecurityPage() {
           <tr><th>ID</th><th>Capabilities</th><th>Domain Access</th></tr>
         </thead>
         <tbody>
-          {roles.map((r) => (
+          {roles.filter((r) => !roleSearch.trim() || r.id.toLowerCase().includes(roleSearch.toLowerCase())).map((r) => (
             <React.Fragment key={r.id}>
               <tr
                 style={{ cursor: "pointer", background: expandedRole === r.id ? "var(--surface)" : undefined }}
@@ -357,8 +360,8 @@ export function SecurityPage() {
                         <div><strong>Capabilities:</strong> {r.capabilities.join(", ") || "none"}</div>
                         <div><strong>Domain Access:</strong> {r.domain_access.join(", ") || "none"}</div>
                         <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                          <button className="btn-secondary" onClick={(e) => { e.stopPropagation(); startEditingRole(r); }}>Edit</button>
-                          <button className="btn-danger" onClick={(e) => { e.stopPropagation(); handleDeleteRole(r.id); }}>Delete</button>
+                          <button className="btn-icon" title="Edit" onClick={(e) => { e.stopPropagation(); startEditingRole(r); }}><Pencil size={14} /></button>
+                          <button className="btn-icon-danger" title="Delete" onClick={(e) => { e.stopPropagation(); handleDeleteRole(r.id); }}><Trash2 size={14} /></button>
                         </div>
                       </div>
                     ) : (
@@ -390,10 +393,8 @@ export function SecurityPage() {
                           />
                         </label>
                         <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                          <button className="btn-secondary" onClick={() => setEditingRoleInRow(null)}>Cancel</button>
-                          <button className="btn-primary" onClick={handleSaveRole} disabled={saving}>
-                            {saving ? "Saving..." : "Save"}
-                          </button>
+                          <button className="btn-icon" title="Cancel" onClick={() => setEditingRoleInRow(null)}><X size={14} /></button>
+                          <button className="btn-icon-primary" title="Save" onClick={handleSaveRole} disabled={saving}><Save size={14} /></button>
                         </div>
                       </div>
                     )}
@@ -408,12 +409,13 @@ export function SecurityPage() {
       {/* RLS Rules Section */}
       <div className="page-header" style={{ marginTop: "2rem" }}>
         <h2>RLS Rules</h2>
+        <FilterInput value={ruleSearch} onChange={setRuleSearch} placeholder="Filter by role or table…" />
         <div className="page-actions">
           <button className="btn-primary" onClick={() => {
             if (showRuleForm) { setShowRuleForm(false); }
             else { setExpandedRule(null); handleNewRule(); }
           }}>
-            {showRuleForm ? "Cancel" : "Add RLS Rule"}
+            {showRuleForm ? "Cancel" : "+ RLS"}
           </button>
         </div>
       </div>
@@ -471,9 +473,7 @@ export function SecurityPage() {
             </label>
           </div>
           <div className="form-row">
-            <button className="btn-primary" onClick={handleSaveRule} disabled={saving}>
-              {saving ? "Saving..." : "Save"}
-            </button>
+            <button className="btn-icon-primary" title="Save" onClick={handleSaveRule} disabled={saving}><Save size={14} /></button>
           </div>
         </div>
       )}
@@ -483,7 +483,11 @@ export function SecurityPage() {
           <tr><th>ID</th><th>Table</th><th>Role</th><th>Filter</th></tr>
         </thead>
         <tbody>
-          {rules.map((r) => (
+          {rules.filter((r) => {
+            if (!ruleSearch.trim()) return true;
+            const q = ruleSearch.toLowerCase();
+            return r.roleId.toLowerCase().includes(q) || (tableLabelById[r.tableId] ?? String(r.tableId)).toLowerCase().includes(q);
+          }).map((r) => (
             <React.Fragment key={r.id}>
               <tr
                 style={{ cursor: "pointer", background: expandedRule === r.id ? "var(--surface)" : undefined }}
@@ -504,8 +508,8 @@ export function SecurityPage() {
                         <div><strong>Role:</strong> {r.roleId}</div>
                         <div><strong>Filter:</strong> <code>{r.filterExpr}</code></div>
                         <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                          <button className="btn-secondary" onClick={(e) => { e.stopPropagation(); startEditingRule(r); }}>Edit</button>
-                          <button className="btn-danger" onClick={(e) => { e.stopPropagation(); handleDeleteRule(r); }}>Delete</button>
+                          <button className="btn-icon" title="Edit" onClick={(e) => { e.stopPropagation(); startEditingRule(r); }}><Pencil size={14} /></button>
+                          <button className="btn-icon-danger" title="Delete" onClick={(e) => { e.stopPropagation(); handleDeleteRule(r); }}><Trash2 size={14} /></button>
                         </div>
                       </div>
                     ) : (
@@ -561,10 +565,8 @@ export function SecurityPage() {
                           </label>
                         </div>
                         <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                          <button className="btn-secondary" onClick={() => setEditingRuleInRow(null)}>Cancel</button>
-                          <button className="btn-primary" onClick={handleSaveRule} disabled={saving}>
-                            {saving ? "Saving..." : "Save"}
-                          </button>
+                          <button className="btn-icon" title="Cancel" onClick={() => setEditingRuleInRow(null)}><X size={14} /></button>
+                          <button className="btn-icon-primary" title="Save" onClick={handleSaveRule} disabled={saving}><Save size={14} /></button>
                         </div>
                       </div>
                     )}

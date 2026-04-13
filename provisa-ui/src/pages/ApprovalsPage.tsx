@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { useState, useEffect, useCallback } from "react";
+import { FilterInput } from "../components/admin/FilterInput";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { graphql } from "cm6-graphql";
@@ -436,13 +437,7 @@ export function ApprovalsPage() {
     <div className="page">
       <h2>Approval Queue</h2>
       <div className="approvals-toolbar">
-        <input
-          className="approvals-search"
-          type="search"
-          placeholder="Search by name, status, submitter..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+        <FilterInput value={search} onChange={setSearch} placeholder="Search by name, status, submitter..." />
         <div className="approvals-status-filters">
           {STATUS_FILTERS.map((s) => (
             <button

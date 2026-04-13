@@ -91,6 +91,8 @@ class CompilationContext:
     column_paths: dict[tuple[int, str], str] = field(default_factory=dict)
     # table_id → [(col_name, trino_type)] for aggregate column metadata
     aggregate_columns: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
+    # table_id → user-designated PK column names (informational; empty = heuristic only)
+    pk_columns: dict[int, list[str]] = field(default_factory=dict)
 
 
 # --- Compiled query result ---
@@ -151,7 +153,7 @@ def build_context(si: object) -> CompilationContext:
     This mirrors the logic in schema_gen._build_visible_tables and _assign_names
     to produce the same field_name/type_name mapping.
     """
-    from provisa.compiler.naming import generate_name, to_type_name
+    from provisa.compiler.naming import generate_name, to_type_name, domain_gql_alias
     from provisa.compiler.schema_gen import SchemaInput, _build_visible_tables, _assign_names
 
     assert isinstance(si, SchemaInput)
@@ -161,7 +163,12 @@ def build_context(si: object) -> CompilationContext:
     if not tables:
         return ctx
 
-    _assign_names(tables, si.naming_rules, domain_prefix=si.domain_prefix)
+    domain_alias_map = {
+        d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias"))
+        for d in si.domains
+        if domain_gql_alias(d["id"], d.get("graphql_alias"))
+    }
+    _assign_names(tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map)
 
     table_lookup = {t.table_id: t for t in tables}
 
@@ -197,6 +204,12 @@ def build_context(si: object) -> CompilationContext:
             if col_meta:
                 col_info.append((col_name, col_meta.data_type))
         ctx.aggregate_columns[t.table_id] = col_info
+
+        # Store user-designated PK columns
+        ctx.pk_columns[t.table_id] = [
+            col["column_name"] for col in t.visible_columns
+            if col.get("is_primary_key")
+        ]
 
         # Populate column paths for JSON extraction
         for col in t.visible_columns:

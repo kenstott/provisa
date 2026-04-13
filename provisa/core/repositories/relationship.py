@@ -73,6 +73,30 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
             ) from e
         raise
 
+    # Mark source_column as FK on source table
+    if rel.source_column:
+        await conn.execute(
+            "UPDATE table_columns SET is_foreign_key = TRUE WHERE table_id = $1 AND column_name = $2",
+            source_tbl["id"], rel.source_column,
+        )
+
+    # Mark target_column as PK (or AK if another PK already exists) on target table
+    if target_tbl_id and rel.target_column:
+        conflicting_pk = await conn.fetchval(
+            "SELECT COUNT(*) FROM table_columns WHERE table_id = $1 AND is_primary_key = TRUE AND column_name != $2",
+            target_tbl_id, rel.target_column,
+        )
+        if conflicting_pk:
+            await conn.execute(
+                "UPDATE table_columns SET is_alternate_key = TRUE WHERE table_id = $1 AND column_name = $2",
+                target_tbl_id, rel.target_column,
+            )
+        else:
+            await conn.execute(
+                "UPDATE table_columns SET is_primary_key = TRUE WHERE table_id = $1 AND column_name = $2",
+                target_tbl_id, rel.target_column,
+            )
+
 
 async def get(conn: asyncpg.Connection, rel_id: str) -> dict | None:
     row = await conn.fetchrow("SELECT * FROM relationships WHERE id = $1", rel_id)

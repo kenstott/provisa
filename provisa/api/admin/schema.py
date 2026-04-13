@@ -106,7 +106,7 @@ def _source_from_row(row) -> SourceType:
 
 
 def _domain_from_row(row) -> DomainType:
-    return DomainType(id=row["id"], description=row["description"])
+    return DomainType(id=row["id"], description=row["description"], graphql_alias=row["graphql_alias"])
 
 
 def _role_from_row(row) -> RoleType:
@@ -117,6 +117,7 @@ def _role_from_row(row) -> RoleType:
 
 
 from provisa.api.admin.db_queries import derive_graphql_alias as _derive_graphql_alias_fn
+from provisa.api.admin.db_queries import derive_cypher_alias as _derive_cypher_alias_fn
 
 
 def _derive_graphql_alias(target_table_name: str, cardinality: str, alias: str | None) -> str | None:
@@ -126,15 +127,17 @@ def _derive_graphql_alias(target_table_name: str, cardinality: str, alias: str |
 def _rel_from_row(row) -> RelationshipType:
     cardinality = row["cardinality"]
     target_table_name = row.get("target_table_name") or ""
+    source_column = row.get("source_column") or ""
     alias = row.get("alias")
     persisted_graphql_alias = row.get("graphql_alias") or None
     graphql_alias = persisted_graphql_alias or _derive_graphql_alias(target_table_name, cardinality, alias)
+    computed_cypher_alias = None if alias else _derive_cypher_alias_fn(source_column, cardinality)
     return RelationshipType(
         id=row["id"], source_table_id=row["source_table_id"],
         target_table_id=row.get("target_table_id"),
         source_table_name=row.get("source_table_name", ""),
         target_table_name=target_table_name,
-        source_column=row["source_column"],
+        source_column=source_column,
         target_column=row.get("target_column"),
         cardinality=cardinality,
         materialize=row.get("materialize", False),
@@ -143,6 +146,7 @@ def _rel_from_row(row) -> RelationshipType:
         function_arg=row.get("function_arg"),
         alias=alias,
         graphql_alias=graphql_alias,
+        computed_cypher_alias=computed_cypher_alias,
     )
 
 
@@ -157,7 +161,7 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
     col_rows = await conn.fetch(
         "SELECT id, column_name, visible_to, writable_by, unmasked_to, "
         "mask_type, mask_pattern, mask_replace, mask_value, mask_precision, "
-        "alias, description, native_filter_type "
+        "alias, description, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key "
         "FROM table_columns WHERE table_id = $1 ORDER BY id", row["id"],
     )
     columns = [
@@ -173,11 +177,14 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
             mask_precision=r.get("mask_precision"),
             alias=r.get("alias"), description=r.get("description"),
             native_filter_type=r.get("native_filter_type"),
+            is_primary_key=bool(r.get("is_primary_key") or False),
+            is_foreign_key=bool(r.get("is_foreign_key") or False),
+            is_alternate_key=bool(r.get("is_alternate_key") or False),
         )
         for r in col_rows
     ]
     presets = [
-        ColumnPresetType(column=p["column"], source=p["source"], name=p.get("name"), value=p.get("value"))
+        ColumnPresetType(column=p["column"], source=p["source"], name=p.get("name"), value=p.get("value"), data_type=p.get("data_type"))
         for p in (row.get("column_presets") or [])
     ]
     return RegisteredTableType(
@@ -294,7 +301,7 @@ class Query:
             return ["openapi"]
         catalog = source_id.replace("-", "_")
         # Admin/platform schemas to hide from data UI
-        _HIDDEN_SCHEMAS = {"information_schema", "pg_catalog"}
+        _HIDDEN_SCHEMAS = {"information_schema", "pg_catalog", "mv_cache"}
         try:
             cursor = state.trino_conn.cursor()
             cursor.execute(
@@ -331,22 +338,20 @@ class Query:
             "persisted_queries", "approval_log", "relationship_candidates",
             "kafka_sources", "kafka_topics", "kafka_sinks",
             "api_sources", "api_endpoints", "api_endpoint_candidates",
+            "tracked_webhooks",
         }
-        try:
-            cursor = state.trino_conn.cursor()
-            cursor.execute(
-                f"SELECT table_name, comment FROM \"{catalog}\".information_schema.tables "
-                f"WHERE table_schema = '{schema_name}' "
-                f"AND table_type = 'BASE TABLE' "
-                f"ORDER BY table_name"
-            )
-            return [
-                AvailableTableType(name=row[0], comment=row[1])
-                for row in cursor.fetchall()
-                if row[0] not in _ADMIN_TABLES
-            ]
-        except Exception:
-            return []
+        cursor = state.trino_conn.cursor()
+        cursor.execute(
+            f"SELECT table_name FROM \"{catalog}\".information_schema.tables "
+            f"WHERE table_schema = '{schema_name}' "
+            f"AND table_type = 'BASE TABLE' "
+            f"ORDER BY table_name"
+        )
+        return [
+            AvailableTableType(name=row[0], comment=None)
+            for row in cursor.fetchall()
+            if row[0] not in _ADMIN_TABLES
+        ]
 
     @strawberry.field
     async def available_functions(
@@ -420,6 +425,8 @@ class Query:
             ]
         catalog = source_id.replace("-", "_")
         try:
+            from provisa.compiler.introspect import introspect_pk_columns
+            pk_cols = introspect_pk_columns(state.trino_conn, catalog, schema_name, table_name)
             cursor = state.trino_conn.cursor()
             cursor.execute(
                 f"SELECT column_name, data_type, comment "
@@ -429,7 +436,7 @@ class Query:
                 f"ORDER BY ordinal_position"
             )
             return [
-                AvailableColumnType(name=row[0], data_type=row[1], comment=row[2])
+                AvailableColumnType(name=row[0], data_type=row[1], comment=row[2], is_primary_key=row[0] in pk_cols)
                 for row in cursor.fetchall()
             ]
         except Exception:
@@ -581,6 +588,79 @@ class Query:
             ))
         return result
 
+    # ── AI: Generate table description ──
+
+    @strawberry.field
+    async def generate_table_description(self, table_id: str) -> str:
+        """Use LLM to generate a description for a registered table."""
+        import os
+        pool = await _get_pool()
+        tid = int(table_id)
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", tid)
+            if row is None:
+                return ""
+            col_rows = await conn.fetch(
+                "SELECT column_name FROM table_columns WHERE table_id = $1 ORDER BY id", tid
+            )
+        table_name = row["table_name"]
+        schema_name = row["schema_name"]
+        source_id = row["source_id"]
+        columns = [r["column_name"] for r in col_rows]
+        prompt = (
+            f"You are a data catalog assistant. Write a concise one-to-two sentence description "
+            f"for a database table named '{table_name}' in schema '{schema_name}' "
+            f"from source '{source_id}'. "
+            f"Columns: {', '.join(columns)}. "
+            f"Respond with only the description text, no preamble."
+        )
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            return ""
+        import anthropic
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+        message = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=256,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text.strip()
+
+    @strawberry.field
+    async def generate_column_description(self, table_id: str, column_name: str) -> str:
+        """Use LLM to generate a description for a single column."""
+        import os
+        pool = await _get_pool()
+        tid = int(table_id)
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", tid)
+            if row is None:
+                return ""
+            col_rows = await conn.fetch(
+                "SELECT column_name FROM table_columns WHERE table_id = $1 ORDER BY id", tid
+            )
+        table_name = row["table_name"]
+        schema_name = row["schema_name"]
+        source_id = row["source_id"]
+        all_columns = [r["column_name"] for r in col_rows]
+        prompt = (
+            f"You are a data catalog assistant. Write a concise one-sentence description "
+            f"for the column '{column_name}' in table '{table_name}' (schema '{schema_name}', "
+            f"source '{source_id}'). Other columns in this table: {', '.join(c for c in all_columns if c != column_name)}. "
+            f"Respond with only the description text, no preamble."
+        )
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            return ""
+        import anthropic
+        client = anthropic.AsyncAnthropic(api_key=api_key)
+        message = await client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=128,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text.strip()
+
 
 @strawberry.type
 class Mutation:
@@ -670,7 +750,7 @@ class Mutation:
         from provisa.core.repositories import domain as domain_repo
 
         pool = await _get_pool()
-        model = DomainModel(id=input.id, description=input.description)
+        model = DomainModel(id=input.id, description=input.description, graphql_alias=input.graphql_alias or None)
         async with pool.acquire() as conn:
             await domain_repo.upsert(conn, model)
         return MutationResult(success=True, message=f"Domain {input.id!r} created")
@@ -731,6 +811,9 @@ class Mutation:
                 alias=c.alias,
                 description=c.description,
                 native_filter_type=c.native_filter_type,
+                is_primary_key=c.is_primary_key,
+                is_foreign_key=c.is_foreign_key,
+                is_alternate_key=c.is_alternate_key,
             )
             for c in input.columns
         ]
@@ -744,7 +827,7 @@ class Mutation:
 
         from provisa.core.models import ColumnPreset as ColumnPresetModel
         presets = [
-            ColumnPresetModel(column=cp.column, source=cp.source, name=cp.name, value=cp.value)
+            ColumnPresetModel(column=cp.column, source=cp.source, name=cp.name, value=cp.value, data_type=cp.data_type)
             for cp in input.column_presets
         ]
         model = TableModel(
@@ -799,12 +882,15 @@ class Mutation:
                 alias=c.alias,
                 description=c.description,
                 native_filter_type=c.native_filter_type,
+                is_primary_key=c.is_primary_key,
+                is_foreign_key=c.is_foreign_key,
+                is_alternate_key=c.is_alternate_key,
             )
             for c in input.columns
         ]
         from provisa.core.models import ColumnPreset as ColumnPresetModel
         presets = [
-            ColumnPresetModel(column=cp.column, source=cp.source, name=cp.name, value=cp.value)
+            ColumnPresetModel(column=cp.column, source=cp.source, name=cp.name, value=cp.value, data_type=cp.data_type)
             for cp in input.column_presets
         ]
         model = TableModel(

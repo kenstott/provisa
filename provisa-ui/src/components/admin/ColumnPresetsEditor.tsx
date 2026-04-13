@@ -14,6 +14,7 @@ import type { ColumnPreset } from "../../types/admin";
 interface Props {
   presets: ColumnPreset[];
   columns: string[];
+  columnTypes?: Record<string, string>;
   onChange: (presets: ColumnPreset[]) => void;
 }
 
@@ -23,9 +24,53 @@ const SOURCES: { value: ColumnPreset["source"]; label: string }[] = [
   { value: "literal", label: "literal (fixed value)" },
 ];
 
-const EMPTY: ColumnPreset = { column: "", source: "now", name: null, value: null };
+const TIMESTAMP_TYPES = new Set(["timestamp", "timestamp with time zone", "timestamp without time zone", "timestamptz", "datetime"]);
+const DATE_TYPES = new Set(["date"]);
+const TIME_TYPES = new Set(["time", "time with time zone", "time without time zone", "timetz"]);
+const NUMERIC_TYPES = new Set(["integer", "int", "bigint", "smallint", "tinyint", "float", "double", "real", "decimal", "numeric", "double precision"]);
+const BOOL_TYPES = new Set(["boolean", "bool"]);
 
-export function ColumnPresetsEditor({ presets, columns, onChange }: Props) {
+function normalizeType(t: string): string {
+  return t.toLowerCase().split("(")[0].trim();
+}
+
+function isTemporalType(t: string): boolean {
+  const n = normalizeType(t);
+  return TIMESTAMP_TYPES.has(n) || DATE_TYPES.has(n) || TIME_TYPES.has(n);
+}
+
+function getLiteralInput(colType: string | undefined, value: string | null, onChange: (v: string | null) => void) {
+  if (!colType) {
+    return <input placeholder="Literal value" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
+  }
+  const n = normalizeType(colType);
+  if (NUMERIC_TYPES.has(n)) {
+    return <input type="number" placeholder="Numeric value" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
+  }
+  if (TIMESTAMP_TYPES.has(n)) {
+    return <input type="datetime-local" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
+  }
+  if (DATE_TYPES.has(n)) {
+    return <input type="date" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
+  }
+  if (TIME_TYPES.has(n)) {
+    return <input type="time" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
+  }
+  if (BOOL_TYPES.has(n)) {
+    return (
+      <select value={value ?? ""} onChange={(e) => onChange(e.target.value || null)}>
+        <option value="">— select —</option>
+        <option value="true">true</option>
+        <option value="false">false</option>
+      </select>
+    );
+  }
+  return <input placeholder="Literal value" value={value ?? ""} onChange={(e) => onChange(e.target.value || null)} />;
+}
+
+const EMPTY: ColumnPreset = { column: "", source: "now", name: null, value: null, dataType: null };
+
+export function ColumnPresetsEditor({ presets, columns, columnTypes, onChange }: Props) {
   const [draft, setDraft] = useState<ColumnPreset>({ ...EMPTY });
 
   const remove = (i: number) => {
@@ -69,7 +114,13 @@ export function ColumnPresetsEditor({ presets, columns, onChange }: Props) {
       <div className="cp-add-row">
         <select
           value={draft.column}
-          onChange={(e) => setDraft((d) => ({ ...d, column: e.target.value }))}
+          onChange={(e) => {
+            const col = e.target.value;
+            const colType = columnTypes?.[col] ?? null;
+            const temporal = colType ? isTemporalType(colType) : true;
+            const nextSource = draft.source === "now" && !temporal ? "literal" : draft.source;
+            setDraft((d) => ({ ...d, column: col, source: nextSource as ColumnPreset["source"], name: null, value: null, dataType: colType }));
+          }}
         >
           <option value="">— column —</option>
           {columns.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -78,7 +129,12 @@ export function ColumnPresetsEditor({ presets, columns, onChange }: Props) {
           value={draft.source}
           onChange={(e) => setDraft((d) => ({ ...d, source: e.target.value as ColumnPreset["source"], name: null, value: null }))}
         >
-          {SOURCES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          {SOURCES.filter((s) => {
+            if (s.value === "now" && draft.column && columnTypes?.[draft.column]) {
+              return isTemporalType(columnTypes[draft.column]);
+            }
+            return true;
+          }).map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
         {draft.source === "header" && (
           <input
@@ -87,14 +143,12 @@ export function ColumnPresetsEditor({ presets, columns, onChange }: Props) {
             onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value || null }))}
           />
         )}
-        {draft.source === "literal" && (
-          <input
-            placeholder="Literal value"
-            value={draft.value ?? ""}
-            onChange={(e) => setDraft((d) => ({ ...d, value: e.target.value || null }))}
-          />
+        {draft.source === "literal" && getLiteralInput(
+          draft.column ? columnTypes?.[draft.column] : undefined,
+          draft.value,
+          (v) => setDraft((d) => ({ ...d, value: v }))
         )}
-        <button onClick={add} disabled={!draft.column}>Add</button>
+        <button onClick={add} disabled={!draft.column}>+</button>
       </div>
     </div>
   );

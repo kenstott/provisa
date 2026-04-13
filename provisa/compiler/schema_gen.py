@@ -41,7 +41,7 @@ from graphql.language import DirectiveLocation
 from provisa.compiler.aggregate_gen import build_aggregate_types
 from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.naming import apply_convention, domain_to_sql_name, generate_name, to_type_name
+from provisa.compiler.naming import apply_convention, domain_gql_alias, domain_to_sql_name, generate_name, to_type_name
 from provisa.compiler.type_map import FILTER_TYPE_MAP, JSONScalar, trino_to_graphql
 
 
@@ -287,6 +287,7 @@ def _assign_names(
     tables: list[_TableInfo],
     naming_rules: list[dict],
     domain_prefix: bool = False,
+    domain_alias_map: dict[str, str] | None = None,
 ) -> None:
     """Assign unique GraphQL names to each table."""
     # Group by domain for uniqueness scoping
@@ -296,7 +297,6 @@ def _assign_names(
 
     for domain_id, group in domain_groups.items():
         domain_table_names = [t.table_name for t in group]
-        domain_snake = domain_to_sql_name(domain_id)
         for t in group:
             t.field_name = generate_name(
                 t.table_name, t.schema_name, t.source_id,
@@ -304,8 +304,16 @@ def _assign_names(
                 alias=t.alias,
             )
             if domain_prefix:
-                t.field_name = f"{domain_snake}__{t.field_name}"
-            t.type_name = to_type_name(t.field_name)
+                alias = (domain_alias_map or {}).get(domain_id)
+                if alias:
+                    t.field_name = f"{alias}__{t.field_name}"
+                    t.type_name = f"{alias.upper()}_{to_type_name(t.field_name.split('__', 1)[1])}"
+                else:
+                    domain_snake = domain_to_sql_name(domain_id)
+                    t.field_name = f"{domain_snake}__{t.field_name}"
+                    t.type_name = to_type_name(t.field_name)
+            else:
+                t.type_name = to_type_name(t.field_name)
 
 
 def _build_column_fields(
@@ -505,6 +513,7 @@ def _build_action_fields(
     si: SchemaInput,
     obj_types: dict[int, GraphQLObjectType],
     tables: list["_TableInfo"],
+    domain_alias_map: dict[str, str] | None = None,
 ) -> tuple[dict[str, GraphQLField], dict[str, GraphQLField]]:
     """Build query/mutation fields for tracked functions and webhooks.
 
@@ -576,7 +585,8 @@ def _build_action_fields(
         gql_field = GraphQLField(gql_return, args=args, description=func.get("description"))
         field_key = func["name"]
         if si.domain_prefix and domain_id:
-            field_key = f"{domain_to_sql_name(domain_id)}__{field_key}"
+            alias = (domain_alias_map or {}).get(domain_id) or domain_to_sql_name(domain_id)
+            field_key = f"{alias}__{field_key}"
         if func.get("kind", "mutation") == "query":
             extra_query[field_key] = gql_field
         else:
@@ -629,7 +639,8 @@ def _build_action_fields(
         gql_field = GraphQLField(gql_return, args=args, description=wh.get("description"))
         field_key = wh["name"]
         if si.domain_prefix and domain_id:
-            field_key = f"{domain_to_sql_name(domain_id)}__{field_key}"
+            alias = (domain_alias_map or {}).get(domain_id) or domain_to_sql_name(domain_id)
+            field_key = f"{alias}__{field_key}"
         if wh.get("kind", "mutation") == "query":
             extra_query[field_key] = gql_field
         else:
@@ -705,7 +716,12 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             f"Check domain_access and column visibility."
         )
 
-    _assign_names(tables, si.naming_rules, domain_prefix=si.domain_prefix)
+    domain_alias_map = {
+        d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias"))
+        for d in si.domains
+        if domain_gql_alias(d["id"], d.get("graphql_alias"))
+    }
+    _assign_names(tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map)
 
     # Build base column fields (enum_types wires PG enum → GraphQLEnumType, REQ-221)
     for t in tables:
@@ -944,7 +960,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
                 args={"where": GraphQLArgument(GraphQLNonNull(where_input))},
             )
 
-    extra_query, extra_mutation = _build_action_fields(si, gql_types, tables)
+    extra_query, extra_mutation = _build_action_fields(si, gql_types, tables, domain_alias_map)
     query_fields.update(extra_query)
     mutation_fields.update(extra_mutation)
 

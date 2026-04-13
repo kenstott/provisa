@@ -196,6 +196,7 @@ class Source(BaseModel):
 class Domain(BaseModel):
     id: str
     description: str = ""
+    graphql_alias: str | None = None
 
 
 class NamingRule(BaseModel):
@@ -223,6 +224,9 @@ class Column(BaseModel):
     description: str | None = None  # GraphQL field description
     path: str | None = None  # JSON extraction path (e.g. "payload.order_id")
     native_filter_type: str | None = None  # "path_param" | "query_param" for OpenAPI sources
+    is_primary_key: bool = False  # user-designated PK (informational, not enforced)
+    is_foreign_key: bool = False  # derived from relationships (source_column side)
+    is_alternate_key: bool = False  # derived from relationships (target_column when PK already exists)
 
 
 class ColumnPreset(BaseModel):
@@ -232,6 +236,7 @@ class ColumnPreset(BaseModel):
     source: str  # "header", "now", "literal"
     name: str | None = None  # header name (for source=header)
     value: str | None = None  # literal value (for source=literal)
+    data_type: str | None = None  # Trino data type of the column (for coercion)
 
 
 class LiveOutputConfig(BaseModel):

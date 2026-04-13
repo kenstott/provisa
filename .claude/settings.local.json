@@ -35,7 +35,8 @@
       "mcp__puppeteer__puppeteer_evaluate",
       "mcp__filesystem__read_text_file",
       "mcp__puppeteer__puppeteer_select",
-      "mcp__puppeteer__puppeteer_fill"
+      "mcp__puppeteer__puppeteer_fill",
+      "mcp__docker__docker"
     ]
   },
   "enabledMcpjsonServers": [

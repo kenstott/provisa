@@ -40,6 +40,23 @@ def domain_to_sql_name(domain_id: str) -> str:
     return re.sub(r"[^a-zA-Z0-9]", "_", domain_id).strip("_")
 
 
+def domain_gql_alias(domain_id: str, stored: str | None = None) -> str:
+    """Return stored alias, or compute first-letter acronym from domain id.
+
+    Stored alias is used as-is (lowercase for ops, UPPER for type prefix).
+    Computed default: first letter of each word segment, lowercase.
+    e.g. 'sales_analytics' → 'sa', 'human-resources' → 'hr'.
+    Returns '' for empty domain_id (no prefix).
+    """
+    if stored:
+        return stored.lower()
+    if not domain_id:
+        return ""
+    parts = re.split(r"[^a-zA-Z0-9]+", domain_id)
+    acronym = "".join(p[0] for p in parts if p and p[0].isalpha())
+    return acronym.lower() if acronym else domain_id[0].lower()
+
+
 def _to_snake_case(name: str) -> str:
     """Convert camelCase or PascalCase to snake_case."""
     name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)

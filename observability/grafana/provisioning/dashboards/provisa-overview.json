@@ -141,6 +141,151 @@
       "fieldConfig": {
         "defaults": { "unit": "short" }
       }
+    },
+    {
+      "id": 8,
+      "title": "Federation Engine",
+      "type": "row",
+      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 9,
+      "title": "Running Queries",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 25, "w": 6, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "provisa_federation_engine_running_queries{job=\"otel-collector\"}",
+          "legendFormat": "running"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 20 },
+              { "color": "red", "value": 50 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Queued Queries",
+      "type": "stat",
+      "gridPos": { "x": 6, "y": 25, "w": 6, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "provisa_federation_engine_queued_queries{job=\"otel-collector\"}",
+          "legendFormat": "queued"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Blocked Nodes",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 25, "w": 6, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "provisa_federation_engine_blocked_nodes{job=\"otel-collector\"}",
+          "legendFormat": "blocked"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 2 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "Cluster Memory Free",
+      "type": "timeseries",
+      "gridPos": { "x": 18, "y": 25, "w": 6, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "provisa_federation_engine_cluster_memory_free_bytes{job=\"otel-collector\"}",
+          "legendFormat": "free"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": { "lineWidth": 2 },
+          "color": { "fixedColor": "blue", "mode": "fixed" }
+        }
+      }
+    },
+    {
+      "id": 13,
+      "title": "Query Throughput (completed/s)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 33, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(provisa_federation_engine_completed_queries_total{job=\"otel-collector\"}[1m])",
+          "legendFormat": "completed/s"
+        },
+        {
+          "expr": "rate(provisa_federation_engine_failed_queries_total{job=\"otel-collector\"}[1m])",
+          "legendFormat": "failed/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "ops", "custom": { "lineWidth": 2 } }
+      }
+    },
+    {
+      "id": 14,
+      "title": "Active Tasks",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 33, "w": 12, "h": 8 },
+      "datasource": { "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "provisa_federation_engine_running_task_count{job=\"otel-collector\"}",
+          "legendFormat": "running tasks"
+        },
+        {
+          "expr": "provisa_federation_engine_total_task_count{job=\"otel-collector\"}",
+          "legendFormat": "total tasks"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "short", "custom": { "lineWidth": 2 } }
+      }
     }
   ]
 }
