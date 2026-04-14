@@ -1,11 +1,12 @@
+# syntax=docker/dockerfile:1
 FROM python:3.12-slim
 
 WORKDIR /app
 
 COPY pyproject.toml .
-# wheels/ pre-built by build-dmg.sh for linux/arm64 — no PyPI access needed
-COPY wheels/ /wheels/
-RUN pip install --no-cache-dir --no-index --find-links /wheels . && rm -rf /wheels
+# wheels/ pre-built for airgapped install — mounted at build time, never written as a layer
+RUN --mount=type=bind,source=wheels,target=/wheels \
+    pip install --no-cache-dir --no-index --find-links /wheels .
 
 COPY . .
 
