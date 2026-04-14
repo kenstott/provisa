@@ -417,6 +417,10 @@ jobs:
           name: docker-images
           path: packaging/linux/images/
 
+      - name: Build provisa wheels for linux/amd64
+        run: |
+          pip wheel --no-cache-dir --wheel-dir wheels .
+
       - name: Build AppImage
         run: |
           chmod +x packaging/linux/build-appimage.sh
