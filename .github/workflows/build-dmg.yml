@@ -332,6 +332,7 @@ jobs:
         with:
           packages-dir: dist/
           password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
 
   build-dmg:
     name: Build airgapped macOS DMG (${{ needs.metadata.outputs.channel }})
