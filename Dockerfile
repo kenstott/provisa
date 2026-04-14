@@ -1,14 +1,19 @@
 # syntax=docker/dockerfile:1
-FROM python:3.12-slim
-
+# Stage 1: install Python deps from pre-built wheels (stays on builder layer only)
+FROM python:3.12-slim AS installer
 WORKDIR /app
-
 COPY pyproject.toml .
-# wheels/ pre-built for airgapped install — mounted at build time, never written as a layer
-RUN --mount=type=bind,source=wheels,target=/wheels \
-    pip install --no-cache-dir --no-index --find-links /wheels .
+COPY wheels/ /wheels/
+RUN pip install --no-cache-dir --no-index --find-links /wheels .
 
-COPY . .
+# Stage 2: lean runtime image — no wheels, only app source + installed packages
+FROM python:3.12-slim
+WORKDIR /app
+COPY --from=installer /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=installer /usr/local/bin /usr/local/bin
+COPY main.py pyproject.toml ./
+COPY provisa/ ./provisa/
+COPY config/ ./config/
 
 EXPOSE 8000
 
