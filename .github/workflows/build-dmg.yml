@@ -77,10 +77,28 @@ jobs:
           sudo ./alpine-make-vm-image \
             --image-format qcow2 \
             --image-size 10G \
-            --packages "docker docker-compose-plugin openrc" \
+            --packages "docker docker-compose openrc" \
             --script-chroot \
             provisa-runtime.qcow2 \
             -- packaging/windows/vm/configure-dockerd.sh
+
+      - name: Verify Alpine VM has Docker
+        run: |
+          # Confirm dockerd binary was installed; fail loudly if missing
+          sudo modprobe nbd max_part=8 || true
+          qemu-nbd --connect=/dev/nbd0 provisa-runtime.qcow2
+          sleep 1
+          PART=$(sudo fdisk -l /dev/nbd0 2>/dev/null | awk '/^\/dev\/nbd0p/{print $1; exit}')
+          TMPDIR=$(mktemp -d)
+          sudo mount "${PART}" "$TMPDIR" -o ro || true
+          if [ ! -f "$TMPDIR/usr/bin/dockerd" ] && [ ! -f "$TMPDIR/usr/sbin/dockerd" ]; then
+            echo "ERROR: dockerd not found in Alpine VM — package installation failed"
+            sudo umount "$TMPDIR" || true; qemu-nbd --disconnect /dev/nbd0 || true
+            exit 1
+          fi
+          echo "dockerd found — VM is healthy"
+          sudo umount "$TMPDIR" || true
+          qemu-nbd --disconnect /dev/nbd0 || true
 
       - name: Convert QCOW2 to VMDK (streamOptimized)
         run: |
