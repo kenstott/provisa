@@ -470,9 +470,16 @@ jobs:
           Write-Host "VirtualBox installer downloaded."
 
       - name: Install NSIS
+        shell: pwsh
         run: |
-          choco install nsis --no-progress -y
-          echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            choco install nsis --no-progress -y
+            if ($LASTEXITCODE -eq 0) { break }
+            Write-Host "choco install nsis attempt $attempt failed — retrying in 30s..."
+            Start-Sleep 30
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Build installer
         shell: pwsh
