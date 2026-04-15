@@ -31,8 +31,13 @@ class NodeMapping:
     pk_columns: list[str]  # user-designated PK columns (informational; empty = heuristic only)
     catalog_name: str
     schema_name: str
-    table_name: str
+    table_name: str          # logical name — domain initials prefix stripped (e.g. "orders")
     properties: dict[str, str]  # cypher prop name → SQL column name
+    physical_table_name: str = ""  # physical DB table name; "" means same as table_name
+
+    @property
+    def sql_table_name(self) -> str:
+        return self.physical_table_name or self.table_name
 
 
 @dataclass
@@ -153,9 +158,14 @@ class CypherLabelMap:
             id_col = _resolve_id_column(table_meta.type_name, col_names, target_pk, user_pks)
             props: dict[str, str] = {c: c for c in col_names}
 
-            _, table_label = _split_cypher_labels(field_name)
-            domain_label = _pascal(table_meta.domain_id) if getattr(table_meta, "domain_id", None) else None
+            domain_id = getattr(table_meta, "domain_id", None) or None
+            domain_label = _pascal(domain_id) if domain_id else None
+            table_label = _table_label_from_table_name(table_meta.table_name, domain_id)
             cypher_label = f"{domain_label}:{table_label}" if domain_label else table_label
+            # logical table name: domain initials prefix stripped (lowercase of table_label parts)
+            logical_table = _strip_domain_prefix(table_meta.table_name, domain_id)
+            physical_table = table_meta.table_name
+            physical_kwarg = {"physical_table_name": physical_table} if physical_table != logical_table else {}
 
             nodes[table_meta.type_name] = NodeMapping(
                 label=cypher_label,
@@ -168,8 +178,9 @@ class CypherLabelMap:
                 pk_columns=user_pks,
                 catalog_name=table_meta.catalog_name,
                 schema_name=table_meta.schema_name,
-                table_name=table_meta.table_name,
+                table_name=logical_table,
                 properties=props,
+                **physical_kwarg,
             )
 
             # Populate domain index
@@ -260,6 +271,41 @@ def _to_rel_type(field_name: str) -> str:
 
 def _pascal(s: str) -> str:
     return "".join(p.capitalize() for p in re.split(r"[_\-]+", s) if p)
+
+
+def _domain_initials(domain_id: str) -> str:
+    """Return lowercase initials of a domain_id (first letter of each word segment).
+
+    "sales_analytics" → "sa", "human-resources" → "hr"
+    """
+    parts = re.split(r"[^a-zA-Z0-9]+", domain_id)
+    return "".join(p[0] for p in parts if p and p[0].isalpha()).lower()
+
+
+def _strip_domain_prefix(table_name: str, domain_id: str | None) -> str:
+    """Strip domain initials prefix from table_name, returning the raw (lowercase) logical name.
+
+    "sa_orders"  (domain "sales_analytics", initials "sa") → "orders"
+    "orders"     (no domain or no matching prefix)          → "orders"
+    """
+    if domain_id:
+        prefix = _domain_initials(domain_id) + "_"
+        if table_name.lower().startswith(prefix):
+            return table_name[len(prefix):]
+    return table_name
+
+
+def _table_label_from_table_name(table_name: str, domain_id: str | None) -> str:
+    """Derive PascalCase table label by stripping domain initials prefix.
+
+    "sa_orders"  (domain "sales_analytics", initials "sa") → "Orders"
+    "orders"     (no domain or no matching prefix)          → "Orders"
+    """
+    if domain_id:
+        prefix = _domain_initials(domain_id) + "_"
+        if table_name.lower().startswith(prefix):
+            table_name = table_name[len(prefix):]
+    return _pascal(table_name)
 
 
 def _split_cypher_labels(field_name: str) -> tuple[str | None, str]:

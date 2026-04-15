@@ -6,11 +6,13 @@ set -euo pipefail
 
 SEED_DATA=false
 OBSERVABILITY=true
+KEEP_DOCKER=false
 for arg in "$@"; do
   case "$arg" in
     --seed-data) SEED_DATA=true ;;
     --no-observability) OBSERVABILITY=false ;;
-    *) echo "Unknown option: $arg"; echo "Usage: $0 [--seed-data] [--no-observability]"; exit 1 ;;
+    --keep-docker) KEEP_DOCKER=true ;;
+    *) echo "Unknown option: $arg"; echo "Usage: $0 [--seed-data] [--no-observability] [--keep-docker]"; exit 1 ;;
   esac
 done
 
@@ -188,9 +190,13 @@ cleanup() {
   echo "Shutting down..."
   kill $BACKEND_PID $UI_PID 2>/dev/null || true
   wait $BACKEND_PID $UI_PID 2>/dev/null || true
-  echo "Stopping Docker Compose services..."
-  cd "$SCRIPT_DIR"
-  docker compose $COMPOSE_FILES down --remove-orphans
+  if [ "$KEEP_DOCKER" = true ]; then
+    echo "Leaving Docker Compose services running (--keep-docker)."
+  else
+    echo "Stopping Docker Compose services..."
+    cd "$SCRIPT_DIR"
+    docker compose $COMPOSE_FILES down --remove-orphans
+  fi
   if [ "$JVM_CONFIG_PATCHED" = true ]; then
     mv "${SCRIPT_DIR}/trino/etc/jvm.config.bak" "${SCRIPT_DIR}/trino/etc/jvm.config"
   fi

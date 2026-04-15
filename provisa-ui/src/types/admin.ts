@@ -101,7 +101,8 @@ export interface Relationship {
 
 export interface RLSRule {
   id: number;
-  tableId: number;
+  tableId: number | null;
+  domainId: string | null;
   roleId: string;
   filterExpr: string;
 }

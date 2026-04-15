@@ -141,11 +141,24 @@ END $$;
 
 CREATE TABLE IF NOT EXISTS rls_rules (
     id          SERIAL PRIMARY KEY,
-    table_id    INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    table_id    INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
+    domain_id   TEXT REFERENCES domains(id) ON DELETE CASCADE,
     role_id     TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
     filter_expr TEXT NOT NULL,
     UNIQUE (table_id, role_id)
 );
+
+-- Migration: add domain_id and make table_id nullable for domain-level RLS rules
+DO $$ BEGIN
+    ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS domain_id TEXT REFERENCES domains(id) ON DELETE CASCADE;
+    ALTER TABLE rls_rules ALTER COLUMN table_id DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
+DO $$ BEGIN
+    ALTER TABLE rls_rules ADD CONSTRAINT rls_rules_domain_role_key UNIQUE (domain_id, role_id);
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 -- Materialized Views (Phase P)
 CREATE TABLE IF NOT EXISTS materialized_views (

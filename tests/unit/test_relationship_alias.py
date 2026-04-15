@@ -71,13 +71,13 @@ def test_relationship_alias_duplicate_raises_valueerror():
 def _make_alias_label_map() -> CypherLabelMap:
     emp = NodeMapping(
         label="Employee", type_name="Hr_Employee", domain_label="Hr", table_label="Employee",
-        table_id=1, source_id="pg", id_column="id",
+        table_id=1, source_id="pg", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="hr", table_name="employees",
         properties={"id": "id", "dept_id": "dept_id", "name": "name"},
     )
     dept = NodeMapping(
         label="Department", type_name="Hr_Department", domain_label="Hr", table_label="Department",
-        table_id=2, source_id="pg", id_column="id",
+        table_id=2, source_id="pg", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="hr", table_name="departments",
         properties={"id": "id", "name": "name"},
     )
@@ -139,19 +139,19 @@ def test_relationship_mapping_alias_defaults_none():
 def _make_shared_alias_label_map() -> CypherLabelMap:
     emp = NodeMapping(
         label="Employee", type_name="Hr_Employee", domain_label="Hr", table_label="Employee",
-        table_id=10, source_id="pg", id_column="id",
+        table_id=10, source_id="pg", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="hr", table_name="employees",
         properties={"id": "id", "manager_id": "manager_id"},
     )
     mgr = NodeMapping(
         label="Manager", type_name="Hr_Manager", domain_label="Hr", table_label="Manager",
-        table_id=11, source_id="pg", id_column="id",
+        table_id=11, source_id="pg", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="hr", table_name="managers",
         properties={"id": "id", "director_id": "director_id"},
     )
     director = NodeMapping(
         label="Director", type_name="Hr_Director", domain_label="Hr", table_label="Director",
-        table_id=12, source_id="pg", id_column="id",
+        table_id=12, source_id="pg", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="hr", table_name="directors",
         properties={"id": "id"},
     )

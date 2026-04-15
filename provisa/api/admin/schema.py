@@ -152,8 +152,11 @@ def _rel_from_row(row) -> RelationshipType:
 
 def _rls_from_row(row) -> RLSRuleType:
     return RLSRuleType(
-        id=row["id"], table_id=row["table_id"],
-        role_id=row["role_id"], filter_expr=row["filter_expr"],
+        id=row["id"],
+        table_id=row["table_id"],
+        domain_id=row["domain_id"],
+        role_id=row["role_id"],
+        filter_expr=row["filter_expr"],
     )
 
 
@@ -943,7 +946,8 @@ class Mutation:
 
         pool = await _get_pool()
         model = RLSRuleModel(
-            table_id=input.table_id,
+            table_id=input.table_id or None,
+            domain_id=input.domain_id or None,
             role_id=input.role_id,
             filter=input.filter_expr,
         )
@@ -952,18 +956,24 @@ class Mutation:
                 await rls_repo.upsert(conn, model)
         except ValueError as e:
             return MutationResult(success=False, message=str(e))
+        target = f"domain {input.domain_id!r}" if input.domain_id else f"table {input.table_id!r}"
         return MutationResult(
             success=True,
-            message=f"RLS rule for table {input.table_id!r} / role {input.role_id!r} saved",
+            message=f"RLS rule for {target} / role {input.role_id!r} saved",
         )
 
     @strawberry.mutation
-    async def delete_rls_rule(self, table_id: int, role_id: str) -> MutationResult:
+    async def delete_rls_rule(
+        self,
+        role_id: str,
+        table_id: Optional[int] = None,
+        domain_id: Optional[str] = None,
+    ) -> MutationResult:
         from provisa.core.repositories import rls as rls_repo
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await rls_repo.delete(conn, table_id, role_id)
+            deleted = await rls_repo.delete(conn, role_id, table_id=table_id, domain_id=domain_id)
         if deleted:
             return MutationResult(success=True, message="RLS rule deleted")
         return MutationResult(success=False, message="RLS rule not found")

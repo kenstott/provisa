@@ -127,7 +127,8 @@ class RoleType:
 @strawberry.type
 class RLSRuleType:
     id: int
-    table_id: int
+    table_id: int | None
+    domain_id: str | None
     role_id: str
     filter_expr: str
 
@@ -221,9 +222,10 @@ class RoleInput:
 
 @strawberry.input
 class RLSRuleInput:
-    table_id: str  # table name (resolved to ID)
-    role_id: str
-    filter_expr: str
+    table_id: str | None = None  # table name (resolved to ID); mutually exclusive with domain_id
+    domain_id: str | None = None  # domain ID for domain-level rules
+    role_id: str = ""
+    filter_expr: str = ""
 
 
 @strawberry.type

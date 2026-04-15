@@ -94,7 +94,7 @@ class PathComprehensionMixin:
             src_alias = self._var_table.get(src_var, (src_var, None))[0]
             subquery_sql = (
                 f'SELECT {inner_sql} '
-                f'FROM "{tgt_nm.catalog_name}"."{tgt_nm.schema_name}"."{tgt_nm.table_name}" AS {tgt_var} '
+                f'FROM "{tgt_nm.catalog_name}"."{tgt_nm.schema_name}"."{tgt_nm.sql_table_name}" AS {tgt_var} '
                 f'WHERE {src_alias}."{rel_mapping.join_source_column}" = {tgt_var}."{rel_mapping.join_target_column}"'
             )
             return f'ARRAY({subquery_sql})'

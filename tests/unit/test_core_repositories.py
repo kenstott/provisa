@@ -563,7 +563,7 @@ class TestRelationshipRepo:
         conn.fetch = _fetch
         rel = _relationship()
         await rel_repo.upsert(conn, rel)
-        sql = conn.execute.call_args[0][0]
+        sql = conn.execute.call_args_list[0][0][0]
         assert "INSERT INTO relationships" in sql
 
     @pytest.mark.asyncio
@@ -649,7 +649,7 @@ class TestRelationshipRepo:
         conn.fetch = _fetch
         rel = _relationship(cardinality="one-to-many")
         await rel_repo.upsert(conn, rel)
-        _, *args = conn.execute.call_args[0]
+        _, *args = conn.execute.call_args_list[0][0]
         assert "one-to-many" in args
 
 

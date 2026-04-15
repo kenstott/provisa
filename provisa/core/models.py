@@ -337,7 +337,8 @@ def flatten_roles(roles: list[Role]) -> list[Role]:
 
 
 class RLSRule(BaseModel):
-    table_id: str
+    table_id: str | None = None
+    domain_id: str | None = None
     role_id: str
     filter: str
 

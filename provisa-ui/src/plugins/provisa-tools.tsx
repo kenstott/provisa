@@ -63,7 +63,7 @@ function SqlPanel({ compiled, hideSql }: { compiled: CompileResult; hideSql?: bo
       <div className="provisa-tools-meta">
         {compiled.root_field && (
           <div>
-            <strong>Table:</strong> {compiled.root_field}
+            <strong>Table:</strong> {compiled.root_field.includes("__") ? compiled.root_field.split("__").slice(1).join("__") : compiled.root_field}
             {isAliased && (
               <span className="provisa-tools-alias"> (alias for <em>{compiled.canonical_field}</em>)</span>
             )}

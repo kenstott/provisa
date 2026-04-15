@@ -17,22 +17,36 @@ from provisa.core.repositories import table as table_repo
 
 
 async def upsert(conn: asyncpg.Connection, rule: RLSRule) -> None:
-    """Upsert an RLS rule. Resolves table_id from table name."""
-    tbl = await table_repo.find_by_table_name(conn, rule.table_id)
-    if tbl is None:
-        raise ValueError(f"Table not registered: {rule.table_id}")
-
-    await conn.execute(
-        """
-        INSERT INTO rls_rules (table_id, role_id, filter_expr)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (table_id, role_id) DO UPDATE SET
-            filter_expr = EXCLUDED.filter_expr
-        """,
-        tbl["id"],
-        rule.role_id,
-        rule.filter,
-    )
+    """Upsert an RLS rule. Resolves table_id from table name for table-level rules."""
+    if rule.domain_id:
+        await conn.execute(
+            """
+            INSERT INTO rls_rules (domain_id, role_id, filter_expr)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (domain_id, role_id) DO UPDATE SET
+                filter_expr = EXCLUDED.filter_expr
+            """,
+            rule.domain_id,
+            rule.role_id,
+            rule.filter,
+        )
+    else:
+        if not rule.table_id:
+            raise ValueError("Either table_id or domain_id must be provided")
+        tbl = await table_repo.find_by_table_name(conn, rule.table_id)
+        if tbl is None:
+            raise ValueError(f"Table not registered: {rule.table_id}")
+        await conn.execute(
+            """
+            INSERT INTO rls_rules (table_id, role_id, filter_expr)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (table_id, role_id) DO UPDATE SET
+                filter_expr = EXCLUDED.filter_expr
+            """,
+            tbl["id"],
+            rule.role_id,
+            rule.filter,
+        )
 
 
 async def get_for_table_role(
@@ -58,10 +72,22 @@ async def list_all(conn: asyncpg.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def delete(conn: asyncpg.Connection, table_id: int, role_id: str) -> bool:
-    result = await conn.execute(
-        "DELETE FROM rls_rules WHERE table_id = $1 AND role_id = $2",
-        table_id,
-        role_id,
-    )
+async def delete(
+    conn: asyncpg.Connection,
+    role_id: str,
+    table_id: int | None = None,
+    domain_id: str | None = None,
+) -> bool:
+    if domain_id:
+        result = await conn.execute(
+            "DELETE FROM rls_rules WHERE domain_id = $1 AND role_id = $2",
+            domain_id,
+            role_id,
+        )
+    else:
+        result = await conn.execute(
+            "DELETE FROM rls_rules WHERE table_id = $1 AND role_id = $2",
+            table_id,
+            role_id,
+        )
     return result == "DELETE 1"

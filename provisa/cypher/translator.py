@@ -437,7 +437,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     nm = self._var_table[fv][1]
                     from_expr = exp.alias_(
                         exp.Table(
-                            this=exp.Identifier(this=nm.table_name, quoted=True),
+                            this=exp.Identifier(this=nm.sql_table_name, quoted=True),
                             db=exp.Identifier(this=nm.schema_name, quoted=True),
                             catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
                         ),
@@ -450,7 +450,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         alias = fv or type_label.lower()
                         from_expr = exp.alias_(
                             exp.Table(
-                                this=exp.Identifier(this=nm.table_name, quoted=True),
+                                this=exp.Identifier(this=nm.sql_table_name, quoted=True),
                                 db=exp.Identifier(this=nm.schema_name, quoted=True),
                                 catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
                             ),
@@ -470,7 +470,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     join_type = "LEFT" if clause.optional else "CROSS"
                     join_table = exp.alias_(
                         exp.Table(
-                            this=exp.Identifier(this=nm.table_name, quoted=True),
+                            this=exp.Identifier(this=nm.sql_table_name, quoted=True),
                             db=exp.Identifier(this=nm.schema_name, quoted=True),
                             catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
                         ),
@@ -518,7 +518,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                                 self._domain_nodes.pop(src_var)
                                 from_expr = exp.alias_(
                                     exp.Table(
-                                        this=exp.Identifier(this=src_nm.table_name, quoted=True),
+                                        this=exp.Identifier(this=src_nm.sql_table_name, quoted=True),
                                         db=exp.Identifier(this=src_nm.schema_name, quoted=True),
                                         catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
                                     ),
@@ -536,7 +536,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     src_alias = src_var or src_nm.table_name
                     from_expr = exp.alias_(
                         exp.Table(
-                            this=exp.Identifier(this=src_nm.table_name, quoted=True),
+                            this=exp.Identifier(this=src_nm.sql_table_name, quoted=True),
                             db=exp.Identifier(this=src_nm.schema_name, quoted=True),
                             catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
                         ),
@@ -620,7 +620,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 def _make_rel_join(rm, is_bwd: bool) -> dict:
                     jt = exp.alias_(
                         exp.Table(
-                            this=exp.Identifier(this=tgt_nm.table_name, quoted=True),
+                            this=exp.Identifier(this=tgt_nm.sql_table_name, quoted=True),
                             db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
                             catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
                         ),
@@ -901,7 +901,12 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         raise CypherTranslateError(f"Unknown label(s): {labels}")
 
     def _collect_var_props(self, var: str) -> list[str]:
-        """Return ordered list of property names referenced as var.prop in the AST."""
+        """Return ordered list of property names referenced as var.prop in the AST.
+
+        When the var appears bare in RETURN (e.g. ``RETURN n``) with no explicit
+        property projections, all properties from the domain's node types are
+        included so that the domain union subquery exposes them.
+        """
         pattern = re.compile(rf'\b{re.escape(var)}\s*\.\s*([A-Za-z_]\w*)')
         texts: list[str] = []
         for step in self._ast.pipeline:
@@ -921,6 +926,29 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 if p not in seen:
                     props.append(p)
                     seen.add(p)
+
+        # If var is returned bare (RETURN n) and is a domain node, include all
+        # domain properties so the union subquery exposes them for JSON serialization.
+        if not props and var in self._domain_nodes and self._ast.return_clause:
+            bare_pattern = re.compile(rf'^\s*{re.escape(var)}\s*$')
+            is_bare = any(
+                bare_pattern.match(item.expression)
+                for item in self._ast.return_clause.items
+            )
+            if is_bare:
+                domain = self._domain_nodes[var]
+                type_labels = (
+                    list(self._lm.nodes.keys())
+                    if domain == "__all__"
+                    else self._lm.domains.get(domain, [])
+                )
+                all_props: set[str] = set()
+                for label in type_labels:
+                    nm = self._lm.nodes.get(label)
+                    if nm:
+                        all_props.update(nm.properties.keys())
+                props = sorted(all_props)
+
         return props
 
     def _build_all_rels_union(
@@ -983,7 +1011,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             ).from_(
                 exp.alias_(
                     exp.Table(
-                        this=exp.Identifier(this=src_nm.table_name, quoted=True),
+                        this=exp.Identifier(this=src_nm.sql_table_name, quoted=True),
                         db=exp.Identifier(this=src_nm.schema_name, quoted=True),
                         catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
                     ),
@@ -992,7 +1020,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             ).join(
                 exp.alias_(
                     exp.Table(
-                        this=exp.Identifier(this=tgt_nm.table_name, quoted=True),
+                        this=exp.Identifier(this=tgt_nm.sql_table_name, quoted=True),
                         db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
                         catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
                     ),
@@ -1058,7 +1086,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             branch = exp.select(*select_items).from_(
                 exp.alias_(
                     exp.Table(
-                        this=exp.Identifier(this=nm.table_name, quoted=True),
+                        this=exp.Identifier(this=nm.sql_table_name, quoted=True),
                         db=exp.Identifier(this=nm.schema_name, quoted=True),
                         catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
                     ),

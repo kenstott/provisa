@@ -91,8 +91,8 @@ def path_to_recursive_sql(
     if not src_meta or not tgt_meta:
         raise PathTranslateError(f"Unknown node labels: {src_label!r}, {tgt_label!r}")
 
-    src_full = f'"{src_meta.catalog_name}"."{src_meta.schema_name}"."{src_meta.table_name}"'
-    tgt_full = f'"{tgt_meta.catalog_name}"."{tgt_meta.schema_name}"."{tgt_meta.table_name}"'
+    src_full = f'"{src_meta.catalog_name}"."{src_meta.schema_name}"."{src_meta.sql_table_name}"'
+    tgt_full = f'"{tgt_meta.catalog_name}"."{tgt_meta.schema_name}"."{tgt_meta.sql_table_name}"'
     src_id_col = rel_mapping.join_source_column
     tgt_id_col = rel_mapping.join_target_column
     src_pk = src_meta.id_column

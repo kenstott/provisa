@@ -27,14 +27,6 @@ import sqlglot.expressions as exp
 from provisa.cypher.label_map import CypherLabelMap, RelationshipMapping
 
 
-def _domain_id_to_cypher_label(domain_id: str) -> str:
-    """Convert a domain_id to a PascalCase Cypher label.
-
-    E.g. "my-domain" → "MyDomain", "sales_data" → "SalesData".
-    """
-    parts = re.split(r"[^a-zA-Z0-9]+", domain_id)
-    return "".join(p.capitalize() for p in parts if p)
-
 
 def semantic_sql_to_cypher(
     semantic_sql: str,
@@ -65,19 +57,23 @@ def semantic_sql_to_cypher(
     if not isinstance(tree, exp.Select):
         return None
 
-    # Build reverse lookups: (sql_domain, field_name) → node label / domain label
+    # Build reverse lookups: (sql_domain, field_name) → node label
     domain_to_label: dict[tuple[str, str], str] = {}
-    domain_to_dlabel: dict[tuple[str, str], str] = {}
     for _fn, table_meta in ctx.tables.items():  # type: ignore[attr-defined]
-        label = table_meta.type_name
-        if label not in label_map.nodes:
+        type_name = table_meta.type_name
+        if type_name not in label_map.nodes:
             continue
+        nm = label_map.nodes[type_name]
         sql_domain = domain_to_sql_name(table_meta.domain_id)
-        dlabel = _domain_id_to_cypher_label(table_meta.domain_id)
-        domain_to_label[(sql_domain, table_meta.field_name)] = label
-        domain_to_label[("", table_meta.field_name)] = label
-        domain_to_dlabel[(sql_domain, table_meta.field_name)] = dlabel
-        domain_to_dlabel[("", table_meta.field_name)] = dlabel
+        # Strip domain prefix from field_name — same logic as _semantic_table_ref:
+        # "sa__orders" → "orders" so lookups match the parsed semantic SQL table name.
+        field_key = (
+            table_meta.field_name.split("__", 1)[1]
+            if "__" in table_meta.field_name
+            else table_meta.field_name
+        )
+        domain_to_label[(sql_domain, field_key)] = nm.label
+        domain_to_label[("", field_key)] = nm.label
 
     # Build reverse lookup for relationships: (src_col, tgt_col) → RelationshipMapping
     join_to_rel: dict[tuple[str, str], RelationshipMapping] = {}
@@ -100,7 +96,6 @@ def semantic_sql_to_cypher(
         return None
 
     sql_base_alias = from_tbl.alias or from_tbl.name
-    base_dlabel = _resolve_label(from_tbl, domain_to_dlabel)
 
     # --- Resolve JOINs → relationship segments ---
     joins = tree.args.get("joins") or []
@@ -117,12 +112,11 @@ def semantic_sql_to_cypher(
             return None
 
         tgt_sql_alias = join_tbl.alias or join_tbl.name
-        tgt_dlabel = _resolve_label(join_tbl, domain_to_dlabel)
 
         on_expr = join.args.get("on")
         rel_type = _rel_type_from_on(on_expr, join_to_rel)
         is_optional = (join.side or "").upper() == "LEFT"
-        join_segments.append((is_optional, rel_type, tgt_sql_alias, tgt_label, tgt_dlabel))
+        join_segments.append((is_optional, rel_type, tgt_sql_alias, tgt_label))
 
     # Build short alias map: verbose SQL alias → a, b, c, …
     _letters = list(string.ascii_lowercase)
@@ -133,9 +127,7 @@ def semantic_sql_to_cypher(
     }
     base_alias = alias_map[sql_base_alias]
 
-    def _node(short: str, label: str, dlabel: str | None) -> str:
-        if dlabel and dlabel != label:
-            return f"({short}:{label}:{dlabel})"
+    def _node(short: str, label: str) -> str:
         return f"({short}:{label})"
 
     def _remap(text: str) -> str:
@@ -146,20 +138,20 @@ def semantic_sql_to_cypher(
         return text
 
     # --- Build MATCH pattern ---
-    required_path = _node(base_alias, base_label, base_dlabel)
-    for is_optional, rel_type, sql_a, label, dlabel in join_segments:
+    required_path = _node(base_alias, base_label)
+    for is_optional, rel_type, sql_a, label in join_segments:
         if not is_optional:
             rel_str = f"[:{rel_type}]" if rel_type else "[]"
-            required_path += f"-{rel_str}->{_node(alias_map[sql_a], label, dlabel)}"
+            required_path += f"-{rel_str}->{_node(alias_map[sql_a], label)}"
 
     cypher_lines = [f"MATCH {required_path}"]
 
-    for is_optional, rel_type, sql_a, label, dlabel in join_segments:
+    for is_optional, rel_type, sql_a, label in join_segments:
         if is_optional:
             rel_str = f"[:{rel_type}]" if rel_type else "[]"
             cypher_lines.append(
-                f"OPTIONAL MATCH {_node(base_alias, base_label, base_dlabel)}"
-                f"-{rel_str}->{_node(alias_map[sql_a], label, dlabel)}"
+                f"OPTIONAL MATCH {_node(base_alias, base_label)}"
+                f"-{rel_str}->{_node(alias_map[sql_a], label)}"
             )
 
     # --- WHERE ---

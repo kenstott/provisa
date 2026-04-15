@@ -502,7 +502,14 @@ export function GraphPage() {
           source: r.source ?? "",
           target: r.target ?? "",
         }));
-        setSchemaNodeLabels(nodeLabels);
+        const seen = new Set<string>();
+        const uniqueNodeLabels = nodeLabels.filter((n) => {
+          const key = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setSchemaNodeLabels(uniqueNodeLabels);
         setSchemaRels(rels.sort((a, b) => a.type.localeCompare(b.type)));
       })
       .catch(() => {})

@@ -151,7 +151,7 @@ class PathFunctionsMixin:
         src_alias = src_var or src_nm.table_name
         from_expr = exp.alias_(
             exp.Table(
-                this=exp.Identifier(this=src_nm.table_name, quoted=True),
+                this=exp.Identifier(this=src_nm.sql_table_name, quoted=True),
                 db=exp.Identifier(this=src_nm.schema_name, quoted=True),
                 catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
             ),
@@ -177,7 +177,7 @@ class PathFunctionsMixin:
             )
             join_table = exp.alias_(
                 exp.Table(
-                    this=exp.Identifier(this=nxt_nm.table_name, quoted=True),
+                    this=exp.Identifier(this=nxt_nm.sql_table_name, quoted=True),
                     db=exp.Identifier(this=nxt_nm.schema_name, quoted=True),
                     catalog=exp.Identifier(this=nxt_nm.catalog_name, quoted=True),
                 ),
@@ -215,7 +215,7 @@ class PathFunctionsMixin:
 
         from_expr = exp.alias_(
             exp.Table(
-                this=exp.Identifier(this=src_nm.table_name, quoted=True),
+                this=exp.Identifier(this=src_nm.sql_table_name, quoted=True),
                 db=exp.Identifier(this=src_nm.schema_name, quoted=True),
                 catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
             ),
@@ -268,7 +268,7 @@ class PathFunctionsMixin:
             {
                 "table": exp.alias_(
                     exp.Table(
-                        this=exp.Identifier(this=tgt_nm.table_name, quoted=True),
+                        this=exp.Identifier(this=tgt_nm.sql_table_name, quoted=True),
                         db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
                         catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
                     ),
@@ -309,7 +309,7 @@ class PathFunctionsMixin:
         def _tbl(nm: NodeMapping, alias: str) -> exp.Expression:
             return exp.alias_(
                 exp.Table(
-                    this=exp.Identifier(this=nm.table_name, quoted=True),
+                    this=exp.Identifier(this=nm.sql_table_name, quoted=True),
                     db=exp.Identifier(this=nm.schema_name, quoted=True),
                     catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
                 ),

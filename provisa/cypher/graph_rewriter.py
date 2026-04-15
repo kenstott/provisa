@@ -65,7 +65,8 @@ def apply_graph_rewrites(
             if node_meta is not None:
                 rewritten = _build_row_cast(tbl, node_meta)
             else:
-                rewritten = _build_domain_json(tbl)
+                domain_props = _extract_domain_props_from_union(sql_ast, tbl)
+                rewritten = _build_domain_json(tbl, domain_props)
             new_expressions.append(exp.alias_(rewritten, out_alias))
         else:
             new_expressions.append(sel_expr)
@@ -100,9 +101,9 @@ def _build_row_cast(tbl: str, node_meta: object) -> exp.Expression:
     return exp.JSONObject(expressions=kv)
 
 
-def _build_domain_json(var: str) -> exp.Expression:
-    """Build JSON_OBJECT for a domain-union node (subquery with __id and __label)."""
-    return exp.JSONObject(expressions=[
+def _build_domain_json(var: str, props: list[str] | None = None) -> exp.Expression:
+    """Build JSON_OBJECT for a domain-union node (subquery with __id, __label, props)."""
+    kv: list[exp.Expression] = [
         exp.JSONKeyValue(
             this=exp.Literal.string("id"),
             expression=exp.Column(
@@ -117,7 +118,40 @@ def _build_domain_json(var: str) -> exp.Expression:
                 table=exp.Identifier(this=var),
             ),
         ),
-    ])
+    ]
+    for prop in (props or []):
+        kv.append(exp.JSONKeyValue(
+            this=exp.Literal.string(prop),
+            expression=exp.Column(
+                this=exp.Identifier(this=prop, quoted=True),
+                table=exp.Identifier(this=var),
+            ),
+        ))
+    return exp.JSONObject(expressions=kv)
+
+
+def _extract_domain_props_from_union(sql_ast: exp.Select, var_alias: str) -> list[str]:
+    """Extract property column aliases from the domain union subquery aliased as var_alias.
+
+    Walks FROM/JOIN subqueries looking for one aliased as var_alias, then reads
+    the first SELECT branch's column aliases (excluding __id and __label).
+    """
+    for node in sql_ast.find_all(exp.Subquery):
+        parent = node.parent
+        if isinstance(parent, exp.Alias) and parent.alias == var_alias:
+            union_body = node.this
+            # Drill into UNION ALL to get the first SELECT branch
+            first_select = union_body
+            while isinstance(first_select, (exp.Union,)):
+                first_select = first_select.this
+            if isinstance(first_select, exp.Select):
+                props: list[str] = []
+                for expr in first_select.expressions:
+                    alias = expr.alias if hasattr(expr, "alias") else None
+                    if alias and alias not in ("__id", "__label"):
+                        props.append(alias)
+                return props
+    return []
 
 
 def _extract_alias_mappings(sql_ast: exp.Select, label_map: CypherLabelMap) -> dict[str, object]:
@@ -130,7 +164,8 @@ def _extract_alias_mappings(sql_ast: exp.Select, label_map: CypherLabelMap) -> d
         table_name = tbl.name
         if alias and table_name:
             for nm in label_map.nodes.values():
-                if nm.table_name == table_name:
+                phys = nm.physical_table_name or nm.table_name
+                if phys == table_name or nm.table_name == table_name:
                     alias_map[alias] = nm
                     break
 
@@ -142,8 +177,10 @@ def _find_node_meta(var_name: str, table_ref: str | None, label_map: CypherLabel
     for label, nm in label_map.nodes.items():
         if label.lower() == var_name.lower():
             return nm
-        if table_ref and nm.table_name == table_ref:
-            return nm
+        if table_ref:
+            phys = nm.physical_table_name or nm.table_name
+            if phys == table_ref or nm.table_name == table_ref:
+                return nm
     return None
 
 

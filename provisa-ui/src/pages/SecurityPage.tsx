@@ -111,7 +111,7 @@ const ALL_CAPABILITIES: Capability[] = [
 ];
 
 const EMPTY_ROLE = { id: "", capabilities: [] as Capability[], domainAccess: [] as string[] };
-const EMPTY_RULE = { tableId: "", roleId: "", filterExpr: "", domainFilter: "" };
+const EMPTY_RULE = { tableId: "", domainId: "", roleId: "", filterExpr: "", domainFilter: "", applyToDomain: false };
 
 export function SecurityPage() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -160,7 +160,6 @@ export function SecurityPage() {
   const tableLabelById = Object.fromEntries(
     tables.map((t) => [t.id, `${normalizeDomain(t.domainId)}.${t.tableName}`]),
   );
-  const uniqueDomains = [...new Set(tables.map((t) => normalizeDomain(t.domainId)).filter(Boolean))].sort();
 
   // --- Role handlers ---
   const handleNewRole = () => {
@@ -228,11 +227,19 @@ export function SecurityPage() {
   };
 
   const handleSaveRule = async () => {
-    if (!ruleForm.tableId || !ruleForm.roleId || !ruleForm.filterExpr) return;
+    const valid = ruleForm.applyToDomain
+      ? ruleForm.domainFilter && ruleForm.roleId && ruleForm.filterExpr
+      : ruleForm.tableId && ruleForm.roleId && ruleForm.filterExpr;
+    if (!valid) return;
     setSaving(true);
     setError("");
     try {
-      const res = await upsertRlsRule(ruleForm);
+      const res = await upsertRlsRule({
+        tableId: ruleForm.applyToDomain ? null : ruleForm.tableId || null,
+        domainId: ruleForm.applyToDomain ? ruleForm.domainFilter || null : null,
+        roleId: ruleForm.roleId,
+        filterExpr: ruleForm.filterExpr,
+      });
       if (!res.success) { setError(res.message); return; }
       setShowRuleForm(false);
       setRuleForm({ ...EMPTY_RULE });
@@ -249,7 +256,7 @@ export function SecurityPage() {
     setSaving(true);
     setError("");
     try {
-      await deleteRlsRule(rule.tableId, rule.roleId);
+      await deleteRlsRule(rule.roleId, rule.tableId, rule.domainId);
       if (expandedRule === rule.id) setExpandedRule(null);
       await load();
     } catch (e: any) {
@@ -260,14 +267,27 @@ export function SecurityPage() {
   };
 
   const startEditingRule = (rule: RLSRule) => {
-    const tableName = tableNameById[rule.tableId] ?? String(rule.tableId);
-    const tbl = tables.find((t) => t.id === rule.tableId);
-    setRuleForm({
-      tableId: tableName,
-      roleId: rule.roleId,
-      filterExpr: rule.filterExpr,
-      domainFilter: tbl ? normalizeDomain(tbl.domainId) : "",
-    });
+    if (rule.domainId) {
+      setRuleForm({
+        tableId: "",
+        domainId: rule.domainId,
+        roleId: rule.roleId,
+        filterExpr: rule.filterExpr,
+        domainFilter: rule.domainId,
+        applyToDomain: true,
+      });
+    } else {
+      const tableName = rule.tableId != null ? (tableNameById[rule.tableId] ?? String(rule.tableId)) : "";
+      const tbl = rule.tableId != null ? tables.find((t) => t.id === rule.tableId) : undefined;
+      setRuleForm({
+        tableId: tableName,
+        domainId: "",
+        roleId: rule.roleId,
+        filterExpr: rule.filterExpr,
+        domainFilter: tbl ? tbl.domainId : "",
+        applyToDomain: false,
+      });
+    }
     setEditingRuleInRow(rule.id);
     setError("");
   };
@@ -424,29 +444,41 @@ export function SecurityPage() {
         <div className="form-card">
           <div className="form-row">
             <label>
+              Apply To
+              <select
+                value={ruleForm.applyToDomain ? "domain" : "table"}
+                onChange={(e) => setRuleForm({ ...ruleForm, applyToDomain: e.target.value === "domain", tableId: "" })}
+              >
+                <option value="table">Specific Table</option>
+                <option value="domain">Entire Domain</option>
+              </select>
+            </label>
+            <label>
               Domain
               <select
                 value={ruleForm.domainFilter}
                 onChange={(e) => setRuleForm({ ...ruleForm, domainFilter: e.target.value, tableId: "" })}
               >
-                <option value="">All</option>
-                {uniqueDomains.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
-            </label>
-            <label>
-              Table
-              <select
-                value={ruleForm.tableId}
-                onChange={(e) => setRuleForm({ ...ruleForm, tableId: e.target.value })}
-              >
                 <option value="">Select...</option>
-                {tables
-                  .filter((t) => !ruleForm.domainFilter || normalizeDomain(t.domainId) === ruleForm.domainFilter)
-                  .map((t) => (
-                    <option key={t.id} value={t.tableName}>{t.tableName}</option>
-                  ))}
+                {domains.map((d) => <option key={d.id} value={d.id}>{d.id}</option>)}
               </select>
             </label>
+            {!ruleForm.applyToDomain && (
+              <label>
+                Table
+                <select
+                  value={ruleForm.tableId}
+                  onChange={(e) => setRuleForm({ ...ruleForm, tableId: e.target.value })}
+                >
+                  <option value="">Select...</option>
+                  {tables
+                    .filter((t) => !ruleForm.domainFilter || t.domainId === ruleForm.domainFilter)
+                    .map((t) => (
+                      <option key={t.id} value={t.tableName}>{t.tableName}</option>
+                    ))}
+                </select>
+              </label>
+            )}
             <label>
               Role
               <select
@@ -480,101 +512,127 @@ export function SecurityPage() {
 
       <table className="data-table">
         <thead>
-          <tr><th>ID</th><th>Table</th><th>Role</th><th>Filter</th></tr>
+          <tr><th>ID</th><th>Table / Domain</th><th>Role</th><th>Filter</th></tr>
         </thead>
         <tbody>
           {rules.filter((r) => {
             if (!ruleSearch.trim()) return true;
             const q = ruleSearch.toLowerCase();
-            return r.roleId.toLowerCase().includes(q) || (tableLabelById[r.tableId] ?? String(r.tableId)).toLowerCase().includes(q);
-          }).map((r) => (
-            <React.Fragment key={r.id}>
-              <tr
-                style={{ cursor: "pointer", background: expandedRule === r.id ? "var(--surface)" : undefined }}
-                onClick={() => { setExpandedRule(expandedRule === r.id ? null : r.id); setEditingRuleInRow(null); }}
-              >
-                <td>{r.id}</td>
-                <td>{tableLabelById[r.tableId] ?? r.tableId}</td>
-                <td>{r.roleId}</td>
-                <td><code>{r.filterExpr}</code></td>
-              </tr>
-              {expandedRule === r.id && (
-                <tr>
-                  <td colSpan={4} style={{ padding: "0.75rem 1rem", background: "var(--bg)", borderTop: "1px solid var(--border)" }}>
-                    {editingRuleInRow !== r.id ? (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                        <div><strong>ID:</strong> {r.id}</div>
-                        <div><strong>Table:</strong> {tableLabelById[r.tableId] ?? r.tableId}</div>
-                        <div><strong>Role:</strong> {r.roleId}</div>
-                        <div><strong>Filter:</strong> <code>{r.filterExpr}</code></div>
-                        <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                          <button className="btn-icon" title="Edit" onClick={(e) => { e.stopPropagation(); startEditingRule(r); }}><Pencil size={14} /></button>
-                          <button className="btn-icon-danger" title="Delete" onClick={(e) => { e.stopPropagation(); handleDeleteRule(r); }}><Trash2 size={14} /></button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                        <div className="form-row">
-                          <label>
-                            Domain
-                            <select
-                              value={ruleForm.domainFilter}
-                              onChange={(e) => setRuleForm({ ...ruleForm, domainFilter: e.target.value, tableId: "" })}
-                            >
-                              <option value="">All</option>
-                              {uniqueDomains.map((d) => <option key={d} value={d}>{d}</option>)}
-                            </select>
-                          </label>
-                          <label>
-                            Table
-                            <select
-                              value={ruleForm.tableId}
-                              onChange={(e) => setRuleForm({ ...ruleForm, tableId: e.target.value })}
-                            >
-                              <option value="">Select...</option>
-                              {tables
-                                .filter((t) => !ruleForm.domainFilter || normalizeDomain(t.domainId) === ruleForm.domainFilter)
-                                .map((t) => (
-                                  <option key={t.id} value={t.tableName}>{t.tableName}</option>
-                                ))}
-                            </select>
-                          </label>
-                          <label>
-                            Role
-                            <select
-                              value={ruleForm.roleId}
-                              onChange={(e) => setRuleForm({ ...ruleForm, roleId: e.target.value })}
-                            >
-                              <option value="">Select...</option>
-                              {roles.map((role) => (
-                                <option key={role.id} value={role.id}>{role.id}</option>
-                              ))}
-                            </select>
-                          </label>
-                        </div>
-                        <div className="form-row">
-                          <label style={{ flex: 1 }}>
-                            Filter Expression
-                            <textarea
-                              rows={2}
-                              value={ruleForm.filterExpr}
-                              onChange={(e) => setRuleForm({ ...ruleForm, filterExpr: e.target.value })}
-                              placeholder="region = 'US' AND status = 'active'"
-                              style={{ resize: "vertical", fontFamily: "monospace", fontSize: "0.875rem" }}
-                            />
-                          </label>
-                        </div>
-                        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-                          <button className="btn-icon" title="Cancel" onClick={() => setEditingRuleInRow(null)}><X size={14} /></button>
-                          <button className="btn-icon-primary" title="Save" onClick={handleSaveRule} disabled={saving}><Save size={14} /></button>
-                        </div>
-                      </div>
-                    )}
+            const scope = r.domainId ? `domain:${r.domainId}` : (tableLabelById[r.tableId!] ?? String(r.tableId));
+            return r.roleId.toLowerCase().includes(q) || scope.toLowerCase().includes(q);
+          }).map((r) => {
+            const scope = r.domainId
+              ? `domain: ${r.domainId}`
+              : (tableLabelById[r.tableId!] ?? String(r.tableId));
+            return (
+              <React.Fragment key={r.id}>
+                <tr
+                  style={{ cursor: "pointer", background: expandedRule === r.id ? "var(--surface)" : undefined }}
+                  onClick={() => { setExpandedRule(expandedRule === r.id ? null : r.id); setEditingRuleInRow(null); }}
+                >
+                  <td>{r.id}</td>
+                  <td>
+                    {r.domainId
+                      ? <><em style={{ color: "var(--muted, #888)", fontSize: "0.75em" }}>domain: </em>{r.domainId}</>
+                      : tableLabelById[r.tableId!] ?? String(r.tableId)
+                    }
                   </td>
+                  <td>{r.roleId}</td>
+                  <td><code>{r.filterExpr}</code></td>
                 </tr>
-              )}
-            </React.Fragment>
-          ))}
+                {expandedRule === r.id && (
+                  <tr>
+                    <td colSpan={4} style={{ padding: "0.75rem 1rem", background: "var(--bg)", borderTop: "1px solid var(--border)" }}>
+                      {editingRuleInRow !== r.id ? (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                          <div><strong>ID:</strong> {r.id}</div>
+                          {r.domainId
+                            ? <div><strong>Domain:</strong> {r.domainId}</div>
+                            : <div><strong>Table:</strong> {tableLabelById[r.tableId!] ?? String(r.tableId)}</div>
+                          }
+                          <div><strong>Role:</strong> {r.roleId}</div>
+                          <div><strong>Filter:</strong> <code>{r.filterExpr}</code></div>
+                          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
+                            <button className="btn-icon" title="Edit" onClick={(e) => { e.stopPropagation(); startEditingRule(r); }}><Pencil size={14} /></button>
+                            <button className="btn-icon-danger" title="Delete" onClick={(e) => { e.stopPropagation(); handleDeleteRule(r); }}><Trash2 size={14} /></button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                          <div className="form-row">
+                            <label>
+                              Apply To
+                              <select
+                                value={ruleForm.applyToDomain ? "domain" : "table"}
+                                onChange={(e) => setRuleForm({ ...ruleForm, applyToDomain: e.target.value === "domain", tableId: "" })}
+                              >
+                                <option value="table">Specific Table</option>
+                                <option value="domain">Entire Domain</option>
+                              </select>
+                            </label>
+                            <label>
+                              Domain
+                              <select
+                                value={ruleForm.domainFilter}
+                                onChange={(e) => setRuleForm({ ...ruleForm, domainFilter: e.target.value, tableId: "" })}
+                              >
+                                <option value="">Select...</option>
+                                {domains.map((d) => <option key={d.id} value={d.id}>{d.id}</option>)}
+                              </select>
+                            </label>
+                            {!ruleForm.applyToDomain && (
+                              <label>
+                                Table
+                                <select
+                                  value={ruleForm.tableId}
+                                  onChange={(e) => setRuleForm({ ...ruleForm, tableId: e.target.value })}
+                                >
+                                  <option value="">Select...</option>
+                                  {tables
+                                    .filter((t) => !ruleForm.domainFilter || t.domainId === ruleForm.domainFilter)
+                                    .map((t) => (
+                                      <option key={t.id} value={t.tableName}>{t.tableName}</option>
+                                    ))}
+                                </select>
+                              </label>
+                            )}
+                            <label>
+                              Role
+                              <select
+                                value={ruleForm.roleId}
+                                onChange={(e) => setRuleForm({ ...ruleForm, roleId: e.target.value })}
+                              >
+                                <option value="">Select...</option>
+                                {roles.map((role) => (
+                                  <option key={role.id} value={role.id}>{role.id}</option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                          <div className="form-row">
+                            <label style={{ flex: 1 }}>
+                              Filter Expression
+                              <textarea
+                                rows={2}
+                                value={ruleForm.filterExpr}
+                                onChange={(e) => setRuleForm({ ...ruleForm, filterExpr: e.target.value })}
+                                placeholder="region = 'US' AND status = 'active'"
+                                style={{ resize: "vertical", fontFamily: "monospace", fontSize: "0.875rem" }}
+                              />
+                            </label>
+                          </div>
+                          <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+                            <button className="btn-icon" title="Cancel" onClick={() => setEditingRuleInRow(null)}><X size={14} /></button>
+                            <button className="btn-icon-primary" title="Save" onClick={handleSaveRule} disabled={saving}><Save size={14} /></button>
+                          </div>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>

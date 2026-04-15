@@ -17,7 +17,7 @@ RLS filter expressions are stored per (table_id, role_id) in the config DB.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from provisa.compiler.sql_gen import CompiledQuery, CompilationContext
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -27,31 +27,38 @@ _tracer = _get_tracer(__name__)
 
 @dataclass
 class RLSContext:
-    """RLS rules for a specific role, keyed by table_id."""
+    """RLS rules for a specific role, keyed by table_id or domain_id."""
 
     # table_id → filter expression (raw SQL predicate)
     rules: dict[int, str]
+    # domain_id → filter expression (applies to all tables in that domain)
+    domain_rules: dict[str, str] = field(default_factory=dict)
 
     @staticmethod
     def empty() -> RLSContext:
-        return RLSContext(rules={})
+        return RLSContext(rules={}, domain_rules={})
 
     def has_rules(self) -> bool:
-        return bool(self.rules)
+        return bool(self.rules) or bool(self.domain_rules)
 
 
 def build_rls_context(rls_rules: list[dict], role_id: str) -> RLSContext:
     """Build an RLSContext from DB rows for a specific role.
 
     Args:
-        rls_rules: list of dicts with {table_id, role_id, filter_expr}.
+        rls_rules: list of dicts with {table_id, domain_id, role_id, filter_expr}.
         role_id: the role to filter for.
     """
-    rules = {}
+    rules: dict[int, str] = {}
+    domain_rules: dict[str, str] = {}
     for rule in rls_rules:
-        if rule["role_id"] == role_id:
+        if rule["role_id"] != role_id:
+            continue
+        if rule.get("domain_id"):
+            domain_rules[rule["domain_id"]] = rule["filter_expr"]
+        elif rule.get("table_id") is not None:
             rules[rule["table_id"]] = rule["filter_expr"]
-    return RLSContext(rules=rules)
+    return RLSContext(rules=rules, domain_rules=domain_rules)
 
 
 def inject_rls(
@@ -74,23 +81,32 @@ def inject_rls(
         # Find which tables in the query have RLS rules
         filters: list[str] = []
 
+        def _rule_for_table(table_id: int, domain_id: str) -> str | None:
+            if table_id in rls.rules:
+                return rls.rules[table_id]
+            if domain_id and domain_id in rls.domain_rules:
+                return rls.domain_rules[domain_id]
+            return None
+
         # Check root table
         root_table = ctx.tables.get(compiled.root_field)
-        if root_table and root_table.table_id in rls.rules:
-            filter_expr = rls.rules[root_table.table_id]
-            # Qualify column refs with alias if the query uses aliases
-            if _has_alias(compiled.sql):
-                filter_expr = _qualify_filter(filter_expr, "t0")
-            filters.append(f"({filter_expr})")
+        if root_table:
+            filter_expr = _rule_for_table(root_table.table_id, root_table.domain_id)
+            if filter_expr:
+                # Qualify column refs with alias if the query uses aliases
+                if _has_alias(compiled.sql):
+                    filter_expr = _qualify_filter(filter_expr, "t0")
+                filters.append(f"({filter_expr})")
 
         # Check joined tables — find their aliases from the SQL
         for (type_name, field_name), join_meta in ctx.joins.items():
-            if type_name == root_table.type_name and join_meta.target.table_id in rls.rules:
-                filter_expr = rls.rules[join_meta.target.table_id]
-                alias = _find_join_alias(compiled.sql, join_meta.target.table_name)
-                if alias:
-                    filter_expr = _qualify_filter(filter_expr, alias)
-                filters.append(f"({filter_expr})")
+            if root_table and type_name == root_table.type_name:
+                filter_expr = _rule_for_table(join_meta.target.table_id, join_meta.target.domain_id)
+                if filter_expr:
+                    alias = _find_join_alias(compiled.sql, join_meta.target.table_name)
+                    if alias:
+                        filter_expr = _qualify_filter(filter_expr, alias)
+                    filters.append(f"({filter_expr})")
 
         span.set_attribute("rls.rules_applied", len(filters))
         if not filters:

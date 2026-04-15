@@ -10,8 +10,9 @@
 2. **Every domain must have a steward.** A domain may exist in a pending state until a steward is assigned, but it cannot serve governed data without one.
 3. **The admin owns sources.** Sources are infrastructure, not domain resources. The admin registers and manages connections to external data systems.
 4. **Stewards can claim tables for a domain.** Claiming is exclusive — a table belongs to exactly one domain. This is the governed act that bridges infrastructure and the semantic layer.
-5. **Stewards can create derivatives from domain assets.** Views express business logic — joins, aggregations, derived metrics — over assets the steward owns.
-6. **Anyone can request access to a domain resource.** Access is granted at the resource level, not the query level. If you have access to a resource, you can query it. Governance is enforced at execution time through the pipeline.
+5. **Stewards can create intradomain views from domain assets.** Views express business logic — joins, aggregations, derived metrics — over assets the steward owns within the same domain. Views create new semantic meaning and require steward approval.
+6. **Analysts can create cross-domain queries from approved relationships.** Queries are interdomain views built in GraphQL. They do not create new semantics — they traverse approved relationship paths. No additional approval is required: governance is handled upstream at the Relationship and column visibility layers. The GQL schema is the enforcement mechanism: only approved relationships are traversable.
+7. **Anyone can request access to a domain resource.** Access is granted at the resource level, not the query level. If you have access to a resource, you can query it. Governance is enforced at execution time through the pipeline.
 
 ### Resources: Tables and Views as Peers
 
@@ -26,27 +27,38 @@ A steward can claim tables privately and expose only curated views as public-fac
 
 ### View Composition
 
-A view may reference:
+Views are strictly intradomain. A view may reference:
 - Claimed tables within the same domain
-- Approved foreign domain assets (treated as peers once granted)
 - One other view within the same domain, where the variation is purposeful: field restriction, aggregation, or enrichment via an additional join
 
 Composition depth is not technically enforced — steward judgment during HITL review is the quality control mechanism.
 
 Every view carries a declared business purpose, stated at creation time:
 - Part of the governed artifact — stewards approve knowing what the view is for
-- Referenced by access requests under Principle 6 so the steward can assess fit
+- Referenced by access requests under Principle 7 so the steward can assess fit
 - Travels from view creation through the full governance workflow
+
+### Queries
+
+A Query is a view built in GraphQL over approved relationship paths. Unlike Views, Queries do not create new semantic meaning — they traverse the approved structure of the model.
+
+**Structural enforcement:** The GQL schema is the enforcement mechanism. Only approved relationships are modeled in the schema, so unapproved traversals are not expressible. Governance is structural, not a runtime check.
+
+**No approval required:** Governance happens upstream — at the Relationship and column visibility layers. If a user has access to the columns and the traversal path is approved, the Query is valid usage. No additional gate.
+
+**Distinction from Views:**
+- Views: intradomain, introduce new semantic meaning, steward-curated
+- Queries: traverse approved relationships, no new semantics, no approval gate
 
 ### Relationships
 
-A relationship is a catalog fact — a declared semantic traversal path between two domain assets, independent of any view or query.
+A relationship is an approved traversal path between two assets. Domain boundaries are irrelevant to what a relationship is — they only determine who approves it.
 
-**Ownership and approval:**
-- The source domain proposes — they hold the foreign key and have the business motivation
-- The target domain steward approves — confirming semantic validity and accepting the source as a known consumer
-- Both must approve before the relationship becomes a permanent catalog entry
-- Approving a relationship builds the target steward's dependency graph, enabling proactive schema evolution notifications
+**Approval:**
+- Approval is required from every distinct steward who owns an asset involved in the relationship
+- If one steward owns both assets, one approval is required. If two stewards are involved, two approvals are required
+- There is no intradomain/cross-domain classification — ownership determines the approval burden naturally
+- Approving a relationship builds each steward's dependency graph, enabling proactive schema evolution notifications
 
 Relationships are created by demand, not speculatively. The first team with the business need does the work; subsequent teams inherit the infrastructure.
 
@@ -68,21 +80,26 @@ A field access grant is a domain-to-domain permission — Domain A may use speci
 
 The tradeoff: the source domain approves field access without knowing every future use. Per-view approval is correct in theory and unworkable in practice.
 
-### Cross-Domain View Creation Workflow
+### Query Creation Workflow
 
-Two distinct requests, in order.
+Three stages, in order.
 
-**Request 1 — Relationship creation** (more consequential — structural and permanent):
-- Raised to both stewards simultaneously
-- Source steward: is this a legitimate semantic declaration for your domain?
-- Target steward: is this join semantically valid? Do you accept this domain as a consumer?
-- Both must approve; relationship becomes a permanent catalog entry
+**Stage 1 — Shaping (SQL discovery, from the Relationships page):**
+- Analyst opens the Shaping tool from the Relationships page to explore potential join paths in raw SQL
+- SQL is run against accessible data, subject to existing RLS and column masking
+- JOINs in the SQL are parsed and surfaced as candidate Relationship proposals
+- Machine-suggested candidates (FK inference, semantic inference) are shown alongside the analyst's SQL exploration in the same view
+- Analyst selects candidates to promote to a formal Relationship request
 
-**Request 2 — Field access grant:**
-- Analyst builds the view in GraphQL, traversing the approved relationship and selecting fields
-- Field selection surfaces which foreign fields are needed; grant request is raised to target steward
-- Grant is approved once and belongs to the requesting domain
-- All subsequent views using those fields are governed by the requesting domain's steward alone
+**Stage 2 — Relationship approval** (consequential — structural and permanent):
+- Raised to every distinct steward who owns an asset involved in the relationship
+- Is this a legitimate traversal path? Is the join semantically valid?
+- All implicated stewards must approve; relationship becomes a permanent catalog entry and is added to the GQL schema
+
+**Stage 3 — Query creation (GraphQL):**
+- Analyst builds the Query in GraphQL, traversing approved relationship paths
+- Only approved relationships are traversable — the GQL schema enforces this structurally
+- No approval required — column visibility and relationship approval are the only gates
 
 ### HITL as the Primary Control
 
@@ -175,16 +192,17 @@ The analyst provides a natural language description and optional constraints. Th
 
 The business description becomes the view's declared business purpose once the view is formally created.
 
-**SQL-first view creation:**
+**SQL-first relationship discovery (Modeling tool):**
 
-An alternative path for analysts who already have working SQL:
-1. Submit SQL view definition
-2. System validates against registered source schemas
-3. SQL AST is parsed — each join condition becomes a candidate relationship
-4. Missing relationships and field grants are surfaced as prerequisite requests
-5. Once prerequisites are met, the SQL is promoted to a governed domain asset
+Accessed as a modal from the Relationships page. The intent is to build the semantic model — identifying structural join paths before formalising them as governed relationships.
 
-The LLM infers a suggested business purpose and view name from the SQL, and validates that the logic matches the stated intent.
+1. Analyst writes freeform SQL against accessible tables (RLS and masking still applied)
+2. SQL AST is parsed — each JOIN condition becomes a candidate Relationship proposal
+3. Candidate list is shown alongside machine-suggested candidates (FK inference, semantic inference) for unified review
+4. Analyst promotes selected candidates to formal Relationship requests
+5. Approved Relationships are added to the GQL schema and become traversable in Queries
+
+The Modeling tool may show all registered tables for structural exploration, even where the analyst cannot see the underlying data — steward approval governs actual data access, not schema visibility.
 
 ---
 

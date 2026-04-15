@@ -970,13 +970,14 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         const tableLabel = ctxLabel.includes(":") ? ctxLabel.split(":").pop()! : ctxLabel;
         const ctxPkCols = pkMap[ctxLabel] ?? [];
         const hasPk = ctxPkCols.length > 0;
-        const tl = tableLabel.toLowerCase();
-        const cl = ctxLabel.toLowerCase();
+        const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
+        const tl = norm(tableLabel);
+        const cl = norm(ctxLabel);
         const hasChildRels = relationships.some(
-          (r) => r.sourceTableName.toLowerCase() === tl || r.sourceTableName.toLowerCase() === cl,
+          (r) => norm(r.sourceTableName) === tl || norm(r.sourceTableName) === cl,
         );
         const hasParentRels = relationships.some(
-          (r) => r.targetTableName.toLowerCase() === tl || r.targetTableName.toLowerCase() === cl,
+          (r) => norm(r.targetTableName) === tl || norm(r.targetTableName) === cl,
         );
         return (
         <div
@@ -1271,8 +1272,9 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
       ? null
       : isNaN(Number(pkValue)) ? `"${String(pkValue).replace(/"/g, '\\"')}"` : String(pkValue);
     if (!pkLit || !pkCol) return;
-    const tl = tableLabel.toLowerCase();
-    const rels = (relationships ?? []).filter((r) => r.sourceTableName.toLowerCase() === tl);
+    const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
+    const tl = norm(tableLabel);
+    const rels = (relationships ?? []).filter((r) => norm(r.sourceTableName) === tl);
     if (rels.length === 0) return;
     // Run each relationship as a separate query and merge — avoids Trino UNION schema mismatch
     const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = { nodes: new Map(), edges: new Map() };
@@ -1307,8 +1309,9 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
       ? null
       : isNaN(Number(pkValue)) ? `"${String(pkValue).replace(/"/g, '\\"')}"` : String(pkValue);
     if (!pkLit || !pkCol) return;
-    const tl = tableLabel.toLowerCase();
-    const rels = (relationships ?? []).filter((r) => r.targetTableName.toLowerCase() === tl);
+    const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
+    const tl = norm(tableLabel);
+    const rels = (relationships ?? []).filter((r) => norm(r.targetTableName) === tl);
     if (rels.length === 0) return;
     // Run each relationship as a separate query and merge — avoids Trino UNION schema mismatch
     const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = { nodes: new Map(), edges: new Map() };

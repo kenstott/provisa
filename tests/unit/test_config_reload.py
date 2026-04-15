@@ -200,8 +200,8 @@ class TestNamingConventionTriggersRebuild:
         fields = schema.query_type.fields
         # With domain_prefix=True, the field name should include the domain
         assert any("order_items" in k for k in fields)
-        # Specifically should be prefixed
-        assert any(k.startswith("sales") for k in fields)
+        # Specifically should be prefixed with domain initials (e.g. "s__" for "sales")
+        assert any("__" in k for k in fields)
 
     def test_schema_is_graphql_schema_instance(self):
         si = _make_schema_input()

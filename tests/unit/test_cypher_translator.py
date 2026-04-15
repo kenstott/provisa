@@ -21,13 +21,13 @@ def _make_label_map_multi_path() -> CypherLabelMap:
     """Label map with two 1-hop paths from Person to Company: WORKS_AT and MANAGES."""
     person_meta = NodeMapping(
         label="Person", type_name="Person", domain_label=None, table_label="Person",
-        table_id=1, source_id="pg-main", id_column="id",
+        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="public", table_name="persons",
         properties={"name": "name", "age": "age"},
     )
     company_meta = NodeMapping(
         label="Company", type_name="Company", domain_label=None, table_label="Company",
-        table_id=2, source_id="pg-main", id_column="id",
+        table_id=2, source_id="pg-main", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="public", table_name="companies",
         properties={"name": "name"},
     )
@@ -53,6 +53,7 @@ def _make_label_map(multi_source: bool = False, with_domains: bool = False) -> C
         table_id=1,
         source_id="pg-main",
         id_column="id",
+        pk_columns=[],
         catalog_name="postgresql",
         schema_name="public",
         table_name="persons",
@@ -66,6 +67,7 @@ def _make_label_map(multi_source: bool = False, with_domains: bool = False) -> C
         table_id=2,
         source_id="pg-main" if not multi_source else "pg-secondary",
         id_column="id",
+        pk_columns=[],
         catalog_name="postgresql",
         schema_name="public",
         table_name="companies",
@@ -736,13 +738,13 @@ def _make_label_map_with_alias() -> CypherLabelMap:
     """Label map where Employee-[WORKS_FOR]->Department uses an alias."""
     employee = NodeMapping(
         label="Employee", type_name="Hr_Employee", domain_label="Hr", table_label="Employee",
-        table_id=10, source_id="pg-main", id_column="id",
+        table_id=10, source_id="pg-main", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="hr", table_name="employees",
         properties={"id": "id", "name": "name", "dept_id": "dept_id"},
     )
     dept = NodeMapping(
         label="Department", type_name="Hr_Department", domain_label="Hr", table_label="Department",
-        table_id=11, source_id="pg-main", id_column="id",
+        table_id=11, source_id="pg-main", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="hr", table_name="departments",
         properties={"id": "id", "name": "name"},
     )
@@ -766,19 +768,19 @@ def _make_label_map_shared_alias() -> CypherLabelMap:
     """Two source/target pairs sharing the same alias REPORTS_TO — triggers UNION ALL."""
     emp = NodeMapping(
         label="Employee", type_name="Hr_Employee", domain_label="Hr", table_label="Employee",
-        table_id=20, source_id="pg-main", id_column="id",
+        table_id=20, source_id="pg-main", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="hr", table_name="employees",
         properties={"id": "id", "manager_id": "manager_id"},
     )
     mgr = NodeMapping(
         label="Manager", type_name="Hr_Manager", domain_label="Hr", table_label="Manager",
-        table_id=21, source_id="pg-main", id_column="id",
+        table_id=21, source_id="pg-main", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="hr", table_name="managers",
         properties={"id": "id", "director_id": "director_id"},
     )
     director = NodeMapping(
         label="Director", type_name="Hr_Director", domain_label="Hr", table_label="Director",
-        table_id=22, source_id="pg-main", id_column="id",
+        table_id=22, source_id="pg-main", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="hr", table_name="directors",
         properties={"id": "id"},
     )
@@ -832,14 +834,14 @@ def _make_label_map_product_reviews() -> CypherLabelMap:
     product = NodeMapping(
         label="PRODUCT_CATALOG__PRODUCTS", type_name="PRODUCT_CATALOG__PRODUCTS",
         domain_label="PRODUCT_CATALOG", table_label="PRODUCTS",
-        table_id=30, source_id="pg-main", id_column="product_id",
+        table_id=30, source_id="pg-main", id_column="product_id", pk_columns=[],
         catalog_name="postgresql", schema_name="product_catalog", table_name="products",
         properties={"product_id": "product_id", "name": "name"},
     )
     review = NodeMapping(
         label="PRODUCT_CATALOG__PRODUCT_REVIEWS", type_name="PRODUCT_CATALOG__PRODUCT_REVIEWS",
         domain_label="PRODUCT_CATALOG", table_label="PRODUCT_REVIEWS",
-        table_id=31, source_id="pg-main", id_column="review_id",
+        table_id=31, source_id="pg-main", id_column="review_id", pk_columns=[],
         catalog_name="postgresql", schema_name="product_catalog", table_name="product_reviews",
         properties={"review_id": "review_id", "product_id": "product_id", "rating": "rating"},
     )

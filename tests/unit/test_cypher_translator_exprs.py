@@ -21,13 +21,13 @@ def _make_label_map_multi_path() -> CypherLabelMap:
     """Label map with two 1-hop paths from Person to Company: WORKS_AT and MANAGES."""
     person_meta = NodeMapping(
         label="Person", type_name="Person", domain_label=None, table_label="Person",
-        table_id=1, source_id="pg-main", id_column="id",
+        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="public", table_name="persons",
         properties={"name": "name", "age": "age"},
     )
     company_meta = NodeMapping(
         label="Company", type_name="Company", domain_label=None, table_label="Company",
-        table_id=2, source_id="pg-main", id_column="id",
+        table_id=2, source_id="pg-main", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="public", table_name="companies",
         properties={"name": "name"},
     )
@@ -53,6 +53,7 @@ def _make_label_map(multi_source: bool = False, with_domains: bool = False) -> C
         table_id=1,
         source_id="pg-main",
         id_column="id",
+        pk_columns=[],
         catalog_name="postgresql",
         schema_name="public",
         table_name="persons",
@@ -66,6 +67,7 @@ def _make_label_map(multi_source: bool = False, with_domains: bool = False) -> C
         table_id=2,
         source_id="pg-main" if not multi_source else "pg-secondary",
         id_column="id",
+        pk_columns=[],
         catalog_name="postgresql",
         schema_name="public",
         table_name="companies",
@@ -97,7 +99,7 @@ def _make_label_map_self_ref() -> CypherLabelMap:
     """Label map with a self-referential KNOWS relationship for recursive path tests."""
     person_meta = NodeMapping(
         label="Person", type_name="Person", domain_label=None, table_label="Person",
-        table_id=1, source_id="pg-main", id_column="id",
+        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="public", table_name="persons",
         properties={"name": "name", "age": "age"},
     )
@@ -111,19 +113,19 @@ def _make_label_map_self_ref() -> CypherLabelMap:
 def _make_label_map_three_hop() -> CypherLabelMap:
     person = NodeMapping(
         label="Person", type_name="Person", domain_label=None, table_label="Person",
-        table_id=1, source_id="pg", id_column="id",
+        table_id=1, source_id="pg", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="public", table_name="persons",
         properties={"name": "name"},
     )
     company = NodeMapping(
         label="Company", type_name="Company", domain_label=None, table_label="Company",
-        table_id=2, source_id="pg", id_column="id",
+        table_id=2, source_id="pg", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="public", table_name="companies",
         properties={"name": "name"},
     )
     dept = NodeMapping(
         label="Department", type_name="Department", domain_label=None, table_label="Department",
-        table_id=3, source_id="pg", id_column="id",
+        table_id=3, source_id="pg", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="public", table_name="departments",
         properties={"title": "title"},
     )
@@ -146,13 +148,13 @@ def _make_label_map_bidirectional() -> CypherLabelMap:
     """Label map with Person→Company (WORKS_AT) and Company→Person (EMPLOYS)."""
     person_meta = NodeMapping(
         label="Person", type_name="Person", domain_label=None, table_label="Person",
-        table_id=1, source_id="pg-main", id_column="id",
+        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="public", table_name="persons",
         properties={"name": "name", "age": "age"},
     )
     company_meta = NodeMapping(
         label="Company", type_name="Company", domain_label=None, table_label="Company",
-        table_id=2, source_id="pg-main", id_column="id",
+        table_id=2, source_id="pg-main", id_column="id", pk_columns=[],
         catalog_name="postgresql", schema_name="public", table_name="companies",
         properties={"name": "name"},
     )

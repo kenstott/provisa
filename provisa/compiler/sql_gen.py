@@ -467,9 +467,11 @@ def _table_ref(meta: TableMeta, use_catalog: bool) -> str:
 
 
 def _semantic_table_ref(meta: TableMeta) -> str:
-    """Semantic table reference: domain_id.field_name (as JDBC clients see it)."""
+    """Semantic table reference: domain_schema.table_name (as JDBC clients see it)."""
     from provisa.compiler.naming import domain_to_sql_name
-    return f'{_q(domain_to_sql_name(meta.domain_id))}.{_q(meta.field_name)}'
+    # Strip domain prefix (e.g. "ci__") from field_name — the domain is already the schema name
+    table = meta.field_name.split("__", 1)[1] if "__" in meta.field_name else meta.field_name
+    return f'{_q(domain_to_sql_name(meta.domain_id))}.{_q(table)}'
 
 
 def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:

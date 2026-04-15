@@ -773,7 +773,7 @@ export function TablesPage() {
                                       )}
                                     </td>
                                     <td style={{ textAlign: "center" }}>
-                                      {c.isPrimaryKey && <span style={{ fontSize: "0.65rem", padding: "0.1rem 0.3rem", borderRadius: "0.2rem", background: "hsl(var(--color-info) / 0.2)", color: "hsl(var(--color-info))", fontFamily: "monospace" }}>PK</span>}
+                                      {c.isPrimaryKey && <span style={{ color: "hsl(var(--color-info))" }}>&#10003;</span>}
                                     </td>
                                     <td>{c.alias || ""}</td>
                                     <td className="reasoning-cell">{c.description || ""}</td>

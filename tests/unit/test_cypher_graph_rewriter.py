@@ -27,6 +27,7 @@ def _make_label_map() -> CypherLabelMap:
         table_id=1,
         source_id="pg-main",
         id_column="id",
+        pk_columns=[],
         catalog_name="postgresql",
         schema_name="public",
         table_name="persons",
