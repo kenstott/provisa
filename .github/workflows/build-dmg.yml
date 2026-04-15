@@ -382,6 +382,13 @@ jobs:
           # Diagnostic: confirm the cert was imported and is trusted for codesigning
           security find-identity -v -p codesigning build.keychain
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: provisa-ui/package-lock.json
+
       - name: Build DMG
         env:
           APPLE_DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID }}

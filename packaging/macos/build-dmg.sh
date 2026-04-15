@@ -273,6 +273,12 @@ embed_compose() {
   cp "${REPO_ROOT}/main.py"        "$src_dst/"
   cp "${REPO_ROOT}/pyproject.toml" "$src_dst/"
   cp -r "${REPO_ROOT}/provisa"    "${src_dst}/provisa"
+  # Build React UI and embed static files so the provisa-ui container can serve them
+  info "Building React UI..."
+  (cd "${REPO_ROOT}/provisa-ui" && npm ci --silent && npm run build)
+  mkdir -p "${src_dst}/static"
+  cp -r "${REPO_ROOT}/provisa-ui/dist/." "${src_dst}/static/"
+  ok "React UI built and embedded."
   # Embed pre-built wheels so Dockerfile pip install needs no network
   local wheels_src="${SCRIPT_DIR}/tmp-provisa-wheels"
   if [ ! -d "$wheels_src" ] || [ -z "$(ls -A "$wheels_src" 2>/dev/null)" ]; then

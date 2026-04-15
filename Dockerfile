@@ -13,8 +13,10 @@ COPY --from=installer /usr/local/lib/python3.12/site-packages /usr/local/lib/pyt
 COPY --from=installer /usr/local/bin /usr/local/bin
 COPY main.py pyproject.toml ./
 COPY provisa/ ./provisa/
+# static/ contains the built React SPA; may be empty in dev builds
+COPY static/ ./static/
 RUN mkdir -p ./config
 
-EXPOSE 8000
+EXPOSE 8000 3000
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

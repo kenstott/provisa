@@ -24,3 +24,11 @@ services:
         condition: service_healthy
       trino:
         condition: service_healthy
+
+  provisa-ui:
+    build: .
+    command: ["uvicorn", "provisa.ui_server:app", "--host", "0.0.0.0", "--port", "3000"]
+    ports:
+      - "${UI_PORT:-3000}:3000"
+    depends_on:
+      - provisa

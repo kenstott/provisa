@@ -15,6 +15,10 @@ services:
     build: null
     image: provisa/provisa:local
 
+  provisa-ui:
+    build: null
+    image: provisa/provisa:local
+
   trino:
     environment:
       # JAVA_TOOL_OPTIONS is inherited from docker-compose.yml: "${TRINO_JAVA_TOOL_OPTIONS:-}"
