@@ -36,7 +36,7 @@ const ANALYST_ROLE: Role = {
 function makeAuthValue(overrides: {
   selectedRoles?: Role[]
   availableRoles?: Role[]
-  toggleRole?: ReturnType<typeof vi.fn>
+  toggleRole?: (role: Role) => void
 }) {
   return {
     role: overrides.selectedRoles?.[0] ?? ADMIN_ROLE,
