@@ -569,6 +569,25 @@
   margin: 2px 0;
 }
 
+.gf-ctrl-label {
+  width: 28px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted, #888);
+  font-size: 0.85rem;
+}
+
+.gf-ctrl-slider {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 28px;
+  height: 80px;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
 /* ── Download dropdown ───────────────────────────────────────────────────────── */
 .gf-dl-wrap {
   position: relative;

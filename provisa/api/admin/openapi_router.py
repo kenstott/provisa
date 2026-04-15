@@ -28,8 +28,9 @@ router = APIRouter(prefix="/admin/openapi", tags=["admin", "openapi"])
 
 
 class OpenAPIRegisterRequest(BaseModel):
-    spec_path: str
     source_id: str
+    spec_path: str = ""
+    spec_content: str = ""   # inline YAML or JSON; takes precedence over spec_path
     domain_id: str = ""
     base_url: str = ""
     auth_config: dict | None = None
@@ -37,7 +38,18 @@ class OpenAPIRegisterRequest(BaseModel):
 
 
 class OpenAPIPreviewRequest(BaseModel):
-    spec_path: str
+    spec_path: str = ""
+    spec_content: str = ""   # inline YAML or JSON; takes precedence over spec_path
+
+
+def _parse_inline_spec(content: str) -> dict:
+    """Parse an inline YAML or JSON spec string."""
+    import json
+    import yaml
+    try:
+        return yaml.safe_load(content)
+    except Exception:
+        return json.loads(content)
 
 
 async def _load_and_register(
@@ -47,6 +59,7 @@ async def _load_and_register(
     auth_config: dict | None,
     cache_ttl: int,
     base_url: str = "",
+    spec_content: str = "",
 ) -> tuple[dict, int, int]:
     """Load spec, upsert source record, store in state. Returns (spec, n_queries, n_mutations).
 
@@ -58,7 +71,10 @@ async def _load_and_register(
     from provisa.api.admin.actions_router import _ensure_tables
     from provisa.api.app import state
 
-    spec = load_spec(spec_path)
+    if spec_content:
+        spec = _parse_inline_spec(spec_content)
+    else:
+        spec = load_spec(spec_path)
 
     # Resolve base_url: explicit override > spec servers[0].url
     resolved_base_url = base_url.strip()
@@ -82,7 +98,7 @@ async def _load_and_register(
             port=0,
             database="",
             username="",
-            path=spec_path,
+            path=spec_path if spec_path else ":inline:",
         ))
 
     queries, mutations = parse_spec(spec)
@@ -91,6 +107,7 @@ async def _load_and_register(
         state.openapi_specs = {}
     state.openapi_specs[source_id] = {
         "spec_path": spec_path,
+        "spec_content": spec_content,
         "spec": spec,
         "base_url": resolved_base_url,
         "domain_id": domain_id,
@@ -108,6 +125,7 @@ async def register_openapi_source(body: OpenAPIRegisterRequest):
         spec, n_tables, n_mutations = await _load_and_register(
             body.source_id, body.spec_path, body.domain_id,
             body.auth_config, body.cache_ttl, base_url=body.base_url,
+            spec_content=body.spec_content,
         )
     except HTTPException:
         raise
@@ -139,11 +157,12 @@ async def refresh_openapi_source(source_id: str):
     try:
         spec, n_tables, n_mutations = await _load_and_register(
             source_id,
-            reg["spec_path"],
+            reg.get("spec_path", ""),
             reg.get("domain_id", ""),
             reg.get("auth_config"),
             reg.get("cache_ttl", 300),
             base_url=reg.get("base_url", ""),
+            spec_content=reg.get("spec_content", ""),
         )
     except HTTPException:
         raise
@@ -164,7 +183,10 @@ async def preview_openapi_spec(body: OpenAPIPreviewRequest):
     from provisa.openapi.loader import load_spec
     from provisa.openapi.mapper import parse_spec
     try:
-        spec = load_spec(body.spec_path)
+        if body.spec_content:
+            spec = _parse_inline_spec(body.spec_content)
+        else:
+            spec = load_spec(body.spec_path)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:

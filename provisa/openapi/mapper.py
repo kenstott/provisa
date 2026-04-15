@@ -169,11 +169,16 @@ def parse_spec(spec: dict) -> tuple[list[OpenAPIQuery], list[OpenAPIMutation]]:
             summary = operation.get("summary") or operation.get("description")
             response_schema = _extract_response_schema(spec, operation)
 
-            if method == "get":
+            # x-provisa-kind: "query" | "mutation" overrides the GET heuristic.
+            # Useful when POST is used as an enhanced read (common REST anti-pattern).
+            explicit_kind = (operation.get("x-provisa-kind") or "").lower()
+            is_query = explicit_kind == "query" or (method == "get" and explicit_kind != "mutation")
+
+            if is_query:
                 queries.append(OpenAPIQuery(
                     operation_id=op_id,
                     path=path,
-                    method="GET",
+                    method=method.upper(),
                     summary=summary,
                     path_params=path_params,
                     query_params=query_params,

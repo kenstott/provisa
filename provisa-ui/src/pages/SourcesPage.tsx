@@ -63,10 +63,8 @@ const SOURCE_TYPES = [
   { value: "prometheus", label: "Prometheus", category: "Other", defaultPort: 9090 },
   // API
   { value: "openapi", label: "REST API (OpenAPI)", category: "API", defaultPort: 443 },
-  { value: "graphql_api", label: "GraphQL API", category: "API", defaultPort: 443 },
-  { value: "grpc_api", label: "gRPC API", category: "API", defaultPort: 443 },
-  { value: "graphql_remote", label: "GraphQL Remote Schema", category: "API", defaultPort: 443 },
-  { value: "grpc_remote", label: "gRPC Remote Schema", category: "API", defaultPort: 50051 },
+  { value: "graphql", label: "GraphQL", category: "API", defaultPort: 443 },
+  { value: "grpc", label: "gRPC", category: "API", defaultPort: 50051 },
   // Streaming
   { value: "kafka", label: "Kafka", category: "Streaming", defaultPort: 9092 },
 ];
@@ -242,6 +240,8 @@ export function SourcesPage() {
 
   // OpenAPI-specific state
   const [openapiSpecPath, setOpenapiSpecPath] = useState("");
+  const [openapiSpecInline, setOpenapiSpecInline] = useState("");
+  const [openapiSpecMode, setOpenapiSpecMode] = useState<"path" | "inline">("path");
   const [openapiBaseUrl, setOpenapiBaseUrl] = useState("");
   const [openapiCacheTtl, setOpenapiCacheTtl] = useState("300");
   const [openapiPreview, setOpenapiPreview] = useState<{ queries: any[]; mutations: any[] } | null>(null);
@@ -262,7 +262,7 @@ export function SourcesPage() {
     try {
       const url = sourceType === "openapi"
         ? `/admin/openapi/refresh/${sourceId}`
-        : sourceType === "grpc_remote"
+        : sourceType === "grpc"
           ? `/admin/grpc-remote/refresh/${sourceId}`
           : `/admin/sources/graphql-remote/${sourceId}/refresh`;
       const resp = await fetch(url, { method: "POST" });
@@ -285,7 +285,11 @@ export function SourcesPage() {
       const resp = await fetch("/admin/openapi/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spec_path: openapiSpecPath }),
+        body: JSON.stringify(
+          openapiSpecMode === "inline"
+            ? { spec_content: openapiSpecInline }
+            : { spec_path: openapiSpecPath }
+        ),
       });
       if (!resp.ok) {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
@@ -307,7 +311,9 @@ export function SourcesPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          spec_path: openapiSpecPath,
+          ...(openapiSpecMode === "inline"
+            ? { spec_content: openapiSpecInline }
+            : { spec_path: openapiSpecPath }),
           base_url: openapiBaseUrl || undefined,
           source_id: form.id,
           domain_id: "",
@@ -358,7 +364,7 @@ export function SourcesPage() {
   };
 
   const category = getCategory(form.type);
-  const isApi = category === "API" && form.type !== "openapi" && form.type !== "graphql_remote" && form.type !== "grpc_remote";
+  const isApi = false; // All API types have dedicated form sections
   const isKafka = category === "Streaming";
   const isFile = FILE_SOURCES.has(form.type);
   const isSimpleRdbms = SIMPLE_RDBMS.has(form.type);
@@ -553,9 +559,31 @@ export function SourcesPage() {
       )}
       {form.type === "openapi" && (
         <>
-          <label style={{ gridColumn: "1 / -1" }}>Spec Path or URL
-            <input required value={openapiSpecPath} onChange={(e) => setOpenapiSpecPath(e.target.value)} placeholder="https://api.example.com/openapi.json or ./spec.yaml" />
-          </label>
+          <div style={{ gridColumn: "1 / -1", display: "flex", gap: "1rem" }}>
+            <label style={{ flexDirection: "row", alignItems: "center", gap: "0.4rem", whiteSpace: "nowrap" }}>
+              <input type="radio" name="openapiSpecMode" checked={openapiSpecMode === "path"} onChange={() => setOpenapiSpecMode("path")} style={{ width: "auto" }} />
+              Spec path / URL
+            </label>
+            <label style={{ flexDirection: "row", alignItems: "center", gap: "0.4rem", whiteSpace: "nowrap" }}>
+              <input type="radio" name="openapiSpecMode" checked={openapiSpecMode === "inline"} onChange={() => setOpenapiSpecMode("inline")} style={{ width: "auto" }} />
+              Write spec inline
+            </label>
+          </div>
+          {openapiSpecMode === "path" ? (
+            <label style={{ gridColumn: "1 / -1" }}>Spec Path or URL
+              <input required value={openapiSpecPath} onChange={(e) => setOpenapiSpecPath(e.target.value)} placeholder="https://api.example.com/openapi.json or ./spec.yaml" />
+            </label>
+          ) : (
+            <label style={{ gridColumn: "1 / -1" }}>OpenAPI Spec (YAML or JSON)
+              <textarea
+                required
+                value={openapiSpecInline}
+                onChange={(e) => setOpenapiSpecInline(e.target.value)}
+                placeholder={"openapi: '3.0.0'\ninfo:\n  title: My API\n  version: '1.0'\npaths:\n  /items:\n    get:\n      operationId: listItems\n      responses:\n        '200':\n          description: OK"}
+                style={{ fontFamily: "monospace", fontSize: "0.8rem", minHeight: "200px", resize: "vertical" }}
+              />
+            </label>
+          )}
           <label style={{ gridColumn: "1 / -1" }}>Base URL <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>(leave blank to use servers[0].url from spec)</span>
             <input value={openapiBaseUrl} onChange={(e) => setOpenapiBaseUrl(e.target.value)} placeholder="https://api.example.com (optional override)" />
           </label>
@@ -578,7 +606,8 @@ export function SourcesPage() {
             </>
           )}
           <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.5rem", alignItems: "center" }}>
-            <button type="button" onClick={handleOpenapiPreview} disabled={openapiPreviewing || !openapiSpecPath}>
+            <button type="button" onClick={handleOpenapiPreview}
+              disabled={openapiPreviewing || (openapiSpecMode === "path" ? !openapiSpecPath : !openapiSpecInline)}>
               {openapiPreviewing ? "Loading..." : "Preview"}
             </button>
             {openapiPreviewError && <span className="error" style={{ fontSize: "0.85rem" }}>{openapiPreviewError}</span>}
@@ -592,7 +621,7 @@ export function SourcesPage() {
           )}
         </>
       )}
-      {form.type === "graphql_remote" && (
+      {form.type === "graphql" && (
         <>
           <label style={{ gridColumn: "1 / -1" }}>Endpoint URL <input required value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="https://api.example.com/graphql" /></label>
           <label>Namespace <input required value={gqlNamespace} onChange={(e) => setGqlNamespace(e.target.value)} placeholder="myapi" /></label>
@@ -610,7 +639,7 @@ export function SourcesPage() {
           {authType === "basic" && <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />}
         </>
       )}
-      {form.type === "grpc_remote" && (
+      {form.type === "grpc" && (
         <>
           <label style={{ gridColumn: "1 / -1" }}>Proto Path or URL
             <input required value={grpcProtoPath} onChange={(e) => setGrpcProtoPath(e.target.value)} placeholder="https://api.example.com/service.proto or ./service.proto" />
@@ -645,38 +674,6 @@ export function SourcesPage() {
               <label>Header Name <input required value={authFields.header_name ?? "X-API-Key"} onChange={(e) => setAuthFields({ ...authFields, header_name: e.target.value })} placeholder="X-API-Key" /></label>
               <label>API Key <input required value={authFields.api_key ?? ""} onChange={(e) => setAuthFields({ ...authFields, api_key: e.target.value })} placeholder="${env:API_KEY}" /></label>
             </>
-          )}
-        </>
-      )}
-      {isApi && (
-        <>
-          <label>Base URL <input required value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="https://api.example.com" /></label>
-          <label>Spec URL <input value={form.database} onChange={(e) => setForm({ ...form, database: e.target.value })} placeholder="https://api.example.com/openapi.json" /></label>
-          <label style={{ gridColumn: "1 / -1" }}>Authentication
-            <select value={authType} onChange={(e) => { setAuthType(e.target.value); setAuthFields({}); }}>
-              {API_AUTH_TYPES.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
-            </select>
-          </label>
-          {authType === "bearer" && (
-            <label style={{ gridColumn: "1 / -1" }}>Token <input required value={authFields.token ?? ""} onChange={(e) => setAuthFields({ ...authFields, token: e.target.value })} placeholder="${env:API_TOKEN}" /></label>
-          )}
-          {authType === "basic" && <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />}
-          {authType === "api_key" && (
-            <>
-              <label>Header Name <input required value={authFields.header_name ?? "X-API-Key"} onChange={(e) => setAuthFields({ ...authFields, header_name: e.target.value })} placeholder="X-API-Key" /></label>
-              <label>API Key <input required value={authFields.api_key ?? ""} onChange={(e) => setAuthFields({ ...authFields, api_key: e.target.value })} placeholder="${env:API_KEY}" /></label>
-            </>
-          )}
-          {authType === "oauth2_client_credentials" && (
-            <>
-              <label style={{ gridColumn: "1 / -1" }}>Token URL <input required value={authFields.token_url ?? ""} onChange={(e) => setAuthFields({ ...authFields, token_url: e.target.value })} placeholder="https://auth.example.com/oauth/token" /></label>
-              <label>Client ID <input required value={authFields.client_id ?? ""} onChange={(e) => setAuthFields({ ...authFields, client_id: e.target.value })} /></label>
-              <label>Client Secret <input type="password" required value={authFields.client_secret ?? ""} onChange={(e) => setAuthFields({ ...authFields, client_secret: e.target.value })} /></label>
-              <label style={{ gridColumn: "1 / -1" }}>Scope <input value={authFields.scope ?? ""} onChange={(e) => setAuthFields({ ...authFields, scope: e.target.value })} placeholder="optional" /></label>
-            </>
-          )}
-          {authType === "custom_headers" && (
-            <label style={{ gridColumn: "1 / -1" }}>Headers (JSON) <input required value={authFields.headers_json ?? ""} onChange={(e) => setAuthFields({ ...authFields, headers_json: e.target.value })} placeholder='{"X-Custom": "${env:TOKEN}"}' /></label>
           )}
         </>
       )}
@@ -729,7 +726,7 @@ export function SourcesPage() {
       {refreshError && <div className="error">Schema refresh failed: {refreshError}</div>}
 
       {showForm && !editingSourceId && (
-        <form className="form-card" onSubmit={form.type === "openapi" ? handleOpenapiRegister : form.type === "grpc_remote" ? handleGrpcRegister : handleCreate}>
+        <form className="form-card" onSubmit={form.type === "openapi" ? handleOpenapiRegister : form.type === "grpc" ? handleGrpcRegister : handleCreate}>
           <label>ID <input required value={form.id} onChange={(e) => setForm({ ...form, id: e.target.value })} placeholder="e.g. sales-pg" /></label>
           <label>Type
             <select value={form.type} onChange={(e) => handleTypeChange(e.target.value)}>
@@ -783,7 +780,7 @@ export function SourcesPage() {
                     {MAPPING_TYPES.has(s.type) && (
                       <button onClick={() => { setMappingSourceId(s.id); setMappingSourceType(s.type); setDiscoverSourceId(null); }} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>Map Table</button>
                     )}
-                    {(s.type === "graphql_remote" || s.type === "openapi" || s.type === "grpc_remote") && (
+                    {(s.type === "graphql" || s.type === "openapi" || s.type === "grpc") && (
                       <button
                         onClick={() => handleRefreshSchema(s.id, s.type)}
                         disabled={refreshingSourceId === s.id}

@@ -160,7 +160,7 @@ class CypherLabelMap:
 
             domain_id = getattr(table_meta, "domain_id", None) or None
             domain_label = _pascal(domain_id) if domain_id else None
-            table_label = _table_label_from_table_name(table_meta.table_name, domain_id)
+            _, table_label = _split_cypher_labels(field_name)
             cypher_label = f"{domain_label}:{table_label}" if domain_label else table_label
             # logical table name: domain initials prefix stripped (lowercase of table_label parts)
             logical_table = _strip_domain_prefix(table_meta.table_name, domain_id)

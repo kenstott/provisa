@@ -714,6 +714,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         expr_text = _rewrite_in_list(expr_text)
         expr_text = _rewrite_property_access(expr_text)
         expr_text = _rewrite_string_predicates(expr_text)
+        expr_text = _coerce_ts_literals(expr_text)
         expr_text = self._rewrite_subquery_exprs(expr_text)
         try:
             parsed = sqlglot.parse_one(expr_text, dialect="trino")
@@ -1207,6 +1208,16 @@ def _rewrite_string_predicates(text: str) -> str:
     for pattern, repl in _STRING_PREDICATE_REWRITES:
         text = pattern.sub(repl, text)
     return text
+
+
+_ISO_TS_LITERAL_RE = re.compile(
+    r"'(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)'"
+)
+
+
+def _coerce_ts_literals(text: str) -> str:
+    """Wrap ISO-datetime string literals as TIMESTAMP '...' so Trino doesn't see varchar(N)."""
+    return _ISO_TS_LITERAL_RE.sub(lambda m: f"TIMESTAMP {m.group(0)}", text)
 
 
 _IN_LIST_RE = re.compile(r'\bIN\s*\[([^\[\]]*)\]', re.IGNORECASE)

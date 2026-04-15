@@ -190,12 +190,12 @@ async def cypher_query(
     resolved_params = [body.params.get(name) for name in ordered_params]
 
     # Stage 5: Execute via Trino/federation executor
-    log.debug("Cypher final SQL: %s", trino_sql)
+    log.info("Cypher final SQL: %s", trino_sql)
     try:
         rows = await _execute(trino_sql, resolved_params, state)
     except Exception as exc:
         log.exception("Cypher execution failed: %s", trino_sql)
-        return JSONResponse(status_code=500, content={"error": f"Execution failed: {_federation_error(exc)}"})
+        return JSONResponse(status_code=500, content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql})
 
     # Assemble
     try:
