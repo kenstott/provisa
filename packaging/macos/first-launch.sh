@@ -6,7 +6,7 @@ set -euo pipefail
 BUNDLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RESOURCES="${BUNDLE_DIR}/Resources"
 IMAGES_DIR="${RESOURCES}/images"
-PROVISA_HOME="${HOME}/.provisa"
+PROVISA_HOME="${PROVISA_INSTALL_DIR:-${HOME}/.provisa}"
 SENTINEL="${PROVISA_HOME}/.first-launch-complete"
 LIMA_VM_NAME="provisa"
 LIMA_YAML="${PROVISA_HOME}/provisa-lima.yaml"
@@ -210,7 +210,7 @@ containerd:
       arch: "aarch64"
       digest: "${nerdctl_digest}"
 mounts:
-  - location: "~/.provisa"
+  - location: "${PROVISA_HOME}"
     writable: true
 networks: []
 provision:

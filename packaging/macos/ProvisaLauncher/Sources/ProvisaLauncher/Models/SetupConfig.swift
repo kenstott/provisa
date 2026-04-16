@@ -1,6 +1,8 @@
 import Foundation
 
 final class SetupConfig: ObservableObject {
+    @Published var installDir: URL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".provisa")
     @Published var ramGB: Int = defaultRAM()
     @Published var hostname: String = "localhost"
     @Published var uiPort: String = "3000"
@@ -25,6 +27,7 @@ final class SetupConfig: ObservableObject {
     var environment: [String: String] {
         [
             "PROVISA_NONINTERACTIVE": "1",
+            "PROVISA_INSTALL_DIR":    installDir.path,
             "PROVISA_RAM_GB":         "\(ramGB)",
             "PROVISA_CPU_COUNT":      "\(cpuCount)",
             "PROVISA_WORKERS":        "\(federationWorkers)",

@@ -25,14 +25,18 @@ struct SetupWizardView: View {
                 case 0:
                     WelcomeView(onNext: { step = 1 })
                 case 1:
-                    ResourceBudgetView(config: config,
-                                       onBack: { step = 0 },
-                                       onNext: { step = 2 })
+                    InstallLocationView(config: config,
+                                        onBack: { step = 0 },
+                                        onNext: { step = 2 })
                 case 2:
-                    NetworkView(config: config,
-                                onBack: { step = 1 },
-                                onNext: { beginInstall() })
+                    ResourceBudgetView(config: config,
+                                       onBack: { step = 1 },
+                                       onNext: { step = 3 })
                 case 3:
+                    NetworkView(config: config,
+                                onBack: { step = 2 },
+                                onNext: { beginInstall() })
+                case 4:
                     InstallProgressView(state: installState,
                                         onCancel: { runner.cancel() })
                 default:
@@ -52,12 +56,12 @@ struct SetupWizardView: View {
         }
         .frame(width: 720, height: 540)
         .onChange(of: installState.isComplete) { done in
-            if done { step = installState.hasFailed ? 3 : 4 }
+            if done { step = installState.hasFailed ? 4 : 5 }
         }
     }
 
     private func beginInstall() {
-        step = 3
+        step = 4
         Task { @MainActor in
             runner.run(config: config, state: installState)
         }
