@@ -14,7 +14,7 @@ CLI_PATH="/usr/local/bin/provisa"
 LIMA_HOME="${HOME}/.lima/${LIMA_VM_NAME}"
 
 # Resolve actual install dir from UserDefaults or redirect file, fallback to default
-PROVISA_HOME_CUSTOM="$(defaults read com.provisa.launcher provisaInstallDir 2>/dev/null || true)"
+PROVISA_HOME_CUSTOM="$(defaults read com.provisa.app provisaInstallDir 2>/dev/null || true)"
 if [ -z "$PROVISA_HOME_CUSTOM" ] && [ -f "${HOME}/.provisa_home" ]; then
   PROVISA_HOME_CUSTOM="$(cat "${HOME}/.provisa_home")"
 fi
@@ -118,7 +118,7 @@ if pgrep -x "ProvisaLauncher" &>/dev/null; then
 fi
 
 # ── Clear UserDefaults and redirect file ──────────────────────────────────────
-defaults delete com.provisa.launcher provisaInstallDir 2>/dev/null || true
+defaults delete com.provisa.app provisaInstallDir 2>/dev/null || true
 if [ -f "${HOME}/.provisa_home" ]; then
   rm -f "${HOME}/.provisa_home"
   ok "Removed ~/.provisa_home"
