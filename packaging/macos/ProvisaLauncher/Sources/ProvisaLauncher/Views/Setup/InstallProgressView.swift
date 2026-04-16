@@ -4,58 +4,52 @@ struct InstallProgressView: View {
     @ObservedObject var state: InstallState
     let onCancel: () -> Void
 
-    @State private var logProxy = ScrollViewProxy?.none
-    @State private var scrollID: String = "bottom"
+    private var progress: Double {
+        let done = state.steps.filter { $0.status == .done }.count
+        return Double(done) / Double(max(state.steps.count, 1))
+    }
+
+    private var currentStepLabel: String {
+        state.steps.first { $0.status == .running }?.id.rawValue
+            ?? state.steps.first { $0.status == .pending }?.id.rawValue
+            ?? (state.hasFailed ? "Installation failed" : "Complete")
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             stepHeader(title: "Installing",
                        subtitle: "This takes a few minutes — no internet required")
 
-            Spacer(minLength: 16)
+            Spacer()
 
-            HStack(alignment: .top, spacing: 0) {
-                // Step list (left panel)
-                VStack(alignment: .leading, spacing: 0) {
+            VStack(spacing: 32) {
+                // Step list
+                VStack(alignment: .leading, spacing: 4) {
                     ForEach(state.steps) { step in
                         stepRow(step)
                     }
-                    Spacer()
                 }
-                .frame(width: 220)
-                .padding(.leading, 40)
+                .padding(.horizontal, 80)
 
-                Divider()
-                    .background(.white.opacity(0.12))
-                    .padding(.vertical, 8)
+                // Progress bar + label
+                VStack(spacing: 10) {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                        .tint(.indigo)
+                        .padding(.horizontal, 80)
 
-                // Log output (right panel)
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        Text(state.log)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.75))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(12)
-                            .id("logContent")
-
-                        Color.clear.frame(height: 1).id(scrollID)
-                    }
-                    .background(.black.opacity(0.25))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .padding(.horizontal, 16)
-                    .onChange(of: state.log) { _ in
-                        proxy.scrollTo(scrollID, anchor: .bottom)
-                    }
+                    Text(currentStepLabel)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.55))
+                        .animation(.easeInOut, value: currentStepLabel)
                 }
             }
 
-            Spacer(minLength: 16)
+            Spacer()
 
-            // Footer
             HStack {
                 if state.hasFailed {
-                    Label("Installation failed. Check the log for details.",
+                    Label("Installation failed.",
                           systemImage: "xmark.circle.fill")
                         .foregroundStyle(.red)
                         .font(.callout)
@@ -65,10 +59,8 @@ struct InstallProgressView: View {
                     Button("Cancel", action: onCancel)
                         .buttonStyle(WizardSecondaryButtonStyle())
                 } else if state.hasFailed {
-                    Button("Retry") {
-                        // Parent will re-run the install
-                    }
-                    .buttonStyle(WizardPrimaryButtonStyle())
+                    Button("Retry") {}
+                        .buttonStyle(WizardPrimaryButtonStyle())
                 }
             }
             .padding(.horizontal, 40)
@@ -84,7 +76,7 @@ struct InstallProgressView: View {
                 .font(.callout)
                 .foregroundStyle(foreground(for: step.status))
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .padding(.horizontal, 12)
         .background(step.status == .running ? Color.white.opacity(0.08) : .clear,
                     in: RoundedRectangle(cornerRadius: 8))
