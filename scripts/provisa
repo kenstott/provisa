@@ -255,8 +255,12 @@ cmd_start() {
         export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-provisa}"
     fi
 
+    local _up_out
+    # Capture then filter — avoids direct pipe from limactl SSH to filter_output,
+    # which can cause EIO when SSH tries to use a PTY with stdout redirected.
     # shellcheck disable=SC2086
-    $(get_compose) $COMPOSE_FILES up -d $scale_arg 2>&1 | filter_output
+    _up_out="$($(get_compose) $COMPOSE_FILES up -d $scale_arg 2>&1)" || true
+    printf '%s\n' "$_up_out" | filter_output
 
     if wait_for_healthy 120; then
         printf "\n${GREEN}${BOLD}Provisa is running.${NC}\n"
@@ -277,8 +281,10 @@ cmd_start() {
 
 cmd_stop() {
     printf "${CYAN}${BOLD}Stopping Provisa...${NC}\n"
+    local _down_out
     # shellcheck disable=SC2086
-    $(get_compose) $COMPOSE_FILES down 2>&1 | filter_output
+    _down_out="$($(get_compose) $COMPOSE_FILES down 2>&1)" || true
+    printf '%s\n' "$_down_out" | filter_output
     printf "${GREEN}${BOLD}Provisa has been shut down cleanly.${NC}\n"
 }
 
@@ -385,8 +391,10 @@ cmd_uninstall() {
         [yY]|[yY][eE][sS])
             # Stop services first if running
             info "Stopping services..."
+            local _u_out
             # shellcheck disable=SC2086
-            $(get_compose) $COMPOSE_FILES down 2>/dev/null || true
+            _u_out="$($(get_compose) $COMPOSE_FILES down 2>&1)" || true
+            printf '%s\n' "$_u_out" | filter_output
 
             if [ "$RUNTIME" = "lima" ] && [ -x "$LIMACTL" ]; then
                 info "Stopping Lima VM..."
