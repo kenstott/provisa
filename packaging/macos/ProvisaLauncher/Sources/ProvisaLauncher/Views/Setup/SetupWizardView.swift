@@ -59,9 +59,20 @@ struct SetupWizardView: View {
             if done {
                 if !installState.hasFailed {
                     UserDefaults.standard.set(config.installDir.path, forKey: "provisaInstallDir")
+                    startProvisa()
                 }
                 step = installState.hasFailed ? 4 : 5
             }
+        }
+    }
+
+    private func startProvisa() {
+        Task.detached {
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: "/usr/local/bin/provisa")
+            proc.arguments = ["start"]
+            try? proc.run()
+            proc.waitUntilExit()
         }
     }
 
