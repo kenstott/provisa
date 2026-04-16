@@ -83,15 +83,6 @@ struct RequirementCheck: Identifiable {
         let isArm = arch.contains("arm64") || arch.contains("Apple")
         let gb = ProcessInfo.processInfo.physicalMemory / (1024 * 1024 * 1024)
 
-        // Disk: need ~40 GB free
-        let freeGB: Int
-        if let attrs = try? FileManager.default.attributesOfFileSystem(forPath: NSHomeDirectory()),
-           let free = attrs[.systemFreeSize] as? Int64 {
-            freeGB = Int(free / (1024 * 1024 * 1024))
-        } else {
-            freeGB = 0
-        }
-
         return [
             RequirementCheck(label: "Apple Silicon (arm64)",
                              detail: arch,
@@ -99,9 +90,6 @@ struct RequirementCheck: Identifiable {
             RequirementCheck(label: "8 GB RAM or more",
                              detail: "\(gb) GB installed",
                              passed: gb >= 8),
-            RequirementCheck(label: "40 GB free disk space",
-                             detail: "\(freeGB) GB available",
-                             passed: freeGB >= 40),
         ]
     }
 }
