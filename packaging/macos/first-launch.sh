@@ -643,6 +643,7 @@ install_cli() {
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
+  info "Install directory: ${PROVISA_HOME}"
   if [ -f "$SENTINEL" ]; then
     # Already set up — update bundle, CLI, and compose YAMLs to latest version
     echo "PROGRESS:staging"
