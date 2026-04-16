@@ -42,11 +42,21 @@ Suggest: extract function, extract constant, decorator, base class.
 - Token budget: ~3,000 tokens max; estimate chars / 4
 - Global instructions stable; turn-specific logic injected dynamically
 
+## TypeScript Type Safety (MANDATORY — run this, don't infer it)
+After writing or reviewing any `.ts` / `.tsx` file:
+```
+cd provisa-ui && npx tsc -b 2>&1 | head -50
+```
+- Zero errors required before task is complete
+- Do not suppress with `// @ts-ignore` or `as any` unless proven unavoidable
+- `strict`, `noUnusedLocals`, `noUnusedParameters` are all enabled — violations are bugs
+
 ## UI Audit
 When reviewing UI features, audit includes:
+- **TypeScript**: run `tsc -b` — zero errors required
 - **Vitest**: component rendering and behavior tests
 - **Playwright**: e2e browser tests for user-visible workflows
-- Flag UI code lacking either test type
+- Flag UI code lacking any of the above
 
 ## Also Check
 - Unused imports/variables

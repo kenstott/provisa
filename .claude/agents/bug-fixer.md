@@ -45,6 +45,7 @@ Every bug fix starts with a failing test that proves the bug exists. The fix is 
 
 6. **VERIFY** — Confirm the fix:
    - Run the full test suite
+   - If any `.ts`/`.tsx` files were touched: `cd provisa-ui && npx tsc -b 2>&1 | head -50` — zero errors required
 
 ## Testing Gap Detection
 

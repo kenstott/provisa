@@ -45,6 +45,8 @@ See `test-tiers` skill for the full contract — tier definitions, docker-compos
 | Integration | `tests/integration/` | Real docker-compose stack. No mocks, no skips. |
 | E2E | `provisa-ui/e2e/` | Playwright. Import `test` from `./coverage`. |
 
+**TypeScript prerequisite:** Before writing or reviewing any `.ts`/`.tsx` test, run `cd provisa-ui && npx tsc -b 2>&1 | head -50`. Fix all type errors first — a test that doesn't compile is not a test.
+
 Misplacement is a bug. Fix by moving, not rewriting.
 
 ## Engagement Protocol

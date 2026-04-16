@@ -24,6 +24,12 @@ description: Prohibited patterns and quality rules. Auto-triggers when writing o
 - No magic numbers repeated — extract as named constants
 - No mutable default arguments in Python functions
 
+### TypeScript
+- **Never leave TypeScript without running `cd provisa-ui && npx tsc -b 2>&1 | head -50`** — this is the only way to surface type errors. Do not rely on IDE hints, vite's dev server, or inference.
+- Run `tsc -b` after every TypeScript file created or modified, before claiming the task is done.
+- Type errors are bugs. Fix them before moving on.
+- `skipLibCheck: true` is already set — no excuse for unchecked application code.
+
 ### UI
 - "Audit" for a UI feature means browser rendering + functionality — vitest for components, Playwright for e2e. Code review alone is not an audit.
 - All Playwright specs must import `test` from `./coverage`, never directly from `@playwright/test`

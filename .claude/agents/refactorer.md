@@ -55,7 +55,7 @@ Apply standard refactoring patterns (Extract Function/Class/Constant, Rename, In
 1. **Identify opportunities** - Find TODOs, FIXMEs, long functions, duplication
 2. **Prioritize** - High: blocking other work, frequently modified. Low: cosmetic, rarely touched.
 3. **Verify test coverage** - Run existing tests. If inadequate, write characterization tests first.
-4. **Execute incrementally** - One transformation → run tests → commit. Repeat.
+4. **Execute incrementally** - One transformation → run tests → if TypeScript: `cd provisa-ui && npx tsc -b 2>&1 | head -50` → commit. Repeat.
 5. **Review and merge** - Each commit reviewable independently. No behavior changes mixed in.
 
 ## Output Format
