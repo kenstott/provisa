@@ -645,9 +645,11 @@ install_cli() {
 main() {
   if [ -f "$SENTINEL" ]; then
     # Already set up — update bundle, CLI, and compose YAMLs to latest version
+    echo "PROGRESS:staging"
     install_to_applications
     install_guest_agent
     stage_compose
+    echo "PROGRESS:finalize"
     install_cli
     exit 0
   fi

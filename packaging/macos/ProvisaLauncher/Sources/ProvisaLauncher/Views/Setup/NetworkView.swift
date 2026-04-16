@@ -85,29 +85,35 @@ struct NetworkView: View {
     }
 
     private func checkPorts() {
-        var warnings: [String: String] = [:]
-        for (key, port) in [("ui", config.uiPort), ("api", config.apiPort), ("flight", config.flightPort)] {
-            guard let p = Int(port), p >= 1024, p <= 65535 else {
-                warnings[key] = "Port '\(port)' is not valid (1024–65535)"
-                continue
+        let ports = [("ui", config.uiPort), ("api", config.apiPort), ("flight", config.flightPort)]
+        Task.detached {
+            var result: [String: String] = [:]
+            for (key, port) in ports {
+                guard let p = Int(port), p >= 1024, p <= 65535 else {
+                    result[key] = "Port '\(port)' is not valid (1024–65535)"
+                    continue
+                }
+                if checkPortInUse(p) {
+                    result[key] = "Port \(p) appears to be in use"
+                }
             }
-            if isPortInUse(p) {
-                warnings[key] = "Port \(p) appears to be in use"
-            }
+            let captured = result
+            await MainActor.run { portWarnings = captured }
         }
-        portWarnings = warnings
     }
+}
 
-    private func isPortInUse(_ port: Int) -> Bool {
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/usr/bin/lsof")
-        proc.arguments = ["-iTCP:\(port)", "-sTCP:LISTEN", "-t"]
-        let pipe = Pipe()
-        proc.standardOutput = pipe
-        proc.standardError  = Pipe()
-        (try? proc.run()).map { proc.waitUntilExit() }
-        return !pipe.fileHandleForReading.availableData.isEmpty
-    }
+// MARK: - Port check (free function — no actor isolation)
+
+private func checkPortInUse(_ port: Int) -> Bool {
+    let proc = Process()
+    proc.executableURL = URL(fileURLWithPath: "/usr/bin/lsof")
+    proc.arguments = ["-iTCP:\(port)", "-sTCP:LISTEN", "-t"]
+    let pipe = Pipe()
+    proc.standardOutput = pipe
+    proc.standardError  = Pipe()
+    (try? proc.run()).map { proc.waitUntilExit() }
+    return !pipe.fileHandleForReading.availableData.isEmpty
 }
 
 // MARK: - TextField style
