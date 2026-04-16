@@ -419,6 +419,63 @@ cmd_uninstall() {
     esac
 }
 
+cmd_export() {
+    local dest="${1:-}"
+    local url="http://localhost:${API_PORT}/admin/config"
+    local http_code body
+
+    body="$(curl -s -w '\n__HTTP_CODE__%{http_code}' "$url" 2>/dev/null)" || {
+        err "Could not reach Provisa API at ${url}. Is Provisa running?"
+        exit 1
+    }
+    http_code="${body##*__HTTP_CODE__}"
+    body="${body%$'\n'__HTTP_CODE__*}"
+
+    if [ "$http_code" != "200" ]; then
+        err "API returned HTTP ${http_code}. Is Provisa running?"
+        exit 1
+    fi
+
+    if [ -n "$dest" ]; then
+        printf '%s\n' "$body" > "$dest"
+        ok "Config exported to ${dest}"
+    else
+        printf '%s\n' "$body"
+    fi
+}
+
+cmd_import() {
+    local src="${1:-}"
+    if [ -z "$src" ]; then
+        err "Usage: provisa import <file.yaml>"
+        exit 1
+    fi
+    if [ ! -f "$src" ]; then
+        err "File not found: ${src}"
+        exit 1
+    fi
+
+    local url="http://localhost:${API_PORT}/admin/config"
+    local http_code response
+
+    response="$(curl -s -w '\n__HTTP_CODE__%{http_code}' \
+        -X PUT "$url" \
+        -H "Content-Type: application/x-yaml" \
+        --data-binary "@${src}" 2>/dev/null)" || {
+        err "Could not reach Provisa API at ${url}. Is Provisa running?"
+        exit 1
+    }
+    http_code="${response##*__HTTP_CODE__}"
+    response="${response%$'\n'__HTTP_CODE__*}"
+
+    if [ "$http_code" = "200" ]; then
+        ok "Config imported and reloaded from ${src}"
+    else
+        err "Import failed (HTTP ${http_code}): ${response}"
+        exit 1
+    fi
+}
+
 cmd_help() {
     printf "\n${BOLD}Provisa${NC} — Self-service data provisioning\n\n"
     printf "Usage: ${BOLD}provisa${NC} <command>\n\n"
@@ -430,6 +487,10 @@ cmd_help() {
     printf "  ${BOLD}status${NC}      Show service status and health\n"
     printf "  ${BOLD}open${NC}        Open Provisa UI in browser\n"
     printf "  ${BOLD}logs${NC}        Tail Provisa log output\n"
+    printf "  ${BOLD}export${NC}      Export config to YAML (stdout or file)\n"
+    printf "    ${DIM}provisa export [file.yaml]${NC}\n"
+    printf "  ${BOLD}import${NC}      Import and apply a YAML config file\n"
+    printf "    ${DIM}provisa import <file.yaml>${NC}\n"
     printf "  ${BOLD}upgrade${NC}     Pull latest version and restart\n"
     printf "  ${BOLD}uninstall${NC}   Remove Provisa CLI and data\n"
     printf "  ${BOLD}help${NC}        Show this help message\n\n"
@@ -446,6 +507,8 @@ case "${1:-help}" in
     status)     cmd_status ;;
     open)       cmd_open ;;
     logs)       shift; cmd_logs "${1:-}" ;;
+    export)     shift; cmd_export "${1:-}" ;;
+    import)     shift; cmd_import "${1:-}" ;;
     upgrade)    cmd_upgrade ;;
     uninstall)  cmd_uninstall ;;
     help|--help|-h)  cmd_help ;;
