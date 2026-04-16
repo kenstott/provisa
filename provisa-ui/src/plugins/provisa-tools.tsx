@@ -21,7 +21,7 @@ import { useOperationsEditorState } from "@graphiql/react";
 import { compileQuery, submitQuery } from "../api/admin";
 import type { CompileResult } from "../api/admin";
 import { format as formatSql } from "sql-formatter";
-import type { GraphiQLPlugin } from "graphiql";
+import type { GraphiQLPlugin } from "@graphiql/react";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { cypherLanguage } from "@neo4j-cypher/codemirror";
@@ -248,7 +248,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
   } | null>(null);
 
   // Auto-compile on query change (debounced)
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
     if (!query.trim()) {
       setCompiled(null);
@@ -261,7 +261,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
         // Normalize: single result or multi-root { queries: [...] }
         const results: CompileResult[] = Array.isArray(raw)
           ? raw
-          : raw.queries
+          : "queries" in raw
           ? raw.queries
           : [raw];
         setCompiled(results);

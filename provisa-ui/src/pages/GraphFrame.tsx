@@ -18,7 +18,6 @@ import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { createPortal } from "react-dom";
 import cytoscape from "cytoscape";
-import type { Core, NodeSingular } from "cytoscape";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import fcoseRaw from "cytoscape-fcose";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -35,6 +34,81 @@ const cytoscapeSvg = (cytoscapeSvgRaw as any).default ?? cytoscapeSvgRaw;
 try { cytoscape.use(fcose); } catch { /* already registered */ }
 try { cytoscape.use(layoutUtilities); } catch { /* already registered */ }
 try { cytoscape.use(cytoscapeSvg); } catch { /* already registered */ }
+
+// Local types for cytoscape — avoids import-resolution issues with the package's
+// legacy export= declarations under moduleResolution "bundler".
+type CyLayoutOptions = { name: string; [key: string]: unknown };
+type CyElementDefinition = { group?: "nodes" | "edges"; data: Record<string, unknown>; [key: string]: unknown };
+// Aliases kept for callers that reference the old names.
+type CyElementDef = CyElementDefinition;
+interface CyElement {
+  id(): string;
+  data(key: string): unknown;
+  data(key: string, value: unknown): CyElement;
+  lock(): CyElement;
+  unlock(): CyElement;
+  select(): CyElement;
+  unselect(): CyElement;
+  style(name: string, value: unknown): CyElement;
+  style(props: Record<string, unknown>): CyElement;
+  addClass(cls: string): CyElement;
+  removeClass(cls: string): CyElement;
+  position(): { x: number; y: number };
+  position(pos: { x: number; y: number }): CyElement;
+  source(): CyElement;
+  target(): CyElement;
+  neighborhood(): CyCollection;
+}
+interface CyCollection {
+  length: number;
+  [index: number]: CyElement;
+  forEach(fn: (ele: CyElement, i: number) => void): this;
+  map<T>(fn: (ele: CyElement, i: number) => T): T[];
+  filter(fn: ((ele: CyElement) => boolean) | string): this;
+  select(): this;
+  unselect(): this;
+  remove(): this;
+  position(): { x: number; y: number };
+  position(pos: { x: number; y: number }): this;
+  lock(): this;
+  unlock(): this;
+  locked(): boolean;
+  neighborhood(selector?: string): CyCollection;
+  data(key: string): unknown;
+  id(): string;
+}
+interface CyNodeCollection extends CyCollection {
+  forEach(fn: (ele: CyElement, i: number) => void): this;
+}
+interface CyEvent {
+  target: CyElement & CyInstance;
+  position: { x: number; y: number };
+  renderedPosition?: { x: number; y: number };
+}
+interface CyInstance {
+  $(selector: string): CyCollection;
+  $id(id: string): CyCollection;
+  nodes(selector?: string): CyNodeCollection;
+  edges(selector?: string): CyCollection;
+  elements(selector?: string): CyCollection;
+  add(eles: CyElementDef | CyElementDef[] | CyCollection): CyCollection;
+  remove(eles: CyCollection | string): CyCollection;
+  batch(fn: () => void): void;
+  layout(options: CyLayoutOptions): { run(): void; one(evt: string, fn: () => void): void };
+  fit(eles?: CyCollection, padding?: number): void;
+  zoom(): number;
+  zoom(level: number): void;
+  pan(): { x: number; y: number };
+  pan(pos: { x: number; y: number }): void;
+  on(events: string, fn: (e: CyEvent) => void): void;
+  on(events: string, selector: string, fn: (e: CyEvent) => void): void;
+  off(events: string, fn?: (e: CyEvent) => void): void;
+  png(options?: Record<string, unknown>): string;
+  jpg(options?: Record<string, unknown>): string;
+  svg(options?: Record<string, unknown>): string;
+  destroy(): void;
+  style(sheet?: unknown): void;
+}
 
 function _downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -250,7 +324,7 @@ function injectExclusion(
       let found: { varN: string; newQuery: string } | null = null;
       let m: RegExpExecArray | null;
       while ((m = relPatternRe.exec(workingQuery)) !== null) {
-        const [fullMatch, srcVar, revType, fwdType, tgtVar] = m;
+        const [_fullMatch, srcVar, revType, fwdType, tgtVar] = m;
         const relType = (revType ?? fwdType).toUpperCase();
         const mapping = relMap.get(relType);
         if (!mapping) continue;
@@ -537,12 +611,12 @@ interface CanvasProps {
   onToggleParents: (nodeKey: string) => void;
   showingParentsCircular: Set<string>;
   onToggleParentsCircular: (nodeKey: string) => void;
-  onCyReady?: (cy: Core | null) => void;
+  onCyReady?: (cy: CyInstance | null) => void;
 }
 
 type LayoutMode = "force" | "hierarchy";
 
-const LAYOUT_OPTIONS: Record<LayoutMode, cytoscape.LayoutOptions> = {
+const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
   force: {
     name: "fcose",
     animate: false,
@@ -554,19 +628,19 @@ const LAYOUT_OPTIONS: Record<LayoutMode, cytoscape.LayoutOptions> = {
     nodeSeparation: 80,
     tilingPaddingVertical: 20,
     tilingPaddingHorizontal: 20,
-  } as cytoscape.LayoutOptions,
+  } as CyLayoutOptions,
   hierarchy: {
     name: "breadthfirst",
     animate: false,
     directed: true,
     padding: 20,
     spacingFactor: 1.4,
-  } as cytoscape.LayoutOptions,
+  } as CyLayoutOptions,
 };
 
 function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, showingChildrenNatural, onToggleChildren, showingChildrenCircular, onToggleChildrenCircular, showingParents, onToggleParents, showingParentsCircular, onToggleParentsCircular, onCyReady }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const cyRef = useRef<Core | null>(null);
+  const cyRef = useRef<CyInstance | null>(null);
   const colorOverridesRef = useRef(colorOverrides);
   colorOverridesRef.current = colorOverrides;
   const sizeOverridesRef = useRef(sizeOverrides);
@@ -631,16 +705,16 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     // For force mode with no edges, use grid — it fills the canvas rectangle optimally.
     // For force mode with edges, use fcose — clusters connected components.
     // For hierarchy mode, always use breadthfirst.
-    let opts: cytoscape.LayoutOptions;
+    let opts: CyLayoutOptions;
     if (cy.nodes().length === 0) {
-      opts = { name: "null" } as cytoscape.LayoutOptions;
+      opts = { name: "null" } as CyLayoutOptions;
     } else if (m === "hierarchy") {
       opts = LAYOUT_OPTIONS.hierarchy;
     } else if (cy.edges().length === 0) {
       // No relationships — grid fills the container rectangle by auto-sizing rows/cols
-      opts = { name: "grid", animate: false, fit: true, padding: 30, avoidOverlap: true, avoidOverlapPadding: 12 } as cytoscape.LayoutOptions;
+      opts = { name: "grid", animate: false, fit: true, padding: 30, avoidOverlap: true, avoidOverlapPadding: 12 } as CyLayoutOptions;
     } else {
-      opts = { ...LAYOUT_OPTIONS.force, idealEdgeLength: () => edgeDistanceRef.current } as cytoscape.LayoutOptions;
+      opts = { ...LAYOUT_OPTIONS.force, idealEdgeLength: () => edgeDistanceRef.current } as CyLayoutOptions;
     }
     const layout = cy.layout(opts);
     layout.one("layoutstop", () => {
@@ -688,7 +762,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       animationEasing: "ease-out" as const,
       numIter: 500,
       fit: false,
-    } as cytoscape.LayoutOptions;
+    } as CyLayoutOptions;
     const layout = cy.layout(opts);
     layout.one("layoutstop", () => {
       cy.batch(() => {
@@ -730,7 +804,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
   // Full rebuild — fires only when the base graph (query result) changes
   useEffect(() => {
     if (!containerRef.current) return;
-    const els: cytoscape.ElementDefinition[] = [];
+    const els: CyElementDefinition[] = [];
     nodes.forEach((n) => {
       els.push({ group: "nodes", data: { id: `${n.label}:${n.id}`, label: n.label, _node: n } });
     });
@@ -752,11 +826,11 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         {
           selector: "node",
           style: {
-            "background-color": (ele: NodeSingular) => {
+            "background-color": (ele: CyElement) => {
               const lbl = ele.data("label") as string;
               return colorOverridesRef.current[lbl] ?? labelColor(lbl);
             },
-            "label": (ele: NodeSingular) => {
+            "label": (ele: CyElement) => {
               const n = ele.data("_node") as GNode | undefined;
               if (!n) return String(ele.data("label") ?? "");
               const prop = labelPropertyRef.current[n.label];
@@ -767,22 +841,22 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             "font-size": 10,
             "text-valign": "center",
             "text-halign": "center",
-            "width": (ele: NodeSingular) => {
+            "width": (ele: CyElement) => {
               const lbl = ele.data("label") as string;
               return sizeOverridesRef.current[lbl] ?? 44;
             },
-            "height": (ele: NodeSingular) => {
+            "height": (ele: CyElement) => {
               const lbl = ele.data("label") as string;
               return sizeOverridesRef.current[lbl] ?? 44;
             },
             "text-wrap": "ellipsis",
-            "text-max-width": (ele: NodeSingular) => {
+            "text-max-width": (ele: CyElement) => {
               const lbl = ele.data("label") as string;
               const sz = sizeOverridesRef.current[lbl] ?? 44;
               return `${sz - 8}px`;
             },
             "border-width": 2,
-            "border-color": (ele: NodeSingular) => {
+            "border-color": (ele: CyElement) => {
               const lbl = ele.data("label") as string;
               const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
               return darkenColor(base, 0.75);
@@ -822,10 +896,11 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           },
         },
       ],
-      layout: { name: "null" } as cytoscape.LayoutOptions,
+      layout: { name: "null" } as CyLayoutOptions,
       minZoom: 0.05,
       maxZoom: 8,
-    });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any as CyInstance;
 
     cy.on("tap", "node", (evt) => {
       setNodeCtxMenu(null);
@@ -1338,7 +1413,7 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
     prevColumnsKey.current = frame.columns.join(",");
     setTableColWidths(frame.columns.map(() => 180));
   }
-  const canvasCyRef = useRef<Core | null>(null);
+  const canvasCyRef = useRef<CyInstance | null>(null);
   const inspWidthRef = useRef(inspectorWidth);
   inspWidthRef.current = inspectorWidth;
   const graphAreaHeightRef = useRef(graphAreaHeight);
@@ -1591,13 +1666,6 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
     overlayNodes.forEach((n, k) => m.set(k, n));
     return m;
   }, [frame.nodes, overlayNodes]);
-
-  const mergedEdges = useMemo(() => {
-    if (overlayEdges.size === 0) return frame.edges;
-    const m = new Map(frame.edges);
-    overlayEdges.forEach((e, k) => m.set(k, e));
-    return m;
-  }, [frame.edges, overlayEdges]);
 
   const showingChildrenNatural = useMemo(() => new Set(
     Array.from(overlayData.keys()).filter(k => k.endsWith(":children")).map(k => k.slice(0, -":children".length))

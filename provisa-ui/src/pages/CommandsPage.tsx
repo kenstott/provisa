@@ -230,6 +230,9 @@ export function CommandsPage() {
         timeoutMs: wh.timeoutMs,
         inlineReturnType: wh.inlineReturnType.length > 0 ? wh.inlineReturnType : [],
         kind: wh.kind ?? "mutation",
+        returnSchemaMode: "table",
+        sampleJson: "",
+        returnSchemaStr: "",
       });
       setExpandedWh(name);
     }

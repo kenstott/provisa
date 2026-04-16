@@ -84,7 +84,7 @@ export function ResponseTableOverlay() {
   const [responseText, setResponseText] = useState("");
   const [copiedJson, setCopiedJson] = useState(false);
   const [copiedCsv, setCopiedCsv] = useState(false);
-  const editorContext = useEditorContext({ nonNull: true });
+  const editorContext = useEditorContext();
 
   // Poll for response editor value since GraphiQL doesn't re-render on content change
   useEffect(() => {

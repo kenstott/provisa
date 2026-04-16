@@ -8,7 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { createContext, useContext, useState, useEffect, useMemo, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useMemo } from "react";
+import type { ReactNode } from "react";
 import type { Capability, Role, AuthState } from "../types/auth";
 import { fetchRoles } from "../api/admin";
 
@@ -51,7 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [selectedRoles, setSelectedRoles] = useState<Role[]>([]);
   const [availableRoles, setAvailableRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const error: string | null = null;
 
   useEffect(() => {
     fetchRoles()

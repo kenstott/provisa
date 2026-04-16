@@ -364,7 +364,6 @@ export function SourcesPage() {
   };
 
   const category = getCategory(form.type);
-  const isApi = false; // All API types have dedicated form sections
   const isKafka = category === "Streaming";
   const isFile = FILE_SOURCES.has(form.type);
   const isSimpleRdbms = SIMPLE_RDBMS.has(form.type);

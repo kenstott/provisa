@@ -15,7 +15,6 @@ import type {
   RegisteredTable,
   Relationship,
   RLSRule,
-  GovernedQuery,
   MutationResult,
 } from "../types/admin";
 

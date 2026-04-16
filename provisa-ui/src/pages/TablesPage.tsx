@@ -51,10 +51,11 @@ function DescriptionField({ value, onChange, placeholder, rows = 2, onGenerate, 
   );
 }
 
-function MultiSelect({ options, value, onChange }: {
+function MultiSelect({ options, value, onChange, className }: {
   options: { id: string; label: string }[];
   value: string[];
   onChange: (selected: string[]) => void;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
@@ -94,7 +95,7 @@ function MultiSelect({ options, value, onChange }: {
   const display = value.length > 0 ? value.join(", ") : "all";
 
   return (
-    <div className="multiselect" ref={triggerRef}>
+    <div className={`multiselect${className ? ` ${className}` : ""}`} ref={triggerRef}>
       <div className="multiselect-trigger" onClick={() => setOpen(!open)}>
         <span className="multiselect-text">{display}</span>
         <span className="multiselect-arrow">{open ? "\u25B4" : "\u25BE"}</span>

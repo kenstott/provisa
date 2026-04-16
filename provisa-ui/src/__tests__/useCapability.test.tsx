@@ -11,7 +11,6 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import type { ReactNode } from 'react'
 import { useCapability, useCapabilities } from '../hooks/useCapability'
 import type { Capability, Role } from '../types/auth'
 

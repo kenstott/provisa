@@ -274,9 +274,8 @@ embed_compose() {
   cp "${REPO_ROOT}/pyproject.toml" "$src_dst/"
   cp -r "${REPO_ROOT}/provisa"    "${src_dst}/provisa"
   # Build React UI and embed static files so the provisa-ui container can serve them
-  # Use vite build directly — tsc type-checking is a dev-time concern, not a build gate.
   info "Building React UI..."
-  (cd "${REPO_ROOT}/provisa-ui" && npm ci --silent && npx vite build)
+  (cd "${REPO_ROOT}/provisa-ui" && npm ci --silent && npm run build)
   mkdir -p "${src_dst}/static"
   cp -r "${REPO_ROOT}/provisa-ui/dist/." "${src_dst}/static/"
   ok "React UI built and embedded."

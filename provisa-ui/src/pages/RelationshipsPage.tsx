@@ -364,7 +364,7 @@ export function RelationshipsPage() {
           {rels.filter((r) => {
             if (!relSearch.trim()) return true;
             const q = relSearch.toLowerCase();
-            return r.sourceTable.toLowerCase().includes(q) || r.targetTable.toLowerCase().includes(q);
+            return r.sourceTableName.toLowerCase().includes(q) || r.targetTableName.toLowerCase().includes(q);
           }).map((r) => {
             const id = String(r.id);
             const isExpanded = expanded === id;

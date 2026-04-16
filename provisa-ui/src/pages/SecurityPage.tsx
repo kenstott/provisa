@@ -521,9 +521,6 @@ export function SecurityPage() {
             const scope = r.domainId ? `domain:${r.domainId}` : (tableLabelById[r.tableId!] ?? String(r.tableId));
             return r.roleId.toLowerCase().includes(q) || scope.toLowerCase().includes(q);
           }).map((r) => {
-            const scope = r.domainId
-              ? `domain: ${r.domainId}`
-              : (tableLabelById[r.tableId!] ?? String(r.tableId));
             return (
               <React.Fragment key={r.id}>
                 <tr

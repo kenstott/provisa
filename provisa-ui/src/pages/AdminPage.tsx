@@ -239,7 +239,7 @@ export function AdminPage() {
                     onChange={(e) =>
                       setSettings({
                         ...settings,
-                        naming: { domain_prefix: e.target.checked },
+                        naming: { ...settings.naming, domain_prefix: e.target.checked },
                       })
                     }
                     style={{ width: "auto" }}

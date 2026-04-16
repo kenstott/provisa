@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 // @ts-ignore — CJS fork with no type declarations
 import { _renderGroupedFields } from 'graphiql-explorer'
 
