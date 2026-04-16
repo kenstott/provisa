@@ -3,7 +3,7 @@ import Foundation
 enum InstallStepID: String, CaseIterable, Identifiable {
     case staging  = "Staging files"
     case vmStart  = "Starting virtual machine"
-    case images   = "Loading container images"
+    case images   = "Loading images"
     case build    = "Building Provisa"
     case finalize = "Finalizing"
 
