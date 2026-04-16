@@ -76,15 +76,6 @@ def make_background(scale: int = SCALE) -> Image.Image:
             b   = int(lerp(GRAD_TL[2], GRAD_BR[2], t))
             draw.point((x, y), fill=(r, g, b, 255))
 
-    # ── subtle dot-grid overlay ───────────────────────────────────────────
-    dot_spacing = 24 * scale
-    for y in range(0, sh, dot_spacing):
-        for x in range(0, sw, dot_spacing):
-            draw.ellipse(
-                [(x - scale, y - scale), (x + scale, y + scale)],
-                fill=(255, 255, 255, 18),
-            )
-
     # ── branding text (left side) ─────────────────────────────────────────
     brand_x = int(30 * scale)
     brand_y = int(35 * scale)
