@@ -56,7 +56,12 @@ struct SetupWizardView: View {
         }
         .frame(width: 720, height: 540)
         .onChange(of: installState.isComplete) { done in
-            if done { step = installState.hasFailed ? 4 : 5 }
+            if done {
+                if !installState.hasFailed {
+                    UserDefaults.standard.set(config.installDir.path, forKey: "provisaInstallDir")
+                }
+                step = installState.hasFailed ? 4 : 5
+            }
         }
     }
 

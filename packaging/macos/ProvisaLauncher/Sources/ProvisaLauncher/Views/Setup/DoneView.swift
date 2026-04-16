@@ -4,6 +4,8 @@ struct DoneView: View {
     let config: SetupConfig
     let onOpen: () -> Void
 
+    @State private var isReady = false
+
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
@@ -28,14 +30,16 @@ struct DoneView: View {
 
             VStack(spacing: 12) {
                 Button(action: onOpen) {
-                    Label("Open Provisa", systemImage: "safari")
+                    Label(isReady ? "Open Provisa" : "Starting Provisa…",
+                          systemImage: isReady ? "safari" : "clock")
                         .font(.headline)
                         .frame(width: 220, height: 44)
-                        .background(Color.indigo)
+                        .background(isReady ? Color.indigo : Color.gray.opacity(0.4))
                         .foregroundStyle(.white)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
+                .disabled(!isReady)
 
                 Text("http://localhost:\(config.uiPort)")
                     .font(.caption)
@@ -43,6 +47,19 @@ struct DoneView: View {
                     .fontDesign(.monospaced)
             }
             .padding(.bottom, 52)
+        }
+        .task { await pollUntilReady() }
+    }
+
+    private func pollUntilReady() async {
+        guard let url = URL(string: "http://localhost:\(config.uiPort)/health") else { return }
+        while !isReady {
+            if let (_, response) = try? await URLSession.shared.data(from: url),
+               (response as? HTTPURLResponse)?.statusCode == 200 {
+                isReady = true
+                return
+            }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
         }
     }
 }

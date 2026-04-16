@@ -12,8 +12,13 @@ final class ServiceStatus: ObservableObject {
     private var uiPort: String = "3000"
 
     init() {
-        let cfg = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".provisa/config.yaml")
+        let installDir: URL
+        if let saved = UserDefaults.standard.string(forKey: "provisaInstallDir"), !saved.isEmpty {
+            installDir = URL(fileURLWithPath: saved)
+        } else {
+            installDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".provisa")
+        }
+        let cfg = installDir.appendingPathComponent("config.yaml")
         if let text = try? String(contentsOf: cfg) {
             for line in text.components(separatedBy: "\n") {
                 if line.hasPrefix("ui_port:") {

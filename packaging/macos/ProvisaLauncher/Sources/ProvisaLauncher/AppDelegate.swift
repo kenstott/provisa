@@ -8,8 +8,15 @@ import SwiftUI
     private var setupWindow: NSWindow?
     private var statusService: ServiceStatus?
 
-    private static let sentinel = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".provisa/.first-launch-complete")
+    private static var sentinel: URL {
+        let base: URL
+        if let saved = UserDefaults.standard.string(forKey: "provisaInstallDir"), !saved.isEmpty {
+            base = URL(fileURLWithPath: saved)
+        } else {
+            base = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".provisa")
+        }
+        return base.appendingPathComponent(".first-launch-complete")
+    }
 
     func applicationDidFinishLaunching(_: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -41,6 +48,7 @@ import SwiftUI
         window.contentViewController = NSHostingController(rootView: view)
         window.title = "Provisa Setup"
         window.isReleasedWhenClosed = false
+        window.delegate = self
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         setupWindow = window
@@ -91,5 +99,13 @@ import SwiftUI
         } else {
             pop.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
         }
+    }
+}
+
+extension AppDelegate: NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        guard statusItem == nil else { return }
+        activateMenuBar()
+        NSApp.setActivationPolicy(.accessory)
     }
 }

@@ -4,7 +4,11 @@
 # through limactl shell <vm> -- nerdctl compose inside the Lima VM.
 set -euo pipefail
 
-PROVISA_HOME="${HOME}/.provisa"
+if [ -f "${HOME}/.provisa_home" ]; then
+    PROVISA_HOME="$(cat "${HOME}/.provisa_home")"
+else
+    PROVISA_HOME="${HOME}/.provisa"
+fi
 CONFIG_FILE="${PROVISA_HOME}/config.yaml"
 LOG_DIR="${PROVISA_HOME}/.logs"
 

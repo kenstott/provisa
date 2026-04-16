@@ -625,6 +625,7 @@ lima_vm: ${LIMA_VM_NAME}
 federation_workers: ${FED_WORKERS}
 YAML
   ok "Config written to ${PROVISA_HOME}/config.yaml"
+  printf '%s' "${PROVISA_HOME}" > "${HOME}/.provisa_home"
 }
 
 # ── Install CLI symlink ───────────────────────────────────────────────────────
