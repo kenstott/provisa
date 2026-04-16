@@ -34,8 +34,7 @@ import SwiftUI
 
         let view = SetupWizardView { [weak self] in
             self?.setupWindow?.close()
-            self?.activateMenuBar()
-            NSApp.setActivationPolicy(.accessory)
+            // windowWillClose handles activateMenuBar() and setActivationPolicy
         }
 
         let window = NSWindow(
@@ -104,6 +103,7 @@ import SwiftUI
 
 extension AppDelegate: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
+        guard let w = notification.object as? NSWindow, w === setupWindow else { return }
         guard statusItem == nil else { return }
         activateMenuBar()
         NSApp.setActivationPolicy(.accessory)

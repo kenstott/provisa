@@ -10,9 +10,15 @@ err()  { printf "${RED}[uninstall]${NC} %s\n" "$*" >&2; }
 
 LIMA_VM_NAME="provisa"
 APP_PATH="/Applications/Provisa.app"
-PROVISA_HOME="${HOME}/.provisa"
-LIMA_HOME="${HOME}/.lima/${LIMA_VM_NAME}"
 CLI_PATH="/usr/local/bin/provisa"
+LIMA_HOME="${HOME}/.lima/${LIMA_VM_NAME}"
+
+# Resolve actual install dir from UserDefaults or redirect file, fallback to default
+PROVISA_HOME_CUSTOM="$(defaults read com.provisa.launcher provisaInstallDir 2>/dev/null || true)"
+if [ -z "$PROVISA_HOME_CUSTOM" ] && [ -f "${HOME}/.provisa_home" ]; then
+  PROVISA_HOME_CUSTOM="$(cat "${HOME}/.provisa_home")"
+fi
+PROVISA_HOME="${PROVISA_HOME_CUSTOM:-${HOME}/.provisa}"
 
 ARCH="$(uname -m)"
 case "$ARCH" in
@@ -102,6 +108,20 @@ if [ -f "$CLI_PATH" ]; then
   fi
 else
   info "${CLI_PATH} not found — skipping."
+fi
+
+# ── Kill running app ──────────────────────────────────────────────────────────
+if pgrep -x "ProvisaLauncher" &>/dev/null; then
+  info "Stopping ProvisaLauncher..."
+  pkill -x "ProvisaLauncher" || true
+  ok "ProvisaLauncher stopped."
+fi
+
+# ── Clear UserDefaults and redirect file ──────────────────────────────────────
+defaults delete com.provisa.launcher provisaInstallDir 2>/dev/null || true
+if [ -f "${HOME}/.provisa_home" ]; then
+  rm -f "${HOME}/.provisa_home"
+  ok "Removed ~/.provisa_home"
 fi
 
 printf "\n${GREEN}${BOLD}Provisa uninstalled.${NC}\n\n"
