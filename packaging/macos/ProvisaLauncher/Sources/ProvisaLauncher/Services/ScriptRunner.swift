@@ -46,18 +46,21 @@ final class ScriptRunner {
         proc.standardOutput = pipe
         proc.standardError  = pipe
 
-        pipe.fileHandleForReading.readabilityHandler = { [weak state] handle in
+        // Capture as a `let` constant so Swift 6 strict concurrency is satisfied.
+        let capturedState = state
+
+        pipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             guard !data.isEmpty, let text = String(data: data, encoding: .utf8) else { return }
             Task { @MainActor in
-                state?.appendLog(text)
-                state?.parseProgress(text)
+                capturedState.appendLog(text)
+                capturedState.parseProgress(text)
             }
         }
 
-        proc.terminationHandler = { [weak state] p in
+        proc.terminationHandler = { p in
             Task { @MainActor in
-                state?.finish(success: p.terminationStatus == 0)
+                capturedState.finish(success: p.terminationStatus == 0)
             }
         }
 
