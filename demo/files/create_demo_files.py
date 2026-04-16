@@ -104,7 +104,43 @@ def create_orders_sqlite() -> None:
     print("Created orders.sqlite")
 
 
+def create_inquiries_sqlite() -> None:
+    # Customer inquiries from the pet store front-desk/CRM department
+    db_path = HERE / "inquiries.sqlite"
+    db_path.unlink(missing_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE inquiries (
+            id INTEGER PRIMARY KEY,
+            pet_id INTEGER NOT NULL,
+            customer_name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            inquiry_type TEXT NOT NULL,
+            message TEXT NOT NULL,
+            submitted_at TEXT NOT NULL
+        );
+
+        INSERT INTO inquiries VALUES
+            (1,  1,  'Sara Kim',      'sara@example.com',    'adoption',     'Is Whiskers still available?',                          '2025-03-01 09:15:00'),
+            (2,  6,  'Tom Evans',     'tom@example.com',     'price',        'Can I get a discount on Buddy?',                        '2025-03-02 11:00:00'),
+            (3,  4,  'Amy Zhao',      'amy@example.com',     'availability', 'When will Luna be ready for pickup?',                   '2025-03-03 14:30:00'),
+            (4,  8,  'Carlos Ruiz',   'carlos@example.com',  'adoption',     'I am interested in adopting Bella.',                    '2025-03-04 10:00:00'),
+            (5,  2,  'Nina Patel',    'nina@example.com',    'general',      'Does Mittens get along with dogs?',                     '2025-03-05 13:45:00'),
+            (6,  9,  'James Park',    'james@example.com',   'price',        'Is there a payment plan for Charlie?',                  '2025-03-06 16:00:00'),
+            (7,  10, 'Lisa Chen',     'lisa@example.com',    'adoption',     'Rocky looks wonderful — how do I apply?',               '2025-03-07 09:30:00'),
+            (8,  5,  'Mark Torres',   'mark@example.com',    'availability', 'Is Oreo still available? I visited last week.',         '2025-03-08 12:15:00'),
+            (9,  11, 'Jen Wu',        'jen@example.com',     'general',      'Is Daisy good with small children?',                    '2025-03-09 11:00:00'),
+            (10, 12, 'Derek Hall',    'derek@example.com',   'adoption',     'Milo looks great — please hold while I check with my family.', '2025-03-10 15:00:00'),
+            (11, 1,  'Sara Kim',      'sara@example.com',    'adoption',     'Following up on Whiskers — still interested.',          '2025-03-12 10:00:00'),
+            (12, 6,  'Rachel Scott',  'rachel@example.com',  'price',        'What vaccinations are included in the price for Buddy?','2025-03-13 14:00:00');
+    """)
+    conn.commit()
+    conn.close()
+    print("Created inquiries.sqlite")
+
+
 if __name__ == "__main__":
     create_products_parquet()
     create_orders_sqlite()
+    create_inquiries_sqlite()
     print("Done.")

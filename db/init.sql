@@ -143,6 +143,36 @@ INSERT INTO analytics.customer_segments (customer_id, segment, score) VALUES
     (9, 'high-value', 85.9),
     (10, 'low-value', 30.0);
 
+-- Pet store schema: demonstrates cross-source virtualization with parquet + sqlite
+CREATE SCHEMA IF NOT EXISTS pet_store;
+
+CREATE TABLE pet_store.pets (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    species VARCHAR(50) NOT NULL,
+    breed_name VARCHAR(100) NOT NULL,
+    price NUMERIC(10, 2) NOT NULL,
+    available BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+COMMENT ON TABLE pet_store.pets IS 'Available pets for sale';
+COMMENT ON COLUMN pet_store.pets.breed_name IS 'Breed name — joins to breed_info parquet source';
+COMMENT ON COLUMN pet_store.pets.available IS 'Whether the pet is currently available for adoption';
+
+INSERT INTO pet_store.pets (name, species, breed_name, price, available) VALUES
+    ('Whiskers', 'cat', 'Maine Coon', 450.00, TRUE),
+    ('Mittens', 'cat', 'Siamese', 380.00, TRUE),
+    ('Shadow', 'cat', 'British Shorthair', 420.00, FALSE),
+    ('Luna', 'cat', 'Persian', 520.00, TRUE),
+    ('Oreo', 'cat', 'Maine Coon', 430.00, TRUE),
+    ('Buddy', 'dog', 'Golden Retriever', 800.00, TRUE),
+    ('Max', 'dog', 'Labrador', 750.00, FALSE),
+    ('Bella', 'dog', 'Beagle', 600.00, TRUE),
+    ('Charlie', 'dog', 'Poodle', 950.00, TRUE),
+    ('Rocky', 'dog', 'Golden Retriever', 820.00, TRUE),
+    ('Daisy', 'cat', 'Siamese', 390.00, TRUE),
+    ('Milo', 'dog', 'Labrador', 710.00, TRUE);
+
 -- Hello-world DB function: returns customers filtered by region.
 -- Exposed as the "hello_get_customers" tracked function in Provisa.
 CREATE OR REPLACE FUNCTION get_customers_by_region(p_region TEXT DEFAULT NULL)

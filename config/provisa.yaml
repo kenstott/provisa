@@ -43,6 +43,27 @@ sources:
     type: sqlite
     path: ./demo/files/orders.sqlite
 
+  # Pet store: three department-owned data stores federated by Provisa
+  - id: pet-store-pg
+    type: postgresql
+    host: ${env:POSTGRES_HOST:-localhost}
+    port: 5432
+    database: provisa
+    username: provisa
+    password: ${env:PG_PASSWORD:-provisa}
+
+  - id: petstore-api
+    type: openapi
+    path: https://petstore3.swagger.io/api/v3/openapi.json
+    base_url: https://petstore3.swagger.io/api/v3
+    cache_ttl: 300
+    auth_config:
+      type: none
+
+  - id: inquiries-sqlite
+    type: sqlite
+    path: ./demo/files/inquiries.sqlite
+
 domains:
   - id: sales-analytics
     description: Sales operational and analytical data
@@ -52,6 +73,8 @@ domains:
     description: Customer segmentation and analytics
   - id: support
     description: Customer support ticket events
+  - id: pet-store
+    description: "Pet store — Petstore public API (OpenAPI), internal inventory (PG), and customer inquiries (SQLite) federated into one virtual database"
 
 naming:
   domain_prefix: true  # prepends domain_id__ to all GraphQL names
@@ -147,6 +170,65 @@ tables:
       - name: score
         visible_to: [admin]
 
+  # Pet store — inventory department (PostgreSQL, pet_store schema)
+  - source_id: pet-store-pg
+    domain_id: pet-store
+    schema: pet_store
+    table: pets
+    governance: pre-approved
+    description: "Pet inventory — managed by the inventory department"
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: name
+        visible_to: [admin, analyst]
+      - name: species
+        visible_to: [admin, analyst]
+      - name: breed_name
+        visible_to: [admin, analyst]
+      - name: price
+        visible_to: [admin]
+      - name: available
+        visible_to: [admin, analyst]
+
+  # Pet store — Petstore public API (OpenAPI, the storefront/catalog)
+  - source_id: petstore-api
+    domain_id: pet-store
+    table: pet
+    governance: pre-approved
+    description: "Pet catalog from the Petstore public API"
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: name
+        visible_to: [admin, analyst]
+      - name: status
+        visible_to: [admin, analyst]
+      - name: photoUrls
+        visible_to: [admin, analyst]
+
+  # Pet store — customer inquiries (SQLite, managed by front-desk/CRM team)
+  - source_id: inquiries-sqlite
+    domain_id: pet-store
+    table: inquiries
+    governance: pre-approved
+    description: "Customer adoption inquiries — managed by the front-desk/CRM team"
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: pet_id
+        visible_to: [admin, analyst]
+      - name: customer_name
+        visible_to: [admin, analyst]
+      - name: email
+        visible_to: [admin]
+      - name: inquiry_type
+        visible_to: [admin, analyst]
+      - name: message
+        visible_to: [admin, analyst]
+      - name: submitted_at
+        visible_to: [admin, analyst]
+
 views:
   - id: monthly-revenue
     sql: |
@@ -174,6 +256,43 @@ views:
       - name: order_count
         visible_to: [admin, analyst]
         description: "Number of orders"
+
+  # Cross-source view: joins all three pet store department data stores
+  - id: pet-adoption-overview
+    sql: |
+      SELECT p.id          AS pet_id,
+             p.name        AS pet_name,
+             p.species,
+             p.breed_name,
+             p.price,
+             p.available,
+             api.status    AS api_status,
+             COUNT(i.id)   AS inquiry_count
+      FROM pets p
+      LEFT JOIN pet api    ON p.name = api.name
+      LEFT JOIN inquiries i ON p.id = i.pet_id
+      GROUP BY p.id, p.name, p.species, p.breed_name, p.price, p.available, api.status
+    description: "Cross-source view: internal inventory (PG) + Petstore public API (OpenAPI) + inquiries (SQLite)"
+    domain_id: pet-store
+    governance: pre-approved
+    materialize: false
+    columns:
+      - name: pet_id
+        visible_to: [admin, analyst]
+      - name: pet_name
+        visible_to: [admin, analyst]
+      - name: species
+        visible_to: [admin, analyst]
+      - name: breed_name
+        visible_to: [admin, analyst]
+      - name: price
+        visible_to: [admin]
+      - name: available
+        visible_to: [admin, analyst]
+      - name: api_status
+        visible_to: [admin, analyst]
+      - name: inquiry_count
+        visible_to: [admin, analyst]
 
   - id: customer-order-summary
     sql: |
@@ -223,6 +342,20 @@ relationships:
     target_column: id
     cardinality: many-to-one
     alias: OPENED_BY
+  - id: pets-to-api
+    source_table_id: pets
+    target_table_id: pet
+    source_column: name
+    target_column: name
+    cardinality: many-to-one
+    alias: LISTED_AS
+  - id: pets-to-inquiries
+    source_table_id: pets
+    target_table_id: inquiries
+    source_column: id
+    target_column: pet_id
+    cardinality: one-to-many
+    alias: HAS_INQUIRY
   - id: orders-to-reviews
     source_table_id: orders
     target_table_id: product_reviews
