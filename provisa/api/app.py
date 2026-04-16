@@ -106,6 +106,35 @@ async def _load_and_build(config_path: str | None = None) -> None:
     if config_path is None:
         config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
 
+    # Connect to PG and init schema unconditionally — pool must be available
+    # even before a config file exists (admin UI needs it on first start).
+    pg_host = os.environ.get("PG_HOST", "localhost")
+    pg_port = int(os.environ.get("PG_PORT", "5432"))
+    pg_database = os.environ.get("PG_DATABASE", "provisa")
+    pg_user = os.environ.get("PG_USER", "provisa")
+    pg_password = os.environ.get("PG_PASSWORD", "provisa")
+
+    state.pg_pool = await create_pool(
+        pg_host, pg_port, pg_database, pg_user, pg_password,
+    )
+
+    schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
+    if schema_sql_path.exists():
+        schema_sql = schema_sql_path.read_text()
+        await init_schema(state.pg_pool, schema_sql)
+
+    # Seed a built-in example source pointing at the internal admin DB so the
+    # Data Sources page is never empty on first start.
+    async with state.pg_pool.acquire() as _conn:
+        await _conn.execute(
+            """
+            INSERT INTO sources (id, type, host, port, database, username, dialect)
+            VALUES ('provisa-admin', 'postgresql', $1, $2, $3, $4, 'postgresql')
+            ON CONFLICT (id) DO NOTHING
+            """,
+            pg_host, pg_port, pg_database, pg_user,
+        )
+
     path = Path(config_path)
     if not path.exists():
         return
@@ -119,23 +148,6 @@ async def _load_and_build(config_path: str | None = None) -> None:
         "PROVISA_HOSTNAME",
         state.server_cfg.get("hostname", "localhost"),
     )
-
-    # Connect to PG
-    pg_host = os.environ.get("PG_HOST", "localhost")
-    pg_port = int(os.environ.get("PG_PORT", "5432"))
-    pg_database = os.environ.get("PG_DATABASE", "provisa")
-    pg_user = os.environ.get("PG_USER", "provisa")
-    pg_password = os.environ.get("PG_PASSWORD", "provisa")
-
-    state.pg_pool = await create_pool(
-        pg_host, pg_port, pg_database, pg_user, pg_password,
-    )
-
-    # Init schema
-    schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
-    if schema_sql_path.exists():
-        schema_sql = schema_sql_path.read_text()
-        await init_schema(state.pg_pool, schema_sql)
 
     # Connect to Trino
     trino_host = os.environ.get("TRINO_HOST", "localhost")

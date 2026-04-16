@@ -54,14 +54,14 @@ LIMACTL="${PROVISA_HOME}/bin/limactl"
 
 ensure_lima_running() {
     if [ ! -x "$LIMACTL" ]; then
-        err "limactl not found at ${LIMACTL}. Re-run Provisa.app to complete setup."
+        err "Provisa environment not found. Re-run Provisa.app to complete setup."
         exit 1
     fi
     local state
     state="$("$LIMACTL" list --format '{{.Status}}' "$LIMA_VM" 2>/dev/null || echo "unknown")"
     if [ "$state" != "Running" ]; then
-        info "Starting Provisa VM..."
-        "$LIMACTL" start --yes "$LIMA_VM"
+        info "Preparing Provisa environment..."
+        "$LIMACTL" start --yes "$LIMA_VM" >/dev/null 2>&1
     fi
 }
 
@@ -199,7 +199,7 @@ wait_for_healthy() {
     local interval=3
     local elapsed=0
 
-    info "Waiting for services to become healthy (timeout: ${timeout}s)..."
+    info "Starting services..."
 
     while [ "$elapsed" -lt "$timeout" ]; do
         local all_healthy=true
@@ -247,7 +247,7 @@ cmd_start() {
     local scale_arg=""
     if [ "${FED_WORKERS:-0}" -gt 0 ] 2>/dev/null; then
         scale_arg="--scale trino-worker=${FED_WORKERS}"
-        info "Starting ${FED_WORKERS} federation worker(s)..."
+        info "Starting ${FED_WORKERS} query worker(s)..."
     fi
 
     if [ "$OBSERVABILITY" = "true" ]; then
@@ -255,12 +255,8 @@ cmd_start() {
         export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-provisa}"
     fi
 
-    local _up_out
-    # Capture then filter — avoids direct pipe from limactl SSH to filter_output,
-    # which can cause EIO when SSH tries to use a PTY with stdout redirected.
     # shellcheck disable=SC2086
-    _up_out="$($(get_compose) $COMPOSE_FILES up -d $scale_arg 2>&1)" || true
-    printf '%s\n' "$_up_out" | filter_output
+    $(get_compose) $COMPOSE_FILES up -d $scale_arg >/dev/null 2>&1 || true
 
     if wait_for_healthy 120; then
         printf "\n${GREEN}${BOLD}Provisa is running.${NC}\n"
@@ -281,10 +277,8 @@ cmd_start() {
 
 cmd_stop() {
     printf "${CYAN}${BOLD}Stopping Provisa...${NC}\n"
-    local _down_out
     # shellcheck disable=SC2086
-    _down_out="$($(get_compose) $COMPOSE_FILES down 2>&1)" || true
-    printf '%s\n' "$_down_out" | filter_output
+    $(get_compose) $COMPOSE_FILES down >/dev/null 2>&1 || true
     printf "${GREEN}${BOLD}Provisa has been shut down cleanly.${NC}\n"
 }
 
@@ -391,15 +385,13 @@ cmd_uninstall() {
         [yY]|[yY][eE][sS])
             # Stop services first if running
             info "Stopping services..."
-            local _u_out
             # shellcheck disable=SC2086
-            _u_out="$($(get_compose) $COMPOSE_FILES down 2>&1)" || true
-            printf '%s\n' "$_u_out" | filter_output
+            $(get_compose) $COMPOSE_FILES down >/dev/null 2>&1 || true
 
             if [ "$RUNTIME" = "lima" ] && [ -x "$LIMACTL" ]; then
-                info "Stopping Lima VM..."
-                "$LIMACTL" stop "$LIMA_VM" 2>/dev/null || true
-                "$LIMACTL" delete "$LIMA_VM" 2>/dev/null || true
+                info "Removing Provisa environment..."
+                "$LIMACTL" stop "$LIMA_VM" >/dev/null 2>&1 || true
+                "$LIMACTL" delete "$LIMA_VM" >/dev/null 2>&1 || true
             fi
 
             info "Removing ${PROVISA_HOME}..."

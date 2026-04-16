@@ -564,10 +564,28 @@ kubectl rollout restart deployment/provisa --namespace provisa
 ## CLI Commands
 
 ```bash
-provisa start       # Start all services
-provisa stop        # Stop all services
-provisa restart     # Restart
-provisa status      # Show service health
-provisa open        # Open the UI in the browser
-provisa logs        # Tail service logs
+provisa start              # Start all services
+provisa stop               # Stop all services
+provisa restart            # Restart
+provisa status             # Show service health
+provisa open               # Open the UI in the browser
+provisa logs               # Tail service logs
+provisa export             # Print current config as YAML to stdout
+provisa export FILE        # Write current config as YAML to FILE
+provisa import FILE        # Replace running config with YAML from FILE
+```
+
+### Config promotion workflow (dev → test → prod)
+
+All environment-specific settings (connection strings, secrets, ports) belong in environment variables or secret managers — not in the exported config. The exported YAML captures your semantic model: sources, domains, roles, views.
+
+```bash
+# On dev — export after making changes in the UI
+provisa export > config.yaml
+git add config.yaml && git commit -m "chore: update semantic model"
+git push
+
+# On test/prod — pull and import
+git pull
+provisa import config.yaml
 ```
