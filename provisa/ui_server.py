@@ -14,7 +14,7 @@ if assets_dir.is_dir():
     app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
 
-@app.get("/{full_path:path}")
+@app.get("/{full_path:path}", response_model=None)
 async def spa_fallback(full_path: str) -> FileResponse | HTMLResponse:
     index = STATIC_DIR / "index.html"
     if not index.is_file():
