@@ -45,6 +45,16 @@ _suggested_workers() {
 # ── Ask RAM, CPU, and federation worker budgets at first launch ──────────────
 # Sets globals: BUDGET_GB, FED_WORKERS, LIMA_MEMORY, LIMA_CPUS
 ask_ram_budget() {
+  # Non-interactive mode: read from env vars (set by SwiftUI wizard)
+  if [[ -n "${PROVISA_NONINTERACTIVE:-}" ]]; then
+    BUDGET_GB="${PROVISA_RAM_GB:-8}"
+    LIMA_CPUS="${PROVISA_CPU_COUNT:-4}"
+    FED_WORKERS="${PROVISA_WORKERS:-0}"
+    LIMA_MEMORY="${BUDGET_GB}GiB"
+    ok "RAM: ${BUDGET_GB}GB | CPUs: ${LIMA_CPUS} | Federation workers: ${FED_WORKERS}"
+    return
+  fi
+
   local total_gb total_cores
   total_gb="$(sysctl -n hw.memsize | awk '{printf "%d", $1/1024/1024/1024}')"
   total_cores="$(sysctl -n hw.logicalcpu)"
@@ -584,14 +594,20 @@ write_config() {
   fi
   mkdir -p "$PROVISA_HOME"
 
-  local hostname
-  hostname="$(ask_hostname)"
-  local ui_port
-  ui_port="$(ask_ui_port)"
-  local api_port
-  api_port="$(ask_api_port)"
-  local flight_port
-  flight_port="$(ask_flight_port)"
+  local hostname ui_port api_port flight_port
+
+  # Non-interactive mode: read from env vars (set by SwiftUI wizard)
+  if [[ -n "${PROVISA_NONINTERACTIVE:-}" ]]; then
+    hostname="${PROVISA_HOSTNAME:-localhost}"
+    ui_port="${PROVISA_UI_PORT:-3000}"
+    api_port="${PROVISA_API_PORT:-8000}"
+    flight_port="${PROVISA_FLIGHT_PORT:-8815}"
+  else
+    hostname="$(ask_hostname)"
+    ui_port="$(ask_ui_port)"
+    api_port="$(ask_api_port)"
+    flight_port="$(ask_flight_port)"
+  fi
 
   info "Hostname: ${hostname}  |  UI: ${ui_port}  |  API: ${api_port}  |  Flight: ${flight_port}"
 
@@ -649,6 +665,8 @@ main() {
   mkdir -p "$PROVISA_HOME"
   ask_ram_budget
   write_config
+
+  echo "PROGRESS:staging"
   stage_vm_image          # copies base VM image from DMG → ~/.provisa/vm-image
   stage_images            # copies container images from DMG → ~/.provisa/images
   stage_nerdctl           # copies nerdctl-full archive from DMG → ~/.provisa/nerdctl/
@@ -656,9 +674,17 @@ main() {
   stage_compose           # copies compose files from bundle → ~/.provisa/compose/ (VM-accessible)
   install_to_applications # self-installs to /Applications if running from DMG
   install_guest_agent     # stages gz to ~/.provisa/share/lima/, creates limactl symlink
+
+  echo "PROGRESS:vm_start"
   start_lima
+
+  echo "PROGRESS:images"
   import_images
+
+  echo "PROGRESS:build"
   build_provisa_image     # builds provisa/provisa:local inside Lima from bundled source
+
+  echo "PROGRESS:finalize"
   install_cli
 
   touch "$SENTINEL"

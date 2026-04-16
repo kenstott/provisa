@@ -289,11 +289,27 @@ embed_compose() {
   ok "Compose files, config, and provisa source embedded."
 }
 
-# ── Copy first-launch + launcher scripts ─────────────────────────────────────
+# ── Build SwiftUI launcher and embed binary ───────────────────────────────────
+build_launcher() {
+  info "Building ProvisaLauncher (Swift)..."
+  local launcher_dir="${SCRIPT_DIR}/ProvisaLauncher"
+  swift build --package-path "$launcher_dir" -c release 2>&1 | grep -v "^Build complete"
+  local binary="${launcher_dir}/.build/release/ProvisaLauncher"
+  if [ ! -f "$binary" ]; then
+    err "ProvisaLauncher binary not found after build: ${binary}"
+    exit 1
+  fi
+  # Replace old shell launcher with native Swift binary
+  rm -f "${APP_BUNDLE}/Contents/MacOS/provisa-launcher"
+  cp "$binary" "${APP_BUNDLE}/Contents/MacOS/ProvisaLauncher"
+  chmod +x "${APP_BUNDLE}/Contents/MacOS/ProvisaLauncher"
+  ok "ProvisaLauncher built and embedded."
+}
+
+# ── Copy first-launch script ──────────────────────────────────────────────────
 embed_scripts() {
   cp "${SCRIPT_DIR}/first-launch.sh" "${APP_BUNDLE}/Contents/MacOS/first-launch.sh"
   chmod +x "${APP_BUNDLE}/Contents/MacOS/first-launch.sh"
-  chmod +x "${APP_BUNDLE}/Contents/MacOS/provisa-launcher"
   ok "Scripts embedded."
 }
 
@@ -327,7 +343,7 @@ sign_app() {
 
   local sign_targets=(
     "${APP_BUNDLE}/Contents/MacOS/first-launch.sh"
-    "${APP_BUNDLE}/Contents/MacOS/provisa-launcher"
+    "${APP_BUNDLE}/Contents/MacOS/ProvisaLauncher"
   )
   for f in "${sign_targets[@]}"; do
     [ -f "$f" ] || continue
@@ -478,6 +494,7 @@ main() {
   build_provisa_wheels
   embed_compose        # copies observability/ from repo; must run before download_otel_agent
   download_otel_agent  # adds opentelemetry-javaagent.jar into Resources/observability/trino-otel/
+  build_launcher       # compile SwiftUI launcher and embed binary
   embed_scripts
   sign_app
   notarize_app   # notarize the small .app before images are added

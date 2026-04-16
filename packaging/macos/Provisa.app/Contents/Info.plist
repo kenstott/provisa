@@ -19,7 +19,7 @@
   <string>1.0</string>
 
   <key>CFBundleExecutable</key>
-  <string>provisa-launcher</string>
+  <string>ProvisaLauncher</string>
 
   <key>CFBundlePackageType</key>
   <string>APPL</string>
