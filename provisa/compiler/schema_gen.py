@@ -224,7 +224,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
             continue
 
         table_id = table["id"]
-        if table_id not in si.column_types:
+        if table_id not in si.column_types or not si.column_types[table_id]:
             import logging as _log
             _log.getLogger(__name__).warning(
                 "No column metadata for table %r (id=%s) — skipping.", table["table_name"], table_id
