@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 03fe385d-eb3a-4674-a805-df724b9423bf
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // ESM-compatible shim for cytoscape.
 // Used via tsconfig.app.json "paths" to replace the package's export= declarations.
 // cytoscape ships ESM but its index.d.ts uses legacy export= / export as namespace,

@@ -52,6 +52,16 @@ class HotTableEntry:
     column_names: list[str] = field(default_factory=list)
 
 
+@dataclass
+class HotTableCandidate:
+    """Metadata for a table that should be auto-promoted after its first small query."""
+
+    table_name: str
+    pk_column: str
+    catalog: str
+    schema: str
+
+
 class HotTableManager:
     """Manages small lookup tables cached in Redis for JOIN optimization."""
 
@@ -61,6 +71,7 @@ class HotTableManager:
         self._max_rows = max_rows
         self._redis = None
         self._hot_tables: dict[str, HotTableEntry] = {}
+        self._candidates: dict[str, HotTableCandidate] = {}
 
     async def _connect(self):
         if self._redis is None:
@@ -68,6 +79,40 @@ class HotTableManager:
             self._redis = aioredis.from_url(
                 self._redis_url, decode_responses=True,
             )
+
+    async def _store_rows(
+        self,
+        table_name: str,
+        rows: list[dict],
+        pk_column: str,
+        catalog: str,
+        schema: str,
+    ) -> int:
+        """Write rows into Redis and in-memory cache. Returns row count."""
+        await self._connect()
+
+        columns = list(rows[0].keys()) if rows else []
+        blob_key = HOT_PREFIX + table_name + ":blob"
+        pk_key_prefix = HOT_PREFIX + table_name + ":pk:"
+
+        pipe = self._redis.pipeline()
+        pipe.delete(blob_key)
+        pipe.set(blob_key, _dumps(rows))
+        for row in rows:
+            pk_val = row.get(pk_column, "")
+            pipe.set(pk_key_prefix + str(pk_val), _dumps(row))
+        await pipe.execute()
+
+        self._hot_tables[table_name] = HotTableEntry(
+            table_name=table_name,
+            catalog=catalog,
+            schema=schema,
+            pk_column=pk_column,
+            rows=rows,
+            column_names=columns,
+        )
+        log.info("Hot table %s loaded: %d rows, %d columns", table_name, len(rows), len(columns))
+        return len(rows)
 
     async def load_table(
         self,
@@ -77,13 +122,7 @@ class HotTableManager:
         catalog: str,
         pk_column: str,
     ) -> int:
-        """Load a table into Redis. Returns row count.
-
-        Stores each row as a Redis hash entry keyed by PK, plus a bulk
-        blob with all rows for fast full-table retrieval.
-        """
-        await self._connect()
-
+        """Load a Trino-backed table into Redis. Returns row count."""
         fqn = f'"{catalog}"."{schema}"."{table_name}"'
         cur = trino_conn.cursor()
         cur.execute(f"SELECT * FROM {fqn}")
@@ -92,41 +131,59 @@ class HotTableManager:
 
         row_count = len(rows_raw)
         if row_count > self._max_rows:
-            log.warning(
-                "Hot table %s has %d rows (max %d), skipping",
-                table_name, row_count, self._max_rows,
-            )
+            log.warning("Hot table %s has %d rows (max %d), skipping", table_name, row_count, self._max_rows)
             return row_count
 
         rows = [dict(zip(columns, row)) for row in rows_raw]
+        return await self._store_rows(table_name, rows, pk_column, catalog, schema)
 
-        # Store in Redis
-        blob_key = HOT_PREFIX + table_name + ":blob"
-        pk_key_prefix = HOT_PREFIX + table_name + ":pk:"
+    async def load_table_from_sqlite(
+        self,
+        source_cfg: dict,
+        table_name: str,
+        pk_column: str,
+    ) -> int:
+        """Load a SQLite table into Redis. Returns row count."""
+        from provisa.file_source.source import FileSourceConfig, execute_query
 
-        pipe = self._redis.pipeline()
-        # Delete existing keys first
-        pipe.delete(blob_key)
-        pipe.set(blob_key, _dumps(rows))
+        path = source_cfg.get("path", "")
+        cfg = FileSourceConfig(id=source_cfg["id"], source_type="sqlite", path=path)
+        rows = execute_query(cfg, f"SELECT * FROM \"{table_name}\" LIMIT {self._max_rows + 1}")  # noqa: S608
 
-        for row in rows:
-            pk_val = row.get(pk_column, "")
-            pipe.set(pk_key_prefix + str(pk_val), _dumps(row))
+        if len(rows) > self._max_rows:
+            log.info("Skipping hot table %s: %d rows > threshold %d", table_name, len(rows), self._max_rows)
+            return len(rows)
 
-        await pipe.execute()
+        return await self._store_rows(table_name, rows, pk_column, source_cfg["id"], "default")
 
-        entry = HotTableEntry(
-            table_name=table_name,
-            catalog=catalog,
-            schema=schema,
-            pk_column=pk_column,
-            rows=rows,
-            column_names=columns,
-        )
-        self._hot_tables[table_name] = entry
+    async def load_table_from_openapi(
+        self,
+        source_cfg: dict,
+        table_name: str,
+        pk_column: str,
+    ) -> int:
+        """Load an OpenAPI resource into Redis by finding its list operation. Returns row count."""
+        import httpx
 
-        log.info("Hot table %s loaded: %d rows, %d columns", table_name, row_count, len(columns))
-        return row_count
+        spec_url = source_cfg.get("path", "")
+        base_url = source_cfg.get("base_url", "").rstrip("/")
+        auth_config = source_cfg.get("auth_config")
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            spec_resp = await client.get(spec_url)
+            spec_resp.raise_for_status()
+            spec = spec_resp.json()
+
+        rows = await _openapi_list_rows(spec, base_url, table_name, auth_config, self._max_rows)
+        if rows is None:
+            log.info("No list operation found for %s in OpenAPI spec — skipping hot cache", table_name)
+            return 0
+
+        if len(rows) > self._max_rows:
+            log.info("Skipping hot table %s: %d rows > threshold %d", table_name, len(rows), self._max_rows)
+            return len(rows)
+
+        return await self._store_rows(table_name, rows, pk_column, source_cfg["id"], "default")
 
     async def get_rows(self, table_name: str) -> list[dict]:
         """Fetch all rows for a hot table from Redis."""
@@ -166,6 +223,29 @@ class HotTableManager:
     def get_entry(self, table_name: str) -> HotTableEntry | None:
         """Get the hot table entry with metadata."""
         return self._hot_tables.get(table_name)
+
+    def register_candidate(self, candidate: HotTableCandidate) -> None:
+        """Register a table as an auto-promotion candidate."""
+        self._candidates[candidate.table_name] = candidate
+
+    async def maybe_promote(
+        self,
+        table_name: str,
+        rows: list[tuple],
+        column_names: list[str],
+    ) -> None:
+        """Promote table to hot cache if it's a candidate and result is small enough."""
+        if self.is_hot(table_name):
+            return
+        candidate = self._candidates.get(table_name)
+        if candidate is None:
+            return
+        if len(rows) > self._auto_threshold:
+            log.debug("Hot table candidate %s: %d rows > threshold %d, skipping", table_name, len(rows), self._auto_threshold)
+            return
+        row_dicts = [dict(zip(column_names, row)) for row in rows]
+        await self._store_rows(table_name, row_dicts, candidate.pk_column, candidate.catalog, candidate.schema)
+        log.info("Auto-promoted %s to hot cache after query (%d rows)", table_name, len(rows))
 
     @property
     def auto_threshold(self) -> int:
@@ -212,6 +292,93 @@ def detect_hot_tables(
     return result
 
 
+async def _openapi_list_rows(
+    spec: dict,
+    base_url: str,
+    table_name: str,
+    auth_config: dict | None,
+    max_rows: int,
+) -> list[dict] | None:
+    """Find a GET list operation for table_name in the spec and execute it.
+
+    Prefers operations with no required params. For required params that have
+    an enum, sends all enum values. Returns None if no suitable operation found.
+    """
+    import httpx
+
+    definitions = spec.get("definitions", {})
+    if "components" in spec:
+        definitions = spec.get("components", {}).get("schemas", definitions)
+
+    auth_headers: dict = {}
+    if auth_config and auth_config.get("type") == "bearer":
+        auth_headers["Authorization"] = f"Bearer {auth_config.get('token', '')}"
+    elif auth_config and auth_config.get("type") == "api_key":
+        auth_headers[auth_config.get("header_name", "X-API-Key")] = auth_config.get("api_key", "")
+
+    # Score candidate paths: prefer exact /{table_name}, then paths containing it
+    candidates: list[tuple[int, str, dict]] = []
+    for path, methods in spec.get("paths", {}).items():
+        if "get" not in methods:
+            continue
+        # Skip paths with unresolved path parameters — can't auto-call them
+        if "{" in path:
+            continue
+        path_parts = [p for p in path.split("/") if p]
+        if table_name not in path_parts:
+            continue
+        # Only consider operations that return arrays
+        get_op = methods["get"]
+        responses = get_op.get("responses", {})
+        ok_resp = responses.get("200", responses.get("default", {}))
+        content = ok_resp.get("content", {})
+        schema: dict = {}
+        if "application/json" in content:
+            schema = content["application/json"].get("schema", {})
+        elif "schema" in ok_resp:
+            schema = ok_resp.get("schema", {})
+        is_array = schema.get("type") == "array"
+        if not is_array and "$ref" not in schema:
+            ref = schema.get("items", {}).get("$ref", "")
+            if not ref:
+                continue
+        # Score: fewer path parts = closer match, no required params preferred
+        params = get_op.get("parameters", [])
+        required_params = [p for p in params if p.get("required") and p.get("in") == "query"]
+        score = len(path_parts) * 10 + len(required_params)
+        candidates.append((score, path, get_op))
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda x: x[0])
+    _, best_path, best_op = candidates[0]
+
+    # Build query params — fill required params with enum values or skip
+    params = best_op.get("parameters", [])
+    query_params: list[tuple[str, str]] = []
+    for p in params:
+        if p.get("in") != "query":
+            continue
+        if not p.get("required"):
+            continue
+        enum_vals = p.get("schema", p).get("enum", [])
+        if enum_vals:
+            for v in enum_vals:
+                query_params.append((p["name"], str(v)))
+        else:
+            return None  # required param with no enum — can't auto-fill
+
+    url = base_url + best_path
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(url, params=query_params, headers=auth_headers)
+        resp.raise_for_status()
+        data = resp.json()
+
+    rows = data if isinstance(data, list) else [data]
+    return rows[:max_rows + 1]
+
+
 async def count_table_rows(trino_conn, table_name: str, schema: str, catalog: str) -> int:
     """SELECT COUNT(*) for auto-detection sizing."""
     fqn = f'"{catalog}"."{schema}"."{table_name}"'
@@ -244,39 +411,65 @@ async def init_hot_tables(
         max_rows=auto_threshold,
     )
 
-    # Detect which tables to hot-cache
     hot_overrides: dict[str, bool | None] = {}
     for tbl_cfg in raw_config.get("tables", []):
         tbl_name = tbl_cfg.get("table") or tbl_cfg.get("table_name")
         if tbl_name and "hot" in tbl_cfg:
             hot_overrides[tbl_name] = tbl_cfg["hot"]
 
+    _TRINO_BACKED = {"postgresql", "mysql", "mongodb", "elasticsearch", "kafka", "delta", "iceberg"}
+    source_cfgs = {s["id"]: s for s in raw_config.get("sources", []) if "id" in s}
     tables_list = raw_config.get("tables", [])
     rels_list = raw_config.get("relationships", [])
-    candidates = detect_hot_tables(tables_list, rels_list, hot_overrides)
 
-    for tbl_name in candidates:
+    def _tbl_meta(tbl_name: str):
         tbl_cfg = next(
             (t for t in tables_list if (t.get("table") or t.get("table_name")) == tbl_name),
             None,
         )
         if tbl_cfg is None:
-            continue
+            return None, None, None, None, None
         source_id = tbl_cfg.get("source_id", "")
-        schema_name = tbl_cfg.get("schema", "public")
-        catalog = source_id.replace("-", "_")
+        source_cfg = source_cfgs.get(source_id, {})
+        source_type = source_cfg.get("type", "")
         pk_col = tbl_cfg.get("columns", [{}])[0].get("name", "id") if tbl_cfg.get("columns") else "id"
+        schema_name = tbl_cfg.get("schema", "public")
+        return tbl_cfg, source_id, source_cfg, source_type, pk_col, schema_name
 
-        override = hot_overrides.get(tbl_name)
+    # Startup: only load tables explicitly marked hot: true
+    for tbl_name, override in hot_overrides.items():
         if override is not True:
-            row_count = await count_table_rows(trino_conn, tbl_name, schema_name, catalog)
-            if row_count > auto_threshold:
-                log.info(
-                    "Skipping hot table %s: %d rows > threshold %d",
-                    tbl_name, row_count, auto_threshold,
-                )
-                continue
+            continue
+        result = _tbl_meta(tbl_name)
+        if result[0] is None:
+            continue
+        _, source_id, source_cfg, source_type, pk_col, schema_name = result
+        catalog = source_id.replace("-", "_")
+        if source_type == "sqlite":
+            await hot_mgr.load_table_from_sqlite(source_cfg, tbl_name, pk_col)
+        elif source_type == "openapi":
+            await hot_mgr.load_table_from_openapi(source_cfg, tbl_name, pk_col)
+        elif source_type in _TRINO_BACKED:
+            await hot_mgr.load_table(trino_conn, tbl_name, schema_name, catalog, pk_col)
+        else:
+            log.debug("hot: true table %s: source type %r not supported for caching", tbl_name, source_type)
 
-        await hot_mgr.load_table(trino_conn, tbl_name, schema_name, catalog, pk_col)
+    # Register auto-detected candidates for lazy promotion after first query
+    auto_candidates = detect_hot_tables(tables_list, rels_list, hot_overrides)
+    for tbl_name in auto_candidates:
+        if hot_overrides.get(tbl_name) is True:
+            continue  # already loaded above
+        result = _tbl_meta(tbl_name)
+        if result[0] is None:
+            continue
+        _, source_id, source_cfg, source_type, pk_col, schema_name = result
+        catalog = source_id.replace("-", "_")
+        hot_mgr.register_candidate(HotTableCandidate(
+            table_name=tbl_name,
+            pk_column=pk_col,
+            catalog=catalog,
+            schema=schema_name,
+        ))
+        log.debug("Registered hot table candidate %s (lazy promotion on first query)", tbl_name)
 
     return hot_mgr

@@ -272,7 +272,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
         state.cache_default_ttl = cache_config.get("default_ttl", 300)
 
     async with state.pg_pool.acquire() as conn:
-        await load_config(config, conn, state.trino_conn)
+        _replace_mode = os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in ("1", "true", "yes")
+        await load_config(config, conn, state.trino_conn, replace=_replace_mode)
 
     # Build source metadata and direct connection pools
     from provisa.executor.drivers.registry import has_driver
@@ -637,7 +638,6 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
 
         # Build ColumnMetadata for OpenAPI source tables from spec (no Trino catalog)
         # Always reload specs from DB on every rebuild (hot reload + restarts).
-        from provisa.openapi.mapper import parse_spec as _parse_openapi_spec
         from provisa.openapi.register import _schema_to_columns as _openapi_cols
         from provisa.openapi.loader import load_spec as _load_openapi_spec
         import logging as _log
@@ -664,15 +664,19 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             if not _reg:
                 continue
             try:
-                _queries, _ = _parse_openapi_spec(_reg["spec"])
-                _q = next((q for q in _queries if q.operation_id == _tbl["table_name"]), None)
-                if _q is None:
+                _spec = _reg["spec"]
+                _tbl_name = _tbl["table_name"]
+                # Look up schema directly from components/schemas by table name (case-insensitive)
+                _schemas = _spec.get("components", {}).get("schemas", {}) or _spec.get("definitions", {})
+                _schema_key = next(
+                    (k for k in _schemas if k.lower() == _tbl_name.lower()),
+                    None,
+                )
+                if _schema_key is None:
                     continue
-                _cols = _openapi_cols(_q.response_schema)
-                _existing = {c["name"] for c in _cols}
-                for _p in _q.path_params + _q.query_params:
-                    if _p["name"] not in _existing:
-                        _cols.append({"name": _p["name"], "type": _p.get("type", "string")})
+                _cols = _openapi_cols(_schemas[_schema_key])
+                if not _cols:
+                    continue
                 col_types_converted[_tbl["id"]] = [
                     ColumnMetadata(column_name=c["name"], data_type=c["type"], is_nullable=True)
                     for c in _cols
@@ -681,6 +685,36 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 _log.getLogger(__name__).warning(
                     "Failed to build OpenAPI column types for %s: %s", _tbl["table_name"], _exc
                 )
+
+        # Build ColumnMetadata for SQLite source tables via PRAGMA table_info (no Trino catalog)
+        from provisa.file_source.source import FileSourceConfig as _FileSourceConfig, _discover_sqlite as _sqlite_schema
+        _sqlite_schemas: dict[str, list[dict]] = {}
+        for _tbl in tables:
+            if _tbl["id"] in col_types_converted:
+                continue
+            _src = sources.get(_tbl["source_id"], {})
+            if _src.get("type") != "sqlite":
+                continue
+            _src_id = _tbl["source_id"]
+            if _src_id not in _sqlite_schemas:
+                _src_path = _src.get("path", "")
+                if not _src_path:
+                    continue
+                try:
+                    _cfg = _FileSourceConfig(id=_src_id, source_type="sqlite", path=_src_path)
+                    _sqlite_schemas[_src_id] = _sqlite_schema(_cfg)
+                except Exception as _exc:
+                    _log.getLogger(__name__).warning(
+                        "Failed to introspect SQLite %s at %s: %s", _src_id, _src_path, _exc
+                    )
+                    continue
+            _all_cols = _sqlite_schemas.get(_src_id, [])
+            _tbl_cols = [c for c in _all_cols if c["table"] == _tbl["table_name"]]
+            if _tbl_cols:
+                col_types_converted[_tbl["id"]] = [
+                    ColumnMetadata(column_name=c["name"], data_type=c["type"].lower(), is_nullable=c["nullable"])
+                    for c in _tbl_cols
+                ]
 
         # Publish reloaded specs back to state so executor/admin endpoints see current versions
         if _reloaded_specs:

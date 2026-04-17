@@ -654,6 +654,13 @@ async def _execute_one_field(
                 state.trino_conn, trino_sql, compiled.params,
                 session_hints=session_hints or None,
             )
+            # Lazy hot-table promotion: if result is small, cache it for future JOINs
+            _hot_mgr = getattr(state, "hot_manager", None)
+            if _hot_mgr is not None:
+                _tbl = compiled.canonical_field or root_field
+                asyncio.create_task(
+                    _hot_mgr.maybe_promote(_tbl, result.rows, result.column_names)
+                )
     except HTTPException:
         raise
     except Exception as e:

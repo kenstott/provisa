@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 69c810c6-3ba2-41f2-a9d4-0de7b6bb2278
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // Shim for cytoscape under moduleResolution "bundler" + verbatimModuleSyntax.
 //
 // cytoscape ships an ESM entry (`import: ./dist/cytoscape.esm.mjs`) but its

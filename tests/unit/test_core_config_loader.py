@@ -411,7 +411,7 @@ class TestLoadConfig:
         ) as mock_inner:
             await load_config(cfg, conn, trino_conn=None)
 
-        mock_inner.assert_awaited_once_with(cfg, conn, None)
+        mock_inner.assert_awaited_once_with(cfg, conn, None, replace=False)
         conn.transaction.assert_called_once()
 
 

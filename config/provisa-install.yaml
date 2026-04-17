@@ -1,0 +1,175 @@
+# Provisa install-simulation config — pet store demo only.
+# Used by start-ui-install.sh via PROVISA_CONFIG env var.
+# Completely isolated from dev config (config/provisa.yaml).
+sources:
+  - id: pet-store-pg
+    type: postgresql
+    host: ${env:POSTGRES_HOST:-localhost}
+    port: 5432
+    database: provisa
+    username: provisa
+    password: ${env:PG_PASSWORD:-provisa}
+
+  - id: petstore-api
+    type: openapi
+    path: https://petstore3.swagger.io/api/v3/openapi.json
+    base_url: https://petstore3.swagger.io/api/v3
+    cache_ttl: 300
+    auth_config:
+      type: none
+
+  - id: inquiries-sqlite
+    type: sqlite
+    path: ./demo/files/inquiries.sqlite
+
+domains:
+  - id: pet-store
+    description: "Pet store — Petstore public API (OpenAPI), internal inventory (PG), and customer inquiries (SQLite) federated into one virtual database"
+
+naming:
+  domain_prefix: true
+  rules: []
+
+tables:
+  - source_id: pet-store-pg
+    domain_id: pet-store
+    schema: pet_store
+    table: pets
+    governance: pre-approved
+    description: "Pet inventory — managed by the inventory department"
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: name
+        visible_to: [admin, analyst]
+      - name: species
+        visible_to: [admin, analyst]
+      - name: breed_name
+        visible_to: [admin, analyst]
+      - name: price
+        visible_to: [admin]
+      - name: available
+        visible_to: [admin, analyst]
+
+  - source_id: petstore-api
+    domain_id: pet-store
+    schema: default
+    table: pet
+    governance: pre-approved
+    description: "Pet catalog from the Petstore public API"
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: name
+        visible_to: [admin, analyst]
+      - name: status
+        visible_to: [admin, analyst]
+      - name: photoUrls
+        visible_to: [admin, analyst]
+
+  - source_id: inquiries-sqlite
+    domain_id: pet-store
+    schema: default
+    table: inquiries
+    governance: pre-approved
+    description: "Customer adoption inquiries — managed by the front-desk/CRM team"
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: pet_id
+        visible_to: [admin, analyst]
+      - name: customer_name
+        visible_to: [admin, analyst]
+      - name: email
+        visible_to: [admin]
+      - name: inquiry_type
+        visible_to: [admin, analyst]
+      - name: message
+        visible_to: [admin, analyst]
+      - name: submitted_at
+        visible_to: [admin, analyst]
+
+views:
+  - id: pet-adoption-overview
+    sql: |
+      SELECT p.id          AS pet_id,
+             p.name        AS pet_name,
+             p.species,
+             p.breed_name,
+             p.price,
+             p.available,
+             api.status    AS api_status,
+             COUNT(i.id)   AS inquiry_count
+      FROM pets p
+      LEFT JOIN pet api    ON p.name = api.name
+      LEFT JOIN inquiries i ON p.id = i.pet_id
+      GROUP BY p.id, p.name, p.species, p.breed_name, p.price, p.available, api.status
+    description: "Cross-source view: internal inventory (PG) + Petstore public API (OpenAPI) + inquiries (SQLite)"
+    domain_id: pet-store
+    governance: pre-approved
+    materialize: false
+    columns:
+      - name: pet_id
+        visible_to: [admin, analyst]
+      - name: pet_name
+        visible_to: [admin, analyst]
+      - name: species
+        visible_to: [admin, analyst]
+      - name: breed_name
+        visible_to: [admin, analyst]
+      - name: price
+        visible_to: [admin]
+      - name: available
+        visible_to: [admin, analyst]
+      - name: api_status
+        visible_to: [admin, analyst]
+      - name: inquiry_count
+        visible_to: [admin, analyst]
+
+relationships:
+  - id: pets-to-api
+    source_table_id: pets
+    target_table_id: pet
+    source_column: name
+    target_column: name
+    cardinality: many-to-one
+    alias: LISTED_AS
+  - id: pets-to-inquiries
+    source_table_id: pets
+    target_table_id: inquiries
+    source_column: id
+    target_column: pet_id
+    cardinality: one-to-many
+    alias: HAS_INQUIRY
+
+roles:
+  - id: admin
+    capabilities:
+      - source_registration
+      - table_registration
+      - relationship_registration
+      - security_config
+      - query_development
+      - query_approval
+      - admin
+    domain_access: ["*"]
+  - id: analyst
+    capabilities:
+      - query_development
+    domain_access:
+      - pet-store
+
+cache:
+  enabled: true
+  redis_url: redis://${env:REDIS_HOST:-localhost}:6379
+  default_ttl: 300
+
+discovery:
+  sample_size: 20
+  min_confidence: 0.7
+  api_key: ${env:ANTHROPIC_API_KEY}
+
+observability:
+  endpoint: ""
+  service_name: provisa
+  sample_rate: 1.0

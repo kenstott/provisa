@@ -175,7 +175,7 @@ class Source(BaseModel):
         """Trino catalog name — sanitized source id."""
         return self.id.replace("-", "_")
 
-    def jdbc_url(self) -> str:
+    def jdbc_url(self, host: str | None = None, port: int | None = None) -> str:
         prefix = {
             "postgresql": "jdbc:postgresql",
             "mysql": "jdbc:mysql",
@@ -186,11 +186,13 @@ class Source(BaseModel):
         p = prefix.get(self.type.value)
         if p is None:
             return ""
+        h = host or self.host
+        po = port or self.port
         if self.type == SourceType.sqlserver:
-            return f"{p}://{self.host}:{self.port};databaseName={self.database}"
+            return f"{p}://{h}:{po};databaseName={self.database}"
         if self.type == SourceType.oracle:
-            return f"{p}:@{self.host}:{self.port}/{self.database}"
-        return f"{p}://{self.host}:{self.port}/{self.database}"
+            return f"{p}:@{h}:{po}/{self.database}"
+        return f"{p}://{h}:{po}/{self.database}"
 
 
 class Domain(BaseModel):
@@ -261,7 +263,7 @@ class Table(BaseModel):
 
     source_id: str
     domain_id: str
-    schema_name: str = Field(alias="schema")
+    schema_name: str = Field(alias="schema", default="default")
     table_name: str = Field(alias="table")
     governance: GovernanceLevel
     columns: list[Column]

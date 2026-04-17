@@ -194,6 +194,7 @@ tables:
   # Pet store — Petstore public API (OpenAPI, the storefront/catalog)
   - source_id: petstore-api
     domain_id: pet-store
+    schema: default
     table: pet
     governance: pre-approved
     description: "Pet catalog from the Petstore public API"
@@ -210,6 +211,7 @@ tables:
   # Pet store — customer inquiries (SQLite, managed by front-desk/CRM team)
   - source_id: inquiries-sqlite
     domain_id: pet-store
+    schema: default
     table: inquiries
     governance: pre-approved
     description: "Customer adoption inquiries — managed by the front-desk/CRM team"

@@ -46,8 +46,45 @@ async def _load_config_in_txn(
     config: ProvisaConfig,
     conn: asyncpg.Connection,
     trino_conn: trino.dbapi.Connection | None,
+    replace: bool = False,
 ) -> None:
-    """Upsert full config into PG within caller's transaction scope."""
+    """Upsert full config into PG within caller's transaction scope.
+
+    When replace=True, all existing sources/tables/domains/roles/relationships
+    not present in the new config are deleted first (full replace semantics).
+    """
+    if replace:
+        new_source_ids = [src.id for src in config.sources]
+        new_domain_ids = [d.id for d in config.domains]
+        new_role_ids = [r.id for r in config.roles]
+        if new_source_ids:
+            await conn.execute(
+                "DELETE FROM registered_tables WHERE source_id != ALL($1::text[])",
+                new_source_ids,
+            )
+            await conn.execute(
+                "DELETE FROM sources WHERE id != ALL($1::text[])",
+                new_source_ids,
+            )
+        else:
+            await conn.execute("DELETE FROM registered_tables")
+            await conn.execute("DELETE FROM sources")
+        if new_domain_ids:
+            await conn.execute(
+                "DELETE FROM domains WHERE id != ALL($1::text[])",
+                new_domain_ids,
+            )
+        else:
+            await conn.execute("DELETE FROM domains")
+        if new_role_ids:
+            await conn.execute(
+                "DELETE FROM roles WHERE id != ALL($1::text[])",
+                new_role_ids,
+            )
+        else:
+            await conn.execute("DELETE FROM roles")
+        await conn.execute("DELETE FROM relationships")
+
     # 1. Sources
     for src in config.sources:
         await source_repo.upsert(conn, src)
@@ -108,18 +145,24 @@ async def load_config(
     config: ProvisaConfig,
     pg_conn: asyncpg.Connection,
     trino_conn: trino.dbapi.Connection | None = None,
+    replace: bool = False,
 ) -> None:
-    """Upsert full config into PG within a transaction. Idempotent."""
+    """Upsert full config into PG within a transaction. Idempotent.
+
+    Pass replace=True to delete all metadata not in the new config first
+    (full replace semantics — use for install simulation / clean reloads).
+    """
     async with pg_conn.transaction():
-        await _load_config_in_txn(config, pg_conn, trino_conn)
+        await _load_config_in_txn(config, pg_conn, trino_conn, replace=replace)
 
 
 async def load_config_from_yaml(
     path: str | Path,
     pg_conn: asyncpg.Connection,
     trino_conn: trino.dbapi.Connection | None = None,
+    replace: bool = False,
 ) -> ProvisaConfig:
     """Parse YAML, resolve secrets in source passwords, load into PG."""
     config = parse_config(path)
-    await load_config(config, pg_conn, trino_conn)
+    await load_config(config, pg_conn, trino_conn, replace=replace)
     return config

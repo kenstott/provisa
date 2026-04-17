@@ -40,13 +40,18 @@ def _to_catalog_name(source_id: str) -> str:
 
 def _build_catalog_properties(source: Source, resolved_password: str) -> dict[str, str]:
     """Build Trino connector properties from a source definition."""
+    from provisa.core.secrets import resolve_secrets
+
     stype = source.type.value
+    host = resolve_secrets(source.host or "")
+    port = source.port
+    username = resolve_secrets(source.username or "")
 
     # MongoDB connector
     if stype == "mongodb":
-        url = f"mongodb://{source.host}:{source.port}/"
-        if source.username:
-            url = f"mongodb://{source.username}:{resolved_password}@{source.host}:{source.port}/"
+        url = f"mongodb://{host}:{port}/"
+        if username:
+            url = f"mongodb://{username}:{resolved_password}@{host}:{port}/"
         return {
             "mongodb.connection-url": url,
             "mongodb.schema-collection": "_schema",
@@ -55,18 +60,18 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
     # Cassandra connector
     if stype == "cassandra":
         return {
-            "cassandra.contact-points": source.host,
-            "cassandra.native-protocol-port": str(source.port),
+            "cassandra.contact-points": host,
+            "cassandra.native-protocol-port": str(port),
             "cassandra.load-policy.dc-aware.local-dc": "datacenter1",
             "cassandra.consistency-level": "ONE",
         }
 
     # JDBC-based connectors (PG, MySQL, SQL Server, Oracle, etc.)
     props: dict[str, str] = {}
-    jdbc_url = source.jdbc_url()
+    jdbc_url = source.jdbc_url(host=host, port=port)
     if jdbc_url:
         props["connection-url"] = jdbc_url
-        props["connection-user"] = source.username
+        props["connection-user"] = username
         props["connection-password"] = resolved_password
     return props
 
