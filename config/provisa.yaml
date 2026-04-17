@@ -2,21 +2,21 @@
 sources:
   - id: sales-pg
     type: postgresql
-    host: ${env:POSTGRES_HOST:-localhost}
+    host: ${env:POSTGRES_HOST:-postgres}
     port: 5432
     database: provisa
     username: provisa
     password: ${env:PG_PASSWORD:-provisa}
   - id: analytics-pg
     type: postgresql
-    host: ${env:POSTGRES_HOST:-localhost}
+    host: ${env:POSTGRES_HOST:-postgres}
     port: 5432
     database: provisa
     username: provisa
     password: ${env:PG_PASSWORD:-provisa}
   - id: reviews-mongo
     type: mongodb
-    host: ${env:MONGODB_HOST:-localhost}
+    host: ${env:MONGODB_HOST:-mongodb}
     port: 27017
     database: provisa
     username: ""
@@ -46,7 +46,7 @@ sources:
   # Pet store: three department-owned data stores federated by Provisa
   - id: pet-store-pg
     type: postgresql
-    host: ${env:POSTGRES_HOST:-localhost}
+    host: ${env:POSTGRES_HOST:-postgres}
     port: 5432
     database: provisa
     username: provisa

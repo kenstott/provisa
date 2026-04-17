@@ -96,6 +96,7 @@ class AppState:
     pg_notify_tables: set[str] = set()  # table_names with pg_notify triggers installed
     table_watermarks: dict[str, str] = {}  # table_name → watermark_column (for polling fallback)
     _scheduler: object | None = None  # APScheduler instance for scheduled queries
+    global_naming_convention: str = "snake_case"  # runtime override; set via updateNamingConvention
 
 
 state = AppState()
@@ -587,6 +588,8 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     domain_prefix = False
     if raw_config:
         domain_prefix = raw_config.get("naming", {}).get("domain_prefix", False)
+        if raw_config.get("naming", {}).get("convention"):
+            state.global_naming_convention = raw_config["naming"]["convention"]
     else:
         config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
         path = Path(config_path)
@@ -594,6 +597,8 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             with open(path) as f:
                 raw_config = yaml.safe_load(f)
             domain_prefix = raw_config.get("naming", {}).get("domain_prefix", False)
+            if raw_config.get("naming", {}).get("convention"):
+                state.global_naming_convention = raw_config["naming"]["convention"]
 
     # Clear mutable state before rebuild
     state.masking_rules = {}
@@ -838,7 +843,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 source_types=state.source_types,
                 domain_prefix=domain_prefix,
                 physical_table_map=kafka_physical or None,
-                naming_convention=raw_config.get("naming", {}).get("convention", "snake_case") if raw_config else "snake_case",
+                naming_convention=state.global_naming_convention,
                 functions=tracked_functions,
                 webhooks=tracked_webhooks,
                 enum_types=state.pg_enum_types,

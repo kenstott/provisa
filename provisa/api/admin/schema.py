@@ -1148,6 +1148,14 @@ class Mutation:
     # ── Admin: Naming Convention ──
 
     @strawberry.mutation
+    async def update_naming_convention(self, convention: str) -> MutationResult:
+        """Set the global naming convention and rebuild schemas for all roles."""
+        from provisa.api.app import state
+        state.global_naming_convention = convention
+        await _rebuild_schemas()
+        return MutationResult(success=True, message=f"Naming convention set to {convention!r}")
+
+    @strawberry.mutation
     async def update_source_naming(self, source_id: str, naming_convention: Optional[str] = None) -> MutationResult:
         """Update naming convention for a source."""
         pool = await _get_pool()
