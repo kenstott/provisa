@@ -289,19 +289,26 @@ async def _load_and_build(config_path: str | None = None) -> None:
         if has_driver(src.type.value):
             resolved_pw = resolve_secrets(src.password)
             resolved_host = resolve_secrets(src.host) if src.host else "localhost"
-            await state.source_pools.add(
-                source_id=src.id,
-                source_type=src.type.value,
-                host=resolved_host,
-                port=src.port,
-                database=src.database,
-                user=src.username,
-                password=resolved_pw,
-                min_size=src.pool_min,
-                max_size=src.pool_max,
-                use_pgbouncer=src.use_pgbouncer,
-                pgbouncer_port=src.pgbouncer_port,
-            )
+            try:
+                await state.source_pools.add(
+                    source_id=src.id,
+                    source_type=src.type.value,
+                    host=resolved_host,
+                    port=src.port,
+                    database=src.database,
+                    user=src.username,
+                    password=resolved_pw,
+                    min_size=src.pool_min,
+                    max_size=src.pool_max,
+                    use_pgbouncer=src.use_pgbouncer,
+                    pgbouncer_port=src.pgbouncer_port,
+                )
+            except Exception as _pool_err:
+                import logging as _pool_log
+                _pool_log.getLogger(__name__).warning(
+                    "Direct pool for %r (%s:%s) failed: %s — Trino-routed queries still work.",
+                    src.id, resolved_host, src.port, _pool_err,
+                )
 
     # Phase AS: Initialize ingest engines and DDL for ingest sources
     try:
@@ -843,9 +850,11 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 state.rls_contexts[role["id"]] = build_rls_context(
                     rls_rules, role["id"],
                 )
-            except ValueError:
-                # Role has no visible tables — skip
-                pass
+            except ValueError as _schema_err:
+                import logging as _log
+                _log.getLogger(__name__).error(
+                    "generate_schema failed for role %r: %s", role["id"], _schema_err
+                )
 
             # Generate proto for this role
             try:
