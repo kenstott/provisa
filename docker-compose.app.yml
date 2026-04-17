@@ -6,6 +6,8 @@ services:
     ports:
       - "${API_PORT:-8000}:8000"
       - "${FLIGHT_PORT:-8815}:8815"
+    volumes:
+      - ./demo:/app/demo:ro
     environment:
       PG_HOST: "${CONFIG_DB_HOST:-postgres}"
       PG_PORT: "${CONFIG_DB_PORT:-5432}"

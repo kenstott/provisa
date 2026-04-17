@@ -26,6 +26,7 @@ Copy-Item (Join-Path $RepoRoot 'docker-compose.app.yml')    $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'docker-compose.airgap.yml') $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'config')  (Join-Path $BuildCompose 'config')  -Recurse -Force
 Copy-Item (Join-Path $RepoRoot 'db')      (Join-Path $BuildCompose 'db')      -Recurse -Force
+Copy-Item (Join-Path $RepoRoot 'demo')    (Join-Path $BuildCompose 'demo')    -Recurse -Force
 Copy-Item (Join-Path $RepoRoot 'trino')   (Join-Path $BuildCompose 'trino')   -Recurse -Force
 
 # provisa-source/ — used by first-launch to build provisa/provisa:local image

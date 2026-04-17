@@ -262,6 +262,7 @@ embed_compose() {
   cp "${REPO_ROOT}/docker-compose.airgap.yml" "${res}/docker-compose.airgap.yml"
   cp -r "${REPO_ROOT}/config" "${res}/config"
   cp -r "${REPO_ROOT}/db" "${res}/db"
+  cp -r "${REPO_ROOT}/demo" "${res}/demo"
   cp -r "${REPO_ROOT}/trino" "${res}/trino"
   cp -r "${REPO_ROOT}/observability" "${res}/observability"
   cp "${REPO_ROOT}/scripts/provisa" "${res}/provisa-cli"

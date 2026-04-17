@@ -169,6 +169,7 @@ build_appdir() {
   cp "${REPO_ROOT}/docker-compose.airgap.yml" "${APPDIR}/compose/"
   cp -r "${REPO_ROOT}/config"                "${APPDIR}/compose/config"
   cp -r "${REPO_ROOT}/db"                    "${APPDIR}/compose/db"
+  cp -r "${REPO_ROOT}/demo"                  "${APPDIR}/compose/demo"
   cp -r "${REPO_ROOT}/trino"                 "${APPDIR}/compose/trino"
 
   # Copy CLI and launch scripts
