@@ -547,14 +547,49 @@ def _build_action_fields(
             result[name] = GraphQLArgument(_gql_scalar(a.get("type", "String")))
         return result
 
-    for func in si.functions:
-        visible_to = func.get("visible_to") or []
-        if visible_to and role_id not in visible_to:
-            continue
-        domain_id = func.get("domain_id", "")
-        if not all_access and domain_id and domain_id not in accessible:
-            continue
+    def _build_callable_fields(
+        items: list[dict],
+        extra_query: dict[str, GraphQLField],
+        extra_mutation: dict[str, GraphQLField],
+        resolve_return_and_args,
+    ) -> None:
+        """Emit query/mutation fields for a list of callable items (functions or webhooks).
 
+        Args:
+            items: List of function or webhook dicts.
+            extra_query: Accumulator for query fields (mutated in place).
+            extra_mutation: Accumulator for mutation fields (mutated in place).
+            resolve_return_and_args: Callable(item) → (gql_return, args) that computes
+                the GraphQL return type and argument dict for one item.
+        """
+        for item in items:
+            visible_to = item.get("visible_to") or []
+            if visible_to and role_id not in visible_to:
+                continue
+            domain_id = item.get("domain_id", "")
+            if not all_access and domain_id and domain_id not in accessible:
+                continue
+
+            gql_return, args = resolve_return_and_args(item)
+
+            if item.get("kind", "mutation") == "query":
+                args["limit"] = GraphQLArgument(GraphQLInt)
+                args["offset"] = GraphQLArgument(GraphQLInt)
+                args["where"] = GraphQLArgument(JSONScalar)
+                args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(GraphQLString)))
+
+            gql_field = GraphQLField(gql_return, args=args, description=item.get("description"))
+            field_key = item["name"]
+            if si.domain_prefix and domain_id:
+                alias = (domain_alias_map or {}).get(domain_id) or domain_to_sql_name(domain_id)
+                field_key = f"{alias}__{field_key}"
+
+            if item.get("kind", "mutation") == "query":
+                extra_query[field_key] = gql_field
+            else:
+                extra_mutation[field_key] = gql_field
+
+    def _resolve_function(func: dict):
         returns_str = func.get("returns", "")
         # returns_str is "schema.table" — look up the GraphQL object type
         parts = returns_str.split(".", 1) if returns_str else []
@@ -569,40 +604,17 @@ def _build_action_fields(
             else:
                 gql_return = GraphQLString
             ret_type = None
-
         # Detect collision between function arg names and return type field names
         ret_fields: set[str] = set(ret_type.fields.keys()) if ret_type and hasattr(ret_type, "fields") else set()
         args = _build_args(
             func["arguments"] if isinstance(func["arguments"], list) else [],
             response_fields=ret_fields,
         )
+        return gql_return, args
 
-        if func.get("kind", "mutation") == "query":
-            args["limit"] = GraphQLArgument(GraphQLInt)
-            args["offset"] = GraphQLArgument(GraphQLInt)
-            args["where"] = GraphQLArgument(JSONScalar)
-            args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(GraphQLString)))
-        gql_field = GraphQLField(gql_return, args=args, description=func.get("description"))
-        field_key = func["name"]
-        if si.domain_prefix and domain_id:
-            alias = (domain_alias_map or {}).get(domain_id) or domain_to_sql_name(domain_id)
-            field_key = f"{alias}__{field_key}"
-        if func.get("kind", "mutation") == "query":
-            extra_query[field_key] = gql_field
-        else:
-            extra_mutation[field_key] = gql_field
-
-    for wh in si.webhooks:
-        visible_to = wh.get("visible_to") or []
-        if visible_to and role_id not in visible_to:
-            continue
-        domain_id = wh.get("domain_id", "")
-        if not all_access and domain_id and domain_id not in accessible:
-            continue
-
+    def _resolve_webhook(wh: dict):
         returns_str = wh.get("returns") or ""
         inline = wh.get("inline_return_type") or []
-
         if returns_str:
             # normalize "source.schema.table" → look up by (schema, table)
             rparts = returns_str.split(".")
@@ -625,26 +637,15 @@ def _build_action_fields(
         else:
             ret_type = None
             gql_return = GraphQLString
-
         wh_ret_fields: set[str] = set(ret_type.fields.keys()) if ret_type and hasattr(ret_type, "fields") else set()
         args = _build_args(
             wh["arguments"] if isinstance(wh["arguments"], list) else [],
             response_fields=wh_ret_fields,
         )
-        if wh.get("kind", "mutation") == "query":
-            args["limit"] = GraphQLArgument(GraphQLInt)
-            args["offset"] = GraphQLArgument(GraphQLInt)
-            args["where"] = GraphQLArgument(JSONScalar)
-            args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(GraphQLString)))
-        gql_field = GraphQLField(gql_return, args=args, description=wh.get("description"))
-        field_key = wh["name"]
-        if si.domain_prefix and domain_id:
-            alias = (domain_alias_map or {}).get(domain_id) or domain_to_sql_name(domain_id)
-            field_key = f"{alias}__{field_key}"
-        if wh.get("kind", "mutation") == "query":
-            extra_query[field_key] = gql_field
-        else:
-            extra_mutation[field_key] = gql_field
+        return gql_return, args
+
+    _build_callable_fields(si.functions, extra_query, extra_mutation, _resolve_function)
+    _build_callable_fields(si.webhooks, extra_query, extra_mutation, _resolve_webhook)
 
     return extra_query, extra_mutation
 
@@ -827,7 +828,8 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         _response_field_names = set(visible_col_names) | {"where", "order_by", "limit", "offset", "distinct_on"}
         for nfc in t.native_filter_columns:
             col_name = nfc["column_name"]
-            arg_name = f"_{col_name}" if col_name in _response_field_names else col_name
+            bare_name = col_name[4:] if col_name.startswith("_nf_") else col_name
+            arg_name = f"_{bare_name}" if bare_name in _response_field_names else bare_name
             meta = t.column_metadata.get(col_name.lower())
             nfc_gql_type = trino_to_graphql(meta.data_type) if meta else GraphQLString
             scalar = nfc_gql_type.of_type if isinstance(nfc_gql_type, GraphQLList) else nfc_gql_type
