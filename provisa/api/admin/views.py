@@ -12,11 +12,9 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
-import yaml
 from fastapi import APIRouter, HTTPException, Request
+
+from provisa.api.admin._config_io import config_path as _config_path, read_config, write_config
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -24,12 +22,10 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 @router.get("/views")
 async def list_views():
     """List all configured views."""
-    config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-    path = Path(config_path)
+    path = _config_path()
     if not path.exists():
         return []
-    with open(path) as f:
-        cfg = yaml.safe_load(f)
+    cfg = read_config()
     return cfg.get("views", [])
 
 
@@ -39,10 +35,8 @@ async def save_view(request: Request):
     from provisa.api.app import _load_and_build
 
     view = await request.json()
-    config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-    path = Path(config_path)
-    with open(path) as f:
-        cfg = yaml.safe_load(f)
+    path = _config_path()
+    cfg = read_config()
 
     views = cfg.setdefault("views", [])
     replaced = False
@@ -54,13 +48,10 @@ async def save_view(request: Request):
     if not replaced:
         views.append(view)
 
-    backup = path.with_suffix(".yaml.bak")
-    backup.write_text(path.read_text())
-    with open(path, "w") as f:
-        yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+    write_config(path, cfg)
 
     try:
-        await _load_and_build(config_path)
+        await _load_and_build(str(path))
         return {"success": True, "message": f"View '{view['id']}' saved and reloaded"}
     except Exception as e:
         return {"success": False, "message": str(e)}
@@ -71,21 +62,16 @@ async def delete_view(view_id: str):
     """Delete a view from the config and reload."""
     from provisa.api.app import _load_and_build
 
-    config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-    path = Path(config_path)
-    with open(path) as f:
-        cfg = yaml.safe_load(f)
+    path = _config_path()
+    cfg = read_config()
 
     views = cfg.get("views", [])
     cfg["views"] = [v for v in views if v["id"] != view_id]
 
-    backup = path.with_suffix(".yaml.bak")
-    backup.write_text(path.read_text())
-    with open(path, "w") as f:
-        yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
+    write_config(path, cfg)
 
     try:
-        await _load_and_build(config_path)
+        await _load_and_build(str(path))
         return {"success": True, "message": f"View '{view_id}' deleted"}
     except Exception as e:
         return {"success": False, "message": str(e)}
@@ -95,11 +81,9 @@ async def delete_view(view_id: str):
 async def sample_view(view_id: str):
     """Execute a view's SQL with LIMIT 20 and return sample rows."""
     from provisa.api.app import state
+    from provisa.compiler.sql_gen import rewrite_semantic_to_trino_physical
 
-    config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-    path = Path(config_path)
-    with open(path) as f:
-        cfg = yaml.safe_load(f)
+    cfg = read_config()
 
     view = None
     for v in cfg.get("views", []):
@@ -109,8 +93,13 @@ async def sample_view(view_id: str):
     if not view:
         raise HTTPException(status_code=404, detail=f"View '{view_id}' not found")
 
+    if not state.contexts:
+        raise HTTPException(status_code=503, detail="Schema not yet built")
+
+    ctx = next(iter(state.contexts.values()))
     sql = view["sql"].strip().rstrip(";")
-    sample_sql = f"SELECT * FROM ({sql}) _v LIMIT 20"
+    physical_sql = rewrite_semantic_to_trino_physical(sql, ctx)
+    sample_sql = f"SELECT * FROM ({physical_sql}) _v LIMIT 20"
 
     if state.trino_conn is None:
         raise HTTPException(status_code=503, detail="Trino not connected")

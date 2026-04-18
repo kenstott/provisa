@@ -7,11 +7,11 @@
 """Admin config + platform settings REST endpoints."""
 
 import os
-from pathlib import Path
 
-import yaml
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
+
+from provisa.api.admin._config_io import config_path, read_config, write_config
 
 router = APIRouter()
 
@@ -19,8 +19,7 @@ router = APIRouter()
 @router.get("/admin/config")
 async def download_config():
     """Download the current config YAML."""
-    config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-    path = Path(config_path)
+    path = config_path()
     if not path.exists():
         raise HTTPException(status_code=404, detail="Config file not found")
     return Response(
@@ -35,26 +34,16 @@ async def upload_config(request: Request):
     """Upload a revised config YAML and reload."""
     from provisa.api.app import _load_and_build  # lazy to avoid circular import
     body = await request.body()
-    config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-    path = Path(config_path)
+    path = config_path()
     if path.exists():
         backup = path.with_suffix(".yaml.bak")
         backup.write_text(path.read_text())
     path.write_bytes(body)
     try:
-        await _load_and_build(config_path)
+        await _load_and_build(str(path))
         return {"success": True, "message": "Config uploaded and reloaded"}
     except Exception as e:
         return {"success": False, "message": str(e)}
-
-
-def _read_config() -> dict:
-    config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-    try:
-        with open(config_path) as f:
-            return yaml.safe_load(f) or {}
-    except Exception:
-        return {}
 
 
 @router.get("/admin/settings")
@@ -64,7 +53,7 @@ async def get_settings():
     from provisa.compiler.sampling import get_sample_size
     from provisa.api.app import state
     rc = RedirectConfig.from_env()
-    cfg = _read_config()
+    cfg = read_config()
     naming_cfg = cfg.get("naming", {})
     otel_cfg = cfg.get("observability", {})
     return {
@@ -129,10 +118,8 @@ async def update_settings(request: Request):
     if "naming" in body:
         n = body["naming"]
         needs_reload = False
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-        path = Path(config_path)
-        with open(path) as f:
-            cfg = yaml.safe_load(f)
+        path = config_path()
+        cfg = read_config()
         if "domain_prefix" in n:
             cfg.setdefault("naming", {})["domain_prefix"] = bool(n["domain_prefix"])
             updated.append("naming.domain_prefix")
@@ -145,18 +132,17 @@ async def update_settings(request: Request):
             updated.append("naming.convention")
             needs_reload = True
         if needs_reload:
-            _write_config(path, cfg)
+            write_config(path, cfg)
             try:
-                await _load_and_build(config_path)
+                await _load_and_build(str(path))
             except Exception:
                 pass
 
     if "otel" in body:
         o = body["otel"]
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-        path = Path(config_path)
+        path = config_path()
         try:
-            cfg = _read_config()
+            cfg = read_config()
             cfg.setdefault("observability", {})
             if "endpoint" in o:
                 cfg["observability"]["endpoint"] = o["endpoint"]
@@ -169,7 +155,7 @@ async def update_settings(request: Request):
             if "sample_rate" in o:
                 cfg["observability"]["sample_rate"] = float(o["sample_rate"])
                 updated.append("otel.sample_rate")
-            _write_config(path, cfg)
+            write_config(path, cfg)
         except Exception:
             pass
 
@@ -186,8 +172,3 @@ async def get_recent_traces(limit: int = 50):
         return {"traces": []}
 
 
-def _write_config(path: Path, cfg: dict) -> None:
-    backup = path.with_suffix(".yaml.bak")
-    backup.write_text(path.read_text())
-    with open(path, "w") as f:
-        yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)

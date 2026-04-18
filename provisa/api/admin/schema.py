@@ -16,6 +16,8 @@ from typing import Optional
 
 import strawberry
 
+from provisa.compiler.naming import source_to_catalog
+from provisa.api.admin._config_io import config_path as _config_path, read_config, write_config
 from provisa.api.admin.types import (
     AvailableColumnType,
     AvailableTableType,
@@ -326,7 +328,7 @@ class Query:
         from provisa.api.app import state
         if await _ensure_openapi_spec(source_id):
             return ["openapi"]
-        catalog = source_id.replace("-", "_")
+        catalog = source_to_catalog(source_id)
         # Admin/platform schemas to hide from data UI
         _HIDDEN_SCHEMAS = {"information_schema", "pg_catalog", "mv_cache"}
         try:
@@ -356,7 +358,7 @@ class Query:
             spec = state.openapi_specs[source_id]["spec"]
             queries, _ = parse_spec(spec)
             return [AvailableTableType(name=q.operation_id, comment=q.summary) for q in queries]
-        catalog = source_id.replace("-", "_")
+        catalog = source_to_catalog(source_id)
         # Admin tables managed by Provisa — hide from data registration
         _ADMIN_TABLES = {
             "sources", "domains", "naming_rules", "registered_tables",
@@ -408,7 +410,7 @@ class Query:
     ) -> list[str]:
         """List columns for a table in a source's Trino catalog."""
         from provisa.api.app import state
-        catalog = source_id.replace("-", "_")
+        catalog = source_to_catalog(source_id)
         try:
             cursor = state.trino_conn.cursor()
             cursor.execute(
@@ -450,7 +452,7 @@ class Query:
                 AvailableColumnType(name=c["name"], data_type=c["type"], comment=None, native_filter_type=c.get("native_filter_type"))
                 for c in cols
             ]
-        catalog = source_id.replace("-", "_")
+        catalog = source_to_catalog(source_id)
         try:
             from provisa.compiler.introspect import introspect_pk_columns
             pk_cols = introspect_pk_columns(state.trino_conn, catalog, schema_name, table_name)
@@ -571,19 +573,11 @@ class Query:
     @strawberry.field
     async def scheduled_tasks(self) -> list[ScheduledTaskType]:
         """List scheduled triggers from config with runtime state."""
-        import os
-        from pathlib import Path
-
-        import yaml
-
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-        path = Path(config_path)
+        path = _config_path()
         if not path.exists():
             return []
 
-        with open(path) as f:
-            cfg = yaml.safe_load(f)
-
+        cfg = read_config()
         triggers = cfg.get("scheduled_triggers", [])
 
         # Try to get runtime info from the APScheduler instance
@@ -706,8 +700,46 @@ class Mutation:
         async with pool.acquire() as conn:
             await source_repo.upsert(conn, model)
 
-        # AL1: fire ANALYZE on all registered tables for this source (errors swallowed)
         from provisa.api.app import state
+        from provisa.executor.drivers.registry import has_driver
+        from provisa.core.secrets import resolve_secrets
+        if has_driver(input.type):
+            try:
+                await state.source_pools.add(
+                    source_id=input.id,
+                    source_type=input.type,
+                    host=resolve_secrets(input.host) if input.host else "localhost",
+                    port=input.port,
+                    database=input.database,
+                    user=input.username,
+                    password=resolve_secrets(input.password),
+                )
+            except Exception as _pool_err:
+                import logging as _log
+                _log.getLogger(__name__).warning(
+                    "Direct pool for %r failed: %s — Trino-routed queries still work.",
+                    input.id, _pool_err,
+                )
+        state.source_types[input.id] = input.type
+        state.source_dialects[input.id] = ""
+
+        # Create Trino catalog for this source (mirrors config_loader path)
+        if state.trino_conn is not None:
+            from provisa.core.catalog import create_catalog
+            from provisa.core.secrets import resolve_secrets
+            try:
+                create_catalog(
+                    state.trino_conn,
+                    model,
+                    resolve_secrets(input.password) if input.password else "",
+                )
+            except Exception as _cat_err:
+                import logging as _log
+                _log.getLogger(__name__).warning(
+                    "Trino catalog creation for %r failed: %s", input.id, _cat_err
+                )
+
+        # AL1: fire ANALYZE on all registered tables for this source (errors swallowed)
         if state.trino_conn is not None:
             from provisa.core.catalog import analyze_source_tables
 
@@ -745,6 +777,30 @@ class Mutation:
                 path=input.path,
             )
             await source_repo.upsert(conn, model)
+
+        from provisa.api.app import state
+        from provisa.executor.drivers.registry import has_driver
+        from provisa.core.secrets import resolve_secrets
+        if has_driver(input.type):
+            await state.source_pools.remove(input.id)
+            try:
+                await state.source_pools.add(
+                    source_id=input.id,
+                    source_type=input.type,
+                    host=resolve_secrets(input.host) if input.host else "localhost",
+                    port=input.port,
+                    database=input.database,
+                    user=input.username,
+                    password=resolve_secrets(input.password),
+                )
+            except Exception as _pool_err:
+                import logging as _log
+                _log.getLogger(__name__).warning(
+                    "Direct pool for %r failed: %s — Trino-routed queries still work.",
+                    input.id, _pool_err,
+                )
+        state.source_types[input.id] = input.type
+        state.source_dialects[input.id] = ""
         return MutationResult(success=True, message=f"Source {input.id!r} updated")
 
     @strawberry.mutation
@@ -1284,19 +1340,13 @@ class Mutation:
     @strawberry.mutation
     async def toggle_scheduled_task(self, task_id: str, enabled: bool) -> MutationResult:
         """Enable or disable a scheduled trigger in the config."""
-        import os
-        from pathlib import Path
-
         import yaml
 
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-        path = Path(config_path)
+        path = _config_path()
         if not path.exists():
             return MutationResult(success=False, message="Config file not found")
 
-        with open(path) as f:
-            cfg = yaml.safe_load(f)
-
+        cfg = read_config()
         triggers = cfg.get("scheduled_triggers", [])
         found = False
         for t in triggers:
@@ -1345,7 +1395,7 @@ class Mutation:
 
         analyzed: list[str] = []
         errors: list[str] = []
-        source_catalog = source_id.replace("-", "_")
+        source_catalog = source_to_catalog(source_id)
 
         for row in rows:
             full_name = f"{source_catalog}.{row['schema_name']}.{row['table_name']}"
