@@ -61,6 +61,7 @@ class RegisteredTableType:
     watermark_column: str | None
     columns: list[TableColumnType]
     column_presets: list[ColumnPresetType] = strawberry.field(default_factory=list)
+    api_endpoint: str | None = None
 
 
 @strawberry.type

@@ -11,6 +11,7 @@
 """Trino dynamic catalog management via SQL CREATE/DROP CATALOG."""
 
 import logging
+import os
 import re
 import signal
 
@@ -46,6 +47,21 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
     host = resolve_secrets(source.host or "")
     port = source.port
     username = resolve_secrets(source.username or "")
+
+    # SQLite and OpenAPI sources — data lives in the local PG instance
+    # (SQLite tables are migrated to PG at registration; OpenAPI responses cached there)
+    if stype in ("sqlite", "openapi"):
+        pg_host = os.environ.get("POSTGRES_HOST", os.environ.get("PG_HOST", "postgres"))
+        pg_port = os.environ.get("PG_PORT", "5432")
+        pg_database = os.environ.get("PG_DATABASE", "provisa")
+        pg_user = os.environ.get("PG_USER", "provisa")
+        pg_pw = os.environ.get("PG_PASSWORD", "provisa")
+        jdbc = f"jdbc:postgresql://{pg_host}:{pg_port}/{pg_database}"
+        return {
+            "connection-url": jdbc,
+            "connection-user": pg_user,
+            "connection-password": pg_pw,
+        }
 
     # MongoDB connector
     if stype == "mongodb":
@@ -87,7 +103,15 @@ def create_catalog(conn: trino.dbapi.Connection, source: Source, resolved_passwo
     if catalog_exists(conn, catalog_name):
         return
 
-    connector = _validate_identifier(source.connector)
+    stype = source.type.value
+    if stype in ("sqlite", "openapi"):
+        connector = "postgresql"
+    else:
+        try:
+            connector = _validate_identifier(source.connector)
+        except KeyError:
+            log.warning("No Trino connector for source type %r — skipping catalog creation", stype)
+            return
     props = _build_catalog_properties(source, resolved_password)
 
     if not props:

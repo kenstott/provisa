@@ -79,6 +79,7 @@ export interface RegisteredTable {
   watermarkColumn: string | null;
   columns: TableColumn[];
   columnPresets: ColumnPreset[];
+  apiEndpoint: string | null;
 }
 
 export interface Relationship {

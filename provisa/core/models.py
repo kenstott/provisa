@@ -152,6 +152,7 @@ class Source(BaseModel):
     username: str = ""
     password: str = ""  # Secret reference e.g. ${env:PG_PASSWORD}
     path: str | None = None  # File path or URL for file-based sources (csv, parquet, sqlite)
+    base_url: str | None = None  # Base URL for OpenAPI sources (e.g. https://api.example.com/v1)
     pool_min: int = Field(default=1, alias="pool_min")
     pool_max: int = Field(default=5, alias="pool_max")
     use_pgbouncer: bool = Field(default=False, alias="use_pgbouncer")

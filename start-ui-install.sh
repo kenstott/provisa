@@ -121,15 +121,14 @@ docker exec provisa-postgres-1 psql -U provisa -d provisa -c "
   WHERE NOT EXISTS (SELECT 1 FROM pet_store.pets LIMIT 1);
 " 2>/dev/null || echo "pet_store schema setup skipped (will retry on next start)"
 
-# Ensure Python dependencies are installed (skipped in --fast mode)
-if [ "$FAST" = false ] && [ -f "$SCRIPT_DIR/pyproject.toml" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
-  echo "Syncing Python dependencies..."
-  "$SCRIPT_DIR/.venv/bin/pip" install -e "$SCRIPT_DIR" -q
-fi
 
-lsof -i :8001 -P -t 2>/dev/null | xargs kill 2>/dev/null || true
-lsof -i :3000 -P -t 2>/dev/null | xargs kill 2>/dev/null || true
-sleep 1
+pkill -9 -f "uvicorn main:app" 2>/dev/null || true
+lsof -i :8001 -P -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+lsof -i :3000 -P -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+for i in $(seq 1 20); do
+  lsof -i :8001 -P -t 2>/dev/null | grep -q . || break
+  sleep 0.5
+done
 
 > "$LOG_DIR/server-install.log"
 

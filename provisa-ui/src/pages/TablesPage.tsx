@@ -796,6 +796,11 @@ export function TablesPage() {
                               ))}
                             </tbody>
                           </table>
+                          {t.apiEndpoint && (
+                            <div style={{ padding: "0.5rem 0.75rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                              API endpoint: <code>{t.apiEndpoint}</code>
+                            </div>
+                          )}
                           {t.watermarkColumn && (
                             <div style={{ padding: "0.5rem 0.75rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
                               Watermark column: <code>{t.watermarkColumn}</code>
@@ -865,6 +870,12 @@ export function TablesPage() {
                                 }}
                               />
                             </label>
+                            {editingTable.apiEndpoint && (
+                              <label style={{ gridColumn: "1 / -1" }}>
+                                API Endpoint
+                                <input readOnly value={editingTable.apiEndpoint} style={{ color: "var(--text-muted)", cursor: "default" }} />
+                              </label>
+                            )}
                             {(
                               <label>
                                 Watermark Column{" "}

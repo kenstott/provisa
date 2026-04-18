@@ -161,6 +161,8 @@ def _rls_from_row(row) -> RLSRuleType:
 
 
 async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
+    import re as _re
+
     col_rows = await conn.fetch(
         "SELECT id, column_name, visible_to, writable_by, unmasked_to, "
         "mask_type, mask_pattern, mask_replace, mask_value, mask_precision, "
@@ -190,6 +192,27 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         ColumnPresetType(column=p["column"], source=p["source"], name=p.get("name"), value=p.get("value"), data_type=p.get("data_type"))
         for p in (row.get("column_presets") or [])
     ]
+
+    api_endpoint = None
+    if await _ensure_openapi_spec(row["source_id"]):
+        try:
+            from provisa.api.app import state
+            from provisa.openapi.mapper import parse_spec
+            spec_info = state.openapi_specs.get(row["source_id"], {})
+            spec = spec_info.get("spec", {})
+            base_url = spec_info.get("base_url", "")
+            queries, _ = parse_spec(spec)
+
+            def _norm(s: str) -> str:
+                return _re.sub(r"[_-]", "", s).lower()
+
+            table_name = row["table_name"]
+            q = next((q for q in queries if _norm(q.operation_id) == _norm(table_name)), None)
+            if q:
+                api_endpoint = f"[{q.method.upper()}] {base_url.rstrip('/')}{q.path}"
+        except Exception:
+            pass
+
     return RegisteredTableType(
         id=row["id"], source_id=row["source_id"],
         domain_id=row["domain_id"], schema_name=row["schema_name"],
@@ -200,6 +223,7 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         watermark_column=row.get("watermark_column"),
         columns=columns,
         column_presets=presets,
+        api_endpoint=api_endpoint,
     )
 
 
@@ -847,6 +871,15 @@ class Mutation:
         )
         async with pool.acquire() as conn:
             table_id = await table_repo.upsert(conn, model)
+            src_row = await conn.fetchrow("SELECT type, path FROM sources WHERE id = $1", input.source_id)
+            if src_row and src_row["type"] == "sqlite" and src_row["path"]:
+                from provisa.file_source.pg_migrate import migrate_sqlite_table
+                import logging as _logging
+                _log = _logging.getLogger(__name__)
+                try:
+                    await migrate_sqlite_table(src_row["path"], input.table_name, conn, input.schema_name, input.table_name)
+                except Exception as _e:
+                    _log.warning("SQLite → PG migration failed for %s.%s: %s", input.source_id, input.table_name, _e)
         await _rebuild_schemas()
         return MutationResult(
             success=True,
@@ -910,6 +943,15 @@ class Mutation:
         )
         async with pool.acquire() as conn:
             table_id = await table_repo.upsert(conn, model)
+            src_row = await conn.fetchrow("SELECT type, path FROM sources WHERE id = $1", input.source_id)
+            if src_row and src_row["type"] == "sqlite" and src_row["path"]:
+                from provisa.file_source.pg_migrate import migrate_sqlite_table
+                import logging as _logging
+                _log = _logging.getLogger(__name__)
+                try:
+                    await migrate_sqlite_table(src_row["path"], input.table_name, conn, input.schema_name, input.table_name)
+                except Exception as _e:
+                    _log.warning("SQLite → PG migration failed for %s.%s: %s", input.source_id, input.table_name, _e)
         await _rebuild_schemas()
         return MutationResult(
             success=True,

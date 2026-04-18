@@ -107,10 +107,20 @@ if [ "$SEED_DATA" = true ] && [ -f "$SCRIPT_DIR/scripts/seed-kafka.py" ] && \
   "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/scripts/seed-kafka.py" 2>/dev/null || true
 fi
 
-# Ensure Python dependencies are installed
+# Ensure Python dependencies are installed (skip if lockfile unchanged; 30s timeout guards against hangs)
 if [ -f "$SCRIPT_DIR/pyproject.toml" ] && [ -d "$SCRIPT_DIR/.venv" ]; then
-  echo "Syncing Python dependencies..."
-  "$SCRIPT_DIR/.venv/bin/pip" install -e "$SCRIPT_DIR" -q
+  LOCK_HASH=$(md5 -q "$SCRIPT_DIR/pyproject.toml" "$SCRIPT_DIR/uv.lock" 2>/dev/null || echo "")
+  CACHED_HASH=$(cat "$SCRIPT_DIR/.venv/.dep-hash" 2>/dev/null || echo "none")
+  if [ "$LOCK_HASH" != "$CACHED_HASH" ]; then
+    echo "Syncing Python dependencies..."
+    "$SCRIPT_DIR/.venv/bin/pip" install -e "$SCRIPT_DIR" -q &
+    PIP_PID=$!
+    sleep 30 &
+    SLEEP_PID=$!
+    wait -n $PIP_PID $SLEEP_PID 2>/dev/null
+    kill $PIP_PID $SLEEP_PID 2>/dev/null
+    wait $PIP_PID 2>/dev/null && echo "$LOCK_HASH" > "$SCRIPT_DIR/.venv/.dep-hash" || echo "Warning: dependency sync timed out or failed — continuing"
+  fi
 fi
 
 # Kill any stale processes on our ports

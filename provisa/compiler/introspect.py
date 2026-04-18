@@ -11,6 +11,7 @@
 """Query Trino INFORMATION_SCHEMA for registered table column metadata."""
 
 import re
+import time
 from dataclasses import dataclass
 
 import trino
@@ -89,16 +90,35 @@ def introspect_tables(
         trino_table_name = table["table_name"]
         if physical_table_map:
             trino_table_name = physical_table_map.get(trino_table_name, trino_table_name)
-        try:
-            columns = introspect_table_columns(
-                conn, catalog_name, table["schema_name"], trino_table_name
-            )
-            result[table["id"]] = columns
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).warning(
+        import logging
+        _log = logging.getLogger(__name__)
+        last_exc: Exception | None = None
+        for attempt in range(6):
+            try:
+                columns = introspect_table_columns(
+                    conn, catalog_name, table["schema_name"], trino_table_name
+                )
+                result[table["id"]] = columns
+                last_exc = None
+                break
+            except trino.exceptions.TrinoUserError as e:
+                if "CATALOG_NOT_FOUND" in str(e) and attempt < 5:
+                    _log.info(
+                        "Catalog '%s' not yet ready, retrying in 3s (attempt %d/5)…",
+                        catalog_name, attempt + 1,
+                    )
+                    time.sleep(3)
+                    last_exc = e
+                else:
+                    last_exc = e
+                    break
+            except Exception as e:
+                last_exc = e
+                break
+        if last_exc is not None:
+            _log.warning(
                 "Failed to introspect %s.%s.%s: %s. Table will be skipped.",
-                catalog_name, table["schema_name"], trino_table_name, e,
+                catalog_name, table["schema_name"], trino_table_name, last_exc,
             )
     return result
 

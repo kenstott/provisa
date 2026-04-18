@@ -10,7 +10,15 @@
 
 """Config loader: YAML → validate → resolve secrets → upsert PG → create Trino catalogs."""
 
+import logging
+import re
 from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+
+def _normalize_op_id(s: str) -> str:
+    return re.sub(r"[_-]", "", s).lower()
 
 import asyncpg
 import trino
@@ -84,6 +92,8 @@ async def _load_config_in_txn(
         else:
             await conn.execute("DELETE FROM roles")
         await conn.execute("DELETE FROM relationships")
+        await conn.execute("DELETE FROM tracked_functions")
+        await conn.execute("DELETE FROM tracked_webhooks")
 
     # 1. Sources
     for src in config.sources:
@@ -113,8 +123,52 @@ async def _load_config_in_txn(
         await role_repo.upsert(conn, role)
 
     # 5. Tables + columns
+    sources_by_id = {src.id: src for src in config.sources}
+
+    # Pre-load OpenAPI specs once per source (avoid repeated HTTP fetches)
+    openapi_specs: dict[str, dict] = {}
+    for src in config.sources:
+        if src.type.value == "openapi" and src.path:
+            try:
+                from provisa.openapi.loader import load_spec
+                openapi_specs[src.id] = load_spec(src.path)
+            except Exception as _e:
+                log.warning("Failed to load OpenAPI spec for %s: %s", src.id, _e)
+
     for tbl in config.tables:
         await table_repo.upsert(conn, tbl)
+        src = sources_by_id.get(tbl.source_id)
+        if src and src.type.value == "sqlite" and src.path:
+            from provisa.file_source.pg_migrate import migrate_sqlite_table
+            try:
+                await migrate_sqlite_table(src.path, tbl.table_name, conn, tbl.schema_name, tbl.table_name)
+            except Exception as _e:
+                log.warning("SQLite → PG migration failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e)
+        elif src and src.type.value == "openapi" and src.base_url:
+            spec = openapi_specs.get(src.id, {})
+            if spec:
+                from provisa.openapi.mapper import parse_spec
+                from provisa.openapi.pg_cache import cache_openapi_table
+                queries, _ = parse_spec(spec)
+                match = next((q for q in queries if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)), None)
+                if match:
+                    default_params = {p["name"]: "" for p in match.query_params}
+                    fallback_cols = [(c.name, "TEXT") for c in tbl.columns] if tbl.columns else None
+                    try:
+                        await cache_openapi_table(
+                            src.base_url,
+                            match.path,
+                            default_params,
+                            conn,
+                            tbl.schema_name,
+                            tbl.table_name,
+                            match.response_schema,
+                            fallback_cols,
+                        )
+                    except Exception as _e:
+                        log.warning("OpenAPI cache failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e)
+                else:
+                    log.warning("No matching OpenAPI operation for table %s (source %s)", tbl.table_name, tbl.source_id)
 
     # 5a. ANALYZE — prime federation CBO stats after tables are registered
     if trino_conn is not None:

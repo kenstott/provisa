@@ -51,12 +51,14 @@ tables:
       - name: available
         visible_to: [admin, analyst]
 
+  # Petstore API — GET /pet/findByStatus (returns array of Pet)
   - source_id: petstore-api
     domain_id: pet-store
     schema: default
-    table: pet
+    table: find_pets_by_status
+    alias: "Pets by Status"
     governance: pre-approved
-    description: "Pet catalog from the Petstore public API"
+    description: "Pets available for purchase — filtered by status from Petstore API"
     columns:
       - name: id
         visible_to: [admin, analyst]
@@ -66,6 +68,114 @@ tables:
         visible_to: [admin, analyst]
       - name: photoUrls
         visible_to: [admin, analyst]
+      - name: tags
+        visible_to: [admin, analyst]
+      - name: category
+        visible_to: [admin, analyst]
+
+  # Petstore API — GET /pet/findByTags (returns array of Pet)
+  - source_id: petstore-api
+    domain_id: pet-store
+    schema: default
+    table: find_pets_by_tags
+    alias: "Pets by Tags"
+    governance: pre-approved
+    description: "Pets filtered by tag from Petstore API"
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: name
+        visible_to: [admin, analyst]
+      - name: status
+        visible_to: [admin, analyst]
+      - name: photoUrls
+        visible_to: [admin, analyst]
+      - name: tags
+        visible_to: [admin, analyst]
+      - name: category
+        visible_to: [admin, analyst]
+
+  # Petstore API — GET /pet/{petId} (returns single Pet — empty table for schema introspection)
+  - source_id: petstore-api
+    domain_id: pet-store
+    schema: default
+    table: get_pet_by_id
+    alias: "Pet by ID"
+    governance: pre-approved
+    description: "Individual pet record by ID from Petstore API"
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: name
+        visible_to: [admin, analyst]
+      - name: status
+        visible_to: [admin, analyst]
+      - name: photoUrls
+        visible_to: [admin, analyst]
+      - name: tags
+        visible_to: [admin, analyst]
+      - name: category
+        visible_to: [admin, analyst]
+
+  # Petstore API — GET /store/inventory (returns map of status → count)
+  - source_id: petstore-api
+    domain_id: pet-store
+    schema: default
+    table: get_inventory
+    alias: "Store Inventory"
+    governance: pre-approved
+    description: "Pet inventory counts by status from Petstore API"
+    columns:
+      - name: status
+        visible_to: [admin, analyst]
+      - name: count
+        visible_to: [admin, analyst]
+
+  # Petstore API — GET /store/order/{orderId} (returns single Order — empty table for schema introspection)
+  - source_id: petstore-api
+    domain_id: pet-store
+    schema: default
+    table: get_order_by_id
+    alias: "Order by ID"
+    governance: pre-approved
+    description: "Individual purchase order by ID from Petstore API"
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: petId
+        visible_to: [admin, analyst]
+      - name: quantity
+        visible_to: [admin, analyst]
+      - name: shipDate
+        visible_to: [admin, analyst]
+      - name: status
+        visible_to: [admin, analyst]
+      - name: complete
+        visible_to: [admin, analyst]
+
+  # Petstore API — GET /user/{username} (returns single User — empty table for schema introspection)
+  - source_id: petstore-api
+    domain_id: pet-store
+    schema: default
+    table: get_user_by_name
+    alias: "User by Name"
+    governance: pre-approved
+    description: "User account by username from Petstore API"
+    columns:
+      - name: id
+        visible_to: [admin]
+      - name: username
+        visible_to: [admin, analyst]
+      - name: firstName
+        visible_to: [admin, analyst]
+      - name: lastName
+        visible_to: [admin, analyst]
+      - name: email
+        visible_to: [admin]
+      - name: phone
+        visible_to: [admin]
+      - name: userStatus
+        visible_to: [admin]
 
   - source_id: inquiries-sqlite
     domain_id: pet-store
@@ -101,7 +211,7 @@ views:
              api.status    AS api_status,
              COUNT(i.id)   AS inquiry_count
       FROM pets p
-      LEFT JOIN pet api    ON p.name = api.name
+      LEFT JOIN find_pets_by_status api ON p.name = api.name
       LEFT JOIN inquiries i ON p.id = i.pet_id
       GROUP BY p.id, p.name, p.species, p.breed_name, p.price, p.available, api.status
     description: "Cross-source view: internal inventory (PG) + Petstore public API (OpenAPI) + inquiries (SQLite)"
@@ -127,9 +237,9 @@ views:
         visible_to: [admin, analyst]
 
 relationships:
-  - id: pets-to-api
+  - id: pets-to-find-pets-by-status
     source_table_id: pets
-    target_table_id: pet
+    target_table_id: find_pets_by_status
     source_column: name
     target_column: name
     cardinality: many-to-one
@@ -141,6 +251,20 @@ relationships:
     target_column: pet_id
     cardinality: one-to-many
     alias: HAS_INQUIRY
+  - id: order-to-pet
+    source_table_id: get_order_by_id
+    target_table_id: find_pets_by_status
+    source_column: petId
+    target_column: id
+    cardinality: many-to-one
+    alias: FOR_PET
+  - id: find-pets-by-status-to-get-pet-by-id
+    source_table_id: find_pets_by_status
+    target_table_id: get_pet_by_id
+    source_column: id
+    target_column: id
+    cardinality: many-to-one
+    alias: DETAIL
 
 roles:
   - id: admin
