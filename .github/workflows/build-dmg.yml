@@ -479,14 +479,24 @@ jobs:
       - name: Install NSIS
         shell: pwsh
         run: |
-          for ($attempt = 1; $attempt -le 5; $attempt++) {
+          $nsisDir = "C:\Program Files (x86)\NSIS"
+          # Try choco first (3 attempts)
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
             choco install nsis --no-progress -y
             if ($LASTEXITCODE -eq 0) { break }
-            Write-Host "choco install nsis attempt $attempt failed — retrying in 30s..."
-            Start-Sleep 30
+            Write-Host "choco attempt $attempt failed — retrying in 15s..."
+            Start-Sleep 15
           }
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append
+          # Fallback: direct download from NSIS SourceForge mirror
+          if (-not (Test-Path "$nsisDir\makensis.exe")) {
+            Write-Host "choco unavailable — downloading NSIS directly..."
+            $installer = "$env:TEMP\nsis-setup.exe"
+            Invoke-WebRequest -Uri "https://prdownloads.sourceforge.net/nsis/nsis-3.11-setup.exe" `
+              -OutFile $installer -UseBasicParsing
+            Start-Process -FilePath $installer -ArgumentList "/S" -Wait
+          }
+          if (-not (Test-Path "$nsisDir\makensis.exe")) { exit 1 }
+          $nsisDir | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Build installer
         shell: pwsh
