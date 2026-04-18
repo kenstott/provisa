@@ -56,7 +56,7 @@ tables:
     domain_id: pet-store
     schema: default
     table: find_pets_by_status
-    alias: find_pets_by_status
+    alias: pets_by_status
     governance: pre-approved
     description: "Pets available for purchase — filtered by status from Petstore API"
     columns:
@@ -78,7 +78,7 @@ tables:
     domain_id: pet-store
     schema: default
     table: find_pets_by_tags
-    alias: find_pets_by_tags
+    alias: pets_by_tags
     governance: pre-approved
     description: "Pets filtered by tag from Petstore API"
     columns:
@@ -100,7 +100,7 @@ tables:
     domain_id: pet-store
     schema: default
     table: get_pet_by_id
-    alias: get_pet_by_id
+    alias: pet_by_id
     governance: pre-approved
     description: "Individual pet record by ID from Petstore API"
     columns:
@@ -122,7 +122,7 @@ tables:
     domain_id: pet-store
     schema: default
     table: get_inventory
-    alias: get_inventory
+    alias: inventory
     governance: pre-approved
     description: "Pet inventory counts by status from Petstore API"
     columns:
@@ -136,7 +136,7 @@ tables:
     domain_id: pet-store
     schema: default
     table: get_order_by_id
-    alias: get_order_by_id
+    alias: order_by_id
     governance: pre-approved
     description: "Individual purchase order by ID from Petstore API"
     columns:
@@ -158,7 +158,7 @@ tables:
     domain_id: pet-store
     schema: default
     table: get_user_by_name
-    alias: get_user_by_name
+    alias: user_by_name
     governance: pre-approved
     description: "User account by username from Petstore API"
     columns:
