@@ -19,25 +19,32 @@ import asyncpg
 from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
 
 
-async def upsert_function(conn: asyncpg.Connection, func: Function) -> int:
+async def upsert_function(
+    conn: asyncpg.Connection,
+    func: Function,
+    return_schema: str | None = None,
+) -> int:
     """Upsert a tracked DB function. Returns the row id."""
     func_id = await conn.fetchval(
         """
         INSERT INTO tracked_functions
             (name, source_id, schema_name, function_name, returns,
-             arguments, visible_to, writable_by, domain_id, description, kind)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             arguments, visible_to, writable_by, domain_id, description, kind,
+             return_schema)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT (name) DO UPDATE SET
-            source_id = EXCLUDED.source_id,
-            schema_name = EXCLUDED.schema_name,
+            source_id     = EXCLUDED.source_id,
+            schema_name   = EXCLUDED.schema_name,
             function_name = EXCLUDED.function_name,
-            returns = EXCLUDED.returns,
-            arguments = EXCLUDED.arguments,
-            visible_to = EXCLUDED.visible_to,
-            writable_by = EXCLUDED.writable_by,
-            domain_id = EXCLUDED.domain_id,
-            description = EXCLUDED.description,
-            kind = EXCLUDED.kind
+            returns       = EXCLUDED.returns,
+            arguments     = EXCLUDED.arguments,
+            visible_to    = EXCLUDED.visible_to,
+            writable_by   = EXCLUDED.writable_by,
+            domain_id     = EXCLUDED.domain_id,
+            description   = EXCLUDED.description,
+            kind          = EXCLUDED.kind,
+            return_schema = EXCLUDED.return_schema,
+            updated_at    = NOW()
         RETURNING id
         """,
         func.name,
@@ -51,6 +58,7 @@ async def upsert_function(conn: asyncpg.Connection, func: Function) -> int:
         func.domain_id,
         func.description,
         func.kind,
+        return_schema,
     )
     return func_id
 

@@ -147,47 +147,31 @@ class WebhookInput(BaseModel):
 async def create_function(body: FunctionInput):
     """Create a tracked DB function."""
     from provisa.api.app import state
+    from provisa.core.models import Function, FunctionArgument
+    from provisa.core.repositories import function as function_repo
 
     if state.pg_pool is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
     await _ensure_tables(state.pg_pool)
 
+    func = Function(
+        name=body.name,
+        source_id=body.sourceId,
+        schema_name=body.schemaName,
+        function_name=body.functionName,
+        returns=body.returns,
+        arguments=[FunctionArgument(**a) for a in body.arguments],
+        visible_to=body.visibleTo,
+        writable_by=body.writableBy,
+        domain_id=body.domainId,
+        description=body.description,
+        kind=body.kind,
+    )
+    return_schema = json.dumps(body.returnSchema) if body.returnSchema is not None else None
+
     async with state.pg_pool.acquire() as conn:
-        await conn.execute(
-            """
-            INSERT INTO tracked_functions
-                (name, source_id, schema_name, function_name, returns,
-                 arguments, visible_to, writable_by, domain_id, description, kind,
-                 return_schema)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-            ON CONFLICT (name) DO UPDATE SET
-                source_id     = EXCLUDED.source_id,
-                schema_name   = EXCLUDED.schema_name,
-                function_name = EXCLUDED.function_name,
-                returns       = EXCLUDED.returns,
-                arguments     = EXCLUDED.arguments,
-                visible_to    = EXCLUDED.visible_to,
-                writable_by   = EXCLUDED.writable_by,
-                domain_id     = EXCLUDED.domain_id,
-                description   = EXCLUDED.description,
-                kind          = EXCLUDED.kind,
-                return_schema = EXCLUDED.return_schema,
-                updated_at    = NOW()
-            """,
-            body.name,
-            body.sourceId,
-            body.schemaName,
-            body.functionName,
-            body.returns,
-            json.dumps(body.arguments),
-            body.visibleTo,
-            body.writableBy,
-            body.domainId,
-            body.description,
-            body.kind,
-            json.dumps(body.returnSchema) if body.returnSchema is not None else None,
-        )
+        await function_repo.upsert_function(conn, func, return_schema=return_schema)
 
     log.info("Saved tracked function %s", body.name)
     from provisa.api.app import _rebuild_schemas
