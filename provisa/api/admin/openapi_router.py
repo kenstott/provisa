@@ -42,16 +42,6 @@ class OpenAPIPreviewRequest(BaseModel):
     spec_content: str = ""   # inline YAML or JSON; takes precedence over spec_path
 
 
-def _parse_inline_spec(content: str) -> dict:
-    """Parse an inline YAML or JSON spec string."""
-    import json
-    import yaml
-    try:
-        return yaml.safe_load(content)
-    except Exception:
-        return json.loads(content)
-
-
 async def _load_and_register(
     source_id: str,
     spec_path: str,
@@ -66,13 +56,13 @@ async def _load_and_register(
     Tables and functions are NOT auto-registered here. Users register them
     individually via the Register Table / Register Action UI.
     """
-    from provisa.openapi.loader import load_spec
+    from provisa.openapi.loader import load_spec, parse_text
     from provisa.openapi.mapper import parse_spec
     from provisa.api.admin.actions_router import _ensure_tables
     from provisa.api.app import state
 
     if spec_content:
-        spec = _parse_inline_spec(spec_content)
+        spec = parse_text(spec_content)
     else:
         spec = load_spec(spec_path)
 
@@ -180,11 +170,11 @@ async def refresh_openapi_source(source_id: str):
 @router.post("/preview")
 async def preview_openapi_spec(body: OpenAPIPreviewRequest):
     """Parse spec and return discovered queries/mutations without persisting."""
-    from provisa.openapi.loader import load_spec
+    from provisa.openapi.loader import load_spec, parse_text
     from provisa.openapi.mapper import parse_spec
     try:
         if body.spec_content:
-            spec = _parse_inline_spec(body.spec_content)
+            spec = parse_text(body.spec_content)
         else:
             spec = load_spec(body.spec_path)
     except FileNotFoundError as exc:
@@ -247,10 +237,18 @@ async def put_openapi_spec(source_id: str, request: Request):
     specs = getattr(state, "openapi_specs", {})
     existing = specs.get(source_id, {})
     domain_id = existing.get("domain_id", "")
+    base_url = existing.get("base_url", "") or ""
+    if not base_url:
+        servers = spec.get("servers", [])
+        if servers:
+            base_url = servers[0].get("url", "")
+    auth_config = existing.get("auth_config")
+    cache_ttl = existing.get("cache_ttl", 300)
 
     async with state.pg_pool.acquire() as conn:
         n_tables, n_mutations = await auto_register_openapi_source(
-            source_id, spec, conn, domain_id
+            source_id, spec, conn, domain_id,
+            base_url=base_url, auth_config=auth_config, cache_ttl=cache_ttl,
         )
 
     if not hasattr(state, "openapi_specs"):

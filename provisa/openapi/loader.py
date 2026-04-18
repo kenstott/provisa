@@ -16,6 +16,17 @@ import httpx
 import yaml
 
 
+def parse_text(content: str) -> dict:
+    """Parse an inline YAML or JSON spec string.
+
+    Tries YAML first, falls back to JSON.
+    """
+    try:
+        return yaml.safe_load(content)
+    except Exception:
+        return json.loads(content)
+
+
 def load_spec(spec_path: str) -> dict:
     """Load OpenAPI spec from a local file path or remote URL (http/https).
 
