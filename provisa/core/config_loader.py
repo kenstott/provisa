@@ -170,7 +170,18 @@ async def _load_config_in_txn(
                 else:
                     log.warning("No matching OpenAPI operation for table %s (source %s)", tbl.table_name, tbl.source_id)
 
-    # 5a. ANALYZE — prime federation CBO stats after tables are registered
+    # 5a. Purge registered_tables rows whose table_name is no longer in config (handles renames)
+    tables_by_source: dict[str, list[str]] = {}
+    for tbl in config.tables:
+        tables_by_source.setdefault(tbl.source_id, []).append(tbl.table_name)
+    for src_id, current_names in tables_by_source.items():
+        await conn.execute(
+            "DELETE FROM registered_tables WHERE source_id = $1 AND table_name != ALL($2::text[])",
+            src_id,
+            current_names,
+        )
+
+    # 5b. ANALYZE — prime federation CBO stats after tables are registered
     if trino_conn is not None:
         for src in config.sources:
             try:
@@ -179,6 +190,14 @@ async def _load_config_in_txn(
                 pass  # analyze_source_tables already logs per-table failures
 
     # 6. Relationships (tables must exist first)
+    current_rel_ids = [rel.id for rel in config.relationships]
+    if current_rel_ids:
+        await conn.execute(
+            "DELETE FROM relationships WHERE id != ALL($1::text[])",
+            current_rel_ids,
+        )
+    else:
+        await conn.execute("DELETE FROM relationships")
     for rel in config.relationships:
         await rel_repo.upsert(conn, rel)
 

@@ -120,6 +120,7 @@ def _role_from_row(row) -> RoleType:
 
 from provisa.api.admin.db_queries import derive_graphql_alias as _derive_graphql_alias_fn
 from provisa.api.admin.db_queries import derive_cypher_alias as _derive_cypher_alias_fn
+from provisa.core.config_loader import _normalize_op_id
 
 
 def _derive_graphql_alias(target_table_name: str, cardinality: str, alias: str | None) -> str | None:
@@ -163,8 +164,6 @@ def _rls_from_row(row) -> RLSRuleType:
 
 
 async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
-    import re as _re
-
     col_rows = await conn.fetch(
         "SELECT id, column_name, visible_to, writable_by, unmasked_to, "
         "mask_type, mask_pattern, mask_replace, mask_value, mask_precision, "
@@ -205,11 +204,8 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
             base_url = spec_info.get("base_url", "")
             queries, _ = parse_spec(spec)
 
-            def _norm(s: str) -> str:
-                return _re.sub(r"[_-]", "", s).lower()
-
             table_name = row["table_name"]
-            q = next((q for q in queries if _norm(q.operation_id) == _norm(table_name)), None)
+            q = next((q for q in queries if _normalize_op_id(q.operation_id) == _normalize_op_id(table_name)), None)
             if q:
                 api_endpoint = f"[{q.method.upper()}] {base_url.rstrip('/')}{q.path}"
         except Exception:
@@ -227,6 +223,52 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         column_presets=presets,
         api_endpoint=api_endpoint,
     )
+
+
+async def _call_anthropic(prompt: str, api_key: str, max_tokens: int = 256) -> str:
+    import anthropic
+    client = anthropic.AsyncAnthropic(api_key=api_key)
+    message = await client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=max_tokens,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return message.content[0].text.strip()
+
+
+async def _maybe_migrate_sqlite(src_row, conn, source_id: str, table_name: str, schema_name: str) -> None:
+    if src_row and src_row["type"] == "sqlite" and src_row["path"]:
+        import logging as _logging
+        from provisa.file_source.pg_migrate import migrate_sqlite_table
+        _log = _logging.getLogger(__name__)
+        try:
+            await migrate_sqlite_table(src_row["path"], table_name, conn, schema_name, table_name)
+        except Exception as _e:
+            _log.warning("SQLite → PG migration failed for %s.%s: %s", source_id, table_name, _e)
+
+
+def _build_column_models(columns: list) -> list:
+    from provisa.core.models import Column as ColumnModel
+    return [
+        ColumnModel(
+            name=c.name,
+            visible_to=c.visible_to,
+            writable_by=c.writable_by,
+            unmasked_to=c.unmasked_to,
+            mask_type=c.mask_type,
+            mask_pattern=c.mask_pattern,
+            mask_replace=c.mask_replace,
+            mask_value=c.mask_value,
+            mask_precision=c.mask_precision,
+            alias=c.alias,
+            description=c.description,
+            native_filter_type=c.native_filter_type,
+            is_primary_key=c.is_primary_key,
+            is_foreign_key=c.is_foreign_key,
+            is_alternate_key=c.is_alternate_key,
+        )
+        for c in columns
+    ]
 
 
 @strawberry.type
@@ -638,14 +680,7 @@ class Query:
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
             return ""
-        import anthropic
-        client = anthropic.AsyncAnthropic(api_key=api_key)
-        message = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=256,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return message.content[0].text.strip()
+        return await _call_anthropic(prompt, api_key, max_tokens=256)
 
     @strawberry.field
     async def generate_column_description(self, table_id: str, column_name: str) -> str:
@@ -673,14 +708,7 @@ class Query:
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
             return ""
-        import anthropic
-        client = anthropic.AsyncAnthropic(api_key=api_key)
-        message = await client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=128,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return message.content[0].text.strip()
+        return await _call_anthropic(prompt, api_key, max_tokens=128)
 
 
 @strawberry.type
@@ -866,7 +894,6 @@ class Mutation:
     @strawberry.mutation
     async def register_table(self, input: TableInput) -> MutationResult:
         from provisa.core.models import (
-            Column as ColumnModel,
             GovernanceLevel,
             Table as TableModel,
         )
@@ -880,26 +907,7 @@ class Mutation:
                 success=False,
                 message=f"Invalid governance level: {input.governance!r}",
             )
-        columns = [
-            ColumnModel(
-                name=c.name,
-                visible_to=c.visible_to,
-                writable_by=c.writable_by,
-                unmasked_to=c.unmasked_to,
-                mask_type=c.mask_type,
-                mask_pattern=c.mask_pattern,
-                mask_replace=c.mask_replace,
-                mask_value=c.mask_value,
-                mask_precision=c.mask_precision,
-                alias=c.alias,
-                description=c.description,
-                native_filter_type=c.native_filter_type,
-                is_primary_key=c.is_primary_key,
-                is_foreign_key=c.is_foreign_key,
-                is_alternate_key=c.is_alternate_key,
-            )
-            for c in input.columns
-        ]
+        columns = _build_column_models(input.columns)
         alias = input.alias or None
         if not alias:
             from provisa.compiler.naming import apply_convention
@@ -928,14 +936,7 @@ class Mutation:
         async with pool.acquire() as conn:
             table_id = await table_repo.upsert(conn, model)
             src_row = await conn.fetchrow("SELECT type, path FROM sources WHERE id = $1", input.source_id)
-            if src_row and src_row["type"] == "sqlite" and src_row["path"]:
-                from provisa.file_source.pg_migrate import migrate_sqlite_table
-                import logging as _logging
-                _log = _logging.getLogger(__name__)
-                try:
-                    await migrate_sqlite_table(src_row["path"], input.table_name, conn, input.schema_name, input.table_name)
-                except Exception as _e:
-                    _log.warning("SQLite → PG migration failed for %s.%s: %s", input.source_id, input.table_name, _e)
+            await _maybe_migrate_sqlite(src_row, conn, input.source_id, input.table_name, input.schema_name)
         await _rebuild_schemas()
         return MutationResult(
             success=True,
@@ -946,7 +947,6 @@ class Mutation:
     async def update_table(self, input: TableInput) -> MutationResult:
         """Update an existing table's alias, description, and column metadata."""
         from provisa.core.models import (
-            Column as ColumnModel,
             GovernanceLevel,
             Table as TableModel,
         )
@@ -960,26 +960,7 @@ class Mutation:
                 success=False,
                 message=f"Invalid governance level: {input.governance!r}",
             )
-        columns = [
-            ColumnModel(
-                name=c.name,
-                visible_to=c.visible_to,
-                writable_by=c.writable_by,
-                unmasked_to=c.unmasked_to,
-                mask_type=c.mask_type,
-                mask_pattern=c.mask_pattern,
-                mask_replace=c.mask_replace,
-                mask_value=c.mask_value,
-                mask_precision=c.mask_precision,
-                alias=c.alias,
-                description=c.description,
-                native_filter_type=c.native_filter_type,
-                is_primary_key=c.is_primary_key,
-                is_foreign_key=c.is_foreign_key,
-                is_alternate_key=c.is_alternate_key,
-            )
-            for c in input.columns
-        ]
+        columns = _build_column_models(input.columns)
         from provisa.core.models import ColumnPreset as ColumnPresetModel
         presets = [
             ColumnPresetModel(column=cp.column, source=cp.source, name=cp.name, value=cp.value, data_type=cp.data_type)
@@ -1000,14 +981,7 @@ class Mutation:
         async with pool.acquire() as conn:
             table_id = await table_repo.upsert(conn, model)
             src_row = await conn.fetchrow("SELECT type, path FROM sources WHERE id = $1", input.source_id)
-            if src_row and src_row["type"] == "sqlite" and src_row["path"]:
-                from provisa.file_source.pg_migrate import migrate_sqlite_table
-                import logging as _logging
-                _log = _logging.getLogger(__name__)
-                try:
-                    await migrate_sqlite_table(src_row["path"], input.table_name, conn, input.schema_name, input.table_name)
-                except Exception as _e:
-                    _log.warning("SQLite → PG migration failed for %s.%s: %s", input.source_id, input.table_name, _e)
+            await _maybe_migrate_sqlite(src_row, conn, input.source_id, input.table_name, input.schema_name)
         await _rebuild_schemas()
         return MutationResult(
             success=True,
