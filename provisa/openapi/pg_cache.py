@@ -80,10 +80,8 @@ async def cache_openapi_table(
 
     col_defs = ", ".join(f'"{name}" {pg_type}' for name, pg_type in cols)
     await pg_conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{pg_schema}"')
-    await pg_conn.execute(
-        f'CREATE TABLE IF NOT EXISTS "{pg_schema}"."{pg_table}" ({col_defs})'
-    )
-    await pg_conn.execute(f'TRUNCATE "{pg_schema}"."{pg_table}"')
+    await pg_conn.execute(f'DROP TABLE IF EXISTS "{pg_schema}"."{pg_table}"')
+    await pg_conn.execute(f'CREATE TABLE "{pg_schema}"."{pg_table}" ({col_defs})')
 
     if rows:
         col_names = [c[0] for c in cols]

@@ -200,7 +200,7 @@ def build_context(si: object) -> CompilationContext:
         col_info = []
         for col in t.visible_columns:
             col_name = col["column_name"]
-            col_meta = t.column_metadata.get(col_name)
+            col_meta = t.column_metadata.get(col_name.lower())
             if col_meta:
                 col_info.append((col_name, col_meta.data_type))
         ctx.aggregate_columns[t.table_id] = col_info

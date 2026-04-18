@@ -69,7 +69,7 @@ def build_aggregate_types(
 
     for col in visible_columns:
         col_name = col["column_name"]
-        meta = column_metadata.get(col_name)
+        meta = column_metadata.get(col_name.lower())
         if meta is None:
             continue
         if _is_numeric(meta.data_type):

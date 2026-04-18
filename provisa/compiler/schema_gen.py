@@ -230,7 +230,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
                 "No column metadata for table %r (id=%s) — skipping.", table["table_name"], table_id
             )
             continue
-        col_meta = {m.column_name: m for m in si.column_types[table_id]}
+        col_meta = {m.column_name.lower(): m for m in si.column_types[table_id]}
 
         # Filter columns by role visibility; split native filter cols from regular cols
         visible_cols = [
@@ -330,7 +330,7 @@ def _build_column_fields(
     _enums = enum_types or {}
     for col in table.visible_columns:
         col_name = col["column_name"]
-        meta = table.column_metadata.get(col_name)
+        meta = table.column_metadata.get(col_name.lower())
         if meta is None:
             raise ValueError(
                 f"Registered column {col_name!r} on table {table.table_name!r} "
@@ -364,7 +364,7 @@ def _build_where_input(
     input_fields: dict[str, GraphQLInputField] = {}
     for col in table.visible_columns:
         col_name = col["column_name"]
-        meta = table.column_metadata.get(col_name)
+        meta = table.column_metadata.get(col_name.lower())
         if meta is None:
             continue  # already validated in _build_column_fields
         # Normalize to unqualified pg_name for filter lookup (REQ-221)
@@ -413,7 +413,7 @@ def _build_order_by_inputs(
     for t in tables:
         visible_col_names = [
             c["column_name"] for c in t.visible_columns
-            if c["column_name"] in t.column_metadata
+            if c["column_name"].lower() in t.column_metadata
         ]
         if not visible_col_names:
             continue
@@ -810,7 +810,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         # distinct_on: deduplicate by specified columns
         visible_col_names = [
             c["column_name"] for c in t.visible_columns
-            if c["column_name"] in t.column_metadata
+            if c["column_name"].lower() in t.column_metadata
         ]
         if visible_col_names:
             distinct_enum = GraphQLEnumType(
@@ -828,7 +828,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         for nfc in t.native_filter_columns:
             col_name = nfc["column_name"]
             arg_name = f"_{col_name}" if col_name in _response_field_names else col_name
-            meta = t.column_metadata.get(col_name)
+            meta = t.column_metadata.get(col_name.lower())
             nfc_gql_type = trino_to_graphql(meta.data_type) if meta else GraphQLString
             scalar = nfc_gql_type.of_type if isinstance(nfc_gql_type, GraphQLList) else nfc_gql_type
             required = nfc.get("native_filter_type") == "path_param"
@@ -890,7 +890,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         insert_fields: dict[str, GraphQLInputField] = {}
         for col in t.visible_columns:
             col_name = col["column_name"]
-            meta = t.column_metadata.get(col_name)
+            meta = t.column_metadata.get(col_name.lower())
             if meta is None:
                 continue
             gql_type = trino_to_graphql(meta.data_type)

@@ -37,6 +37,19 @@ info() { printf "${CYAN}[build-dmg]${NC} %s\n" "$*"; }
 ok()   { printf "${GREEN}[build-dmg]${NC} %s\n" "$*"; }
 err()  { printf "${RED}[build-dmg]${NC} %s\n" "$*" >&2; }
 
+curl_retry() {
+  local url="$1" out="$2"
+  for attempt in 1 2 3 4 5; do
+    if curl -fsSL --connect-timeout 30 --max-time 600 "$url" -o "$out"; then
+      return 0
+    fi
+    info "Download attempt $attempt failed for $(basename "$url"), retrying in 15s..."
+    sleep 15
+  done
+  err "Failed to download $url after 5 attempts"
+  exit 1
+}
+
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 check_prereqs() {
   for cmd in curl hdiutil codesign python3; do
@@ -84,9 +97,9 @@ download_lima() {
   local tmp="${SCRIPT_DIR}/tmp-lima"
   mkdir -p "${tmp}/arm64" "${tmp}/x86_64" "${BIN_DIR}/arm64" "${BIN_DIR}/x86_64"
 
-  curl -fsSL "${base_url}/${arm64_tar}" -o "${tmp}/lima-arm64.tar.gz"
+  curl_retry "${base_url}/${arm64_tar}" "${tmp}/lima-arm64.tar.gz"
   tar -xzf "${tmp}/lima-arm64.tar.gz" -C "${tmp}/arm64" --strip-components=1
-  curl -fsSL "${base_url}/${x86_tar}" -o "${tmp}/lima-x86_64.tar.gz"
+  curl_retry "${base_url}/${x86_tar}" "${tmp}/lima-x86_64.tar.gz"
   tar -xzf "${tmp}/lima-x86_64.tar.gz" -C "${tmp}/x86_64" --strip-components=1
 
   for arch in arm64 x86_64; do
@@ -126,9 +139,9 @@ download_nerdctl() {
     return
   fi
   info "Downloading nerdctl-full ${NERDCTL_VERSION} (arm64, ~245MB)..."
-  curl -fL \
+  curl_retry \
     "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/${NERDCTL_ARCHIVE}" \
-    -o "${NERDCTL_DIR}/${NERDCTL_ARCHIVE}"
+    "${NERDCTL_DIR}/${NERDCTL_ARCHIVE}"
   ok "nerdctl archive downloaded."
 }
 
@@ -156,7 +169,7 @@ download_vm_images() {
     info "  Skipping (cached): ${fixed_name}"
   else
     info "  Downloading base VM image: ${arm64_img} (~200MB)..."
-    curl -fL "${base_url}/${arm64_img}" -o "${VM_IMAGES_DIR}/${fixed_name}"
+    curl_retry "${base_url}/${arm64_img}" "${VM_IMAGES_DIR}/${fixed_name}"
     ok "  Saved: ${VM_IMAGES_DIR}/${fixed_name}"
   fi
   ok "Base VM image ready."
@@ -175,9 +188,9 @@ download_otel_agent() {
   fi
   mkdir -p "$dest"
   info "Downloading OTel Java agent for Trino..."
-  curl -fL \
+  curl_retry \
     "https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar" \
-    -o "$jar"
+    "$jar"
   ok "OTel Java agent bundled ($(du -sh "$jar" | cut -f1))."
 }
 
