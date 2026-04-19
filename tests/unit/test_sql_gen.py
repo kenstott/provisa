@@ -295,7 +295,7 @@ class TestDistinctOn:
 class TestNestedRelationship:
     def test_many_to_one_join(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders { id amount customers { name email } } }")
+        doc = parse("{ orders { id amount customer { name email } } }")
         results = compile_query(doc, ctx)
         q = results[0]
         assert '"t0"."id"' in q.sql
@@ -358,17 +358,17 @@ class TestNestedRelationship:
         )
         schema = generate_schema(si)
         ctx = build_context(si)
-        doc = parse("{ orders { id customers { name } } }")
+        doc = parse("{ orders { id customer { name } } }")
         results = compile_query(doc, ctx)
         assert results[0].sources == {"src-a", "src-b"}
 
     def test_columns_metadata_for_nested(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders { id customers { name } } }")
+        doc = parse("{ orders { id customer { name } } }")
         results = compile_query(doc, ctx)
         cols = results[0].columns
         root_cols = [c for c in cols if c.nested_in is None]
-        nested_cols = [c for c in cols if c.nested_in == "customers"]
+        nested_cols = [c for c in cols if c.nested_in == "customer"]
         assert len(root_cols) == 1
         assert root_cols[0].field_name == "id"
         assert len(nested_cols) == 1
@@ -381,7 +381,7 @@ class TestJoinTypeCast:
     def test_no_cast_for_same_types(self, schema_and_ctx):
         """integer = integer → no CAST."""
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders { id customers { name } } }")
+        doc = parse("{ orders { id customer { name } } }")
         results = compile_query(doc, ctx)
         sql = results[0].sql
         # Should be plain column refs, no CAST
@@ -427,7 +427,7 @@ class TestJoinTypeCast:
         )
         schema = generate_schema(si)
         ctx = build_context(si)
-        doc = parse("{ orders { id reviews { rating } } }")
+        doc = parse("{ orders { id review { rating } } }")
         results = compile_query(doc, ctx)
         assert "CAST" not in results[0].sql
 
@@ -470,7 +470,7 @@ class TestJoinTypeCast:
         )
         schema = generate_schema(si)
         ctx = build_context(si)
-        doc = parse("{ orders { id externals { label } } }")
+        doc = parse("{ orders { id external { label } } }")
         results = compile_query(doc, ctx)
         sql = results[0].sql
         # varchar side stays as-is, integer side gets CAST
@@ -558,9 +558,9 @@ class TestRelationshipVisibility:
             domains=[{"id": "d", "description": "D"}],
         )
         schema_admin = generate_schema(si_admin)
-        doc = parse("{ orders { id customers { name } } }")
+        doc = parse("{ orders { id customer { name } } }")
         errors = validate(schema_admin, doc)
-        assert not errors  # admin can traverse the relationship
+        assert not errors  # admin can traverse the relationship (many-to-one → singular 'customer')
 
         # Limited cannot see customer_id → relationship hidden
         si_limited = SchemaInput(
@@ -570,9 +570,9 @@ class TestRelationshipVisibility:
             domains=[{"id": "d", "description": "D"}],
         )
         schema_limited = generate_schema(si_limited)
-        doc2 = parse("{ orders { id customers { name } } }")
+        doc2 = parse("{ orders { id customer { name } } }")
         errors2 = validate(schema_limited, doc2)
-        assert errors2  # 'customers' field should not exist on Orders for limited role
+        assert errors2  # 'customer' field should not exist on Orders for limited role
 
 class TestColumnAlias:
     """GraphQL field aliases on scalar columns → SQL AS + response key."""
@@ -608,7 +608,7 @@ class TestColumnAlias:
     def test_alias_with_join(self, schema_and_ctx):
         # alias on a scalar when JOINs are present (use_aliases=True path)
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders { q: amount customers { name } } }")
+        doc = parse("{ orders { q: amount customer { name } } }")
         assert not validate(schema, doc)
         results = compile_query(doc, ctx)
         q = results[0]

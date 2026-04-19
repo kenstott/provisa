@@ -39,7 +39,7 @@ from graphql import (
 )
 
 from provisa.compiler.aggregate_gen import _is_comparable, _is_numeric
-from provisa.compiler.naming import source_to_catalog
+from provisa.compiler.naming import rel_field_name as _rel_field_name, source_to_catalog
 from provisa.compiler.params import ParamCollector
 from provisa.cache.warm_tables import QueryCounter
 from provisa.core.models import TIME_TRAVEL_SOURCES
@@ -244,9 +244,11 @@ def build_context(si: object) -> CompilationContext:
         src_col_type = _lookup_column_type(si, src_id, rel["source_column"])
         tgt_col_type = _lookup_column_type(si, tgt_id, rel["target_column"])
 
-        # The relationship field on the source type uses alias if set, else target's field_name
-        rel_field_name = rel.get("graphql_alias") or tgt_info.field_name
-        ctx.joins[(src_info.type_name, rel_field_name)] = JoinMeta(
+        # The relationship field on the source type uses alias if set, else computed rel name
+        join_field_name = rel.get("graphql_alias") or _rel_field_name(
+            tgt_info.field_name, rel["cardinality"]
+        )
+        ctx.joins[(src_info.type_name, join_field_name)] = JoinMeta(
             source_column=rel["source_column"],
             target_column=rel["target_column"],
             source_column_type=src_col_type,

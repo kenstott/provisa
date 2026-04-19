@@ -41,7 +41,7 @@ from graphql.language import DirectiveLocation
 from provisa.compiler.aggregate_gen import build_aggregate_types
 from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.naming import apply_convention, domain_gql_alias, domain_to_sql_name, generate_name, to_type_name
+from provisa.compiler.naming import apply_convention, domain_gql_alias, domain_to_sql_name, generate_name, rel_field_name, to_type_name
 from provisa.compiler.type_map import FILTER_TYPE_MAP, JSONScalar, trino_to_graphql
 
 
@@ -773,10 +773,13 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
                     target = table_lookup.get(rel["target_table_id"])
                     if target:
                         target_type = gql_types[target.table_id]
-                        field_name = rel.get("graphql_alias") or target.field_name
-                        if rel["cardinality"] == "many-to-one":
+                        cardinality = rel["cardinality"]
+                        field_name = rel.get("graphql_alias") or rel_field_name(
+                            target.field_name, cardinality
+                        )
+                        if cardinality == "many-to-one":
                             fields[field_name] = GraphQLField(target_type)
-                        elif rel["cardinality"] == "one-to-many":
+                        elif cardinality == "one-to-many":
                             fields[field_name] = GraphQLField(
                                 GraphQLList(GraphQLNonNull(target_type))
                             )

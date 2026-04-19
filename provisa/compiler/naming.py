@@ -15,6 +15,25 @@ Names must be valid GraphQL identifiers: [_A-Za-z][_0-9A-Za-z]*.
 
 import re
 
+import inflect as _inflect_mod
+
+_inflect = _inflect_mod.engine()
+
+
+def rel_field_name(target_field_name: str, cardinality: str) -> str:
+    """Build {noun}_{modifiers} relationship field name with library-based pluralization."""
+    base = target_field_name.split("__", 1)[-1]
+    parts = base.split("_")
+    noun, modifiers = parts[0], parts[1:]
+    if cardinality == "one-to-many":
+        if _inflect.singular_noun(noun) is False:
+            noun = _inflect.plural_noun(noun) or noun
+    else:
+        singular = _inflect.singular_noun(noun)
+        if singular:
+            noun = singular
+    return "_".join([noun] + modifiers)
+
 
 def _to_pascal_case(name: str) -> str:
     """Convert snake_case or kebab-case to PascalCase."""
