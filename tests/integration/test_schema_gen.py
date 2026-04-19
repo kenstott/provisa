@@ -26,6 +26,7 @@ from graphql import (
 )
 
 from provisa.compiler.introspect import introspect_table_columns
+from provisa.compiler.naming import source_to_catalog
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.core.config_loader import load_config, parse_config
 from provisa.core.db import init_schema
@@ -75,11 +76,11 @@ async def schema_input(pg_pool, trino_conn, _load_config) -> dict:
             dict(r) for r in await conn.fetch("SELECT pattern, replacement FROM naming_rules")
         ]
 
-    # Introspect column types from Trino (using static 'postgresql' catalog)
     column_types = {}
     for table in tables:
+        catalog = source_to_catalog(table["source_id"])
         cols = introspect_table_columns(
-            trino_conn, "postgresql", table["schema_name"], table["table_name"]
+            trino_conn, catalog, table["schema_name"], table["table_name"]
         )
         column_types[table["id"]] = cols
 

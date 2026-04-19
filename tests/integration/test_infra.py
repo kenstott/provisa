@@ -55,13 +55,13 @@ class TestTrinoConnectivity:
 
     def test_trino_queries_pg_customers(self, trino_conn):
         cur = trino_conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM postgresql.public.customers")
+        cur.execute("SELECT COUNT(*) FROM sales_pg.public.customers")
         result = cur.fetchone()
         assert result[0] == 20
 
     def test_trino_queries_pg_orders(self, trino_conn):
         cur = trino_conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM postgresql.public.orders")
+        cur.execute("SELECT COUNT(*) FROM sales_pg.public.orders")
         result = cur.fetchone()
         assert result[0] >= 25  # seed data; CDC tests may add rows
 
@@ -69,7 +69,7 @@ class TestTrinoConnectivity:
         cur = trino_conn.cursor()
         cur.execute("""
             SELECT column_name, data_type
-            FROM postgresql.information_schema.columns
+            FROM sales_pg.information_schema.columns
             WHERE table_schema = 'public' AND table_name = 'orders'
             ORDER BY ordinal_position
         """)
@@ -84,8 +84,8 @@ class TestTrinoConnectivity:
         cur = trino_conn.cursor()
         cur.execute("""
             SELECT o.id, c.name
-            FROM postgresql.public.orders o
-            JOIN postgresql.public.customers c ON o.customer_id = c.id
+            FROM sales_pg.public.orders o
+            JOIN sales_pg.public.customers c ON o.customer_id = c.id
             LIMIT 5
         """)
         rows = cur.fetchall()

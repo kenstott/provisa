@@ -17,12 +17,17 @@ steward approval, captures metadata, and enforces naming requirements.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
+import asyncpg
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+
+_FIXTURE_CONFIG = Path(__file__).parent.parent / "fixtures" / "sample_config.yaml"
+_SCHEMA_SQL = Path(__file__).parent.parent.parent / "provisa" / "core" / "schema.sql"
 
 _SUBMIT_MUTATION = """
 mutation SubmitQuery($input: SubmitQueryInput!) {
@@ -40,11 +45,26 @@ async def _submit(client: AsyncClient, query: str, role: str = "admin", **kwargs
     return resp
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module", loop_scope="session")
 async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
 
     from provisa.api.app import create_app
+    from provisa.core.config_loader import load_config_from_yaml
+
+    pg_dsn = (
+        f"postgresql://{os.environ.get('PG_USER', 'provisa')}"
+        f":{os.environ.get('PG_PASSWORD', 'provisa')}"
+        f"@{os.environ.get('PG_HOST', 'localhost')}"
+        f":{os.environ.get('PG_PORT', '5432')}"
+        f"/{os.environ.get('PG_DATABASE', 'provisa')}"
+    )
+    conn = await asyncpg.connect(pg_dsn)
+    try:
+        await conn.execute(_SCHEMA_SQL.read_text())
+        await load_config_from_yaml(_FIXTURE_CONFIG, conn)
+    finally:
+        await conn.close()
 
     app = create_app()
 
@@ -57,7 +77,7 @@ async def client():
 class TestSubmitBasic:
     async def test_submit_returns_query_id(self, client):
         """Successful submit returns a positive integer queryId."""
-        resp = await _submit(client, "query MonthlyRevenue { sales_analytics__orders { id amount region } }")
+        resp = await _submit(client, "query MonthlyRevenue { sa__orders { id amount region } }")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
@@ -66,7 +86,7 @@ class TestSubmitBasic:
 
     async def test_submit_returns_operation_name(self, client):
         """Submit response echoes back the operation name."""
-        resp = await _submit(client, "query SalesReport { sales_analytics__orders { id amount } }")
+        resp = await _submit(client, "query SalesReport { sa__orders { id amount } }")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
@@ -74,7 +94,7 @@ class TestSubmitBasic:
 
     async def test_submit_returns_confirmation_message(self, client):
         """Submit response includes a human-readable confirmation message."""
-        resp = await _submit(client, "query CustomerList { sales_analytics__customers { id name } }")
+        resp = await _submit(client, "query CustomerList { sa__customers { id name } }")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
@@ -86,14 +106,14 @@ class TestSubmitBasic:
 class TestSubmitRequiresOperationName:
     async def test_submit_without_operation_name_error(self, client):
         """Query without a named operation is rejected (REQ-162)."""
-        resp = await _submit(client, "{ sales_analytics__orders { id amount } }")
+        resp = await _submit(client, "{ sa__orders { id amount } }")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" in body
 
     async def test_submit_anonymous_query_error(self, client):
         """Anonymous query keyword (no name) is rejected."""
-        resp = await _submit(client, "query { sales_analytics__orders { id } }")
+        resp = await _submit(client, "query { sa__orders { id } }")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" in body
@@ -104,7 +124,7 @@ class TestSubmitWithMetadata:
         """Submit stores optional business metadata fields."""
         resp = await _submit(
             client,
-            "query RevenueByRegion { sales_analytics__orders { id amount region } }",
+            "query RevenueByRegion { sa__orders { id amount region } }",
             businessPurpose="Monthly revenue tracking by region",
             ownerTeam="analytics",
             dataSensitivity="internal",
@@ -119,7 +139,7 @@ class TestSubmitWithMetadata:
         """Submit with a Kafka sink configuration stores the sink spec."""
         resp = await _submit(
             client,
-            "query OrderStream { sales_analytics__orders { id amount } }",
+            "query OrderStream { sa__orders { id amount } }",
             sink={"topic": "order-events", "trigger": "change_event", "keyColumn": "id"},
         )
         assert resp.status_code == 200
@@ -131,7 +151,7 @@ class TestSubmitWithMetadata:
         """Submit accepts an optional expiryDate for the approved query."""
         resp = await _submit(
             client,
-            "query QuarterlyReport { sales_analytics__orders { id } }",
+            "query QuarterlyReport { sa__orders { id } }",
             expiryDate="2026-12-31",
         )
         assert resp.status_code == 200
@@ -145,7 +165,7 @@ class TestSubmitGovernanceGate:
         """Unknown role returns GQL error."""
         resp = await _submit(
             client,
-            "query Test { sales_analytics__orders { id } }",
+            "query Test { sa__orders { id } }",
             role="nonexistent",
         )
         assert resp.status_code == 200
@@ -156,7 +176,7 @@ class TestSubmitGovernanceGate:
 class TestSubmitIdempotency:
     async def test_submit_same_operation_twice_returns_distinct_ids(self, client):
         """Each submit call produces a new pending entry, even for the same op name."""
-        query = "query DuplicateTest { sales_analytics__orders { id } }"
+        query = "query DuplicateTest { sa__orders { id } }"
 
         resp1 = await _submit(client, query)
         resp2 = await _submit(client, query)

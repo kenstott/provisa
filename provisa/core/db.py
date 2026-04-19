@@ -16,12 +16,16 @@ import json
 import asyncpg
 
 
+def _json_encoder(v):
+    return v if isinstance(v, str) else json.dumps(v)
+
+
 async def _init_conn(conn: asyncpg.Connection) -> None:
     await conn.set_type_codec(
-        "jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+        "jsonb", encoder=_json_encoder, decoder=json.loads, schema="pg_catalog"
     )
     await conn.set_type_codec(
-        "json", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+        "json", encoder=_json_encoder, decoder=json.loads, schema="pg_catalog"
     )
 
 

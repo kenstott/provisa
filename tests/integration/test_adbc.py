@@ -226,10 +226,10 @@ class TestLiveAdbcExecution:
 
     _GOVERNED_QUERIES = {
         "ActiveOrders": (
-            "query ActiveOrders { sales_analytics__orders { id amount region status created_at } }"
+            "query ActiveOrders { sa__orders { id amount region status created_at } }"
         ),
         "AnalystOrders": (
-            "query AnalystOrders { sales_analytics__orders { id region status created_at } }"
+            "query AnalystOrders { sa__orders { id region status created_at } }"
         ),
     }
 

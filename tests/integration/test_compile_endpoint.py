@@ -17,7 +17,9 @@ visibility enforcement applied — without executing the query.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
+import asyncpg
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -46,11 +48,30 @@ async def _compile(client: AsyncClient, query: str, role: str = "admin", variabl
     return resp
 
 
-@pytest_asyncio.fixture
+_FIXTURE_CONFIG = Path(__file__).parent.parent / "fixtures" / "sample_config.yaml"
+_SCHEMA_SQL = Path(__file__).parent.parent.parent / "provisa" / "core" / "schema.sql"
+
+
+@pytest_asyncio.fixture(scope="module", loop_scope="session")
 async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
 
     from provisa.api.app import create_app
+    from provisa.core.config_loader import load_config_from_yaml
+
+    pg_dsn = (
+        f"postgresql://{os.environ.get('PG_USER', 'provisa')}"
+        f":{os.environ.get('PG_PASSWORD', 'provisa')}"
+        f"@{os.environ.get('PG_HOST', 'localhost')}"
+        f":{os.environ.get('PG_PORT', '5432')}"
+        f"/{os.environ.get('PG_DATABASE', 'provisa')}"
+    )
+    conn = await asyncpg.connect(pg_dsn)
+    try:
+        await conn.execute(_SCHEMA_SQL.read_text())
+        await load_config_from_yaml(_FIXTURE_CONFIG, conn)
+    finally:
+        await conn.close()
 
     app = create_app()
 
@@ -63,7 +84,7 @@ async def client():
 class TestCompileBasic:
     async def test_compile_returns_sql(self, client):
         """Basic compile returns a non-empty SQL string."""
-        resp = await _compile(client, "{ sales_analytics__orders { id amount } }")
+        resp = await _compile(client, "{ sa__orders { id amount } }")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
@@ -73,7 +94,7 @@ class TestCompileBasic:
 
     async def test_compile_returns_enforcement_metadata(self, client):
         """Compile response includes the enforcement object (REQ-161)."""
-        resp = await _compile(client, "{ sales_analytics__orders { id amount } }")
+        resp = await _compile(client, "{ sa__orders { id amount } }")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
@@ -86,7 +107,7 @@ class TestCompileBasic:
 
     async def test_compile_schema_scope_reflects_role(self, client):
         """schema_scope in enforcement reflects the requested role."""
-        resp = await _compile(client, "{ sales_analytics__orders { id } }", role="analyst")
+        resp = await _compile(client, "{ sa__orders { id } }", role="analyst")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
@@ -95,7 +116,7 @@ class TestCompileBasic:
 
     async def test_compile_returns_route_decision(self, client):
         """Compile includes route and routeReason fields."""
-        resp = await _compile(client, "{ sales_analytics__orders { id } }")
+        resp = await _compile(client, "{ sa__orders { id } }")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
@@ -105,7 +126,7 @@ class TestCompileBasic:
 
     async def test_compile_returns_sources(self, client):
         """Compile identifies the source(s) involved in the query."""
-        resp = await _compile(client, "{ sales_analytics__orders { id } }")
+        resp = await _compile(client, "{ sa__orders { id } }")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
@@ -119,7 +140,7 @@ class TestCompileWithVariables:
         """Variables are incorporated into compiled SQL as parameters."""
         resp = await _compile(
             client,
-            "query ($region: String) { sales_analytics__orders(where: {region: {eq: $region}}) { id } }",
+            "query ($region: String) { sa__orders(where: {region: {eq: $region}}) { id } }",
             variables={"region": "EMEA"},
         )
         assert resp.status_code == 200
@@ -136,7 +157,7 @@ class TestCompileMultiRoot:
         """Multiple root fields return multiple compile results."""
         resp = await _compile(
             client,
-            "{ sales_analytics__orders { id } sales_analytics__customers { id } }",
+            "{ sa__orders { id } sa__customers { id } }",
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -151,7 +172,7 @@ class TestCompileMultiRoot:
 class TestCompileRLSEnforcement:
     async def test_compile_rls_filters_shown_in_enforcement(self, client):
         """When a role has RLS configured, compile lists the filters applied."""
-        resp = await _compile(client, "{ sales_analytics__orders { id } }", role="analyst")
+        resp = await _compile(client, "{ sa__orders { id } }", role="analyst")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
@@ -160,7 +181,7 @@ class TestCompileRLSEnforcement:
 
     async def test_compile_excluded_columns_shown(self, client):
         """Columns not requested appear in columnsExcluded."""
-        resp = await _compile(client, "{ sales_analytics__orders { id } }", role="analyst")
+        resp = await _compile(client, "{ sa__orders { id } }", role="analyst")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" not in body, body.get("errors")
@@ -171,14 +192,14 @@ class TestCompileRLSEnforcement:
 class TestCompileErrors:
     async def test_compile_invalid_graphql_syntax_error(self, client):
         """Syntactically invalid GraphQL returns GQL error."""
-        resp = await _compile(client, "{ sales_analytics__orders { id")
+        resp = await _compile(client, "{ sa__orders { id")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" in body
 
     async def test_compile_unknown_role_error(self, client):
         """Unknown role returns GQL error (no schema found)."""
-        resp = await _compile(client, "{ sales_analytics__orders { id } }", role="nonexistent_role")
+        resp = await _compile(client, "{ sa__orders { id } }", role="nonexistent_role")
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" in body

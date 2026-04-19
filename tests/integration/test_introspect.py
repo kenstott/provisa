@@ -23,7 +23,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 
 class TestIntrospectTableColumns:
     def test_orders_columns(self, trino_conn):
-        columns = introspect_table_columns(trino_conn, "postgresql", "public", "orders")
+        columns = introspect_table_columns(trino_conn, "sales_pg", "public", "orders")
         names = [c.column_name for c in columns]
         assert "id" in names
         assert "customer_id" in names
@@ -33,14 +33,14 @@ class TestIntrospectTableColumns:
         assert "created_at" in names
 
     def test_column_types(self, trino_conn):
-        columns = introspect_table_columns(trino_conn, "postgresql", "public", "orders")
+        columns = introspect_table_columns(trino_conn, "sales_pg", "public", "orders")
         col_map = {c.column_name: c for c in columns}
         assert col_map["id"].data_type == "integer"
         assert col_map["amount"].data_type.startswith("decimal")
         assert col_map["region"].data_type.startswith("varchar")
 
     def test_nullability(self, trino_conn):
-        columns = introspect_table_columns(trino_conn, "postgresql", "public", "orders")
+        columns = introspect_table_columns(trino_conn, "sales_pg", "public", "orders")
         col_map = {c.column_name: c for c in columns}
         # id is NOT NULL (serial primary key)
         assert col_map["id"].is_nullable is False
@@ -48,7 +48,7 @@ class TestIntrospectTableColumns:
         assert col_map["region"].is_nullable is False
 
     def test_customers_columns(self, trino_conn):
-        columns = introspect_table_columns(trino_conn, "postgresql", "public", "customers")
+        columns = introspect_table_columns(trino_conn, "sales_pg", "public", "customers")
         names = [c.column_name for c in columns]
         assert "id" in names
         assert "name" in names
@@ -56,7 +56,7 @@ class TestIntrospectTableColumns:
         assert "region" in names
 
     def test_products_columns(self, trino_conn):
-        columns = introspect_table_columns(trino_conn, "postgresql", "public", "products")
+        columns = introspect_table_columns(trino_conn, "sales_pg", "public", "products")
         names = [c.column_name for c in columns]
         assert "id" in names
         assert "name" in names
@@ -64,16 +64,16 @@ class TestIntrospectTableColumns:
         assert "category" in names
 
     def test_nonexistent_table_returns_empty(self, trino_conn):
-        columns = introspect_table_columns(trino_conn, "postgresql", "public", "nonexistent")
+        columns = introspect_table_columns(trino_conn, "sales_pg", "public", "nonexistent")
         assert columns == []
 
     def test_returns_column_metadata_type(self, trino_conn):
-        columns = introspect_table_columns(trino_conn, "postgresql", "public", "orders")
+        columns = introspect_table_columns(trino_conn, "sales_pg", "public", "orders")
         assert all(isinstance(c, ColumnMetadata) for c in columns)
 
 
 class TestIntrospectFKCandidates:
     def test_fk_candidates_returns_list(self, trino_conn):
         """FK introspection may not be supported by all connectors."""
-        result = introspect_fk_candidates(trino_conn, "postgresql", "public", "orders")
+        result = introspect_fk_candidates(trino_conn, "sales_pg", "public", "orders")
         assert isinstance(result, list)
