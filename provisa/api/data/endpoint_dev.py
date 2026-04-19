@@ -18,12 +18,11 @@ from __future__ import annotations
 
 import logging
 
-from typing import Literal
-
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
+from provisa.api.admin._dev_shared import detect_target
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import rewrite_semantic_to_physical
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
@@ -40,16 +39,18 @@ class SQLRequest(BaseModel):
     role: str = "admin"
 
 
-def _detect_target(query: str) -> Literal["graphql", "sql", "cypher"]:
-    """Detect query language from syntax."""
-    import re
-    stripped = query.strip()
-    first = stripped.split()[0].lower() if stripped.split() else ""
-    if first in ("query", "mutation", "subscription", "fragment") or stripped.startswith("{"):
-        return "graphql"
-    if first in ("match", "optional", "call") or re.search(r"\([\w]*:", stripped):
-        return "cypher"
-    return "sql"
+def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, request_role: str) -> str:
+    auth_role = getattr(raw_request.state, "role", None)
+    return auth_role or x_provisa_role or request_role
+
+
+async def _lookup_approved_query(query_id: str, state: object):
+    from provisa.api.flight.catalog import fetch_approved_queries_async
+    queries = await fetch_approved_queries_async(state)
+    matched = next((q for q in queries if q.stable_id == query_id), None)
+    if matched is None:
+        raise HTTPException(status_code=404, detail=f"Approved query not found: {query_id!r}")
+    return matched
 
 
 @router.get("/proto/{role_id}")
@@ -95,15 +96,10 @@ async def sql_endpoint(
     from provisa.executor.direct import execute_direct
     from provisa.executor.trino import execute_trino
 
-    auth_role = getattr(raw_request.state, "role", None)
-    role_id = auth_role or x_provisa_role or request.role
+    role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
 
     if query_id:
-        from provisa.api.flight.catalog import fetch_approved_queries_async
-        queries = await fetch_approved_queries_async(state)
-        matched = next((q for q in queries if q.stable_id == query_id), None)
-        if matched is None:
-            raise HTTPException(status_code=404, detail=f"Approved query not found: {query_id!r}")
+        matched = await _lookup_approved_query(query_id, state)
         query_req = QueryRequest(query=matched.query_text or "", role=role_id)
         return await unified_query_endpoint(raw_request, query_req, x_provisa_role=x_provisa_role)
 
@@ -224,19 +220,17 @@ async def unified_query_endpoint(
     from provisa.api.app import state
     from fastapi.responses import JSONResponse as _JSONResponse
 
-    auth_role = getattr(raw_request.state, "role", None)
-    role_id = auth_role or x_provisa_role or request.role
+    role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
 
     if query_id:
         from provisa.api.flight.catalog import fetch_approved_queries_async
         queries = await fetch_approved_queries_async(state)
         matched = next((q for q in queries if q.stable_id == query_id), None)
         if matched is None:
-            from fastapi.responses import JSONResponse as _JSONResponse
             return _JSONResponse(status_code=404, content={"error": f"Approved query not found: {query_id!r}"})
         request = QueryRequest(query=matched.query_text or "", role=role_id)
 
-    target = _detect_target(request.query)
+    target = detect_target(request.query)
 
     if target == "cypher":
         from provisa.api.rest.cypher_router import CypherRequest, cypher_query

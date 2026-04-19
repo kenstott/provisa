@@ -13,6 +13,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from provisa.api.admin._dev_shared import detect_target, extract_operation_name
+
 log = logging.getLogger(__name__)
 
 
@@ -27,21 +29,8 @@ class EnforcementMetadata:
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers (ported from endpoint_dev.py)
+# Internal helpers
 # ---------------------------------------------------------------------------
-
-def _extract_operation_name(query_text: str) -> str | None:
-    from graphql import parse as gql_parse
-    from graphql.language.ast import OperationDefinitionNode
-    try:
-        doc = gql_parse(query_text)
-        for defn in doc.definitions:
-            if isinstance(defn, OperationDefinitionNode) and defn.name:
-                return defn.name.value
-    except Exception:
-        pass
-    return None
-
 
 def _extract_cypher_name(query: str) -> str:
     import re
@@ -56,17 +45,6 @@ def _extract_sql_name(query: str) -> str:
         return m.group(2)
     m = re.search(r'FROM\s+"?(\w+)"?', query, re.IGNORECASE)
     return m.group(1) if m else "SqlQuery"
-
-
-def _detect_target(query: str) -> str:
-    import re
-    stripped = query.strip()
-    first = stripped.split()[0].lower() if stripped.split() else ""
-    if first in ("query", "mutation", "subscription", "fragment") or stripped.startswith("{"):
-        return "graphql"
-    if first in ("match", "optional", "call") or re.search(r"\([\w]*:", stripped):
-        return "cypher"
-    return "sql"
 
 
 def _build_enforcement_metadata(compiled, ctx, rls, masking_rules: dict, role_id: str, route_value: str) -> EnforcementMetadata:
@@ -120,7 +98,7 @@ async def _compile_graphql(query: str, variables: dict | None, role_id: str, ctx
     from provisa.cypher.label_map import CypherLabelMap
     from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher, combine_cypher_queries
 
-    op_name = _extract_operation_name(query)
+    op_name = extract_operation_name(query)
     if not op_name:
         raise ValueError("GraphQL query must have a named operation (e.g., 'query MyReport { ... }').")
     schema = state.schemas[role_id]
@@ -404,7 +382,7 @@ async def submit_query(
 
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
-    target = _detect_target(query)
+    target = detect_target(query)
 
     if target == "graphql":
         op_name, compiled_sql, target_tables, _cypher = await _compile_graphql(query, variables, role_id, ctx, rls, state)
