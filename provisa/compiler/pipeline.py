@@ -12,12 +12,11 @@ from graphql import DocumentNode
 
 from provisa.compiler.mask_inject import MaskingRules, inject_masking
 from provisa.compiler.rls import RLSContext, inject_rls
-from provisa.compiler.sampling import apply_sampling, get_sample_size
+from provisa.compiler.sampling import apply_sampling_if_needed
 from provisa.compiler.sql_gen import CompiledQuery, CompilationContext
 from provisa.compiler.stage1 import compile_graphql
 from provisa.mv.aggregate_catalog import get_aggregate_catalog
 from provisa.mv.rewriter import rewrite_if_mv_match
-from provisa.security.rights import Capability, has_capability
 
 
 def run_pipeline(
@@ -76,9 +75,7 @@ def run_pipeline(
             from provisa.kafka.window import inject_kafka_filters
             compiled = inject_kafka_filters(compiled, ctx, source_types, kafka_table_configs)
 
-        sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
-        if sampling:
-            compiled = apply_sampling(compiled, get_sample_size())
+        compiled = apply_sampling_if_needed(compiled, role)
 
         result.append(compiled)
 

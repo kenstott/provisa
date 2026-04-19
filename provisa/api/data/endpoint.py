@@ -39,7 +39,7 @@ from provisa.compiler.mutation_gen import (
 )
 from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
 from provisa.compiler.rls import RLSContext
-from provisa.compiler.sampling import apply_sampling, get_sample_size
+from provisa.compiler.sampling import apply_sampling_if_needed
 from provisa.compiler.sql_gen import (
     compile_query, make_semantic_sql,
     rewrite_semantic_to_physical, rewrite_semantic_to_trino_physical,
@@ -48,7 +48,7 @@ from provisa.executor.direct import execute_direct
 from provisa.executor.serialize import serialize_aggregate, serialize_rows
 from provisa.executor.trino import execute_trino
 from provisa.mv.rewriter import rewrite_if_mv_match
-from provisa.security.rights import Capability, InsufficientRightsError, check_capability, has_capability
+from provisa.security.rights import Capability, InsufficientRightsError, check_capability
 from provisa.transpiler.router import Route, decide_route
 from provisa.transpiler.transpile import transpile, transpile_to_trino
 
@@ -408,9 +408,7 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
             compiled, ctx, state.source_types, state.kafka_table_configs,
         )
 
-    sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
-    if sampling:
-        compiled = apply_sampling(compiled, get_sample_size())
+    compiled = apply_sampling_if_needed(compiled, role)
 
     # Governance: compile → semantic SQL → apply RLS/masking/visibility
     gov_ctx = build_governance_context(

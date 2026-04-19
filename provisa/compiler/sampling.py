@@ -20,6 +20,7 @@ import os
 import re
 
 from provisa.compiler.sql_gen import CompiledQuery
+from provisa.security.rights import Capability, has_capability
 
 DEFAULT_SAMPLE_SIZE = 100
 
@@ -59,3 +60,11 @@ def apply_sampling(compiled: CompiledQuery, sample_size: int) -> CompiledQuery:
         columns=compiled.columns,
         sources=compiled.sources,
     )
+
+
+def apply_sampling_if_needed(compiled: CompiledQuery, role) -> CompiledQuery:
+    """Apply sampling when the role lacks FULL_RESULTS capability."""
+    should_sample = not has_capability(role, Capability.FULL_RESULTS) if role else True
+    if should_sample:
+        return apply_sampling(compiled, get_sample_size())
+    return compiled
