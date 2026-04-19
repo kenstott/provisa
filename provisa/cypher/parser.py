@@ -124,6 +124,7 @@ class CypherAST:
     call_subqueries: list[CallSubquery] = field(default_factory=list)
     # UNION / UNION ALL: list of (sub_ast, is_all)
     union_parts: list[tuple["CypherAST", bool]] = field(default_factory=list)
+    comments: list[str] = field(default_factory=list)  # // comment text (without //) in source order
 
     @property
     def match_clauses(self) -> list[MatchClause]:
@@ -196,14 +197,18 @@ class Token:
     pos: int
 
 
-def _tokenize(text: str) -> list[Token]:
+def _tokenize(text: str) -> tuple[list[Token], list[str]]:
     tokens: list[Token] = []
+    comments: list[str] = []
     for m in _MASTER_RE.finditer(text):
         kind = m.lastgroup
-        if kind in ("SKIP_WS", "NEWLINE", "COMMENT"):
+        if kind in ("SKIP_WS", "NEWLINE"):
+            continue
+        if kind == "COMMENT":
+            comments.append(m.group()[2:].strip())  # strip leading //
             continue
         tokens.append(Token(kind, m.group(), m.start()))
-    return tokens
+    return tokens, comments
 
 
 # ---------------------------------------------------------------------------
@@ -211,10 +216,11 @@ def _tokenize(text: str) -> list[Token]:
 # ---------------------------------------------------------------------------
 
 class _Parser:
-    def __init__(self, tokens: list[Token], raw: str) -> None:
+    def __init__(self, tokens: list[Token], raw: str, comments: list[str] | None = None) -> None:
         self._tokens = tokens
         self._pos = 0
         self._raw = raw
+        self._comments: list[str] = comments or []
 
     # --- helpers ---
 
@@ -358,6 +364,7 @@ class _Parser:
             limit=limit,
             call_subqueries=call_subqueries,
             union_parts=union_parts,
+            comments=self._comments,
         )
 
     # --- MATCH ---
@@ -770,8 +777,8 @@ def parse_cypher(query: str) -> CypherAST:
         )
 
     query = _normalize_legacy_params(query)
-    tokens = _tokenize(query)
-    parser = _Parser(tokens, query)
+    tokens, comments = _tokenize(query)
+    parser = _Parser(tokens, query, comments)
     return parser.parse()
 
 

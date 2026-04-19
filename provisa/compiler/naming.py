@@ -64,6 +64,15 @@ def _to_snake_case(name: str) -> str:
     return name.lower()
 
 
+# Public alias for use by other modules
+to_snake_case = _to_snake_case
+
+
+def source_to_catalog(source_id: str) -> str:
+    """Convert a source ID to a Trino catalog name (hyphens → underscores)."""
+    return source_id.replace("-", "_")
+
+
 def apply_convention(name: str, convention: str) -> str | None:
     """Apply a naming convention to produce an alias.
 

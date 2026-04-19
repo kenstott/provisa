@@ -124,9 +124,15 @@ class TestStartCommand:
         """provisa start calls 'docker compose up -d'."""
         home, project_dir = provisa_home
         # Mock docker compose to record the call and exit cleanly
-        fake_docker = project_dir / "fake_docker.sh"
+        fake_docker = project_dir / "docker"
         fake_docker.write_text(
-            "#!/bin/bash\necho \"docker $@\"\nexit 0\n"
+            "#!/bin/bash\n"
+            "if [[ \"$*\" == *\"ps\"* ]]; then\n"
+            "  echo '[{\"Service\":\"provisa\",\"State\":\"running\",\"Health\":\"healthy\"}]'\n"
+            "else\n"
+            "  echo \"docker $@\"\n"
+            "fi\n"
+            "exit 0\n"
         )
         fake_docker.chmod(0o755)
         result = _run_script(
@@ -149,7 +155,18 @@ class TestStartCommand:
         (home / "config.yaml").write_text(
             f"project_dir: {project_dir}\nfederation_workers: 2\n"
         )
-        result = _run_script("start", env={"HOME": str(tmp_path)})
+        fake_docker = project_dir / "docker"
+        fake_docker.write_text(
+            "#!/bin/bash\n"
+            "if [[ \"$*\" == *\"ps\"* ]]; then\n"
+            "  echo '[{\"Service\":\"provisa\",\"State\":\"running\",\"Health\":\"healthy\"}]'\n"
+            "else\n"
+            "  echo \"docker $@\"\n"
+            "fi\n"
+            "exit 0\n"
+        )
+        fake_docker.chmod(0o755)
+        result = _run_script("start", env={"HOME": str(tmp_path), "PATH": f"{project_dir}:{__import__('os').environ['PATH']}"})
         # The script should not error on the command dispatch itself
         assert "Unknown command" not in result.stderr
 

@@ -129,35 +129,39 @@ def _has_alias(sql: str) -> bool:
     return '"t0"' in sql
 
 
-def _qualify_filter(filter_expr: str, alias: str) -> str:
-    """Prefix unqualified column references in a filter with a table alias.
+_SQL_KEYWORDS = {
+    "and", "or", "not", "is", "null", "in", "like", "between",
+    "true", "false", "current_setting", "select", "from", "where",
+    "exists", "case", "when", "then", "else", "end", "as", "on",
+    "join", "left", "right", "inner", "outer", "cross", "full",
+    "group", "by", "order", "having", "limit", "offset", "union",
+    "all", "distinct", "with",
+}
 
-    Simple heuristic: any word that looks like a column name (starts with letter,
-    not already qualified with a dot prefix) gets prefixed.
-    This handles simple filters like `region = 'us-east'`.
+
+def _qualify_filter(filter_expr: str, alias: str) -> str:
+    """Prefix bare column names in filter_expr with "alias".
+
+    Handles string literals correctly — quoted values are skipped so
+    words inside single quotes are never treated as column references.
     """
-    # Don't re-qualify already-qualified refs
     if f'"{alias}".' in filter_expr:
         return filter_expr
 
-    # Match bare identifiers that are likely column names
-    # (word chars not preceded by a dot or quote, not a SQL keyword)
-    sql_keywords = {
-        "and", "or", "not", "is", "null", "in", "like", "between",
-        "true", "false", "current_setting", "select", "from", "where",
-    }
-
     def _replace(m: re.Match) -> str:
-        word = m.group(0)
-        if word.lower() in sql_keywords:
+        # Group 1 matches a single-quoted string literal — return unchanged
+        if m.group(1) is not None:
+            return m.group(1)
+        word = m.group(2)
+        if word.lower() in _SQL_KEYWORDS:
             return word
-        # Check if preceded by a dot (already qualified) or single quote (string literal)
-        start = m.start()
+        start = m.start(2)
         if start > 0 and filter_expr[start - 1] in (".", "'"):
             return word
         return f'"{alias}".{word}'
 
-    return re.sub(r'\b([a-zA-Z_]\w*)\b', _replace, filter_expr)
+    # Match single-quoted strings first (to skip them), then bare identifiers
+    return re.sub(r"('(?:[^'\\]|\\.)*')|(\b[a-zA-Z_]\w*\b)", _replace, filter_expr)
 
 
 def _find_join_alias(sql: str, table_name: str) -> str | None:

@@ -39,6 +39,7 @@ from graphql import (
 )
 
 from provisa.compiler.aggregate_gen import _is_comparable, _is_numeric
+from provisa.compiler.naming import source_to_catalog
 from provisa.compiler.params import ParamCollector
 from provisa.cache.warm_tables import QueryCounter
 from provisa.core.models import TIME_TRAVEL_SOURCES
@@ -183,7 +184,7 @@ def build_context(si: object) -> CompilationContext:
             field_name=t.field_name,
             type_name=t.type_name,
             source_id=t.source_id,
-            catalog_name=t.source_id.replace("-", "_"),
+            catalog_name=source_to_catalog(t.source_id),
             schema_name=t.schema_name,
             table_name=physical_name,
             domain_id=t.domain_id,
@@ -233,7 +234,7 @@ def build_context(si: object) -> CompilationContext:
             field_name=tgt_info.field_name,
             type_name=tgt_info.type_name,
             source_id=tgt_info.source_id,
-            catalog_name=tgt_info.source_id.replace("-", "_"),
+            catalog_name=source_to_catalog(tgt_info.source_id),
             schema_name=tgt_info.schema_name,
             table_name=tgt_info.table_name,
             domain_id=tgt_info.domain_id,
@@ -474,6 +475,13 @@ def _semantic_table_ref(meta: TableMeta) -> str:
     return f'{_q(domain_to_sql_name(meta.domain_id))}.{_q(table)}'
 
 
+def _apply_replacements(sql: str, replacements: dict[str, str]) -> str:
+    """Apply replacements to sql, longest match first."""
+    for key in sorted(replacements, key=len, reverse=True):
+        sql = sql.replace(key, replacements[key])
+    return sql
+
+
 def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:
     """Replace physical table refs with semantic (domain.field_name) refs."""
     replacements: dict[str, str] = {}
@@ -485,9 +493,7 @@ def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:
         seen.add(key)
         replacements[_table_ref(meta, use_catalog=False)] = _semantic_table_ref(meta)
         replacements[_table_ref(meta, use_catalog=True)] = _semantic_table_ref(meta)
-    for phys in sorted(replacements, key=len, reverse=True):
-        sql = sql.replace(phys, replacements[phys])
-    return sql
+    return _apply_replacements(sql, replacements)
 
 
 def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
@@ -501,9 +507,7 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
         seen.add(key)
         semantic = _semantic_table_ref(meta)
         replacements[semantic] = _table_ref(meta, use_catalog=False)
-    for sem in sorted(replacements, key=len, reverse=True):
-        sql = sql.replace(sem, replacements[sem])
-    return sql
+    return _apply_replacements(sql, replacements)
 
 
 def rewrite_semantic_to_trino_physical(sql: str, ctx: CompilationContext) -> str:
@@ -517,9 +521,7 @@ def rewrite_semantic_to_trino_physical(sql: str, ctx: CompilationContext) -> str
         seen.add(key)
         semantic = _semantic_table_ref(meta)
         replacements[semantic] = _table_ref(meta, use_catalog=True)
-    for sem in sorted(replacements, key=len, reverse=True):
-        sql = sql.replace(sem, replacements[sem])
-    return sql
+    return _apply_replacements(sql, replacements)
 
 
 # --- Main compilation ---
@@ -794,15 +796,6 @@ def _compile_root_field(
     _STANDARD_ARGS = {"where", "order_by", "limit", "offset", "distinct_on", "as_of"}
     api_args = {k: v for k, v in args.items() if k not in _STANDARD_ARGS}
 
-    # Prepend a self-describing hint comment for external drivers (JDBC/ODBC/Arrow Flight).
-    # Any driver that receives the compiled SQL can parse this to discover the REST call.
-    # Format: -- @native_filter {"source_id": "...", "operation_id": "...", "args": {...}}
-    if api_args:
-        hint = _json.dumps(
-            {"source_id": table.source_id, "operation_id": table.table_name, "args": api_args},
-            separators=(",", ":"),
-        )
-        sql = f"-- @native_filter {hint}\n{sql}"
 
     return CompiledQuery(
         sql=sql,
@@ -1249,22 +1242,3 @@ def compile_query(
     return results
 
 
-_NATIVE_FILTER_RE = _re.compile(
-    r"^--\s*@native_filter\s+(\{.+\})\s*$", _re.MULTILINE
-)
-
-
-def parse_native_filter_hint(sql: str) -> dict | None:
-    """Extract the @native_filter hint from a compiled SQL string.
-
-    Returns {"source_id": ..., "operation_id": ..., "args": {...}} or None.
-    Intended for external drivers (JDBC/ODBC/Arrow Flight) that receive compiled
-    SQL and need to know which REST call to make before executing the query.
-    """
-    m = _NATIVE_FILTER_RE.search(sql)
-    if not m:
-        return None
-    try:
-        return _json.loads(m.group(1))
-    except Exception:
-        return None

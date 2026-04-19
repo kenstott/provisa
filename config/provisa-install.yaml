@@ -56,7 +56,7 @@ tables:
     domain_id: pet-store
     schema: default
     table: find_pets_by_status
-    alias: pets_by_status
+    alias: pet_by_status
     governance: pre-approved
     description: "Pets available for purchase — filtered by status from Petstore API"
     columns:
@@ -78,7 +78,7 @@ tables:
     domain_id: pet-store
     schema: default
     table: find_pets_by_tags
-    alias: pets_by_tags
+    alias: pet_by_tags
     governance: pre-approved
     description: "Pets filtered by tag from Petstore API"
     columns:
@@ -210,9 +210,9 @@ views:
              p.available,
              api.status    AS api_status,
              COUNT(i.id)   AS inquiry_count
-      FROM pets p
-      LEFT JOIN find_pets_by_status api ON p.name = api.name
-      LEFT JOIN inquiries i ON p.id = i.pet_id
+      FROM pet_store.pets p
+      LEFT JOIN pet_store.pet_by_status api ON p.name = api.name
+      LEFT JOIN pet_store.inquiries i ON p.id = i.pet_id
       GROUP BY p.id, p.name, p.species, p.breed_name, p.price, p.available, api.status
     description: "Cross-source view: internal inventory (PG) + Petstore public API (OpenAPI) + inquiries (SQLite)"
     domain_id: pet-store
@@ -239,7 +239,7 @@ views:
 relationships:
   - id: pets-to-find-pets-by-status
     source_table_id: pets
-    target_table_id: find_pets_by_status
+    target_table_id: pet_by_status
     source_column: name
     target_column: name
     cardinality: many-to-one
@@ -251,15 +251,15 @@ relationships:
     target_column: pet_id
     cardinality: one-to-many
     alias: HAS_INQUIRY
-  - id: order-to-pet
+  - id: order-to-find-pets-by-status
     source_table_id: get_order_by_id
-    target_table_id: find_pets_by_status
+    target_table_id: pet_by_status
     source_column: petId
     target_column: id
     cardinality: many-to-one
     alias: FOR_PET
   - id: find-pets-by-status-to-get-pet-by-id
-    source_table_id: find_pets_by_status
+    source_table_id: pet_by_status
     target_table_id: get_pet_by_id
     source_column: id
     target_column: id

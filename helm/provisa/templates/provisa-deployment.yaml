@@ -42,6 +42,30 @@ spec:
                     app: provisa
                 topologyKey: kubernetes.io/hostname
       {{- end }}
+      initContainers:
+        - name: wait-for-db
+          image: postgres:16
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 999
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: pg-password
+          command:
+            - sh
+            - -c
+            - |
+              until psql -h {{ .Release.Name }}-postgresql -p {{ .Values.postgresql.port }} \
+                -U {{ .Values.postgresql.username }} -d {{ .Values.postgresql.database }} \
+                -c "SELECT 1" > /dev/null 2>&1; do
+                echo "waiting for postgres..."; sleep 3
+              done
       containers:
         - name: provisa
           image: "{{ .Values.provisa.image.repository }}:{{ .Values.provisa.image.tag }}"
@@ -57,7 +81,7 @@ spec:
               containerPort: {{ .Values.provisa.flightPort }}
           env:
             - name: PG_HOST
-              value: {{ if .Values.postgresql.host }}{{ .Values.postgresql.host }}{{ else }}{{ .Release.Name }}-postgresql{{ end }}
+              value: {{ if .Values.postgresql.host }}{{ .Values.postgresql.host }}{{ else if .Values.pgbouncer.enabled }}{{ .Release.Name }}-pgbouncer{{ else }}{{ .Release.Name }}-postgresql{{ end }}
             - name: PG_PORT
               value: {{ if .Values.pgbouncer.enabled }}"{{ .Values.pgbouncer.port }}"{{ else }}"{{ .Values.postgresql.port }}"{{ end }}
             - name: PG_DATABASE

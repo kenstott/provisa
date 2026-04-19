@@ -156,6 +156,9 @@ async def cypher_query(
     try:
         import sqlglot
         sql_str = sql_ast.sql(dialect="postgres")
+        if ast.comments:
+            prefix = "\n".join(f"-- {c}" for c in ast.comments)
+            sql_str = f"{prefix}\n{sql_str}"
     except Exception as exc:
         log.exception("Cypher SQL render failed")
         return JSONResponse(status_code=500, content={"error": f"SQL generation failed: {exc}"})
@@ -189,10 +192,16 @@ async def cypher_query(
     # Resolve ordered parameter values
     resolved_params = [body.params.get(name) for name in ordered_params]
 
-    # Stage 5: Execute via Trino/federation executor
+    # Stage 5: Execute — extract _nf_* native filter args before Trino execution
+    from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
+    clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)
+
     log.info("Cypher final SQL: %s", trino_sql)
     try:
-        rows = await _execute(trino_sql, resolved_params, state)
+        if nf_args:
+            rows = await _execute_with_api(clean_exec_sql, clean_params, nf_args, state)
+        else:
+            rows = await _execute(trino_sql, resolved_params, state)
     except Exception as exc:
         log.exception("Cypher execution failed: %s", trino_sql)
         return JSONResponse(status_code=500, content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql})
@@ -255,6 +264,91 @@ def _resolve_role_id(request: Request, state: object) -> str:
     if roles:
         return next(iter(roles))
     return "default"
+
+
+async def _execute_with_api(
+    exec_sql: str,
+    params: list,
+    nf_args: dict,
+    state: object,
+) -> list[dict]:
+    """Phase 1 (REST) + Phase 2 (Trino) execution for API-backed tables."""
+    import asyncio
+    from provisa.api_source.router_integration import handle_api_query
+    from provisa.api_source.trino_cache import (
+        cache_table_name, ensure_cache_schema, table_exists,
+        create_and_insert, rewrite_from_cache, schedule_drop,
+    )
+    from provisa.executor.trino import execute_trino
+    from provisa.transpiler.transpile import transpile_to_trino
+    from provisa.compiler.nf_extractor import find_api_table_names
+
+    table_names = find_api_table_names(exec_sql)
+    endpoint = None
+    source_id = None
+    table_name = None
+    for tn in table_names:
+        ep = getattr(state, "api_endpoints", {}).get(tn)
+        if ep is not None:
+            endpoint = ep
+            table_name = tn
+            # find source_id by matching endpoint to api_sources
+            source_id = getattr(ep, "source_id", None)
+            break
+
+    if endpoint is None:
+        raise RuntimeError(f"No API endpoint found for tables: {table_names}")
+
+    api_source = getattr(state, "api_sources", {}).get(source_id)
+
+    # Build URL params — strip _nf_ prefix already done by extract_nf_args
+    param_name_map: dict = {}
+    for c in endpoint.columns:
+        if c.param_name:
+            param_name_map[c.name] = c.param_name
+            param_name_map[f"_{c.name}"] = c.param_name
+    url_params = {param_name_map.get(k, k): v for k, v in nf_args.items()}
+
+    cache_tbl = cache_table_name(source_id, table_name, url_params)
+
+    ensure_cache_schema(state.trino_conn)
+    if not table_exists(state.trino_conn, cache_tbl):
+        conn = None
+        if getattr(state, "pg_pool", None) is not None:
+            conn = await state.pg_pool.acquire()
+        try:
+            result = await handle_api_query(
+                endpoint=endpoint,
+                params=url_params,
+                conn=conn,
+                source=api_source,
+                source_ttl=getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
+                global_ttl=getattr(state, "cache_default_ttl", None),
+            )
+        finally:
+            if conn is not None:
+                await state.pg_pool.release(conn)
+
+        log.info("[API CACHE] miss — %d rows from REST, materializing", len(result.rows))
+        create_and_insert(state.trino_conn, cache_tbl, result.rows, endpoint.columns)
+
+        ttl = (
+            getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl")
+            or getattr(state, "cache_default_ttl", None)
+            or endpoint.ttl
+        )
+        from provisa.executor.redirect import RedirectConfig
+        redirect_config = RedirectConfig.from_env()
+        asyncio.create_task(schedule_drop(state.trino_conn, cache_tbl, ttl, redirect_config))
+    else:
+        log.info("[API CACHE] hit — %s", cache_tbl)
+
+    rewritten_sql = rewrite_from_cache(exec_sql, cache_tbl)
+    trino_sql = transpile_to_trino(rewritten_sql)
+    trino_result = execute_trino(state.trino_conn, trino_sql, params)
+
+    response_cols = [c.name for c in endpoint.columns if not c.param_type]
+    return [dict(zip(response_cols, row)) for row in trino_result.rows]
 
 
 async def _execute(sql: str, params: list, state: object) -> list[dict]:

@@ -78,14 +78,14 @@ class TestKafkaSinkConfiguration:
             json={"query": "{ persistedQueries { id queryText sinkTopic sinkTrigger sinkKeyColumn status } }"},
         )
         if resp.status_code != 200:
-            pytest.skip("Admin API not available")
+            pytest.fail(f"Admin API returned {resp.status_code}: {resp.text}")
 
         data = resp.json()
         queries = data.get("data", {}).get("persistedQueries", [])
         sink_queries = [q for q in queries if q.get("sinkTopic")]
         # At least the one we just submitted (or from previous runs)
         if not sink_queries:
-            pytest.skip("No queries with sink config found")
+            pytest.fail("No queries with sink config found — test_submit_query_with_sink must have failed")
 
         q = sink_queries[0]
         assert q["sinkTopic"] is not None
@@ -116,7 +116,7 @@ class TestKafkaSourceRegistration:
             json={"query": "{ tables { id tableName sourceId } }"},
         )
         if resp.status_code != 200:
-            pytest.skip("Admin API not available")
+            pytest.fail(f"Admin API returned {resp.status_code}: {resp.text}")
 
         data = resp.json()
         tables = data.get("data", {}).get("tables", [])
@@ -134,12 +134,12 @@ class TestKafkaSourceRegistration:
             json={"query": "{ tables { tableName sourceId } }"},
         )
         if resp.status_code != 200:
-            pytest.skip("Admin API not available")
+            pytest.fail(f"Admin API returned {resp.status_code}: {resp.text}")
 
         tables = resp.json().get("data", {}).get("tables", [])
         kafka_tables = [t for t in tables if "kafka" in t.get("sourceId", "").lower()]
         if not kafka_tables:
-            pytest.skip("No Kafka-backed tables registered")
+            pytest.fail("No Kafka-backed tables registered")
 
         # Try to query one via the data endpoint
         table_name = kafka_tables[0]["tableName"]

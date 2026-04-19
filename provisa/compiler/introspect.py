@@ -16,6 +16,8 @@ from dataclasses import dataclass
 
 import trino
 
+from provisa.compiler.naming import source_to_catalog
+
 _SAFE_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
@@ -85,7 +87,7 @@ def introspect_tables(
     result: dict[int, list[ColumnMetadata]] = {}
     for table in registered_tables:
         source = sources[table["source_id"]]
-        catalog_name = source["id"].replace("-", "_")
+        catalog_name = source_to_catalog(source["id"])
         # Use physical table name if mapped (e.g., Kafka discriminated tables)
         trino_table_name = table["table_name"]
         if physical_table_map:

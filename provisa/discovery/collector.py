@@ -19,6 +19,8 @@ from dataclasses import dataclass, field
 import asyncpg
 import trino
 
+from provisa.compiler.naming import source_to_catalog
+
 log = logging.getLogger(__name__)
 
 _SAFE_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
@@ -139,7 +141,7 @@ async def collect_metadata(
     # Collect metadata per table
     table_metas: list[TableMeta] = []
     for t in tables:
-        catalog = t["source_id"].replace("-", "_")
+        catalog = source_to_catalog(t["source_id"])
         columns = _fetch_column_types(trino_conn, catalog, t["schema_name"], t["table_name"])
         samples = _fetch_samples(
             trino_conn, catalog, t["schema_name"], t["table_name"], columns, sample_size

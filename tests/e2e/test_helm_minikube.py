@@ -10,12 +10,8 @@
 
 """E2E tests for Helm chart deployment on minikube (REQ-056 / Phase M).
 
-Requires minikube to be installed and running.  These tests are skipped when
-minikube is not present — minikube is external tooling, not a docker-compose
-service, so conditional skip is acceptable here.
-
-Run manually:
-    minikube start
+Requires minikube running via Docker driver:
+    minikube start --driver=docker
     python -m pytest tests/e2e/test_helm_minikube.py -v
 """
 
@@ -34,15 +30,24 @@ pytestmark = pytest.mark.e2e
 CHART_DIR = Path(__file__).parents[2] / "helm" / "provisa"
 RELEASE = "provisa-test"
 NAMESPACE = "provisa-e2e"
-TIMEOUT = "300s"
+TIMEOUT = "1200s"
 
 
 def _minikube_available() -> bool:
-    return shutil.which("minikube") is not None and shutil.which("helm") is not None
+    if shutil.which("minikube") is None or shutil.which("helm") is None:
+        return False
+    try:
+        result = subprocess.run(
+            ["minikube", "status", "--format={{.Host}}"],
+            capture_output=True, text=True, timeout=10,
+        )
+        return result.returncode == 0 and result.stdout.strip() == "Running"
+    except subprocess.TimeoutExpired:
+        return False
 
 
 def _run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=360, **kwargs)
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=1260, **kwargs)
 
 
 def _kubectl(*args: str) -> subprocess.CompletedProcess:
@@ -59,19 +64,46 @@ def _get_pods() -> list[dict]:
 def helm_install():
     """Install the Provisa Helm chart into a dedicated minikube namespace."""
     if not _minikube_available():
-        pytest.skip("minikube or helm not installed")
+        pytest.fail("minikube or helm not installed / not running (start with: minikube start --driver=docker)")
+
+    # Build provisa:latest and load into minikube so IfNotPresent can find it
+    repo_root = Path(__file__).parents[2]
+    build = subprocess.run(
+        ["docker", "build", "-f", str(repo_root / "Dockerfile.dev"), "-t", "provisa:latest", str(repo_root)],
+        capture_output=True, text=True, timeout=600,
+    )
+    if build.returncode != 0:
+        pytest.fail(f"docker build failed:\n{build.stdout}\n{build.stderr}")
+
+    load = subprocess.run(
+        ["minikube", "image", "load", "provisa:latest"],
+        capture_output=True, text=True, timeout=300,
+    )
+    if load.returncode != 0:
+        pytest.fail(f"minikube image load failed:\n{load.stdout}\n{load.stderr}")
+
+    # Clear stale hostpath-provisioner data so postgres initialises fresh each run.
+    # Minikube's hostpath provisioner keys directories by namespace/pvc-name, so
+    # old data survives namespace deletion and causes postgres to skip init.
+    subprocess.run(
+        ["minikube", "ssh", f"sudo rm -rf /tmp/hostpath-provisioner/{NAMESPACE}/"],
+        capture_output=True, text=True, timeout=30,
+    )
 
     # Create namespace (idempotent)
     _run(["kubectl", "create", "namespace", NAMESPACE])
 
-    # Use minimal values: single replicas, no autoscaling, no ingress
+    # Use minimal values: single replicas, no autoscaling, no ingress.
+    # flightService.type=ClusterIP avoids LoadBalancer pending-IP stall in minikube.
     result = _run([
         "helm", "upgrade", "--install", RELEASE, str(CHART_DIR),
         f"--namespace={NAMESPACE}",
         "--set", "provisa.replicaCount=1",
+        "--set", "provisa.hpa.enabled=false",
         "--set", "trino.worker.replicaCount=1",
         "--set", "trino.worker.autoscaling.enabled=false",
         "--set", "ingress.enabled=false",
+        "--set", "provisa.flightService.type=ClusterIP",
         "--wait",
         f"--timeout={TIMEOUT}",
     ])
@@ -83,6 +115,10 @@ def helm_install():
     # Teardown
     _run(["helm", "uninstall", RELEASE, f"--namespace={NAMESPACE}"])
     _run(["kubectl", "delete", "namespace", NAMESPACE, "--ignore-not-found=true"])
+    subprocess.run(
+        ["minikube", "ssh", f"sudo rm -rf /tmp/hostpath-provisioner/{NAMESPACE}/"],
+        capture_output=True, text=True, timeout=30,
+    )
 
 
 class TestPodsRunning:
@@ -196,9 +232,11 @@ class TestWorkerScaling:
             "helm", "upgrade", RELEASE, str(CHART_DIR),
             f"--namespace={NAMESPACE}",
             "--set", "provisa.replicaCount=1",
+            "--set", "provisa.hpa.enabled=false",
             "--set", "trino.worker.replicaCount=2",
             "--set", "trino.worker.autoscaling.enabled=false",
             "--set", "ingress.enabled=false",
+            "--set", "provisa.flightService.type=ClusterIP",
             "--wait",
             f"--timeout={TIMEOUT}",
         ])
@@ -215,9 +253,11 @@ class TestWorkerScaling:
             "helm", "upgrade", RELEASE, str(CHART_DIR),
             f"--namespace={NAMESPACE}",
             "--set", "provisa.replicaCount=1",
+            "--set", "provisa.hpa.enabled=false",
             "--set", "trino.worker.replicaCount=1",
             "--set", "trino.worker.autoscaling.enabled=false",
             "--set", "ingress.enabled=false",
+            "--set", "provisa.flightService.type=ClusterIP",
             "--wait",
             f"--timeout={TIMEOUT}",
         ])

@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.compiler.rls import _qualify_filter
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.security.masking import MaskingRule, build_mask_expression
 
@@ -114,37 +115,7 @@ def build_governance_context(
 # Helpers                                                                     #
 # --------------------------------------------------------------------------- #
 
-_SQL_KEYWORDS = {
-    "and", "or", "not", "is", "null", "in", "like", "between",
-    "true", "false", "current_setting", "select", "from", "where",
-    "exists", "case", "when", "then", "else", "end", "as", "on",
-    "join", "left", "right", "inner", "outer", "cross", "full",
-    "group", "by", "order", "having", "limit", "offset", "union",
-    "all", "distinct", "with",
-}
-
 _LIMIT_RE = re.compile(r'\bLIMIT\s+(\d+)', re.IGNORECASE)
-
-
-def _qualify_filter(filter_expr: str, alias: str) -> str:
-    """Prefix bare column names in filter_expr with "alias"."""
-    if f'"{alias}".' in filter_expr:
-        return filter_expr
-
-    def _replace(m: re.Match) -> str:
-        # Group 1 matches a single-quoted string literal — return unchanged
-        if m.group(1) is not None:
-            return m.group(1)
-        word = m.group(2)
-        if word.lower() in _SQL_KEYWORDS:
-            return word
-        start = m.start(2)
-        if start > 0 and filter_expr[start - 1] in (".", "'"):
-            return word
-        return f'"{alias}".{word}'
-
-    # Match single-quoted strings first (to skip them), then bare identifiers
-    return re.sub(r"('(?:[^'\\]|\\.)*')|(\b[a-zA-Z_]\w*\b)", _replace, filter_expr)
 
 
 def _table_id_for_node(table_node: exp.Table, gov_ctx: GovernanceContext) -> int | None:

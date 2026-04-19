@@ -111,12 +111,14 @@ async def get_by_name(
 
 
 async def find_by_table_name(conn: asyncpg.Connection, table_name: str) -> dict | None:
-    """Find a registered table by just its table_name (used for relationship resolution).
+    """Find a registered table by its virtual name.
 
-    Raises ValueError if multiple tables match (ambiguous across sources).
+    The virtual name is alias when set, otherwise table_name.
+    Raises ValueError if multiple tables match.
     """
     rows = await conn.fetch(
-        "SELECT * FROM registered_tables WHERE table_name = $1", table_name
+        "SELECT * FROM registered_tables WHERE alias = $1 OR (alias IS NULL AND table_name = $1)",
+        table_name,
     )
     if not rows:
         return None

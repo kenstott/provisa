@@ -36,6 +36,7 @@ def _reserve_flight_port():
     """
     port = _free_port()
     os.environ.setdefault("FLIGHT_PORT", str(port))
+    os.environ.setdefault("POSTGRES_HOST", "localhost")
 
 
 @pytest.fixture(scope="session")

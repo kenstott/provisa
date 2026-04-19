@@ -52,4 +52,8 @@ async def create_pool(
 async def init_schema(pool: asyncpg.Pool, schema_sql: str) -> None:
     """Execute schema SQL against the pool."""
     async with pool.acquire() as conn:
-        await conn.execute(schema_sql)
+        await conn.execute("SELECT pg_advisory_lock(7337)")
+        try:
+            await conn.execute(schema_sql)
+        finally:
+            await conn.execute("SELECT pg_advisory_unlock(7337)")

@@ -17,6 +17,7 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
+        runAsUser: 70
         seccompProfile:
           type: RuntimeDefault
       {{- with .Values.global.imagePullSecrets }}

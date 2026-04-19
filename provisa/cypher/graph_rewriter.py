@@ -87,7 +87,7 @@ def _build_row_cast(tbl: str, node_meta: object) -> exp.Expression:
         exp.JSONKeyValue(this=exp.Literal.string("id"), expression=id_col),
         exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
     ]
-    reserved = {nm.id_column, "label"}
+    reserved = {nm.id_column, "id", "label"}
     for col_name in nm.properties.values():
         if col_name in reserved:
             continue
@@ -138,7 +138,10 @@ def _extract_domain_props_from_union(sql_ast: exp.Select, var_alias: str) -> lis
     """
     for node in sql_ast.find_all(exp.Subquery):
         parent = node.parent
-        if isinstance(parent, exp.Alias) and parent.alias == var_alias:
+        # Alias may be stored directly in the Subquery (after .from_() normalization)
+        # or in a wrapping Alias parent node — check both.
+        node_alias = node.alias or (parent.alias if isinstance(parent, exp.Alias) else None)
+        if node_alias == var_alias:
             union_body = node.this
             # Drill into UNION ALL to get the first SELECT branch
             first_select = union_body

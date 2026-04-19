@@ -514,7 +514,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 state.mv_registry.register(mv)
                 _view_log.info("Registered materialized view: %s", view_id)
             else:
-                # Store SQL for inline expansion at query time — no DDL needed
+                # Store semantic SQL; compiled to Trino-physical after contexts are built
                 state.view_sql_map[view_table_name] = view_sql.strip()
                 _view_log.info("Registered inline view: %s", view_id)
 
@@ -778,6 +778,15 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 state.proto_files[role["id"]] = generate_proto(si)
             except ValueError:
                 pass
+
+    # Compile inline view SQLs now that a context is available
+    if state.view_sql_map and state.contexts:
+        from provisa.compiler.sql_gen import rewrite_semantic_to_trino_physical
+        ctx = next(iter(state.contexts.values()))
+        state.view_sql_map = {
+            name: rewrite_semantic_to_trino_physical(sql, ctx)
+            for name, sql in state.view_sql_map.items()
+        }
 
 
 @asynccontextmanager

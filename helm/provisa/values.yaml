@@ -94,7 +94,7 @@ postgresql:
 
 pgbouncer:
   enabled: true
-  tag: "1.23.1-p0"
+  tag: "latest"
   port: 6432
   poolMode: transaction
   defaultPoolSize: 20
@@ -112,7 +112,7 @@ mongodb:
 
 minio:
   enabled: true
-  tag: "RELEASE.2024-04-28T17-11-00Z"
+  tag: "latest"
   accessKey: minioadmin
   secretKey: minioadmin
   storageClass: ""

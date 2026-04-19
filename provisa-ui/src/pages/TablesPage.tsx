@@ -716,7 +716,10 @@ export function TablesPage() {
                   <td>{t.sourceId}</td>
                   <td>{t.domainId ? normalizeDomain(t.domainId) : ""}</td>
                   <td style={{ fontFamily: "monospace", fontSize: "0.9rem" }}>
-                    {[t.schemaName, t.alias || t.tableName].filter(Boolean).join(".")}
+                    {(() => {
+                      const ns = t.domainId ? normalizeDomain(t.domainId) : "";
+                      return [ns, t.alias || t.tableName].filter(Boolean).join(".");
+                    })()}
                     {t.description && (
                       <div style={{ fontFamily: "inherit", fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
                         {t.description}

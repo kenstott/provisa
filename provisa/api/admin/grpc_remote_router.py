@@ -26,6 +26,8 @@ import grpc.aio
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from provisa.compiler.naming import source_to_catalog
+
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/grpc-remote", tags=["admin", "grpc-remote"])
 
@@ -77,7 +79,7 @@ async def _load_and_register(
 
     pb2_path, pb2_grpc_path = compile_proto_stubs(
         proto_text,
-        proto_name=source_id.replace("-", "_"),
+        proto_name=source_to_catalog(source_id),
         import_paths=import_paths or None,
     )
     pb2, _ = load_stubs(pb2_path, pb2_grpc_path)
@@ -305,7 +307,7 @@ async def put_grpc_proto(source_id: str, request: Request):
     try:
         pb2_path, pb2_grpc_path = compile_proto_stubs(
             proto_text,
-            proto_name=source_id.replace("-", "_"),
+            proto_name=source_to_catalog(source_id),
             import_paths=reg.get("import_paths") or None,
         )
         pb2, _ = load_stubs(pb2_path, pb2_grpc_path)

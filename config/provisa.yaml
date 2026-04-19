@@ -195,7 +195,8 @@ tables:
   - source_id: petstore-api
     domain_id: pet-store
     schema: default
-    table: pet
+    table: find_pets_by_status
+    alias: pet_by_status
     governance: pre-approved
     description: "Pet catalog from the Petstore public API"
     columns:
@@ -270,9 +271,9 @@ views:
              p.available,
              api.status    AS api_status,
              COUNT(i.id)   AS inquiry_count
-      FROM pets p
-      LEFT JOIN pet api    ON p.name = api.name
-      LEFT JOIN inquiries i ON p.id = i.pet_id
+      FROM pet_store.pets p
+      LEFT JOIN pet_store.pet_by_status api ON p.name = api.name
+      LEFT JOIN pet_store.inquiries i ON p.id = i.pet_id
       GROUP BY p.id, p.name, p.species, p.breed_name, p.price, p.available, api.status
     description: "Cross-source view: internal inventory (PG) + Petstore public API (OpenAPI) + inquiries (SQLite)"
     domain_id: pet-store
@@ -346,7 +347,7 @@ relationships:
     alias: OPENED_BY
   - id: pets-to-api
     source_table_id: pets
-    target_table_id: pet
+    target_table_id: pet_by_status
     source_column: name
     target_column: name
     cardinality: many-to-one

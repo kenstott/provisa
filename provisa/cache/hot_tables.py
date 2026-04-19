@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
 
+from provisa.compiler.naming import source_to_catalog
+
 log = logging.getLogger(__name__)
 
 
@@ -444,7 +446,7 @@ async def init_hot_tables(
         if result[0] is None:
             continue
         _, source_id, source_cfg, source_type, pk_col, schema_name = result
-        catalog = source_id.replace("-", "_")
+        catalog = source_to_catalog(source_id)
         if source_type == "sqlite":
             await hot_mgr.load_table_from_sqlite(source_cfg, tbl_name, pk_col)
         elif source_type == "openapi":
@@ -463,7 +465,7 @@ async def init_hot_tables(
         if result[0] is None:
             continue
         _, source_id, source_cfg, source_type, pk_col, schema_name = result
-        catalog = source_id.replace("-", "_")
+        catalog = source_to_catalog(source_id)
         hot_mgr.register_candidate(HotTableCandidate(
             table_name=tbl_name,
             pk_column=pk_col,
