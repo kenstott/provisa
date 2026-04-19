@@ -24,11 +24,9 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from graphql import (
-    GraphQLEnumType,
     GraphQLList,
     GraphQLNonNull,
     GraphQLObjectType,
-    GraphQLScalarType,
     GraphQLSchema,
 )
 
@@ -39,9 +37,14 @@ from provisa.api.jsonapi.pagination import (
     parse_page_params,
 )
 from provisa.api.jsonapi.serializer import rows_to_jsonapi
+from provisa.api._query_helpers import (
+    build_graphql_query as _build_graphql_query_shared,
+    get_scalar_fields as _get_scalar_fields_shared,
+    route_and_execute,
+)
 from provisa.compiler.parser import GraphQLValidationError, parse_query
 from provisa.compiler.rls import RLSContext
-from provisa.compiler.sql_gen import CompilationContext, compile_query
+from provisa.compiler.sql_gen import compile_query
 
 log = logging.getLogger(__name__)
 
@@ -118,26 +121,7 @@ def _parse_sparse_fieldsets(
 
 def _get_scalar_fields(schema: GraphQLSchema, table: str) -> list[str]:
     """Get scalar field names for a root query type."""
-    query_type = schema.query_type
-    if query_type is None:
-        return []
-    field_map = query_type.fields
-    if table not in field_map:
-        return []
-    gql_field = field_map[table]
-    return_type = gql_field.type
-    while hasattr(return_type, "of_type"):
-        return_type = return_type.of_type
-    if not isinstance(return_type, GraphQLObjectType):
-        return []
-    scalars = []
-    for name, f in return_type.fields.items():
-        inner = f.type
-        while isinstance(inner, (GraphQLNonNull, GraphQLList)):
-            inner = inner.of_type
-        if isinstance(inner, (GraphQLScalarType, GraphQLEnumType)):
-            scalars.append(name)
-    return scalars
+    return _get_scalar_fields_shared(schema, table)
 
 
 def _get_relationship_fields(
@@ -180,41 +164,7 @@ def _build_graphql_query(
     offset: int | None,
 ) -> str:
     """Build GraphQL query from JSON:API params."""
-    args_parts = []
-    if limit is not None:
-        args_parts.append(f"limit: {limit}")
-    if offset is not None:
-        args_parts.append(f"offset: {offset}")
-
-    if filters:
-        where_parts = []
-        for col, ops in filters.items():
-            for op, val in ops.items():
-                if isinstance(val, list):
-                    formatted = "[" + ", ".join(f'"{v}"' for v in val) + "]"
-                    where_parts.append(f'{col}: {{{op}: {formatted}}}')
-                elif isinstance(val, str):
-                    try:
-                        numeric = int(val)
-                        where_parts.append(f"{col}: {{{op}: {numeric}}}")
-                    except ValueError:
-                        try:
-                            numeric = float(val)
-                            where_parts.append(f"{col}: {{{op}: {numeric}}}")
-                        except ValueError:
-                            where_parts.append(f'{col}: {{{op}: "{val}"}}')
-                else:
-                    where_parts.append(f"{col}: {{{op}: {val}}}")
-        if where_parts:
-            args_parts.append("where: {" + ", ".join(where_parts) + "}")
-
-    if sort:
-        ob_parts = [f'{s["field"]}: {s["dir"]}' for s in sort]
-        args_parts.append("order_by: {" + ", ".join(ob_parts) + "}")
-
-    args_str = f"({', '.join(args_parts)})" if args_parts else ""
-    fields_str = " ".join(fields)
-    return f"{{ {table}{args_str} {{ {fields_str} }} }}"
+    return _build_graphql_query_shared(table, fields, filters, sort, limit, offset)
 
 
 def _jsonapi_error_response(status: int, title: str, detail: str | None = None, **kwargs):
@@ -329,35 +279,11 @@ def create_jsonapi_router(state: Any) -> APIRouter:
         compiled = inject_rls(compiled, ctx, rls)
         compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
 
-        from provisa.transpiler.router import Route, decide_route
-        from provisa.transpiler.transpile import transpile
-
-        has_json_extract = "->>" in compiled.sql
-        decision = decide_route(
-            sources=compiled.sources,
-            source_types=state.source_types,
-            source_dialects=state.source_dialects,
-            has_json_extract=has_json_extract,
-        )
-
         try:
-            if decision.route == Route.DIRECT and decision.source_id:
-                from provisa.executor.direct import execute_direct
-                target_sql = transpile(compiled.sql, decision.dialect or "postgres")
-                result = await execute_direct(
-                    state.source_pools, decision.source_id,
-                    target_sql, compiled.params,
-                )
-            else:
-                from provisa.executor.trino import execute_trino
-                from provisa.transpiler.transpile import transpile_to_trino
-                if state.trino_conn is None:
-                    return _jsonapi_error_response(
-                        503, "Service Unavailable", "Trino not connected",
-                    )
-                trino_sql = transpile_to_trino(compiled.sql)
-                result = execute_trino(state.trino_conn, trino_sql, compiled.params)
-        except HTTPException:
+            result = await route_and_execute(compiled, state)
+        except HTTPException as e:
+            if e.status_code == 503:
+                return _jsonapi_error_response(503, "Service Unavailable", e.detail)
             raise
         except Exception as e:
             log.exception("JSON:API query execution failed for %s", table)
