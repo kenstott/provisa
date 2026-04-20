@@ -48,7 +48,7 @@ def rel_field_name(target_field_name: str, cardinality: str) -> str:
         singular = _inflect.singular_noun(noun)
         if singular:
             noun = singular
-    return "_".join([noun] + modifiers)
+    return noun + "".join(m.capitalize() for m in modifiers)
 
 
 def _to_pascal_case(name: str) -> str:
