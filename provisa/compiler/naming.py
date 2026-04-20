@@ -20,10 +20,26 @@ import inflect as _inflect_mod
 _inflect = _inflect_mod.engine()
 
 
+_VERB_PREFIXES = frozenset({
+    "find", "get", "list", "create", "add", "update", "delete",
+    "remove", "search", "fetch", "query", "retrieve", "read",
+})
+
+
 def rel_field_name(target_field_name: str, cardinality: str) -> str:
-    """Build {noun}_{modifiers} relationship field name with library-based pluralization."""
+    """Build {noun}_{modifiers} relationship field name with library-based pluralization.
+
+    Handles camelCase (OpenAPI operation IDs) and strips leading verb prefixes
+    so findPetsByStatus → pet_by_status (many-to-one).
+    """
     base = target_field_name.split("__", 1)[-1]
-    parts = base.split("_")
+    # Normalise camelCase/PascalCase → snake_case before splitting
+    snake = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", base)
+    snake = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", snake).lower()
+    parts = [p for p in snake.split("_") if p]
+    # Strip leading verb prefixes (common in OpenAPI operation IDs)
+    while len(parts) > 1 and parts[0] in _VERB_PREFIXES:
+        parts = parts[1:]
     noun, modifiers = parts[0], parts[1:]
     if cardinality == "one-to-many":
         if _inflect.singular_noun(noun) is False:
