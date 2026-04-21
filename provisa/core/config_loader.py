@@ -236,16 +236,18 @@ async def _load_config_in_txn(
                         await conn.execute(
                             """
                             INSERT INTO api_endpoints
-                                (source_id, path, method, table_name, columns, ttl)
-                            VALUES ($1, $2, 'GET', $3, $4::jsonb, $5)
+                                (source_id, path, method, table_name, columns, ttl, default_params)
+                            VALUES ($1, $2, 'GET', $3, $4::jsonb, $5, $6::jsonb)
                             ON CONFLICT (table_name) DO UPDATE SET
-                                source_id = EXCLUDED.source_id,
-                                path      = EXCLUDED.path,
-                                columns   = EXCLUDED.columns,
-                                ttl       = EXCLUDED.ttl
+                                source_id     = EXCLUDED.source_id,
+                                path          = EXCLUDED.path,
+                                columns       = EXCLUDED.columns,
+                                ttl           = EXCLUDED.ttl,
+                                default_params = EXCLUDED.default_params
                             """,
                             src.id, match.path, tbl.table_name,
                             _json.dumps(api_columns), src.cache_ttl or 300,
+                            _json.dumps(default_params) if default_params else None,
                         )
                     except Exception as _e:
                         log.warning("api_endpoints registration failed for %s.%s: %s", src.id, tbl.table_name, _e)

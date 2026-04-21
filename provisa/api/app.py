@@ -665,18 +665,20 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             if "{" not in ep.path and ep.source_id in state.api_sources
         ]
         if _zero_param_eps:
-            async def _bg_hydrate(eps=_zero_param_eps, pool=state.pg_pool):
+            import logging as _hydrate_logging
+            _hydrate_log = _hydrate_logging.getLogger(__name__)
+            async def _bg_hydrate(eps=_zero_param_eps, pool=state.pg_pool, _log=_hydrate_log):
                 from provisa.openapi.pg_cache import fill_api_table
                 async with pool.acquire() as _conn:
                     for _ep, _src in eps:
                         try:
                             await fill_api_table(
-                                _src.base_url, _ep.path, {}, _conn,
+                                _src.base_url, _ep.path, _ep.default_params, _conn,
                                 "default", _ep.table_name, _ep.ttl,
                                 _ep.response_root, _ep.error_path, _ep.pk_column,
                             )
                         except Exception as _e:
-                            log.warning("BG hydration failed for %s: %s", _ep.table_name, _e)
+                            _log.warning("BG hydration failed for %s: %s", _ep.table_name, _e)
             asyncio.create_task(_bg_hydrate())
 
         # Load RLS rules

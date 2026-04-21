@@ -57,7 +57,7 @@ async def load_api_sources(
     # Load API endpoints
     ep_rows = await conn.fetch(
         "SELECT id, source_id, path, method, table_name, columns, ttl, "
-        "response_root, pagination FROM api_endpoints"
+        "response_root, error_path, pk_column, pagination, max_concurrency, default_params FROM api_endpoints"
     )
     api_endpoints: dict[str, ApiEndpoint] = {}
     api_endpoint_list: list[ApiEndpoint] = []
@@ -78,6 +78,10 @@ async def load_api_sources(
             pag_raw = json.loads(r["pagination"]) if isinstance(r["pagination"], str) else r["pagination"]
             pagination = PaginationConfig(**pag_raw)
 
+        dp_raw = r.get("default_params")
+        default_params = (
+            json.loads(dp_raw) if isinstance(dp_raw, str) else dp_raw
+        ) or {}
         ep = ApiEndpoint(
             id=r["id"],
             source_id=r["source_id"],
@@ -87,7 +91,11 @@ async def load_api_sources(
             columns=columns,
             ttl=r["ttl"],
             response_root=r.get("response_root"),
+            error_path=r.get("error_path"),
+            pk_column=r.get("pk_column"),
             pagination=pagination,
+            max_concurrency=r.get("max_concurrency"),
+            default_params=default_params,
         )
         api_endpoints[ep.table_name] = ep
         api_endpoint_list.append(ep)

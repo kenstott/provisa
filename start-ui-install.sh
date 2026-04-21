@@ -27,6 +27,7 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
 fi
 
 export PG_PASSWORD="${PG_PASSWORD:-provisa}"
+export POSTGRES_HOST="${POSTGRES_HOST:-localhost}"
 export REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
 export PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
 export PROVISA_CONFIG=config/provisa-install.yaml

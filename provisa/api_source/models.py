@@ -82,7 +82,11 @@ class ApiEndpoint(BaseModel):
     columns: list[ApiColumn]
     ttl: int = 300
     response_root: str | None = None
+    error_path: str | None = None
+    pk_column: str | None = None
     pagination: PaginationConfig | None = None
+    max_concurrency: int | None = None  # caps parallel path-param fetches; None = unlimited
+    default_params: dict = Field(default_factory=dict)  # query params used for initial cache population
     # Phase AO: query-API sources (Neo4j, SPARQL)
     body_encoding: Literal["json", "form"] | None = None
     query_template: str | None = None  # Cypher or SPARQL query

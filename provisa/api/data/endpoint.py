@@ -155,6 +155,7 @@ async def graphql_get_endpoint(
         x_provisa_redirect=None,
         x_provisa_redirect_threshold=None,
         x_provisa_redirect_format=None,
+        query_id=None,
     )
 
 
@@ -421,6 +422,126 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
     return compiled, mv_used
 
 
+async def _hydrate_api_tables_before_trino(compiled, ctx, state) -> None:
+    """Ensure API-backed PG cache tables are populated before Trino executes.
+
+    For each openapi source in compiled.sources:
+    - Non-path-param: call fill_api_table (TTL-aware, keyed by params hash).
+    - Path-param (returns single object per call): fetch one row per parent PK value
+      via fetch_pk_row (TTL-aware, hash IS the PK for single-object responses).
+    """
+    from provisa.api_source.models import ParamType
+    from provisa.openapi.pg_cache import fetch_pk_row, fill_api_table
+
+    if not hasattr(state, "api_endpoints") or not state.api_endpoints:
+        return
+    if state.pg_pool is None:
+        return
+
+    for source_id in compiled.sources:
+        src = (state.api_sources or {}).get(source_id)
+        if src is None:
+            continue
+        for table_name, endpoint in state.api_endpoints.items():
+            if endpoint.source_id != source_id:
+                continue
+            pg_schema = "default"
+            pg_table = table_name
+            ttl = endpoint.ttl
+
+            path_cols = [c for c in endpoint.columns if c.param_type == ParamType.path]
+
+            # DataLoader candidate: a query param column that is the FK target of a join.
+            # Collect all parent PKs and issue one batch call instead of N path-param calls.
+            dataloader_col = None
+            dataloader_parent_join_col = None
+            dataloader_parent_table_meta = None
+            for (src_type, _), join_meta in ctx.joins.items():
+                if join_meta.target.table_name == pg_table:
+                    target_col = next(
+                        (c for c in endpoint.columns
+                         if c.name == join_meta.target_column and c.param_type == ParamType.query),
+                        None,
+                    )
+                    if target_col:
+                        dataloader_col = target_col
+                        dataloader_parent_join_col = join_meta.source_column
+                        for tbl_meta in ctx.tables.values():
+                            if tbl_meta.type_name == src_type:
+                                dataloader_parent_table_meta = tbl_meta
+                                break
+                        break
+
+            async with state.pg_pool.acquire() as pg_conn:
+                if dataloader_col is not None and dataloader_parent_table_meta is not None:
+                    # DataLoader: one batch call with all parent PKs as a query param list.
+                    p_table = dataloader_parent_table_meta.table_name
+                    p_schema = "default" if p_table in state.api_endpoints else dataloader_parent_table_meta.schema_name
+                    try:
+                        rows = await pg_conn.fetch(
+                            f'SELECT DISTINCT "{dataloader_parent_join_col}" FROM "{p_schema}"."{p_table}"'
+                            f' WHERE "{dataloader_parent_join_col}" IS NOT NULL'
+                        )
+                        pk_values = [r[0] for r in rows]
+                    except Exception as exc:
+                        log.warning("DataLoader: failed to fetch parent PKs for %s: %s", pg_table, exc)
+                        continue
+                    if pk_values:
+                        param_name = dataloader_col.param_name or dataloader_col.name
+                        await fill_api_table(
+                            src.base_url, endpoint.path, {param_name: pk_values},
+                            pg_conn, pg_schema, pg_table, ttl,
+                            endpoint.response_root, endpoint.error_path, endpoint.pk_column,
+                        )
+                elif not path_cols:
+                    # Collection endpoint: pass query params from the compiled query,
+                    # mapped from GraphQL field names to API param names where defined.
+                    param_name_map = {
+                        c.name: (c.param_name or c.name)
+                        for c in endpoint.columns if c.param_type is not None
+                    }
+                    raw_params = compiled.api_args or {}
+                    query_params = {param_name_map.get(k, k): v for k, v in raw_params.items()}
+                    await fill_api_table(src.base_url, endpoint.path, query_params, pg_conn, pg_schema, pg_table, ttl, endpoint.response_root, endpoint.error_path, endpoint.pk_column)
+                else:
+                    # Path-param: fetch one row per parent PK value in parallel.
+                    path_col = path_cols[0]
+                    path_param_name = path_col.param_name or path_col.name
+                    parent_join_col = None
+                    parent_table_meta = None
+                    for (src_type, _), join_meta in ctx.joins.items():
+                        if join_meta.target.table_name == pg_table:
+                            parent_join_col = join_meta.source_column
+                            for tbl_meta in ctx.tables.values():
+                                if tbl_meta.type_name == src_type:
+                                    parent_table_meta = tbl_meta
+                                    break
+                            break
+
+                    if parent_table_meta is None or parent_join_col is None:
+                        log.warning("No parent join for path-param table %s — skipping hydration", pg_table)
+                        continue
+
+                    p_table = parent_table_meta.table_name
+                    p_schema = "default" if p_table in state.api_endpoints else parent_table_meta.schema_name
+                    try:
+                        rows = await pg_conn.fetch(
+                            f'SELECT DISTINCT "{parent_join_col}" FROM "{p_schema}"."{p_table}"'
+                            f' WHERE "{parent_join_col}" IS NOT NULL'
+                        )
+                        pk_values = [r[0] for r in rows]
+                    except Exception as exc:
+                        log.warning("Failed to fetch parent PKs for %s: %s", pg_table, exc)
+                        continue
+
+                    for pk in pk_values:
+                        await fetch_pk_row(
+                            src.base_url, endpoint.path, path_param_name, pk,
+                            pg_conn, pg_schema, pg_table, ttl,
+                            endpoint.response_root, endpoint.error_path,
+                        )
+
+
 async def _execute_api_source(compiled, state, source_id, root_field, ck, output_format):
     """Execute a query against an API source in two phases.
 
@@ -592,6 +713,7 @@ async def _execute_one_field(
                 execute_ctas_redirect, presign_ctas_result,
                 cleanup_result_table, schedule_s3_cleanup,
             )
+            await _hydrate_api_tables_before_trino(compiled, ctx, state)
             trino_sql = transpile_to_trino(rewrite_semantic_to_trino_physical(compiled.sql, ctx))
             ctas_result = execute_ctas_redirect(
                 state.trino_conn, trino_sql, effective_redirect_format,
@@ -617,12 +739,7 @@ async def _execute_one_field(
 
     # --- Standard execution ---
     try:
-        if decision.route == Route.DIRECT and decision.source_id:
-            if not state.source_pools.has(decision.source_id):
-                raise HTTPException(
-                    status_code=503,
-                    detail=f"No connection pool for source {decision.source_id!r}",
-                )
+        if decision.route == Route.DIRECT and decision.source_id and state.source_pools.has(decision.source_id):
             exec_sql = rewrite_semantic_to_physical(compiled.sql, ctx)
             if probe_limit is not None:
                 exec_sql = _inject_probe_limit(exec_sql, probe_limit)
@@ -633,6 +750,7 @@ async def _execute_one_field(
         else:
             if state.trino_conn is None:
                 raise HTTPException(status_code=503, detail="Trino not connected")
+            await _hydrate_api_tables_before_trino(compiled, ctx, state)
             exec_sql = rewrite_semantic_to_trino_physical(compiled.sql, ctx)
             if probe_limit is not None:
                 exec_sql = _inject_probe_limit(exec_sql, probe_limit)

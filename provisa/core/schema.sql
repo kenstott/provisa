@@ -328,9 +328,21 @@ CREATE TABLE IF NOT EXISTS api_endpoints (
     columns         JSONB NOT NULL,
     ttl             INTEGER NOT NULL DEFAULT 300,
     response_root   TEXT,
+    error_path      TEXT,
+    pk_column       TEXT,
     pagination      JSONB,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+DO $$ BEGIN
+    ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS response_root TEXT;
+    ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS error_path TEXT;
+    ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS pk_column TEXT;
+    ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS pagination JSONB;
+    ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS max_concurrency INTEGER;
+    ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS default_params JSONB;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS api_endpoint_candidates (
     id              SERIAL PRIMARY KEY,
