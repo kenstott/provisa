@@ -28,6 +28,7 @@ fi
 
 export PG_PASSWORD="${PG_PASSWORD:-provisa}"
 export REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
+export PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
 export PROVISA_CONFIG=config/provisa-install.yaml
 export PROVISA_CONFIG_REPLACE=true
 export PROVISA_REDIRECT_ENABLED="${PROVISA_REDIRECT_ENABLED:-true}"
@@ -103,22 +104,16 @@ docker exec provisa-postgres-1 psql -U provisa -d provisa -c "
     price NUMERIC(10, 2) NOT NULL,
     available BOOLEAN NOT NULL DEFAULT TRUE
   );
+  TRUNCATE pet_store.pets RESTART IDENTITY;
   INSERT INTO pet_store.pets (name, species, breed_name, price, available)
-  SELECT * FROM (VALUES
-    ('Whiskers', 'cat', 'Maine Coon',        450.00, TRUE),
-    ('Mittens',  'cat', 'Siamese',           380.00, TRUE),
-    ('Shadow',   'cat', 'British Shorthair', 420.00, FALSE),
-    ('Luna',     'cat', 'Persian',           520.00, TRUE),
-    ('Oreo',     'cat', 'Maine Coon',        430.00, TRUE),
-    ('Buddy',    'dog', 'Golden Retriever',  800.00, TRUE),
-    ('Max',      'dog', 'Labrador',          750.00, FALSE),
-    ('Bella',    'dog', 'Beagle',            600.00, TRUE),
-    ('Charlie',  'dog', 'Poodle',            950.00, TRUE),
-    ('Rocky',    'dog', 'Golden Retriever',  820.00, TRUE),
-    ('Daisy',    'cat', 'Siamese',           390.00, TRUE),
-    ('Milo',     'dog', 'Labrador',          710.00, TRUE)
-  ) AS v(name, species, breed_name, price, available)
-  WHERE NOT EXISTS (SELECT 1 FROM pet_store.pets LIMIT 1);
+  VALUES
+    ('Cat 1',    'cat',    'Siamese',          380.00, TRUE),
+    ('Cat 2',    'cat',    'Maine Coon',        450.00, TRUE),
+    ('Dog 1',    'dog',    'Golden Retriever',  800.00, TRUE),
+    ('Lion 1',   'lion',   'African Lion',     1500.00, FALSE),
+    ('Lion 2',   'lion',   'African Lion',     1500.00, TRUE),
+    ('Lion 3',   'lion',   'Barbary Lion',     1600.00, TRUE),
+    ('Rabbit 1', 'rabbit', 'Holland Lop',       150.00, TRUE);
 " 2>/dev/null || echo "pet_store schema setup skipped (will retry on next start)"
 
 

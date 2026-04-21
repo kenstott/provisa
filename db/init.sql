@@ -159,19 +159,15 @@ COMMENT ON TABLE pet_store.pets IS 'Available pets for sale';
 COMMENT ON COLUMN pet_store.pets.breed_name IS 'Breed name — joins to breed_info parquet source';
 COMMENT ON COLUMN pet_store.pets.available IS 'Whether the pet is currently available for adoption';
 
+-- Names match the petstore3 API default seed so JOIN on name works reliably.
 INSERT INTO pet_store.pets (name, species, breed_name, price, available) VALUES
-    ('Whiskers', 'cat', 'Maine Coon', 450.00, TRUE),
-    ('Mittens', 'cat', 'Siamese', 380.00, TRUE),
-    ('Shadow', 'cat', 'British Shorthair', 420.00, FALSE),
-    ('Luna', 'cat', 'Persian', 520.00, TRUE),
-    ('Oreo', 'cat', 'Maine Coon', 430.00, TRUE),
-    ('Buddy', 'dog', 'Golden Retriever', 800.00, TRUE),
-    ('Max', 'dog', 'Labrador', 750.00, FALSE),
-    ('Bella', 'dog', 'Beagle', 600.00, TRUE),
-    ('Charlie', 'dog', 'Poodle', 950.00, TRUE),
-    ('Rocky', 'dog', 'Golden Retriever', 820.00, TRUE),
-    ('Daisy', 'cat', 'Siamese', 390.00, TRUE),
-    ('Milo', 'dog', 'Labrador', 710.00, TRUE);
+    ('Cat 1',    'cat',    'Siamese',          380.00, TRUE),
+    ('Cat 2',    'cat',    'Maine Coon',        450.00, TRUE),
+    ('Dog 1',    'dog',    'Golden Retriever',  800.00, TRUE),
+    ('Lion 1',   'lion',   'African Lion',     1500.00, FALSE),
+    ('Lion 2',   'lion',   'African Lion',     1500.00, TRUE),
+    ('Lion 3',   'lion',   'Barbary Lion',     1600.00, TRUE),
+    ('Rabbit 1', 'rabbit', 'Holland Lop',       150.00, TRUE);
 
 -- Hello-world DB function: returns customers filtered by region.
 -- Exposed as the "hello_get_customers" tracked function in Provisa.

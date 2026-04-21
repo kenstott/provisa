@@ -20,6 +20,34 @@ log = logging.getLogger(__name__)
 def _normalize_op_id(s: str) -> str:
     return re.sub(r"[_-]", "", s).lower()
 
+
+def _default_params_from_spec(spec: dict, path: str) -> dict:
+    """Extract enum/default values for GET query params at path for pre-population."""
+    path_item = spec.get("paths", {}).get(path, {})
+    raw_params = list(path_item.get("parameters", []))
+    op = path_item.get("get", {})
+    if op:
+        raw_params = raw_params + list(op.get("parameters", []))
+    defaults: dict = {}
+    for p in raw_params:
+        if "$ref" in p:
+            ref_parts = p["$ref"].lstrip("#/").split("/")
+            node = spec
+            for part in ref_parts:
+                node = node.get(part, {})
+            p = node
+        if p.get("in") != "query":
+            continue
+        name = p.get("name", "")
+        if not name:
+            continue
+        schema = p.get("schema") or {}
+        if "enum" in schema:
+            defaults[name] = schema["enum"]
+        elif "default" in schema:
+            defaults[name] = schema["default"]
+    return defaults
+
 import asyncpg
 import trino
 import yaml
@@ -61,6 +89,9 @@ async def _load_config_in_txn(
     When replace=True, all existing sources/tables/domains/roles/relationships
     not present in the new config are deleted first (full replace semantics).
     """
+    # Serialize concurrent config loads to prevent deadlocks when multiple
+    # processes (e.g. parallel test app lifespans) upsert the same rows.
+    await conn.execute("SELECT pg_advisory_xact_lock(7261748190)")
     if replace:
         new_source_ids = [src.id for src in config.sources]
         new_domain_ids = [d.id for d in config.domains]
@@ -131,7 +162,7 @@ async def _load_config_in_txn(
         if src.type.value == "openapi" and src.path:
             try:
                 from provisa.openapi.loader import load_spec
-                openapi_specs[src.id] = load_spec(src.path)
+                openapi_specs[src.id] = load_spec(resolve_secrets(src.path))
             except Exception as _e:
                 log.warning("Failed to load OpenAPI spec for %s: %s", src.id, _e)
 
@@ -145,18 +176,21 @@ async def _load_config_in_txn(
             except Exception as _e:
                 log.warning("SQLite → PG migration failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e)
         elif src and src.type.value == "openapi" and src.base_url:
+            resolved_base_url = resolve_secrets(src.base_url)
             spec = openapi_specs.get(src.id, {})
             if spec:
+                import json as _json
                 from provisa.openapi.mapper import parse_spec
                 from provisa.openapi.pg_cache import cache_openapi_table
+                from provisa.openapi.register import _openapi_to_provisa_type, _schema_to_columns
                 queries, _ = parse_spec(spec)
                 match = next((q for q in queries if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)), None)
                 if match:
-                    default_params = {p["name"]: "" for p in match.query_params}
+                    default_params = _default_params_from_spec(spec, match.path)
                     fallback_cols = [(c.name, "TEXT") for c in tbl.columns] if tbl.columns else None
                     try:
                         await cache_openapi_table(
-                            src.base_url,
+                            resolved_base_url,
                             match.path,
                             default_params,
                             conn,
@@ -167,6 +201,54 @@ async def _load_config_in_txn(
                         )
                     except Exception as _e:
                         log.warning("OpenAPI cache failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e)
+                    # Register in api_sources + api_endpoints for runtime hydration
+                    try:
+                        await conn.execute(
+                            """
+                            INSERT INTO api_sources (id, type, base_url, auth)
+                            VALUES ($1, 'openapi', $2, $3)
+                            ON CONFLICT (id) DO UPDATE SET base_url = EXCLUDED.base_url
+                            """,
+                            src.id, resolved_base_url, None,
+                        )
+                        resp_col_names = {c["name"] for c in _schema_to_columns(match.response_schema)}
+                        api_columns = [
+                            {"name": c["name"], "type": c["type"], "filterable": True}
+                            for c in _schema_to_columns(match.response_schema)
+                        ]
+                        for p in match.path_params:
+                            api_columns.append({
+                                "name": p["name"],
+                                "type": _openapi_to_provisa_type(p.get("type")),
+                                "filterable": False,
+                                "param_type": "path",
+                                "param_name": p["name"],
+                            })
+                        for p in match.query_params:
+                            if p["name"] not in resp_col_names:
+                                api_columns.append({
+                                    "name": p["name"],
+                                    "type": _openapi_to_provisa_type(p.get("type")),
+                                    "filterable": False,
+                                    "param_type": "query",
+                                    "param_name": p["name"],
+                                })
+                        await conn.execute(
+                            """
+                            INSERT INTO api_endpoints
+                                (source_id, path, method, table_name, columns, ttl)
+                            VALUES ($1, $2, 'GET', $3, $4::jsonb, $5)
+                            ON CONFLICT (table_name) DO UPDATE SET
+                                source_id = EXCLUDED.source_id,
+                                path      = EXCLUDED.path,
+                                columns   = EXCLUDED.columns,
+                                ttl       = EXCLUDED.ttl
+                            """,
+                            src.id, match.path, tbl.table_name,
+                            _json.dumps(api_columns), src.cache_ttl or 300,
+                        )
+                    except Exception as _e:
+                        log.warning("api_endpoints registration failed for %s.%s: %s", src.id, tbl.table_name, _e)
                 else:
                     log.warning("No matching OpenAPI operation for table %s (source %s)", tbl.table_name, tbl.source_id)
 

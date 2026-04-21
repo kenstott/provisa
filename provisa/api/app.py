@@ -96,7 +96,7 @@ class AppState:
     pg_notify_tables: set[str] = set()  # table_names with pg_notify triggers installed
     table_watermarks: dict[str, str] = {}  # table_name → watermark_column (for polling fallback)
     _scheduler: object | None = None  # APScheduler instance for scheduled queries
-    global_naming_convention: str = "snake_case"  # runtime override; set via updateNamingConvention
+    global_naming_convention: str = "apollo_graphql"  # runtime override; set via updateNamingConvention
 
 
 state = AppState()
@@ -114,9 +114,12 @@ async def _load_and_build(config_path: str | None = None) -> None:
     pg_database = os.environ.get("PG_DATABASE", "provisa")
     pg_user = os.environ.get("PG_USER", "provisa")
     pg_password = os.environ.get("PG_PASSWORD", "provisa")
+    pg_pool_min = int(os.environ.get("PG_POOL_MIN", "2"))
+    pg_pool_max = int(os.environ.get("PG_POOL_MAX", "10"))
 
     state.pg_pool = await create_pool(
         pg_host, pg_port, pg_database, pg_user, pg_password,
+        min_size=pg_pool_min, max_size=pg_pool_max,
     )
 
     schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
@@ -396,10 +399,11 @@ async def _load_and_build(config_path: str | None = None) -> None:
         )
     from provisa.openapi.loader import load_spec
     from provisa.openapi.mapper import parse_spec as _parse_spec
+    from provisa.core.secrets import resolve_secrets as _resolve_secrets
     state.openapi_specs = {}
     for _row in openapi_rows:
         try:
-            _spec = load_spec(_row["path"])
+            _spec = load_spec(_resolve_secrets(_row["path"]))
             _servers = _spec.get("servers", [])
             _base_url = _servers[0].get("url", "") if _servers else ""
             state.openapi_specs[_row["id"]] = {
@@ -653,6 +657,27 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         state.api_endpoints, state.api_sources = await load_api_sources(
             conn, tables, col_types_converted, roles, state.source_types,
         )
+
+        # Background hydration for zero-param API endpoints (no path params → full collection known at startup)
+        _zero_param_eps = [
+            (ep, state.api_sources[ep.source_id])
+            for ep in state.api_endpoints.values()
+            if "{" not in ep.path and ep.source_id in state.api_sources
+        ]
+        if _zero_param_eps:
+            async def _bg_hydrate(eps=_zero_param_eps, pool=state.pg_pool):
+                from provisa.openapi.pg_cache import fill_api_table
+                async with pool.acquire() as _conn:
+                    for _ep, _src in eps:
+                        try:
+                            await fill_api_table(
+                                _src.base_url, _ep.path, {}, _conn,
+                                "default", _ep.table_name, _ep.ttl,
+                                _ep.response_root, _ep.error_path, _ep.pk_column,
+                            )
+                        except Exception as _e:
+                            log.warning("BG hydration failed for %s: %s", _ep.table_name, _e)
+            asyncio.create_task(_bg_hydrate())
 
         # Load RLS rules
         rls_rules = [

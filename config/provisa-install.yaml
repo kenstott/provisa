@@ -12,8 +12,8 @@ sources:
 
   - id: petstore-api
     type: openapi
-    path: https://petstore3.swagger.io/api/v3/openapi.json
-    base_url: https://petstore3.swagger.io/api/v3
+    path: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/openapi.json
+    base_url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}
     cache_ttl: 300
     auth_config:
       type: none
@@ -252,7 +252,7 @@ relationships:
     cardinality: one-to-many
     alias: HAS_INQUIRY
   - id: order-to-find-pets-by-status
-    source_table_id: get_order_by_id
+    source_table_id: order_by_id
     target_table_id: pet_by_status
     source_column: petId
     target_column: id
@@ -260,7 +260,7 @@ relationships:
     alias: FOR_PET
   - id: find-pets-by-status-to-get-pet-by-id
     source_table_id: pet_by_status
-    target_table_id: get_pet_by_id
+    target_table_id: pet_by_id
     source_column: id
     target_column: id
     cardinality: many-to-one
