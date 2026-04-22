@@ -36,7 +36,7 @@ async def client():
             yield c
 
 
-QUERY = json.dumps({"query": "{ sales_analytics__orders(limit: 3) { id amount } }", "role": "admin"})
+QUERY = json.dumps({"query": "{ sa__orders(limit: 3) { id amount } }", "role": "admin"})
 
 
 class TestJSONDefault:
@@ -49,7 +49,7 @@ class TestJSONDefault:
         assert resp.status_code == 200
         data = resp.json()
         assert "data" in data
-        assert "sales_analytics__orders" in data["data"]
+        assert "sa__orders" in data["data"]
 
 
 class TestNDJSON:

@@ -19,6 +19,26 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useEditorContext } from "@graphiql/react";
+import { lastQueryElapsedMs } from "../query-timing";
+import { setCurrentQueryStats, subscribeQueryStats, type QueryStats } from "../query-stats";
+
+type ViewMode = "json" | "table" | "stats";
+
+function MermaidDiagram({ chart }: { chart: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let cancelled = false;
+    import("mermaid").then((m) => {
+      if (cancelled || !ref.current) return;
+      m.default.initialize({ startOnLoad: false, theme: "dark" });
+      m.default.render("mermaid-dag", chart).then(({ svg }) => {
+        if (!cancelled && ref.current) ref.current.innerHTML = svg;
+      });
+    });
+    return () => { cancelled = true; };
+  }, [chart]);
+  return <div ref={ref} className="stats-mermaid" />;
+}
 
 function flattenObject(obj: Record<string, unknown>, prefix: string, out: Record<string, unknown>) {
   for (const [key, val] of Object.entries(obj)) {
@@ -27,6 +47,15 @@ function flattenObject(obj: Record<string, unknown>, prefix: string, out: Record
       flattenObject(val as Record<string, unknown>, fullKey, out);
     } else if (Array.isArray(val)) {
       out[fullKey] = JSON.stringify(val);
+    } else if (typeof val === "string" && val.startsWith("{") && val.endsWith("}")) {
+      try {
+        const parsed = JSON.parse(val);
+        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+          flattenObject(parsed as Record<string, unknown>, fullKey, out);
+          continue;
+        }
+      } catch { /* not JSON — treat as plain string */ }
+      out[fullKey] = val;
     } else {
       out[fullKey] = val;
     }
@@ -37,6 +66,59 @@ interface ParsedTable {
   key: string;
   columns: string[];
   rows: Record<string, unknown>[];
+  arrayColumns: string[];
+}
+
+function parseArrayLen(val: unknown): number {
+  if (!val || typeof val !== "string" || !val.startsWith("[")) return 0;
+  try { return (JSON.parse(val) as unknown[]).length; } catch { return 0; }
+}
+
+function normalizeForCsv(
+  rows: Record<string, unknown>[],
+  arrayColumns: string[],
+  columns: string[],
+): { normColumns: string[]; normRows: Record<string, unknown>[] } {
+  const nonArrayCols = columns.filter((c) => !arrayColumns.includes(c));
+  const normColSet = new Set<string>(nonArrayCols);
+  const normRows: Record<string, unknown>[] = [];
+
+  for (const row of rows) {
+    const base: Record<string, unknown> = {};
+    for (const c of nonArrayCols) base[c] = row[c];
+
+    let seeds: Record<string, unknown>[] = [base];
+    for (const col of arrayColumns) {
+      const raw = row[col];
+      let items: Record<string, unknown>[] = [];
+      if (raw && typeof raw === "string" && raw.startsWith("[")) {
+        try {
+          items = (JSON.parse(raw) as unknown[]).map((item) => {
+            const flat: Record<string, unknown> = {};
+            flattenObject(item as Record<string, unknown>, col, flat);
+            return flat;
+          });
+        } catch { /* leave items empty */ }
+      }
+      if (items.length === 0) continue;
+      for (const key of Object.keys(items[0] ?? {})) normColSet.add(key);
+      const next: Record<string, unknown>[] = [];
+      for (const seed of seeds) {
+        for (const item of items) next.push({ ...seed, ...item });
+      }
+      seeds = next;
+    }
+    normRows.push(...seeds);
+  }
+
+  return { normColumns: Array.from(normColSet), normRows };
+}
+
+function computeNormalizedRowCount(rows: Record<string, unknown>[], arrayColumns: string[]): number {
+  return rows.reduce((sum, row) => {
+    const product = arrayColumns.reduce((p, col) => p * Math.max(1, parseArrayLen(row[col])), 1);
+    return sum + product;
+  }, 0);
 }
 
 function parseResponse(text: string): ParsedTable[] {
@@ -53,7 +135,7 @@ function parseResponse(text: string): ParsedTable[] {
       if (rootVal === null) continue; // redirected field
       const items = Array.isArray(rootVal) ? rootVal : rootVal ? [rootVal] : [];
       if (items.length === 0) {
-        tables.push({ key: rootKey, columns: [], rows: [] });
+        tables.push({ key: rootKey, columns: [], rows: [], arrayColumns: [] });
         continue;
       }
 
@@ -68,7 +150,8 @@ function parseResponse(text: string): ParsedTable[] {
       const columns = Array.from(columnSet).filter(
         (col) => !Array.from(columnSet).some((other) => other.startsWith(col + "."))
       );
-      tables.push({ key: rootKey, columns, rows: allRows });
+      const arrayColumns = columns.filter((col) => allRows.some((r) => parseArrayLen(r[col]) > 0));
+      tables.push({ key: rootKey, columns, rows: allRows, arrayColumns });
     }
     return tables;
   } catch {
@@ -77,14 +160,21 @@ function parseResponse(text: string): ParsedTable[] {
 }
 
 export function ResponseTableOverlay() {
-  const [showTable, setShowTable] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("json");
+  const [queryStats, setQueryStats] = useState<QueryStats | null>(null);
   const [activeTab, setActiveTab] = useState(0);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [responseText, setResponseText] = useState("");
   const [copiedJson, setCopiedJson] = useState(false);
   const [copiedCsv, setCopiedCsv] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  const strippingRef = useRef(false);
+  const lastStrippedRef = useRef<string | null>(null);
   const editorContext = useEditorContext();
+
+  useEffect(() => subscribeQueryStats(setQueryStats), []);
 
   // Poll for response editor value since GraphiQL doesn't re-render on content change
   useEffect(() => {
@@ -92,22 +182,55 @@ export function ResponseTableOverlay() {
     if (!editor) return;
     setResponseText(editor.getValue() ?? "");
     const cm = (editor as unknown as { editor?: { on?: (event: string, cb: () => void) => void; off?: (event: string, cb: () => void) => void } }).editor;
-    const handler = () => setResponseText(editor.getValue() ?? "");
+    const applyStats = (text: string) => {
+      setElapsedMs(lastQueryElapsedMs);
+      try {
+        const parsed = JSON.parse(text);
+        const stats = parsed?.extensions?.provisa_stats ?? null;
+        setCurrentQueryStats(stats);
+        if (stats && parsed.extensions) {
+          const ext = { ...parsed.extensions };
+          delete ext.provisa_stats;
+          const stripped = Object.keys(ext).length === 0
+            ? (() => { const c = { ...parsed }; delete c.extensions; return c; })()
+            : { ...parsed, extensions: ext };
+          const strippedText = JSON.stringify(stripped, null, 2);
+          if (strippedText !== text) {
+            lastStrippedRef.current = strippedText;
+            strippingRef.current = true;
+            (editor as any).setValue?.(strippedText);
+            strippingRef.current = false;
+          }
+        }
+      } catch {
+        setCurrentQueryStats(null);
+      }
+    };
+    const handler = () => {
+      if (strippingRef.current) return;
+      const val = editor.getValue() ?? "";
+      setResponseText(val);
+      applyStats(val);
+    };
     if (cm?.on) {
       cm.on("change", handler);
       return () => cm.off?.("change", handler);
     }
     const interval = setInterval(() => {
       const val = editor.getValue() ?? "";
-      setResponseText((prev) => (prev !== val ? val : prev));
+      setResponseText((prev) => {
+        if (prev !== val && val !== lastStrippedRef.current) applyStats(val);
+        return prev !== val ? val : prev;
+      });
     }, 300);
     return () => clearInterval(interval);
   }, [editorContext.responseEditor]);
 
-  // Reset sort and tab when response changes
+  // Reset sort, tab, and expanded rows when response changes
   useEffect(() => {
     setSortCol(null);
     setActiveTab(0);
+    setExpandedRows(new Set());
   }, [responseText]);
 
   const tables = useMemo(() => parseResponse(responseText), [responseText]);
@@ -130,6 +253,14 @@ export function ResponseTableOverlay() {
         : String(bv).localeCompare(String(av));
     });
   }, [rows, sortCol, sortDir]);
+
+  const handleToggleRow = useCallback((i: number) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  }, []);
 
   const handleSort = useCallback((col: string) => {
     setSortCol((prev) => {
@@ -197,6 +328,33 @@ export function ResponseTableOverlay() {
     downloadFile(`${header}\n${body}`, filename, "text/csv");
   }, [currentTable, tables, downloadFile]);
 
+  const handleDownloadNormalizedCSV = useCallback(() => {
+    if (!currentTable || currentTable.columns.length === 0) return;
+    if (currentTable.arrayColumns.length === 0) return;
+    const count = computeNormalizedRowCount(currentTable.rows, currentTable.arrayColumns);
+    if (count > 10_000) {
+      const ok = window.confirm(
+        `Normalized export will produce ~${count.toLocaleString()} rows. Continue?`
+      );
+      if (!ok) return;
+    }
+    const escape = (v: unknown) => {
+      const s = v != null ? String(v) : "";
+      return s.includes(",") || s.includes('"') || s.includes("\n")
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
+    };
+    const { normColumns, normRows } = normalizeForCsv(
+      currentTable.rows,
+      currentTable.arrayColumns,
+      currentTable.columns,
+    );
+    const header = normColumns.map(escape).join(",");
+    const body = normRows.map((row) => normColumns.map((col) => escape(row[col])).join(",")).join("\n");
+    const basename = tables.length > 1 ? currentTable.key : "response";
+    downloadFile(`${header}\n${body}`, `${basename}.normalized.csv`, "text/csv");
+  }, [currentTable, tables, downloadFile]);
+
   const portalRef = useRef<HTMLElement | null>(null);
   const [portalReady, setPortalReady] = useState(false);
 
@@ -213,10 +371,12 @@ export function ResponseTableOverlay() {
     setPortalReady(true);
   }, []);
 
+  const overlayActive = (viewMode === "table" && hasData) || (viewMode === "stats" && queryStats != null);
+
   useEffect(() => {
     const responseSection = document.querySelector(".graphiql-response") as HTMLElement | null;
     if (!responseSection) return;
-    if (showTable && hasData) {
+    if (overlayActive) {
       responseSection.classList.add("response-table-active");
       let el: HTMLElement | null = responseSection.parentElement;
       while (el && !el.classList.contains("graphiql-container")) {
@@ -231,7 +391,7 @@ export function ResponseTableOverlay() {
         el = el.parentElement;
       }
     }
-  }, [showTable, hasData]);
+  }, [overlayActive]);
 
   if (!portalReady || !portalRef.current) return null;
 
@@ -239,21 +399,29 @@ export function ResponseTableOverlay() {
     <>
       <div className="response-view-toggle">
         <button
-          className={!showTable ? "active" : ""}
-          onClick={() => setShowTable(false)}
+          className={viewMode === "json" ? "active" : ""}
+          onClick={() => setViewMode("json")}
           title="JSON"
         >
           {"{ }"}
         </button>
         <button
-          className={showTable ? "active" : ""}
-          onClick={() => setShowTable(true)}
+          className={viewMode === "table" ? "active" : ""}
+          onClick={() => setViewMode("table")}
           disabled={!hasData}
           title="Table"
         >
           <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
             <path d="M0 2a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V2zm15 2h-4v3h4V4zm0 4h-4v3h4V8zm0 4h-4v3h3a1 1 0 0 0 1-1v-2zM10 4H6v3h4V4zm0 4H6v3h4V8zm0 4H6v3h4v-3zM5 4H1v3h4V4zm0 4H1v3h4V8zm0 4H1v2a1 1 0 0 0 1 1h3v-3z" />
           </svg>
+        </button>
+        <button
+          className={viewMode === "stats" ? "active" : ""}
+          onClick={() => setViewMode("stats")}
+          disabled={!queryStats}
+          title="Query Stats"
+        >
+          ⚡
         </button>
         <span className="response-toggle-separator" />
         <button
@@ -295,6 +463,17 @@ export function ResponseTableOverlay() {
           {" CSV"}
         </button>
         <button
+          onClick={handleDownloadNormalizedCSV}
+          disabled={!hasData || !currentTable?.arrayColumns.length}
+          title="Normalized CSV — arrays expanded into rows (cross-join if multiple arrays)"
+        >
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z" />
+            <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z" />
+          </svg>
+          {" CSV±"}
+        </button>
+        <button
           onClick={handleCopyCSV}
           disabled={!hasData}
           title="Copy CSV to clipboard"
@@ -311,7 +490,41 @@ export function ResponseTableOverlay() {
           )}
         </button>
       </div>
-      {showTable && hasData && (
+      {viewMode === "stats" && queryStats && (
+        <div className="response-table-overlay">
+          <div className="response-table-info">
+            Query Stats — {queryStats.total_elapsed_ms} ms total
+          </div>
+          {queryStats.mermaid && <MermaidDiagram chart={queryStats.mermaid} />}
+          <div className="response-table-scroll">
+            <table className="response-table">
+              <thead>
+                <tr>
+                  <th>field</th>
+                  <th>source</th>
+                  <th>strategy</th>
+                  <th>ms</th>
+                  <th>rows</th>
+                  <th>cache</th>
+                </tr>
+              </thead>
+              <tbody>
+                {queryStats.sources.map((s, i) => (
+                  <tr key={i}>
+                    <td>{s.field}</td>
+                    <td>{s.source}</td>
+                    <td>{s.strategy}</td>
+                    <td className="stats-num">{s.elapsed_ms}</td>
+                    <td className="stats-num">{s.rows}</td>
+                    <td>{s.cache_hit ? "✓" : ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+      {viewMode === "table" && hasData && (
         <div className="response-table-overlay">
           {tables.length > 1 && (
             <div className="response-table-tabs">
@@ -330,11 +543,15 @@ export function ResponseTableOverlay() {
           <div className="response-table-info">
             {rows.length} row{rows.length !== 1 ? "s" : ""}
             {tables.length === 1 && currentTable ? ` in ${currentTable.key}` : ""}
+            {elapsedMs !== null && (
+              <span className="response-table-elapsed"> · {Math.round(elapsedMs)} ms</span>
+            )}
           </div>
           <div className="response-table-scroll">
             <table className="response-table">
               <thead>
                 <tr>
+                  {currentTable?.arrayColumns.length ? <th style={{ width: 24 }} /> : null}
                   {columns.map((col) => (
                     <th
                       key={col}
@@ -352,15 +569,62 @@ export function ResponseTableOverlay() {
                 </tr>
               </thead>
               <tbody>
-                {sortedRows.map((row, i) => (
-                  <tr key={i}>
-                    {columns.map((col) => (
-                      <td key={col}>
-                        {row[col] != null ? String(row[col]) : ""}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                {sortedRows.map((row, i) => {
+                  const hasArrays = currentTable?.arrayColumns.length ? currentTable.arrayColumns.some((c) => parseArrayLen(row[c]) > 0) : false;
+                  const isExpanded = expandedRows.has(i);
+                  return (
+                    <>
+                      <tr key={i}>
+                        {currentTable?.arrayColumns.length ? (
+                          <td style={{ width: 24, cursor: hasArrays ? "pointer" : "default", textAlign: "center", userSelect: "none" }}
+                            onClick={() => hasArrays && handleToggleRow(i)}>
+                            {hasArrays ? (isExpanded ? "▼" : "▶") : ""}
+                          </td>
+                        ) : null}
+                        {columns.map((col) => {
+                          const len = parseArrayLen(row[col]);
+                          return (
+                            <td key={col}>
+                              {len > 0
+                                ? <span className="array-badge">[{len} item{len !== 1 ? "s" : ""}]</span>
+                                : row[col] != null ? String(row[col]) : ""}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                      {isExpanded && currentTable?.arrayColumns.map((col) => {
+                        const len = parseArrayLen(row[col]);
+                        if (!len) return null;
+                        let subItems: Record<string, unknown>[] = [];
+                        try { subItems = JSON.parse(row[col] as string) as Record<string, unknown>[]; } catch { return null; }
+                        const subColSet = new Set<string>();
+                        const subRows = subItems.map((item) => {
+                          const flat: Record<string, unknown> = {};
+                          flattenObject(item, "", flat);
+                          Object.keys(flat).forEach((k) => subColSet.add(k));
+                          return flat;
+                        });
+                        const subCols = Array.from(subColSet);
+                        return (
+                          <tr key={`${i}-${col}`}>
+                            <td />
+                            <td colSpan={columns.length} style={{ padding: "4px 8px 8px" }}>
+                              <div className="sub-table-label">{col}</div>
+                              <table className="response-table sub-table">
+                                <thead><tr>{subCols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+                                <tbody>
+                                  {subRows.map((sr, si) => (
+                                    <tr key={si}>{subCols.map((c) => <td key={c}>{sr[c] != null ? String(sr[c]) : ""}</td>)}</tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </>
+                  );
+                })}
               </tbody>
             </table>
           </div>

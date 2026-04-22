@@ -41,7 +41,7 @@ from graphql.language import DirectiveLocation
 from provisa.compiler.aggregate_gen import build_aggregate_types
 from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.naming import apply_convention, domain_gql_alias, domain_to_sql_name, generate_name, rel_field_name, to_type_name
+from provisa.compiler.naming import apply_convention, domain_gql_alias, domain_to_sql_name, generate_name, mutation_style, rel_field_name, to_type_name
 from provisa.compiler.type_map import FILTER_TYPE_MAP, JSONScalar, trino_to_graphql
 
 
@@ -58,7 +58,7 @@ class SchemaInput:
     source_types: dict[str, str] | None = None  # source_id → type (for mutation eligibility)
     domain_prefix: bool = False  # prepend domain_id__ to all names
     physical_table_map: dict[str, str] | None = None  # virtual → physical table name
-    naming_convention: str = "snake_case"  # none, snake_case, camelCase, PascalCase
+    naming_convention: str = "apollo_graphql"
     relay_pagination: bool = False  # global opt-in for _connection fields
     functions: list[dict] = field(default_factory=list)  # tracked DB functions
     webhooks: list[dict] = field(default_factory=list)  # tracked webhooks
@@ -82,7 +82,7 @@ class _TableInfo:
     native_filter_columns: list[dict] = field(default_factory=list)  # [{column_name, native_filter_type}]
     alias: str | None = None  # explicit GraphQL name override
     description: str | None = None  # GraphQL type/field description
-    naming_convention: str = "snake_case"  # resolved convention for this table
+    naming_convention: str = "apollo_graphql"  # resolved convention for this table
     relay_pagination: bool = False  # resolved relay flag for this table
     gql_fields: dict[str, GraphQLField] = field(default_factory=dict)
 
@@ -302,12 +302,13 @@ def _assign_names(
                 t.table_name, t.schema_name, t.source_id,
                 domain_table_names, naming_rules,
                 alias=t.alias,
+                convention=t.naming_convention,
             )
             if domain_prefix:
                 alias = (domain_alias_map or {}).get(domain_id)
                 if alias:
                     t.field_name = f"{alias}__{t.field_name}"
-                    t.type_name = f"{alias.upper()}_{to_type_name(t.field_name.split('__', 1)[1])}"
+                    t.type_name = f"{alias.upper()}__{to_type_name(t.field_name.split('__', 1)[1])}"
                 else:
                     domain_snake = domain_to_sql_name(domain_id)
                     t.field_name = f"{domain_snake}__{t.field_name}"
@@ -316,10 +317,40 @@ def _assign_names(
                 t.type_name = to_type_name(t.field_name)
 
 
+_OBJECT_FIELD_TYPE_MAP: dict[str, object] = {
+    "string": GraphQLString,
+    "integer": GraphQLInt,
+    "number": GraphQLFloat,
+    "boolean": GraphQLBoolean,
+}
+
+
+def _build_object_type(
+    col_name: str,
+    object_fields: list[dict],
+    convention: str,
+    registry: dict[str, GraphQLObjectType],
+) -> GraphQLObjectType:
+    """Build a GraphQLObjectType for an object column, reusing from registry by name."""
+    type_name = to_type_name(col_name) + "Object"
+    if type_name in registry:
+        return registry[type_name]
+    sub_fields: dict[str, GraphQLField] = {}
+    for sf in object_fields:
+        sf_name = sf["name"]
+        sf_alias = sf.get("alias") or apply_convention(sf_name, convention) or sf_name
+        sf_gql = _OBJECT_FIELD_TYPE_MAP.get(sf.get("type", "string"), GraphQLString)
+        sub_fields[sf_alias] = GraphQLField(sf_gql, description=sf.get("description"))
+    obj_type = GraphQLObjectType(type_name, lambda: sub_fields)
+    registry[type_name] = obj_type
+    return obj_type
+
+
 def _build_column_fields(
     table: _TableInfo,
-    convention: str = "snake_case",
+    convention: str = "apollo_graphql",
     enum_types: dict | None = None,
+    object_type_registry: dict[str, GraphQLObjectType] | None = None,
 ) -> dict[str, GraphQLField]:
     """Build GraphQL fields for visible columns.
 
@@ -328,6 +359,7 @@ def _build_column_fields(
     """
     fields: dict[str, GraphQLField] = {}
     _enums = enum_types or {}
+    _obj_registry: dict[str, GraphQLObjectType] = object_type_registry if object_type_registry is not None else {}
     for col in table.visible_columns:
         col_name = col["column_name"]
         meta = table.column_metadata.get(col_name.lower())
@@ -336,13 +368,17 @@ def _build_column_fields(
                 f"Registered column {col_name!r} on table {table.table_name!r} "
                 f"not found in Trino metadata."
             )
-        enum_gql = resolve_column_type(meta.data_type, _enums)
-        if enum_gql is not None:
-            gql_type = enum_gql if meta.is_nullable else GraphQLNonNull(enum_gql)
+        object_fields = col.get("object_fields")
+        if object_fields and meta.data_type in ("json", "jsonb"):
+            gql_type: object = _build_object_type(col_name, object_fields, convention, _obj_registry)
         else:
-            gql_type = trino_to_graphql(meta.data_type)
-            if not meta.is_nullable and not isinstance(gql_type, GraphQLList):
-                gql_type = GraphQLNonNull(gql_type)
+            enum_gql = resolve_column_type(meta.data_type, _enums)
+            if enum_gql is not None:
+                gql_type = enum_gql if meta.is_nullable else GraphQLNonNull(enum_gql)
+            else:
+                gql_type = trino_to_graphql(meta.data_type)
+                if not meta.is_nullable and not isinstance(gql_type, GraphQLList):
+                    gql_type = GraphQLNonNull(gql_type)
         # Naming priority: explicit alias > convention > raw name
         explicit_alias = col.get("alias")
         if explicit_alias:
@@ -473,18 +509,22 @@ _ACTION_SCALAR_MAP: dict[str, object] = {
 }
 
 
-def _mutation_name(op: str, field_name: str) -> str:
-    """Place operation prefix after domain when domain_prefix is used.
+def _mutation_name(op: str, field_name: str, convention: str = "apollo_graphql") -> str:
+    """Build mutation field name respecting the naming convention.
 
-    'insert' + 'customer_insights__customer_segments'
-        → 'customer_insights__insert_customer_segments'
-    'insert' + 'customer_segments'
-        → 'insert_customer_segments'
+    apollo_graphql: 'insert' + 'orders' → 'insertOrders'
+    snake/hasura_graphql: 'insert' + 'orders' → 'insert_orders'
+    Domain-prefixed: 'insert' + 'sa__orders' → 'sa__insertOrders' or 'sa__insert_orders'
     """
+    style = mutation_style(convention)
     if "__" in field_name:
         domain, table = field_name.split("__", 1)
-        return f"{domain}__{op}_{table}"
-    return f"{op}_{field_name}"
+        if style == "snake":
+            return f"{domain}__{op}_{table}"
+        return f"{domain}__{op}{table[0].upper()}{table[1:]}"
+    if style == "snake":
+        return f"{op}_{field_name}"
+    return f"{op}{field_name[0].upper()}{field_name[1:]}"
 
 
 def _json_schema_to_gql_type(schema: dict, type_name: str):
@@ -724,9 +764,15 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
     }
     _assign_names(tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map)
 
-    # Build base column fields (enum_types wires PG enum → GraphQLEnumType, REQ-221)
+    # Build base column fields — share object_type_registry so same-named object types are reused
+    _object_type_registry: dict[str, GraphQLObjectType] = {}
     for t in tables:
-        t.gql_fields = _build_column_fields(t, convention=t.naming_convention, enum_types=si.enum_types)
+        t.gql_fields = _build_column_fields(
+            t,
+            convention=t.naming_convention,
+            enum_types=si.enum_types,
+            object_type_registry=_object_type_registry,
+        )
 
     table_lookup: dict[int, _TableInfo] = {t.table_id: t for t in tables}
 
@@ -847,7 +893,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             args=args,
         )
 
-        # Aggregate field: <table>_aggregate
+        # Aggregate field: apollo_graphql → orderItemsAggregate; others → *_aggregate
         agg_type = build_aggregate_types(
             t.type_name, t.visible_columns, t.column_metadata, gql_type,
         )
@@ -856,7 +902,11 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             agg_where = _build_where_input(t, f"{t.type_name}Agg", enum_types=si.enum_types)
             if agg_where:
                 agg_args["where"] = GraphQLArgument(agg_where)
-            query_fields[f"{t.field_name}_aggregate"] = GraphQLField(
+            if si.naming_convention == "apollo_graphql":
+                agg_field_name = f"{t.field_name}Aggregate"
+            else:
+                agg_field_name = f"{t.field_name}_aggregate"
+            query_fields[agg_field_name] = GraphQLField(
                 agg_type,
                 args=agg_args,
             )
@@ -932,14 +982,15 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             {name: GraphQLEnumValue(name) for name in insert_fields},
         )
 
+        conv = t.naming_convention
         # insert_<table>(input: InsertInput!): MutationResponse!
-        mutation_fields[_mutation_name("insert", t.field_name)] = GraphQLField(
+        mutation_fields[_mutation_name("insert", t.field_name, conv)] = GraphQLField(
             GraphQLNonNull(response_type),
             args={"input": GraphQLArgument(GraphQLNonNull(insert_input))},
         )
 
         # upsert_<table>(input: InsertInput!, on_conflict: [ConflictColumn!]!): MutationResponse!
-        mutation_fields[_mutation_name("upsert", t.field_name)] = GraphQLField(
+        mutation_fields[_mutation_name("upsert", t.field_name, conv)] = GraphQLField(
             GraphQLNonNull(response_type),
             args={
                 "input": GraphQLArgument(GraphQLNonNull(insert_input)),
@@ -951,7 +1002,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
 
         # update_<table>(set: SetInput!, where: WhereInput!): MutationResponse!
         if where_input:
-            mutation_fields[_mutation_name("update", t.field_name)] = GraphQLField(
+            mutation_fields[_mutation_name("update", t.field_name, conv)] = GraphQLField(
                 GraphQLNonNull(response_type),
                 args={
                     "set": GraphQLArgument(GraphQLNonNull(set_input)),
@@ -960,7 +1011,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             )
 
             # delete_<table>(where: WhereInput!): MutationResponse!
-            mutation_fields[_mutation_name("delete", t.field_name)] = GraphQLField(
+            mutation_fields[_mutation_name("delete", t.field_name, conv)] = GraphQLField(
                 GraphQLNonNull(response_type),
                 args={"where": GraphQLArgument(GraphQLNonNull(where_input))},
             )

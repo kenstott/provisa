@@ -464,7 +464,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 if fv and fv not in self._cte_sources and fv in self._domain_nodes:
                     join_type = "LEFT" if clause.optional else "CROSS"
                     join_table = self._build_domain_union(fv, self._domain_nodes[fv])
-                    joins.append({"table": join_table, "on": None, "join_type": join_type})
+                    on_clause = exp.true() if join_type == "LEFT" else None
+                    joins.append({"table": join_table, "on": on_clause, "join_type": join_type})
                 elif fv and fv not in self._cte_sources and fv in self._var_table and self._var_table[fv][1]:
                     nm = self._var_table[fv][1]
                     join_type = "LEFT" if clause.optional else "CROSS"
@@ -476,7 +477,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         ),
                         alias=fv,
                     )
-                    joins.append({"table": join_table, "on": None, "join_type": join_type})
+                    on_clause = exp.true() if join_type == "LEFT" else None
+                    joins.append({"table": join_table, "on": on_clause, "join_type": join_type})
 
             # Process relationships → JOINs
             for i, rel in enumerate(rels):
@@ -702,10 +704,21 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         return from_expr, joins
 
 
+    def _rewrite_nf_props(self, text: str) -> str:
+        """Rewrite var.col or var."col" → var."_nf_col" for native filter columns."""
+        def _replace(m: re.Match) -> str:
+            var, col = m.group(1), m.group(2)
+            info = self._var_table.get(var)
+            if info and info[1] and col in info[1].native_filter_columns:
+                return f'{var}."_nf_{col}"'
+            return m.group(0)
+        # Match both quoted (var."col") and unquoted with optional spaces (var . col)
+        return re.sub(r'\b([A-Za-z_]\w*)\s*\.\s*"?([A-Za-z_]\w*)"?', _replace, text)
+
     def _build_where(self, where: WhereClause | None) -> exp.Expression | None:
         if where is None:
             return None
-        expr_text = self._rewrite_params_in_expr(where.expression)
+        expr_text = _rewrite_cypher_dquote_strings(self._rewrite_params_in_expr(where.expression))
         expr_text = self._rewrite_cte_vars(expr_text)
         expr_text = self._rewrite_map_projections(expr_text)
         expr_text = self._rewrite_graph_fns(expr_text)
@@ -713,6 +726,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         expr_text = rewrite_list_comprehensions(expr_text)
         expr_text = _rewrite_in_list(expr_text)
         expr_text = _rewrite_property_access(expr_text)
+        expr_text = self._rewrite_nf_props(expr_text)
         expr_text = _rewrite_string_predicates(expr_text)
         expr_text = _coerce_ts_literals(expr_text)
         expr_text = self._rewrite_subquery_exprs(expr_text)
@@ -1120,6 +1134,31 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
 
 def _is_bare_variable(expr: str) -> bool:
     return bool(re.match(r"^[A-Za-z_]\w*$", expr.strip()))
+
+
+_CYPHER_DQUOTE_RE = re.compile(r'"((?:[^"\\]|\\.)*)"')
+
+
+def _rewrite_cypher_dquote_strings(expr: str) -> str:
+    """Convert Cypher double-quoted string literals to SQL single-quoted literals.
+
+    Only converts strings not preceded by `.` (those are quoted identifiers, not literals).
+    Runs before _rewrite_property_access so no quoted identifiers exist yet.
+    """
+    result = []
+    pos = 0
+    for m in _CYPHER_DQUOTE_RE.finditer(expr):
+        start = m.start()
+        result.append(expr[pos:start])
+        # If preceded by `.`, it's a property name — leave as-is
+        if start > 0 and expr[start - 1] == ".":
+            result.append(m.group(0))
+        else:
+            inner = m.group(1).replace("'", "\\'")
+            result.append(f"'{inner}'")
+        pos = m.end()
+    result.append(expr[pos:])
+    return "".join(result)
 
 
 def _rewrite_property_access(expr: str) -> str:

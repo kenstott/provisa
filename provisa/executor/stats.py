@@ -1,0 +1,74 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4ecf03ff-c6d5-4527-8556-a887a9647739
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+
+"""Per-request query stats accumulator (opt-in via X-Provisa-Stats header)."""
+from __future__ import annotations
+
+from contextvars import ContextVar
+from dataclasses import dataclass, field as _field
+
+
+@dataclass
+class FieldStat:
+    field: str
+    source: str      # source_id, or "cache"
+    strategy: str    # "direct:postgresql", "federated:sqlite", "api:openapi", "api:dataloader", "cache"
+    elapsed_ms: float
+    rows: int
+    cache_hit: bool = False
+
+
+@dataclass
+class QueryStats:
+    entries: list[FieldStat] = _field(default_factory=list)
+    mermaid: str | None = None
+    wall_ms: float | None = None  # true end-to-end wall-clock set by caller
+
+    def record(self, *, field: str, source: str, strategy: str, elapsed_ms: float, rows: int, cache_hit: bool = False) -> None:
+        self.entries.append(FieldStat(field=field, source=source, strategy=strategy, elapsed_ms=elapsed_ms, rows=rows, cache_hit=cache_hit))
+
+    def to_dict(self) -> dict:
+        if self.wall_ms is not None:
+            total = self.wall_ms
+        else:
+            # Fallback: max elapsed across all entries
+            total = max((e.elapsed_ms for e in self.entries), default=0.0)
+        result: dict = {
+            "total_elapsed_ms": round(total, 1),
+            "sources": [
+                {
+                    "field": e.field,
+                    "source": e.source,
+                    "strategy": e.strategy,
+                    "elapsed_ms": round(e.elapsed_ms, 1),
+                    "rows": e.rows,
+                    **({"cache_hit": True} if e.cache_hit else {}),
+                }
+                for e in self.entries
+            ],
+        }
+        if self.mermaid:
+            result["mermaid"] = self.mermaid
+        return result
+
+
+_ctx: ContextVar[QueryStats | None] = ContextVar("provisa_query_stats", default=None)
+
+
+def begin() -> QueryStats:
+    s = QueryStats()
+    _ctx.set(s)
+    return s
+
+
+def current() -> QueryStats | None:
+    return _ctx.get()
+
+
+def record(**kwargs) -> None:
+    s = _ctx.get()
+    if s is not None:
+        s.record(**kwargs)

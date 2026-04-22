@@ -54,9 +54,17 @@ function SqlPanel({ compiled, hideSql }: { compiled: CompileResult; hideSql?: bo
     });
   }, [formatted]);
 
+  const isCasingOnly = (a: string, b: string) =>
+    a.toLowerCase().replace(/_/g, "") === b.toLowerCase().replace(/_/g, "");
+
   const isAliased = compiled.root_field && compiled.canonical_field &&
     compiled.root_field !== compiled.canonical_field;
+  const isSignificantAlias = isAliased &&
+    !isCasingOnly(compiled.root_field, compiled.canonical_field);
   const hasColumnAliases = compiled.column_aliases?.length > 0;
+  const hasSignificantColumnAliases = compiled.column_aliases?.some(
+    (a: { column: string; field_name: string }) => !isCasingOnly(a.column, a.field_name)
+  ) ?? false;
 
   return (
     <div className="provisa-tools-sql">
@@ -69,9 +77,9 @@ function SqlPanel({ compiled, hideSql }: { compiled: CompileResult; hideSql?: bo
             )}
           </div>
         )}
-        {(isAliased || hasColumnAliases) && (
+        {(isSignificantAlias || hasSignificantColumnAliases) && (
           <div className="provisa-tools-alias-warn">
-            Warning: alias adds semantic complexity — not recommended for sanctioned queries.
+            Warning: alias adds semantic complexity — not recommended for approved queries.
           </div>
         )}
         {hasColumnAliases && (
@@ -210,6 +218,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [cypherQuery, setCypherQuery] = useState("");
+  const [cypherCopied, setCypherCopied] = useState(false);
 
   // Submission metadata
   const [showSubmitForm, setShowSubmitForm] = useState(false);
@@ -593,7 +602,31 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
             onClick={() => setCypherExpanded(v => !v)}
           >
             <span className="provisa-tools-label">Cypher</span>
-            <span className="provisa-tools-chevron">{cypherExpanded ? "▾" : "▸"}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+              <button
+                className="provisa-tools-copy"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigator.clipboard.writeText(cypherQuery).then(() => {
+                    setCypherCopied(true);
+                    setTimeout(() => setCypherCopied(false), 2000);
+                  });
+                }}
+                title="Copy Cypher"
+              >
+                {cypherCopied ? (
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                )}
+              </button>
+              <span className="provisa-tools-chevron">{cypherExpanded ? "▾" : "▸"}</span>
+            </span>
           </div>
           {cypherExpanded && (
             <CodeMirror

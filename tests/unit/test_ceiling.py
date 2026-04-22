@@ -34,7 +34,7 @@ class TestCeiling:
 
     def test_extra_nested_field_rejected(self):
         with pytest.raises(CeilingViolationError, match="name"):
-            check_ceiling(APPROVED, "{ orders { id customers { name } } }")
+            check_ceiling(APPROVED, "{ orders { id customer { name } } }")
 
     def test_additional_filter_passes(self):
         """Client can add WHERE filters (restricting within ceiling)."""

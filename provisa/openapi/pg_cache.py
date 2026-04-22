@@ -10,11 +10,16 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import time as _time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import asyncpg
 import httpx
+
+# In-memory freshness guard: (schema, table, phash) → monotonic expiry.
+# Avoids a PG round-trip on cache hits.
+_mem_fresh: dict[tuple[str, str, str], float] = {}
 
 log = logging.getLogger(__name__)
 
@@ -36,6 +41,11 @@ _META_COLS = [("_params_hash", "TEXT"), ("_cached_at", "TIMESTAMPTZ")]
 
 def _hash_params(params: dict) -> str:
     return hashlib.sha256(json.dumps(params, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def is_mem_fresh(pg_schema: str, pg_table: str, params: dict) -> bool:
+    """Synchronous in-memory-only freshness check — no PG round-trip."""
+    return _mem_fresh.get((pg_schema, pg_table, _hash_params(params)), 0) > _time.monotonic()
 
 
 def _schema_to_pg_cols(schema: dict | None) -> list[tuple[str, str]]:
@@ -135,6 +145,15 @@ async def _upsert_rows(
     return len(data_rows)
 
 
+def _mark_fresh(pg_schema: str, pg_table: str, phash: str, ttl: int) -> None:
+    now = _time.monotonic()
+    _mem_fresh[(pg_schema, pg_table, phash)] = now + ttl
+    # Evict expired entries to prevent unbounded growth
+    expired = [k for k, exp in _mem_fresh.items() if exp <= now]
+    for k in expired:
+        del _mem_fresh[k]
+
+
 async def _is_fresh(
     pg_conn: asyncpg.Connection,
     pg_schema: str,
@@ -142,6 +161,8 @@ async def _is_fresh(
     phash: str,
     ttl: int,
 ) -> bool:
+    if _mem_fresh.get((pg_schema, pg_table, phash), 0) > _time.monotonic():
+        return True
     try:
         cached_at = await pg_conn.fetchval(
             f'SELECT _cached_at FROM "{pg_schema}"."{pg_table}" WHERE _params_hash = $1 LIMIT 1',
@@ -151,7 +172,10 @@ async def _is_fresh(
         return False
     if cached_at is None:
         return False
-    return datetime.now(UTC) - cached_at.replace(tzinfo=UTC) < timedelta(seconds=ttl)
+    fresh = datetime.now(UTC) - cached_at.replace(tzinfo=UTC) < timedelta(seconds=ttl)
+    if fresh:
+        _mark_fresh(pg_schema, pg_table, phash, ttl)
+    return fresh
 
 
 async def cache_openapi_table(
@@ -187,7 +211,10 @@ async def cache_openapi_table(
             r.raise_for_status()
             rows = _normalize_rows(r.json())
         except Exception as exc:
-            log.warning("OpenAPI fetch failed for %s: %s — creating empty table", url, exc)
+            _is_client_err = hasattr(exc, "response") and 400 <= exc.response.status_code < 500
+            (_log := log.debug if _is_client_err else log.warning)(
+                "OpenAPI fetch failed for %s: %s — creating empty table", url, exc
+            )
 
     all_cols = entity_cols + _META_COLS
     col_defs = ", ".join(f'"{name}" {pg_type}' for name, pg_type in all_cols)
@@ -241,7 +268,10 @@ async def fill_api_table(
             return 0
         rows = _normalize_rows(data, response_root)
     except Exception as exc:
-        log.warning("fill_api_table fetch failed for %s: %s", url, exc)
+        _is_client_err = hasattr(exc, "response") and 400 <= exc.response.status_code < 500
+        (_log := log.debug if _is_client_err else log.warning)(
+            "fill_api_table fetch failed for %s: %s", url, exc
+        )
         return 0
 
     if not rows:
@@ -269,6 +299,7 @@ async def fill_api_table(
             f'DELETE FROM "{pg_schema}"."{pg_table}" WHERE _params_hash = $1', phash
         )
         n = await _insert_rows(pg_conn, pg_schema, pg_table, col_names, rows, phash, text_cols)
+    _mark_fresh(pg_schema, pg_table, phash, ttl)
     log.info("fill_api_table %s → PG %s.%s (%d rows, hash=%s)", path, pg_schema, pg_table, n, phash)
     return n
 
@@ -324,5 +355,6 @@ async def fetch_pk_row(
     )
     col_names = list(rows[0].keys())
     n = await _insert_rows(pg_conn, pg_schema, pg_table, col_names, rows, phash)
+    _mark_fresh(pg_schema, pg_table, phash, ttl)
     log.info("fetch_pk_row %s pk=%s → PG %s.%s (%d rows, hash=%s)", path_template, pk, pg_schema, pg_table, n, phash)
     return n

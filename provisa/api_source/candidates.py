@@ -95,23 +95,27 @@ async def accept_candidate(
     columns = row["columns"]
     ttl = overrides.get("ttl", 300)
     response_root = overrides.get("response_root")
+    error_path = overrides.get("error_path")
+    pk_column = overrides.get("pk_column")
 
     # Insert or update endpoint
     ep_row = await conn.fetchrow(
         """
-        INSERT INTO api_endpoints (source_id, path, method, table_name, columns, ttl, response_root)
-        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+        INSERT INTO api_endpoints (source_id, path, method, table_name, columns, ttl, response_root, error_path, pk_column)
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8, $9)
         ON CONFLICT (table_name) DO UPDATE
             SET source_id = EXCLUDED.source_id,
                 path = EXCLUDED.path,
                 method = EXCLUDED.method,
                 columns = EXCLUDED.columns,
                 ttl = EXCLUDED.ttl,
-                response_root = EXCLUDED.response_root
+                response_root = EXCLUDED.response_root,
+                error_path = EXCLUDED.error_path,
+                pk_column = EXCLUDED.pk_column
         RETURNING id
         """,
         row["source_id"], row["path"], row["method"],
-        table_name, columns, ttl, response_root,
+        table_name, columns, ttl, response_root, error_path, pk_column,
     )
 
     # Update candidate status
@@ -131,6 +135,8 @@ async def accept_candidate(
         columns=columns_parsed,
         ttl=ttl,
         response_root=response_root,
+        error_path=error_path,
+        pk_column=pk_column,
     )
 
 

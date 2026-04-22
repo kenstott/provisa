@@ -661,7 +661,7 @@ export async function executeQuery(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Role": roleId,
+      "X-Provisa-Role": roleId,
     },
     body: JSON.stringify({ query, variables }),
   });

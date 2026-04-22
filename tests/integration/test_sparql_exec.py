@@ -238,6 +238,8 @@ class TestInferColumns:
 
 @pytest.mark.requires_sparql
 class TestLiveSparqlExecution:
+    pytestmark = [pytest.mark.requires_sparql]
+
     """Require Docker Compose fuseki service:
         docker compose up fuseki
     """

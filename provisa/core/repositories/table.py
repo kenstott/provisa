@@ -47,13 +47,17 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
     # Replace columns: delete existing, insert new
     await conn.execute("DELETE FROM table_columns WHERE table_id = $1", table_id)
     for col in table.columns:
+        object_fields_raw = getattr(col, "object_fields", [])
+        object_fields_json = json.dumps(
+            [f.model_dump() if hasattr(f, "model_dump") else f for f in object_fields_raw]
+        )
         await conn.execute(
             """
             INSERT INTO table_columns (table_id, column_name, visible_to, writable_by, unmasked_to,
                 mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
                 alias, description, path, native_filter_type, is_primary_key,
-                is_foreign_key, is_alternate_key)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+                is_foreign_key, is_alternate_key, object_fields)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb)
             """,
             table_id,
             col.name,
@@ -72,6 +76,7 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
             getattr(col, "is_primary_key", False),
             getattr(col, "is_foreign_key", False),
             getattr(col, "is_alternate_key", False),
+            object_fields_json,
         )
     return table_id
 
@@ -82,7 +87,7 @@ async def get(conn: asyncpg.Connection, table_id: int) -> dict | None:
         return None
     result = dict(row)
     cols = await conn.fetch(
-        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key FROM table_columns WHERE table_id = $1 ORDER BY id",
+        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields FROM table_columns WHERE table_id = $1 ORDER BY id",
         table_id,
     )
     result["columns"] = [dict(c) for c in cols]
@@ -105,7 +110,7 @@ async def get_by_name(
         return None
     result = dict(row)
     cols = await conn.fetch(
-        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key FROM table_columns WHERE table_id = $1 ORDER BY id",
+        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields FROM table_columns WHERE table_id = $1 ORDER BY id",
         result["id"],
     )
     result["columns"] = [dict(c) for c in cols]
@@ -139,7 +144,7 @@ async def list_all(conn: asyncpg.Connection) -> list[dict]:
     for row in rows:
         r = dict(row)
         cols = await conn.fetch(
-            "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key FROM table_columns WHERE table_id = $1 ORDER BY id",
+            "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields FROM table_columns WHERE table_id = $1 ORDER BY id",
             r["id"],
         )
         r["columns"] = [dict(c) for c in cols]

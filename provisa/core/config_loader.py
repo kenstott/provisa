@@ -213,7 +213,12 @@ async def _load_config_in_txn(
                         )
                         resp_col_names = {c["name"] for c in _schema_to_columns(match.response_schema)}
                         api_columns = [
-                            {"name": c["name"], "type": c["type"], "filterable": True}
+                            {
+                                "name": c["name"],
+                                "type": c["type"],
+                                "filterable": True,
+                                **({"object_fields": c["object_fields"]} if c.get("object_fields") else {}),
+                            }
                             for c in _schema_to_columns(match.response_schema)
                         ]
                         for p in match.path_params:
@@ -249,6 +254,20 @@ async def _load_config_in_txn(
                             _json.dumps(api_columns), src.cache_ttl or 300,
                             _json.dumps(default_params) if default_params else None,
                         )
+                        # Backfill object_fields into table_columns — YAML columns don't carry them
+                        for col_data in api_columns:
+                            if col_data.get("object_fields"):
+                                await conn.execute(
+                                    """UPDATE table_columns tc
+                                       SET object_fields = $1::jsonb
+                                       FROM registered_tables rt
+                                       WHERE tc.table_id = rt.id
+                                         AND rt.source_id = $2
+                                         AND rt.table_name = $3
+                                         AND tc.column_name = $4""",
+                                    _json.dumps(col_data["object_fields"]),
+                                    tbl.source_id, tbl.table_name, col_data["name"],
+                                )
                     except Exception as _e:
                         log.warning("api_endpoints registration failed for %s.%s: %s", src.id, tbl.table_name, _e)
                 else:

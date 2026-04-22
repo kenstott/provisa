@@ -24,7 +24,7 @@ from provisa.api.admin.schema import _derive_graphql_alias
     # many-to-one: singular
     ("customer", "many-to-one", None, "customer"),
     ("order", "many-to-one", None, "order"),
-    ("ProductCategory", "many-to-one", None, "productcategory"),  # no split on PascalCase without _
+    ("ProductCategory", "many-to-one", None, "productCategory"),  # PascalCase normalized to snake then compound-noun rule
     ("product_category", "many-to-one", None, "productCategory"),
     # empty target
     ("", "one-to-many", None, None),

@@ -28,6 +28,19 @@ from provisa.api_source.schema_integration import register_api_columns
 from provisa.compiler.introspect import ColumnMetadata
 
 
+def _resolve_param_type(c: dict) -> str | None:
+    """Read param_type from either 'param_type' or 'native_filter_type' key."""
+    pt = c.get("param_type")
+    if pt is not None:
+        return pt
+    nft = c.get("native_filter_type")
+    if nft == "path_param":
+        return "path"
+    if nft == "query_param":
+        return "query"
+    return None
+
+
 async def load_api_sources(
     conn: asyncpg.Connection,
     tables: list[dict],
@@ -68,8 +81,9 @@ async def load_api_sources(
                 name=c["name"],
                 type=ApiColumnType(c.get("type", "string")),
                 filterable=c.get("filterable", True),
-                param_type=c.get("param_type"),
+                param_type=_resolve_param_type(c),
                 param_name=c.get("param_name"),
+                object_fields=c.get("object_fields", []),
             )
             for c in cols_raw
         ]
@@ -102,9 +116,12 @@ async def load_api_sources(
 
     if api_endpoint_list:
         role_ids = [r["id"] for r in roles]
-        register_api_columns(
-            tables, col_types, api_endpoint_list,
-            domain_id="api", role_ids=role_ids,
-        )
+        registered_source_ids = {t["source_id"] for t in tables if t.get("source_id")}
+        unregistered = [ep for ep in api_endpoint_list if ep.source_id not in registered_source_ids]
+        if unregistered:
+            register_api_columns(
+                tables, col_types, unregistered,
+                domain_id="api", role_ids=role_ids,
+            )
 
     return api_endpoints, api_sources

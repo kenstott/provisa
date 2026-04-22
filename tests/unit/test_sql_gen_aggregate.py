@@ -96,6 +96,7 @@ def _build_schema_and_ctx(
         naming_rules=naming_rules or [],
         role=role,
         domains=domains,
+        naming_convention="snake",
     )
     schema = generate_schema(si)
     ctx = build_context(si)
@@ -240,6 +241,7 @@ class TestAggregate:
             naming_rules=[],
             role={"id": "limited", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
+            naming_convention="snake",
         )
         schema = generate_schema(si)
         agg_type = schema.query_type.fields["orders_aggregate"].type
@@ -287,6 +289,7 @@ class TestAggregate:
             naming_rules=[],
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
+            naming_convention="snake",
         )
         schema = generate_schema(si)
         agg_type = schema.query_type.fields["tags_aggregate"].type
@@ -378,6 +381,7 @@ class TestAggregate:
             naming_rules=[],
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
+            naming_convention="snake",
         )
         schema = generate_schema(si)
         agg_type = schema.query_type.fields["orders_aggregate"].type
@@ -465,6 +469,7 @@ class TestAggregate:
             naming_rules=[],
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
+            naming_convention="snake",
         )
         schema_admin = generate_schema(si_admin)
         agg_admin = schema_admin.query_type.fields["orders_aggregate"].type
@@ -479,6 +484,7 @@ class TestAggregate:
             naming_rules=[],
             role={"id": "analyst", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
+            naming_convention="snake",
         )
         schema_analyst = generate_schema(si_analyst)
         agg_analyst = schema_analyst.query_type.fields["orders_aggregate"].type

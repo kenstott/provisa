@@ -44,7 +44,7 @@ from provisa.core.config_loader import parse_config_dict
 # ---------------------------------------------------------------------------
 
 def _minimal_config_dict(
-    convention: str = "snake_case",
+    convention: str = "snake",
     domain_prefix: bool = False,
 ) -> dict:
     return {
@@ -78,7 +78,7 @@ def _col(name: str, data_type: str = "integer", nullable: bool = False) -> Colum
     return ColumnMetadata(column_name=name, data_type=data_type, is_nullable=nullable)
 
 
-def _make_schema_input(convention: str = "snake_case", domain_prefix: bool = False) -> SchemaInput:
+def _make_schema_input(convention: str = "snake", domain_prefix: bool = False) -> SchemaInput:
     """Build a SchemaInput that mirrors what _load_and_build assembles at runtime."""
     return SchemaInput(
         tables=[{
@@ -148,23 +148,21 @@ def _make_schema_input(convention: str = "snake_case", domain_prefix: bool = Fal
 class TestNamingConventionTriggersRebuild:
     """Changing the naming convention in config must produce a different schema."""
 
-    def test_snake_case_field_name_unchanged(self):
-        si = _make_schema_input(convention="snake_case")
+    def test_snake_field_name_unchanged(self):
+        si = _make_schema_input(convention="snake")
         schema = generate_schema(si)
         query_type = schema.query_type
         assert "order_items" in query_type.fields
 
-    def test_camel_case_convention_renames_fields(self):
-        si = _make_schema_input(convention="camelCase")
+    def test_apollo_graphql_convention_renames_fields(self):
+        si = _make_schema_input(convention="apollo_graphql")
         schema = generate_schema(si)
         query_type = schema.query_type
-        # With camelCase, the column "total_amount" should become "totalAmount"
-        # The table name itself stays snake since it's a GQL identifier (unchanged in short form)
-        assert schema is not None
+        assert "orderItems" in query_type.fields
 
     def test_snake_and_camel_schemas_differ_on_column_fields(self):
-        snake_si = _make_schema_input(convention="snake_case")
-        camel_si = _make_schema_input(convention="camelCase")
+        snake_si = _make_schema_input(convention="snake")
+        camel_si = _make_schema_input(convention="apollo_graphql")
         snake_schema = generate_schema(snake_si)
         camel_schema = generate_schema(camel_si)
 
@@ -176,12 +174,12 @@ class TestNamingConventionTriggersRebuild:
             return t
 
         snake_type = _unwrap(snake_schema.query_type.fields["order_items"])
-        camel_type = _unwrap(camel_schema.query_type.fields["order_items"])
+        camel_type = _unwrap(camel_schema.query_type.fields["orderItems"])
 
         snake_cols = set(snake_type.fields.keys())
         camel_cols = set(camel_type.fields.keys())
 
-        # snake_case: total_amount; camelCase: totalAmount
+        # snake: total_amount; apollo_graphql: totalAmount
         assert "total_amount" in snake_cols
         assert "totalAmount" in camel_cols
         assert snake_cols != camel_cols
@@ -216,18 +214,18 @@ class TestNamingConventionTriggersRebuild:
                 t = t.of_type
             return t
 
-        si_v1 = _make_schema_input(convention="snake_case")
-        si_v2 = _make_schema_input(convention="PascalCase")
+        si_v1 = _make_schema_input(convention="snake")
+        si_v2 = _make_schema_input(convention="apollo_graphql")
 
         schema_v1 = generate_schema(si_v1)
         schema_v2 = generate_schema(si_v2)
 
         type_v1 = _unwrap(schema_v1.query_type.fields["order_items"])
-        type_v2 = _unwrap(schema_v2.query_type.fields["order_items"])
+        type_v2 = _unwrap(schema_v2.query_type.fields["orderItems"])
 
-        # PascalCase: total_amount → TotalAmount
+        # snake: total_amount; apollo_graphql: totalAmount
         assert "total_amount" in type_v1.fields
-        assert "TotalAmount" in type_v2.fields
+        assert "totalAmount" in type_v2.fields
 
 
 # ---------------------------------------------------------------------------
@@ -276,10 +274,10 @@ class TestAtomicConfigUpdate:
 
     def test_two_successive_valid_reloads_both_succeed(self):
         """Each parse_config_dict call is independent and idempotent."""
-        c1 = parse_config_dict(_minimal_config_dict(convention="snake_case"))
-        c2 = parse_config_dict(_minimal_config_dict(convention="camelCase"))
-        assert c1.naming.convention == "snake_case"
-        assert c2.naming.convention == "camelCase"
+        c1 = parse_config_dict(_minimal_config_dict(convention="snake"))
+        c2 = parse_config_dict(_minimal_config_dict(convention="apollo_graphql"))
+        assert c1.naming.convention == "snake"
+        assert c2.naming.convention == "apollo_graphql"
 
     def test_invalid_role_capability_raises_atomically(self):
         bad = _minimal_config_dict()
@@ -311,7 +309,7 @@ class TestRollbackOnValidationFailure:
                 t = t.of_type
             return t
 
-        si = _make_schema_input(convention="snake_case")
+        si = _make_schema_input(convention="snake")
         prior_schema = generate_schema(si)
 
         # Simulate a failed reload — bad config never produces a schema
@@ -336,22 +334,21 @@ class TestRollbackOnValidationFailure:
 
     def test_valid_then_invalid_then_valid_reload(self):
         """Three reloads: good → bad (rollback) → good again succeeds."""
-        c1 = parse_config_dict(_minimal_config_dict(convention="snake_case"))
-        assert c1.naming.convention == "snake_case"
+        c1 = parse_config_dict(_minimal_config_dict(convention="snake"))
+        assert c1.naming.convention == "snake"
 
         with pytest.raises(ValidationError):
             parse_config_dict({})  # empty dict is invalid
 
-        c3 = parse_config_dict(_minimal_config_dict(convention="camelCase"))
-        assert c3.naming.convention == "camelCase"
+        c3 = parse_config_dict(_minimal_config_dict(convention="apollo_graphql"))
+        assert c3.naming.convention == "apollo_graphql"
 
     def test_naming_validation_rejects_unknown_convention(self):
-        """NamingConfig.convention is a plain str — unknown values parse but schema gen
-        falls through to no-op aliases. Verify the schema still builds correctly."""
-        si = _make_schema_input(convention="unknown_convention")
-        schema = generate_schema(si)
-        # Schema still generates successfully; unknown convention has no effect
-        assert "order_items" in schema.query_type.fields
+        """NamingConfig rejects unknown convention values at parse time."""
+        from provisa.core.models import NamingConfig
+        from pydantic import ValidationError as PydanticValidationError
+        with pytest.raises(PydanticValidationError):
+            NamingConfig(convention="unknown_convention")
 
     def test_generate_schema_raises_when_no_tables_visible(self):
         """generate_schema raises ValueError when no tables are visible to the role —

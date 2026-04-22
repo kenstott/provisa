@@ -44,19 +44,19 @@ class TestInlineResults:
         """Small results always return inline JSON."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders(limit: 3) { id amount } }", "role": "admin"},
+            json={"query": "{ sa__orders(limit: 3) { id amount } }", "role": "admin"},
         )
         assert resp.status_code == 200
         data = resp.json()
         assert "data" in data
         assert "redirect" not in data
-        assert len(data["data"]["sales_analytics__orders"]) <= 3
+        assert len(data["data"]["sa__orders"]) <= 3
 
     async def test_all_results_inline_when_disabled(self, client):
         """With redirect disabled, all results are inline regardless of size."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id } }", "role": "admin"},
+            json={"query": "{ sa__orders { id } }", "role": "admin"},
         )
         assert resp.status_code == 200
         data = resp.json()

@@ -7,77 +7,19 @@ sources:
     database: provisa
     username: provisa
     password: ${env:PG_PASSWORD:-provisa}
-  - id: analytics-pg
-    type: postgresql
-    host: ${env:POSTGRES_HOST:-postgres}
-    port: 5432
-    database: provisa
-    username: provisa
-    password: ${env:PG_PASSWORD:-provisa}
-  - id: reviews-mongo
-    type: mongodb
-    host: ${env:MONGODB_HOST:-mongodb}
-    port: 27017
-    database: provisa
-    username: ""
-    password: ""
-
-  - id: support-kafka
+  - id: kafka-support
     type: kafka
-    host: ${env:KAFKA_HOST:-localhost}
-    port: 29092
-    database: default
-    username: ""
-    password: ""
-
-  # File-based sources (Issue #27)
-  - id: demo-customers-csv
-    type: csv
-    path: ./demo/files/customers.csv
-
-  - id: demo-products-parquet
-    type: parquet
-    path: ./demo/files/products.parquet
-
-  - id: demo-orders-sqlite
-    type: sqlite
-    path: ./demo/files/orders.sqlite
-
-  # Pet store: three department-owned data stores federated by Provisa
-  - id: pet-store-pg
-    type: postgresql
-    host: ${env:POSTGRES_HOST:-postgres}
-    port: 5432
-    database: provisa
-    username: provisa
-    password: ${env:PG_PASSWORD:-provisa}
-
-  - id: petstore-api
-    type: openapi
-    path: https://petstore3.swagger.io/api/v3/openapi.json
-    base_url: https://petstore3.swagger.io/api/v3
-    cache_ttl: 300
-    auth_config:
-      type: none
-
-  - id: inquiries-sqlite
-    type: sqlite
-    path: ./demo/files/inquiries.sqlite
+    host: ${env:KAFKA_HOST:-kafka}
+    port: 9092
 
 domains:
   - id: sales-analytics
     description: Sales operational and analytical data
   - id: product-catalog
     description: Product catalog data
-  - id: customer-insights
-    description: Customer segmentation and analytics
-  - id: support
-    description: Customer support ticket events
-  - id: pet-store
-    description: "Pet store — Petstore public API (OpenAPI), internal inventory (PG), and customer inquiries (SQLite) federated into one virtual database"
 
 naming:
-  domain_prefix: true  # prepends domain_id__ to all GraphQL names
+  domain_prefix: true
   rules:
     - pattern: "^prod_pg_"
       replace: ""
@@ -114,12 +56,7 @@ tables:
       - name: name
         visible_to: [admin, analyst]
       - name: email
-        visible_to: [admin, analyst]
-        masking:
-          analyst:
-            type: regex
-            pattern: "^(.{2}).*(@.*)$"
-            replace: "$1***$2"
+        visible_to: [admin]
       - name: region
         visible_to: [admin, analyst]
   - source_id: sales-pg
@@ -137,192 +74,6 @@ tables:
       - name: category
         visible_to: [admin, analyst]
 
-  - source_id: reviews-mongo
-    domain_id: product-catalog
-    schema: provisa
-    table: product_reviews
-    governance: pre-approved
-    description: "User-submitted product reviews from MongoDB"
-    columns:
-      - name: product_id
-        visible_to: [admin, analyst]
-        description: "FK to products table"
-      - name: reviewer
-        visible_to: [admin, analyst]
-        description: "Username of the reviewer"
-      - name: rating
-        visible_to: [admin, analyst]
-        description: "Rating from 1-5 stars"
-      - name: comment
-        visible_to: [admin]
-        description: "Free-text review comment"
-
-  - source_id: analytics-pg
-    domain_id: customer-insights
-    schema: analytics
-    table: customer_segments
-    governance: pre-approved
-    columns:
-      - name: customer_id
-        visible_to: [admin, analyst]
-      - name: segment
-        visible_to: [admin, analyst]
-      - name: score
-        visible_to: [admin]
-
-  # Pet store — inventory department (PostgreSQL, pet_store schema)
-  - source_id: pet-store-pg
-    domain_id: pet-store
-    schema: pet_store
-    table: pets
-    governance: pre-approved
-    description: "Pet inventory — managed by the inventory department"
-    columns:
-      - name: id
-        visible_to: [admin, analyst]
-      - name: name
-        visible_to: [admin, analyst]
-      - name: species
-        visible_to: [admin, analyst]
-      - name: breed_name
-        visible_to: [admin, analyst]
-      - name: price
-        visible_to: [admin]
-      - name: available
-        visible_to: [admin, analyst]
-
-  # Pet store — Petstore public API (OpenAPI, the storefront/catalog)
-  - source_id: petstore-api
-    domain_id: pet-store
-    schema: default
-    table: find_pets_by_status
-    alias: pet_by_status
-    governance: pre-approved
-    description: "Pet catalog from the Petstore public API"
-    columns:
-      - name: id
-        visible_to: [admin, analyst]
-      - name: name
-        visible_to: [admin, analyst]
-      - name: status
-        visible_to: [admin, analyst]
-      - name: photoUrls
-        visible_to: [admin, analyst]
-
-  # Pet store — customer inquiries (SQLite, managed by front-desk/CRM team)
-  - source_id: inquiries-sqlite
-    domain_id: pet-store
-    schema: default
-    table: inquiries
-    governance: pre-approved
-    description: "Customer adoption inquiries — managed by the front-desk/CRM team"
-    columns:
-      - name: id
-        visible_to: [admin, analyst]
-      - name: pet_id
-        visible_to: [admin, analyst]
-      - name: customer_name
-        visible_to: [admin, analyst]
-      - name: email
-        visible_to: [admin]
-      - name: inquiry_type
-        visible_to: [admin, analyst]
-      - name: message
-        visible_to: [admin, analyst]
-      - name: submitted_at
-        visible_to: [admin, analyst]
-
-views:
-  - id: monthly-revenue
-    sql: |
-      SELECT DATE_TRUNC('month', created_at) AS month,
-             region,
-             SUM(amount) AS revenue,
-             COUNT(*) AS order_count
-      FROM orders
-      GROUP BY 1, 2
-    description: "Monthly revenue by region — steward-approved aggregation"
-    domain_id: sales-analytics
-    governance: pre-approved
-    materialize: true
-    refresh_interval: 3600
-    columns:
-      - name: month
-        visible_to: [admin, analyst]
-        description: "Month (truncated to first day)"
-      - name: region
-        visible_to: [admin, analyst]
-        description: "Geographic region"
-      - name: revenue
-        visible_to: [admin]
-        description: "Total revenue in USD"
-      - name: order_count
-        visible_to: [admin, analyst]
-        description: "Number of orders"
-
-  # Cross-source view: joins all three pet store department data stores
-  - id: pet-adoption-overview
-    sql: |
-      SELECT p.id          AS pet_id,
-             p.name        AS pet_name,
-             p.species,
-             p.breed_name,
-             p.price,
-             p.available,
-             api.status    AS api_status,
-             COUNT(i.id)   AS inquiry_count
-      FROM pet_store.pets p
-      LEFT JOIN pet_store.pet_by_status api ON p.name = api.name
-      LEFT JOIN pet_store.inquiries i ON p.id = i.pet_id
-      GROUP BY p.id, p.name, p.species, p.breed_name, p.price, p.available, api.status
-    description: "Cross-source view: internal inventory (PG) + Petstore public API (OpenAPI) + inquiries (SQLite)"
-    domain_id: pet-store
-    governance: pre-approved
-    materialize: false
-    columns:
-      - name: pet_id
-        visible_to: [admin, analyst]
-      - name: pet_name
-        visible_to: [admin, analyst]
-      - name: species
-        visible_to: [admin, analyst]
-      - name: breed_name
-        visible_to: [admin, analyst]
-      - name: price
-        visible_to: [admin]
-      - name: available
-        visible_to: [admin, analyst]
-      - name: api_status
-        visible_to: [admin, analyst]
-      - name: inquiry_count
-        visible_to: [admin, analyst]
-
-  - id: customer-order-summary
-    sql: |
-      SELECT c.id AS customer_id,
-             c.name AS customer_name,
-             c.region,
-             COUNT(o.id) AS total_orders,
-             SUM(o.amount) AS total_spent
-      FROM customers c
-      LEFT JOIN orders o ON c.id = o.customer_id
-      GROUP BY c.id, c.name, c.region
-    description: "Customer lifetime order summary"
-    domain_id: customer-insights
-    governance: registry-required
-    materialize: false
-    columns:
-      - name: customer_id
-        visible_to: [admin, analyst]
-      - name: customer_name
-        visible_to: [admin, analyst]
-      - name: region
-        visible_to: [admin, analyst]
-      - name: total_orders
-        visible_to: [admin, analyst]
-      - name: total_spent
-        visible_to: [admin]
-
 relationships:
   - id: orders-to-customers
     source_table_id: orders
@@ -330,42 +81,6 @@ relationships:
     source_column: customer_id
     target_column: id
     cardinality: many-to-one
-    alias: PLACED_BY
-  - id: customers-to-segments
-    source_table_id: customers
-    target_table_id: customer_segments
-    source_column: id
-    target_column: customer_id
-    cardinality: one-to-many
-    alias: HAS_SEGMENT
-  - id: tickets-to-customers
-    source_table_id: ticket_created
-    target_table_id: customers
-    source_column: customer_id
-    target_column: id
-    cardinality: many-to-one
-    alias: OPENED_BY
-  - id: pets-to-api
-    source_table_id: pets
-    target_table_id: pet_by_status
-    source_column: name
-    target_column: name
-    cardinality: many-to-one
-    alias: LISTED_AS
-  - id: pets-to-inquiries
-    source_table_id: pets
-    target_table_id: inquiries
-    source_column: id
-    target_column: pet_id
-    cardinality: one-to-many
-    alias: HAS_INQUIRY
-  - id: orders-to-reviews
-    source_table_id: orders
-    target_table_id: product_reviews
-    source_column: product_id
-    target_column: product_id
-    cardinality: one-to-many
-    alias: HAS_REVIEW
 
 roles:
   - id: admin
@@ -384,19 +99,10 @@ roles:
     domain_access:
       - sales-analytics
 
-materialized_views:
-  - id: mv-orders-customers
-    source_tables: [orders, customers]
-    join_pattern:
-      left_table: orders
-      left_column: customer_id
-      right_table: customers
-      right_column: id
-      join_type: left
-    target_catalog: postgresql
-    target_schema: mv_cache
-    refresh_interval: 300
-    enabled: true
+rls_rules:
+  - table_id: orders
+    role_id: analyst
+    filter: "region = current_setting('provisa.user_region')"
 
 cache:
   enabled: true
@@ -404,107 +110,19 @@ cache:
   default_ttl: 300
 
 kafka_sources:
-  - id: support-kafka
-    bootstrap_servers: ${env:KAFKA_HOST:-localhost}:29092
+  - id: kafka-support
     topics:
-      - id: ticket_created
+      - id: tickets
         topic: support.tickets
+        domain_id: sales-analytics
         default_window: 1h
-        domain_id: support
-        description: "Support tickets opened by customers"
-        discriminator:
-          field: event_type
-          value: TicketCreated
         columns:
-          - name: _timestamp
-            description: "Kafka message timestamp"
-          - name: ticket_id
-            description: "Unique ticket identifier"
-          - name: customer_id
-            description: "FK to customers table"
-          - name: category
-            description: "Ticket category"
-          - name: priority
-            description: "Priority level"
+          - name: id
           - name: subject
+          - name: status
           - name: created_at
-      - id: ticket_resolved
-        topic: support.tickets
-        default_window: 1h
-        domain_id: support
-        description: "Support tickets that have been resolved"
-        discriminator:
-          field: event_type
-          value: TicketResolved
-        columns:
-          - name: _timestamp
-            description: "Kafka message timestamp"
-          - name: ticket_id
-            description: "Unique ticket identifier"
-          - name: customer_id
-            description: "FK to customers table"
-          - name: agent
-            description: "Support agent who resolved"
-          - name: resolution
-            description: "Resolution type"
-          - name: resolution_time_minutes
-          - name: resolved_at
-
-# auth:
-#   provider: simple  # simple, firebase, keycloak, oauth
-#   jwt_secret: ${env:JWT_SECRET}
-#   role_mapping: []  # list of {claim, value, role, type} rules
-#   default_role: analyst
-#   simple:
-#     users:
-#       - username: admin
-#         password_hash: "$2b$12$..."  # bcrypt hash
-#         roles: [admin]
-
-# Hello-world DB function: wraps get_customers_by_region() in sales-pg.
-# Demonstrates tracked functions — callable as a GraphQL mutation.
-functions:
-  - name: hello_get_customers
-    source_id: sales-pg
-    schema: public
-    function_name: get_customers_by_region
-    returns: public.customers
-    domain_id: sales-analytics
-    kind: query
-    description: "Hello-world: fetch customers by region (or all if omitted)"
-    arguments:
-      - name: region
-        type: String
-
-# Hello-world webhook: echoes the request body back via httpbin.
-# Demonstrates tracked webhooks — callable as a GraphQL mutation.
-webhooks:
-  - name: hello_echo
-    url: https://httpbin.org/post
-    method: POST
-    timeout_ms: 5000
-    domain_id: sales
-    description: "Hello-world: POST args to httpbin echo service and return response"
-    arguments:
-      - name: message
-        type: String
-    inline_return_type:
-      - name: origin
-        type: String
-      - name: url
-        type: String
-
-discovery:
-  sample_size: 20          # rows to sample per table for LLM analysis
-  min_confidence: 0.7      # minimum confidence threshold for candidates
-  api_key: ${env:ANTHROPIC_API_KEY}
 
 observability:
-  endpoint: ""            # OTLP gRPC collector (e.g. http://otel-collector:4317). Empty = drop spans.
-  service_name: provisa   # override with OTEL_SERVICE_NAME env var
-  sample_rate: 1.0        # 0.0–1.0 fraction of traces to sample
-
-rls_rules:
-  - table_id: orders
-    role_id: analyst
-    filter: "region = current_setting('provisa.user_region')"
+  endpoint: ""
+  service_name: provisa
+  sample_rate: 1.0

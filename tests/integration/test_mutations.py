@@ -84,6 +84,7 @@ def _build_schema_and_ctx():
         role=role,
         domains=domains,
         source_types={"sales-pg": "postgresql"},
+        naming_convention="snake",
     )
     schema = generate_schema(si)
     ctx = build_context(si)

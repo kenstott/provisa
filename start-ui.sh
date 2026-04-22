@@ -131,15 +131,31 @@ sleep 1
 # Truncate old log
 > "$LOG_DIR/server.log"
 
+_start_backend() {
+  if [ "$OBSERVABILITY" = true ]; then
+    export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}"
+    export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-provisa}"
+  fi
+  "$SCRIPT_DIR/.venv/bin/uvicorn" main:app --reload --reload-dir provisa --reload-dir config --host 0.0.0.0 --port 8001 \
+    >> "$LOG_DIR/server.log" 2>&1 &
+  BACKEND_PID=$!
+}
+
+restart_backend() {
+  echo ""
+  echo "Restarting backend (Ctrl-R)..."
+  kill "$BACKEND_PID" 2>/dev/null || true
+  wait "$BACKEND_PID" 2>/dev/null || true
+  rm -f "$LOG_DIR/server.log"
+  cd "$SCRIPT_DIR"
+  _start_backend
+  echo "Backend restarted (PID $BACKEND_PID)"
+}
+trap restart_backend USR1
+
 echo "Starting Provisa backend on port 8001..."
 cd "$SCRIPT_DIR"
-if [ "$OBSERVABILITY" = true ]; then
-  export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4317}"
-  export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-provisa}"
-fi
-"$SCRIPT_DIR/.venv/bin/uvicorn" main:app --reload --reload-dir provisa --reload-dir config --host 0.0.0.0 --port 8001 \
-  >> "$LOG_DIR/server.log" 2>&1 &
-BACKEND_PID=$!
+_start_backend
 
 # Wait for backend to be healthy
 echo -n "  Waiting for backend"
@@ -193,12 +209,12 @@ echo "Provisa running:"
 echo "  Backend: http://localhost:8001  (logs: $LOG_DIR/server.log)"
 echo "  UI:      http://localhost:3000"
 echo ""
-echo "Press Ctrl+C to stop."
+echo "Press Ctrl+C to stop. Press Ctrl+R to restart backend."
 
 cleanup() {
   echo ""
   echo "Shutting down..."
-  kill $BACKEND_PID $UI_PID 2>/dev/null || true
+  kill $BACKEND_PID $UI_PID "${KEY_READER_PID:-}" 2>/dev/null || true
   wait $BACKEND_PID $UI_PID 2>/dev/null || true
   if [ "$KEEP_DOCKER" = true ]; then
     echo "Leaving Docker Compose services running (--keep-docker)."
@@ -214,4 +230,16 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-wait
+_key_reader() {
+  local key
+  while true; do
+    IFS= read -rsn1 -t 0.5 key </dev/tty 2>/dev/null || continue
+    [[ "$key" == $'\x12' ]] && kill -USR1 $$ 2>/dev/null || true
+  done
+}
+_key_reader &
+KEY_READER_PID=$!
+
+while true; do
+  wait || true
+done

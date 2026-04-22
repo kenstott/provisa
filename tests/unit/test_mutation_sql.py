@@ -59,7 +59,7 @@ class TestInsertMutation:
     def test_basic_insert(self):
         schema, ctx = _build()
         doc = parse("""
-            mutation { insert_orders(input: { amount: 42.0, region: "us-east" }) { affected_rows } }
+            mutation { insertOrders(input: { amount: 42.0, region: "us-east" }) { affected_rows } }
         """)
         assert not validate(schema, doc)
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
@@ -74,7 +74,7 @@ class TestInsertMutation:
 
     def test_insert_source_id(self):
         schema, ctx = _build()
-        doc = parse('mutation { insert_orders(input: { region: "x" }) { affected_rows } }')
+        doc = parse('mutation { insertOrders(input: { region: "x" }) { affected_rows } }')
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
         assert results[0].source_id == "sales-pg"
 
@@ -83,7 +83,7 @@ class TestUpdateMutation:
     def test_basic_update(self):
         schema, ctx = _build()
         doc = parse("""
-            mutation { update_orders(set: { amount: 99.0 }, where: { id: { eq: 1 } }) { affected_rows } }
+            mutation { updateOrders(set: { amount: 99.0 }, where: { id: { eq: 1 } }) { affected_rows } }
         """)
         assert not validate(schema, doc)
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
@@ -99,7 +99,7 @@ class TestDeleteMutation:
     def test_basic_delete(self):
         schema, ctx = _build()
         doc = parse("""
-            mutation { delete_orders(where: { id: { eq: 5 } }) { affected_rows } }
+            mutation { deleteOrders(where: { id: { eq: 5 } }) { affected_rows } }
         """)
         assert not validate(schema, doc)
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
@@ -114,7 +114,7 @@ class TestNoSQLRejection:
     def test_nosql_source_rejected(self):
         schema, ctx = _build()
         # Override source type to mongodb
-        doc = parse('mutation { insert_orders(input: { region: "x" }) { affected_rows } }')
+        doc = parse('mutation { insertOrders(input: { region: "x" }) { affected_rows } }')
         with pytest.raises(ValueError, match="NoSQL"):
             compile_mutation(doc, ctx, {"sales-pg": "mongodb"})
 
@@ -123,7 +123,7 @@ class TestRLSOnMutation:
     def test_rls_injected_into_update(self):
         schema, ctx = _build()
         doc = parse("""
-            mutation { update_orders(set: { amount: 1.0 }, where: { id: { eq: 1 } }) { affected_rows } }
+            mutation { updateOrders(set: { amount: 1.0 }, where: { id: { eq: 1 } }) { affected_rows } }
         """)
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
         m = results[0]
@@ -133,7 +133,7 @@ class TestRLSOnMutation:
 
     def test_rls_injected_into_delete(self):
         schema, ctx = _build()
-        doc = parse('mutation { delete_orders(where: { id: { eq: 1 } }) { affected_rows } }')
+        doc = parse('mutation { deleteOrders(where: { id: { eq: 1 } }) { affected_rows } }')
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
         m = results[0]
         m = inject_rls_into_mutation(m, 1, {1: "region = 'us'"})
@@ -141,7 +141,7 @@ class TestRLSOnMutation:
 
     def test_rls_not_injected_into_insert(self):
         schema, ctx = _build()
-        doc = parse('mutation { insert_orders(input: { region: "x" }) { affected_rows } }')
+        doc = parse('mutation { insertOrders(input: { region: "x" }) { affected_rows } }')
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
         m = results[0]
         m = inject_rls_into_mutation(m, 1, {1: "region = 'us'"})
@@ -149,7 +149,7 @@ class TestRLSOnMutation:
 
     def test_no_rls_when_no_rule(self):
         schema, ctx = _build()
-        doc = parse('mutation { delete_orders(where: { id: { eq: 1 } }) { affected_rows } }')
+        doc = parse('mutation { deleteOrders(where: { id: { eq: 1 } }) { affected_rows } }')
         results = compile_mutation(doc, ctx, {"sales-pg": "postgresql"})
         m = results[0]
         original_sql = m.sql
@@ -162,7 +162,7 @@ class TestUpsertMutation:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                upsert_orders(
+                upsertOrders(
                     input: { id: 1, amount: 42.0, region: "us-east" }
                     on_conflict: [id]
                 ) { affected_rows }
@@ -184,7 +184,7 @@ class TestUpsertMutation:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                upsert_orders(
+                upsertOrders(
                     input: { id: 1 }
                     on_conflict: [id]
                 ) { affected_rows }
@@ -198,7 +198,7 @@ class TestUpsertMutation:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                upsert_orders(
+                upsertOrders(
                     input: { id: 1, region: "x" }
                     on_conflict: [id]
                 ) { affected_rows }
@@ -211,7 +211,7 @@ class TestUpsertMutation:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                upsert_orders(
+                upsertOrders(
                     input: { id: 5, amount: 99.9, region: "eu" }
                     on_conflict: [id]
                 ) { affected_rows }

@@ -10,7 +10,10 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import CodeMirror from "@uiw/react-codemirror";
-import { cypherLanguage } from "@neo4j-cypher/codemirror";
+import {
+  getCypherLanguageExtensions,
+  useAutocompleteExtensions,
+} from "@neo4j-cypher/codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
@@ -54,6 +57,7 @@ interface SchemaNodeLabel {
   properties: string[];
   pkColumns: string[];
   idColumn: string | null;
+  nativeFilterColumns: string[];
 }
 interface SchemaRel {
   type: string;
@@ -201,6 +205,51 @@ function RelContextMenu({ menu, relLineOverrides, onRelLineChange, onClose }: Re
           onChange={(e) => onRelLineChange(menu.type, { ...current, width: Number(e.target.value) })}
         />
         <span>{current.width}px</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Native filter modal ───────────────────────────────────────────────────────
+interface NativeFilterModalProps {
+  label: string;
+  filterColumns: string[];
+  onConfirm: (params: Record<string, string>) => void;
+  onCancel: () => void;
+}
+
+function NativeFilterModal({ label, filterColumns, onConfirm, onCancel }: NativeFilterModalProps) {
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(filterColumns.map((c) => [c, ""]))
+  );
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onConfirm(values);
+  };
+
+  return (
+    <div className="nf-modal-backdrop" onClick={onCancel}>
+      <div className="nf-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="nf-modal-title">Parameters for {label}</div>
+        <form onSubmit={handleSubmit}>
+          {filterColumns.map((col) => (
+            <div key={col} className="nf-modal-field">
+              <label className="nf-modal-label">{col}</label>
+              <input
+                className="nf-modal-input"
+                value={values[col]}
+                onChange={(e) => setValues((v) => ({ ...v, [col]: e.target.value }))}
+                placeholder={col}
+                autoFocus={filterColumns[0] === col}
+              />
+            </div>
+          ))}
+          <div className="nf-modal-actions">
+            <button type="button" className="nf-modal-cancel" onClick={onCancel}>Cancel</button>
+            <button type="submit" className="nf-modal-run">Run</button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -413,14 +462,53 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
   );
 }
 
+// ── Module-level state (survives SPA navigation) ──────────────────────────────
+const _graphState: {
+  frames: FrameData[];
+  history: string[];
+  currentQuery: string;
+} = {
+  frames: [],
+  history: [],
+  currentQuery: "MATCH (n) RETURN n LIMIT 25",
+};
+
 // ── Query bar ─────────────────────────────────────────────────────────────────
+interface CypherSchema {
+  labels: string[];
+  relationshipTypes: string[];
+  propertyKeys: string[];
+}
+
 interface QueryBarProps {
   onRun: (query: string) => void;
   initialQuery?: string;
+  onQueryChange: (q: string) => void;
+  cypherSchema?: CypherSchema;
 }
 
-function QueryBar({ onRun, initialQuery }: QueryBarProps) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _cypherLangExts = getCypherLanguageExtensions({ cypherLanguage: true } as any);
+
+function QueryBar({ onRun, initialQuery, onQueryChange, cypherSchema }: QueryBarProps) {
   const [query, setQuery] = useState(initialQuery ?? "MATCH (n) RETURN n LIMIT 25");
+  const viewRef = useRef<EditorView | null>(null);
+
+  useEffect(() => {
+    if (!cypherSchema || !viewRef.current) return;
+    try {
+      // editorSupportField is included by getCypherLanguageExtensions
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { editorSupportField } = require("@neo4j-cypher/codemirror/lib/cypher-state-definitions") as { editorSupportField: import("@codemirror/state").StateField<{ setSchema: (s: CypherSchema) => void }> };
+      const editorSupport = viewRef.current.state.field(editorSupportField, false);
+      if (editorSupport) editorSupport.setSchema(cypherSchema);
+    } catch (_) { /* subpath not resolved */ }
+  }, [cypherSchema]);
+
+  const handleChange = (val: string) => {
+    setQuery(val);
+    onQueryChange(val);
+  };
 
   return (
     <div className="graph-query-bar">
@@ -431,7 +519,8 @@ function QueryBar({ onRun, initialQuery }: QueryBarProps) {
           value={query}
           theme={oneDark}
           extensions={[
-            cypherLanguage(),
+            ..._cypherLangExts,
+            useAutocompleteExtensions,
             EditorView.lineWrapping,
             Prec.highest(keymap.of([{
               key: "Mod-Enter",
@@ -441,8 +530,9 @@ function QueryBar({ onRun, initialQuery }: QueryBarProps) {
               run: () => { onRun(query.trim()); return true; },
             }])),
           ]}
-          onChange={(val) => setQuery(val)}
-          basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
+          onCreateEditor={(view) => { viewRef.current = view; }}
+          onChange={handleChange}
+          basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false, completionKeymap: false }}
           placeholder="MATCH (n) RETURN n LIMIT 25"
         />
         <button
@@ -464,8 +554,8 @@ function QueryBar({ onRun, initialQuery }: QueryBarProps) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function GraphPage() {
-  const [frames, setFrames] = useState<FrameData[]>([]);
-  const [history, setHistory] = useState<string[]>([]);
+  const [frames, setFrames] = useState<FrameData[]>(_graphState.frames);
+  const [history, setHistory] = useState<string[]>(_graphState.history);
   const [historyQuery, setHistoryQuery] = useState<string | null>(null);
   const [schemaNodeLabels, setSchemaNodeLabels] = useState<SchemaNodeLabel[]>([]);
   const [schemaRels, setSchemaRels] = useState<SchemaRel[]>([]);
@@ -476,6 +566,7 @@ export function GraphPage() {
   const [labelProperty, setLabelProperty] = useLocalStorage<Record<string, string>>("provisa.graph.labelProperty", {});
   const [relLineOverrides, setRelLineOverrides] = useLocalStorage<Record<string, RelLineOverride>>("provisa.graph.relLineOverrides", {});
   const [adminRels, setAdminRels] = useState<Relationship[]>([]);
+  const [nfModal, setNfModal] = useState<{ label: string; compoundLabel: string; filterColumns: string[] } | null>(null);
   const frameIdRef = useRef(0);
 
   // Fetch admin relationships for edge alias editing
@@ -489,12 +580,13 @@ export function GraphPage() {
       .then((r) => r.json())
       .then((data) => {
         const nodeLabels: SchemaNodeLabel[] = (data.node_labels ?? []).map(
-          (n: { label: string; domain_label: string | null; table_label: string; properties: string[]; pk_columns: string[]; id_column?: string }) => ({
+          (n: { label: string; domain_label: string | null; table_label: string; properties: string[]; pk_columns: string[]; id_column?: string; native_filter_columns?: string[] }) => ({
             domainLabel: n.domain_label ?? null,
             tableLabel: n.table_label,
             properties: n.properties ?? [],
             pkColumns: n.pk_columns ?? [],
             idColumn: n.id_column ?? null,
+            nativeFilterColumns: n.native_filter_columns ?? [],
           })
         );
         const rels: SchemaRel[] = (data.relationship_types ?? []).map((r: { type: string; source: string; target: string }) => ({
@@ -520,11 +612,16 @@ export function GraphPage() {
     if (!query) return;
     const id = String(++frameIdRef.current);
     const start = Date.now();
-    setFrames((f) => [
-      { id, query, status: "loading", nodes: new Map(), edges: new Map(), rows: [], columns: [] },
-      ...f,
-    ]);
-    setHistory((h) => [query, ...h.filter((q) => q !== query).slice(0, 49)]);
+    setFrames((f) => {
+      const next = [{ id, query, status: "loading" as const, nodes: new Map(), edges: new Map(), rows: [], columns: [] }, ...f];
+      _graphState.frames = next;
+      return next;
+    });
+    setHistory((h) => {
+      const next = [query, ...h.filter((q) => q !== query).slice(0, 49)];
+      _graphState.history = next;
+      return next;
+    });
     try {
       const res = await fetch("/data/cypher", {
         method: "POST",
@@ -536,31 +633,27 @@ export function GraphPage() {
         const text = await res.text();
         let msg: string;
         try { msg = (JSON.parse(text) as { error?: string }).error ?? text; } catch { msg = text; }
-        setFrames((f) => f.map((fr) => fr.id === id ? { ...fr, status: "error", error: msg } : fr));
+        setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: msg } : fr); _graphState.frames = next; return next; });
         return;
       }
       const data = await res.json();
       const rows: Record<string, unknown>[] = data.rows ?? [];
       const columns: string[] = data.columns ?? [];
       const { nodes, edges } = extractElements(rows);
-      setFrames((f) => f.map((fr) => fr.id === id ? { ...fr, status: "done", nodes, edges, rows, columns, elapsed } : fr));
+      setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "done" as const, nodes, edges, rows, columns, elapsed } : fr); _graphState.frames = next; return next; });
     } catch (err) {
-      setFrames((f) => f.map((fr) => fr.id === id ? { ...fr, status: "error", error: String(err) } : fr));
+      setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr); _graphState.frames = next; return next; });
     }
   }, []);
 
   const closeFrame = useCallback((id: string) => {
-    setFrames((f) => f.filter((fr) => fr.id !== id));
+    setFrames((f) => { const next = f.filter((fr) => fr.id !== id); _graphState.frames = next; return next; });
   }, []);
 
   const rerunFrame = useCallback(async (id: string, query: string) => {
     if (!query) return;
     const start = Date.now();
-    setFrames((f) => f.map((fr) =>
-      fr.id === id
-        ? { ...fr, query, status: "loading", nodes: new Map(), edges: new Map(), rows: [], columns: [], elapsed: undefined, error: undefined }
-        : fr
-    ));
+    setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, query, status: "loading" as const, nodes: new Map(), edges: new Map(), rows: [], columns: [], elapsed: undefined, error: undefined } : fr); _graphState.frames = next; return next; });
     try {
       const res = await fetch("/data/cypher", {
         method: "POST",
@@ -572,16 +665,16 @@ export function GraphPage() {
         const text = await res.text();
         let msg: string;
         try { msg = (JSON.parse(text) as { error?: string }).error ?? text; } catch { msg = text; }
-        setFrames((f) => f.map((fr) => fr.id === id ? { ...fr, status: "error", error: msg } : fr));
+        setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: msg } : fr); _graphState.frames = next; return next; });
         return;
       }
       const data = await res.json();
       const rows: Record<string, unknown>[] = data.rows ?? [];
       const columns: string[] = data.columns ?? [];
       const { nodes, edges } = extractElements(rows);
-      setFrames((f) => f.map((fr) => fr.id === id ? { ...fr, status: "done", nodes, edges, rows, columns, elapsed } : fr));
+      setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "done" as const, nodes, edges, rows, columns, elapsed } : fr); _graphState.frames = next; return next; });
     } catch (err) {
-      setFrames((f) => f.map((fr) => fr.id === id ? { ...fr, status: "error", error: String(err) } : fr));
+      setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr); _graphState.frames = next; return next; });
     }
   }, []);
 
@@ -632,17 +725,52 @@ export function GraphPage() {
       : (node.idColumn ? [node.idColumn] : []);
   }
 
+  const cypherSchema: CypherSchema = {
+    labels: schemaNodeLabels.flatMap((n) =>
+      n.domainLabel ? [`${n.domainLabel}:${n.tableLabel}`, n.domainLabel, n.tableLabel] : [n.tableLabel]
+    ).filter((v, i, a) => a.indexOf(v) === i),
+    relationshipTypes: schemaRels.map((r) => r.type),
+    propertyKeys: [...new Set(schemaNodeLabels.flatMap((n) => [...n.properties, ...n.nativeFilterColumns]))],
+  };
+
   const handleHistorySelect = useCallback((q: string) => setHistoryQuery(q), []);
-  const handleLabelClick = useCallback((label: string) => {
-    runQuery(`MATCH (n:${label}) RETURN n LIMIT 25`);
-  }, [runQuery]);
+  const handleLabelClick = useCallback((compoundLabel: string) => {
+    const node = schemaNodeLabels.find((n) => {
+      const cl = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
+      return cl === compoundLabel || n.domainLabel === compoundLabel;
+    });
+    if (node && node.nativeFilterColumns.length > 0) {
+      setNfModal({ label: node.tableLabel, compoundLabel, filterColumns: node.nativeFilterColumns });
+    } else {
+      runQuery(`MATCH (n:${compoundLabel}) RETURN n LIMIT 25`);
+    }
+  }, [runQuery, schemaNodeLabels]);
 
   const handleRelClick = useCallback((type: string) => {
     runQuery(`MATCH ()-[r:${type}]->() RETURN r LIMIT 25`);
   }, [runQuery]);
 
+  const handleNfConfirm = useCallback((params: Record<string, string>) => {
+    if (!nfModal) return;
+    const { compoundLabel, filterColumns } = nfModal;
+    const whereClauses = filterColumns
+      .filter((col) => params[col] !== "")
+      .map((col) => `n._nf_${col} = '${params[col].replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`);
+    const whereStr = whereClauses.length > 0 ? ` WHERE ${whereClauses.join(" AND ")}` : "";
+    setNfModal(null);
+    runQuery(`MATCH (n:${compoundLabel})${whereStr} RETURN n LIMIT 25`);
+  }, [nfModal, runQuery]);
+
   return (
     <div className="graph-page">
+      {nfModal && (
+        <NativeFilterModal
+          label={nfModal.label}
+          filterColumns={nfModal.filterColumns}
+          onConfirm={handleNfConfirm}
+          onCancel={() => setNfModal(null)}
+        />
+      )}
       <Sidebar
         schemaNodeLabels={schemaNodeLabels}
         schemaRels={schemaRels}
@@ -666,7 +794,9 @@ export function GraphPage() {
       <div className="graph-content">
         <QueryBar
           onRun={runQuery}
-          initialQuery={historyQuery ?? undefined}
+          initialQuery={historyQuery ?? _graphState.currentQuery}
+          onQueryChange={(q) => { _graphState.currentQuery = q; }}
+          cypherSchema={schemaLoading ? undefined : cypherSchema}
           key={historyQuery ?? "initial"}
         />
 

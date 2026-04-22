@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time as _time
 
 import httpx
 
@@ -47,12 +48,17 @@ from provisa.compiler.sql_gen import (
 from provisa.executor.direct import execute_direct
 from provisa.executor.serialize import serialize_aggregate, serialize_rows
 from provisa.executor.trino import execute_trino
+from provisa.executor import stats as _qs_mod
 from provisa.mv.rewriter import rewrite_if_mv_match
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
 from provisa.transpiler.router import Route, decide_route
 from provisa.transpiler.transpile import transpile, transpile_to_trino
 
 log = logging.getLogger(__name__)
+
+# Source-level hydration expiry: source_id → monotonic expiry.
+# When set, the entire source is skipped (no pool acquire, no PG queries).
+_source_hydration_expiry: dict[str, float] = {}
 
 router = APIRouter(prefix="/data", tags=["data"])
 
@@ -168,6 +174,7 @@ async def graphql_endpoint(
     x_provisa_redirect: str | None = Header(None),
     x_provisa_redirect_threshold: int | None = Header(None),
     x_provisa_redirect_format: str | None = Header(None),
+    x_provisa_stats: str | None = Header(None),
     query_id: str | None = Query(None),
 ):
     """Execute a GraphQL query or mutation. Content negotiation via Accept header.
@@ -342,6 +349,10 @@ async def graphql_endpoint(
     if redirect_format and effective_threshold is None:
         force_redirect = True
 
+    stats_enabled = (x_provisa_stats or "").lower() == "true"
+    if stats_enabled:
+        _qs_mod.begin()
+
     if is_mut:
         response = await _handle_mutation(
             document, ctx, rls, state, effective_variables, role_id, raw_request,
@@ -355,6 +366,19 @@ async def graphql_endpoint(
             steward_hint=steward_hint,
             query_session_props=directives.to_session_props(),
         )
+
+    if stats_enabled:
+        qs = _qs_mod.current()
+        if qs is not None:
+            stats_dict = qs.to_dict()
+            if isinstance(response, JSONResponse):
+                body = json.loads(response.body)
+                body.setdefault("extensions", {})["provisa_stats"] = stats_dict
+                skip = {"content-length", "content-type"}
+                extra = {k: v for k, v in response.headers.items() if k.lower() not in skip}
+                response = JSONResponse(content=body, headers=extra)
+            elif isinstance(response, dict):
+                response.setdefault("extensions", {})["provisa_stats"] = stats_dict
 
     # AN (REQ-291): store APQ hash only after successful execution — never cache rejected queries
     if apq_hash and request.query and response is not None:
@@ -422,32 +446,43 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
     return compiled, mv_used
 
 
-async def _hydrate_api_tables_before_trino(compiled, ctx, state) -> None:
+async def _hydrate_api_tables_before_trino(compiled, ctx, state) -> tuple[set, dict[str, float], dict[str, int]]:
     """Ensure API-backed PG cache tables are populated before Trino executes.
 
     For each openapi source in compiled.sources:
     - Non-path-param: call fill_api_table (TTL-aware, keyed by params hash).
     - Path-param (returns single object per call): fetch one row per parent PK value
       via fetch_pk_row (TTL-aware, hash IS the PK for single-object responses).
+
+    Returns (dataloader_sources, hydration_times_ms, hydration_rows).
     """
     from provisa.api_source.models import ParamType
-    from provisa.openapi.pg_cache import fetch_pk_row, fill_api_table
+    from provisa.openapi.pg_cache import fetch_pk_row, fill_api_table, is_mem_fresh
 
+    dataloader_sources: set = set()
+    hydration_times: dict[str, float] = {}
+    hydration_rows: dict[str, int] = {}
     if not hasattr(state, "api_endpoints") or not state.api_endpoints:
-        return
+        return dataloader_sources, hydration_times, hydration_rows
     if state.pg_pool is None:
-        return
+        return dataloader_sources, hydration_times, hydration_rows
 
     for source_id in compiled.sources:
+        _t_src = _time.perf_counter()
+        if _source_hydration_expiry.get(source_id, 0) > _time.monotonic():
+            hydration_times[source_id] = (_time.perf_counter() - _t_src) * 1000
+            continue
         src = (state.api_sources or {}).get(source_id)
         if src is None:
             continue
+        _min_ttl = None
         for table_name, endpoint in state.api_endpoints.items():
             if endpoint.source_id != source_id:
                 continue
             pg_schema = "default"
             pg_table = table_name
             ttl = endpoint.ttl
+            _min_ttl = ttl if _min_ttl is None else min(_min_ttl, ttl)
 
             path_cols = [c for c in endpoint.columns if c.param_type == ParamType.path]
 
@@ -472,9 +507,11 @@ async def _hydrate_api_tables_before_trino(compiled, ctx, state) -> None:
                                 break
                         break
 
-            async with state.pg_pool.acquire() as pg_conn:
-                if dataloader_col is not None and dataloader_parent_table_meta is not None:
-                    # DataLoader: one batch call with all parent PKs as a query param list.
+            if dataloader_col is not None and dataloader_parent_table_meta is not None:
+                # DataLoader: one batch call with all parent PKs as a query param list.
+                # Always needs PG to fetch parent PKs — can't skip connection.
+                dataloader_sources.add(source_id)
+                async with state.pg_pool.acquire() as pg_conn:
                     p_table = dataloader_parent_table_meta.table_name
                     p_schema = "default" if p_table in state.api_endpoints else dataloader_parent_table_meta.schema_name
                     try:
@@ -488,40 +525,45 @@ async def _hydrate_api_tables_before_trino(compiled, ctx, state) -> None:
                         continue
                     if pk_values:
                         param_name = dataloader_col.param_name or dataloader_col.name
-                        await fill_api_table(
+                        n = await fill_api_table(
                             src.base_url, endpoint.path, {param_name: pk_values},
                             pg_conn, pg_schema, pg_table, ttl,
                             endpoint.response_root, endpoint.error_path, endpoint.pk_column,
                         )
-                elif not path_cols:
-                    # Collection endpoint: pass query params from the compiled query,
-                    # mapped from GraphQL field names to API param names where defined.
-                    param_name_map = {
-                        c.name: (c.param_name or c.name)
-                        for c in endpoint.columns if c.param_type is not None
-                    }
-                    raw_params = compiled.api_args or {}
-                    query_params = {param_name_map.get(k, k): v for k, v in raw_params.items()}
-                    await fill_api_table(src.base_url, endpoint.path, query_params, pg_conn, pg_schema, pg_table, ttl, endpoint.response_root, endpoint.error_path, endpoint.pk_column)
-                else:
-                    # Path-param: fetch one row per parent PK value in parallel.
-                    path_col = path_cols[0]
-                    path_param_name = path_col.param_name or path_col.name
-                    parent_join_col = None
-                    parent_table_meta = None
-                    for (src_type, _), join_meta in ctx.joins.items():
-                        if join_meta.target.table_name == pg_table:
-                            parent_join_col = join_meta.source_column
-                            for tbl_meta in ctx.tables.values():
-                                if tbl_meta.type_name == src_type:
-                                    parent_table_meta = tbl_meta
-                                    break
-                            break
+                        hydration_rows[source_id] = hydration_rows.get(source_id, 0) + n
+            elif not path_cols:
+                # Collection endpoint: params known upfront — skip pool entirely if mem-fresh.
+                param_name_map = {
+                    c.name: (c.param_name or c.name)
+                    for c in endpoint.columns if c.param_type is not None
+                }
+                raw_params = compiled.api_args or {}
+                query_params = {param_name_map.get(k, k): v for k, v in raw_params.items()}
+                if is_mem_fresh("default", pg_table, query_params):
+                    continue
+                async with state.pg_pool.acquire() as pg_conn:
+                    n = await fill_api_table(src.base_url, endpoint.path, query_params, pg_conn, pg_schema, pg_table, ttl, endpoint.response_root, endpoint.error_path, endpoint.pk_column)
+                    hydration_rows[source_id] = hydration_rows.get(source_id, 0) + n
+            else:
+                # Path-param: needs PG to fetch parent PKs — can't skip connection.
+                path_col = path_cols[0]
+                path_param_name = path_col.param_name or path_col.name
+                parent_join_col = None
+                parent_table_meta = None
+                for (src_type, _), join_meta in ctx.joins.items():
+                    if join_meta.target.table_name == pg_table:
+                        parent_join_col = join_meta.source_column
+                        for tbl_meta in ctx.tables.values():
+                            if tbl_meta.type_name == src_type:
+                                parent_table_meta = tbl_meta
+                                break
+                        break
 
-                    if parent_table_meta is None or parent_join_col is None:
-                        log.warning("No parent join for path-param table %s — skipping hydration", pg_table)
-                        continue
+                if parent_table_meta is None or parent_join_col is None:
+                    log.warning("No parent join for path-param table %s — skipping hydration", pg_table)
+                    continue
 
+                async with state.pg_pool.acquire() as pg_conn:
                     p_table = parent_table_meta.table_name
                     p_schema = "default" if p_table in state.api_endpoints else parent_table_meta.schema_name
                     try:
@@ -535,11 +577,92 @@ async def _hydrate_api_tables_before_trino(compiled, ctx, state) -> None:
                         continue
 
                     for pk in pk_values:
-                        await fetch_pk_row(
+                        n = await fetch_pk_row(
                             src.base_url, endpoint.path, path_param_name, pk,
                             pg_conn, pg_schema, pg_table, ttl,
                             endpoint.response_root, endpoint.error_path,
                         )
+                        hydration_rows[source_id] = hydration_rows.get(source_id, 0) + n
+
+        hydration_times[source_id] = (_time.perf_counter() - _t_src) * 1000
+        if _min_ttl is not None:
+            _source_hydration_expiry[source_id] = _time.monotonic() + _min_ttl
+
+    return dataloader_sources, hydration_times, hydration_rows
+
+
+def _count_rows_per_source(field_rows: list, ctx) -> dict[str, int]:
+    """Count matched rows per source_id using join cardinality in the result.
+
+    For one-to-many joins, sums the nested array lengths across all parent rows.
+    For many-to-one / one-to-one joins, counts the non-null joined objects.
+    The root source row count is NOT included here — callers use len(field_rows) for that.
+    """
+    counts: dict[str, int] = {}
+    if not field_rows or not ctx or not hasattr(ctx, "joins"):
+        return counts
+    for (_, join_field), join_meta in ctx.joins.items():
+        src_id = join_meta.target.source_id
+        if join_meta.cardinality == "one-to-many":
+            total = sum(
+                len(row.get(join_field, []) or [])
+                for row in field_rows
+                if isinstance(row, dict)
+            )
+        else:
+            total = sum(
+                1 for row in field_rows
+                if isinstance(row, dict) and row.get(join_field) is not None
+            )
+        counts[src_id] = counts.get(src_id, 0) + total
+    return counts
+
+
+def _build_mermaid(
+    sources: set,
+    source_types: dict,
+    ctx,
+    hydration_ms: dict[str, float],
+    trino_ms: float | None,
+    result_rows: int,
+    root_field: str,
+) -> str:
+    """Build a Mermaid flowchart LR diagram for the federated query execution DAG."""
+    def _node_id(s: str) -> str:
+        return s.replace("-", "_").replace(".", "_")
+
+    lines = ["flowchart LR"]
+
+    for src_id in sorted(sources):
+        src_type = source_types.get(src_id, "")
+        nid = _node_id(src_id)
+        if src_type == "openapi":
+            h_ms = hydration_ms.get(src_id, 0.0)
+            cache_label = "cache hit" if h_ms < 5 else f"hydration {round(h_ms)}ms"
+            lines.append(f'    {nid}["{src_id}\\n({src_type})"]')
+            lines.append(f'    pg_{nid}["PG cache\\n{src_id}"]')
+            lines.append(f'    {nid} -->|"{cache_label}"| pg_{nid}')
+            trino_label = f"{round(trino_ms)}ms" if trino_ms is not None else ""
+            lines.append(f'    pg_{nid} -->|"federated {trino_label}"| trino')
+        else:
+            trino_label = f"{round(trino_ms)}ms" if trino_ms is not None else ""
+            lines.append(f'    {nid}["{src_id}\\n({src_type})"]')
+            lines.append(f'    {nid} -->|"federated {trino_label}"| trino')
+
+    lines.append(f'    trino{{"Virtual\\nJoin"}}')
+    lines.append(f'    result(["{root_field}\\n{result_rows} rows"])')
+    lines.append('    trino --> result')
+
+    # Add join-column annotations from ctx
+    join_edges: set[tuple[str, str, str]] = set()
+    for (src_type, tgt_type), join_meta in (ctx.joins or {}).items():
+        src_id = next((s for s in sources if source_types.get(s) and src_type.lower() in s.lower()), None)
+        tgt_id = next((s for s in sources if source_types.get(s) and tgt_type.lower() in s.lower()), None)
+        if src_id and tgt_id:
+            label = f"{join_meta.source_column}={join_meta.target_column}"
+            join_edges.add((_node_id(src_id), _node_id(tgt_id), label))
+
+    return "\n".join(lines)
 
 
 async def _execute_api_source(compiled, state, source_id, root_field, ck, output_format):
@@ -595,53 +718,54 @@ async def _execute_api_source(compiled, state, source_id, root_field, ck, output
     # --- Phase 1: materialize if cache miss ---
     ensure_cache_schema(state.trino_conn)
     if not table_exists(state.trino_conn, cache_tbl):
-        conn = None
-        if state.pg_pool is not None:
-            conn = await state.pg_pool.acquire()
-        try:
-            result = await handle_api_query(
-                endpoint=endpoint,
-                params=url_params,
-                conn=conn,
-                source=api_source,
-                source_ttl=state.source_cache.get(source_id, {}).get("cache_ttl"),
-                global_ttl=state.cache_default_ttl,
+        result = await handle_api_query(
+            endpoint=endpoint,
+            params=url_params,
+            conn=state.trino_conn,
+            source=api_source,
+            source_ttl=state.source_cache.get(source_id, {}).get("cache_ttl"),
+            global_ttl=state.cache_default_ttl,
+        )
+
+        if result.from_cache:
+            # handle_api_query hit its own path-based cache — reuse that table directly
+            # rather than creating an empty table_name-based cache.
+            cache_tbl = result.cache_table
+            log.info("[API CACHE] path-cache hit — reusing %s", cache_tbl)
+        else:
+            log.info("[API CACHE] miss — %d rows from REST, materializing", len(result.rows))
+            create_and_insert(state.trino_conn, cache_tbl, result.rows, endpoint.columns)
+
+            # Schedule TTL cleanup
+            ttl = (
+                state.source_cache.get(source_id, {}).get("cache_ttl")
+                or state.cache_default_ttl
+                or endpoint.ttl
             )
-        finally:
-            if conn is not None:
-                await state.pg_pool.release(conn)
-
-        log.info("[API CACHE] miss — %d rows from REST, materializing", len(result.rows))
-        create_and_insert(state.trino_conn, cache_tbl, result.rows, endpoint.columns)
-
-        # Schedule TTL cleanup
-        ttl = (
-            state.source_cache.get(source_id, {}).get("cache_ttl")
-            or state.cache_default_ttl
-            or endpoint.ttl
-        )
-        from provisa.executor.redirect import RedirectConfig
-        redirect_config = RedirectConfig.from_env()
-        asyncio.create_task(
-            schedule_drop(state.trino_conn, cache_tbl, ttl, redirect_config)
-        )
+            from provisa.executor.redirect import RedirectConfig
+            redirect_config = RedirectConfig.from_env()
+            asyncio.create_task(
+                schedule_drop(state.trino_conn, cache_tbl, ttl, redirect_config)
+            )
     else:
         log.info("[API CACHE] hit — %s", cache_tbl)
 
     # --- Phase 2: apply WHERE/ORDER BY/LIMIT via Trino ---
-    rewritten_sql = rewrite_from_cache(compiled.sql, cache_tbl)
+    # Strip _nf_* conditions before executing against the cache table (they were
+    # injected into SQL for display/CQL purposes only; api_args already drove Phase 1).
+    from provisa.compiler.nf_extractor import extract_nf_args
+    exec_sql, exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
+    rewritten_sql = rewrite_from_cache(exec_sql, cache_tbl)
     trino_sql = transpile_to_trino(rewritten_sql)
-    trino_result = execute_trino(state.trino_conn, trino_sql, compiled.params)
+    trino_result = execute_trino(state.trino_conn, trino_sql, exec_params)
 
     from provisa.compiler.sql_gen import ColumnRef
     columns = [
-        ColumnRef(alias=None, column=c.name, field_name=c.name, nested_in=None)
-        for c in endpoint.columns
-        if not c.param_type  # exclude native filter (path/query param) columns
+        ColumnRef(alias=None, column=name, field_name=name, nested_in=None)
+        for name in trino_result.column_names
     ]
 
-    rows = [dict(zip([c.column for c in columns], row)) for row in trino_result.rows]
-    response_data = _format_response(rows, columns, root_field, output_format)
+    response_data = _format_response(trino_result.rows, columns, root_field, output_format)
     if isinstance(response_data, dict):
         field_rows = response_data.get("data", {}).get(root_field, [])
     else:
@@ -668,6 +792,54 @@ async def _execute_one_field(
     from provisa.executor.trino_write import is_trino_native_format
 
     root_field = compiled.root_field
+    _t0 = _time.perf_counter()
+
+    def _record_per_source(
+        sources: set,
+        elapsed_ms: float,
+        rows: int,
+        decision=None,
+        dataloader_sources: set | None = None,
+        per_source_ms: dict[str, float] | None = None,
+        trino_ms: float | None = None,
+        hydration_rows: dict[str, int] | None = None,
+        field_rows: list | None = None,
+    ) -> None:
+        """Emit FieldStat entries per source.
+
+        For openapi sources in a federated join: emits two entries —
+        one for hydration (HTTP fetch → PG write) and one for the Trino join.
+        For all other sources: one entry with Trino execution time.
+        Per-source row counts use join cardinality from the result for one-to-many joins.
+        """
+        from provisa.transpiler.router import Route
+        joined_rows = _count_rows_per_source(field_rows or [], ctx) if field_rows else {}
+        for src_id in (sources or set()):
+            source_type = getattr(state, "source_types", {}).get(src_id, "")
+            if decision is None or decision.route != Route.DIRECT:
+                prefix = "federated"
+            else:
+                prefix = "direct"
+            strategy = f"{prefix}:{source_type}" if source_type else prefix
+            if dataloader_sources and src_id in dataloader_sources:
+                strategy += ":dataloader"
+
+            src_rows = joined_rows.get(src_id, rows)
+
+            if source_type == "openapi" and per_source_ms is not None and trino_ms is not None:
+                hydration = per_source_ms.get(src_id, 0.0)
+                h_rows = (hydration_rows or {}).get(src_id, 0)
+                _qs_mod.record(field=root_field, source=src_id, strategy="hydration",
+                               elapsed_ms=hydration, rows=h_rows)
+                _qs_mod.record(field=root_field, source=src_id, strategy=strategy,
+                               elapsed_ms=trino_ms, rows=src_rows)
+            else:
+                src_ms = per_source_ms.get(src_id, elapsed_ms) if per_source_ms else elapsed_ms
+                _qs_mod.record(field=root_field, source=src_id, strategy=strategy,
+                               elapsed_ms=src_ms, rows=src_rows)
+        qs = _qs_mod.current()
+        if qs is not None:
+            qs.wall_ms = elapsed_ms
 
     # Cache check
     rls_rules_for_key = rls.rules if rls.has_rules() else {}
@@ -675,8 +847,11 @@ async def _execute_one_field(
     cached = await check_cache(state.cache_store, ck)
     if cached is not None:
         cached_data = json.loads(cached.data)
-        # Extract just this field's data from the cached response
         field_rows = cached_data.get("data", {}).get(root_field, [])
+        _qs_mod.record(field=root_field, source="cache", strategy="cache",
+                       elapsed_ms=(_time.perf_counter() - _t0) * 1000,
+                       rows=len(field_rows) if isinstance(field_rows, list) else 0,
+                       cache_hit=True)
         return root_field, field_rows, None, ck, cached
 
     # Route decision
@@ -696,10 +871,20 @@ async def _execute_one_field(
 
     # --- API source path: fetch from external API via router_integration ---
     if decision.route == Route.API and decision.source_id:
-        field_rows, response_data = await _execute_api_source(
-            compiled, state, decision.source_id, root_field, ck, output_format,
-        )
-
+        try:
+            field_rows, response_data = await _execute_api_source(
+                compiled, state, decision.source_id, root_field, ck, output_format,
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            log.exception("API source execution failed for %s", root_field)
+            raise HTTPException(status_code=500, detail=str(e))
+        source_type = getattr(state, "source_types", {}).get(decision.source_id, "")
+        _qs_mod.record(field=root_field, source=decision.source_id,
+                       strategy=f"api:{source_type}" if source_type else "api",
+                       elapsed_ms=(_time.perf_counter() - _t0) * 1000,
+                       rows=len(field_rows) if isinstance(field_rows, list) else 0)
         return root_field, field_rows, None, ck, None
 
     # --- CTAS path: force redirect with Trino-native format ---
@@ -713,7 +898,8 @@ async def _execute_one_field(
                 execute_ctas_redirect, presign_ctas_result,
                 cleanup_result_table, schedule_s3_cleanup,
             )
-            await _hydrate_api_tables_before_trino(compiled, ctx, state)
+            _ctas_hydration_ms: dict[str, float]
+            _, _ctas_hydration_ms, _ = await _hydrate_api_tables_before_trino(compiled, ctx, state)
             trino_sql = transpile_to_trino(rewrite_semantic_to_trino_physical(compiled.sql, ctx))
             ctas_result = execute_ctas_redirect(
                 state.trino_conn, trino_sql, effective_redirect_format,
@@ -733,6 +919,8 @@ async def _execute_one_field(
                 "expires_in": redirect_config.ttl,
                 "content_type": content_type,
             }
+            _record_per_source(compiled.sources, (_time.perf_counter() - _t0) * 1000,
+                               ctas_result["row_count"])
             return root_field, None, redirect_info, ck, None
         except Exception:
             log.exception("CTAS redirect failed for %s, falling back", root_field)
@@ -750,7 +938,7 @@ async def _execute_one_field(
         else:
             if state.trino_conn is None:
                 raise HTTPException(status_code=503, detail="Trino not connected")
-            await _hydrate_api_tables_before_trino(compiled, ctx, state)
+            _dataloader_srcs, _hydration_ms, _hydration_rows = await _hydrate_api_tables_before_trino(compiled, ctx, state)
             exec_sql = rewrite_semantic_to_trino_physical(compiled.sql, ctx)
             if probe_limit is not None:
                 exec_sql = _inject_probe_limit(exec_sql, probe_limit)
@@ -766,10 +954,19 @@ async def _execute_one_field(
             session_hints.update(comment_hints)  # SQL /*+ */ hints take precedence
 
             trino_sql = transpile_to_trino(exec_sql)
+            _t_trino = _time.perf_counter()
             result = execute_trino(
                 state.trino_conn, trino_sql, compiled.params,
                 session_hints=session_hints or None,
             )
+            _trino_ms = (_time.perf_counter() - _t_trino) * 1000
+            # API sources: charge their hydration time; DB sources: charge Trino execution time
+            _per_source_ms: dict[str, float] = {
+                src_id: _hydration_ms.get(src_id, _trino_ms)
+                if (state.source_types or {}).get(src_id) == "openapi"
+                else _trino_ms
+                for src_id in compiled.sources
+            }
             # Lazy hot-table promotion: if result is small, cache it for future JOINs
             _hot_mgr = getattr(state, "hot_manager", None)
             if _hot_mgr is not None:
@@ -807,6 +1004,8 @@ async def _execute_one_field(
                 output_format=effective_redirect_format,
                 columns=compiled.columns,
             )
+            _record_per_source(compiled.sources, (_time.perf_counter() - _t0) * 1000,
+                               redirect_info.get("row_count", 0), decision)
             return root_field, None, redirect_info, ck, None
         except Exception:
             log.exception("Redirect upload failed for %s, returning inline", root_field)
@@ -819,6 +1018,8 @@ async def _execute_one_field(
                 output_format=effective_redirect_format,
                 columns=compiled.columns,
             )
+            _record_per_source(compiled.sources, (_time.perf_counter() - _t0) * 1000,
+                               redirect_info.get("row_count", 0), decision)
             return root_field, None, redirect_info, ck, None
         except Exception:
             log.exception("Redirect upload failed for %s, returning inline", root_field)
@@ -881,6 +1082,29 @@ async def _execute_one_field(
                 ttl=resolved_ttl, table_ids=table_ids,
             )
 
+    _n_rows = len(field_rows) if isinstance(field_rows, list) else 0
+    _record_per_source(
+        compiled.sources,
+        (_time.perf_counter() - _t0) * 1000,
+        _n_rows,
+        decision,
+        dataloader_sources=locals().get("_dataloader_srcs"),
+        per_source_ms=locals().get("_per_source_ms"),
+        trino_ms=locals().get("_trino_ms"),
+        hydration_rows=locals().get("_hydration_rows"),
+        field_rows=field_rows if isinstance(field_rows, list) else None,
+    )
+    qs = _qs_mod.current()
+    if qs is not None and len(compiled.sources) > 1:
+        qs.mermaid = _build_mermaid(
+            compiled.sources,
+            getattr(state, "source_types", {}),
+            ctx,
+            locals().get("_per_source_ms") or {},
+            locals().get("_trino_ms"),
+            _n_rows,
+            root_field,
+        )
     return root_field, field_rows, None, ck, None
 
 

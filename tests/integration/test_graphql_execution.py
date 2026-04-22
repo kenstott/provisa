@@ -108,6 +108,7 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
         role=role,
         domains=domains,
         relay_pagination=relay_pagination,
+        naming_convention="snake",
     )
     schema = generate_schema(si)
     ctx = build_context(si)
@@ -205,10 +206,10 @@ class TestGraphQLExecution:
         assert amounts == sorted(amounts, reverse=True)
 
     async def test_relationship_join(self, exec_pool):
-        """`{ orders { id customers { name } } }` returns nested customer data."""
+        """`{ orders { id customer { name } } }` returns nested customer data."""
         schema, ctx = _build_schema_and_ctx()
         # Relationship field name is target table's field name: "customers"
-        doc = parse("{ orders { id customer_id customers { name } } }")
+        doc = parse("{ orders { id customer_id customer { name } } }")
         errors = validate(schema, doc)
         assert not errors, errors
 

@@ -74,6 +74,10 @@ markers = [
     "requires_neo4j: requires Neo4j service (docker compose up neo4j)",
     "requires_sparql: requires SPARQL endpoint service (docker compose up fuseki)",
     "requires_elasticsearch: requires Elasticsearch service (docker compose up elasticsearch)",
+    "requires_kafka: requires Kafka broker (docker compose up kafka)",
+    "requires_debezium: requires Debezium Connect service (docker compose up debezium)",
+    "requires_mongodb: requires MongoDB service (docker compose up mongodb)",
+    "requires_pgbouncer: requires PgBouncer service (docker compose up pgbouncer)",
     "requires_provisa_server: requires running Provisa server at localhost:8001",
 ]
 filterwarnings = [

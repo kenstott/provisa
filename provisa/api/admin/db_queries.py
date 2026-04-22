@@ -8,8 +8,6 @@
 
 from __future__ import annotations
 
-import re
-
 import asyncpg
 import inflect
 
@@ -27,23 +25,19 @@ def _to_singular(camel: str) -> str:
     return camel
 
 
-def derive_graphql_alias(target_table_name: str, cardinality: str) -> str | None:
+def derive_graphql_alias(target_table_name: str, cardinality: str, convention: str = "apollo_graphql") -> str | None:
     """Derive GraphQL field name from target table name + cardinality.
 
-    Rules:
-    - camelCase of target_table_name (snake_case → camelCase)
-    - Normalize to singular, then:
-      - one-to-many → pluralize via inflect
-      - many-to-one → keep singular
+    Always strips verb prefixes (find/get/list/…) via rel_field_name.
+    snake / hasura_graphql → snake_case output; apollo_graphql → camelCase.
     """
     if not target_table_name:
         return None
-    parts = re.split(r'[_\s]+', target_table_name.strip())
-    camel = parts[0].lower() + "".join(p.capitalize() for p in parts[1:])
-    singular = _to_singular(camel)
-    if cardinality == "one-to-many":
-        return _inflect.plural(singular)
-    return singular
+    from provisa.compiler.naming import rel_field_name, to_snake_case
+    name = rel_field_name(target_table_name, cardinality)
+    if convention in ("snake", "hasura_graphql"):
+        return to_snake_case(name)
+    return name
 
 
 def derive_cypher_alias(source_column: str, cardinality: str) -> str:
@@ -100,7 +94,7 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:
         table = dict(row)
         col_rows = await conn.fetch(
             "SELECT column_name, visible_to, writable_by, unmasked_to, "
-            "mask_type, alias, description, path, is_primary_key "
+            "mask_type, alias, description, path, is_primary_key, object_fields, native_filter_type "
             "FROM table_columns WHERE table_id = $1 ORDER BY id",
             row["id"],
         )
@@ -116,6 +110,8 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:
                 "description": r["description"],
                 "path": r["path"],
                 "is_primary_key": bool(r.get("is_primary_key") or False),
+                "object_fields": list(r.get("object_fields") or []),
+                "native_filter_type": r.get("native_filter_type"),
             }
             for r in col_rows
         ]

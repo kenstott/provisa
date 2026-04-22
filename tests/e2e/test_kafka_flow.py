@@ -51,7 +51,7 @@ class TestKafkaSinkConfiguration:
                 "query": _SUBMIT_MUTATION,
                 "variables": {
                     "input": {
-                        "query": "query KafkaSinkTest { sales_analytics__orders(limit: 5) { id amount region } }",
+                        "query": "query KafkaSinkTest { sa__orders(limit: 5) { id amount region } }",
                         "role": "admin",
                         "businessPurpose": "E2E Kafka sink test",
                         "dataSensitivity": "internal",
@@ -75,13 +75,13 @@ class TestKafkaSinkConfiguration:
         """Approved queries with sinks should store the sink configuration."""
         resp = await client.post(
             "/admin/graphql",
-            json={"query": "{ persistedQueries { id queryText sinkTopic sinkTrigger sinkKeyColumn status } }"},
+            json={"query": "{ governedQueries { id queryText sinkTopic sinkTrigger sinkKeyColumn status } }"},
         )
         if resp.status_code != 200:
             pytest.fail(f"Admin API returned {resp.status_code}: {resp.text}")
 
         data = resp.json()
-        queries = data.get("data", {}).get("persistedQueries", [])
+        queries = data.get("data", {}).get("governedQueries", [])
         sink_queries = [q for q in queries if q.get("sinkTopic")]
         # At least the one we just submitted (or from previous runs)
         if not sink_queries:

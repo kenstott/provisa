@@ -64,7 +64,7 @@ def _get_pods() -> list[dict]:
 def helm_install():
     """Install the Provisa Helm chart into a dedicated minikube namespace."""
     if not _minikube_available():
-        pytest.fail("minikube or helm not installed / not running (start with: minikube start --driver=docker)")
+        pytest.skip("minikube or helm not installed / not running (start with: minikube start --driver=docker)")
 
     # Build provisa:latest and load into minikube so IfNotPresent can find it
     repo_root = Path(__file__).parents[2]

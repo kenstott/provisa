@@ -152,6 +152,7 @@ class TestMongoDBAdapter:
         assert "event_id" in col_names
         assert "ts" in col_names
 
+    @pytest.mark.requires_mongodb
     async def test_mongodb_adapter_query_returns_documents(self):
         """MongoDB adapter connects and queries when server is available."""
         import motor.motor_asyncio  # noqa: PLC0415
@@ -244,6 +245,7 @@ class TestElasticsearchAdapter:
         assert props.get("elasticsearch.tls.enabled") == "true"
         assert props.get("elasticsearch.auth.user") == "elastic"
 
+    @pytest.mark.requires_elasticsearch
     async def test_elasticsearch_adapter_live_query(self):
         """ES adapter query returns documents when server is available."""
         from elasticsearch import AsyncElasticsearch  # noqa: PLC0415

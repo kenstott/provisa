@@ -307,13 +307,13 @@ class TestDomain:
 class TestNamingConfig:
     def test_defaults(self):
         nc = NamingConfig()
-        assert nc.convention == "snake_case"
+        assert nc.convention == "apollo_graphql"
         assert nc.rules == []
         assert nc.relay_pagination is False
 
     def test_custom_convention(self):
-        nc = NamingConfig(convention="camelCase")
-        assert nc.convention == "camelCase"
+        nc = NamingConfig(convention="hasura_graphql")
+        assert nc.convention == "hasura_graphql"
 
     def test_multiple_rules(self):
         nc = NamingConfig(

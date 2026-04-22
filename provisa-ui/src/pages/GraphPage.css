@@ -1223,3 +1223,97 @@
   background: var(--border);
   margin: 3px 0;
 }
+
+/* ── Native filter modal ───────────────────────────────────────────────── */
+.nf-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.nf-modal {
+  background: var(--surface, #1e1e2e);
+  border: 1px solid var(--border, #333);
+  border-radius: 8px;
+  padding: 20px 24px;
+  min-width: 300px;
+  max-width: 440px;
+  width: 100%;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+
+.nf-modal-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text, #e2e8f0);
+  margin-bottom: 16px;
+}
+
+.nf-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.nf-modal-label {
+  font-size: 0.78rem;
+  color: var(--text-muted, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.nf-modal-input {
+  background: var(--input-bg, #0f0f1a);
+  border: 1px solid var(--border, #333);
+  border-radius: 4px;
+  padding: 6px 10px;
+  color: var(--text, #e2e8f0);
+  font-size: 0.88rem;
+  outline: none;
+}
+
+.nf-modal-input:focus {
+  border-color: var(--accent, #6366f1);
+}
+
+.nf-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.nf-modal-cancel {
+  background: transparent;
+  border: 1px solid var(--border, #333);
+  border-radius: 4px;
+  color: var(--text-muted, #94a3b8);
+  padding: 5px 14px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.nf-modal-cancel:hover {
+  border-color: #555;
+  color: var(--text, #e2e8f0);
+}
+
+.nf-modal-run {
+  background: var(--accent, #6366f1);
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  padding: 5px 16px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.nf-modal-run:hover {
+  background: #818cf8;
+}

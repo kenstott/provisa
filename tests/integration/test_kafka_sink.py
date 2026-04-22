@@ -180,6 +180,7 @@ class TestKafkaProducerMocked:
 # ---------------------------------------------------------------------------
 
 class TestKafkaSinkReal:
+    pytestmark = [pytest.mark.requires_kafka]
     async def test_sink_publishes_and_consumer_reads_message(self):
         """Produce a row to Kafka; AIOKafkaConsumer receives it as JSON."""
         from aiokafka import AIOKafkaConsumer, AIOKafkaProducer  # noqa: PLC0415

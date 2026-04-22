@@ -72,8 +72,9 @@ def semantic_sql_to_cypher(
             if "__" in table_meta.field_name
             else table_meta.field_name
         )
-        domain_to_label[(sql_domain, field_key)] = nm.label
-        domain_to_label[("", field_key)] = nm.label
+        lbl = label_map.display_label(nm)
+        domain_to_label[(sql_domain, field_key)] = lbl
+        domain_to_label[("", field_key)] = lbl
 
     # Build reverse lookup for relationships: (src_col, tgt_col) → RelationshipMapping
     join_to_rel: dict[tuple[str, str], RelationshipMapping] = {}
@@ -99,8 +100,8 @@ def semantic_sql_to_cypher(
 
     # --- Resolve JOINs → relationship segments ---
     joins = tree.args.get("joins") or []
-    # Each entry: (is_optional, rel_type | None, sql_alias, label, domain_label)
-    join_segments: list[tuple[bool, str | None, str, str, str | None]] = []
+    # Each entry: (is_optional, rel_type | None, src_sql_alias, tgt_sql_alias, tgt_label)
+    join_segments: list[tuple[bool, str | None, str, str, str]] = []
 
     for join in joins:
         join_tbl = join.this
@@ -115,17 +116,24 @@ def semantic_sql_to_cypher(
 
         on_expr = join.args.get("on")
         rel_type = _rel_type_from_on(on_expr, join_to_rel)
+        # Determine source alias from ON condition table references
+        src_sql_alias = _src_alias_from_on(on_expr, tgt_sql_alias, sql_base_alias)
         is_optional = (join.side or "").upper() == "LEFT"
-        join_segments.append((is_optional, rel_type, tgt_sql_alias, tgt_label))
+        join_segments.append((is_optional, rel_type, src_sql_alias, tgt_sql_alias, tgt_label))
 
     # Build short alias map: verbose SQL alias → a, b, c, …
     _letters = list(string.ascii_lowercase)
-    all_sql_aliases = [sql_base_alias] + [seg[2] for seg in join_segments]
+    all_sql_aliases = [sql_base_alias] + [seg[3] for seg in join_segments]
     alias_map: dict[str, str] = {
         sql_a: _letters[i] if i < len(_letters) else f"n{i}"
         for i, sql_a in enumerate(all_sql_aliases)
     }
     base_alias = alias_map[sql_base_alias]
+
+    # Build label lookup: sql_alias → display label (needed for src node in OPTIONAL MATCH)
+    alias_label: dict[str, str] = {sql_base_alias: base_label}
+    for _is_opt, _rt, _src, tgt_a, tgt_lbl in join_segments:
+        alias_label[tgt_a] = tgt_lbl
 
     def _node(short: str, label: str) -> str:
         return f"({short}:{label})"
@@ -139,19 +147,21 @@ def semantic_sql_to_cypher(
 
     # --- Build MATCH pattern ---
     required_path = _node(base_alias, base_label)
-    for is_optional, rel_type, sql_a, label in join_segments:
+    for is_optional, rel_type, src_sql_a, tgt_sql_a, label in join_segments:
         if not is_optional:
             rel_str = f"[:{rel_type}]" if rel_type else "[]"
-            required_path += f"-{rel_str}->{_node(alias_map[sql_a], label)}"
+            required_path += f"-{rel_str}->{_node(alias_map[tgt_sql_a], label)}"
 
     cypher_lines = [f"MATCH {required_path}"]
 
-    for is_optional, rel_type, sql_a, label in join_segments:
+    for is_optional, rel_type, src_sql_a, tgt_sql_a, label in join_segments:
         if is_optional:
             rel_str = f"[:{rel_type}]" if rel_type else "[]"
+            src_short = alias_map.get(src_sql_a, base_alias)
+            src_lbl = alias_label.get(src_sql_a, base_label)
             cypher_lines.append(
-                f"OPTIONAL MATCH {_node(base_alias, base_label)}"
-                f"-{rel_str}->{_node(alias_map[sql_a], label)}"
+                f"OPTIONAL MATCH {_node(src_short, src_lbl)}"
+                f"-{rel_str}->{_node(alias_map[tgt_sql_a], label)}"
             )
 
     # --- WHERE ---
@@ -219,6 +229,25 @@ def _rel_type_from_on(
             if rel:
                 return rel.rel_type
     return None
+
+
+def _src_alias_from_on(
+    on_expr: exp.Expression | None,
+    tgt_sql_alias: str,
+    default_alias: str,
+) -> str:
+    """Return the source table alias from a JOIN ON condition.
+
+    Looks for column references whose table qualifier is not the join target —
+    that's the source side of the relationship.  Falls back to default_alias.
+    """
+    if on_expr is None:
+        return default_alias
+    for eq in on_expr.find_all(exp.EQ):
+        for col in (eq.this, eq.expression):
+            if isinstance(col, exp.Column) and col.table and col.table != tgt_sql_alias:
+                return col.table
+    return default_alias
 
 
 def _build_return(

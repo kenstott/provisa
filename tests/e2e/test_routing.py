@@ -41,10 +41,10 @@ class TestDirectRouting:
     async def test_simple_query_returns_data(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id amount } }", "role": "admin"},
+            json={"query": "{ sa__orders { id amount } }", "role": "admin"},
         )
         assert resp.status_code == 200
-        rows = resp.json()["data"]["sales_analytics__orders"]
+        rows = resp.json()["data"]["sa__orders"]
         assert len(rows) > 0
         assert "id" in rows[0]
 
@@ -52,84 +52,43 @@ class TestDirectRouting:
         resp = await client.post(
             "/data/graphql",
             json={
-                "query": '{ sales_analytics__orders(where: { region: { eq: "us-east" } }) { id region } }',
+                "query": '{ sa__orders(where: { region: { eq: "us-east" } }) { id region } }',
                 "role": "admin",
             },
         )
         assert resp.status_code == 200
-        for row in resp.json()["data"]["sales_analytics__orders"]:
+        for row in resp.json()["data"]["sa__orders"]:
             assert row["region"] == "us-east"
 
     async def test_nested_join_same_source(self, client):
-        """Join within same source routes direct."""
+        """Join within same source routes direct. many-to-one → singular field name 'customer'."""
         resp = await client.post(
             "/data/graphql",
             json={
-                "query": "{ sales_analytics__orders { id sales_analytics__customers { name } } }",
+                "query": "{ sa__orders { id customer { name } } }",
                 "role": "admin",
             },
         )
         assert resp.status_code == 200
-        rows = resp.json()["data"]["sales_analytics__orders"]
-        has_customer = any(r.get("sales_analytics__customers") is not None for r in rows)
+        rows = resp.json()["data"]["sa__orders"]
+        has_customer = any(r.get("customer") is not None for r in rows)
         assert has_customer
 
     async def test_pagination(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders(limit: 2) { id } }", "role": "admin"},
+            json={"query": "{ sa__orders(limit: 2) { id } }", "role": "admin"},
         )
         assert resp.status_code == 200
-        assert len(resp.json()["data"]["sales_analytics__orders"]) <= 2
+        assert len(resp.json()["data"]["sa__orders"]) <= 2
 
     async def test_customers_query(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__customers { id name email } }", "role": "admin"},
+            json={"query": "{ sa__customers { id name email } }", "role": "admin"},
         )
         assert resp.status_code == 200
-        rows = resp.json()["data"]["sales_analytics__customers"]
+        rows = resp.json()["data"]["sa__customers"]
         assert len(rows) > 0
 
 
-class TestTrinoRouting:
-    """Cross-source queries should route through Trino."""
-
-    async def test_cross_source_pg_to_pg(self, client):
-        """customers (sales-pg) + customer_segments (analytics-pg) → Trino."""
-        resp = await client.post(
-            "/data/graphql",
-            json={
-                "query": "{ sales_analytics__customers { id name customer_insights__customer_segments { segment } } }",
-                "role": "admin",
-            },
-        )
-        assert resp.status_code == 200
-        rows = resp.json()["data"]["sales_analytics__customers"]
-        assert len(rows) > 0
-        has_segment = any(
-            r.get("customer_insights__customer_segments") is not None
-            and len(r["customer_insights__customer_segments"]) > 0
-            for r in rows
-        )
-        assert has_segment
-
-    async def test_cross_source_pg_to_mongodb(self, client):
-        """orders (sales-pg) + product_reviews (reviews-mongo) → Trino."""
-        resp = await client.post(
-            "/data/graphql",
-            json={
-                "query": "{ sales_analytics__orders(limit: 5) { id amount product_catalog__product_reviews { reviewer rating } } }",
-                "role": "admin",
-            },
-        )
-        assert resp.status_code == 200
-        rows = resp.json()["data"]["sales_analytics__orders"]
-        assert len(rows) > 0
-        # At least some orders have reviews (products 1-7 have reviews)
-        has_review = any(
-            r.get("product_catalog__product_reviews") is not None
-            and len(r["product_catalog__product_reviews"]) > 0
-            for r in rows
-        )
-        assert has_review

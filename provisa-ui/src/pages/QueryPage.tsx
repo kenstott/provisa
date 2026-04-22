@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useRef, useCallback, useState, useMemo } from "react";
+import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import * as monaco from "monaco-editor";
 import { GraphiQL } from "graphiql";
 import { createGraphiQLFetcher, type Fetcher } from "@graphiql/toolkit";
@@ -21,6 +21,7 @@ import "./QueryPage.css";
 import { useAuth } from "../context/AuthContext";
 import { provisaToolsPlugin } from "../plugins/provisa-tools";
 import { ResponseTableOverlay } from "../plugins/table-view";
+import { setLastQueryElapsedMs, subscribeQueryTiming } from "../query-timing";
 import { HeadersQuickInsert } from "../plugins/headers-quick-insert";
 import {
   useGraphiQL,
@@ -249,6 +250,7 @@ const REDIRECT_FORMAT_OPTIONS = [
 interface RedirectSettings {
   format: string;
   threshold: string;
+  statsEnabled: boolean;
 }
 
 function createProvisaFetch(
@@ -264,12 +266,17 @@ function createProvisaFetch(
         headers.set("X-Provisa-Redirect-Threshold", settings.threshold);
       }
     }
+    if (settings.statsEnabled) {
+      headers.set("X-Provisa-Stats", "true");
+    }
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000);
     let res: Response;
+    const _t0 = performance.now();
     try {
       res = await fetch(input, { ...init, headers, signal: controller.signal });
+      setLastQueryElapsedMs(performance.now() - _t0);
     } finally {
       clearTimeout(timeoutId);
     }
@@ -342,16 +349,21 @@ export function QueryPage() {
   const { role } = useAuth();
   const [redirectFormat, setRedirectFormat] = useState("");
   const [redirectThreshold, setRedirectThreshold] = useState("");
+  const [statsEnabled, setStatsEnabled] = useState(false);
+  const [queryElapsedMs, setQueryElapsedMs] = useState<number | null>(null);
+  useEffect(() => subscribeQueryTiming(setQueryElapsedMs), []);
 
   const settingsRef = useRef<RedirectSettings>({
     format: redirectFormat,
     threshold: redirectThreshold,
+    statsEnabled,
   });
   settingsRef.current = {
     format:
       REDIRECT_FORMAT_OPTIONS.find((o) => o.value === redirectFormat)?.mime ??
       "",
     threshold: redirectThreshold,
+    statsEnabled,
   };
 
   const fetcher = useMemo((): Fetcher | null => {
@@ -452,6 +464,11 @@ export function QueryPage() {
       setRedirectThreshold(e.target.value),
     [],
   );
+  const onStatsChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) =>
+      setStatsEnabled(e.target.checked),
+    [],
+  );
 
   if (!role || !fetcher || !plugins)
     return <div className="page">Select a role.</div>;
@@ -483,6 +500,20 @@ export function QueryPage() {
         <span className="query-hint" style={{ visibility: redirectFormat && !redirectThreshold ? "visible" : "hidden" }}>
           All results redirect to S3
         </span>
+        {queryElapsedMs !== null && (
+          <span className="query-elapsed" style={{ marginLeft: "auto" }}>
+            {Math.round(queryElapsedMs)} ms
+          </span>
+        )}
+        <label className="query-option" style={{ marginLeft: queryElapsedMs !== null ? undefined : "auto" }}>
+          <input
+            type="checkbox"
+            checked={statsEnabled}
+            onChange={onStatsChange}
+            style={{ marginRight: 4 }}
+          />
+          Query Stats
+        </label>
       </div>
       <GraphiQL
         fetcher={fetcher}

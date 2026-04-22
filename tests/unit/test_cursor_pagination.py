@@ -416,6 +416,7 @@ class TestRelayPaginationOptIn:
             tables=_base_tables(), relationships=[], column_types=_base_column_types(),
             naming_rules=[], role=_base_role(), domains=_base_domains(),
             relay_pagination=False,
+            naming_convention="snake",
         )
         schema = generate_schema(si)
         assert "orders" in schema.query_type.fields

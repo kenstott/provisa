@@ -47,13 +47,13 @@ class TestFieldSelection:
     async def test_select_orders(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id amount } }", "role": "admin"},
+            json={"query": "{ sa__orders { id amount } }", "role": "admin"},
         )
         assert resp.status_code == 200
         data = resp.json()
         assert "data" in data
-        assert "sales_analytics__orders" in data["data"]
-        rows = data["data"]["sales_analytics__orders"]
+        assert "sa__orders" in data["data"]
+        rows = data["data"]["sa__orders"]
         assert len(rows) > 0
         assert "id" in rows[0]
         assert "amount" in rows[0]
@@ -61,10 +61,10 @@ class TestFieldSelection:
     async def test_select_customers(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__customers { id name email } }", "role": "admin"},
+            json={"query": "{ sa__customers { id name email } }", "role": "admin"},
         )
         assert resp.status_code == 200
-        rows = resp.json()["data"]["sales_analytics__customers"]
+        rows = resp.json()["data"]["sa__customers"]
         assert len(rows) > 0
         assert "name" in rows[0]
 
@@ -74,22 +74,22 @@ class TestWhereFilter:
         resp = await client.post(
             "/data/graphql",
             json={
-                "query": '{ sales_analytics__orders(where: { region: { eq: "us-east" } }) { id region } }',
+                "query": '{ sa__orders(where: { region: { eq: "us-east" } }) { id region } }',
                 "role": "admin",
             },
         )
         assert resp.status_code == 200
-        rows = resp.json()["data"]["sales_analytics__orders"]
+        rows = resp.json()["data"]["sa__orders"]
         for row in rows:
             assert row["region"] == "us-east"
 
     async def test_filter_limit(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders(limit: 2) { id } }", "role": "admin"},
+            json={"query": "{ sa__orders(limit: 2) { id } }", "role": "admin"},
         )
         assert resp.status_code == 200
-        assert len(resp.json()["data"]["sales_analytics__orders"]) <= 2
+        assert len(resp.json()["data"]["sa__orders"]) <= 2
 
 
 class TestNestedRelationship:
@@ -97,41 +97,41 @@ class TestNestedRelationship:
         resp = await client.post(
             "/data/graphql",
             json={
-                "query": "{ sales_analytics__orders { id amount sales_analytics__customers { name email } } }",
+                "query": "{ sa__orders { id amount customer { name email } } }",
                 "role": "admin",
             },
         )
         assert resp.status_code == 200
-        rows = resp.json()["data"]["sales_analytics__orders"]
+        rows = resp.json()["data"]["sa__orders"]
         assert len(rows) > 0
-        # At least some orders have customers
-        has_customer = any(r.get("sales_analytics__customers") is not None for r in rows)
+        # At least some orders have customers (many-to-one → singular 'customer')
+        has_customer = any(r.get("customer") is not None for r in rows)
         assert has_customer
         for row in rows:
-            if row["sales_analytics__customers"] is not None:
-                assert "name" in row["sales_analytics__customers"]
-                assert "email" in row["sales_analytics__customers"]
+            if row["customer"] is not None:
+                assert "name" in row["customer"]
+                assert "email" in row["customer"]
 
 
 class TestValidationErrors:
     async def test_unknown_field(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id bogus_field } }", "role": "admin"},
+            json={"query": "{ sa__orders { id bogus_field } }", "role": "admin"},
         )
         assert resp.status_code == 400
 
     async def test_unknown_role(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id } }", "role": "nonexistent"},
+            json={"query": "{ sa__orders { id } }", "role": "nonexistent"},
         )
         assert resp.status_code == 400
 
     async def test_syntax_error(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id", "role": "admin"},
+            json={"query": "{ sa__orders { id", "role": "admin"},
         )
         assert resp.status_code in (400, 422, 500)
 
@@ -140,7 +140,7 @@ class TestRoleHeader:
     async def test_role_via_header(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id } }"},
+            json={"query": "{ sa__orders { id } }"},
             headers={"X-Provisa-Role": "admin"},
         )
         assert resp.status_code == 200

@@ -25,6 +25,8 @@ PGBOUNCER_PORT = int(os.environ.get("PGBOUNCER_PORT", "6432"))
 
 
 class TestPgBouncerPool:
+    pytestmark = [pytest.mark.requires_pgbouncer]
+
     async def test_connect_through_pgbouncer(self):
         """PostgreSQL driver connects through PgBouncer with statement_cache_size=0."""
         sp = SourcePool()
@@ -97,6 +99,8 @@ class TestPgBouncerPool:
 
 
 class TestPoolSizing:
+    pytestmark = [pytest.mark.requires_pgbouncer]
+
     async def test_custom_pool_sizes(self):
         """Pool min/max are configurable per source."""
         sp = SourcePool()

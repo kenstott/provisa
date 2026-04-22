@@ -213,6 +213,8 @@ class TestInferColumns:
 
 @pytest.mark.requires_neo4j
 class TestLiveNeo4jExecution:
+    pytestmark = [pytest.mark.requires_neo4j]
+
     """Require Docker Compose neo4j service:
         docker compose up neo4j
     These tests execute a Cypher query through the API source pipeline

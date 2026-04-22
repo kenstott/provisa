@@ -170,7 +170,7 @@ class ProvisaServicer:
             compiled = apply_sampling(compiled, get_sample_size())
 
         # Execute
-        if decision.route == Route.DIRECT and decision.source_id:
+        if decision.route == Route.DIRECT and decision.source_id and state.source_pools.has(decision.source_id):
             target_sql = transpile(compiled.sql, decision.dialect or "postgres")
             result = await execute_direct(
                 state.source_pools, decision.source_id, target_sql, compiled.params,

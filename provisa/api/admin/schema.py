@@ -123,17 +123,17 @@ from provisa.api.admin.db_queries import derive_cypher_alias as _derive_cypher_a
 from provisa.core.config_loader import _normalize_op_id
 
 
-def _derive_graphql_alias(target_table_name: str, cardinality: str, alias: str | None) -> str | None:
-    return _derive_graphql_alias_fn(target_table_name, cardinality)
+def _derive_graphql_alias(target_table_name: str, cardinality: str, alias: str | None, convention: str = "apollo_graphql") -> str | None:
+    return _derive_graphql_alias_fn(target_table_name, cardinality, convention)
 
 
-def _rel_from_row(row) -> RelationshipType:
+def _rel_from_row(row, convention: str = "apollo_graphql") -> RelationshipType:
     cardinality = row["cardinality"]
     target_table_name = row.get("target_table_name") or ""
     source_column = row.get("source_column") or ""
     alias = row.get("alias")
     persisted_graphql_alias = row.get("graphql_alias") or None
-    graphql_alias = persisted_graphql_alias or _derive_graphql_alias(target_table_name, cardinality, alias)
+    graphql_alias = persisted_graphql_alias or _derive_graphql_alias(target_table_name, cardinality, alias, convention)
     computed_cypher_alias = None if alias else _derive_cypher_alias_fn(source_column, cardinality)
     return RelationshipType(
         id=row["id"], source_table_id=row["source_table_id"],
@@ -305,6 +305,8 @@ class Query:
 
     @strawberry.field
     async def relationships(self) -> list[RelationshipType]:
+        from provisa.api.app import state
+        convention = state.global_naming_convention
         pool = await _get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch(
@@ -316,7 +318,7 @@ class Query:
                 "LEFT JOIN registered_tables tt ON r.target_table_id = tt.id "
                 "ORDER BY r.id"
             )
-            return [_rel_from_row(r) for r in rows]
+            return [_rel_from_row(r, convention) for r in rows]
 
     @strawberry.field
     async def roles(self) -> list[RoleType]:
@@ -913,7 +915,7 @@ class Mutation:
             from provisa.compiler.naming import apply_convention
             async with pool.acquire() as conn:
                 src = await conn.fetchrow("SELECT naming_convention FROM sources WHERE id = $1", input.source_id)
-            convention = (src["naming_convention"] if src else None) or "snake_case"
+            convention = (src["naming_convention"] if src else None) or "apollo_graphql"
             alias = apply_convention(input.table_name, convention)
 
         from provisa.core.models import ColumnPreset as ColumnPresetModel

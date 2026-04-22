@@ -128,11 +128,27 @@ done
 
 > "$LOG_DIR/server-install.log"
 
+_start_backend() {
+  "$SCRIPT_DIR/.venv/bin/uvicorn" main:app --reload --reload-dir provisa --reload-dir config --host 0.0.0.0 --port 8001 \
+    >> "$LOG_DIR/server-install.log" 2>&1 &
+  BACKEND_PID=$!
+}
+
+restart_backend() {
+  echo ""
+  echo "Restarting backend (Ctrl-R)..."
+  kill "$BACKEND_PID" 2>/dev/null || true
+  wait "$BACKEND_PID" 2>/dev/null || true
+  rm -f "$LOG_DIR/server-install.log"
+  cd "$SCRIPT_DIR"
+  _start_backend
+  echo "Backend restarted (PID $BACKEND_PID)"
+}
+trap restart_backend USR1
+
 echo "Starting Provisa backend on port 8001..."
 cd "$SCRIPT_DIR"
-"$SCRIPT_DIR/.venv/bin/uvicorn" main:app --reload --reload-dir provisa --reload-dir config --host 0.0.0.0 --port 8001 \
-  >> "$LOG_DIR/server-install.log" 2>&1 &
-BACKEND_PID=$!
+_start_backend
 
 echo -n "  Waiting for backend"
 for i in $(seq 1 60); do
@@ -187,12 +203,12 @@ echo "  - pet-store-pg  (PostgreSQL, pet_store schema)"
 echo "  - petstore-api  (OpenAPI, petstore3.swagger.io)"
 echo "  - inquiries-sqlite  (SQLite, demo/files/inquiries.sqlite)"
 echo ""
-echo "Press Ctrl+C to stop."
+echo "Press Ctrl+C to stop. Press Ctrl+R to restart backend."
 
 cleanup() {
   echo ""
   echo "Shutting down..."
-  kill $BACKEND_PID $UI_PID 2>/dev/null || true
+  kill $BACKEND_PID $UI_PID "${KEY_READER_PID:-}" 2>/dev/null || true
   wait $BACKEND_PID $UI_PID 2>/dev/null || true
   if [ "$KEEP_DOCKER" = true ]; then
     echo "Leaving Docker Compose services running (--keep-docker)."
@@ -205,4 +221,16 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-wait
+_key_reader() {
+  local key
+  while true; do
+    IFS= read -rsn1 -t 0.5 key </dev/tty 2>/dev/null || continue
+    [[ "$key" == $'\x12' ]] && kill -USR1 $$ 2>/dev/null || true
+  done
+}
+_key_reader &
+KEY_READER_PID=$!
+
+while true; do
+  wait || true
+done

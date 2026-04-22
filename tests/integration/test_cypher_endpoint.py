@@ -19,6 +19,7 @@ import os
 import pytest
 import httpx
 
+pytestmark = pytest.mark.requires_provisa_server
 
 BASE_URL = os.environ.get("PROVISA_URL", "http://localhost:8000")
 

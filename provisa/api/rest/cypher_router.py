@@ -21,11 +21,14 @@ Five-stage pipeline:
 from __future__ import annotations
 
 import logging
+import time as _time
 from typing import Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Header, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+from provisa.executor import stats as _qs_mod
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +65,7 @@ async def cypher_query(
     body: CypherRequest,
     request: Request,
     query_id: str | None = Query(None),
+    x_provisa_stats: str | None = Header(None),
 ) -> JSONResponse:
     """Execute a Cypher read query and return typed rows."""
     from provisa.api.app import state
@@ -196,6 +200,11 @@ async def cypher_query(
     from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
     clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)
 
+    stats_enabled = (x_provisa_stats or "").lower() == "true"
+    if stats_enabled:
+        _qs_mod.begin()
+    _t0 = _time.perf_counter()
+
     log.info("Cypher final SQL: %s", trino_sql)
     try:
         if nf_args:
@@ -219,7 +228,15 @@ async def cypher_query(
         log.exception("Cypher serialization failed")
         return JSONResponse(status_code=500, content={"error": f"Serialization failed: {exc}"})
 
-    return JSONResponse(content={"columns": columns, "rows": serializable_rows})
+    content: dict = {"columns": columns, "rows": serializable_rows}
+    if stats_enabled:
+        _qs_mod.record(field="cypher", source="trino", strategy="federated",
+                       elapsed_ms=(_time.perf_counter() - _t0) * 1000,
+                       rows=len(serializable_rows))
+        qs = _qs_mod.current()
+        if qs is not None:
+            content["provisa_stats"] = qs.to_dict()
+    return JSONResponse(content=content)
 
 
 @router.get("/data/graph-schema")
@@ -243,6 +260,7 @@ async def graph_schema(request: Request) -> JSONResponse:
                 "properties": list(n.properties.keys()),
                 "pk_columns": n.pk_columns,      # user-designated PK column names
                 "id_column": n.id_column,        # resolved PK column (heuristic fallback)
+                "native_filter_columns": sorted(n.native_filter_columns),
             }
             for n in label_map.nodes.values()
         ],
@@ -313,21 +331,14 @@ async def _execute_with_api(
 
     ensure_cache_schema(state.trino_conn)
     if not table_exists(state.trino_conn, cache_tbl):
-        conn = None
-        if getattr(state, "pg_pool", None) is not None:
-            conn = await state.pg_pool.acquire()
-        try:
-            result = await handle_api_query(
-                endpoint=endpoint,
-                params=url_params,
-                conn=conn,
-                source=api_source,
-                source_ttl=getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
-                global_ttl=getattr(state, "cache_default_ttl", None),
-            )
-        finally:
-            if conn is not None:
-                await state.pg_pool.release(conn)
+        result = await handle_api_query(
+            endpoint=endpoint,
+            params=url_params,
+            conn=state.trino_conn,
+            source=api_source,
+            source_ttl=getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
+            global_ttl=getattr(state, "cache_default_ttl", None),
+        )
 
         log.info("[API CACHE] miss — %d rows from REST, materializing", len(result.rows))
         create_and_insert(state.trino_conn, cache_tbl, result.rows, endpoint.columns)
@@ -347,8 +358,7 @@ async def _execute_with_api(
     trino_sql = transpile_to_trino(rewritten_sql)
     trino_result = execute_trino(state.trino_conn, trino_sql, params)
 
-    response_cols = [c.name for c in endpoint.columns if not c.param_type]
-    return [dict(zip(response_cols, row)) for row in trino_result.rows]
+    return [dict(zip(trino_result.column_names, row)) for row in trino_result.rows]
 
 
 async def _execute(sql: str, params: list, state: object) -> list[dict]:

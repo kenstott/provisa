@@ -48,6 +48,18 @@ def _resolve_ref(spec: dict, ref: str) -> dict:
     return node if isinstance(node, dict) else {}
 
 
+def _resolve_properties(spec: dict, schema: dict) -> dict:
+    """Resolve $ref on each property of an object schema (one level deep)."""
+    props = schema.get("properties")
+    if not props:
+        return schema
+    resolved_props = {
+        name: _resolve_ref(spec, prop["$ref"]) if "$ref" in prop else prop
+        for name, prop in props.items()
+    }
+    return {**schema, "properties": resolved_props}
+
+
 def _maybe_resolve(spec: dict, schema: dict | None) -> dict | None:
     if schema is None:
         return None
@@ -58,14 +70,14 @@ def _maybe_resolve(spec: dict, schema: dict | None) -> dict | None:
             items = resolved["items"]
             if "$ref" in items:
                 items = _resolve_ref(spec, items["$ref"])
-            return items
-        return resolved
+            return _resolve_properties(spec, items)
+        return _resolve_properties(spec, resolved)
     if schema.get("type") == "array" and "items" in schema:
         items = schema["items"]
         if "$ref" in items:
             items = _resolve_ref(spec, items["$ref"])
-        return items
-    return schema
+        return _resolve_properties(spec, items)
+    return _resolve_properties(spec, schema)
 
 
 def _extract_response_schema(spec: dict, operation: dict) -> dict | None:

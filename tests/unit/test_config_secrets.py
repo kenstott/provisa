@@ -196,7 +196,7 @@ class TestParseConfig:
     def test_invalid_config_raises_validation_error(self):
         bad = {
             # Missing required fields: sources, domains, tables, roles
-            "naming": {"convention": "snake_case"},
+            "naming": {"convention": "snake"},
         }
         with pytest.raises(ValidationError):
             parse_config_dict(bad)
@@ -323,7 +323,7 @@ class TestParseConfigFile:
         path = self._write_yaml("""
             # Config with no sources, domains, tables, or roles
             naming:
-              convention: snake_case
+              convention: snake
         """)
         try:
             with pytest.raises(ValidationError):

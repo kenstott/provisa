@@ -83,8 +83,8 @@ class TestTwoInsertMutations:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insert_orders(input: { amount: 42.0, region: "us-east" }) { affected_rows }
-                insert_customers(input: { name: "Alice", email: "alice@example.com" }) { affected_rows }
+                insertOrders(input: { amount: 42.0, region: "us-east" }) { affected_rows }
+                insertCustomers(input: { name: "Alice", email: "alice@example.com" }) { affected_rows }
             }
         """)
         assert not validate(schema, doc)
@@ -95,8 +95,8 @@ class TestTwoInsertMutations:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insert_orders(input: { amount: 10.0, region: "eu" }) { affected_rows }
-                insert_customers(input: { name: "Bob", email: "bob@example.com" }) { affected_rows }
+                insertOrders(input: { amount: 10.0, region: "eu" }) { affected_rows }
+                insertCustomers(input: { name: "Bob", email: "bob@example.com" }) { affected_rows }
             }
         """)
         assert not validate(schema, doc)
@@ -111,8 +111,8 @@ class TestTwoInsertMutations:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insert_orders(input: { amount: 10.0, region: "eu" }) { affected_rows }
-                insert_customers(input: { name: "Bob", email: "bob@example.com" }) { affected_rows }
+                insertOrders(input: { amount: 10.0, region: "eu" }) { affected_rows }
+                insertCustomers(input: { name: "Bob", email: "bob@example.com" }) { affected_rows }
             }
         """)
         assert not validate(schema, doc)
@@ -126,8 +126,8 @@ class TestTwoInsertMutations:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insert_orders(input: { amount: 99.9, region: "us-west" }) { affected_rows }
-                insert_customers(input: { name: "Carol", email: "carol@example.com" }) { affected_rows }
+                insertOrders(input: { amount: 99.9, region: "us-west" }) { affected_rows }
+                insertCustomers(input: { name: "Carol", email: "carol@example.com" }) { affected_rows }
             }
         """)
         assert not validate(schema, doc)
@@ -146,8 +146,8 @@ class TestInsertAndUpdate:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insert_orders(input: { amount: 5.0, region: "ca" }) { affected_rows }
-                update_orders(set: { status: "shipped" }, where: { id: { eq: 1 } }) { affected_rows }
+                insertOrders(input: { amount: 5.0, region: "ca" }) { affected_rows }
+                updateOrders(set: { status: "shipped" }, where: { id: { eq: 1 } }) { affected_rows }
             }
         """)
         assert not validate(schema, doc)
@@ -160,8 +160,8 @@ class TestInsertAndUpdate:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insert_orders(input: { region: "au" }) { affected_rows }
-                update_orders(set: { status: "done" }, where: { id: { eq: 2 } }) { affected_rows }
+                insertOrders(input: { region: "au" }) { affected_rows }
+                updateOrders(set: { status: "done" }, where: { id: { eq: 2 } }) { affected_rows }
             }
         """)
         assert not validate(schema, doc)
@@ -174,8 +174,8 @@ class TestInsertAndUpdate:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insert_orders(input: { region: "au" }) { affected_rows }
-                update_orders(set: { status: "done" }, where: { id: { eq: 2 } }) { affected_rows }
+                insertOrders(input: { region: "au" }) { affected_rows }
+                updateOrders(set: { status: "done" }, where: { id: { eq: 2 } }) { affected_rows }
             }
         """)
         assert not validate(schema, doc)
@@ -193,8 +193,8 @@ class TestInsertAndDelete:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insert_customers(input: { name: "Dave", email: "dave@example.com" }) { affected_rows }
-                delete_orders(where: { id: { eq: 99 } }) { affected_rows }
+                insertCustomers(input: { name: "Dave", email: "dave@example.com" }) { affected_rows }
+                deleteOrders(where: { id: { eq: 99 } }) { affected_rows }
             }
         """)
         assert not validate(schema, doc)
@@ -205,8 +205,8 @@ class TestInsertAndDelete:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                insert_customers(input: { name: "Eve", email: "eve@example.com" }) { affected_rows }
-                delete_orders(where: { id: { eq: 7 } }) { affected_rows }
+                insertCustomers(input: { name: "Eve", email: "eve@example.com" }) { affected_rows }
+                deleteOrders(where: { id: { eq: 7 } }) { affected_rows }
             }
         """)
         assert not validate(schema, doc)
@@ -223,8 +223,8 @@ class TestRLSAppliedPerMutation:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                update_orders(set: { status: "done" }, where: { id: { eq: 1 } }) { affected_rows }
-                update_customers(set: { name: "Frank" }, where: { id: { eq: 2 } }) { affected_rows }
+                updateOrders(set: { status: "done" }, where: { id: { eq: 1 } }) { affected_rows }
+                updateCustomers(set: { name: "Frank" }, where: { id: { eq: 2 } }) { affected_rows }
             }
         """)
         assert not validate(schema, doc)
@@ -249,7 +249,7 @@ class TestRLSAppliedPerMutation:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                update_orders(set: { status: "x" }, where: { id: { eq: 1 } }) { affected_rows }
+                updateOrders(set: { status: "x" }, where: { id: { eq: 1 } }) { affected_rows }
             }
         """)
         assert not validate(schema, doc)
@@ -272,8 +272,8 @@ class TestSameTableBatch:
         # Aliases required when using the same mutation field twice
         doc = parse("""
             mutation {
-                first: insert_orders(input: { amount: 1.0, region: "x" }) { affected_rows }
-                second: insert_orders(input: { amount: 2.0, region: "y" }) { affected_rows }
+                first: insertOrders(input: { amount: 1.0, region: "x" }) { affected_rows }
+                second: insertOrders(input: { amount: 2.0, region: "y" }) { affected_rows }
             }
         """)
         assert not validate(schema, doc)

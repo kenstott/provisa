@@ -38,16 +38,30 @@ def rel_field_name(target_field_name: str, cardinality: str) -> str:
     snake = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", snake).lower()
     parts = [p for p in snake.split("_") if p]
     # Strip leading verb prefixes (common in OpenAPI operation IDs)
+    original_len = len(parts)
     while len(parts) > 1 and parts[0] in _VERB_PREFIXES:
         parts = parts[1:]
-    noun, modifiers = parts[0], parts[1:]
+    verb_was_stripped = len(parts) < original_len
+    # Compound noun (no verb stripped, multiple parts): last word is head noun
+    if not verb_was_stripped and len(parts) > 1:
+        noun, modifiers = parts[-1], parts[:-1]
+    else:
+        noun, modifiers = parts[0], parts[1:]
     if cardinality == "one-to-many":
-        if _inflect.singular_noun(noun) is False:
+        singular = _inflect.singular_noun(noun)
+        if singular is False:
+            # noun is singular — pluralize it
             noun = _inflect.plural_noun(noun) or noun
+        elif singular.endswith("s") and not noun.endswith("ies"):
+            # inflect returned a false singular ending in 's' (e.g. address→addres) — force plural
+            noun = _inflect.plural_noun(noun) or noun
+        # else: genuinely plural (e.g. inquiries, orders) — leave as-is
     else:
         singular = _inflect.singular_noun(noun)
         if singular:
             noun = singular
+    if not verb_was_stripped and len(parts) > 1:
+        return modifiers[0] + "".join(m.capitalize() for m in modifiers[1:]) + noun.capitalize()
     return noun + "".join(m.capitalize() for m in modifiers)
 
 
@@ -108,28 +122,40 @@ def source_to_catalog(source_id: str) -> str:
     return source_id.replace("-", "_")
 
 
-def apply_convention(name: str, convention: str) -> str | None:
-    """Apply a naming convention to produce an alias.
+VALID_CONVENTIONS = frozenset({"snake", "hasura_graphql", "apollo_graphql"})
 
-    For snake_case: converts PascalCase names to snake_case.
-      camelCase names (lowercase-first with internal uppercase) are preserved —
-      converting them would misrepresent the original DB column name (REQ-157).
-    For camelCase/PascalCase: converts snake_case names to the target case.
-    Returns None if the name is already in the target form (no alias needed).
+
+def _canonical_convention(convention: str) -> str:
+    """Resolve preset convention to field/column naming form."""
+    if convention == "snake":
+        return "snake_case"
+    return "camelCase"  # hasura_graphql, apollo_graphql
+
+
+def mutation_style(convention: str) -> str:
+    """Return 'snake' or 'camel' mutation prefix style for a given convention."""
+    if convention in ("snake", "hasura_graphql"):
+        return "snake"
+    return "camel"  # apollo_graphql
+
+
+def apply_convention(name: str, convention: str) -> str | None:
+    """Apply a naming convention preset to produce an alias.
+
+    snake: PascalCase → snake_case; camelCase names preserved (REQ-157).
+    hasura_graphql / apollo_graphql: snake_case → camelCase; camelCase preserved.
+    Returns None if no alias needed.
     """
-    if convention == "none":
-        return None
-    if convention == "snake_case":
-        # camelCase names (e.g. "mixedCase") must not be renamed — preserve original DB case
+    canon = _canonical_convention(convention)
+    if canon == "snake_case":
         if name and name[0].islower() and any(c.isupper() for c in name):
             return None
         result = _to_snake_case(name)
         return result if result != name else None
-    if convention == "camelCase":
+    if canon == "camelCase":
+        if name and name[0].islower() and any(c.isupper() for c in name):
+            return None
         result = _to_camel_case(name)
-        return result if result != name else None
-    if convention == "PascalCase":
-        result = _to_pascal_case(name)
         return result if result != name else None
     return None
 
@@ -164,6 +190,15 @@ def _shortest_unique(name: str, all_names: list[str], qualifiers: list[str]) -> 
     )
 
 
+def _apply_table_convention(name: str, convention: str) -> str:
+    """Apply a naming convention preset to a table/field name."""
+    safe = _to_field_name(name)
+    canon = _canonical_convention(convention)
+    if canon == "camelCase":
+        return _to_camel_case(safe)
+    return safe  # snake_case
+
+
 def generate_name(
     table_name: str,
     schema_name: str,
@@ -171,13 +206,15 @@ def generate_name(
     domain_table_names: list[str],
     naming_rules: list[dict],
     alias: str | None = None,
+    convention: str = "apollo_graphql",
 ) -> str:
     """Generate a unique GraphQL-safe name for a table.
 
     Priority: alias > naming rules > shortest unique name.
+    Convention controls output casing (default: camelCase).
     """
     if alias:
-        return _to_field_name(alias)
+        return _apply_table_convention(alias, convention)
 
     # Apply naming rules to this name AND all domain names for correct comparison
     name = _apply_naming_rules(table_name, naming_rules)
@@ -186,7 +223,7 @@ def generate_name(
     # Find shortest unique within domain (comparing transformed names)
     name = _shortest_unique(name, transformed_names, [schema_name, source_id])
 
-    result = _to_field_name(name)
+    result = _apply_table_convention(name, convention)
     if not result:
         raise ValueError(
             f"Naming rules produced empty name for table {table_name!r}. "
@@ -198,9 +235,11 @@ def generate_name(
 def to_type_name(field_name: str) -> str:
     """Convert a field name to a GraphQL type name (PascalCase).
 
-    Preserves the domain separator: sales_analytics__orders → SalesAnalytics_Orders
+    Handles camelCase input: capitalizes first letter only.
+    Preserves the domain separator: sa__userByName → Sa_UserByName
     """
     if "__" in field_name:
-        parts = field_name.split("__", 1)
-        return _to_pascal_case(parts[0]) + "_" + _to_pascal_case(parts[1])
-    return _to_pascal_case(field_name)
+        prefix, rest = field_name.split("__", 1)
+        rest_pascal = (rest[0].upper() + rest[1:]) if rest else ""
+        return prefix.upper() + "__" + rest_pascal
+    return (field_name[0].upper() + field_name[1:]) if field_name else ""

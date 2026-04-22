@@ -158,6 +158,21 @@ class TestSerializeOneToMany:
         assert c3["orders"] == [{"oid": 20}]
 
 
+class TestSerializeNullIntermediatePath:
+    def test_null_parent_does_not_crash_deep_path(self):
+        """When a.b is None, processing a.b.c must not raise TypeError."""
+        columns = [
+            ColumnRef(alias="t0", column="id", field_name="id", nested_in=None),
+            ColumnRef(alias="t1", column="name", field_name="name", nested_in="a.b"),
+            ColumnRef(alias="t2", column="val", field_name="val", nested_in="a.b.c"),
+        ]
+        rows = [(1, None, None)]
+        result = serialize_rows(rows, columns, "items")
+        row = result["data"]["items"][0]
+        assert row["id"] == 1
+        assert row["a"]["b"] is None
+
+
 class TestSerializeAggregate:
     def test_aggregate_with_nodes(self):
         """serialize_aggregate merges aggregate row and nodes rows into correct shape."""

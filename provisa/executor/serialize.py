@@ -17,6 +17,7 @@ Null propagation for nullable relationships.
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 
 from provisa.compiler.cursor import encode_cursor
@@ -32,6 +33,12 @@ def _convert_value(val: object) -> object:
         return f
     if hasattr(val, 'isoformat'):
         return val.isoformat()
+    # Trino returns JSON columns as strings; parse so object sub-fields resolve correctly.
+    if isinstance(val, str) and len(val) > 1 and val[0] in ("{", "["):
+        try:
+            return json.loads(val)
+        except (json.JSONDecodeError, ValueError):
+            pass
     return val
 
 
@@ -93,13 +100,18 @@ def serialize_rows(
                     all_none = all(row[idx] is None for idx, _ in nest_cols)
                     parts = nest_path.split(".")
                     target = obj
+                    skip = False
                     for part in parts[:-1]:
                         target = target.setdefault(part, {})
-                    leaf = parts[-1]
-                    if all_none:
-                        target[leaf] = None
-                    else:
-                        target[leaf] = {col.field_name: _convert_value(row[idx]) for idx, col in nest_cols}
+                        if target is None:
+                            skip = True
+                            break
+                    if not skip:
+                        leaf = parts[-1]
+                        if all_none:
+                            target[leaf] = None
+                        else:
+                            target[leaf] = {col.field_name: _convert_value(row[idx]) for idx, col in nest_cols}
                 seen[root_key] = len(result_rows)
                 result_rows.append(obj)
 
@@ -133,12 +145,19 @@ def serialize_rows(
         for nest_path, nest_cols in nested_groups.items():
             all_none = all(row[idx] is None for idx, _ in nest_cols)
             parts = nest_path.split(".")
-            # Walk down the object tree, creating intermediate dicts as needed
+            # Walk down the object tree, creating intermediate dicts as needed.
+            # If an intermediate segment is already None, skip — parent is null.
             target = obj
+            skip = False
             for part in parts[:-1]:
-                if part not in target or target[part] is None:
+                if part not in target:
                     target[part] = {}
                 target = target[part]
+                if target is None:
+                    skip = True
+                    break
+            if skip:
+                continue
             leaf = parts[-1]
             if all_none:
                 target[leaf] = None

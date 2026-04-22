@@ -126,7 +126,7 @@ def _list_val(items: list) -> ListValueNode:
 def _field_node(arguments: list[ArgumentNode]) -> FieldNode:
     """Build a minimal FieldNode with the given arguments."""
     return FieldNode(
-        name=_name("upsert_orders"),
+        name=_name("upsertOrders"),
         arguments=tuple(arguments),
         selection_set=None,
         directives=(),
@@ -264,7 +264,7 @@ class TestCompileUpsertViaGraphQL:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                upsert_orders(
+                upsertOrders(
                     input: { id: 1, amount: 10.0, region: "us" }
                     on_conflict: [id, region]
                 ) { affected_rows }
@@ -284,7 +284,7 @@ class TestCompileUpsertViaGraphQL:
         schema, ctx = _build()
         doc = parse("""
             mutation {
-                upsert_orders(
+                upsertOrders(
                     input: { id: 2, amount: 55.5, region: "ap" }
                     on_conflict: [id]
                 ) { affected_rows }
@@ -343,7 +343,7 @@ def schema_and_ctx():
 class TestDistinctOn:
     def test_distinct_on_single_column_in_sql(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders(distinct_on: [customer_id]) { id customer_id } }")
+        doc = parse("{ orders(distinct_on: [customer_id]) { id customerId } }")
         assert not validate(schema, doc)
         results = compile_query(doc, ctx)
         sql = results[0].sql
@@ -352,7 +352,7 @@ class TestDistinctOn:
 
     def test_distinct_on_appears_immediately_after_select(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders(distinct_on: [customer_id]) { id customer_id } }")
+        doc = parse("{ orders(distinct_on: [customer_id]) { id customerId } }")
         results = compile_query(doc, ctx)
         sql = results[0].sql
         # The DISTINCT ON prefix must be right after SELECT
@@ -361,7 +361,7 @@ class TestDistinctOn:
 
     def test_distinct_on_multiple_columns_comma_separated(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders(distinct_on: [customer_id, region]) { id customer_id region } }")
+        doc = parse("{ orders(distinct_on: [customer_id, region]) { id customerId region } }")
         assert not validate(schema, doc)
         results = compile_query(doc, ctx)
         sql = results[0].sql
@@ -381,7 +381,7 @@ class TestDistinctOn:
                 orders(
                     distinct_on: [customer_id]
                     order_by: [{ customer_id: asc }]
-                ) { id customer_id }
+                ) { id customerId }
             }
         """)
         assert not validate(schema, doc)
@@ -392,7 +392,7 @@ class TestDistinctOn:
 
     def test_without_distinct_on_no_distinct_keyword(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders { id customer_id } }")
+        doc = parse("{ orders { id customerId } }")
         assert not validate(schema, doc)
         results = compile_query(doc, ctx)
         sql = results[0].sql

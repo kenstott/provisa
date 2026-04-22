@@ -26,6 +26,8 @@ def kafka_bootstrap():
 
 
 class TestKafkaTopicRead:
+    pytestmark = [pytest.mark.requires_kafka]
+
     def test_trino_kafka_connector_available(self, trino_conn):
         """Verify the Kafka connector is configured in Trino."""
         cursor = trino_conn.cursor()
@@ -68,6 +70,8 @@ class TestKafkaTopicRead:
 
 
 class TestKafkaMessageContent:
+    pytestmark = [pytest.mark.requires_kafka]
+
     def test_kafka_messages_have_typed_columns(self, trino_conn):
         """When a schema is defined, messages have typed columns (not just raw bytes)."""
         cursor = trino_conn.cursor()

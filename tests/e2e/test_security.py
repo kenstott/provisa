@@ -39,17 +39,17 @@ class TestColumnVisibility:
     async def test_admin_sees_amount(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id amount } }", "role": "admin"},
+            json={"query": "{ sa__orders { id amount } }", "role": "admin"},
         )
         assert resp.status_code == 200
-        rows = resp.json()["data"]["sales_analytics__orders"]
+        rows = resp.json()["data"]["sa__orders"]
         assert "amount" in rows[0]
 
     async def test_analyst_cannot_see_amount(self, client):
         """Analyst role has no visibility to 'amount' column — query should fail validation."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id amount } }", "role": "analyst"},
+            json={"query": "{ sa__orders { id amount } }", "role": "analyst"},
         )
         # amount is not in analyst's schema — GraphQL validation rejects it
         assert resp.status_code == 400
@@ -58,10 +58,10 @@ class TestColumnVisibility:
         """Analyst can query customers with visible columns (no RLS on customers)."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__customers { id name } }", "role": "analyst"},
+            json={"query": "{ sa__customers { id name } }", "role": "analyst"},
         )
         assert resp.status_code == 200
-        rows = resp.json()["data"]["sales_analytics__customers"]
+        rows = resp.json()["data"]["sa__customers"]
         assert len(rows) > 0
         assert "id" in rows[0]
         assert "name" in rows[0]
@@ -70,7 +70,7 @@ class TestColumnVisibility:
         """Analyst cannot see product_id on orders."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id product_id } }", "role": "analyst"},
+            json={"query": "{ sa__orders { id product_id } }", "role": "analyst"},
         )
         assert resp.status_code == 400  # product_id not in analyst schema
 
@@ -82,7 +82,7 @@ class TestRLSEnforcement:
         the RLS filter was injected into the SQL."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id } }", "role": "analyst"},
+            json={"query": "{ sa__orders { id } }", "role": "analyst"},
         )
         # RLS filter references current_setting which isn't set → 500 error
         # This proves the filter IS being injected
@@ -92,10 +92,10 @@ class TestRLSEnforcement:
         """Admin has no RLS rules — should see all data."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id } }", "role": "admin"},
+            json={"query": "{ sa__orders { id } }", "role": "admin"},
         )
         assert resp.status_code == 200
-        rows = resp.json()["data"]["sales_analytics__orders"]
+        rows = resp.json()["data"]["sa__orders"]
         assert len(rows) >= 25  # all seeded orders (CDC tests may add rows)
 
 

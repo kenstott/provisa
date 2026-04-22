@@ -208,9 +208,28 @@ class NamingRule(BaseModel):
 
 
 class NamingConfig(BaseModel):
-    convention: str = "snake_case"  # none, snake_case, camelCase, PascalCase
+    convention: str = "apollo_graphql"
     rules: list[NamingRule] = Field(default_factory=list)
     relay_pagination: bool = False  # opt-in: generate _connection fields + Edge/PageInfo types
+
+    @field_validator("convention")
+    @classmethod
+    def _validate_convention(cls, v: str) -> str:
+        from provisa.compiler.naming import VALID_CONVENTIONS
+        if v not in VALID_CONVENTIONS:
+            raise ValueError(
+                f"Invalid naming convention {v!r}. "
+                f"Valid options: {sorted(VALID_CONVENTIONS)}"
+            )
+        return v
+
+
+class ObjectField(BaseModel):
+    name: str
+    type: str = "string"  # provisa scalar type: string, integer, number, boolean
+    alias: str | None = None
+    description: str | None = None
+    visible_to: list[str] = []  # empty = inherit from parent column
 
 
 class Column(BaseModel):
@@ -230,6 +249,7 @@ class Column(BaseModel):
     is_primary_key: bool = False  # user-designated PK (informational, not enforced)
     is_foreign_key: bool = False  # derived from relationships (source_column side)
     is_alternate_key: bool = False  # derived from relationships (target_column when PK already exists)
+    object_fields: list[ObjectField] = []  # sub-fields for object/jsonb columns
 
 
 class ColumnPreset(BaseModel):

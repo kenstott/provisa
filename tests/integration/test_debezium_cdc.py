@@ -198,6 +198,8 @@ def provider():
 # ---------------------------------------------------------------------------
 
 class TestDebeziumConnectorRegistration:
+    pytestmark = [pytest.mark.requires_debezium]
+
     def test_debezium_connect_reachable(self):
         """Debezium Connect REST API is reachable."""
         r = httpx.get(f"{DEBEZIUM_URL}/connectors", timeout=5)
@@ -216,6 +218,8 @@ class TestDebeziumConnectorRegistration:
 
 
 class TestDebeziumInsertEvents:
+    pytestmark = [pytest.mark.requires_debezium]
+
     async def test_insert_yields_insert_event(self, debezium_connector, provider, pg_pool):
         """Inserting a row in PG produces an insert ChangeEvent via Debezium."""
         # Insert a unique row so we can identify our event
@@ -280,6 +284,8 @@ class TestDebeziumInsertEvents:
 
 
 class TestDebeziumUpdateEvents:
+    pytestmark = [pytest.mark.requires_debezium]
+
     async def test_update_yields_update_event(self, debezium_connector, provider, pg_pool):
         """Updating a row produces an update ChangeEvent."""
         # Insert first, then update
@@ -318,6 +324,8 @@ class TestDebeziumUpdateEvents:
 
 
 class TestDebeziumDeleteEvents:
+    pytestmark = [pytest.mark.requires_debezium]
+
     async def test_delete_yields_delete_event(self, debezium_connector, provider, pg_pool):
         """Deleting a row produces a delete ChangeEvent."""
         marker = f"del-test-{uuid.uuid4().hex[:8]}"
@@ -346,6 +354,8 @@ class TestDebeziumDeleteEvents:
 
 
 class TestDebeziumProviderLifecycle:
+    pytestmark = [pytest.mark.requires_debezium]
+
     async def test_provider_close_is_idempotent(self, provider):
         """Closing the provider twice does not raise."""
         p = DebeziumNotificationProvider(

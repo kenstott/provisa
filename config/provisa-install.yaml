@@ -104,6 +104,9 @@ tables:
     governance: pre-approved
     description: "Individual pet record by ID from Petstore API"
     columns:
+      - name: petId
+        native_filter_type: path_param
+        visible_to: []
       - name: id
         visible_to: [admin, analyst]
       - name: name
@@ -140,6 +143,9 @@ tables:
     governance: pre-approved
     description: "Individual purchase order by ID from Petstore API"
     columns:
+      - name: orderId
+        native_filter_type: path_param
+        visible_to: []
       - name: id
         visible_to: [admin, analyst]
       - name: petId
@@ -166,6 +172,7 @@ tables:
         visible_to: [admin]
       - name: username
         visible_to: [admin, analyst]
+        native_filter_type: path_param
       - name: firstName
         visible_to: [admin, analyst]
       - name: lastName

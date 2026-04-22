@@ -57,9 +57,9 @@ def _operation_id_to_alias(op_id: str) -> str:
 
 
 _OPENAPI_TYPE_MAP = {
-    "string": "varchar",
+    "string": "string",
     "integer": "integer",
-    "number": "numeric",
+    "number": "number",
     "boolean": "boolean",
     "array": "jsonb",
     "object": "jsonb",
@@ -67,7 +67,7 @@ _OPENAPI_TYPE_MAP = {
 
 
 def _openapi_to_provisa_type(t: str | None) -> str:
-    return _OPENAPI_TYPE_MAP.get(t or "string", "text")
+    return _OPENAPI_TYPE_MAP.get(t or "string", "string")
 
 
 def _schema_to_columns(schema: dict | None) -> list[dict]:
@@ -78,10 +78,16 @@ def _schema_to_columns(schema: dict | None) -> list[dict]:
     if schema.get("type") == "array" and "items" in schema:
         schema = schema["items"]
     props = schema.get("properties", {})
-    return [
-        {"name": name, "type": _openapi_to_provisa_type(prop.get("type"))}
-        for name, prop in props.items()
-    ]
+    cols = []
+    for name, prop in props.items():
+        col: dict = {"name": name, "type": _openapi_to_provisa_type(prop.get("type"))}
+        if prop.get("type") == "object" and prop.get("properties"):
+            col["object_fields"] = [
+                {"name": sub_name, "type": _openapi_to_provisa_type(sub_prop.get("type"))}
+                for sub_name, sub_prop in prop["properties"].items()
+            ]
+        cols.append(col)
+    return cols
 
 
 async def upsert_table(
@@ -111,6 +117,7 @@ async def upsert_table(
     table_name = query.operation_id
     alias = _operation_id_to_alias(table_name)
 
+    from provisa.core.models import ObjectField
     tbl = Table(
         source_id=source_id,
         domain_id=domain_id or "",
@@ -123,6 +130,7 @@ async def upsert_table(
                 name=c["name"],
                 visible_to=[],
                 native_filter_type=c.get("native_filter_type"),
+                object_fields=[ObjectField(**f) for f in c.get("object_fields", [])],
             )
             for c in columns
         ],
@@ -149,7 +157,10 @@ async def upsert_table(
     response_col_names = {c["name"] for c in _schema_to_columns(query.response_schema)}
     api_columns = []
     for c in _schema_to_columns(query.response_schema):
-        api_columns.append({"name": c["name"], "type": c["type"], "filterable": True})
+        entry: dict = {"name": c["name"], "type": c["type"], "filterable": True}
+        if c.get("object_fields"):
+            entry["object_fields"] = c["object_fields"]
+        api_columns.append(entry)
     for p in query.path_params:
         api_columns.append({
             "name": p["name"],

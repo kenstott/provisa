@@ -152,7 +152,7 @@ class TestSchemaGenObjectTypes:
         assert isinstance(orders_type, GraphQLObjectType)
         field_names = set(orders_type.fields.keys())
         assert "id" in field_names
-        assert "customer_id" in field_names
+        assert "customerId" in field_names
         assert "amount" in field_names
         assert "region" in field_names
 
@@ -193,12 +193,12 @@ class TestSchemaGenColumnVisibility:
 
 class TestSchemaGenRelationships:
     def test_orders_has_customers_relationship(self, schema_input):
-        """orders → customers (many-to-one) should produce an object field."""
+        """orders → customers (many-to-one) should produce a singular 'customer' field."""
         si = _make_schema_input(schema_input, "admin")
         schema = generate_schema(si)
         orders_type = _unwrap_list_type(schema.query_type.fields["orders"])
-        assert "customers" in orders_type.fields
-        customers_field = orders_type.fields["customers"]
+        assert "customer" in orders_type.fields
+        customers_field = orders_type.fields["customer"]
         # many-to-one: single object, not a list
         assert isinstance(customers_field.type, GraphQLObjectType)
 
@@ -207,14 +207,14 @@ class TestSchemaGenRelationships:
         si = _make_schema_input(schema_input, "admin")
         schema = generate_schema(si)
         orders_type = _unwrap_list_type(schema.query_type.fields["orders"])
-        assert "customers" in orders_type.fields
+        assert "customer" in orders_type.fields
 
     def test_analyst_sees_relationship_within_domain(self, schema_input):
         """Both orders and customers are in sales-analytics — analyst should see it."""
         si = _make_schema_input(schema_input, "analyst")
         schema = generate_schema(si)
         orders_type = _unwrap_list_type(schema.query_type.fields["orders"])
-        assert "customers" in orders_type.fields
+        assert "customer" in orders_type.fields
 
 
 class TestSchemaGenQueryArgs:

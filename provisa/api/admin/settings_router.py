@@ -71,7 +71,7 @@ async def get_settings():
         },
         "naming": {
             "domain_prefix": naming_cfg.get("domain_prefix", False),
-            "convention": naming_cfg.get("convention", "snake_case"),
+            "convention": naming_cfg.get("convention", "apollo_graphql"),
         },
         "otel": {
             "endpoint": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or otel_cfg.get("endpoint", ""),
@@ -125,8 +125,8 @@ async def update_settings(request: Request):
             updated.append("naming.domain_prefix")
             needs_reload = True
         if "convention" in n:
-            valid = ("none", "snake_case", "camelCase", "PascalCase")
-            if n["convention"] not in valid:
+            from provisa.compiler.naming import VALID_CONVENTIONS
+            if n["convention"] not in VALID_CONVENTIONS:
                 return {"success": False, "message": f"Invalid convention: {n['convention']!r}"}
             cfg.setdefault("naming", {})["convention"] = n["convention"]
             updated.append("naming.convention")

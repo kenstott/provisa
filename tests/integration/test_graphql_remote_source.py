@@ -77,7 +77,7 @@ SAMPLE_INTROSPECTION_RESPONSE = {
 }
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module", loop_scope="session")
 async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
 

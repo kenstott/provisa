@@ -92,12 +92,27 @@ def _get_mutation_meta(
 ) -> tuple[str, str, TableMeta]:
     """Parse mutation field name and return (operation, table_field_name, TableMeta).
 
-    Mutation fields are named: insert_<table>, update_<table>, delete_<table>.
+    Handles both camelCase (insertOrders, sa__insertOrders) and
+    snake_case (insert_orders, sa__insert_orders) mutation naming styles.
     """
-    for prefix in ("upsert_", "insert_", "update_", "delete_"):
-        if field_name.startswith(prefix):
-            op = prefix.rstrip("_")
-            table_field = field_name[len(prefix):]
+    domain_prefix = ""
+    name = field_name
+    if "__" in field_name:
+        domain_prefix, name = field_name.split("__", 1)
+        domain_prefix += "__"
+
+    for op in ("upsert", "insert", "update", "delete"):
+        # camelCase style: insertOrders → op=insert, rest=Orders → orders
+        if name.startswith(op) and len(name) > len(op):
+            rest = name[len(op):]
+            if rest[0].isupper():
+                table_field = domain_prefix + rest[0].lower() + rest[1:]
+                if table_field in ctx.tables:
+                    return op, table_field, ctx.tables[table_field]
+        # snake_case style: insert_orders → op=insert, rest=orders
+        snake_prefix = op + "_"
+        if name.startswith(snake_prefix) and len(name) > len(snake_prefix):
+            table_field = domain_prefix + name[len(snake_prefix):]
             if table_field in ctx.tables:
                 return op, table_field, ctx.tables[table_field]
     raise ValueError(f"Unknown mutation field: {field_name!r}")

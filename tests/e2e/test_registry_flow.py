@@ -41,16 +41,16 @@ class TestTestMode:
         """In test mode, arbitrary queries execute with full guards."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id amount } }", "role": "admin"},
+            json={"query": "{ sa__orders { id amount } }", "role": "admin"},
         )
         assert resp.status_code == 200
-        assert len(resp.json()["data"]["sales_analytics__orders"]) > 0
+        assert len(resp.json()["data"]["sa__orders"]) > 0
 
     async def test_pre_approved_table_allowed(self, client):
         """Pre-approved tables work without registry."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__customers { id name } }", "role": "admin"},
+            json={"query": "{ sa__customers { id name } }", "role": "admin"},
         )
         assert resp.status_code == 200
 
@@ -113,7 +113,7 @@ class TestGovernedQueryGet:
                     SET status = 'approved', query_text = EXCLUDED.query_text
                 """,
                 "test-get-governed",
-                "{ sales_analytics__orders { id amount } }",
+                "{ sa__orders { id amount } }",
                 "SELECT id, amount FROM orders",
                 [],
                 "test-developer",
@@ -134,7 +134,7 @@ class TestGovernedQueryGet:
         assert resp.status_code == 200
         data = resp.json()
         assert "data" in data
-        assert "sales_analytics__orders" in data["data"]
+        assert "sa__orders" in data["data"]
 
     async def test_get_unknown_query_id_returns_404(self, client):
         """GET with an unrecognised queryId returns 404."""

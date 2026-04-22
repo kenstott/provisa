@@ -1,6 +1,28 @@
 -- MV cache schema for materialized views
 CREATE SCHEMA IF NOT EXISTS mv_cache;
 
+-- Allow provisa user to create tables in public schema (required for Iceberg JDBC catalog)
+GRANT CREATE ON SCHEMA public TO provisa;
+
+-- Iceberg JDBC catalog metadata tables (required for Trino results catalog)
+CREATE TABLE IF NOT EXISTS iceberg_tables (
+    catalog_name VARCHAR(255) NOT NULL,
+    table_namespace VARCHAR(255) NOT NULL,
+    table_name VARCHAR(255) NOT NULL,
+    metadata_location VARCHAR(1000),
+    previous_metadata_location VARCHAR(1000),
+    iceberg_type VARCHAR(5),
+    PRIMARY KEY (catalog_name, table_namespace, table_name)
+);
+
+CREATE TABLE IF NOT EXISTS iceberg_namespace_properties (
+    catalog_name VARCHAR(255) NOT NULL,
+    namespace VARCHAR(255) NOT NULL,
+    property_key VARCHAR(255),
+    property_value VARCHAR(1000),
+    PRIMARY KEY (catalog_name, namespace, property_key)
+);
+
 -- Demo schema for Provisa development
 -- Two schemas: public (sales data) and analytics (reporting views)
 -- Used to test cross-source routing through Trino

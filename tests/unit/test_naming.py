@@ -30,7 +30,7 @@ class TestGenerateName:
             domain_table_names=["orders", "orders"],
             naming_rules=[],
         )
-        assert result == "sales_orders"
+        assert result == "salesOrders"
 
     def test_conflict_adds_source_qualifier_when_schema_taken(self):
         result = generate_name(
@@ -38,7 +38,7 @@ class TestGenerateName:
             domain_table_names=["orders", "orders", "public_orders"],
             naming_rules=[],
         )
-        assert result == "pg1_orders"
+        assert result == "pg1Orders"
 
     def test_naming_rules_applied(self):
         result = generate_name(
@@ -66,7 +66,7 @@ class TestGenerateName:
             naming_rules=[],
             alias="sales_orders",
         )
-        assert result == "sales_orders"
+        assert result == "salesOrders"
 
     def test_hyphens_in_name_replaced(self):
         result = generate_name(
@@ -74,7 +74,7 @@ class TestGenerateName:
             domain_table_names=["my-table"],
             naming_rules=[],
         )
-        assert result == "my_table"
+        assert result == "myTable"
 
     def test_empty_after_rules_raises(self):
         with pytest.raises(ValueError, match="empty name"):
@@ -86,17 +86,17 @@ class TestGenerateName:
 
 
 class TestToTypeName:
-    def test_snake_case(self):
+    def test_simple(self):
         assert to_type_name("orders") == "Orders"
 
-    def test_multi_word(self):
-        assert to_type_name("order_items") == "OrderItems"
+    def test_camel_case_input(self):
+        assert to_type_name("orderItems") == "OrderItems"
 
     def test_already_pascal(self):
         assert to_type_name("Orders") == "Orders"
 
-    def test_with_hyphens(self):
-        assert to_type_name("order-items") == "OrderItems"
+    def test_domain_prefix(self):
+        assert to_type_name("sa__orderItems") == "SA__OrderItems"
 
     def test_single_char(self):
         assert to_type_name("a") == "A"

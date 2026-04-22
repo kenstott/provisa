@@ -94,6 +94,10 @@ class CompilationContext:
     aggregate_columns: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
     # table_id → user-designated PK column names (informational; empty = heuristic only)
     pk_columns: dict[int, list[str]] = field(default_factory=dict)
+    # (table_id, gql_field_name) → physical_column_name (only when they differ)
+    gql_to_physical: dict[tuple[int, str], str] = field(default_factory=dict)
+    # table_id → set of column names that require native API params (_nf_ prefix)
+    native_filter_columns: dict[int, set[str]] = field(default_factory=dict)
 
 
 # --- Compiled query result ---
@@ -154,7 +158,7 @@ def build_context(si: object) -> CompilationContext:
     This mirrors the logic in schema_gen._build_visible_tables and _assign_names
     to produce the same field_name/type_name mapping.
     """
-    from provisa.compiler.naming import generate_name, to_type_name, domain_gql_alias
+    from provisa.compiler.naming import generate_name, to_type_name, domain_gql_alias, apply_convention
     from provisa.compiler.schema_gen import SchemaInput, _build_visible_tables, _assign_names
 
     assert isinstance(si, SchemaInput)
@@ -212,12 +216,21 @@ def build_context(si: object) -> CompilationContext:
             if col.get("is_primary_key")
         ]
 
-        # Populate column paths for JSON extraction
+        # Store native filter column names
+        ctx.native_filter_columns[t.table_id] = {
+            nfc["column_name"] for nfc in t.native_filter_columns
+        }
+
+        # Populate column paths for JSON extraction and gql→physical mapping
+        convention = si.naming_convention
         for col in t.visible_columns:
             col_path = col.get("path")
+            phys = col["column_name"]
+            gql = col.get("alias") or apply_convention(phys, convention) or phys
+            if gql != phys:
+                ctx.gql_to_physical[(t.table_id, gql)] = phys
             if col_path:
-                gql_name = col.get("alias") or col["column_name"]
-                ctx.column_paths[(t.table_id, gql_name)] = col_path
+                ctx.column_paths[(t.table_id, gql)] = col_path
 
     # Build join metadata from visible relationships
     for rel in si.relationships:
@@ -603,14 +616,15 @@ def _collect_nested_columns(
         else:
             # Scalar column from the parent join
             nested_response_key = nested_sel.alias.value if nested_sel.alias else nested_name
-            col_expr = f'{_q(parent_alias)}.{_q(nested_name)}'
+            nested_phys = ctx.gql_to_physical.get((parent_table.table_id, nested_name), nested_name)
+            col_expr = f'{_q(parent_alias)}.{_q(nested_phys)}'
             if nested_sel.alias:
                 select_parts.append(f'{col_expr} AS {_q(nested_response_key)}')
             else:
                 select_parts.append(col_expr)
             columns.append(ColumnRef(
                 alias=parent_alias,
-                column=nested_name,
+                column=nested_phys,
                 field_name=nested_response_key,
                 nested_in=nesting_path,
                 cardinality=cardinality,
@@ -689,6 +703,7 @@ def _compile_root_field(
             response_key = sel.alias.value if sel.alias else sel_name
             gql_field_name = response_key
             col_path = ctx.column_paths.get((table.table_id, sel_name))
+            phys_name = ctx.gql_to_physical.get((table.table_id, sel_name), sel_name)
             if col_path:
                 # path is "source_col.key1.key2" → PG JSON extraction
                 # Emits PG syntax; SQLGlot transpiles to Trino json_extract_scalar
@@ -707,19 +722,19 @@ def _compile_root_field(
                     expr = f'{expr} AS {_q(response_key)}'
                 select_parts.append(expr)
             elif use_aliases:
-                col_expr = f'{_q(root_alias)}.{_q(sel_name)}'
+                col_expr = f'{_q(root_alias)}.{_q(phys_name)}'
                 if sel.alias:
                     select_parts.append(f'{col_expr} AS {_q(response_key)}')
                 else:
                     select_parts.append(col_expr)
             else:
                 if sel.alias:
-                    select_parts.append(f'{_q(sel_name)} AS {_q(response_key)}')
+                    select_parts.append(f'{_q(phys_name)} AS {_q(response_key)}')
                 else:
-                    select_parts.append(_q(sel_name))
+                    select_parts.append(_q(phys_name))
             columns.append(ColumnRef(
                 alias=root_alias,
-                column=sel_name,
+                column=phys_name,
                 field_name=gql_field_name,
                 nested_in=None,
             ))
@@ -798,6 +813,25 @@ def _compile_root_field(
     _STANDARD_ARGS = {"where", "order_by", "limit", "offset", "distinct_on", "as_of"}
     api_args = {k: v for k, v in args.items() if k not in _STANDARD_ARGS}
 
+    # Inject _nf_-prefixed WHERE conditions so the SQL/CQL preview shows the filter.
+    # nf_extractor strips these before Trino execution; endpoint.py uses api_args for the REST call.
+    if api_args:
+        nf_conditions = []
+        for k, v in api_args.items():
+            col = f"_nf_{k}"
+            quoted_col = _q(col)
+            if isinstance(v, bool):
+                lit = "TRUE" if v else "FALSE"
+            elif isinstance(v, (int, float)):
+                lit = str(v)
+            else:
+                lit = "'" + str(v).replace("'", "''") + "'"
+            nf_conditions.append(f"{quoted_col} = {lit}")
+        nf_where = " AND ".join(nf_conditions)
+        if " WHERE " in sql:
+            sql += f" AND {nf_where}"
+        else:
+            sql += f" WHERE {nf_where}"
 
     return CompiledQuery(
         sql=sql,
@@ -1124,8 +1158,9 @@ def _compile_connection_field(
         if not isinstance(sel, FieldNode):
             continue
         sel_name = sel.name.value
-        select_parts.append(_q(sel_name))
-        columns.append(ColumnRef(None, sel_name, sel_name, None))
+        phys_name = ctx.gql_to_physical.get((table.table_id, sel_name), sel_name)
+        select_parts.append(_q(phys_name))
+        columns.append(ColumnRef(None, phys_name, sel_name, None))
 
     if not select_parts:
         select_parts.append("1")

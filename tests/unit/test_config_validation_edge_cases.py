@@ -469,9 +469,9 @@ class TestValidMinimalConfig:
         assert config.functions == []
         assert config.webhooks == []
 
-    def test_minimal_config_default_naming_convention_is_snake_case(self):
+    def test_minimal_config_default_naming_convention_is_camel_case(self):
         config = parse_config_dict(_minimal_config())
-        assert config.naming.convention == "snake_case"
+        assert config.naming.convention == "apollo_graphql"
 
     def test_minimal_config_default_server_hostname_is_localhost(self):
         config = parse_config_dict(_minimal_config())

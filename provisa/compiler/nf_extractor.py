@@ -8,9 +8,9 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Extract _nf_* native filter conditions from SQL WHERE clauses.
+"""Extract _nf_* native param conditions from SQL WHERE clauses.
 
-Native filter columns use the _nf_ prefix convention (e.g. _nf_id, _nf_status).
+Native param columns use the _nf_ prefix (e.g. _nf_id).
 In SQL and Cypher queries they appear as ordinary WHERE conditions; this module
 strips them out before Trino execution and returns them as api_args for the
 REST call Phase 1.

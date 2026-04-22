@@ -33,6 +33,7 @@ class NodeMapping:
     schema_name: str
     table_name: str          # logical name — domain initials prefix stripped (e.g. "orders")
     properties: dict[str, str]  # cypher prop name → SQL column name
+    native_filter_columns: set[str] = field(default_factory=set)  # SQL column names that are native API params
     physical_table_name: str = ""  # physical DB table name; "" means same as table_name
 
     @property
@@ -71,6 +72,16 @@ class CypherLabelMap:
         self.nodes_by_table: dict[str, list[str]] = nodes_by_table or {}
         # rel_type → all RelationshipMappings with that type (supports UNION fan-out)
         self.aliases: dict[str, list[RelationshipMapping]] = aliases or {}
+
+    def display_label(self, nm: "NodeMapping") -> str:
+        """Return the shortest unambiguous label for a node.
+
+        Uses just the table label unless multiple nodes share that table label
+        across different domains, in which case the full compound label is needed.
+        """
+        if len(self.nodes_by_table.get(nm.table_label, [])) > 1:
+            return nm.label
+        return nm.table_label
 
     def node(self, label: str) -> NodeMapping:
         try:
@@ -156,7 +167,7 @@ class CypherLabelMap:
             col_names = [c for c, _ in col_list]
             user_pks = ctx_typed.pk_columns.get(table_meta.table_id, [])
             id_col = _resolve_id_column(table_meta.type_name, col_names, target_pk, user_pks)
-            props: dict[str, str] = {c: c for c in col_names}
+            props: dict[str, str] = {_to_camel(c): c for c in col_names}
 
             domain_id = getattr(table_meta, "domain_id", None) or None
             domain_label = _pascal(domain_id) if domain_id else None
@@ -167,6 +178,7 @@ class CypherLabelMap:
             physical_table = table_meta.table_name
             physical_kwarg = {"physical_table_name": physical_table} if physical_table != logical_table else {}
 
+            nf_cols = ctx_typed.native_filter_columns.get(table_meta.table_id, set())
             nodes[table_meta.type_name] = NodeMapping(
                 label=cypher_label,
                 type_name=table_meta.type_name,
@@ -180,6 +192,7 @@ class CypherLabelMap:
                 schema_name=table_meta.schema_name,
                 table_name=logical_table,
                 properties=props,
+                native_filter_columns=nf_cols,
                 **physical_kwarg,
             )
 
@@ -270,7 +283,17 @@ def _to_rel_type(field_name: str) -> str:
 
 
 def _pascal(s: str) -> str:
-    return "".join(p.capitalize() for p in re.split(r"[_\-]+", s) if p)
+    parts = [p for p in re.split(r"[_\-]+", s) if p]
+    if len(parts) == 1:
+        # No separators: uppercase first letter only, preserving existing casing.
+        return (s[0].upper() + s[1:]) if s else s
+    return "".join(p.capitalize() for p in parts)
+
+
+def _to_camel(s: str) -> str:
+    """Convert snake_case column name to camelCase Cypher property name."""
+    pascal = _pascal(s)
+    return pascal[0].lower() + pascal[1:] if pascal else s
 
 
 def _domain_initials(domain_id: str) -> str:

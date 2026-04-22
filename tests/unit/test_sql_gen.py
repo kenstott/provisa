@@ -263,7 +263,7 @@ class TestPagination:
 class TestDistinctOn:
     def test_distinct_on_single_column(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders(distinct_on: [customer_id]) { id customer_id amount } }")
+        doc = parse("{ orders(distinct_on: [customer_id]) { id customerId amount } }")
         assert not validate(schema, doc)
         results = compile_query(doc, ctx)
         sql = results[0].sql
@@ -273,7 +273,7 @@ class TestDistinctOn:
 
     def test_distinct_on_multiple_columns(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders(distinct_on: [customer_id, region]) { id customer_id region } }")
+        doc = parse("{ orders(distinct_on: [customer_id, region]) { id customerId region } }")
         results = compile_query(doc, ctx)
         sql = results[0].sql
         assert 'DISTINCT ON ("customer_id", "region")' in sql
@@ -284,7 +284,7 @@ class TestDistinctOn:
             { orders(
                 distinct_on: [customer_id]
                 order_by: [{ customer_id: asc }]
-            ) { id customer_id } }
+            ) { id customerId } }
         """)
         results = compile_query(doc, ctx)
         sql = results[0].sql

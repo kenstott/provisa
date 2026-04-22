@@ -37,7 +37,9 @@
       "mcp__puppeteer__puppeteer_select",
       "mcp__puppeteer__puppeteer_fill",
       "mcp__docker__docker",
-      "Bash(gh run:*)"
+      "Bash(gh run:*)",
+      "Read(//private/tmp/**)",
+      "Bash(curl -sf http://localhost:8000/health)"
     ]
   },
   "enabledMcpjsonServers": [

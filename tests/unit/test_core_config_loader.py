@@ -77,7 +77,7 @@ def _minimal_config_dict():
 def _full_config_dict():
     """Config with sources, domains, naming, roles, tables, relationships, and RLS rules."""
     d = _minimal_config_dict()
-    d["naming"] = {"convention": "snake_case", "rules": [{"pattern": "^prod_", "replace": ""}]}
+    d["naming"] = {"convention": "snake", "rules": [{"pattern": "^prod_", "replace": ""}]}
     d["tables"].append(
         {
             "source_id": "pg1",
@@ -143,7 +143,7 @@ class TestParseConfigDict:
         cfg = parse_config_dict(_minimal_config_dict())
         assert cfg.relationships == []
         assert cfg.rls_rules == []
-        assert cfg.naming.convention == "snake_case"
+        assert cfg.naming.convention == "apollo_graphql"
 
     def test_full_config_relationships(self):
         cfg = parse_config_dict(_full_config_dict())

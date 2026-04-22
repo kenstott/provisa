@@ -43,7 +43,7 @@ class TestInsert:
             json={
                 "query": """
                     mutation {
-                        insert_sales_analytics__customers(input: {
+                        sa__insertCustomers(input: {
                             id: 9999, name: "Test User", email: "test@example.com", region: "test"
                         }) { affected_rows }
                     }
@@ -52,19 +52,19 @@ class TestInsert:
             },
         )
         assert resp.status_code == 200, resp.json()
-        data = resp.json()["data"]["insert_sales_analytics__customers"]
+        data = resp.json()["data"]["sa__insertCustomers"]
         assert data["affected_rows"] == 1
 
         # Verify the row exists
         resp2 = await client.post(
             "/data/graphql",
             json={
-                "query": '{ sales_analytics__customers(where: { id: { eq: 9999 } }) { id name region } }',
+                "query": '{ sa__customers(where: { id: { eq: 9999 } }) { id name region } }',
                 "role": "admin",
             },
         )
         assert resp2.status_code == 200
-        rows = resp2.json()["data"]["sales_analytics__customers"]
+        rows = resp2.json()["data"]["sa__customers"]
         assert len(rows) == 1
         assert rows[0]["name"] == "Test User"
 
@@ -76,7 +76,7 @@ class TestUpdate:
             json={
                 "query": """
                     mutation {
-                        update_sales_analytics__customers(
+                        sa__updateCustomers(
                             set: { name: "Updated User" },
                             where: { id: { eq: 9999 } }
                         ) { affected_rows }
@@ -86,18 +86,18 @@ class TestUpdate:
             },
         )
         assert resp.status_code == 200, resp.json()
-        data = resp.json()["data"]["update_sales_analytics__customers"]
+        data = resp.json()["data"]["sa__updateCustomers"]
         assert data["affected_rows"] >= 1
 
         # Verify update
         resp2 = await client.post(
             "/data/graphql",
             json={
-                "query": '{ sales_analytics__customers(where: { id: { eq: 9999 } }) { name } }',
+                "query": '{ sa__customers(where: { id: { eq: 9999 } }) { name } }',
                 "role": "admin",
             },
         )
-        rows = resp2.json()["data"]["sales_analytics__customers"]
+        rows = resp2.json()["data"]["sa__customers"]
         assert rows[0]["name"] == "Updated User"
 
 
@@ -108,23 +108,23 @@ class TestDelete:
             json={
                 "query": """
                     mutation {
-                        delete_sales_analytics__customers(where: { id: { eq: 9999 } }) { affected_rows }
+                        sa__deleteCustomers(where: { id: { eq: 9999 } }) { affected_rows }
                     }
                 """,
                 "role": "admin",
             },
         )
         assert resp.status_code == 200, resp.json()
-        data = resp.json()["data"]["delete_sales_analytics__customers"]
+        data = resp.json()["data"]["sa__deleteCustomers"]
         assert data["affected_rows"] >= 1
 
         # Verify deletion
         resp2 = await client.post(
             "/data/graphql",
             json={
-                "query": '{ sales_analytics__customers(where: { id: { eq: 9999 } }) { id } }',
+                "query": '{ sa__customers(where: { id: { eq: 9999 } }) { id } }',
                 "role": "admin",
             },
         )
-        rows = resp2.json()["data"]["sales_analytics__customers"]
+        rows = resp2.json()["data"]["sa__customers"]
         assert len(rows) == 0

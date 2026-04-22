@@ -88,15 +88,15 @@ def _build_row_cast(tbl: str, node_meta: object) -> exp.Expression:
         exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
     ]
     reserved = {nm.id_column, "id", "label"}
-    for col_name in nm.properties.values():
+    for prop_key, col_name in nm.properties.items():
         if col_name in reserved:
             continue
+        col_expr = exp.Column(
+            this=exp.Identifier(this=col_name, quoted=True),
+            table=exp.Identifier(this=tbl),
+        )
         kv.append(exp.JSONKeyValue(
-            this=exp.Literal.string(col_name),
-            expression=exp.Column(
-                this=exp.Identifier(this=col_name, quoted=True),
-                table=exp.Identifier(this=tbl),
-            ),
+            this=exp.Literal.string(prop_key), expression=col_expr
         ))
     return exp.JSONObject(expressions=kv)
 

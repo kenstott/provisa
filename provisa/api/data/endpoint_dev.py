@@ -164,7 +164,7 @@ async def sql_endpoint(
 
     _default_source = next(
         (sid for sid, t in state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
-        next(iter(state.source_pools), "pg"),
+        next(iter(state.source_pools.source_ids), "pg"),
     )
 
     decision = decide_route(

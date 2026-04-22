@@ -734,7 +734,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         compiled_for_exec = compiled
         sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
 
-        if decision.route == Route.DIRECT and decision.source_id:
+        if decision.route == Route.DIRECT and decision.source_id and self._state.source_pools.has(decision.source_id):
             compiled_for_exec = inject_rls(compiled_for_exec, ctx, rls)
             if sampling:
                 compiled_for_exec = apply_sampling(compiled_for_exec, get_sample_size())

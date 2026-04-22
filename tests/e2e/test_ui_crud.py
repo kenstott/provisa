@@ -196,24 +196,24 @@ class TestDataQueryForUI:
     async def test_execute_query(self, client):
         resp = await client.post(
             "/data/graphql",
-            json={"query": "{ sales_analytics__orders { id region status } }"},
+            json={"query": "{ sa__orders { id region status } }"},
             headers={"X-Role": "analyst"},
         )
         assert resp.status_code == 200
         body = resp.json()
         assert "data" in body
-        assert "sales_analytics__orders" in body["data"]
-        assert len(body["data"]["sales_analytics__orders"]) > 0
+        assert "sa__orders" in body["data"]
+        assert len(body["data"]["sa__orders"]) > 0
 
     async def test_execute_query_with_filter(self, client):
         """UI sends queries with WHERE filters."""
         resp = await client.post(
             "/data/graphql",
-            json={"query": '{ sales_analytics__orders(where: {region: {eq: "us-east"}}) { id region } }'},
+            json={"query": '{ sa__orders(where: {region: {eq: "us-east"}}) { id region } }'},
             headers={"X-Role": "analyst"},
         )
         assert resp.status_code == 200
         body = resp.json()
         assert "data" in body
-        for order in body["data"]["sales_analytics__orders"]:
+        for order in body["data"]["sa__orders"]:
             assert order["region"] == "us-east"

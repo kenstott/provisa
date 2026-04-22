@@ -27,7 +27,7 @@ _API_TYPE_TO_TRINO: dict[ApiColumnType, str] = {
     ApiColumnType.integer: "bigint",
     ApiColumnType.number: "double",
     ApiColumnType.boolean: "boolean",
-    ApiColumnType.jsonb: "json",
+    ApiColumnType.jsonb: "varchar",
 }
 
 _PROMOTION_TYPE_TO_TRINO: dict[str, str] = {
@@ -56,10 +56,16 @@ def _endpoint_to_table_dict(
 
     for col in endpoint.columns:
         trino_type = _API_TYPE_TO_TRINO.get(col.type, "varchar")
-        columns_for_table.append({
+        col_dict: dict = {
             "column_name": col.name,
             "visible_to": role_ids,
-        })
+        }
+        if col.object_fields:
+            col_dict["object_fields"] = col.object_fields
+        if col.param_type is not None:
+            from provisa.api_source.models import ParamType
+            col_dict["native_filter_type"] = "path_param" if col.param_type == ParamType.path else "query_param"
+        columns_for_table.append(col_dict)
         column_metadata.append(ColumnMetadata(
             column_name=col.name,
             data_type=trino_type,
