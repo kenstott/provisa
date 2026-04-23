@@ -7,6 +7,7 @@
 """Per-request query stats accumulator (opt-in via X-Provisa-Stats header)."""
 from __future__ import annotations
 
+import time as _time
 from contextvars import ContextVar
 from dataclasses import dataclass, field as _field
 
@@ -26,6 +27,7 @@ class QueryStats:
     entries: list[FieldStat] = _field(default_factory=list)
     mermaid: str | None = None
     wall_ms: float | None = None  # true end-to-end wall-clock set by caller
+    _t0: float = _field(default_factory=_time.perf_counter)
 
     def record(self, *, field: str, source: str, strategy: str, elapsed_ms: float, rows: int, cache_hit: bool = False) -> None:
         self.entries.append(FieldStat(field=field, source=source, strategy=strategy, elapsed_ms=elapsed_ms, rows=rows, cache_hit=cache_hit))
@@ -34,8 +36,7 @@ class QueryStats:
         if self.wall_ms is not None:
             total = self.wall_ms
         else:
-            # Fallback: max elapsed across all entries
-            total = max((e.elapsed_ms for e in self.entries), default=0.0)
+            total = (_time.perf_counter() - self._t0) * 1000
         result: dict = {
             "total_elapsed_ms": round(total, 1),
             "sources": [

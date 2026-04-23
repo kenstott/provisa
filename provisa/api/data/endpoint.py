@@ -837,10 +837,6 @@ async def _execute_one_field(
                 src_ms = per_source_ms.get(src_id, elapsed_ms) if per_source_ms else elapsed_ms
                 _qs_mod.record(field=root_field, source=src_id, strategy=strategy,
                                elapsed_ms=src_ms, rows=src_rows)
-        qs = _qs_mod.current()
-        if qs is not None:
-            qs.wall_ms = elapsed_ms
-
     # Cache check
     rls_rules_for_key = rls.rules if rls.has_rules() else {}
     ck = cache_key(compiled.sql, compiled.params, role_id, rls_rules_for_key)
@@ -1096,7 +1092,7 @@ async def _execute_one_field(
     )
     qs = _qs_mod.current()
     if qs is not None and len(compiled.sources) > 1:
-        qs.mermaid = _build_mermaid(
+        new_mermaid = _build_mermaid(
             compiled.sources,
             getattr(state, "source_types", {}),
             ctx,
@@ -1105,6 +1101,7 @@ async def _execute_one_field(
             _n_rows,
             root_field,
         )
+        qs.mermaid = f"{qs.mermaid}\n\n{new_mermaid}" if qs.mermaid else new_mermaid
     return root_field, field_rows, None, ck, None
 
 
