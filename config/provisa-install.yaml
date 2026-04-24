@@ -293,6 +293,13 @@ relationships:
     target_column: id
     cardinality: many-to-one
     alias: SUBMITTED_BY
+  - id: inquiries-to-pets
+    source_table_id: inquiries
+    target_table_id: pets
+    source_column: pet_id
+    target_column: id
+    cardinality: many-to-one
+    alias: ABOUT_PET
   - id: order-to-find-pets-by-status
     source_table_id: order_by_id
     target_table_id: pet_by_status
