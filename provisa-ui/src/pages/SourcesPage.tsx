@@ -772,7 +772,7 @@ export function SourcesPage() {
                   <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{s.namingConvention || "inherit"}</td>
                   <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{s.cacheEnabled ? "on" : "off"}</td>
                   <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{getEffectiveTtl(s)}</td>
-                  <td style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }} onClick={(e) => e.stopPropagation()}>
+                  <td onClick={(e) => e.stopPropagation()}><div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
                     {DISCOVERABLE_TYPES.has(s.type) && (
                       <button onClick={() => { setDiscoverSourceId(s.id); setDiscoverSourceType(s.type); setMappingSourceId(null); }} style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}>Discover</button>
                     )}
@@ -788,7 +788,7 @@ export function SourcesPage() {
                         {refreshingSourceId === s.id ? "Refreshing..." : "Refresh Schema"}
                       </button>
                     )}
-                  </td>
+                  </div></td>
                 </tr>
                 {isExpanded && (
                   <tr key={`${s.id}-detail`}>
