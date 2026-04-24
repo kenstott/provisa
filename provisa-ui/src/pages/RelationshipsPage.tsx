@@ -229,12 +229,25 @@ export function RelationshipsPage() {
   const buildReverse = useCallback((r: Relationship): typeof EMPTY_FORM => {
     const flipCardinality = (c: string) =>
       c === "many-to-one" ? "one-to-many" : "many-to-one";
-    const suggestAlias = (alias: string | null) => {
+    const suggestCqlAlias = (alias: string | null) => {
       if (!alias) return "";
       if (alias.endsWith("_BY")) return alias.slice(0, -3);
       if (alias.endsWith("_OF")) return alias.slice(0, -3);
       return `${alias}_BY`;
     };
+    const cqlToGql = (cql: string) => {
+      const parts = cql.toLowerCase().split("_").filter(Boolean);
+      return parts[0] + parts.slice(1).map((p) => p[0].toUpperCase() + p.slice(1)).join("");
+    };
+    const suggestGqlAlias = (gql: string | null, cqlSuggestion: string) => {
+      if (gql) {
+        if (gql.endsWith("By")) return gql.slice(0, -2);
+        if (gql.endsWith("Of")) return gql.slice(0, -2);
+        return `${gql}By`;
+      }
+      return cqlSuggestion ? cqlToGql(cqlSuggestion) : "";
+    };
+    const cqlSuggestion = suggestCqlAlias(r.alias ?? r.computedCypherAlias ?? null);
     return {
       ...EMPTY_FORM,
       id: `${r.targetTableName}-to-${r.sourceTableName}`,
@@ -246,7 +259,8 @@ export function RelationshipsPage() {
       targetDomain: tableDomainById[r.sourceTableId] ?? "",
       targetColumn: r.sourceColumn,
       cardinality: flipCardinality(r.cardinality),
-      alias: suggestAlias(r.alias ?? r.computedCypherAlias ?? null),
+      alias: cqlSuggestion,
+      graphqlAlias: suggestGqlAlias(r.graphqlAlias, cqlSuggestion),
       materialize: r.materialize,
       refreshInterval: String(r.refreshInterval ?? 300),
     };
