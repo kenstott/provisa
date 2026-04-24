@@ -187,6 +187,24 @@ tables:
   - source_id: inquiries-sqlite
     domain_id: pet-store
     schema: default
+    table: users
+    governance: pre-approved
+    description: "Prospective adopters who have submitted inquiries"
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: name
+        visible_to: [admin, analyst]
+      - name: email
+        visible_to: [admin]
+      - name: phone
+        visible_to: [admin]
+      - name: created_at
+        visible_to: [admin, analyst]
+
+  - source_id: inquiries-sqlite
+    domain_id: pet-store
+    schema: default
     table: inquiries
     governance: pre-approved
     description: "Customer adoption inquiries — managed by the front-desk/CRM team"
@@ -195,13 +213,13 @@ tables:
         visible_to: [admin, analyst]
       - name: pet_id
         visible_to: [admin, analyst]
-      - name: customer_name
+      - name: user_id
         visible_to: [admin, analyst]
-      - name: email
-        visible_to: [admin]
       - name: inquiry_type
         visible_to: [admin, analyst]
       - name: message
+        visible_to: [admin, analyst]
+      - name: status
         visible_to: [admin, analyst]
       - name: submitted_at
         visible_to: [admin, analyst]
@@ -209,14 +227,15 @@ tables:
 views:
   - id: pet-adoption-overview
     sql: |
-      SELECT p.id          AS pet_id,
-             p.name        AS pet_name,
+      SELECT p.id                    AS pet_id,
+             p.name                  AS pet_name,
              p.species,
              p.breed_name,
              p.price,
              p.available,
-             api.status    AS api_status,
-             COUNT(i.id)   AS inquiry_count
+             api.status              AS api_status,
+             COUNT(i.id)             AS inquiry_count,
+             COUNT(DISTINCT i.user_id) AS unique_inquirer_count
       FROM pet_store.pets p
       LEFT JOIN pet_store.pet_by_status api ON p.name = api.name
       LEFT JOIN pet_store.inquiries i ON p.id = i.pet_id
@@ -242,6 +261,8 @@ views:
         visible_to: [admin, analyst]
       - name: inquiry_count
         visible_to: [admin, analyst]
+      - name: unique_inquirer_count
+        visible_to: [admin, analyst]
 
 relationships:
   - id: pets-to-find-pets-by-status
@@ -258,6 +279,20 @@ relationships:
     target_column: pet_id
     cardinality: one-to-many
     alias: HAS_INQUIRY
+  - id: users-to-inquiries
+    source_table_id: users
+    target_table_id: inquiries
+    source_column: id
+    target_column: user_id
+    cardinality: one-to-many
+    alias: SUBMITTED
+  - id: inquiries-to-users
+    source_table_id: inquiries
+    target_table_id: users
+    source_column: user_id
+    target_column: id
+    cardinality: many-to-one
+    alias: SUBMITTED_BY
   - id: order-to-find-pets-by-status
     source_table_id: order_by_id
     target_table_id: pet_by_status

@@ -74,6 +74,7 @@ class PathFunctionsMixin:
 
         rel_types = [rt.upper() for rt in rel.types] if rel and rel.types else None
         variable_length = bool(rel and rel.variable_length)
+        is_undirected = bool(rel and getattr(rel, "direction", "right") == "none")
         if variable_length:
             max_hops = rel.max_hops if rel.max_hops is not None else 10  # type: ignore[union-attr]
         else:
@@ -91,7 +92,8 @@ class PathFunctionsMixin:
         # loops back to the same node type (e.g. KNOWS: Person→Person).
         # Flat JOIN only finds paths where each edge type appears once; recursive
         # CTE handles repeated traversal of the same edge through different rows.
-        needs_recursive = variable_length and (
+        # Undirected variable-length uses flat JOIN with bidirectional BFS.
+        needs_recursive = variable_length and not is_undirected and (
             src_type == tgt_type
             or any(r.source_label == r.target_label for r in allowed_rels)
         )
@@ -99,6 +101,8 @@ class PathFunctionsMixin:
         # Register path variable for RETURN p support
         if clause.variable and src_var and tgt_var:
             self._path_vars[clause.variable] = (src_var, tgt_var, needs_recursive)
+
+        is_all_paths = pf.func_name.lower() == "allpaths"
 
         if needs_recursive:
             base_rels = [r for r in allowed_rels if r.source_label == src_type]
@@ -110,28 +114,41 @@ class PathFunctionsMixin:
             return self._translate_path_function_recursive(
                 clause, src_var, tgt_var, src_nm, tgt_nm,
                 src_type, tgt_type, allowed_rels, max_hops,
-                is_all=pf.func_name.lower() == "allshortestpaths",
+                is_all=pf.func_name.lower() in ("allshortestpaths", "allpaths"),
+                suppress_hops_order=is_all_paths,
             )
 
         # Flat JOIN path (non-self-referential variable-length or fixed-length)
-        all_paths = self._lm.find_paths(src_type, tgt_type, rel_types, max_hops)
+        all_paths = self._lm.find_paths(src_type, tgt_type, rel_types, max_hops, bidirectional=is_undirected)
         if not all_paths:
+            direction_hint = " (undirected — both directions searched)" if is_undirected else ""
             raise CypherTranslateError(
                 f"No schema path found from {src_type!r} to {tgt_type!r} "
-                f"within {max_hops} hops"
+                f"within {max_hops} hops{direction_hint}"
             )
 
-        min_hops = min(len(p) for p in all_paths)
-        shortest = [p for p in all_paths if len(p) == min_hops]
+        if is_all_paths and not is_undirected:
+            # Directed allPaths() only: include all schema paths up to max_hops
+            candidate_paths = all_paths
+        else:
+            # Undirected patterns always use min_hops to prevent backtracking schema
+            # paths from generating cross-join UNION branches with duplicate rows
+            min_hops = min(len(p) for p in all_paths)
+            candidate_paths = [p for p in all_paths if len(p) == min_hops]
 
-        primary_from, primary_joins = self._build_path_join_chain(
-            shortest[0], src_var, tgt_var, src_nm, tgt_nm, clause.optional
+        primary_from, primary_joins, step_nodes, step_edges = self._build_path_join_chain(
+            candidate_paths[0], src_var, tgt_var, src_nm, tgt_nm, clause.optional
         )
-        for extra_path in shortest[1:]:
-            extra_from, extra_joins = self._build_path_join_chain(
+        if clause.variable is not None:
+            self._path_steps[clause.variable] = (step_nodes, step_edges)  # type: ignore[attr-defined]
+        for extra_path in candidate_paths[1:]:
+            extra_from, extra_joins, extra_step_nodes, extra_step_edges = self._build_path_join_chain(
                 extra_path, src_var, tgt_var, src_nm, tgt_nm, clause.optional
             )
-            self._extra_path_branches.append((extra_from, extra_joins))
+            extra_path_steps_map: dict[str, tuple[list, list]] = {}
+            if clause.variable is not None:
+                extra_path_steps_map[clause.variable] = (extra_step_nodes, extra_step_edges)
+            self._extra_path_branches.append((extra_from, extra_joins, extra_path_steps_map))
         return primary_from, primary_joins
 
     # ------------------------------------------------------------------
@@ -146,7 +163,7 @@ class PathFunctionsMixin:
         src_nm: NodeMapping,
         tgt_nm: NodeMapping,
         optional: bool,
-    ) -> tuple[exp.Expression, list[dict]]:
+    ) -> tuple[exp.Expression, list[dict], list[tuple[str, NodeMapping]], list[tuple[str, str, NodeMapping, str, NodeMapping, bool]]]:
         """Build FROM + JOIN list for a single flat schema path."""
         src_alias = src_var or src_nm.table_name
         from_expr = exp.alias_(
@@ -160,6 +177,9 @@ class PathFunctionsMixin:
         joins: list[dict] = []
         join_type = "LEFT" if optional else "INNER"
         prev_alias = src_alias
+        prev_nm = src_nm
+        step_nodes: list[tuple[str, NodeMapping]] = [(src_alias, src_nm)]
+        step_edges: list[tuple[str, str, NodeMapping, str, NodeMapping, bool]] = []
 
         for i, rel_mapping in enumerate(path):
             nxt_nm = self._lm.nodes[rel_mapping.target_label]
@@ -184,9 +204,19 @@ class PathFunctionsMixin:
                 alias=nxt_alias,
             )
             joins.append({"table": join_table, "on": on_cond, "join_type": join_type})
+            step_nodes.append((nxt_alias, nxt_nm))
+            # Detect if this edge is traversed in reverse of its canonical direction.
+            # Canonical source_label is stored on the original RelationshipMapping in self._lm.
+            canonical_rel = self._lm.relationships.get(rel_mapping.rel_type)
+            is_reversed = (
+                canonical_rel is not None
+                and canonical_rel.source_label != rel_mapping.source_label
+            )
+            step_edges.append((rel_mapping.rel_type, prev_alias, prev_nm, nxt_alias, nxt_nm, is_reversed))
             prev_alias = nxt_alias
+            prev_nm = nxt_nm
 
-        return from_expr, joins
+        return from_expr, joins, step_nodes, step_edges
 
     # ------------------------------------------------------------------
     # Recursive CTE (self-referential variable-length paths)
@@ -204,6 +234,7 @@ class PathFunctionsMixin:
         allowed_rels: list[RelationshipMapping],
         max_hops: int,
         is_all: bool,
+        suppress_hops_order: bool = False,
     ) -> tuple[exp.Expression, list[dict]]:
         """Emit WITH RECURSIVE CTE for paths that may repeat edge traversals in data."""
         cte_name = f"_traverse_{src_var or src_type.lower()}"
@@ -279,11 +310,12 @@ class PathFunctionsMixin:
             },
         ]
 
-        # Signal translate() to add ORDER BY hops [LIMIT 1]
-        self._shortestpath_hops_col = exp.Column(
-            this=exp.Identifier(this="hops"),
-            table=exp.Identifier(this="_t"),
-        )
+        # Signal translate() to add ORDER BY hops [LIMIT 1] — suppressed for allPaths()
+        if not suppress_hops_order:
+            self._shortestpath_hops_col = exp.Column(
+                this=exp.Identifier(this="hops"),
+                table=exp.Identifier(this="_t"),
+            )
         self._shortestpath_is_all = is_all
         return from_expr, joins
 

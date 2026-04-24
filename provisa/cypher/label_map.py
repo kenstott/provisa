@@ -95,37 +95,54 @@ class CypherLabelMap:
         end_label: str,
         rel_types: list[str] | None = None,
         max_hops: int = 10,
+        bidirectional: bool = False,
     ) -> list[list[RelationshipMapping]]:
         """BFS over relationship schema graph.
 
         Returns all paths from start_label to end_label within max_hops.
         Each path is a list of RelationshipMapping (one per hop).
         Cycle-free within each path; bounded by max_hops.
+        When bidirectional=True, edges may also be traversed in reverse
+        (undirected pattern semantics); reversed edges have source/target
+        and join columns swapped so downstream JOIN generation is unchanged.
         """
         results: list[list[RelationshipMapping]] = []
-        # queue: (current_label, path_so_far, used_rel_types)
+        # queue: (current_label, path_so_far, used_rel_keys)
         # Cypher path semantics: no repeated relationships within a path.
-        # Tracking used rel_types per path prevents cycles (A→B→A→B→...)
-        # while allowing the same node label to appear more than once
-        # (A→B→A is valid: two distinct A rows joined through B).
+        # key = (rel_type, forward|reverse) to avoid traversing the same
+        # physical edge twice in one path regardless of direction.
         queue: list[tuple[str, list[RelationshipMapping], frozenset[str]]] = [
             (start_label, [], frozenset())
         ]
         while queue:
-            cur_label, path, used_rels = queue.pop(0)
+            cur_label, path, used_rel_keys = queue.pop(0)
             if cur_label == end_label and path:
                 results.append(list(path))
                 continue  # don't expand further from end_label
             if len(path) >= max_hops:
                 continue
             for rel in self.relationships.values():
-                if rel.source_label != cur_label:
-                    continue
                 if rel_types is not None and rel.rel_type not in rel_types:
                     continue
-                if rel.rel_type in used_rels:
-                    continue  # no repeated edges
-                queue.append((rel.target_label, path + [rel], used_rels | {rel.rel_type}))
+                # Forward edge
+                if rel.source_label == cur_label:
+                    key = f"{rel.rel_type}:fwd"
+                    if key not in used_rel_keys:
+                        queue.append((rel.target_label, path + [rel], used_rel_keys | {key}))
+                # Reverse edge (only when bidirectional)
+                if bidirectional and rel.target_label == cur_label:
+                    key = f"{rel.rel_type}:rev"
+                    if key not in used_rel_keys:
+                        rev = RelationshipMapping(
+                            rel_type=rel.rel_type,
+                            source_label=rel.target_label,
+                            target_label=rel.source_label,
+                            join_source_column=rel.join_target_column,
+                            join_target_column=rel.join_source_column,
+                            field_name=rel.field_name,
+                            alias=rel.alias,
+                        )
+                        queue.append((rel.source_label, path + [rev], used_rel_keys | {key}))
         return results
 
     def relationships_for(self, source_label: str, target_label: str | None = None) -> list[RelationshipMapping]:
@@ -148,14 +165,14 @@ class CypherLabelMap:
 
         ctx_typed: CompilationContext = ctx  # type: ignore[assignment]
 
-        # Build target_pk_columns: type_name → target_column from any JoinMeta
-        # where this type appears as the join target.  The target_column is the
-        # PK (or unique key) used on that side of the join — the most reliable
-        # source of truth available without a separate schema introspection call.
+        # Build target_pk_columns: type_name → target_column, but ONLY for many-to-one
+        # joins. On a many-to-one join the target column is the PK/unique key of the
+        # "one" side. On a one-to-many join the target column is a FK in the "many"
+        # table and must not be mistaken for that table's primary key.
         target_pk: dict[str, str] = {}
         for join_meta in ctx_typed.joins.values():
             tname = join_meta.target.type_name
-            if tname not in target_pk:
+            if tname not in target_pk and getattr(join_meta, "cardinality", None) == "many-to-one":
                 target_pk[tname] = join_meta.target_column
 
         # Build node mappings from table metadata
@@ -239,7 +256,8 @@ def _resolve_id_column(
 
     Resolution order (first match wins):
     0. User-designated PK columns (first entry if multiple).
-    1. The column named in a JoinMeta.target_column for this type — explicit FK target.
+    1. The column named in a JoinMeta.target_column — only set for many-to-one joins
+       where the target column is the actual PK of the target table.
     2. Exact match against known id names: id, _id, pk, oid.
     3. Single column ending in _id / _pk / _oid (unambiguous).
     4. Single column starting with id_.
@@ -250,11 +268,12 @@ def _resolve_id_column(
     if user_pks:
         return user_pks[0]
 
-    # 1. Explicit join target
+    # 1. Explicit join target — only populated for many-to-one cardinality, so
+    # target_column is the actual PK (not a FK from a one-to-many join).
     if type_name in target_pk:
         return target_pk[type_name]
 
-    # 2. Exact known names (preserve declaration order)
+    # 2. Exact known names
     for col in col_names:
         if col.lower() in _ID_EXACT:
             return col

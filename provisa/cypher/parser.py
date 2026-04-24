@@ -382,7 +382,7 @@ class _Parser:
             self._advance()  # consume "="
 
         # Check for path functions
-        if self._match_keyword("shortestPath", "allShortestPaths"):
+        if self._match_keyword("shortestPath", "allShortestPaths", "allPaths"):
             func_name = self._advance().value.lower()
             self._expect("LPAREN")
             pattern = self._parse_path_pattern()
@@ -393,7 +393,21 @@ class _Parser:
                 optional=optional,
             )
 
-        pattern = self._parse_path_pattern()
+        # Handle p=((a)-[...]-(b)) — outer parens group the entire pattern.
+        # Detect: next token is LPAREN and the token after is also LPAREN (node start).
+        has_grouping_paren = (
+            path_var is not None
+            and self._peek() is not None
+            and self._peek().type == "LPAREN"
+            and self._pos + 1 < len(self._tokens)
+            and self._tokens[self._pos + 1].type == "LPAREN"
+        )
+        if has_grouping_paren:
+            self._advance()  # consume outer (
+            pattern = self._parse_path_pattern()
+            self._expect("RPAREN")  # consume outer )
+        else:
+            pattern = self._parse_path_pattern()
         return MatchClause(pattern=pattern, variable=path_var, optional=optional)
 
     def _parse_path_pattern(self) -> PathPattern:

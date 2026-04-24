@@ -142,16 +142,21 @@ class SelectBuilderMixin:
     def _build_path_object(self, path_var: str) -> exp.Expression:
         """Emit a JSON path object for RETURN p.
 
-        Flat-JOIN paths: JSON_OBJECT('start', src.id, 'end', tgt.id, 'length', 1)
+        Flat-JOIN paths: full {nodes:[...], edges:[...]} JSON via _build_path_json.
         Recursive CTE paths: JSON_OBJECT('start', src.id, 'end', tgt.id, 'length', hops)
         """
         src_var, tgt_var, is_recursive = self._path_vars[path_var]
+        path_step_info = getattr(self, "_path_steps", {}).get(path_var)
+        if path_step_info is not None:
+            step_nodes, step_edges = path_step_info
+            return self._build_path_json(step_nodes, step_edges)
+        # Recursive CTE or fallback
         src_nm: NodeMapping | None = self._var_table.get(src_var, (src_var, None))[1]
         tgt_nm: NodeMapping | None = self._var_table.get(tgt_var, (tgt_var, None))[1]
-        src_id_col = src_nm.id_column if src_nm else "id"
-        tgt_id_col = tgt_nm.id_column if tgt_nm else "id"
+        src_id_col_name = src_nm.id_column if src_nm else "id"
+        tgt_id_col_name = tgt_nm.id_column if tgt_nm else "id"
         src_id = exp.Column(
-            this=exp.Identifier(this=src_id_col, quoted=True),
+            this=exp.Identifier(this=src_id_col_name, quoted=True),
             table=exp.Identifier(this=src_var),
         )
         if is_recursive and self._shortestpath_hops_col is not None:
@@ -162,7 +167,7 @@ class SelectBuilderMixin:
             length_val: exp.Expression = self._shortestpath_hops_col
         else:
             tgt_id = exp.Column(
-                this=exp.Identifier(this=tgt_id_col, quoted=True),
+                this=exp.Identifier(this=tgt_id_col_name, quoted=True),
                 table=exp.Identifier(this=tgt_var),
             )
             length_val = exp.Literal.number(1)
@@ -172,6 +177,99 @@ class SelectBuilderMixin:
                 exp.Literal.string("start"), src_id,
                 exp.Literal.string("end"), tgt_id,
                 exp.Literal.string("length"), length_val,
+            ],
+        )
+
+    def _build_path_json(
+        self,
+        step_nodes: list,
+        step_edges: list,
+    ) -> exp.Expression:
+        """Build JSON_OBJECT('nodes', JSON_ARRAY(...), 'edges', JSON_ARRAY(...)) for a flat-JOIN path."""
+
+        def _node_obj(alias: str, nm: "NodeMapping") -> exp.Expression:
+            props_exprs: list[exp.Expression] = []
+            for prop_name, col_name in nm.properties.items():
+                props_exprs.append(exp.Literal.string(prop_name))
+                props_exprs.append(exp.Column(
+                    this=exp.Identifier(this=col_name, quoted=True),
+                    table=exp.Identifier(this=alias),
+                ))
+            props = exp.Anonymous(this="JSON_OBJECT", expressions=props_exprs)
+            id_col = exp.Column(
+                this=exp.Identifier(this=nm.id_column, quoted=True),
+                table=exp.Identifier(this=alias),
+            )
+            return exp.Anonymous(
+                this="JSON_OBJECT",
+                expressions=[
+                    exp.Literal.string("id"),
+                    exp.Cast(this=id_col, to=exp.DataType.build("VARCHAR")),
+                    exp.Literal.string("label"),
+                    exp.Literal.string(nm.label),
+                    exp.Literal.string("properties"),
+                    props,
+                ],
+            )
+
+        def _edge_obj(rel_type: str, src_alias: str, src_nm: "NodeMapping", tgt_alias: str, tgt_nm: "NodeMapping", is_reversed: bool = False) -> exp.Expression:
+            src_id_col = exp.Column(
+                this=exp.Identifier(this=src_nm.id_column, quoted=True),
+                table=exp.Identifier(this=src_alias),
+            )
+            tgt_id_col = exp.Column(
+                this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
+                table=exp.Identifier(this=tgt_alias),
+            )
+            src_id_cast = exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR"))
+            tgt_id_cast = exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR"))
+            # When the edge is traversed in reverse of its canonical direction,
+            # use canonical order (canonical_src-canonical_tgt) for identity so it
+            # matches the identity produced by show-children (which always uses canonical direction).
+            if is_reversed:
+                identity_first, identity_second = tgt_id_cast, src_id_cast
+            else:
+                identity_first, identity_second = src_id_cast, tgt_id_cast
+            identity = exp.DPipe(
+                this=exp.DPipe(
+                    this=exp.DPipe(
+                        this=exp.DPipe(
+                            this=exp.Literal.string(rel_type),
+                            expression=exp.Literal.string(":"),
+                        ),
+                        expression=identity_first,
+                    ),
+                    expression=exp.Literal.string("-"),
+                ),
+                expression=identity_second,
+            )
+            return exp.Anonymous(
+                this="JSON_OBJECT",
+                expressions=[
+                    exp.Literal.string("identity"), identity,
+                    exp.Literal.string("type"), exp.Literal.string(rel_type),
+                    exp.Literal.string("start"), src_id_cast,
+                    exp.Literal.string("end"), tgt_id_cast,
+                    exp.Literal.string("startNode"), _node_obj(src_alias, src_nm),
+                    exp.Literal.string("endNode"), _node_obj(tgt_alias, tgt_nm),
+                    exp.Literal.string("properties"), exp.Anonymous(this="JSON_OBJECT", expressions=[]),
+                ],
+            )
+
+        nodes_array = exp.Anonymous(
+            this="JSON_ARRAY",
+            expressions=[_node_obj(alias, nm) for alias, nm in step_nodes],
+        )
+        edges_array = exp.Anonymous(
+            this="JSON_ARRAY",
+            expressions=[_edge_obj(rt, sa, snm, ta, tnm, rev) for rt, sa, snm, ta, tnm, rev in step_edges],
+        )
+        return exp.Anonymous(
+            this="JSON_OBJECT",
+            expressions=[
+                exp.Literal.string("nodes"), nodes_array,
+                exp.Literal.string("edges"), edges_array,
+                exp.Literal.string("length"), exp.Literal.number(len(step_edges)),
             ],
         )
 
