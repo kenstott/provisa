@@ -126,8 +126,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         self._cte_sources: set[str] = set()
         # var → domain_name for nodes resolved via a domain label only
         self._domain_nodes: dict[str, str] = {}
-        # extra (from, joins) branches from multi-path shortestPath/allShortestPaths
-        self._extra_path_branches: list[tuple[exp.Expression, list[dict]]] = []
+        # extra (from, joins, path_step_overrides) branches from multi-path shortestPath/allShortestPaths
+        self._extra_path_branches: list[tuple[exp.Expression, list[dict], dict]] = []
         # WITH RECURSIVE CTEs for self-referential variable-length paths
         self._recursive_ctes: list[tuple[str, exp.Expression]] = []
         # Set by PathFunctionsMixin when a recursive shortestPath is emitted
@@ -137,6 +137,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         self._unwind_count: int = 0
         # path_var → (src_var, tgt_var, is_recursive) for RETURN p support
         self._path_vars: dict[str, tuple[str, str, bool]] = {}
+        # path_var → (step_nodes, step_edges) for flat-JOIN paths
+        self._path_steps: dict[str, tuple[list, list]] = {}
         # vars from outer scope bound via CALL { WITH x ... } — skip as FROM source
         self._lateral_bound: set[str] = set()
         # ON conditions from lateral-bound first-node relationships → added as WHERE
@@ -258,8 +260,17 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         # UNION ALL extra branches from multi-path shortestPath/allShortestPaths.
         # Each schema path is its own SQL query; WHERE/SELECT are identical across branches.
         result: exp.Select | exp.Union = query
-        for extra_from, extra_joins in self._extra_path_branches:
-            branch = exp.select(*select_exprs).from_(extra_from)
+        for extra_from, extra_joins, extra_path_steps_map in self._extra_path_branches:
+            branch_select_exprs = []
+            for s_expr in select_exprs:
+                alias_name = getattr(s_expr, 'alias', None)
+                if alias_name and alias_name in extra_path_steps_map:
+                    sn, se = extra_path_steps_map[alias_name]
+                    new_path = self._build_path_json(sn, se)
+                    branch_select_exprs.append(exp.alias_(new_path, alias_name))
+                else:
+                    branch_select_exprs.append(s_expr)
+            branch = exp.select(*branch_select_exprs).from_(extra_from)
             if self._ast.return_clause and self._ast.return_clause.distinct:
                 branch = branch.distinct()
             for j in extra_joins:
@@ -484,6 +495,27 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             for i, rel in enumerate(rels):
                 if i + 1 >= len(nodes):
                     break
+                if rel.variable_length:
+                    if len(rels) > 1:
+                        raise CypherTranslateError(
+                            "Variable-length patterns (e.g. [*..5]) cannot be mixed with other "
+                            "relationships in the same MATCH. Use a separate MATCH clause or "
+                            "wrap the full pattern: MATCH p = allPaths((a)-[*..5]->(b)) RETURN p"
+                        )
+                    # Auto-promote to allPaths() — same logic, no explicit wrapper needed
+                    pf_clause = MatchClause(
+                        pattern=PathFunction(
+                            func_name="allpaths",
+                            pattern=PathPattern(nodes=nodes, rels=rels),
+                        ),
+                        variable=clause.variable,
+                        optional=clause.optional,
+                    )
+                    pf_from, pf_joins = self._translate_path_function(pf_clause)
+                    if from_expr is None:
+                        from_expr = pf_from
+                    joins.extend(pf_joins)
+                    break
                 src_node = nodes[i]
                 tgt_node = nodes[i + 1]
                 src_var = src_node.variable
@@ -596,7 +628,19 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         raise CypherTranslateError(
                             f"Unknown relationship type or alias: {rel_type!r}"
                         )
-                    candidates: list[tuple] = [(m, backward) for m in alias_matches]
+                    # Determine backward-ness from canonical relationship direction.
+                    # The arrow syntax alone is insufficient — e.g. (Users)-[:SUBMITTED_BY]->(Inquiries)
+                    # uses a right arrow but SUBMITTED_BY is canonically Inquiries→Users, so the
+                    # join columns must be treated as backward (swapped relative to the traversal).
+                    # When src_nm is known, compare canonical source_label directly.
+                    # Fall back to arrow-based `backward` for anonymous/unresolved nodes.
+                    def _is_bwd(m: "RelationshipMapping") -> bool:  # type: ignore[name-defined]
+                        if bidir:
+                            return False
+                        if src_nm is not None:
+                            return m.source_label != src_nm.type_name
+                        return backward
+                    candidates: list[tuple] = [(m, _is_bwd(m)) for m in alias_matches]
                 else:
                     if bidir:
                         fwd = self._lm.relationships_for(src_nm.type_name, tgt_nm.type_name)
@@ -677,7 +721,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 for extra_rm, extra_bwd in candidates[1:]:
                     extra_join = _make_rel_join(extra_rm, extra_bwd)
                     self._extra_path_branches.append(
-                        (from_expr, joins_before + [extra_join])
+                        (from_expr, joins_before + [extra_join], {})
                     )
 
             # Register path variable (e.g. MATCH p = ()-[r:REL]->())

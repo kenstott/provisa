@@ -693,6 +693,16 @@ export function GraphPage() {
     }
   }, []);
 
+  // Auto-execute a query forwarded from another page (e.g. Cypher panel → Graph).
+  useEffect(() => {
+    const pending = localStorage.getItem("provisa.graph.pending_query");
+    if (pending) {
+      localStorage.removeItem("provisa.graph.pending_query");
+      setHistoryQuery(pending);
+      runQuery(pending);
+    }
+  }, [runQuery]);
+
   const closeFrame = useCallback((id: string) => {
     setFrames((f) => { const next = f.filter((fr) => fr.id !== id); _graphState.frames = next; _saveGraphState(_graphState); return next; });
   }, []);
