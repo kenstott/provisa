@@ -601,31 +601,6 @@ export function RelationshipsPage() {
                 <label>GQL Alias (camelCase)
                   <input value={reverseForm.graphqlAlias} onChange={(e) => setReverseForm({ ...reverseForm, graphqlAlias: e.target.value })} />
                 </label>
-              </div>
-              <div className="form-row">
-                <label>Source Table
-                  <select value={reverseForm.sourceTableId} onChange={(e) => setReverseForm({ ...reverseForm, sourceTableId: e.target.value })}>
-                    <option value="">Select...</option>
-                    {tables.map((t) => <option key={t.id} value={t.tableName}>{t.tableName}</option>)}
-                  </select>
-                </label>
-                <label>Source Column
-                  <input value={reverseForm.sourceColumn} onChange={(e) => setReverseForm({ ...reverseForm, sourceColumn: e.target.value })} />
-                </label>
-                <label>Target Table
-                  <select value={reverseForm.targetTableId} onChange={(e) => setReverseForm({ ...reverseForm, targetTableId: e.target.value })}>
-                    <option value="">Select...</option>
-                    {tables.map((t) => <option key={t.id} value={t.tableName}>{t.tableName}</option>)}
-                  </select>
-                </label>
-                <label>Target Column
-                  <input value={reverseForm.targetColumn} onChange={(e) => setReverseForm({ ...reverseForm, targetColumn: e.target.value })} />
-                </label>
-              </div>
-              <div className="form-row">
-                <label>Cardinality
-                  <input value={reverseForm.cardinality} readOnly style={{ opacity: 0.6, cursor: "default" }} />
-                </label>
                 <label className="checkbox-label">
                   <input type="checkbox" checked={reverseForm.materialize} onChange={(e) => setReverseForm({ ...reverseForm, materialize: e.target.checked })} />
                   Materialize
