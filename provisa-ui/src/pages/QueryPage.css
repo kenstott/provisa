@@ -642,6 +642,60 @@ body.graphiql-dark .graphiql-dialog {
   height: auto;
 }
 
+.stats-row-clickable {
+  cursor: pointer;
+}
+
+.stats-row-clickable:hover td {
+  background: hsl(224, 10%, 16%);
+}
+
+.stats-sql-row td {
+  padding: 0 !important;
+  border-bottom: 1px solid hsl(224, 10%, 18%);
+}
+
+.stats-sql-wrap {
+  position: relative;
+}
+
+.stats-sql-wrap:hover .stats-sql-copy {
+  opacity: 1;
+}
+
+.stats-sql-copy {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  padding: 3px 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid hsl(224, 10%, 30%);
+  border-radius: 3px;
+  background: hsl(224, 10%, 16%);
+  color: hsl(224, 10%, 65%);
+  cursor: pointer;
+}
+
+.stats-sql-copy:hover {
+  background: hsl(224, 10%, 22%);
+  color: hsl(224, 10%, 85%);
+}
+
+.stats-sql {
+  margin: 0;
+  padding: 6px 16px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: hsl(224, 10%, 55%);
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: hsl(224, 10%, 10%);
+}
+
 .stats-source-continuation td {
   color: hsl(224, 10%, 50%);
   border-bottom-color: hsl(224, 10%, 15%);

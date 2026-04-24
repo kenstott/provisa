@@ -162,13 +162,21 @@ async def upsert_table(
             entry["object_fields"] = c["object_fields"]
         api_columns.append(entry)
     for p in query.path_params:
-        api_columns.append({
-            "name": p["name"],
-            "type": _openapi_to_provisa_type(p.get("type")),
-            "filterable": False,
-            "param_type": "path",
-            "param_name": p["name"],
-        })
+        if p["name"] in response_col_names:
+            # Param is also a response field — merge param metadata into the existing entry.
+            for col in api_columns:
+                if col["name"] == p["name"]:
+                    col["param_type"] = "path"
+                    col["param_name"] = p["name"]
+                    break
+        else:
+            api_columns.append({
+                "name": p["name"],
+                "type": _openapi_to_provisa_type(p.get("type")),
+                "filterable": False,
+                "param_type": "path",
+                "param_name": p["name"],
+            })
     for p in query.query_params:
         if p["name"] not in response_col_names:
             api_columns.append({

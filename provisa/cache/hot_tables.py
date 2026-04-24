@@ -42,6 +42,69 @@ def _dumps(obj):
 HOT_PREFIX = "provisa:hot:"
 
 
+def _sql_literal(val) -> str:
+    """Render a Python value as a SQL literal (Trino-compatible)."""
+    if val is None:
+        return "NULL"
+    if isinstance(val, bool):
+        return "TRUE" if val else "FALSE"
+    if isinstance(val, (int, float, Decimal)):
+        return str(val)
+    if isinstance(val, datetime):
+        return f"TIMESTAMP '{val.isoformat()}'"
+    if isinstance(val, date):
+        return f"DATE '{val}'"
+    escaped = str(val).replace("'", "''")
+    return f"'{escaped}'"
+
+
+def build_values_cte_sql(sql: str, table_name: str, entry: "HotTableEntry") -> str:
+    """Replace the first table reference matching table_name with a VALUES CTE.
+
+    Works for both FROM and JOIN targets. Merges with any existing WITH clause.
+    """
+    import re
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    cte_name = f"_hot_{table_name}"
+    col_defs = ", ".join(f'"{c}"' for c in entry.column_names)
+
+    if not entry.rows:
+        empty_nulls = ", ".join("NULL" for _ in entry.column_names)
+        cte_body = f"({col_defs}) AS (SELECT {empty_nulls} WHERE 1=0)"
+    else:
+        value_rows = [
+            "(" + ", ".join(_sql_literal(row.get(c)) for c in entry.column_names) + ")"
+            for row in entry.rows
+        ]
+        cte_body = f"({col_defs}) AS (VALUES {', '.join(value_rows)})"
+
+    cte_sql = f"{cte_name}{cte_body}"
+
+    try:
+        tree = sqlglot.parse_one(sql, dialect="postgres")
+        for tbl in tree.find_all(exp.Table):
+            if tbl.name == table_name:
+                tbl.set("catalog", None)
+                tbl.set("db", None)
+                tbl.set("this", exp.to_identifier(cte_name))
+                break
+        rewritten = tree.sql(dialect="postgres")
+    except Exception:
+        rewritten = re.sub(
+            r'"[^"]*"\."[^"]*"\."' + re.escape(table_name) + r'"',
+            f'"{cte_name}"',
+            sql,
+            count=1,
+        )
+
+    _with_re = re.compile(r"^\s*WITH\s+", re.IGNORECASE)
+    if _with_re.match(rewritten):
+        return _with_re.sub(f"WITH {cte_sql}, ", rewritten)
+    return f"WITH {cte_sql} {rewritten}"
+
+
 @dataclass
 class HotTableEntry:
     """Metadata for a single hot-cached table."""
@@ -67,10 +130,11 @@ class HotTableCandidate:
 class HotTableManager:
     """Manages small lookup tables cached in Redis for JOIN optimization."""
 
-    def __init__(self, redis_url: str, auto_threshold: int, max_rows: int):
+    def __init__(self, redis_url: str, auto_threshold: int, max_rows: int, ttl: int = 300):
         self._redis_url = redis_url
         self._auto_threshold = auto_threshold
         self._max_rows = max_rows
+        self._ttl = ttl
         self._redis = None
         self._hot_tables: dict[str, HotTableEntry] = {}
         self._candidates: dict[str, HotTableCandidate] = {}
@@ -95,14 +159,10 @@ class HotTableManager:
 
         columns = list(rows[0].keys()) if rows else []
         blob_key = HOT_PREFIX + table_name + ":blob"
-        pk_key_prefix = HOT_PREFIX + table_name + ":pk:"
 
         pipe = self._redis.pipeline()
         pipe.delete(blob_key)
-        pipe.set(blob_key, _dumps(rows))
-        for row in rows:
-            pk_val = row.get(pk_column, "")
-            pipe.set(pk_key_prefix + str(pk_val), _dumps(row))
+        pipe.set(blob_key, _dumps(rows), ex=self._ttl)
         await pipe.execute()
 
         self._hot_tables[table_name] = HotTableEntry(
@@ -204,17 +264,8 @@ class HotTableManager:
     async def invalidate(self, table_name: str) -> None:
         """Delete all Redis keys for a hot table."""
         await self._connect()
-
         blob_key = HOT_PREFIX + table_name + ":blob"
-        pk_key_pattern = HOT_PREFIX + table_name + ":pk:*"
-
-        keys_to_delete = [blob_key]
-        async for key in self._redis.scan_iter(match=pk_key_pattern):
-            keys_to_delete.append(key)
-
-        if keys_to_delete:
-            await self._redis.delete(*keys_to_delete)
-
+        await self._redis.delete(blob_key)
         self._hot_tables.pop(table_name, None)
         log.info("Hot table %s invalidated", table_name)
 
@@ -248,6 +299,19 @@ class HotTableManager:
         row_dicts = [dict(zip(column_names, row)) for row in rows]
         await self._store_rows(table_name, row_dicts, candidate.pk_column, candidate.catalog, candidate.schema)
         log.info("Auto-promoted %s to hot cache after query (%d rows)", table_name, len(rows))
+
+    async def maybe_promote_dicts(self, table_name: str, rows: list[dict]) -> None:
+        """Promote table to hot cache from already-fetched dict rows (API sources)."""
+        if self.is_hot(table_name):
+            return
+        candidate = self._candidates.get(table_name)
+        if candidate is None:
+            return
+        if len(rows) > self._auto_threshold:
+            log.debug("Hot table candidate %s: %d rows > threshold %d, skipping", table_name, len(rows), self._auto_threshold)
+            return
+        await self._store_rows(table_name, rows, candidate.pk_column, candidate.catalog, candidate.schema)
+        log.info("Auto-promoted %s to hot cache after API query (%d rows)", table_name, len(rows))
 
     @property
     def auto_threshold(self) -> int:
@@ -374,6 +438,8 @@ async def _openapi_list_rows(
     url = base_url + best_path
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(url, params=query_params, headers=auth_headers)
+        if resp.status_code == 404:
+            return None
         resp.raise_for_status()
         data = resp.json()
 
@@ -407,10 +473,12 @@ async def init_hot_tables(
         return None
 
     auto_threshold = hot_config.get("auto_threshold", 1_000)
+    refresh_interval = hot_config.get("refresh_interval", 300)
     hot_mgr = HotTableManager(
         redis_url=redis_url,
         auto_threshold=auto_threshold,
         max_rows=auto_threshold,
+        ttl=refresh_interval,
     )
 
     hot_overrides: dict[str, bool | None] = {}

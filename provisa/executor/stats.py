@@ -20,6 +20,7 @@ class FieldStat:
     elapsed_ms: float
     rows: int
     cache_hit: bool = False
+    physical_sql: str | None = None  # final Trino SQL sent to federation engine
 
 
 @dataclass
@@ -29,8 +30,8 @@ class QueryStats:
     wall_ms: float | None = None  # true end-to-end wall-clock set by caller
     _t0: float = _field(default_factory=_time.perf_counter)
 
-    def record(self, *, field: str, source: str, strategy: str, elapsed_ms: float, rows: int, cache_hit: bool = False) -> None:
-        self.entries.append(FieldStat(field=field, source=source, strategy=strategy, elapsed_ms=elapsed_ms, rows=rows, cache_hit=cache_hit))
+    def record(self, *, field: str, source: str, strategy: str, elapsed_ms: float, rows: int, cache_hit: bool = False, physical_sql: str | None = None) -> None:
+        self.entries.append(FieldStat(field=field, source=source, strategy=strategy, elapsed_ms=elapsed_ms, rows=rows, cache_hit=cache_hit, physical_sql=physical_sql))
 
     def to_dict(self) -> dict:
         if self.wall_ms is not None:
@@ -47,6 +48,7 @@ class QueryStats:
                     "elapsed_ms": round(e.elapsed_ms, 1),
                     "rows": e.rows,
                     **({"cache_hit": True} if e.cache_hit else {}),
+                    **({"physical_sql": e.physical_sql} if e.physical_sql else {}),
                 }
                 for e in self.entries
             ],

@@ -1109,8 +1109,12 @@ def rewrite_hot_joins(compiled: CompiledQuery, hot_manager: object) -> CompiledQ
         sql = sql[:match.start()] + new_join + sql[match.end():]
 
     if ctes:
-        with_clause = "WITH " + ", ".join(ctes) + " "
-        sql = with_clause + sql
+        new_ctes_sql = ", ".join(ctes)
+        _with_re = _re.compile(r"^\s*WITH\s+", _re.IGNORECASE)
+        if _with_re.match(sql):
+            sql = _with_re.sub(f"WITH {new_ctes_sql}, ", sql)
+        else:
+            sql = f"WITH {new_ctes_sql} " + sql
 
     if sql != compiled.sql:
         return CompiledQuery(

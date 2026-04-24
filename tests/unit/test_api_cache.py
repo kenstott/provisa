@@ -8,14 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Tests for API source caching via Trino Iceberg (Phase U, REQ-309/318/327)."""
+"""Tests for API source caching via Trino (Phase U, REQ-309/318/327)."""
 
 import pytest
 
 from provisa.api_source.cache import DEFAULT_TTL, resolve_ttl
 from provisa.api_source.trino_cache import (
-    CACHE_CATALOG,
-    CACHE_SCHEMA,
+    CacheLocation,
+    cache_location,
     cache_table_name,
     rewrite_from_cache,
 )
@@ -37,6 +37,32 @@ def test_ttl_global_fallback():
 
 def test_ttl_default():
     assert resolve_ttl(None, None, None) == DEFAULT_TTL
+
+
+# --- cache_location factory ---
+
+def test_cache_location_default_uses_source_catalog():
+    loc = cache_location("petstore-api")
+    assert loc.catalog == "petstore_api"
+    assert loc.schema == "api_cache"
+    assert loc.backend == "postgresql"
+
+
+def test_cache_location_explicit_catalog():
+    loc = cache_location("petstore-api", cache_catalog="analytics_pg")
+    assert loc.catalog == "analytics_pg"
+    assert loc.backend == "postgresql"
+
+
+def test_cache_location_iceberg_catalog():
+    loc = cache_location("petstore-api", cache_catalog="results")
+    assert loc.catalog == "results"
+    assert loc.backend == "iceberg"
+
+
+def test_cache_location_custom_schema():
+    loc = cache_location("my-source", cache_schema="scratch")
+    assert loc.schema == "scratch"
 
 
 # --- Cache table name ---
@@ -82,37 +108,42 @@ def test_cache_table_name_format():
 
 # --- SQL FROM rewrite ---
 
+_LOC = CacheLocation("petstore_api", "api_cache", "postgresql")
+
+
 def test_rewrite_from_cache_simple():
     sql = 'SELECT "id" FROM "public"."users"'
-    result = rewrite_from_cache(sql, "r_abc123")
-    assert f"{CACHE_CATALOG}.{CACHE_SCHEMA}" in result
+    result = rewrite_from_cache(sql, _LOC, "r_abc123")
+    assert "petstore_api" in result
+    assert "api_cache" in result
     assert "r_abc123" in result
     assert "SELECT" in result
 
 
 def test_rewrite_from_cache_preserves_where():
     sql = 'SELECT "id" FROM "public"."users" WHERE "active" = TRUE'
-    result = rewrite_from_cache(sql, "r_abc123")
+    result = rewrite_from_cache(sql, _LOC, "r_abc123")
     assert "WHERE" in result
     assert "active" in result
 
 
 def test_rewrite_from_cache_preserves_limit():
     sql = 'SELECT "id" FROM "public"."users" LIMIT 10 OFFSET 0'
-    result = rewrite_from_cache(sql, "r_abc123")
+    result = rewrite_from_cache(sql, _LOC, "r_abc123")
     assert "LIMIT" in result
     assert "10" in result
 
 
 def test_rewrite_from_cache_preserves_order_by():
     sql = 'SELECT "id", "name" FROM "public"."users" ORDER BY "name" ASC'
-    result = rewrite_from_cache(sql, "r_tbl9")
+    result = rewrite_from_cache(sql, _LOC, "r_tbl9")
     assert "ORDER BY" in result
     assert "r_tbl9" in result
 
 
 def test_rewrite_from_cache_catalog_schema():
     sql = 'SELECT "x" FROM "db"."tbl"'
-    result = rewrite_from_cache(sql, "r_xyz")
-    assert CACHE_CATALOG in result
-    assert CACHE_SCHEMA in result
+    loc = cache_location("my-source", cache_catalog="analytics_pg", cache_schema="staging")
+    result = rewrite_from_cache(sql, loc, "r_xyz")
+    assert "analytics_pg" in result
+    assert "staging" in result

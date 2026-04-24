@@ -156,7 +156,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
     # Connect to Trino
     trino_host = os.environ.get("TRINO_HOST", "localhost")
     trino_port = int(os.environ.get("TRINO_PORT", "8080"))
-    state.trino_conn = trino.dbapi.connect(
+    state.trino_conn_kwargs = dict(
         host=trino_host,
         port=trino_port,
         user="provisa",
@@ -165,6 +165,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
         http_scheme="http",
         request_timeout=10,
     )
+    state.trino_conn = trino.dbapi.connect(**state.trino_conn_kwargs)
 
     # Create Arrow Flight SQL connection to Trino (separate gRPC port)
     trino_flight_port = int(os.environ.get("TRINO_FLIGHT_PORT", "8480"))

@@ -24,6 +24,8 @@ import {
   extractElements,
   type FrameData,
   type RelLineOverride,
+  type GNode,
+  type GEdge,
 } from "./GraphFrame";
 import { fetchRelationships, upsertRelationship } from "../api/admin";
 import type { Relationship } from "../types/admin";
@@ -462,16 +464,59 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
   );
 }
 
-// ── Module-level state (survives SPA navigation) ──────────────────────────────
-const _graphState: {
-  frames: FrameData[];
-  history: string[];
-  currentQuery: string;
-} = {
-  frames: [],
-  history: [],
-  currentQuery: "MATCH (n) RETURN n LIMIT 25",
-};
+// ── Module-level state (survives SPA navigation, persisted to localStorage) ───
+const _LS_KEY = "provisa.graph.state";
+const _DEFAULT_QUERY = "MATCH (n) RETURN n LIMIT 25";
+
+interface _SerializedFrame {
+  id: string; query: string; status: "done" | "error";
+  nodes: [string, GNode][];
+  edges: [string, GEdge][];
+  rows: Record<string, unknown>[]; columns: string[];
+  error?: string; elapsed?: number;
+}
+
+function _serializeFrame(f: FrameData): _SerializedFrame {
+  return {
+    id: f.id, query: f.query,
+    status: f.status === "loading" ? "error" : f.status,
+    error: f.status === "loading" ? "Session interrupted" : f.error,
+    nodes: [...f.nodes.entries()],
+    edges: [...f.edges.entries()],
+    rows: f.rows, columns: f.columns, elapsed: f.elapsed,
+  };
+}
+
+function _deserializeFrame(s: _SerializedFrame): FrameData {
+  return { ...s, nodes: new Map(s.nodes), edges: new Map(s.edges) };
+}
+
+function _saveGraphState(state: typeof _graphState): void {
+  try {
+    localStorage.setItem(_LS_KEY, JSON.stringify({
+      frames: state.frames.map(_serializeFrame),
+      history: state.history,
+      currentQuery: state.currentQuery,
+    }));
+  } catch { /* quota */ }
+}
+
+function _loadGraphState(): { frames: FrameData[]; history: string[]; currentQuery: string } {
+  try {
+    const raw = localStorage.getItem(_LS_KEY);
+    if (!raw) return { frames: [], history: [], currentQuery: _DEFAULT_QUERY };
+    const s = JSON.parse(raw) as { frames?: _SerializedFrame[]; history?: string[]; currentQuery?: string };
+    return {
+      frames: (s.frames ?? []).map(_deserializeFrame),
+      history: s.history ?? [],
+      currentQuery: s.currentQuery ?? _DEFAULT_QUERY,
+    };
+  } catch {
+    return { frames: [], history: [], currentQuery: _DEFAULT_QUERY };
+  }
+}
+
+const _graphState = _loadGraphState();
 
 // ── Query bar ─────────────────────────────────────────────────────────────────
 interface CypherSchema {
@@ -615,11 +660,13 @@ export function GraphPage() {
     setFrames((f) => {
       const next = [{ id, query, status: "loading" as const, nodes: new Map(), edges: new Map(), rows: [], columns: [] }, ...f];
       _graphState.frames = next;
+      _saveGraphState(_graphState);
       return next;
     });
     setHistory((h) => {
       const next = [query, ...h.filter((q) => q !== query).slice(0, 49)];
       _graphState.history = next;
+      _saveGraphState(_graphState);
       return next;
     });
     try {
@@ -633,27 +680,27 @@ export function GraphPage() {
         const text = await res.text();
         let msg: string;
         try { msg = (JSON.parse(text) as { error?: string }).error ?? text; } catch { msg = text; }
-        setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: msg } : fr); _graphState.frames = next; return next; });
+        setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: msg } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });
         return;
       }
       const data = await res.json();
       const rows: Record<string, unknown>[] = data.rows ?? [];
       const columns: string[] = data.columns ?? [];
       const { nodes, edges } = extractElements(rows);
-      setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "done" as const, nodes, edges, rows, columns, elapsed } : fr); _graphState.frames = next; return next; });
+      setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "done" as const, nodes, edges, rows, columns, elapsed } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });
     } catch (err) {
-      setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr); _graphState.frames = next; return next; });
+      setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });
     }
   }, []);
 
   const closeFrame = useCallback((id: string) => {
-    setFrames((f) => { const next = f.filter((fr) => fr.id !== id); _graphState.frames = next; return next; });
+    setFrames((f) => { const next = f.filter((fr) => fr.id !== id); _graphState.frames = next; _saveGraphState(_graphState); return next; });
   }, []);
 
   const rerunFrame = useCallback(async (id: string, query: string) => {
     if (!query) return;
     const start = Date.now();
-    setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, query, status: "loading" as const, nodes: new Map(), edges: new Map(), rows: [], columns: [], elapsed: undefined, error: undefined } : fr); _graphState.frames = next; return next; });
+    setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, query, status: "loading" as const, nodes: new Map(), edges: new Map(), rows: [], columns: [], elapsed: undefined, error: undefined } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });
     try {
       const res = await fetch("/data/cypher", {
         method: "POST",
@@ -665,16 +712,16 @@ export function GraphPage() {
         const text = await res.text();
         let msg: string;
         try { msg = (JSON.parse(text) as { error?: string }).error ?? text; } catch { msg = text; }
-        setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: msg } : fr); _graphState.frames = next; return next; });
+        setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: msg } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });
         return;
       }
       const data = await res.json();
       const rows: Record<string, unknown>[] = data.rows ?? [];
       const columns: string[] = data.columns ?? [];
       const { nodes, edges } = extractElements(rows);
-      setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "done" as const, nodes, edges, rows, columns, elapsed } : fr); _graphState.frames = next; return next; });
+      setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "done" as const, nodes, edges, rows, columns, elapsed } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });
     } catch (err) {
-      setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr); _graphState.frames = next; return next; });
+      setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });
     }
   }, []);
 
@@ -795,7 +842,7 @@ export function GraphPage() {
         <QueryBar
           onRun={runQuery}
           initialQuery={historyQuery ?? _graphState.currentQuery}
-          onQueryChange={(q) => { _graphState.currentQuery = q; }}
+          onQueryChange={(q) => { _graphState.currentQuery = q; _saveGraphState(_graphState); }}
           cypherSchema={schemaLoading ? undefined : cypherSchema}
           key={historyQuery ?? "initial"}
         />

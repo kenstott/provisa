@@ -11,6 +11,7 @@ export interface SourceStat {
   elapsed_ms: number;
   rows: number;
   cache_hit?: boolean;
+  physical_sql?: string;
 }
 
 export interface QueryStats {

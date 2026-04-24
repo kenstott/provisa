@@ -6,12 +6,12 @@
 #
 # NOTICE: Use of this software for training artificial intelligence or
 # machine learning models is strictly prohibited without explicit written
-# permission from the copyright holder.
+# permission from the COPYRIGHT holder.
 
 """Routing integration for API sources (Phase U).
 
-Flow: check Trino Iceberg cache → hit? return cache reference → miss? call API
-→ flatten → materialize in Iceberg (S3 Parquet) → schedule TTL DROP → return rows.
+Flow: check Trino cache → hit? return cache reference → miss? call API
+→ flatten → materialize → schedule TTL DROP → return rows.
 
 Phase 2 SQL (WHERE/ORDER BY/LIMIT) is applied by the caller via rewrite_from_cache().
 """
@@ -21,16 +21,22 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 
+import logging
+
 from provisa.api_source.cache import resolve_ttl
 from provisa.api_source.caller import call_api
 from provisa.api_source.flattener import flatten_response
 from provisa.api_source.models import ApiEndpoint, ApiSource, ApiSourceType
 from provisa.api_source.trino_cache import (
+    CacheLocation,
+    cache_location,
     cache_table_name,
     create_and_insert,
     schedule_drop,
     table_exists,
 )
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -53,17 +59,24 @@ async def handle_api_query(
     source: ApiSource | None = None,
     source_ttl: int | None = None,
     global_ttl: int | None = None,
+    loc: CacheLocation | None = None,
 ) -> QueryResult:
-    """Execute an API query with Trino Iceberg caching.
+    """Execute an API query with Trino cache.
 
-    1. Derive stable Iceberg table name from source + path + native params
+    1. Derive stable table name from source + path + native params
     2. If table exists in Trino: return cache reference (phase 2 SQL applied by caller)
-    3. On miss: call API → flatten → materialize as Parquet on S3 → schedule DROP after TTL
+    3. On miss: call API → flatten → materialize → schedule DROP after TTL
     """
     ttl = resolve_ttl(endpoint.ttl, source_ttl, global_ttl)
-    tbl = cache_table_name(endpoint.source_id, endpoint.path, params)
+    tbl = cache_table_name(endpoint.source_id, endpoint.table_name, params)
 
-    if table_exists(conn, tbl):
+    if loc is None:
+        _cc = getattr(source, "cache_catalog", None) if source else None
+        _cs = getattr(source, "cache_schema", "api_cache") if source else "api_cache"
+        loc = cache_location(endpoint.source_id, _cc, _cs)
+
+    if table_exists(conn, loc, tbl, ttl=ttl):
+        log.info("[API CACHE] hit — %s.%s.%s", loc.catalog, loc.schema, tbl)
         return QueryResult(rows=[], from_cache=True, cache_table=tbl)
 
     # Cache miss: call API
@@ -77,7 +90,8 @@ async def handle_api_query(
         rows = flatten_response(page_data, endpoint.response_root, endpoint.columns)
         all_rows.extend(rows)
 
-    create_and_insert(conn, tbl, all_rows, endpoint.columns)
-    asyncio.ensure_future(schedule_drop(conn, tbl, ttl))
+    create_and_insert(conn, loc, tbl, all_rows, endpoint.columns)
+    log.info("[API CACHE] miss — %d rows materialized → %s.%s.%s (ttl=%ds)", len(all_rows), loc.catalog, loc.schema, tbl, ttl)
+    asyncio.ensure_future(schedule_drop(conn, loc, tbl, ttl))
 
     return QueryResult(rows=all_rows, from_cache=False, cache_table=tbl)

@@ -28,6 +28,10 @@ class ApiCallError(Exception):
     """Raised when an API call fails after retries."""
 
 
+class ApiNotFoundError(Exception):
+    """Raised when the API returns 404 — caller should yield empty rows."""
+
+
 _MAX_RETRIES = 3
 _RETRY_BACKOFF_BASE = 1.0
 _DEFAULT_TIMEOUT = 30.0
@@ -86,6 +90,8 @@ async def _request_with_retry(
             method, url, params=params, headers=headers,
             json=json_body, data=form_body, timeout=timeout,
         )
+        if resp.status_code == 404:
+            raise ApiNotFoundError(f"404 Not Found: {resp.url}")
         if resp.status_code == 429 or resp.status_code >= 500:
             if attempt < _MAX_RETRIES - 1:
                 wait = _RETRY_BACKOFF_BASE * (2 ** attempt)
@@ -312,11 +318,17 @@ async def call_api(
         json_body = body
         method = endpoint.method
 
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
     async with httpx.AsyncClient() as client:
-        pages = await _paginate(
-            client, endpoint, url, query_params, headers,
-            body=json_body, timeout=timeout, form_body=form_body,
-        )
+        try:
+            pages = await _paginate(
+                client, endpoint, url, query_params, headers,
+                body=json_body, timeout=timeout, form_body=form_body,
+            )
+        except ApiNotFoundError:
+            _log.debug("API 404 for %s — returning empty result", url)
+            return []
 
     return pages
 

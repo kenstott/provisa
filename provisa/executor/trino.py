@@ -38,22 +38,11 @@ def execute_trino(
     sql: str,
     params: list | None = None,
     session_hints: dict[str, str] | None = None,
+    conn_kwargs: dict | None = None,
 ) -> QueryResult:
-    """Execute SQL on Trino and return results.
-
-    Args:
-        conn: Active Trino connection.
-        sql: Trino-dialect SQL string.
-        params: Positional parameters (Trino uses ? placeholders internally,
-                but we substitute $N -> ? before execution).
-        session_hints: Optional Trino session properties to set before executing
-                       the query (e.g. ``{"join_distribution_type": "BROADCAST"}``).
-                       Each entry emits a ``SET SESSION key = 'value'`` statement.
-
-    Returns:
-        QueryResult with rows and column names.
-    """
     with _tracer.start_as_current_span("trino.execute") as span:
+        if conn_kwargs is not None:
+            conn = trino.dbapi.connect(**conn_kwargs)
         # Trino Python client uses ? for parameter placeholders.
         # After SQLGlot transpilation, PG $N becomes Trino @N.
         # Replace both @N and $N with ? in reverse order to avoid $1 matching $10.

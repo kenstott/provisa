@@ -159,6 +159,8 @@ class Source(BaseModel):
     pgbouncer_port: int = Field(default=6432, alias="pgbouncer_port")
     cache_enabled: bool = True
     cache_ttl: int | None = None  # overrides global default; None = inherit
+    cache_catalog: str | None = None  # Trino catalog for API cache; None = source's own catalog
+    cache_schema: str = "api_cache"   # schema within that catalog
     naming_convention: str | None = None  # overrides global; None = inherit
     federation_hints: dict[str, str] = Field(default_factory=dict)  # Trino session props
 

@@ -117,6 +117,37 @@ docker exec provisa-postgres-1 psql -U provisa -d provisa -c "
     ('Rabbit 1', 'rabbit', 'Holland Lop',       150.00, TRUE);
 " 2>/dev/null || echo "pet_store schema setup skipped (will retry on next start)"
 
+# Seed petstore-mock with demo customer names so get_user_by_name lookups succeed
+echo -n "Waiting for petstore-mock"
+for i in $(seq 1 30); do
+  if curl -sf "${PETSTORE_BASE_URL}/openapi.json" > /dev/null 2>&1; then
+    echo " OK"
+    break
+  fi
+  if [ "$i" -eq 30 ]; then
+    echo " TIMEOUT (skipping user seed)"
+    break
+  fi
+  echo -n "."
+  sleep 2
+done
+curl -sf "${PETSTORE_BASE_URL}/openapi.json" > /dev/null 2>&1 && \
+curl -s -X POST "${PETSTORE_BASE_URL}/user/createWithList" \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"id":101,"username":"Sara Kim","firstName":"Sara","lastName":"Kim","email":"sara.kim@example.com","password":"demo","phone":"555-0101","userStatus":1},
+    {"id":102,"username":"Tom Evans","firstName":"Tom","lastName":"Evans","email":"tom.evans@example.com","password":"demo","phone":"555-0102","userStatus":1},
+    {"id":103,"username":"Amy Zhao","firstName":"Amy","lastName":"Zhao","email":"amy.zhao@example.com","password":"demo","phone":"555-0103","userStatus":1},
+    {"id":104,"username":"Carlos Ruiz","firstName":"Carlos","lastName":"Ruiz","email":"carlos.ruiz@example.com","password":"demo","phone":"555-0104","userStatus":1},
+    {"id":105,"username":"Nina Patel","firstName":"Nina","lastName":"Patel","email":"nina.patel@example.com","password":"demo","phone":"555-0105","userStatus":1},
+    {"id":106,"username":"James Park","firstName":"James","lastName":"Park","email":"james.park@example.com","password":"demo","phone":"555-0106","userStatus":1},
+    {"id":107,"username":"Lisa Chen","firstName":"Lisa","lastName":"Chen","email":"lisa.chen@example.com","password":"demo","phone":"555-0107","userStatus":1},
+    {"id":108,"username":"Mark Torres","firstName":"Mark","lastName":"Torres","email":"mark.torres@example.com","password":"demo","phone":"555-0108","userStatus":1},
+    {"id":109,"username":"Jen Wu","firstName":"Jen","lastName":"Wu","email":"jen.wu@example.com","password":"demo","phone":"555-0109","userStatus":1},
+    {"id":110,"username":"Derek Hall","firstName":"Derek","lastName":"Hall","email":"derek.hall@example.com","password":"demo","phone":"555-0110","userStatus":1},
+    {"id":111,"username":"Rachel Scott","firstName":"Rachel","lastName":"Scott","email":"rachel.scott@example.com","password":"demo","phone":"555-0111","userStatus":1}
+  ]' > /dev/null 2>&1 && echo "Petstore users seeded." || echo "Petstore user seed skipped."
+
 
 pkill -9 -f "uvicorn main:app" 2>/dev/null || true
 lsof -i :8001 -P -t 2>/dev/null | xargs kill -9 2>/dev/null || true

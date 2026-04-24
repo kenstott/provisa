@@ -17,6 +17,7 @@
  */
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { Copy } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEditorContext } from "@graphiql/react";
 import { lastQueryElapsedMs } from "../query-timing";
@@ -24,15 +25,22 @@ import { setCurrentQueryStats, subscribeQueryStats, type QueryStats } from "../q
 
 type ViewMode = "json" | "table" | "stats";
 
+let _mermaidDagSeq = 0;
+
 function MermaidDiagram({ chart }: { chart: string }) {
   const ref = useRef<HTMLDivElement>(null);
+  const idPrefixRef = useRef(`mermaid-dag-${++_mermaidDagSeq}`);
   useEffect(() => {
     let cancelled = false;
+    const charts = chart.split(/\n\n(?=flowchart)/).filter(Boolean);
     import("mermaid").then((m) => {
       if (cancelled || !ref.current) return;
       m.default.initialize({ startOnLoad: false, theme: "dark" });
-      m.default.render("mermaid-dag", chart).then(({ svg }) => {
-        if (!cancelled && ref.current) ref.current.innerHTML = svg;
+      const renders = charts.map((c, i) =>
+        m.default.render(`${idPrefixRef.current}-${i}`, c).then(({ svg }) => svg)
+      );
+      Promise.all(renders).then((svgs) => {
+        if (!cancelled && ref.current) ref.current.innerHTML = svgs.join("");
       });
     });
     return () => { cancelled = true; };
@@ -169,6 +177,7 @@ export function ResponseTableOverlay() {
   const [copiedJson, setCopiedJson] = useState(false);
   const [copiedCsv, setCopiedCsv] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [expandedStatRows, setExpandedStatRows] = useState<Set<number>>(new Set());
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
   const strippingRef = useRef(false);
   const lastStrippedRef = useRef<string | null>(null);
@@ -506,18 +515,47 @@ export function ResponseTableOverlay() {
                   <th>ms</th>
                   <th>rows</th>
                   <th>cache</th>
+                  <th>sql</th>
                 </tr>
               </thead>
               <tbody>
                 {queryStats.sources.map((s, i) => (
-                  <tr key={i}>
-                    <td>{s.field}</td>
-                    <td>{s.source}</td>
-                    <td>{s.strategy}</td>
-                    <td className="stats-num">{s.elapsed_ms}</td>
-                    <td className="stats-num">{s.rows}</td>
-                    <td>{s.cache_hit ? "✓" : ""}</td>
-                  </tr>
+                  <>
+                    <tr
+                      key={i}
+                      className={s.physical_sql ? "stats-row-clickable" : undefined}
+                      onClick={s.physical_sql ? () => setExpandedStatRows(prev => {
+                        const next = new Set(prev);
+                        next.has(i) ? next.delete(i) : next.add(i);
+                        return next;
+                      }) : undefined}
+                    >
+                      <td>{s.field}</td>
+                      <td>{s.source}</td>
+                      <td>{s.strategy}</td>
+                      <td className="stats-num">{s.elapsed_ms}</td>
+                      <td className="stats-num">{s.rows}</td>
+                      <td>{s.cache_hit ? "✓" : ""}</td>
+                      <td>{s.physical_sql ? (expandedStatRows.has(i) ? "▲" : "▼") : ""}</td>
+                    </tr>
+                    {s.physical_sql && expandedStatRows.has(i) && (
+                      <tr key={`${i}-sql`} className="stats-sql-row">
+                        <td colSpan={7}>
+                          <div className="stats-sql-wrap">
+                            <pre className="stats-sql">{s.physical_sql}</pre>
+                            <button
+                              className="stats-sql-copy"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(s.physical_sql!);
+                              }}
+                              title="Copy SQL"
+                            ><Copy size={12} /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>

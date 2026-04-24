@@ -31,8 +31,7 @@ from provisa.api_source.cache import (
     resolve_ttl,
 )
 from provisa.api_source.trino_cache import (
-    CACHE_CATALOG,
-    CACHE_SCHEMA,
+    CacheLocation,
     cache_table_name,
     create_and_insert,
 )
@@ -785,11 +784,12 @@ class TestCacheResolverExpanded:
             ApiColumn(name="active", type=ApiColumnType.boolean),
             ApiColumn(name="meta", type=ApiColumnType.jsonb),
         ]
-        create_and_insert(FakeConn(), "r_test01", [], cols)
+        loc = CacheLocation(catalog="results", schema="api_cache", backend="iceberg")
+        create_and_insert(FakeConn(), loc, "r_test01", [], cols)
         assert executed, "no SQL was executed"
         create_sql = executed[0]
         assert "CREATE TABLE IF NOT EXISTS" in create_sql
-        assert f"{CACHE_CATALOG}.{CACHE_SCHEMA}" in create_sql
+        assert "results.api_cache" in create_sql
         assert "PARQUET" in create_sql
         assert "s3a://" in create_sql
         assert '"id" BIGINT' in create_sql

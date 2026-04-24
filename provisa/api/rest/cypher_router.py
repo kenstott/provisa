@@ -200,6 +200,15 @@ async def cypher_query(
     from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
     clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)
 
+    # Route through REST+cache whenever any table is API-backed, even with no nf_args.
+    # This ensures JSONB columns (exposed as json by Trino's PG connector) are always
+    # accessed as VARCHAR from the Trino cache, avoiding INVALID_CAST_ARGUMENT errors.
+    _api_table_names = find_api_table_names(exec_sql)
+    _has_api_tables = any(
+        _lookup_api_endpoint(state, tn) is not None
+        for tn in _api_table_names
+    )
+
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:
         _qs_mod.begin()
@@ -207,7 +216,7 @@ async def cypher_query(
 
     log.info("Cypher final SQL: %s", trino_sql)
     try:
-        if nf_args:
+        if nf_args or _has_api_tables:
             rows = await _execute_with_api(clean_exec_sql, clean_params, nf_args, state)
         else:
             rows = await _execute(trino_sql, resolved_params, state)
@@ -232,7 +241,8 @@ async def cypher_query(
     if stats_enabled:
         _qs_mod.record(field="cypher", source="trino", strategy="federated",
                        elapsed_ms=(_time.perf_counter() - _t0) * 1000,
-                       rows=len(serializable_rows))
+                       rows=len(serializable_rows),
+                       physical_sql=trino_sql)
         qs = _qs_mod.current()
         if qs is not None:
             content["provisa_stats"] = qs.to_dict()
@@ -284,77 +294,124 @@ def _resolve_role_id(request: Request, state: object) -> str:
     return "default"
 
 
+def _lookup_api_endpoint(state: object, table_name: str):
+    """Look up an API endpoint by table name, tolerating camelCase/snake_case mismatch.
+
+    Physical SQL uses tables.table_name (may be snake_case after compiler normalization).
+    state.api_endpoints is keyed by api_endpoints.table_name (raw operationId, may be camelCase).
+    Try exact match first, then snake_case conversion of the key, then camelCase conversion.
+    """
+    from provisa.compiler.naming import to_snake_case
+    ep_map: dict = getattr(state, "api_endpoints", {})
+    ep = ep_map.get(table_name)
+    if ep is not None:
+        return ep
+    # Try matching keys by comparing their snake_case forms
+    snake_tn = to_snake_case(table_name)
+    for key, val in ep_map.items():
+        if to_snake_case(key) == snake_tn:
+            return val
+    return None
+
+
 async def _execute_with_api(
     exec_sql: str,
     params: list,
     nf_args: dict,
     state: object,
 ) -> list[dict]:
-    """Phase 1 (REST) + Phase 2 (Trino) execution for API-backed tables."""
+    """Phase 1 (REST) + Phase 2 (Trino) execution for ALL API-backed tables in the query.
+
+    For each API-backed table referenced in FROM/JOIN clauses:
+      1. Derive URL params from nf_args columns that match the endpoint's native params.
+      2. Materialize into Trino cache (cache miss) or reuse (cache hit).
+      3. Rewrite all API table references in the SQL to their respective cache tables.
+    This ensures json-typed JSONB columns are always exposed as VARCHAR in the cache.
+    """
     import asyncio
     from provisa.api_source.router_integration import handle_api_query
     from provisa.api_source.trino_cache import (
-        cache_table_name, ensure_cache_schema, table_exists,
-        create_and_insert, rewrite_from_cache, schedule_drop,
+        cache_table_name, cache_location, ensure_cache_schema, table_exists,
+        create_and_insert, rewrite_all_from_cache, schedule_drop,
     )
     from provisa.executor.trino import execute_trino
     from provisa.transpiler.transpile import transpile_to_trino
     from provisa.compiler.nf_extractor import find_api_table_names
 
     table_names = find_api_table_names(exec_sql)
-    endpoint = None
-    source_id = None
-    table_name = None
+    api_endpoints_in_sql: list[tuple[str, object]] = []
     for tn in table_names:
-        ep = getattr(state, "api_endpoints", {}).get(tn)
+        ep = _lookup_api_endpoint(state, tn)
         if ep is not None:
-            endpoint = ep
-            table_name = tn
-            # find source_id by matching endpoint to api_sources
-            source_id = getattr(ep, "source_id", None)
-            break
+            api_endpoints_in_sql.append((tn, ep))
 
-    if endpoint is None:
+    if not api_endpoints_in_sql:
         raise RuntimeError(f"No API endpoint found for tables: {table_names}")
 
-    api_source = getattr(state, "api_sources", {}).get(source_id)
+    hot_mgr = getattr(state, "hot_manager", None)
 
-    # Build URL params — strip _nf_ prefix already done by extract_nf_args
-    param_name_map: dict = {}
-    for c in endpoint.columns:
-        if c.param_name:
-            param_name_map[c.name] = c.param_name
-            param_name_map[f"_{c.name}"] = c.param_name
-    url_params = {param_name_map.get(k, k): v for k, v in nf_args.items()}
+    # Hot table bypass: only applies when there is exactly one API table and it is hot.
+    if len(api_endpoints_in_sql) == 1:
+        table_name, endpoint = api_endpoints_in_sql[0]
+        if hot_mgr is not None and hot_mgr.is_hot(table_name):
+            from provisa.cache.hot_tables import build_values_cte_sql
+            entry = hot_mgr.get_entry(table_name)
+            hot_sql = build_values_cte_sql(exec_sql, table_name, entry)
+            trino_sql = transpile_to_trino(hot_sql)
+            log.info("[HOT TABLE] hit — %s (%d rows inline)", table_name, len(entry.rows))
+            trino_result = execute_trino(state.trino_conn, trino_sql, params)
+            return [dict(zip(trino_result.column_names, row)) for row in trino_result.rows]
 
-    cache_tbl = cache_table_name(source_id, table_name, url_params)
+    from provisa.executor.redirect import RedirectConfig
+    redirect_config = RedirectConfig.from_env()
 
-    ensure_cache_schema(state.trino_conn)
-    if not table_exists(state.trino_conn, cache_tbl):
-        result = await handle_api_query(
-            endpoint=endpoint,
-            params=url_params,
-            conn=state.trino_conn,
-            source=api_source,
-            source_ttl=getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
-            global_ttl=getattr(state, "cache_default_ttl", None),
-        )
+    # Materialize every API-backed table into its Trino cache slot.
+    cache_rewrites: dict[str, tuple] = {}  # physical table name → (CacheLocation, cache_tbl)
+    for table_name, endpoint in api_endpoints_in_sql:
+        source_id = getattr(endpoint, "source_id", None)
+        api_source = getattr(state, "api_sources", {}).get(source_id)
 
-        log.info("[API CACHE] miss — %d rows from REST, materializing", len(result.rows))
-        create_and_insert(state.trino_conn, cache_tbl, result.rows, endpoint.columns)
+        # Filter nf_args to columns belonging to this endpoint.
+        param_name_map: dict = {}
+        valid_nf_keys: set = set()
+        for c in endpoint.columns:
+            if c.param_name:
+                param_name_map[c.name] = c.param_name
+                param_name_map[f"_{c.name}"] = c.param_name
+                valid_nf_keys.add(c.name)
+                valid_nf_keys.add(f"_{c.name}")
+        url_params = {param_name_map.get(k, k): v for k, v in nf_args.items() if k in valid_nf_keys}
 
-        ttl = (
-            getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl")
-            or getattr(state, "cache_default_ttl", None)
-            or endpoint.ttl
-        )
-        from provisa.executor.redirect import RedirectConfig
-        redirect_config = RedirectConfig.from_env()
-        asyncio.create_task(schedule_drop(state.trino_conn, cache_tbl, ttl, redirect_config))
-    else:
-        log.info("[API CACHE] hit — %s", cache_tbl)
+        _cc = getattr(api_source, "cache_catalog", None) if api_source else None
+        _cs = getattr(api_source, "cache_schema", "api_cache") if api_source else "api_cache"
+        _cache_loc = cache_location(source_id, _cc, _cs)
+        cache_tbl = cache_table_name(source_id, table_name, url_params)
+        cache_rewrites[table_name] = (_cache_loc, cache_tbl)
 
-    rewritten_sql = rewrite_from_cache(exec_sql, cache_tbl)
+        ensure_cache_schema(state.trino_conn, _cache_loc)
+        if not table_exists(state.trino_conn, _cache_loc, cache_tbl):
+            result = await handle_api_query(
+                endpoint=endpoint,
+                params=url_params,
+                conn=state.trino_conn,
+                source=api_source,
+                source_ttl=getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
+                global_ttl=getattr(state, "cache_default_ttl", None),
+            )
+
+            ttl = (
+                getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl")
+                or getattr(state, "cache_default_ttl", None)
+                or endpoint.ttl
+            )
+            asyncio.create_task(schedule_drop(state.trino_conn, _cache_loc, cache_tbl, ttl, redirect_config))
+
+            if hot_mgr is not None and result.rows:
+                asyncio.create_task(hot_mgr.maybe_promote_dicts(table_name, result.rows))
+        else:
+            log.info("[API CACHE] hit — %s", cache_tbl)
+
+    rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites)
     trino_sql = transpile_to_trino(rewritten_sql)
     trino_result = execute_trino(state.trino_conn, trino_sql, params)
 
