@@ -166,6 +166,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
         request_timeout=10,
     )
     state.trino_conn = trino.dbapi.connect(**state.trino_conn_kwargs)
+    from provisa.compiler import schema_service
+    schema_service.init(state.trino_conn)
 
     # Create Arrow Flight SQL connection to Trino (separate gRPC port)
     trino_flight_port = int(os.environ.get("TRINO_FLIGHT_PORT", "8480"))

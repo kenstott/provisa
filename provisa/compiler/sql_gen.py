@@ -143,13 +143,27 @@ class CompiledQuery:
 # --- Build CompilationContext from SchemaInput ---
 
 
-def _lookup_column_type(si: object, table_id: int, column_name: str) -> str:
-    """Look up a column's Trino data type from the SchemaInput."""
+def _lookup_column_type(
+    si: object,
+    table_id: int,
+    column_name: str,
+    catalog: str | None = None,
+    schema: str | None = None,
+    table: str | None = None,
+) -> str:
+    """Look up a column's Trino data type.
+
+    Checks compile-time column_types first; falls back to schema_service
+    live Trino query when catalog/schema/table are provided.
+    """
     col_metas = si.column_types.get(table_id, [])
     for meta in col_metas:
         if meta.column_name == column_name:
             return meta.data_type
-    return "varchar"  # safe fallback
+    if catalog and schema and table:
+        from provisa.compiler import schema_service
+        return schema_service.get_column_type(catalog, schema, table, column_name)
+    return "varchar"
 
 
 def build_context(si: object) -> CompilationContext:
@@ -253,9 +267,19 @@ def build_context(si: object) -> CompilationContext:
             domain_id=tgt_info.domain_id,
         )
 
-        # Look up column types for the join columns
-        src_col_type = _lookup_column_type(si, src_id, rel["source_column"])
-        tgt_col_type = _lookup_column_type(si, tgt_id, rel["target_column"])
+        # Look up column types for the join columns; fall back to schema_service on miss
+        src_col_type = _lookup_column_type(
+            si, src_id, rel["source_column"],
+            catalog=source_to_catalog(src_info.source_id),
+            schema=src_info.schema_name,
+            table=src_info.table_name,
+        )
+        tgt_col_type = _lookup_column_type(
+            si, tgt_id, rel["target_column"],
+            catalog=source_to_catalog(tgt_info.source_id),
+            schema=tgt_info.schema_name,
+            table=tgt_info.table_name,
+        )
 
         # The relationship field on the source type uses alias if set, else computed rel name
         join_field_name = rel.get("graphql_alias") or _rel_field_name(
