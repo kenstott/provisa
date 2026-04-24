@@ -585,7 +585,7 @@ export function RelationshipsPage() {
 
       {reverseForm && (
         <div className="modal-overlay" onClick={() => setReverseForm(null)}>
-          <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Generate Reverse Relationship</h3>
               <button className="modal-close" onClick={() => setReverseForm(null)}><X size={14} /></button>
