@@ -584,69 +584,60 @@ export function RelationshipsPage() {
       </table>
 
       {reverseForm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
-          onClick={() => setReverseForm(null)}>
-          <div style={{ background: "var(--bg)", border: "1px solid var(--border)", borderRadius: "8px", padding: "1.5rem", minWidth: "520px", maxWidth: "700px", width: "90%" }}
-            onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-              <strong>Generate Reverse Relationship</strong>
-              <button className="btn-icon" onClick={() => setReverseForm(null)}><X size={14} /></button>
+        <div className="modal-overlay" onClick={() => setReverseForm(null)}>
+          <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Generate Reverse Relationship</h3>
+              <button className="modal-close" onClick={() => setReverseForm(null)}><X size={14} /></button>
             </div>
-            <div className="form-row">
-              <label>ID
-                <input value={reverseForm.id} onChange={(e) => setReverseForm({ ...reverseForm, id: e.target.value })} />
-              </label>
-              <label>CQL Alias (UPPER_SNAKE)
-                <input value={reverseForm.alias} onChange={(e) => setReverseForm({ ...reverseForm, alias: e.target.value })} placeholder="PLACED_BY" />
-              </label>
-              <label>GQL Alias (camelCase)
-                <input value={reverseForm.graphqlAlias} onChange={(e) => setReverseForm({ ...reverseForm, graphqlAlias: e.target.value })} />
-              </label>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", margin: "0.75rem 0" }}>
-              <div style={{ border: "1px solid var(--border)", borderRadius: "4px", padding: "0.75rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                <strong style={{ color: "var(--text-muted)", fontSize: "0.75rem", textTransform: "uppercase" as const }}>Source</strong>
-                <label>Table
+            <div className="form-card">
+              <div className="form-row">
+                <label>ID
+                  <input value={reverseForm.id} onChange={(e) => setReverseForm({ ...reverseForm, id: e.target.value })} />
+                </label>
+                <label>CQL Alias (UPPER_SNAKE)
+                  <input value={reverseForm.alias} onChange={(e) => setReverseForm({ ...reverseForm, alias: e.target.value })} placeholder="PLACED_BY" />
+                </label>
+                <label>GQL Alias (camelCase)
+                  <input value={reverseForm.graphqlAlias} onChange={(e) => setReverseForm({ ...reverseForm, graphqlAlias: e.target.value })} />
+                </label>
+              </div>
+              <div className="form-row">
+                <label>Source Table
                   <select value={reverseForm.sourceTableId} onChange={(e) => setReverseForm({ ...reverseForm, sourceTableId: e.target.value })}>
                     <option value="">Select...</option>
                     {tables.map((t) => <option key={t.id} value={t.tableName}>{t.tableName}</option>)}
                   </select>
                 </label>
-                <label>Column
+                <label>Source Column
                   <input value={reverseForm.sourceColumn} onChange={(e) => setReverseForm({ ...reverseForm, sourceColumn: e.target.value })} />
                 </label>
-              </div>
-              <div style={{ border: "1px solid var(--border)", borderRadius: "4px", padding: "0.75rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                <strong style={{ color: "var(--text-muted)", fontSize: "0.75rem", textTransform: "uppercase" as const }}>Target</strong>
-                <label>Table
+                <label>Target Table
                   <select value={reverseForm.targetTableId} onChange={(e) => setReverseForm({ ...reverseForm, targetTableId: e.target.value })}>
                     <option value="">Select...</option>
                     {tables.map((t) => <option key={t.id} value={t.tableName}>{t.tableName}</option>)}
                   </select>
                 </label>
-                <label>Column
+                <label>Target Column
                   <input value={reverseForm.targetColumn} onChange={(e) => setReverseForm({ ...reverseForm, targetColumn: e.target.value })} />
                 </label>
               </div>
-            </div>
-            <div className="form-row">
-              <label>Cardinality
-                <select value={reverseForm.cardinality} onChange={(e) => setReverseForm({ ...reverseForm, cardinality: e.target.value })}>
-                  <option value="many-to-one">many-to-one</option>
-                  <option value="one-to-many">one-to-many</option>
-                </select>
-              </label>
-              <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem", flex: "0 0 auto" }}>
-                <input type="checkbox" checked={reverseForm.materialize} onChange={(e) => setReverseForm({ ...reverseForm, materialize: e.target.checked })} style={{ width: "auto", padding: 0 }} />
-                Materialize
-              </label>
-              {reverseForm.materialize && (
-                <label>Refresh Interval (s)
-                  <input type="number" value={reverseForm.refreshInterval} onChange={(e) => setReverseForm({ ...reverseForm, refreshInterval: e.target.value })} />
+              <div className="form-row">
+                <label>Cardinality
+                  <input value={reverseForm.cardinality} readOnly style={{ opacity: 0.6, cursor: "default" }} />
                 </label>
-              )}
+                <label className="checkbox-label">
+                  <input type="checkbox" checked={reverseForm.materialize} onChange={(e) => setReverseForm({ ...reverseForm, materialize: e.target.checked })} />
+                  Materialize
+                </label>
+                {reverseForm.materialize && (
+                  <label>Refresh Interval (s)
+                    <input type="number" value={reverseForm.refreshInterval} onChange={(e) => setReverseForm({ ...reverseForm, refreshInterval: e.target.value })} />
+                  </label>
+                )}
+              </div>
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem", marginTop: "1rem" }}>
+            <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setReverseForm(null)}>Cancel</button>
               <button className="btn-primary" onClick={handleReverseAdd} disabled={saving === "reverse"}>Save</button>
             </div>
