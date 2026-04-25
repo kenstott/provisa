@@ -149,10 +149,25 @@ export function RelationshipsPage() {
       aliasMap[alias] = tbl;
       aliasMap[tbl] = tbl;
     }
+    // Normalise a join operand: strip CAST(...) wrapper, return "alias.col" or null
+    const stripCast = (s: string): [string, string] | null => {
+      const castRe = /^cast\s*\(\s*(\w+)\.(\w+)\s+as\s+\w+\s*\)$/i;
+      const plainRe = /^(\w+)\.(\w+)$/;
+      const cm = castRe.exec(s.trim());
+      if (cm) return [cm[1], cm[2]];
+      const pm = plainRe.exec(s.trim());
+      if (pm) return [pm[1], pm[2]];
+      return null;
+    };
     const results: ModelingCandidate[] = [];
-    const onRe = /\bon\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+)/gi;
+    // Match: ON <lhs> = <rhs> where each side is alias.col or CAST(alias.col AS type)
+    const onRe = /\bon\s+(cast\s*\(\s*\w+\.\w+\s+as\s+\w+\s*\)|\w+\.\w+)\s*=\s*(cast\s*\(\s*\w+\.\w+\s+as\s+\w+\s*\)|\w+\.\w+)/gi;
     while ((m = onRe.exec(sqlText)) !== null) {
-      const [, la, lc, ra, rc] = m;
+      const lhs = stripCast(m[1]);
+      const rhs = stripCast(m[2]);
+      if (!lhs || !rhs) continue;
+      const [la, lc] = lhs;
+      const [ra, rc] = rhs;
       const lt = aliasMap[la.toLowerCase()] || la.toLowerCase();
       const rt = aliasMap[ra.toLowerCase()] || ra.toLowerCase();
       results.push({
