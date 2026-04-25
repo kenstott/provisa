@@ -169,8 +169,14 @@ export function RelationshipsPage() {
   }, []);
 
   const handleExtractJoins = useCallback(() => {
-    setModelingCandidates(extractJoins(modelingSql));
-  }, [extractJoins, modelingSql]);
+    const existing = new Set(
+      rels.map((r) => `${r.sourceTableName}|${r.sourceColumn}|${r.targetTableName}|${r.targetColumn}`)
+    );
+    const fresh = extractJoins(modelingSql).filter(
+      (c) => !existing.has(`${c.sourceTable}|${c.sourceCol}|${c.targetTable}|${c.targetCol}`)
+    );
+    setModelingCandidates(fresh);
+  }, [extractJoins, modelingSql, rels]);
 
   const handlePromoteCandidate = useCallback(async (idx: number) => {
     const c = modelingCandidates[idx];
