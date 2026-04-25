@@ -8,8 +8,11 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useState, useEffect, useCallback } from "react";
-import { Trash2, Pencil, Sparkles, Save, X, ArrowLeftRight } from "lucide-react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { Trash2, Pencil, Sparkles, Save, X, ArrowLeftRight, Code2 } from "lucide-react";
+import CodeMirror from "@uiw/react-codemirror";
+import { sql, PostgreSQL } from "@codemirror/lang-sql";
+import { oneDark } from "@codemirror/theme-one-dark";
 import { FilterInput } from "../components/admin/FilterInput";
 import {
   fetchRelationships,
@@ -26,6 +29,16 @@ import {
 import { fetchActions } from "../api/actions";
 import type { TrackedFunction } from "../api/actions";
 import type { Relationship, RegisteredTable } from "../types/admin";
+
+interface ModelingCandidate {
+  id: string;
+  sourceTable: string;
+  sourceCol: string;
+  targetTable: string;
+  targetCol: string;
+  cardinality: string;
+  promoted: boolean;
+}
 
 interface Candidate {
   id: number;
@@ -75,6 +88,9 @@ export function RelationshipsPage() {
   const [editingRel, setEditingRel] = useState<typeof EMPTY_FORM | null>(null);
   const [reverseForm, setReverseForm] = useState<typeof EMPTY_FORM | null>(null);
   const [relSearch, setRelSearch] = useState("");
+  const [showModelingModal, setShowModelingModal] = useState(false);
+  const [modelingSql, setModelingSql] = useState("");
+  const [modelingCandidates, setModelingCandidates] = useState<ModelingCandidate[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -102,6 +118,81 @@ export function RelationshipsPage() {
   const tableDomainById = Object.fromEntries(
     tables.map((t) => [t.id, normalizeDomain(t.domainId)]),
   );
+
+  const sqlSchema = useMemo(() => {
+    const schema: Record<string, string[]> = {};
+    for (const t of tables) {
+      const cols = t.columns.map((c) => c.columnName);
+      schema[t.tableName] = cols;
+      if (t.alias) schema[t.alias] = cols;
+    }
+    return schema;
+  }, [tables]);
+
+  const sqlExtensions = useMemo(
+    () => [sql({ dialect: PostgreSQL, schema: sqlSchema })],
+    [sqlSchema],
+  );
+
+  const tableNameSet = useMemo(
+    () => new Set(tables.map((t) => t.tableName.toLowerCase())),
+    [tables],
+  );
+
+  const extractJoins = useCallback((sqlText: string): ModelingCandidate[] => {
+    const aliasMap: Record<string, string> = {};
+    const tableRefRe = /(?:from|join)\s+(?:\w+\.)?(\w+)(?:\s+(?:as\s+)?(\w+))?/gi;
+    let m: RegExpExecArray | null;
+    while ((m = tableRefRe.exec(sqlText)) !== null) {
+      const tbl = m[1].toLowerCase();
+      const alias = (m[2] || m[1]).toLowerCase();
+      aliasMap[alias] = tbl;
+      aliasMap[tbl] = tbl;
+    }
+    const results: ModelingCandidate[] = [];
+    const onRe = /\bon\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+)/gi;
+    while ((m = onRe.exec(sqlText)) !== null) {
+      const [, la, lc, ra, rc] = m;
+      const lt = aliasMap[la.toLowerCase()] || la.toLowerCase();
+      const rt = aliasMap[ra.toLowerCase()] || ra.toLowerCase();
+      results.push({
+        id: `${lt}-${lc}-to-${rt}`,
+        sourceTable: lt,
+        sourceCol: lc,
+        targetTable: rt,
+        targetCol: rc,
+        cardinality: "many-to-one",
+        promoted: false,
+      });
+    }
+    return results;
+  }, []);
+
+  const handleExtractJoins = useCallback(() => {
+    setModelingCandidates(extractJoins(modelingSql));
+  }, [extractJoins, modelingSql]);
+
+  const handlePromoteCandidate = useCallback(async (idx: number) => {
+    const c = modelingCandidates[idx];
+    await upsertRelationship({
+      id: c.id,
+      sourceTableId: c.sourceTable,
+      targetTableId: c.targetTable,
+      sourceColumn: c.sourceCol,
+      targetColumn: c.targetCol,
+      cardinality: c.cardinality,
+      materialize: false,
+      refreshInterval: 300,
+      targetFunctionName: null,
+      functionArg: null,
+      alias: null,
+      graphqlAlias: null,
+    });
+    setModelingCandidates((prev) =>
+      prev.map((item, i) => (i === idx ? { ...item, promoted: true } : item)),
+    );
+    load();
+  }, [modelingCandidates, load]);
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -299,6 +390,11 @@ export function RelationshipsPage() {
           <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
             {showForm ? "Cancel" : "+ Relationship"}
           </button>
+          <button
+            className="btn-icon"
+            title="SQL Modeling tool"
+            onClick={() => { setShowModelingModal(true); setModelingCandidates([]); }}
+          ><Code2 size={14} /></button>
           <button
             className="btn-icon"
             title={discovering ? "Discovering..." : "Suggest with AI"}
@@ -596,6 +692,90 @@ export function RelationshipsPage() {
           })}
         </tbody>
       </table>
+
+      {showModelingModal && (
+        <div className="modal-overlay" onClick={() => setShowModelingModal(false)}>
+          <div className="modal" style={{ width: "800px", maxWidth: "800px" }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>SQL Modeling Tool</h3>
+              <button className="modal-close" onClick={() => setShowModelingModal(false)}><X size={14} /></button>
+            </div>
+            <div className="form-card">
+              <p style={{ margin: "0 0 0.75rem", color: "var(--text-muted)", fontSize: "0.875rem" }}>
+                Write SQL with JOIN conditions. Each JOIN will be extracted as a candidate relationship proposal.
+              </p>
+              <div className="view-sql-editor" style={{ marginBottom: "0.75rem" }}>
+                <CodeMirror
+                  value={modelingSql}
+                  height="200px"
+                  theme={oneDark}
+                  extensions={sqlExtensions}
+                  onChange={(v) => setModelingSql(v)}
+                />
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.75rem" }}>
+                <button className="btn-primary" onClick={handleExtractJoins}>Extract Joins</button>
+              </div>
+              {modelingCandidates.length > 0 && (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Source</th>
+                      <th>Target</th>
+                      <th>Cardinality</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {modelingCandidates.map((c, idx) => (
+                      <tr key={idx}>
+                        <td>
+                          <input
+                            value={c.id}
+                            onChange={(e) => setModelingCandidates((prev) => prev.map((item, i) => i === idx ? { ...item, id: e.target.value } : item))}
+                            style={{ width: "100%", fontSize: "0.85rem" }}
+                          />
+                        </td>
+                        <td style={{ fontSize: "0.875rem" }}>
+                          <span style={{ color: tableNameSet.has(c.sourceTable) ? "var(--text)" : "var(--error)" }}>{c.sourceTable}</span>
+                          <span style={{ color: "var(--text-muted)" }}>.</span>{c.sourceCol}
+                        </td>
+                        <td style={{ fontSize: "0.875rem" }}>
+                          <span style={{ color: tableNameSet.has(c.targetTable) ? "var(--text)" : "var(--error)" }}>{c.targetTable}</span>
+                          <span style={{ color: "var(--text-muted)" }}>.</span>{c.targetCol}
+                        </td>
+                        <td>
+                          <select
+                            value={c.cardinality}
+                            onChange={(e) => setModelingCandidates((prev) => prev.map((item, i) => i === idx ? { ...item, cardinality: e.target.value } : item))}
+                            style={{ fontSize: "0.85rem" }}
+                          >
+                            <option value="many-to-one">many-to-one</option>
+                            <option value="one-to-many">one-to-many</option>
+                          </select>
+                        </td>
+                        <td>
+                          {c.promoted
+                            ? <span style={{ color: "var(--approve)", fontSize: "0.85rem" }}>✓ Promoted</span>
+                            : <button className="btn-primary" style={{ fontSize: "0.8rem", padding: "0.2rem 0.6rem" }} onClick={() => handlePromoteCandidate(idx)}>Promote</button>
+                          }
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {modelingCandidates.length === 0 && modelingSql.trim() && (
+                <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", textAlign: "center" }}>No JOIN conditions found. Use <code>table_alias.column = table_alias.column</code> syntax in ON clauses.</p>
+              )}
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setShowModelingModal(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {reverseForm && (
         <div className="modal-overlay" onClick={() => setReverseForm(null)}>
