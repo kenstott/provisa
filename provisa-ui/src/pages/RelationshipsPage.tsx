@@ -91,6 +91,7 @@ export function RelationshipsPage() {
   const [showModelingModal, setShowModelingModal] = useState(false);
   const [modelingSql, setModelingSql] = useState("");
   const [modelingCandidates, setModelingCandidates] = useState<ModelingCandidate[]>([]);
+  const [modelingErrors, setModelingErrors] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -139,7 +140,7 @@ export function RelationshipsPage() {
     [tables],
   );
 
-  const extractJoins = useCallback((sqlText: string): ModelingCandidate[] => {
+  const extractJoins = useCallback((sqlText: string): { candidates: ModelingCandidate[]; errors: string[] } => {
     const aliasMap: Record<string, string> = {};
     const tableRefRe = /(?:from|join)\s+(?:\w+\.)?(\w+)(?:\s+(?:as\s+)?(\w+))?/gi;
     let m: RegExpExecArray | null;
@@ -159,38 +160,52 @@ export function RelationshipsPage() {
       if (pm) return [pm[1], pm[2]];
       return null;
     };
-    const results: ModelingCandidate[] = [];
-    // Match: ON <lhs> = <rhs> where each side is alias.col or CAST(alias.col AS type)
-    const onRe = /\bon\s+(cast\s*\(\s*\w+\.\w+\s+as\s+\w+\s*\)|\w+\.\w+)\s*=\s*(cast\s*\(\s*\w+\.\w+\s+as\s+\w+\s*\)|\w+\.\w+)/gi;
-    while ((m = onRe.exec(sqlText)) !== null) {
-      const lhs = stripCast(m[1]);
-      const rhs = stripCast(m[2]);
-      if (!lhs || !rhs) continue;
-      const [la, lc] = lhs;
-      const [ra, rc] = rhs;
-      const lt = aliasMap[la.toLowerCase()] || la.toLowerCase();
-      const rt = aliasMap[ra.toLowerCase()] || ra.toLowerCase();
-      results.push({
-        id: `${lt}-${lc}-to-${rt}`,
-        sourceTable: lt,
-        sourceCol: lc,
-        targetTable: rt,
-        targetCol: rc,
-        cardinality: "many-to-one",
-        promoted: false,
-      });
+    const candidates: ModelingCandidate[] = [];
+    const errors: string[] = [];
+    // Match the full ON clause (up to next JOIN/WHERE/GROUP/ORDER/HAVING/LIMIT or end)
+    const onBlockRe = /\bon\s+(.*?)(?=\s+(?:inner|left|right|full|cross|join|where|group|order|having|limit)\b|$)/gi;
+    while ((m = onBlockRe.exec(sqlText)) !== null) {
+      const clause = m[1].trim();
+      // Split AND-connected conditions
+      const conditions = clause.split(/\band\b/i);
+      for (const cond of conditions) {
+        const eqRe = /^(cast\s*\(\s*\w+\.\w+\s+as\s+\w+\s*\)|\w+\.\w+)\s*=\s*(cast\s*\(\s*\w+\.\w+\s+as\s+\w+\s*\)|\w+\.\w+)$/i;
+        const eq = eqRe.exec(cond.trim());
+        if (!eq) {
+          errors.push(cond.trim());
+          continue;
+        }
+        const lhs = stripCast(eq[1]);
+        const rhs = stripCast(eq[2]);
+        if (!lhs || !rhs) { errors.push(cond.trim()); continue; }
+        const [la, lc] = lhs;
+        const [ra, rc] = rhs;
+        const lt = aliasMap[la.toLowerCase()] || la.toLowerCase();
+        const rt = aliasMap[ra.toLowerCase()] || ra.toLowerCase();
+        candidates.push({
+          id: `${lt}-${lc}-to-${rt}`,
+          sourceTable: lt,
+          sourceCol: lc,
+          targetTable: rt,
+          targetCol: rc,
+          cardinality: "many-to-one",
+          promoted: false,
+        });
+      }
     }
-    return results;
+    return { candidates, errors };
   }, []);
 
   const handleExtractJoins = useCallback(() => {
     const existing = new Set(
       rels.map((r) => `${r.sourceTableName}|${r.sourceColumn}|${r.targetTableName}|${r.targetColumn}`)
     );
-    const fresh = extractJoins(modelingSql).filter(
+    const { candidates, errors } = extractJoins(modelingSql);
+    const fresh = candidates.filter(
       (c) => !existing.has(`${c.sourceTable}|${c.sourceCol}|${c.targetTable}|${c.targetCol}`)
     );
     setModelingCandidates(fresh);
+    setModelingErrors(errors);
   }, [extractJoins, modelingSql, rels]);
 
   const handlePromoteCandidate = useCallback(async (idx: number) => {
@@ -414,7 +429,7 @@ export function RelationshipsPage() {
           <button
             className="btn-icon"
             title="SQL Modeling tool"
-            onClick={() => { setShowModelingModal(true); setModelingCandidates([]); }}
+            onClick={() => { setShowModelingModal(true); setModelingCandidates([]); setModelingErrors([]); }}
           ><Code2 size={14} /></button>
           <button
             className="btn-icon"
@@ -787,8 +802,18 @@ export function RelationshipsPage() {
                   </tbody>
                 </table>
               )}
-              {modelingCandidates.length === 0 && modelingSql.trim() && (
+              {modelingCandidates.length === 0 && modelingErrors.length === 0 && modelingSql.trim() && (
                 <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", textAlign: "center" }}>No JOIN conditions found. Use <code>table_alias.column = table_alias.column</code> syntax in ON clauses.</p>
+              )}
+              {modelingErrors.length > 0 && (
+                <div style={{ marginTop: "0.75rem" }}>
+                  <p style={{ color: "var(--error)", fontSize: "0.875rem", fontWeight: 600, margin: "0 0 0.25rem" }}>Unsupported ON conditions — simplify these using a view:</p>
+                  <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
+                    {modelingErrors.map((e, i) => (
+                      <li key={i} style={{ fontSize: "0.85rem", color: "var(--error)", fontFamily: "monospace" }}>{e}</li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </div>
             <div className="modal-actions">
