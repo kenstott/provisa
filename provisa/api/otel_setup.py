@@ -48,6 +48,10 @@ class SpanBuffer:
 # Module-level singleton — imported by settings_router
 span_buffer = SpanBuffer()
 
+# Custom query instruments — None until setup_otel() initialises metrics
+query_counter: Any = None
+query_duration: Any = None
+
 
 def setup_otel(app: "object") -> None:
     """Initialize OpenTelemetry tracing unconditionally.
@@ -121,6 +125,35 @@ def setup_otel(app: "object") -> None:
             meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
             metrics.set_meter_provider(meter_provider)
             _log.info("OTel metrics → %s (service=%s)", endpoint, service_name)
+
+            import provisa.api.otel_setup as _self
+            _meter = metrics.get_meter("provisa")
+            _self.query_counter = _meter.create_counter(
+                "provisa.query.executed",
+                description="Total queries executed",
+            )
+            _self.query_duration = _meter.create_histogram(
+                "provisa.query.duration_ms",
+                description="Query execution time in milliseconds",
+                unit="ms",
+            )
+
+        # ── Logs ─────────────────────────────────────────────────────────────
+        if endpoint:
+            import logging as _logging
+            from opentelemetry.sdk._logs import LoggerProvider
+            from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+            from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+            from opentelemetry._logs import set_logger_provider
+            from opentelemetry.sdk._logs import LoggingHandler
+            log_provider = LoggerProvider(resource=resource)
+            log_provider.add_log_record_processor(
+                BatchLogRecordProcessor(OTLPLogExporter(endpoint=endpoint, insecure=True))
+            )
+            set_logger_provider(log_provider)
+            handler = LoggingHandler(level=_logging.WARNING, logger_provider=log_provider)
+            _logging.getLogger().addHandler(handler)
+            _log.info("OTel logs → %s (service=%s)", endpoint, service_name)
 
         FastAPIInstrumentor.instrument_app(app)
         try:
