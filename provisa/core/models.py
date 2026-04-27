@@ -319,6 +319,7 @@ class Relationship(BaseModel):
     function_arg: str | None = None  # which function arg receives source_column value
     alias: str | None = None  # human-readable relationship type (e.g. WORKS_FOR); unique per source table
     graphql_alias: str | None = None  # persisted GraphQL field name override (computed from target+cardinality when absent)
+    disable_cypher: bool = False  # when True, exclude this relationship from Cypher graph edges
 
 
 class Role(BaseModel):
@@ -457,11 +458,17 @@ class OtelConfig(BaseModel):
 
     service_name: reported service name. Overridden by OTEL_SERVICE_NAME env var.
     sample_rate: fraction of traces to sample (1.0 = 100%).
+    log_level: Python log level name forwarded to the OTLP log exporter (default WARNING).
+    compact_cron: cron expression for the Parquet→Iceberg compaction job (default every minute).
+    compact_batch_size: rows per INSERT batch during compaction; reduce for low-memory Trino.
     """
 
     endpoint: str = ""
     service_name: str = "provisa"
     sample_rate: float = 1.0
+    log_level: str = "WARNING"
+    compact_cron: str = "* * * * *"
+    compact_batch_size: int = 10
 
 
 class ServerConfig(BaseModel):

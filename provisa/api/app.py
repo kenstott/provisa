@@ -56,8 +56,8 @@ class AppState:
     source_types: dict[str, str] = {}  # source_id → source_type
     source_dialects: dict[str, str] = {}  # source_id → sqlglot dialect
     masking_rules: MaskingRules = {}  # (table_id, role_id) → {col: (rule, dtype)}
-    cache_store: CacheStore = NoopCacheStore()
-    cache_default_ttl: int = 300
+    response_cache_store: CacheStore = NoopCacheStore()
+    response_cache_default_ttl: int = 300
     mv_registry: MVRegistry = MVRegistry()
     _mv_refresh_task: asyncio.Task | None = None
     proto_files: dict[str, str] = {}  # role_id → .proto content
@@ -97,9 +97,284 @@ class AppState:
     table_watermarks: dict[str, str] = {}  # table_name → watermark_column (for polling fallback)
     _scheduler: object | None = None  # APScheduler instance for scheduled queries
     global_naming_convention: str = "apollo_graphql"  # runtime override; set via updateNamingConvention
+    otel_compact_cron: str = "* * * * *"  # cron for Parquet→Iceberg compaction
+    otel_compact_batch_size: int = 10  # rows per INSERT batch during compaction
 
 
 state = AppState()
+
+# Views replace tables that have text[] columns Trino can't surface; arrays cast to JSON text.
+_META_TABLE_VIEWS: dict[str, str] = {
+    "table_columns": """
+        CREATE OR REPLACE VIEW public.table_columns_meta AS
+        SELECT id, table_id, column_name, data_type, is_primary_key,
+               alias, description, path,
+               mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
+               native_filter_type, is_foreign_key, is_alternate_key, object_fields,
+               array_to_json(visible_to)::text  AS visible_to,
+               array_to_json(unmasked_to)::text AS unmasked_to,
+               array_to_json(writable_by)::text AS writable_by
+        FROM public.table_columns
+    """,
+    "roles": """
+        CREATE OR REPLACE VIEW public.roles_meta AS
+        SELECT id, parent_role_id,
+               array_to_json(capabilities)::text  AS capabilities,
+               array_to_json(domain_access)::text AS domain_access
+        FROM public.roles
+    """,
+}
+# Maps original table name → view name (or itself if no view needed).
+_META_TABLE_ALIAS: dict[str, str] = {
+    "table_columns": "table_columns_meta",
+    "roles": "roles_meta",
+}
+_META_TABLES = [
+    "registered_tables", "table_columns", "domains", "relationships",
+    "rls_rules", "governed_queries", "roles",
+]
+
+_OPS_PG_TO_TRINO: dict[str, str] = {
+    "text": "VARCHAR",
+    "bigint": "BIGINT",
+    "integer": "INTEGER",
+    "float8": "DOUBLE",
+    "date": "DATE",
+    "boolean": "BOOLEAN",
+}
+
+# Matches actual otlp2parquet output schema (https://github.com/smithclay/otlp2parquet).
+# Timestamps are milliseconds. span_attributes is a JSON string.
+# We add table_name/domain_id/role_id extracted from span_attributes during compaction.
+_OPS_TABLES: dict[str, list[tuple[str, str, bool]]] = {
+    "traces": [
+        ("trace_id", "text", True),
+        ("span_id", "text", False),
+        ("parent_span_id", "text", False),
+        ("span_name", "text", False),
+        ("span_kind", "integer", False),
+        ("service_name", "text", False),
+        ("service_namespace", "text", False),
+        ("timestamp", "bigint", False),
+        ("end_timestamp", "bigint", False),
+        ("duration", "bigint", False),
+        ("status_code", "integer", False),
+        ("status_message", "text", False),
+        ("scope_name", "text", False),
+        ("span_attributes", "text", False),
+        ("resource_attributes", "text", False),
+        # extracted from span_attributes during compaction
+        ("table_name", "text", False),
+        ("domain_id", "text", False),
+        ("role_id", "text", False),
+        ("_date", "date", False),
+    ],
+    "metrics": [
+        ("timestamp", "bigint", True),
+        ("start_timestamp", "bigint", False),
+        ("metric_name", "text", False),
+        ("metric_description", "text", False),
+        ("metric_unit", "text", False),
+        ("metric_type", "text", False),
+        ("service_name", "text", False),
+        ("service_namespace", "text", False),
+        ("scope_name", "text", False),
+        ("metric_attributes", "text", False),
+        ("resource_attributes", "text", False),
+        ("value", "float8", False),
+        ("_date", "date", False),
+    ],
+    "logs": [
+        ("timestamp", "bigint", True),
+        ("observed_timestamp", "bigint", False),
+        ("trace_id", "text", False),
+        ("span_id", "text", False),
+        ("severity_number", "integer", False),
+        ("severity_text", "text", False),
+        ("body", "text", False),
+        ("service_name", "text", False),
+        ("service_namespace", "text", False),
+        ("scope_name", "text", False),
+        ("log_attributes", "text", False),
+        ("resource_attributes", "text", False),
+        ("_date", "date", False),
+    ],
+}
+
+# Views registered in the ops domain alongside the raw Iceberg tables.
+# Each entry: (view_name, [(col_name, data_type, is_pk)], ddl_sql)
+_OPS_VIEWS: list[tuple[str, list[tuple[str, str, bool]], str]] = [
+    (
+        "provisa_queries",
+        [
+            ("trace_id", "text", True),
+            ("span_id", "text", False),
+            ("parent_span_id", "text", False),
+            ("span_name", "text", False),
+            ("service_name", "text", False),
+            ("timestamp", "bigint", False),
+            ("end_timestamp", "bigint", False),
+            ("duration", "bigint", False),
+            ("status_code", "integer", False),
+            ("table_name", "text", False),
+            ("domain_id", "text", False),
+            ("role_id", "text", False),
+            ("_date", "date", False),
+        ],
+        """\
+CREATE OR REPLACE VIEW otel.signals.provisa_queries AS
+SELECT
+    trace_id,
+    span_id,
+    parent_span_id,
+    span_name,
+    service_name,
+    timestamp,
+    end_timestamp,
+    duration,
+    status_code,
+    table_name,
+    domain_id,
+    role_id,
+    _date
+FROM otel.signals.traces
+WHERE span_name LIKE 'provisa.query%'
+""",
+    ),
+]
+
+
+async def _seed_meta_domain(conn: asyncpg.Connection) -> None:
+    """Register admin tables in the built-in meta domain (idempotent)."""
+    for ddl in _META_TABLE_VIEWS.values():
+        await conn.execute(ddl)
+
+    for tbl in _META_TABLES:
+        reg_name = _META_TABLE_ALIAS.get(tbl, tbl)
+        table_id = await conn.fetchval(
+            """
+            INSERT INTO registered_tables
+                (source_id, domain_id, schema_name, table_name, governance)
+            VALUES ('provisa-admin', 'meta', 'public', $1, 'pre-approved')
+            ON CONFLICT (source_id, schema_name, table_name)
+                DO UPDATE SET domain_id = 'meta'
+            RETURNING id
+            """,
+            reg_name,
+        )
+        pk_cols = {
+            row["column_name"]
+            for row in await conn.fetch(
+                """
+                SELECT kcu.column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                    ON tc.constraint_name = kcu.constraint_name
+                    AND tc.table_schema = kcu.table_schema
+                WHERE tc.table_schema = 'public' AND tc.table_name = $1
+                  AND tc.constraint_type = 'PRIMARY KEY'
+                """,
+                tbl,
+            )
+        }
+        # Query the view (or table) for its column list; arrays appear as 'text' after casting.
+        cols = await conn.fetch(
+            """
+            SELECT column_name,
+                   CASE WHEN data_type = 'ARRAY' THEN 'text' ELSE data_type END AS data_type
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = $1
+            ORDER BY ordinal_position
+            """,
+            tbl,
+        )
+        for col in cols:
+            await conn.execute(
+                """
+                INSERT INTO table_columns
+                    (table_id, column_name, visible_to, data_type, is_primary_key)
+                VALUES ($1, $2, '{}', $3, $4)
+                ON CONFLICT (table_id, column_name) DO NOTHING
+                """,
+                table_id,
+                col["column_name"],
+                col["data_type"],
+                col["column_name"] in pk_cols,
+            )
+
+
+async def _seed_ops_pg(conn: asyncpg.Connection) -> None:
+    """Register ops tables/views in PG registered_tables + table_columns (idempotent)."""
+    for tbl_name, cols in _OPS_TABLES.items():
+        table_id = await conn.fetchval(
+            """
+            INSERT INTO registered_tables
+                (source_id, domain_id, schema_name, table_name, governance)
+            VALUES ('provisa-otel', 'ops', 'signals', $1, 'pre-approved')
+            ON CONFLICT (source_id, schema_name, table_name)
+                DO UPDATE SET domain_id = 'ops'
+            RETURNING id
+            """,
+            tbl_name,
+        )
+        for col_name, pg_type, is_pk in cols:
+            await conn.execute(
+                """
+                INSERT INTO table_columns
+                    (table_id, column_name, visible_to, data_type, is_primary_key)
+                VALUES ($1, $2, '{}', $3, $4)
+                ON CONFLICT (table_id, column_name) DO NOTHING
+                """,
+                table_id, col_name, pg_type, is_pk,
+            )
+    for view_name, cols, _ in _OPS_VIEWS:
+        table_id = await conn.fetchval(
+            """
+            INSERT INTO registered_tables
+                (source_id, domain_id, schema_name, table_name, governance)
+            VALUES ('provisa-otel', 'ops', 'signals', $1, 'pre-approved')
+            ON CONFLICT (source_id, schema_name, table_name)
+                DO UPDATE SET domain_id = 'ops'
+            RETURNING id
+            """,
+            view_name,
+        )
+        for col_name, pg_type, is_pk in cols:
+            await conn.execute(
+                """
+                INSERT INTO table_columns
+                    (table_id, column_name, visible_to, data_type, is_primary_key)
+                VALUES ($1, $2, '{}', $3, $4)
+                ON CONFLICT (table_id, column_name) DO NOTHING
+                """,
+                table_id, col_name, pg_type, is_pk,
+            )
+
+
+def _seed_ops_trino(trino_conn: object) -> None:
+    """Create Iceberg schema/tables/views in Trino for the ops domain (idempotent)."""
+    import logging as _ops_log
+    _log = _ops_log.getLogger(__name__)
+    try:
+        cursor = trino_conn.cursor()  # type: ignore[union-attr]
+        cursor.execute("CREATE SCHEMA IF NOT EXISTS otel.signals")
+        for tbl_name, cols in _OPS_TABLES.items():
+            col_defs = []
+            for col_name, pg_type, _ in cols:
+                trino_type = _OPS_PG_TO_TRINO.get(pg_type, "VARCHAR")
+                col_defs.append(f'"{col_name}" {trino_type}')
+            cursor.execute(
+                f"CREATE TABLE IF NOT EXISTS otel.signals.{tbl_name} "
+                f"({', '.join(col_defs)}) "
+                f"WITH (partitioning = ARRAY['_date'], format = 'PARQUET')"
+            )
+        for view_name, _, view_ddl in _OPS_VIEWS:
+            try:
+                cursor.execute(view_ddl)
+            except Exception:
+                _log.warning("ops view %s: create failed (table may not exist yet)", view_name)
+    except Exception:
+        _log.warning("ops Iceberg DDL failed — tables will be created on first compaction", exc_info=True)
 
 
 async def _load_and_build(config_path: str | None = None) -> None:
@@ -127,8 +402,9 @@ async def _load_and_build(config_path: str | None = None) -> None:
         schema_sql = schema_sql_path.read_text()
         await init_schema(state.pg_pool, schema_sql)
 
-    # Seed a built-in example source pointing at the internal admin DB so the
-    # Data Sources page is never empty on first start.
+    # Seed built-in sources so the Data Sources page is never empty on first start.
+    trino_host_early = os.environ.get("TRINO_HOST", "localhost")
+    trino_port_early = int(os.environ.get("TRINO_PORT", "8080"))
     async with state.pg_pool.acquire() as _conn:
         await _conn.execute(
             """
@@ -138,6 +414,16 @@ async def _load_and_build(config_path: str | None = None) -> None:
             """,
             pg_host, pg_port, pg_database, pg_user,
         )
+        await _conn.execute(
+            """
+            INSERT INTO sources (id, type, host, port, database, username, dialect)
+            VALUES ('provisa-otel', 'iceberg', $1, $2, 'otel', 'provisa', 'trino')
+            ON CONFLICT (id) DO NOTHING
+            """,
+            trino_host_early, trino_port_early,
+        )
+        await _seed_meta_domain(_conn)
+        await _seed_ops_pg(_conn)
 
     path = Path(config_path)
     if not path.exists():
@@ -169,6 +455,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
     from provisa.compiler import schema_service
     schema_service.init(state.trino_conn)
 
+    _seed_ops_trino(state.trino_conn)
+
     # Create Arrow Flight SQL connection to Trino (separate gRPC port)
     trino_flight_port = int(os.environ.get("TRINO_FLIGHT_PORT", "8480"))
     try:
@@ -190,6 +478,31 @@ async def _load_and_build(config_path: str | None = None) -> None:
     # Ensure MinIO results bucket exists (REQ-171)
     from provisa.executor.redirect import RedirectConfig, ensure_results_bucket
     await ensure_results_bucket(RedirectConfig.from_env())
+
+    # Ensure MinIO OTEL bucket exists for otlp2parquet
+    try:
+        import logging as _lb_log
+        import boto3
+        from botocore.config import Config as BotoConfig
+        _otel_endpoint = os.environ.get("PROVISA_OTEL_S3_ENDPOINT", "http://minio:9000")
+        _otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
+        _s3 = boto3.client(
+            "s3",
+            endpoint_url=_otel_endpoint,
+            aws_access_key_id=os.environ.get("PROVISA_OTEL_S3_ACCESS_KEY", "minioadmin"),
+            aws_secret_access_key=os.environ.get("PROVISA_OTEL_S3_SECRET_KEY", "minioadmin"),
+            region_name="us-east-1",
+            config=BotoConfig(signature_version="s3v4"),
+        )
+        existing = [b["Name"] for b in _s3.list_buckets().get("Buckets", [])]
+        if _otel_bucket not in existing:
+            _s3.create_bucket(Bucket=_otel_bucket)
+            _lb_log.getLogger(__name__).info("Created MinIO bucket: %s", _otel_bucket)
+    except Exception:
+        import logging as _lb_log2
+        _lb_log2.getLogger(__name__).warning(
+            "Could not ensure OTEL bucket — otlp2parquet storage may fail", exc_info=True
+        )
 
     # Ensure results schema exists for CTAS redirects
     try:
@@ -268,6 +581,11 @@ async def _load_and_build(config_path: str | None = None) -> None:
     # Load config into PG (and create Trino catalogs)
     config = parse_config_dict(raw_config)
 
+    # Apply observability config to state
+    if config.observability:
+        state.otel_compact_cron = config.observability.compact_cron
+        state.otel_compact_batch_size = config.observability.compact_batch_size
+
     # Initialize cache store — REDIS_URL env var overrides config
     cache_config = raw_config.get("cache", {})
     if cache_config.get("enabled"):
@@ -275,8 +593,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
         if not redis_url:
             redis_url = resolve_secrets(cache_config.get("redis_url", ""))
         if redis_url:
-            state.cache_store = RedisCacheStore(redis_url)
-        state.cache_default_ttl = cache_config.get("default_ttl", 300)
+            state.response_cache_store = RedisCacheStore(redis_url)
+        state.response_cache_default_ttl = cache_config.get("default_ttl", 300)
 
     async with state.pg_pool.acquire() as conn:
         _replace_mode = os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in ("1", "true", "yes")
@@ -871,6 +1189,8 @@ async def lifespan(app: FastAPI):
             while True:
                 await asyncio.sleep(_hot_interval)
                 for entry in list(hot_mgr._hot_tables.values()):
+                    if entry.is_api:
+                        continue
                     try:
                         await hot_mgr.load_table(
                             state.trino_conn,
@@ -945,6 +1265,7 @@ async def lifespan(app: FastAPI):
     # Start scheduler for config-based triggers and approved query schedules (Phase AX)
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
+        from apscheduler.triggers.cron import CronTrigger
         scheduler = AsyncIOScheduler()
         # Register config-based triggers if present
         _cfg_triggers = []
@@ -968,11 +1289,91 @@ async def lifespan(app: FastAPI):
                     name=job.name,
                     replace_existing=True,
                 )
+        # OTEL compaction: Parquet → Iceberg on configured schedule
+        from provisa.scheduler.jobs import compact_otel_signals
+        scheduler.add_job(
+            compact_otel_signals,
+            trigger=CronTrigger.from_crontab(state.otel_compact_cron),
+            id="otel_compact",
+            name="otel:compact_signals",
+            replace_existing=True,
+        )
+
         scheduler.start()
         state._scheduler = scheduler
         _log.info("APScheduler started")
     except Exception:
         _log.exception("APScheduler startup failed")
+
+    # Auto-register graphql-demo source if GRAPHQL_DEMO_URL is set (or we're in docker-compose)
+    _graphql_demo_url = os.environ.get(
+        "GRAPHQL_DEMO_URL", "http://graphql-demo:4000/graphql"
+    )
+    if os.environ.get("GRAPHQL_DEMO_ENABLED", "").lower() in ("1", "true", "yes") or os.environ.get("GRAPHQL_DEMO_URL"):
+        async def _register_graphql_demo() -> None:
+            from provisa.api.admin.graphql_remote_router import (
+                _introspect_and_map,
+                _upsert_tables_to_semantic_layer,
+                GraphQLRemoteRegistration,
+            )
+            try:
+                tables, functions = await _introspect_and_map(
+                    "graphql-demo", _graphql_demo_url, "shelter", "shelter", None,
+                )
+                reg = GraphQLRemoteRegistration(
+                    source_id="graphql-demo",
+                    url=_graphql_demo_url,
+                    namespace="shelter",
+                    domain_id="shelter",
+                    cache_ttl=300,
+                    tables=tables,
+                    functions=functions,
+                )
+                if not hasattr(state, "graphql_remote_sources"):
+                    state.graphql_remote_sources = {}
+                state.graphql_remote_sources["graphql-demo"] = reg.model_dump()
+                if getattr(state, "pg_pool", None) is not None:
+                    async with state.pg_pool.acquire() as _conn:
+                        # Ensure source row exists before registering tables (FK constraint)
+                        await _conn.execute(
+                            """
+                            INSERT INTO sources (id, type, host, port, database, username, dialect, path)
+                            VALUES ('graphql-demo', 'graphql_remote', '', 0, '', '', '', $1)
+                            ON CONFLICT (id) DO UPDATE SET path = EXCLUDED.path
+                            """,
+                            _graphql_demo_url,
+                        )
+                        # Ensure shelter domain exists (FK constraint on registered_tables.domain_id)
+                        await _conn.execute(
+                            "INSERT INTO domains (id, description) VALUES ('shelter', 'Animal shelter staff and breed management') ON CONFLICT (id) DO NOTHING",
+                        )
+                    await _upsert_tables_to_semantic_layer(
+                        "graphql-demo", "shelter", tables, state.pg_pool,
+                    )
+                    # Cross-domain relationship: shelter assignments → pet-store pets via breed_name
+                    from provisa.core.models import Cardinality, Relationship
+                    from provisa.core.repositories import relationship as rel_repo
+                    async with state.pg_pool.acquire() as _conn:
+                        try:
+                            await rel_repo.upsert(_conn, Relationship(
+                                id="assignments-to-pets",
+                                source_table_id="shelter__assignments",
+                                target_table_id="pets",
+                                source_column="breed_name",
+                                target_column="breed_name",
+                                cardinality=Cardinality.many_to_one,
+                                alias="MANAGES_BREED",
+                            ))
+                        except Exception:
+                            _log.warning("Cross-domain relationship assignments→pets skipped", exc_info=True)
+                _log.info(
+                    "Auto-registered graphql-demo source (%d tables, %d functions)",
+                    len(tables), len(functions),
+                )
+            except Exception:
+                _log.warning("graphql-demo auto-registration failed (service may not be up yet)", exc_info=True)
+
+        asyncio.create_task(_register_graphql_demo())
 
     yield
 
@@ -1031,7 +1432,7 @@ async def lifespan(app: FastAPI):
         except Exception:
             pass
 
-    await state.cache_store.close()
+    await state.response_cache_store.close()
     await state.source_pools.close_all()
     if state.pg_pool:
         await state.pg_pool.close()

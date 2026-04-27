@@ -74,6 +74,8 @@ def setup_otel(app: "object") -> None:
     endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or _otel_cfg.get("endpoint", "")
     service_name = os.environ.get("OTEL_SERVICE_NAME") or _otel_cfg.get("service_name", "provisa")
     sample_rate = float(_otel_cfg.get("sample_rate", 1.0))
+    log_level_name = os.environ.get("OTEL_LOG_LEVEL") or _otel_cfg.get("log_level", "WARNING")
+    compact_batch_size = int(os.environ.get("OTEL_COMPACT_BATCH_SIZE") or _otel_cfg.get("compact_batch_size", 10))
     try:
         from opentelemetry import trace
         from opentelemetry.sdk.resources import Resource
@@ -151,7 +153,7 @@ def setup_otel(app: "object") -> None:
                 BatchLogRecordProcessor(OTLPLogExporter(endpoint=endpoint, insecure=True))
             )
             set_logger_provider(log_provider)
-            handler = LoggingHandler(level=_logging.WARNING, logger_provider=log_provider)
+            handler = LoggingHandler(level=getattr(_logging, log_level_name, _logging.WARNING), logger_provider=log_provider)
             _logging.getLogger().addHandler(handler)
             _log.info("OTel logs → %s (service=%s)", endpoint, service_name)
 
