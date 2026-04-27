@@ -23,9 +23,13 @@ import os as _os
 import re as _re
 
 # Hard cap on rows returned when the caller supplies no explicit LIMIT.
-# Prevents unbounded Trino scans from OOMing the query engine.
-# Override via PROVISA_DEFAULT_ROW_LIMIT env var.
-_DEFAULT_ROW_LIMIT: int = int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "10000"))
+# Resolved at query time from state.server_limits; falls back to env var then 10000.
+def _get_default_row_limit() -> int:
+    try:
+        from provisa.api.app import state
+        return state.server_limits.get("default_row_limit", int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "10000")))
+    except Exception:
+        return int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "10000"))
 
 from dataclasses import dataclass, field
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -1023,7 +1027,7 @@ def _compile_root_field(
     if "limit" in args:
         sql += f" LIMIT {collector.add(int(args['limit']))}"
     elif "offset" not in args:
-        sql += f" LIMIT {_DEFAULT_ROW_LIMIT}"
+        sql += f" LIMIT {_get_default_row_limit()}"
     if "offset" in args:
         sql += f" OFFSET {collector.add(int(args['offset']))}"
 

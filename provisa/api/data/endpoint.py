@@ -59,7 +59,12 @@ import os as _os
 
 log = logging.getLogger(__name__)
 
-_REQUEST_TIMEOUT: float = float(_os.environ.get("PROVISA_REQUEST_TIMEOUT", "60"))
+def _request_timeout() -> float:
+    try:
+        from provisa.api.app import state
+        return state.server_limits.get("request_timeout", float(_os.environ.get("PROVISA_REQUEST_TIMEOUT", "60")))
+    except Exception:
+        return float(_os.environ.get("PROVISA_REQUEST_TIMEOUT", "60"))
 
 # Source-level hydration expiry: source_id → monotonic expiry.
 # When set, the entire source is skipped (no pool acquire, no PG queries).
@@ -1595,10 +1600,10 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
                     query_session_props=query_session_props,
                     response_cache_ttl=cache_ttl,
                 ),
-                timeout=_REQUEST_TIMEOUT,
+                timeout=_request_timeout(),
             )
         except asyncio.TimeoutError:
-            raise HTTPException(status_code=504, detail=f"Query timed out after {_REQUEST_TIMEOUT:.0f}s")
+            raise HTTPException(status_code=504, detail=f"Query timed out after {_request_timeout():.0f}s")
         if cached_entry is not None:
             headers = build_cache_headers(cached_entry)
             return JSONResponse(
@@ -1636,10 +1641,10 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
                 )
                 for compiled in prepared
             ]),
-            timeout=_REQUEST_TIMEOUT,
+            timeout=_request_timeout(),
         )
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail=f"Query timed out after {_REQUEST_TIMEOUT:.0f}s")
+        raise HTTPException(status_code=504, detail=f"Query timed out after {_request_timeout():.0f}s")
 
     for root_field, field_rows, redirect_info, ck, cached_entry in results:
         if redirect_info is not None:

@@ -25,7 +25,12 @@ from provisa.otel_compat import get_tracer as _get_tracer
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
 
-_TRINO_QUERY_TIMEOUT: int = int(os.environ.get("PROVISA_TRINO_QUERY_TIMEOUT", "120"))
+def _trino_query_timeout() -> int:
+    try:
+        from provisa.api.app import state
+        return state.server_limits.get("trino_query_timeout", int(os.environ.get("PROVISA_TRINO_QUERY_TIMEOUT", "120")))
+    except Exception:
+        return int(os.environ.get("PROVISA_TRINO_QUERY_TIMEOUT", "120"))
 
 
 @dataclass
@@ -85,7 +90,7 @@ def execute_trino(
         # Inject session properties before the main query when hints are present.
         # Always inject query timeout so runaway queries don't starve workers.
         effective_hints = dict(session_hints or {})
-        effective_hints.setdefault("query_max_execution_time", f"{_TRINO_QUERY_TIMEOUT}s")
+        effective_hints.setdefault("query_max_execution_time", f"{_trino_query_timeout()}s")
         cur = conn.cursor()
         for key, value in effective_hints.items():
             safe_key = key.replace("'", "")

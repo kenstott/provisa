@@ -80,6 +80,7 @@ class AppState:
     hostname: str = "localhost"  # publicly reachable hostname (PROVISA_HOSTNAME)
     source_federation_hints: dict[str, dict[str, str]] = {}  # source_id → Trino session props (AL3)
     server_cfg: dict = {}  # raw server section from provisa.yaml
+    server_limits: dict = {}  # resolved query/request limits (from config + env overrides)
     tracked_functions: dict[str, dict] = {}  # gql field name → fn dict
     tracked_webhooks: dict[str, dict] = {}   # gql field name → wh dict
     pg_enum_types: dict = {}  # pg_name → GraphQLEnumType (REQ-221)
@@ -438,6 +439,14 @@ async def _load_and_build(config_path: str | None = None) -> None:
         "PROVISA_HOSTNAME",
         state.server_cfg.get("hostname", "localhost"),
     )
+
+    # Resolve query/request limits: env var > provisa.yaml server.limits > hardcoded defaults
+    _limits_cfg = state.server_cfg.get("limits", {})
+    state.server_limits = {
+        "default_row_limit": int(os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", _limits_cfg.get("default_row_limit", 10000))),
+        "trino_query_timeout": int(os.environ.get("PROVISA_TRINO_QUERY_TIMEOUT", _limits_cfg.get("trino_query_timeout", 120))),
+        "request_timeout": float(os.environ.get("PROVISA_REQUEST_TIMEOUT", _limits_cfg.get("request_timeout", 60))),
+    }
 
     # Connect to Trino
     trino_host = os.environ.get("TRINO_HOST", "localhost")

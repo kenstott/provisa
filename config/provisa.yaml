@@ -122,6 +122,12 @@ kafka_sources:
           - name: status
           - name: created_at
 
+server:
+  limits:
+    default_row_limit: 10000    # rows returned when no LIMIT specified; env PROVISA_DEFAULT_ROW_LIMIT overrides
+    trino_query_timeout: 120    # seconds before Trino kills a query; env PROVISA_TRINO_QUERY_TIMEOUT overrides
+    request_timeout: 60         # seconds before the API returns 504; env PROVISA_REQUEST_TIMEOUT overrides
+
 observability:
   endpoint: ""
   service_name: provisa
