@@ -17,8 +17,15 @@ Table aliases (t0, t1, ...) used when JOINs are present.
 
 from __future__ import annotations
 
+import fnmatch as _fnmatch
 import json as _json
+import os as _os
 import re as _re
+
+# Hard cap on rows returned when the caller supplies no explicit LIMIT.
+# Prevents unbounded Trino scans from OOMing the query engine.
+# Override via PROVISA_DEFAULT_ROW_LIMIT env var.
+_DEFAULT_ROW_LIMIT: int = int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "10000"))
 
 from dataclasses import dataclass, field
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -46,6 +53,8 @@ from provisa.core.models import TIME_TRAVEL_SOURCES
 
 # Module-level query counter for warm-table tracking (REQ-AD5)
 query_counter = QueryCounter()
+
+_VIRTUAL_COLS = frozenset({"_name_", "_domain_"})
 
 
 # --- Compilation context (built from SchemaInput alongside schema) ---
@@ -78,6 +87,8 @@ class JoinMeta:
     target: TableMeta
     cardinality: str  # "many-to-one" or "one-to-many"
     cypher_alias: str | None = None  # Cypher rel type override (e.g. OPENED_BY)
+    disable_cypher: bool = False  # when True, suppress this edge in the Cypher graph
+    source_constant: int | None = None  # when set, use as literal join value instead of source column
 
 
 @dataclass
@@ -98,6 +109,8 @@ class CompilationContext:
     gql_to_physical: dict[tuple[int, str], str] = field(default_factory=dict)
     # table_id → set of column names that require native API params (_nf_ prefix)
     native_filter_columns: dict[int, set[str]] = field(default_factory=dict)
+    # table_id → {virtual_col_name → literal_value}
+    virtual_columns: dict[int, dict[str, str]] = field(default_factory=dict)
 
 
 # --- Compiled query result ---
@@ -210,6 +223,10 @@ def build_context(si: object) -> CompilationContext:
             source_type=src_type,
         )
         ctx.tables[t.field_name] = meta
+        ctx.virtual_columns[t.table_id] = {
+            "_name_": t.alias or t.table_name,
+            "_domain_": t.domain_id,
+        }
         # Register aggregate variant pointing to same TableMeta
         ctx.tables[f"{t.field_name}_aggregate"] = meta
         # Register connection variant for cursor pagination
@@ -293,7 +310,38 @@ def build_context(si: object) -> CompilationContext:
             target=tgt_meta,
             cardinality=rel["cardinality"],
             cypher_alias=rel.get("alias") or None,
+            disable_cypher=rel.get("disable_cypher", False),
         )
+
+    # Inject synthetic _meta join: every non-meta table → meta:registered_tables
+    meta_rt = next(
+        (t for t in tables if t.domain_id == "meta" and t.table_name == "registered_tables"),
+        None,
+    )
+    if meta_rt:
+        meta_tgt = TableMeta(
+            table_id=meta_rt.table_id,
+            field_name=meta_rt.field_name,
+            type_name=meta_rt.type_name,
+            source_id=meta_rt.source_id,
+            catalog_name=source_to_catalog(meta_rt.source_id),
+            schema_name=meta_rt.schema_name,
+            table_name=meta_rt.table_name,
+            domain_id=meta_rt.domain_id,
+        )
+        for t in tables:
+            if t.domain_id == "meta":
+                continue
+            ctx.joins[(t.type_name, "_meta")] = JoinMeta(
+                source_column="__table_id__",
+                target_column="id",
+                source_column_type="integer",
+                target_column_type="integer",
+                target=meta_tgt,
+                cardinality="many-to-one",
+                cypher_alias="REGISTERED_TABLE",
+                source_constant=t.table_id,
+            )
 
     return ctx
 
@@ -367,18 +415,45 @@ def _compile_where(
     where_obj: dict,
     collector: ParamCollector,
     alias: str | None,
+    virtual_vals: dict[str, str] | None = None,
 ) -> str:
     """Compile a where input object to a SQL WHERE clause fragment."""
     parts: list[str] = []
 
     for key, value in where_obj.items():
         if key == "_and":
-            sub_parts = [_compile_where(sub, collector, alias) for sub in value]
+            sub_parts = [_compile_where(sub, collector, alias, virtual_vals) for sub in value]
             parts.append(f"({' AND '.join(sub_parts)})")
             continue
         if key == "_or":
-            sub_parts = [_compile_where(sub, collector, alias) for sub in value]
+            sub_parts = [_compile_where(sub, collector, alias, virtual_vals) for sub in value]
             parts.append(f"({' OR '.join(sub_parts)})")
+            continue
+
+        # Virtual column: resolve at compile time — no physical column exists
+        if key in _VIRTUAL_COLS and virtual_vals is not None:
+            vv = virtual_vals.get(key, "")
+            filter_obj = value
+            for op, val in filter_obj.items():
+                if op == "eq":
+                    parts.append("TRUE" if vv == str(val) else "FALSE")
+                elif op == "neq":
+                    parts.append("TRUE" if vv != str(val) else "FALSE")
+                elif op == "gt":
+                    parts.append("TRUE" if vv > str(val) else "FALSE")
+                elif op == "gte":
+                    parts.append("TRUE" if vv >= str(val) else "FALSE")
+                elif op == "lt":
+                    parts.append("TRUE" if vv < str(val) else "FALSE")
+                elif op == "lte":
+                    parts.append("TRUE" if vv <= str(val) else "FALSE")
+                elif op == "in":
+                    parts.append("TRUE" if vv in [str(v) for v in val] else "FALSE")
+                elif op == "like":
+                    pattern = str(val).replace("%", "*").replace("_", "?")
+                    parts.append("TRUE" if _fnmatch.fnmatch(vv, pattern) else "FALSE")
+                elif op == "is_null":
+                    parts.append("FALSE")
             continue
 
         # Column filter: key is column name, value is filter object
@@ -487,6 +562,11 @@ def _common_cast_type(type_a: str, type_b: str) -> str:
     return "VARCHAR"
 
 
+def _sql_str_literal(val: str) -> str:
+    """Escape and quote a string as a SQL VARCHAR literal."""
+    return "VARCHAR '" + val.replace("'", "''") + "'"
+
+
 def _join_column_expr(alias: str, column: str, my_type: str, other_type: str) -> str:
     """Build a column expression, adding CAST only when types are incompatible."""
     col = f'{_q(alias)}.{_q(column)}'
@@ -535,6 +615,73 @@ def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:
     return _apply_replacements(sql, replacements)
 
 
+def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:
+    """Qualify and quote all table references using CompilationContext.
+
+    For each exp.Table node in the parsed SQL:
+    - Already schema-qualified (schema.table or "schema"."table") → re-emit quoted.
+    - Unqualified (table only) + unique match in ctx → add schema + quote.
+    - Unqualified + ambiguous (multiple schemas) → leave unchanged.
+    - Unqualified + no match → leave unchanged (governance will reject).
+    """
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    # Build lookup structures from ctx
+    # table_name (lower) → list of (schema_name, table_name) physical pairs
+    by_name: dict[str, list[tuple[str, str]]] = {}
+    # (schema_lower, name_lower) → (schema_name, table_name) canonical pair
+    by_schema_name: dict[tuple[str, str], tuple[str, str]] = {}
+
+    seen: set[tuple[str, str]] = set()
+    for meta in ctx.tables.values():
+        key = (meta.schema_name, meta.table_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        nl = meta.table_name.lower()
+        sl = meta.schema_name.lower()
+        by_name.setdefault(nl, []).append((meta.schema_name, meta.table_name))
+        by_schema_name[(sl, nl)] = (meta.schema_name, meta.table_name)
+
+    try:
+        tree = sqlglot.parse_one(sql, read="postgres")
+    except Exception:
+        return sql
+
+    def _rewrite(node: exp.Expression) -> exp.Expression:
+        if not isinstance(node, exp.Table):
+            return node
+        name = node.name
+        db = node.db  # schema
+        alias = node.alias
+
+        if db:
+            # Already schema-qualified — just ensure quoting
+            canonical = by_schema_name.get((db.lower(), name.lower()))
+            if canonical:
+                schema_q, table_q = canonical
+            else:
+                schema_q, table_q = db, name
+        else:
+            # Unqualified — try unique match
+            matches = by_name.get(name.lower(), [])
+            if len(matches) == 1:
+                schema_q, table_q = matches[0]
+            else:
+                return node  # ambiguous or unknown — leave unchanged
+
+        new_tbl = exp.Table(
+            this=exp.Identifier(this=table_q, quoted=True),
+            db=exp.Identifier(this=schema_q, quoted=True),
+            alias=exp.TableAlias(this=exp.Identifier(this=alias)) if alias else None,
+        )
+        return new_tbl
+
+    tree = tree.transform(_rewrite)
+    return tree.sql(dialect="postgres")
+
+
 def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
     """Replace semantic (domain.field_name) refs with physical (schema.table) refs."""
     replacements: dict[str, str] = {}
@@ -546,7 +693,8 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
         seen.add(key)
         semantic = _semantic_table_ref(meta)
         replacements[semantic] = _table_ref(meta, use_catalog=False)
-    return _apply_replacements(sql, replacements)
+    sql = _apply_replacements(sql, replacements)
+    return normalize_table_refs(sql, ctx)
 
 
 def rewrite_semantic_to_trino_physical(sql: str, ctx: CompilationContext) -> str:
@@ -560,6 +708,19 @@ def rewrite_semantic_to_trino_physical(sql: str, ctx: CompilationContext) -> str
         seen.add(key)
         semantic = _semantic_table_ref(meta)
         replacements[semantic] = _table_ref(meta, use_catalog=True)
+    return _apply_replacements(sql, replacements)
+
+
+def qualify_with_catalogs(sql: str, ctx: CompilationContext) -> str:
+    """Add catalog prefix to physical table refs: "schema"."table" → "catalog"."schema"."table"."""
+    replacements: dict[str, str] = {}
+    seen: set[tuple[str, str]] = set()
+    for meta in ctx.tables.values():
+        key = (meta.schema_name, meta.table_name)
+        if key in seen:
+            continue
+        seen.add(key)
+        replacements[_table_ref(meta, use_catalog=False)] = _table_ref(meta, use_catalog=True)
     return _apply_replacements(sql, replacements)
 
 
@@ -606,14 +767,24 @@ def _collect_nested_columns(
             alias_counter += 1
             sources.add(nested_join_meta.target.source_id)
 
-            src_expr = _join_column_expr(
-                parent_alias, nested_join_meta.source_column,
-                nested_join_meta.source_column_type, nested_join_meta.target_column_type,
-            )
-            tgt_expr = _join_column_expr(
-                nested_alias, nested_join_meta.target_column,
-                nested_join_meta.target_column_type, nested_join_meta.source_column_type,
-            )
+            if nested_join_meta.source_constant is not None:
+                src_expr = str(nested_join_meta.source_constant)
+            elif nested_join_meta.source_column in _VIRTUAL_COLS:
+                _svc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(nested_join_meta.source_column, "")
+                src_expr = _sql_str_literal(_svc)
+            else:
+                src_expr = _join_column_expr(
+                    parent_alias, nested_join_meta.source_column,
+                    nested_join_meta.source_column_type, nested_join_meta.target_column_type,
+                )
+            if nested_join_meta.target_column in _VIRTUAL_COLS:
+                _tvc = (ctx.virtual_columns.get(nested_join_meta.target.table_id) or {}).get(nested_join_meta.target_column, "")
+                tgt_expr = _sql_str_literal(_tvc)
+            else:
+                tgt_expr = _join_column_expr(
+                    nested_alias, nested_join_meta.target_column,
+                    nested_join_meta.target_column_type, nested_join_meta.source_column_type,
+                )
             join_clauses.append(
                 f'LEFT JOIN {_table_ref(nested_join_meta.target, use_catalog)}'
                 f' {_q(nested_alias)}'
@@ -641,7 +812,11 @@ def _collect_nested_columns(
             # Scalar column from the parent join
             nested_response_key = nested_sel.alias.value if nested_sel.alias else nested_name
             nested_phys = ctx.gql_to_physical.get((parent_table.table_id, nested_name), nested_name)
-            col_expr = f'{_q(parent_alias)}.{_q(nested_phys)}'
+            if nested_phys in _VIRTUAL_COLS:
+                _nvc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(nested_phys, "")
+                col_expr = _sql_str_literal(_nvc)
+            else:
+                col_expr = f'{_q(parent_alias)}.{_q(nested_phys)}'
             if nested_sel.alias:
                 select_parts.append(f'{col_expr} AS {_q(nested_response_key)}')
             else:
@@ -691,14 +866,24 @@ def _compile_root_field(
             alias_counter += 1
             sources.add(join_meta.target.source_id)
 
-            src_expr = _join_column_expr(
-                root_alias, join_meta.source_column,
-                join_meta.source_column_type, join_meta.target_column_type,
-            )
-            tgt_expr = _join_column_expr(
-                join_alias, join_meta.target_column,
-                join_meta.target_column_type, join_meta.source_column_type,
-            )
+            if join_meta.source_constant is not None:
+                src_expr = str(join_meta.source_constant)
+            elif join_meta.source_column in _VIRTUAL_COLS:
+                _svc = (ctx.virtual_columns.get(table.table_id) or {}).get(join_meta.source_column, "")
+                src_expr = _sql_str_literal(_svc)
+            else:
+                src_expr = _join_column_expr(
+                    root_alias, join_meta.source_column,
+                    join_meta.source_column_type, join_meta.target_column_type,
+                )
+            if join_meta.target_column in _VIRTUAL_COLS:
+                _tvc = (ctx.virtual_columns.get(join_meta.target.table_id) or {}).get(join_meta.target_column, "")
+                tgt_expr = _sql_str_literal(_tvc)
+            else:
+                tgt_expr = _join_column_expr(
+                    join_alias, join_meta.target_column,
+                    join_meta.target_column_type, join_meta.source_column_type,
+                )
             join_clauses.append(
                 f'LEFT JOIN {_table_ref(join_meta.target, use_catalog)}'
                 f' {_q(join_alias)}'
@@ -745,6 +930,10 @@ def _compile_root_field(
                 if sel.alias:
                     expr = f'{expr} AS {_q(response_key)}'
                 select_parts.append(expr)
+            elif phys_name in _VIRTUAL_COLS:
+                vval = (ctx.virtual_columns.get(table.table_id) or {}).get(phys_name, "")
+                expr = _sql_str_literal(vval)
+                select_parts.append(f'{expr} AS {_q(response_key)}')
             elif use_aliases:
                 col_expr = f'{_q(root_alias)}.{_q(phys_name)}'
                 if sel.alias:
@@ -815,7 +1004,8 @@ def _compile_root_field(
 
     # WHERE
     if "where" in args:
-        where_sql = _compile_where(args["where"], collector, root_alias)
+        _vvals = ctx.virtual_columns.get(table.table_id)
+        where_sql = _compile_where(args["where"], collector, root_alias, _vvals)
         sql += f" WHERE {where_sql}"
 
     # ORDER BY
@@ -827,9 +1017,13 @@ def _compile_root_field(
         order_sql = _compile_order_by(order_by_val, root_alias)
         sql += f" ORDER BY {order_sql}"
 
-    # LIMIT / OFFSET — always parameterized, never interpolated
+    # LIMIT / OFFSET — always parameterized, never interpolated.
+    # Apply _DEFAULT_ROW_LIMIT when caller supplies no explicit limit so that
+    # unbounded scans over large tables (e.g. OTel Iceberg) cannot OOM Trino.
     if "limit" in args:
         sql += f" LIMIT {collector.add(int(args['limit']))}"
+    elif "offset" not in args:
+        sql += f" LIMIT {_DEFAULT_ROW_LIMIT}"
     if "offset" in args:
         sql += f" OFFSET {collector.add(int(args['offset']))}"
 
@@ -1013,7 +1207,8 @@ def _compile_aggregate_field(
             args[arg.name.value] = _extract_value(arg.value, variables)
 
     if "where" in args:
-        where_sql = _compile_where(args["where"], collector, None)
+        _agg_vvals = ctx.virtual_columns.get(table.table_id)
+        where_sql = _compile_where(args["where"], collector, None, _agg_vvals)
         sql += f" WHERE {where_sql}"
 
     # Build nodes SQL: plain SELECT with same WHERE, no aggregate functions
@@ -1040,7 +1235,7 @@ def _compile_aggregate_field(
             nodes_sql = f'SELECT {", ".join(nodes_select_parts)} FROM {ref}'
             if "where" in args:
                 nodes_collector = ParamCollector()
-                nodes_where_sql = _compile_where(args["where"], nodes_collector, None)
+                nodes_where_sql = _compile_where(args["where"], nodes_collector, None, _agg_vvals)
                 nodes_sql += f" WHERE {nodes_where_sql}"
                 nodes_params = nodes_collector.params
             nodes_columns = nodes_cols
@@ -1209,7 +1404,8 @@ def _compile_connection_field(
 
     where_parts: list[str] = []
     if "where" in args:
-        where_parts.append(_compile_where(args["where"], collector, None))
+        _conn_vvals = ctx.virtual_columns.get(table.table_id)
+        where_parts.append(_compile_where(args["where"], collector, None, _conn_vvals))
 
     cursor_where, effective_limit, is_backward = apply_cursor_pagination(
         args, sort_columns, collector, None,

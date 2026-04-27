@@ -39,8 +39,10 @@ def execute_trino(
     params: list | None = None,
     session_hints: dict[str, str] | None = None,
     conn_kwargs: dict | None = None,
+    span_attrs: dict[str, str] | None = None,
 ) -> QueryResult:
-    with _tracer.start_as_current_span("trino.execute") as span:
+    span_name = "provisa.query.trino" if span_attrs else "trino.execute"
+    with _tracer.start_as_current_span(span_name) as span:
         if conn_kwargs is not None:
             conn = trino.dbapi.connect(**conn_kwargs)
         # Trino Python client uses ? for parameter placeholders.
@@ -54,6 +56,9 @@ def execute_trino(
 
         span.set_attribute("db.system", "trino")
         span.set_attribute("db.statement", exec_sql[:1000])
+        if span_attrs:
+            for k, v in span_attrs.items():
+                span.set_attribute(k, v)
 
         # Inject session properties before the main query when hints are present.
         if session_hints:
@@ -67,12 +72,22 @@ def execute_trino(
 
         log.info("[EXEC TRINO] sql=%s", exec_sql[:200])
         cur = conn.cursor()
-        if params:
-            cur.execute(exec_sql, params)
-        else:
-            cur.execute(exec_sql)
+        try:
+            if params:
+                cur.execute(exec_sql, params)
+            else:
+                cur.execute(exec_sql)
+            rows = cur.fetchall()
+        except Exception as exc:
+            err_msg = str(exc)
+            span.set_attribute("error", True)
+            span.set_attribute("error.message", err_msg[:500])
+            # Surface memory-exceeded errors as a clean exception with a helpful message
+            # so callers can return a 400/503 instead of crashing.
+            if any(k in err_msg for k in ("EXCEEDED_LOCAL_MEMORY_LIMIT", "EXCEEDED_GLOBAL_MEMORY_LIMIT", "Query exceeded")):
+                raise MemoryError(f"Query exceeded Trino memory limit — add a limit clause or narrow your filter. Detail: {err_msg[:300]}") from exc
+            raise
 
-        rows = cur.fetchall()
         column_names = [desc[0] for desc in cur.description] if cur.description else []
 
         span.set_attribute("db.row_count", len(rows))
