@@ -16,6 +16,7 @@ Returns rows and column descriptions. Parameters substituted by Trino.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 
 import trino
@@ -24,6 +25,8 @@ from provisa.otel_compat import get_tracer as _get_tracer
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
 
+_TRINO_QUERY_TIMEOUT: int = int(os.environ.get("PROVISA_TRINO_QUERY_TIMEOUT", "120"))
+
 
 @dataclass
 class QueryResult:
@@ -31,6 +34,17 @@ class QueryResult:
 
     rows: list[tuple]
     column_names: list[str]
+
+
+def _alive(conn: trino.dbapi.Connection) -> bool:
+    """Probe liveness with a cheap no-op query."""
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+        return True
+    except Exception:
+        return False
 
 
 def execute_trino(
@@ -45,6 +59,14 @@ def execute_trino(
     with _tracer.start_as_current_span(span_name) as span:
         if conn_kwargs is not None:
             conn = trino.dbapi.connect(**conn_kwargs)
+        elif not _alive(conn):
+            log.warning("[EXEC TRINO] connection stale — reconnecting")
+            try:
+                from provisa.api.app import state
+                conn = trino.dbapi.connect(**state.trino_conn_kwargs)
+                state.trino_conn = conn
+            except Exception as reconnect_exc:
+                raise ConnectionError(f"Trino reconnect failed: {reconnect_exc}") from reconnect_exc
         # Trino Python client uses ? for parameter placeholders.
         # After SQLGlot transpilation, PG $N becomes Trino @N.
         # Replace both @N and $N with ? in reverse order to avoid $1 matching $10.
@@ -61,14 +83,16 @@ def execute_trino(
                 span.set_attribute(k, v)
 
         # Inject session properties before the main query when hints are present.
-        if session_hints:
-            cur = conn.cursor()
-            for key, value in session_hints.items():
-                safe_key = key.replace("'", "")
-                safe_value = value.replace("'", "")
-                set_sql = f"SET SESSION {safe_key} = '{safe_value}'"
-                log.info("[EXEC TRINO] session hint: %s", set_sql)
-                cur.execute(set_sql)
+        # Always inject query timeout so runaway queries don't starve workers.
+        effective_hints = dict(session_hints or {})
+        effective_hints.setdefault("query_max_execution_time", f"{_TRINO_QUERY_TIMEOUT}s")
+        cur = conn.cursor()
+        for key, value in effective_hints.items():
+            safe_key = key.replace("'", "")
+            safe_value = value.replace("'", "")
+            set_sql = f"SET SESSION {safe_key} = '{safe_value}'"
+            log.info("[EXEC TRINO] session hint: %s", set_sql)
+            cur.execute(set_sql)
 
         log.info("[EXEC TRINO] sql=%s", exec_sql[:200])
         cur = conn.cursor()

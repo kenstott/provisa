@@ -55,7 +55,11 @@ from provisa.security.rights import Capability, InsufficientRightsError, check_c
 from provisa.transpiler.router import Route, decide_route
 from provisa.transpiler.transpile import transpile, transpile_to_trino
 
+import os as _os
+
 log = logging.getLogger(__name__)
+
+_REQUEST_TIMEOUT: float = float(_os.environ.get("PROVISA_REQUEST_TIMEOUT", "60"))
 
 # Source-level hydration expiry: source_id → monotonic expiry.
 # When set, the entire source is skipped (no pool acquire, no PG queries).
@@ -1168,8 +1172,8 @@ async def _execute_one_field(
             )
         except HTTPException:
             raise
-        except MemoryError as e:
-            log.error("Query OOM for %s: %s", root_field, e)
+        except (MemoryError, ConnectionError) as e:
+            log.error("Query resource error for %s: %s", root_field, e)
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:
             log.exception("API source execution failed for %s", root_field)
@@ -1362,8 +1366,8 @@ async def _execute_one_field(
                 )
     except HTTPException:
         raise
-    except MemoryError as e:
-        log.error("Query OOM for %s: %s", root_field, e)
+    except (MemoryError, ConnectionError) as e:
+        log.error("Query resource error for %s: %s", root_field, e)
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
         log.exception("Query execution failed for %s", root_field)
@@ -1435,8 +1439,8 @@ async def _execute_one_field(
                         conn_kwargs=getattr(state, "trino_conn_kwargs", None),
                     )
                 )
-        except MemoryError as e:
-            log.error("Nodes query OOM for %s: %s", root_field, e)
+        except (MemoryError, ConnectionError) as e:
+            log.error("Nodes query resource error for %s: %s", root_field, e)
             raise HTTPException(status_code=503, detail=str(e))
         except Exception as e:
             log.exception("Nodes query execution failed for %s", root_field)
@@ -1578,17 +1582,23 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
 
     # --- Single root field: preserve existing behavior for binary formats ---
     if len(prepared) == 1:
-        root_field, field_rows, redirect_info, ck, cached_entry = await _execute_one_field(
-            prepared[0], ctx, rls, state, role, role_id,
-            fresh_mvs, output_format,
-            force_redirect=force_redirect,
-            redirect_config=redirect_config,
-            effective_redirect_format=effective_redirect_format,
-            probe_limit=probe_limit,
-            steward_hint=steward_hint,
-            query_session_props=query_session_props,
-            response_cache_ttl=cache_ttl,
-        )
+        try:
+            root_field, field_rows, redirect_info, ck, cached_entry = await asyncio.wait_for(
+                _execute_one_field(
+                    prepared[0], ctx, rls, state, role, role_id,
+                    fresh_mvs, output_format,
+                    force_redirect=force_redirect,
+                    redirect_config=redirect_config,
+                    effective_redirect_format=effective_redirect_format,
+                    probe_limit=probe_limit,
+                    steward_hint=steward_hint,
+                    query_session_props=query_session_props,
+                    response_cache_ttl=cache_ttl,
+                ),
+                timeout=_REQUEST_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail=f"Query timed out after {_REQUEST_TIMEOUT:.0f}s")
         if cached_entry is not None:
             headers = build_cache_headers(cached_entry)
             return JSONResponse(
@@ -1610,20 +1620,26 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
     merged_data: dict = {}
     merged_redirects: dict = {}
 
-    results = await asyncio.gather(*[
-        _execute_one_field(
-            compiled, ctx, rls, state, role, role_id,
-            fresh_mvs, "json",  # multi-field always uses JSON
-            force_redirect=force_redirect,
-            redirect_config=redirect_config,
-            effective_redirect_format=effective_redirect_format,
-            probe_limit=probe_limit,
-            steward_hint=steward_hint,
-            query_session_props=query_session_props,
-            response_cache_ttl=cache_ttl,
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*[
+                _execute_one_field(
+                    compiled, ctx, rls, state, role, role_id,
+                    fresh_mvs, "json",  # multi-field always uses JSON
+                    force_redirect=force_redirect,
+                    redirect_config=redirect_config,
+                    effective_redirect_format=effective_redirect_format,
+                    probe_limit=probe_limit,
+                    steward_hint=steward_hint,
+                    query_session_props=query_session_props,
+                    response_cache_ttl=cache_ttl,
+                )
+                for compiled in prepared
+            ]),
+            timeout=_REQUEST_TIMEOUT,
         )
-        for compiled in prepared
-    ])
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail=f"Query timed out after {_REQUEST_TIMEOUT:.0f}s")
 
     for root_field, field_rows, redirect_info, ck, cached_entry in results:
         if redirect_info is not None:

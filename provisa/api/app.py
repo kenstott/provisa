@@ -1460,6 +1460,24 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    import traceback as _tb
+    from fastapi import Request as _Request
+    from fastapi.responses import JSONResponse as _JSONResponse
+    from fastapi.exception_handlers import http_exception_handler as _http_exc_handler
+
+    @app.exception_handler(Exception)
+    async def _global_exception_handler(_req: _Request, exc: Exception):
+        log.exception("Unhandled exception on %s %s", _req.method, _req.url.path)
+        return _JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error", "type": type(exc).__name__},
+        )
+
+    @app.exception_handler(asyncio.TimeoutError)
+    async def _timeout_handler(_req: _Request, exc: asyncio.TimeoutError):
+        log.error("Request timeout on %s %s", _req.method, _req.url.path)
+        return _JSONResponse(status_code=504, content={"detail": "Request timed out"})
+
     # Conditionally add auth middleware and routes
     from provisa.auth.wiring import wire_auth
     wire_auth(app, state.auth_config)
