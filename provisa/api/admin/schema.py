@@ -104,6 +104,7 @@ def _source_from_row(row) -> SourceType:
         cache_ttl=row.get("cache_ttl"),
         naming_convention=row.get("naming_convention"),
         path=row.get("path"),
+        allowed_domains=list(row.get("allowed_domains") or []),
     )
 
 
@@ -150,6 +151,7 @@ def _rel_from_row(row, convention: str = "apollo_graphql") -> RelationshipType:
         alias=alias,
         graphql_alias=graphql_alias,
         computed_cypher_alias=computed_cypher_alias,
+        disable_cypher=row.get("disable_cypher", False),
     )
 
 
@@ -167,7 +169,7 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
     col_rows = await conn.fetch(
         "SELECT id, column_name, visible_to, writable_by, unmasked_to, "
         "mask_type, mask_pattern, mask_replace, mask_value, mask_precision, "
-        "alias, description, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key "
+        "alias, description, data_type, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, scope "
         "FROM table_columns WHERE table_id = $1 ORDER BY id", row["id"],
     )
     columns = [
@@ -182,10 +184,12 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
             mask_value=r.get("mask_value"),
             mask_precision=r.get("mask_precision"),
             alias=r.get("alias"), description=r.get("description"),
+            data_type=r.get("data_type"),
             native_filter_type=r.get("native_filter_type"),
             is_primary_key=bool(r.get("is_primary_key") or False),
             is_foreign_key=bool(r.get("is_foreign_key") or False),
             is_alternate_key=bool(r.get("is_alternate_key") or False),
+            scope=r.get("scope") or "domain",
         )
         for r in col_rows
     ]
@@ -236,13 +240,15 @@ async def _call_anthropic(prompt: str, api_key: str, max_tokens: int = 256) -> s
     return message.content[0].text.strip()
 
 
-async def _maybe_migrate_sqlite(src_row, conn, source_id: str, table_name: str, schema_name: str) -> None:
+async def _maybe_migrate_sqlite(src_row, conn, source_id: str, table_name: str, schema_name: str, table_id: int | None = None) -> None:
     if src_row and src_row["type"] == "sqlite" and src_row["path"]:
         import logging as _logging
-        from provisa.file_source.pg_migrate import migrate_sqlite_table
+        from provisa.file_source.pg_migrate import migrate_sqlite_table, record_mtime
         _log = _logging.getLogger(__name__)
         try:
             await migrate_sqlite_table(src_row["path"], table_name, conn, schema_name, table_name)
+            if table_id is not None:
+                await record_mtime(table_id, src_row["path"], conn)
         except Exception as _e:
             _log.warning("SQLite → PG migration failed for %s.%s: %s", source_id, table_name, _e)
 
@@ -266,6 +272,7 @@ def _build_column_models(columns: list) -> list:
             is_primary_key=c.is_primary_key,
             is_foreign_key=c.is_foreign_key,
             is_alternate_key=c.is_alternate_key,
+            scope=getattr(c, "scope", "domain"),
         )
         for c in columns
     ]
@@ -316,6 +323,7 @@ class Query:
                 "FROM relationships r "
                 "JOIN registered_tables st ON r.source_table_id = st.id "
                 "LEFT JOIN registered_tables tt ON r.target_table_id = tt.id "
+                "WHERE r.id NOT LIKE 'gql_auto__%' "
                 "ORDER BY r.id"
             )
             return [_rel_from_row(r, convention) for r in rows]
@@ -487,11 +495,13 @@ class Query:
             cols = _schema_to_columns(q.response_schema)
             existing = {c["name"] for c in cols}
             for p in q.path_params:
-                if p["name"] not in existing:
-                    cols.append({"name": p["name"], "type": p.get("type", "string"), "native_filter_type": "path_param"})
+                nf_name = f"_nf_{p['name']}"
+                if nf_name not in existing:
+                    cols.append({"name": nf_name, "type": p.get("type", "string"), "native_filter_type": "path_param"})
             for p in q.query_params:
-                if p["name"] not in existing:
-                    cols.append({"name": p["name"], "type": p.get("type", "string"), "native_filter_type": "query_param"})
+                nf_name = f"_nf_{p['name']}"
+                if nf_name not in existing:
+                    cols.append({"name": nf_name, "type": p.get("type", "string"), "native_filter_type": "query_param"})
             return [
                 AvailableColumnType(name=c["name"], data_type=c["type"], comment=None, native_filter_type=c.get("native_filter_type"))
                 for c in cols
@@ -543,7 +553,7 @@ class Query:
         """Return cache statistics."""
         from provisa.api.app import state
         from provisa.cache.store import RedisCacheStore
-        store = state.cache_store
+        store = state.response_cache_store
         if isinstance(store, RedisCacheStore):
             try:
                 info = await store._redis.info("stats")
@@ -591,9 +601,9 @@ class Query:
             pg_free = state.pg_pool.get_idle_size()
 
         cache_ok = False
-        if isinstance(state.cache_store, RedisCacheStore):
+        if isinstance(state.response_cache_store, RedisCacheStore):
             try:
-                await state.cache_store._redis.ping()
+                await state.response_cache_store._redis.ping()
                 cache_ok = True
             except Exception:
                 pass
@@ -939,6 +949,32 @@ class Mutation:
             table_id = await table_repo.upsert(conn, model)
             src_row = await conn.fetchrow("SELECT type, path FROM sources WHERE id = $1", input.source_id)
             await _maybe_migrate_sqlite(src_row, conn, input.source_id, input.table_name, input.schema_name)
+            if input.domain_id != "meta":
+                meta_rt_id = await conn.fetchval(
+                    "SELECT id FROM registered_tables WHERE source_id = 'provisa-admin' AND domain_id = 'meta' AND table_name = 'registered_tables'"
+                )
+                if meta_rt_id:
+                    await conn.execute(
+                        "INSERT INTO table_meta_links (source_table_id, target_table_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
+                        table_id, meta_rt_id,
+                    )
+
+            import os as _os
+            if _os.environ.get("PROVISA_AUTO_TRACK_FK", "true").lower() not in ("0", "false", "no"):
+                from provisa.discovery.fk_introspect import auto_register_fk_relationships
+                from provisa.api.app import state as _state
+                source_type = (src_row["type"] if src_row else None) or ""
+                fk_count = await auto_register_fk_relationships(
+                    _state.source_pools, source_type, input.source_id,
+                    input.schema_name, input.table_name, conn,
+                )
+                if fk_count:
+                    import logging as _logging
+                    _logging.getLogger(__name__).info(
+                        "Auto-tracked %d FK relationship(s) for %s.%s",
+                        fk_count, input.schema_name, input.table_name,
+                    )
+
         await _rebuild_schemas()
         return MutationResult(
             success=True,
@@ -1078,9 +1114,30 @@ class Mutation:
             function_arg=input.function_arg or None,
             alias=input.alias or None,
             graphql_alias=getattr(input, "graphql_alias", None) or None,
+            disable_cypher=getattr(input, "disable_cypher", False),
         )
         async with pool.acquire() as conn:
             await rel_repo.upsert(conn, model)
+            if input.record_candidate and not input.target_function_name:
+                rel_row = await conn.fetchrow(
+                    "SELECT source_table_id, target_table_id FROM relationships WHERE id = $1",
+                    input.id,
+                )
+                if rel_row and rel_row["target_table_id"] is not None:
+                    await conn.execute(
+                        """
+                        INSERT INTO relationship_candidates
+                            (source_table_id, target_table_id, source_column, target_column,
+                             cardinality, confidence, reasoning, suggested_name, scope, status)
+                        VALUES ($1, $2, $3, $4, $5, 1.0, 'SQL modeling (admin)', $6, 'admin', 'accepted')
+                        ON CONFLICT (source_table_id, source_column, target_table_id, target_column)
+                        DO UPDATE SET status = 'accepted', confidence = 1.0,
+                                      reasoning = 'SQL modeling (admin)'
+                        """,
+                        rel_row["source_table_id"], rel_row["target_table_id"],
+                        input.source_column, input.target_column or None,
+                        input.cardinality, input.id,
+                    )
         await _rebuild_schemas()
         return MutationResult(
             success=True, message=f"Relationship {input.id!r} saved",
@@ -1244,6 +1301,25 @@ class Mutation:
         return MutationResult(success=True, message=f"Naming convention updated for source {source_id!r}")
 
     @strawberry.mutation
+    async def update_source_allowed_domains(self, source_id: str, allowed_domains: list[str]) -> MutationResult:
+        """Set the allowed domain list for a source (empty list = unrestricted)."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                "UPDATE sources SET allowed_domains = $1 WHERE id = $2",
+                allowed_domains, source_id,
+            )
+            if result == "UPDATE 0":
+                return MutationResult(success=False, message=f"Source {source_id!r} not found")
+        from provisa.api.app import state
+        if allowed_domains:
+            state.source_allowed_domains[source_id] = list(allowed_domains)
+        else:
+            state.source_allowed_domains.pop(source_id, None)
+        await _rebuild_schemas()
+        return MutationResult(success=True, message=f"Allowed domains updated for source {source_id!r}")
+
+    @strawberry.mutation
     async def update_table_naming(self, table_id: int, naming_convention: Optional[str] = None) -> MutationResult:
         """Update naming convention for a registered table."""
         pool = await _get_pool()
@@ -1295,7 +1371,7 @@ class Mutation:
         """Purge all cached query results."""
         from provisa.api.app import state
         try:
-            count = await state.cache_store.invalidate_by_pattern("provisa:cache:*")
+            count = await state.response_cache_store.invalidate_by_pattern("provisa:cache:*")
             return MutationResult(success=True, message=f"Purged {count} cache entries")
         except Exception as e:
             return MutationResult(success=False, message=str(e))
@@ -1305,11 +1381,37 @@ class Mutation:
         """Purge cached results for a specific table."""
         from provisa.api.app import state
         try:
-            count = await state.cache_store.invalidate_by_table(table_id)
+            count = await state.response_cache_store.invalidate_by_table(table_id)
             return MutationResult(success=True, message=f"Purged {count} cache entries for table {table_id}")
         except Exception as e:
             return MutationResult(success=False, message=str(e))
 
+    @strawberry.mutation
+    async def invalidate_file_source(self, table_id: int) -> MutationResult:
+        """Force re-migration of a file-backed (SQLite) table into PG."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """SELECT rt.table_name, rt.schema_name, s.type, s.path, s.id as source_id
+                   FROM registered_tables rt
+                   JOIN sources s ON s.id = rt.source_id
+                   WHERE rt.id = $1""",
+                table_id,
+            )
+            if not row:
+                return MutationResult(success=False, message=f"Table {table_id} not found")
+            if row["type"] != "sqlite":
+                return MutationResult(success=False, message=f"Source type {row['type']!r} is not sqlite")
+            from provisa.file_source.pg_migrate import migrate_sqlite_table, record_mtime
+            try:
+                await conn.execute(
+                    "DELETE FROM file_source_mtimes WHERE table_id = $1", table_id
+                )
+                await migrate_sqlite_table(row["path"], row["table_name"], conn, row["schema_name"], row["table_name"])
+                await record_mtime(table_id, row["path"], conn)
+                return MutationResult(success=True, message=f"Re-migrated {row['source_id']}.{row['table_name']}")
+            except Exception as e:
+                return MutationResult(success=False, message=str(e))
 
     # ── Admin: Scheduled Task Management ──
 

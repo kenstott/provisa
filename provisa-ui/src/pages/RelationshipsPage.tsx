@@ -10,10 +10,9 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Trash2, Pencil, Sparkles, Save, X, ArrowLeftRight, Code2 } from "lucide-react";
-import CodeMirror from "@uiw/react-codemirror";
-import { sql, PostgreSQL } from "@codemirror/lang-sql";
-import { oneDark } from "@codemirror/theme-one-dark";
 import { FilterInput } from "../components/admin/FilterInput";
+import { useDomainFilter } from "../context/DomainFilterContext";
+import { SqlModelingModal } from "../components/SqlModelingModal";
 import {
   fetchRelationships,
   fetchTables,
@@ -29,16 +28,6 @@ import {
 import { fetchActions } from "../api/actions";
 import type { TrackedFunction } from "../api/actions";
 import type { Relationship, RegisteredTable } from "../types/admin";
-
-interface ModelingCandidate {
-  id: string;
-  sourceTable: string;
-  sourceCol: string;
-  targetTable: string;
-  targetCol: string;
-  cardinality: string;
-  promoted: boolean;
-}
 
 interface Candidate {
   id: number;
@@ -69,6 +58,7 @@ const EMPTY_FORM = {
   refreshInterval: "300",
   alias: "",
   graphqlAlias: "",
+  disableCypher: false,
 };
 
 export function RelationshipsPage() {
@@ -89,9 +79,9 @@ export function RelationshipsPage() {
   const [reverseForm, setReverseForm] = useState<typeof EMPTY_FORM | null>(null);
   const [relSearch, setRelSearch] = useState("");
   const [showModelingModal, setShowModelingModal] = useState(false);
-  const [modelingSql, setModelingSql] = useState("");
-  const [modelingCandidates, setModelingCandidates] = useState<ModelingCandidate[]>([]);
-  const [modelingErrors, setModelingErrors] = useState<string[]>([]);
+  const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
+
+  const { selectedDomain, setDomains } = useDomainFilter();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -107,8 +97,9 @@ export function RelationshipsPage() {
     setFunctions(actions.functions);
     setCandidates(c);
     setRejectedCount(rc);
+    setDomains([...new Set(t.map((tbl) => tbl.domainId ? tbl.domainId.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "") : "").filter(Boolean))]);
     setLoading(false);
-  }, []);
+  }, [setDomains]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -119,116 +110,6 @@ export function RelationshipsPage() {
   const tableDomainById = Object.fromEntries(
     tables.map((t) => [t.id, normalizeDomain(t.domainId)]),
   );
-
-  const sqlSchema = useMemo(() => {
-    const schema: Record<string, string[]> = {};
-    for (const t of tables) {
-      const cols = t.columns.map((c) => c.columnName);
-      schema[t.tableName] = cols;
-      if (t.alias) schema[t.alias] = cols;
-    }
-    return schema;
-  }, [tables]);
-
-  const sqlExtensions = useMemo(
-    () => [sql({ dialect: PostgreSQL, schema: sqlSchema })],
-    [sqlSchema],
-  );
-
-  const tableNameSet = useMemo(
-    () => new Set(tables.map((t) => t.tableName.toLowerCase())),
-    [tables],
-  );
-
-  const extractJoins = useCallback((sqlText: string): { candidates: ModelingCandidate[]; errors: string[] } => {
-    const aliasMap: Record<string, string> = {};
-    const tableRefRe = /(?:from|join)\s+(?:\w+\.)?(\w+)(?:\s+(?:as\s+)?(\w+))?/gi;
-    let m: RegExpExecArray | null;
-    while ((m = tableRefRe.exec(sqlText)) !== null) {
-      const tbl = m[1].toLowerCase();
-      const alias = (m[2] || m[1]).toLowerCase();
-      aliasMap[alias] = tbl;
-      aliasMap[tbl] = tbl;
-    }
-    // Normalise a join operand: strip CAST(...) wrapper, return "alias.col" or null
-    const stripCast = (s: string): [string, string] | null => {
-      const castRe = /^cast\s*\(\s*(\w+)\.(\w+)\s+as\s+\w+\s*\)$/i;
-      const plainRe = /^(\w+)\.(\w+)$/;
-      const cm = castRe.exec(s.trim());
-      if (cm) return [cm[1], cm[2]];
-      const pm = plainRe.exec(s.trim());
-      if (pm) return [pm[1], pm[2]];
-      return null;
-    };
-    const candidates: ModelingCandidate[] = [];
-    const errors: string[] = [];
-    // Match the full ON clause (up to next JOIN/WHERE/GROUP/ORDER/HAVING/LIMIT or end)
-    const onBlockRe = /\bon\s+(.*?)(?=\s+(?:inner|left|right|full|cross|join|where|group|order|having|limit)\b|$)/gi;
-    while ((m = onBlockRe.exec(sqlText)) !== null) {
-      const clause = m[1].trim();
-      // Split AND-connected conditions
-      const conditions = clause.split(/\band\b/i);
-      for (const cond of conditions) {
-        const eqRe = /^(cast\s*\(\s*\w+\.\w+\s+as\s+\w+\s*\)|\w+\.\w+)\s*=\s*(cast\s*\(\s*\w+\.\w+\s+as\s+\w+\s*\)|\w+\.\w+)$/i;
-        const eq = eqRe.exec(cond.trim());
-        if (!eq) {
-          errors.push(cond.trim());
-          continue;
-        }
-        const lhs = stripCast(eq[1]);
-        const rhs = stripCast(eq[2]);
-        if (!lhs || !rhs) { errors.push(cond.trim()); continue; }
-        const [la, lc] = lhs;
-        const [ra, rc] = rhs;
-        const lt = aliasMap[la.toLowerCase()] || la.toLowerCase();
-        const rt = aliasMap[ra.toLowerCase()] || ra.toLowerCase();
-        candidates.push({
-          id: `${lt}-${lc}-to-${rt}`,
-          sourceTable: lt,
-          sourceCol: lc,
-          targetTable: rt,
-          targetCol: rc,
-          cardinality: "many-to-one",
-          promoted: false,
-        });
-      }
-    }
-    return { candidates, errors };
-  }, []);
-
-  const handleExtractJoins = useCallback(() => {
-    const existing = new Set(
-      rels.map((r) => `${r.sourceTableName}|${r.sourceColumn}|${r.targetTableName}|${r.targetColumn}`)
-    );
-    const { candidates, errors } = extractJoins(modelingSql);
-    const fresh = candidates.filter(
-      (c) => !existing.has(`${c.sourceTable}|${c.sourceCol}|${c.targetTable}|${c.targetCol}`)
-    );
-    setModelingCandidates(fresh);
-    setModelingErrors(errors);
-  }, [extractJoins, modelingSql, rels]);
-
-  const handlePromoteCandidate = useCallback(async (idx: number) => {
-    const c = modelingCandidates[idx];
-    await upsertRelationship({
-      id: c.id,
-      sourceTableId: c.sourceTable,
-      targetTableId: c.targetTable,
-      sourceColumn: c.sourceCol,
-      targetColumn: c.targetCol,
-      cardinality: c.cardinality,
-      materialize: false,
-      refreshInterval: 300,
-      targetFunctionName: null,
-      functionArg: null,
-      alias: null,
-      graphqlAlias: null,
-    });
-    setModelingCandidates((prev) =>
-      prev.map((item, i) => (i === idx ? { ...item, promoted: true } : item)),
-    );
-    load();
-  }, [modelingCandidates, load]);
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -258,6 +139,7 @@ export function RelationshipsPage() {
       functionArg: form.targetType === "function" ? form.functionArg : null,
       alias: form.alias || null,
       graphqlAlias: form.graphqlAlias || null,
+      disableCypher: form.disableCypher,
     });
     setSaving(null);
     setForm(EMPTY_FORM);
@@ -281,6 +163,7 @@ export function RelationshipsPage() {
       functionArg: editingRel.targetType === "function" ? editingRel.functionArg : null,
       alias: editingRel.alias || null,
       graphqlAlias: editingRel.graphqlAlias || null,
+      disableCypher: editingRel.disableCypher,
     });
     if (editingRel.originalId && editingRel.originalId !== editingRel.id) {
       await deleteRelationship(editingRel.originalId);
@@ -350,6 +233,7 @@ export function RelationshipsPage() {
       refreshInterval: String(rel.refreshInterval ?? 300),
       alias: rel.alias ?? "",
       graphqlAlias: rel.graphqlAlias ?? "",
+      disableCypher: rel.disableCypher ?? false,
     });
   }, [tableDomainById]);
 
@@ -429,7 +313,7 @@ export function RelationshipsPage() {
           <button
             className="btn-icon"
             title="SQL Modeling tool"
-            onClick={() => { setShowModelingModal(true); setModelingCandidates([]); setModelingErrors([]); }}
+            onClick={() => setShowModelingModal(true)}
           ><Code2 size={14} /></button>
           <button
             className="btn-icon"
@@ -529,6 +413,10 @@ export function RelationshipsPage() {
               <input type="checkbox" checked={form.materialize} onChange={(e) => setForm({ ...form, materialize: e.target.checked })} />
               Materialize (auto-create MV for cross-source joins)
             </label>
+            <label className="checkbox-label">
+              <input type="checkbox" checked={form.disableCypher} onChange={(e) => setForm({ ...form, disableCypher: e.target.checked })} />
+              Exclude from Cypher graph
+            </label>
             {form.materialize && (
               <label>
                 Refresh Interval (s)
@@ -556,7 +444,12 @@ export function RelationshipsPage() {
           </tr>
         </thead>
         <tbody>
-          {rels.filter((r) => {
+          {rels.length > 75 && !relSearch.trim() ? (
+            <tr><td colSpan={8} style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
+              {rels.length} relationships — use the filter above to browse
+            </td></tr>
+          ) : rels.filter((r) => {
+            if (selectedDomain !== "all" && tableDomainById[r.sourceTableId] !== selectedDomain) return false;
             if (!relSearch.trim()) return true;
             const q = relSearch.toLowerCase();
             return r.sourceTableName.toLowerCase().includes(q) || r.targetTableName.toLowerCase().includes(q);
@@ -569,7 +462,14 @@ export function RelationshipsPage() {
                   onClick={() => { setExpanded(isExpanded ? null : id); setEditingRel(null); }}
                   style={{ cursor: "pointer", background: isExpanded ? "var(--surface)" : undefined }}
                 >
-                  <td>{r.id}</td>
+                  <td>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                      {r.autoSuggested && (
+                        <span title="Auto-tracked from FK constraint" style={{ fontSize: "0.65rem", fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: "var(--text-muted)", color: "var(--bg)", letterSpacing: "0.03em" }}>FK</span>
+                      )}
+                      {r.id}
+                    </div>
+                  </td>
                   <td>{tableDomainById[r.sourceTableId] || "—"}</td>
                   <td>{`${r.sourceTableName}.${r.sourceColumn}`}</td>
                   <td>{r.targetFunctionName ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})` : `${r.targetTableName}.${r.targetColumn}`}</td>
@@ -589,7 +489,7 @@ export function RelationshipsPage() {
                       {!editingRel ? (
                         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                           <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0, color: "var(--text)" }}>
-                            <dt style={{ color: "var(--text-muted)" }}><strong>ID</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.id}</dd>
+                            <dt style={{ color: "var(--text-muted)" }}><strong>ID</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.id}{r.autoSuggested && <span title="Auto-tracked from FK constraint" style={{ marginLeft: 6, fontSize: "0.65rem", fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: "var(--text-muted)", color: "var(--bg)" }}>FK</span>}</dd>
                             <dt style={{ color: "var(--text-muted)" }}><strong>Source</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{tableDomainById[r.sourceTableId] ? `${tableDomainById[r.sourceTableId]}.${r.sourceTableName}.${r.sourceColumn}` : `${r.sourceTableName}.${r.sourceColumn}`}</dd>
                             <dt style={{ color: "var(--text-muted)" }}><strong>Target</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.targetFunctionName ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})` : (tableDomainById[r.targetTableId!] ? `${tableDomainById[r.targetTableId!]}.${r.targetTableName}.${r.targetColumn}` : `${r.targetTableName}.${r.targetColumn}`)}</dd>
                             <dt style={{ color: "var(--text-muted)" }}><strong>GQL Alias</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}><code>{r.graphqlAlias ?? "—"}</code></dd>
@@ -597,6 +497,7 @@ export function RelationshipsPage() {
                             <dt style={{ color: "var(--text-muted)" }}><strong>Cardinality</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.cardinality}</dd>
                             <dt style={{ color: "var(--text-muted)" }}><strong>Materialize</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.materialize ? "Yes" : "No"}</dd>
                             {r.materialize && <><dt style={{ color: "var(--text-muted)" }}><strong>Refresh Interval (s)</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.refreshInterval ?? "—"}</dd></>}
+                            <dt style={{ color: "var(--text-muted)" }}><strong>Cypher Graph</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.disableCypher ? <em style={{ color: "var(--text-muted)" }}>excluded</em> : "included"}</dd>
                           </dl>
                           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
                             <button className="btn-icon" title="Edit" onClick={(e) => { e.stopPropagation(); startEditing(r); }}><Pencil size={14} /></button>
@@ -708,6 +609,10 @@ export function RelationshipsPage() {
                               <input type="checkbox" checked={editingRel.materialize} onChange={(e) => setEditingRel({ ...editingRel, materialize: e.target.checked })} style={{ width: "auto", padding: 0 }} />
                               Materialize
                             </label>
+                            <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem", whiteSpace: "nowrap", flex: "0 0 auto" }}>
+                              <input type="checkbox" checked={editingRel.disableCypher} onChange={(e) => setEditingRel({ ...editingRel, disableCypher: e.target.checked })} style={{ width: "auto", padding: 0 }} />
+                              Exclude from Cypher
+                            </label>
                             {editingRel.materialize && (
                               <label>Refresh Interval (s)
                                 <input type="number" value={editingRel.refreshInterval} onChange={(e) => setEditingRel({ ...editingRel, refreshInterval: e.target.value })} />
@@ -730,94 +635,72 @@ export function RelationshipsPage() {
       </table>
 
       {showModelingModal && (
-        <div className="modal-overlay" onClick={() => setShowModelingModal(false)}>
-          <div className="modal" style={{ width: "800px", maxWidth: "800px" }} onClick={(e) => e.stopPropagation()}>
+        <SqlModelingModal
+          tables={tables}
+          existingRels={rels}
+          onClose={() => setShowModelingModal(false)}
+          onPromote={async (c) => {
+            const existing = rels.find(
+              (r) =>
+                r.sourceTableName === c.sourceTable &&
+                r.sourceColumn === c.sourceCol &&
+                r.targetTableName === c.targetTable &&
+                r.targetColumn === c.targetCol,
+            );
+            if (existing) {
+              setConflictRel(existing);
+              return;
+            }
+            await upsertRelationship({
+              id: c.id,
+              sourceTableId: c.sourceTable,
+              targetTableId: c.targetTable,
+              sourceColumn: c.sourceCol,
+              targetColumn: c.targetCol,
+              cardinality: c.cardinality,
+              materialize: false,
+              refreshInterval: 300,
+              targetFunctionName: null,
+              functionArg: null,
+              alias: null,
+              graphqlAlias: null,
+              recordCandidate: true,
+            });
+            load();
+          }}
+        />
+      )}
+
+      {conflictRel && (
+        <div className="modal-overlay" onClick={() => setConflictRel(null)}>
+          <div className="modal" style={{ width: "500px", maxWidth: "500px" }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>SQL Modeling Tool</h3>
-              <button className="modal-close" onClick={() => setShowModelingModal(false)}><X size={14} /></button>
+              <h3>Relationship Already Exists</h3>
+              <button className="modal-close" onClick={() => setConflictRel(null)}><X size={14} /></button>
             </div>
-            <div className="form-card">
-              <p style={{ margin: "0 0 0.75rem", color: "var(--text-muted)", fontSize: "0.875rem" }}>
-                Write SQL with JOIN conditions. Each JOIN will be extracted as a candidate relationship proposal.
+            <div className="form-card" style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                A relationship with this source and target already exists:
               </p>
-              <div className="view-sql-editor" style={{ marginBottom: "0.75rem" }}>
-                <CodeMirror
-                  value={modelingSql}
-                  height="200px"
-                  theme={oneDark}
-                  extensions={sqlExtensions}
-                  onChange={(v) => setModelingSql(v)}
-                />
+              <dl style={{ margin: 0, display: "grid", gridTemplateColumns: "auto 1fr", gap: "0.35rem 1rem", fontSize: "0.82rem" }}>
+                <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>ID</dt>
+                <dd style={{ margin: 0, fontFamily: "monospace" }}>{conflictRel.id}</dd>
+                <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Source</dt>
+                <dd style={{ margin: 0, fontFamily: "monospace" }}>{conflictRel.sourceTableName}.{conflictRel.sourceColumn}</dd>
+                <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Target</dt>
+                <dd style={{ margin: 0, fontFamily: "monospace" }}>{conflictRel.targetTableName}.{conflictRel.targetColumn}</dd>
+                <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Cardinality</dt>
+                <dd style={{ margin: 0 }}>{conflictRel.cardinality}</dd>
+                {conflictRel.alias && (
+                  <>
+                    <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Alias</dt>
+                    <dd style={{ margin: 0, fontFamily: "monospace" }}>{conflictRel.alias}</dd>
+                  </>
+                )}
+              </dl>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button className="btn-secondary" onClick={() => setConflictRel(null)}>Close</button>
               </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "0.75rem" }}>
-                <button className="btn-primary" onClick={handleExtractJoins}>Extract Joins</button>
-              </div>
-              {modelingCandidates.length > 0 && (
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Source</th>
-                      <th>Target</th>
-                      <th>Cardinality</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {modelingCandidates.map((c, idx) => (
-                      <tr key={idx}>
-                        <td>
-                          <input
-                            value={c.id}
-                            onChange={(e) => setModelingCandidates((prev) => prev.map((item, i) => i === idx ? { ...item, id: e.target.value } : item))}
-                            style={{ width: "100%", fontSize: "0.85rem" }}
-                          />
-                        </td>
-                        <td style={{ fontSize: "0.875rem" }}>
-                          <span style={{ color: tableNameSet.has(c.sourceTable) ? "var(--text)" : "var(--error)" }}>{c.sourceTable}</span>
-                          <span style={{ color: "var(--text-muted)" }}>.</span>{c.sourceCol}
-                        </td>
-                        <td style={{ fontSize: "0.875rem" }}>
-                          <span style={{ color: tableNameSet.has(c.targetTable) ? "var(--text)" : "var(--error)" }}>{c.targetTable}</span>
-                          <span style={{ color: "var(--text-muted)" }}>.</span>{c.targetCol}
-                        </td>
-                        <td>
-                          <select
-                            value={c.cardinality}
-                            onChange={(e) => setModelingCandidates((prev) => prev.map((item, i) => i === idx ? { ...item, cardinality: e.target.value } : item))}
-                            style={{ fontSize: "0.85rem" }}
-                          >
-                            <option value="many-to-one">many-to-one</option>
-                            <option value="one-to-many">one-to-many</option>
-                          </select>
-                        </td>
-                        <td>
-                          {c.promoted
-                            ? <span style={{ color: "var(--approve)", fontSize: "0.85rem" }}>✓ Promoted</span>
-                            : <button className="btn-primary" style={{ fontSize: "0.8rem", padding: "0.2rem 0.6rem" }} onClick={() => handlePromoteCandidate(idx)}>Promote</button>
-                          }
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-              {modelingCandidates.length === 0 && modelingErrors.length === 0 && modelingSql.trim() && (
-                <p style={{ color: "var(--text-muted)", fontSize: "0.875rem", textAlign: "center" }}>No JOIN conditions found. Use <code>table_alias.column = table_alias.column</code> syntax in ON clauses.</p>
-              )}
-              {modelingErrors.length > 0 && (
-                <div style={{ marginTop: "0.75rem" }}>
-                  <p style={{ color: "var(--error)", fontSize: "0.875rem", fontWeight: 600, margin: "0 0 0.25rem" }}>Unsupported ON conditions — simplify these using a view:</p>
-                  <ul style={{ margin: 0, paddingLeft: "1.25rem" }}>
-                    {modelingErrors.map((e, i) => (
-                      <li key={i} style={{ fontSize: "0.85rem", color: "var(--error)", fontFamily: "monospace" }}>{e}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-            <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setShowModelingModal(false)}>Close</button>
             </div>
           </div>
         </div>

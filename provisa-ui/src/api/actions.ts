@@ -10,7 +10,7 @@
 
 import type { MutationResult } from "../types/admin";
 
-const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8001";
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 export interface ActionArg {
   name: string;

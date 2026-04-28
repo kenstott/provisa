@@ -18,13 +18,13 @@ query IntrospectionQuery {
     queryType { name }
     mutationType { name }
     types {
-      kind name
+      kind name description
       fields(includeDeprecated: false) {
-        name
-        type { kind name ofType { kind name ofType { kind name } } }
+        name description
+        type { kind name ofType { kind name ofType { kind name ofType { kind name } } } }
         args {
-          name
-          type { kind name ofType { kind name ofType { kind name } } }
+          name description
+          type { kind name ofType { kind name ofType { kind name ofType { kind name } } } }
         }
       }
     }

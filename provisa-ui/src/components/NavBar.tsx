@@ -8,11 +8,18 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { CapabilityGate } from "./CapabilityGate";
 import { RoleSelector } from "./RoleSelector";
+import { useDomainFilter } from "../context/DomainFilterContext";
+
+const SYSTEM_DOMAINS = new Set(["meta", "ops"]);
 
 export function NavBar() {
+  const location = useLocation();
+  const { domains, selectedDomain, setSelectedDomain } = useDomainFilter();
+  const onTablesPage = location.pathname === "/tables" || location.pathname === "/relationships" || location.pathname === "/security" || location.pathname === "/schema" || location.pathname === "/query";
+
   return (
     <nav className="navbar">
       <div className="navbar-brand">
@@ -54,6 +61,18 @@ export function NavBar() {
         </CapabilityGate>
       </div>
       <div className="navbar-role">
+        {onTablesPage && domains.length > 0 && (
+          <select
+            className="navbar-domain-select"
+            value={selectedDomain}
+            onChange={(e) => setSelectedDomain(e.target.value)}
+          >
+            <option value="all">All Domains</option>
+            {domains.filter((d) => !SYSTEM_DOMAINS.has(d)).map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        )}
         <RoleSelector />
       </div>
     </nav>

@@ -10,14 +10,17 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
+import { useDomainFilter } from "../context/DomainFilterContext";
 
 /**
  * Schema Explorer — renders GraphQL Voyager in an iframe.
  * Pre-fetches introspection from the parent window, then passes it
  * as static data to Voyager inside the iframe, avoiding CDN/CORS issues.
+ * When a domain is selected, filters to that domain + relationship-reachable tables.
  */
 export function SchemaExplorer() {
   const { role } = useAuth();
+  const { selectedDomain } = useDomainFilter();
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -28,16 +31,9 @@ export function SchemaExplorer() {
     setSrcDoc(null);
     setLoading(true);
 
-    // Fetch introspection from the parent window (where proxy works)
-    fetch("/data/graphql", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Provisa-Role": role.id,
-      },
-      body: JSON.stringify({
-        query: `query IntrospectionQuery { __schema { queryType { name } mutationType { name } subscriptionType { name } types { ...FullType } directives { name description locations args { ...InputValue } } } } fragment FullType on __Type { kind name description fields(includeDeprecated: true) { name description args { ...InputValue } type { ...TypeRef } isDeprecated deprecationReason } inputFields { ...InputValue } interfaces { ...TypeRef } enumValues(includeDeprecated: true) { name description isDeprecated deprecationReason } possibleTypes { ...TypeRef } } fragment InputValue on __InputValue { name description type { ...TypeRef } defaultValue } fragment TypeRef on __Type { kind name ofType { kind name ofType { kind name ofType { kind name ofType { kind name ofType { kind name ofType { kind name ofType { kind name } } } } } } } }`,
-      }),
+    const params = selectedDomain !== "all" ? `?domain=${encodeURIComponent(selectedDomain)}` : "";
+    fetch(`/data/introspection${params}`, {
+      headers: { "X-Provisa-Role": role.id },
     })
       .then((r) => r.json())
       .then((json) => {
@@ -67,7 +63,7 @@ setTimeout(function() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [role?.id]);
+  }, [role?.id, selectedDomain]);
 
   if (!role) return <div className="page">Select a role to view schema.</div>;
   if (error) return <div className="page error">Failed to load schema: {error}</div>;

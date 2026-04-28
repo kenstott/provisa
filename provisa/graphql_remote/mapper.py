@@ -159,7 +159,7 @@ def map_schema(
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """Map __schema to (virtual_tables, tracked_functions, relationships).
 
-    All names are prefixed with namespace__ (REQ-312).
+    Names use the GQL field name directly; source_id provides disambiguation.
     Query fields with OBJECT return type → virtual tables.
     Mutation fields → tracked functions with return_schema.
     Non-scalar leaf types → jsonb column (REQ-306 scope).
@@ -189,7 +189,7 @@ def map_schema(
         required_args = _build_required_args(field)
         return_type = _find_type(types, ret_name)
         columns = _build_columns((return_type or {}).get("fields") or [])
-        table_name = f"{namespace}__{field['name']}"
+        table_name = field['name']
         tables.append({
             "name": table_name,
             "field_name": field["name"],
@@ -208,7 +208,7 @@ def map_schema(
             {"name": a["name"], "type": _gql_to_provisa_type(a["type"]), "description": a.get("description") or None}
             for a in (field.get("args") or [])
         ]
-        fn_name = f"{namespace}__{field['name']}"
+        fn_name = field['name']
         functions.append({
             "name": fn_name,
             "field_name": field["name"],

@@ -24,7 +24,6 @@ from provisa.mv.models import JoinPattern, MVDefinition, MVStatus
 from provisa.mv.refresh import _build_refresh_sql, _target_ref, refresh_mv
 from provisa.mv.registry import MVRegistry
 
-pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
 def _jp_mv(mv_id="mv-orders-customers"):
@@ -115,6 +114,7 @@ class TestTargetRef:
         assert ref == '"postgresql"."mv_cache"."mv_mv_orders_customers"'
 
 
+@pytest.mark.asyncio(loop_scope="session")
 class TestRefreshMV:
     async def test_first_refresh_creates_table(self):
         mv = _jp_mv()

@@ -19,8 +19,10 @@ services:
       TRINO_FLIGHT_PORT: 8480
       FLIGHT_PORT: "${FLIGHT_PORT:-8815}"
       REDIS_URL: "${REDIS_URL:-redis://redis:6379}"
-      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}"
       OTEL_SERVICE_NAME: "${OTEL_SERVICE_NAME:-provisa}"
+      GRAPHQL_DEMO_ENABLED: "${GRAPHQL_DEMO_ENABLED:-false}"
+      GRAPHQL_DEMO_URL: "${GRAPHQL_DEMO_URL:-http://graphql-demo:4000/graphql}"
     depends_on:
       postgres:
         condition: service_healthy

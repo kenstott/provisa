@@ -31,7 +31,6 @@ from provisa.live.engine import LiveEngine, _build_incremental_sql
 from provisa.live.outputs.sse import SSEFanout
 from provisa.live.outputs.kafka import KafkaSinkOutput
 
-pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +172,7 @@ class TestBuildIncrementalSql:
 # TestLiveEngineLifecycle
 # ---------------------------------------------------------------------------
 
+@pytest.mark.asyncio(loop_scope="session")
 class TestLiveEngineLifecycle:
     """Tests covering register/unregister/subscribe/start/stop semantics."""
 
@@ -317,6 +317,7 @@ class TestLiveEngineLifecycle:
 # TestLiveEnginePoll
 # ---------------------------------------------------------------------------
 
+@pytest.mark.asyncio(loop_scope="session")
 class TestLiveEnginePoll:
     """Tests for the internal _poll() method."""
 
@@ -463,6 +464,7 @@ class TestLiveEnginePoll:
 # TestSSEFanout
 # ---------------------------------------------------------------------------
 
+@pytest.mark.asyncio(loop_scope="session")
 class TestSSEFanout:
     """Tests for SSEFanout output."""
 
@@ -549,6 +551,7 @@ class TestSSEFanout:
 # TestWatermark
 # ---------------------------------------------------------------------------
 
+@pytest.mark.asyncio(loop_scope="session")
 class TestWatermark:
     """Tests for get_watermark and set_watermark in provisa.live.watermark."""
 
@@ -607,6 +610,7 @@ class TestWatermark:
 # TestKafkaSinkOutput
 # ---------------------------------------------------------------------------
 
+@pytest.mark.asyncio(loop_scope="session")
 class TestKafkaSinkOutput:
     """Tests for KafkaSinkOutput (confluent-kafka producer mocked)."""
 

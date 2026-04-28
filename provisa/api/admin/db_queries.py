@@ -124,10 +124,11 @@ async def fetch_relationships(conn: asyncpg.Connection) -> list[dict]:
     rows = await conn.fetch(
         "SELECT r.id, r.source_table_id, r.target_table_id, r.source_column, "
         "r.target_column, r.cardinality, r.materialize, r.refresh_interval, "
-        "r.target_function_name, r.function_arg, r.alias, r.graphql_alias, "
+        "r.target_function_name, r.function_arg, r.alias, r.graphql_alias, r.disable_cypher, "
         "t.table_name AS target_table_name "
         "FROM relationships r "
-        "LEFT JOIN registered_tables t ON t.id = r.target_table_id"
+        "LEFT JOIN registered_tables t ON t.id = r.target_table_id "
+        "ORDER BY r.id"
     )
     result = []
     for r in rows:

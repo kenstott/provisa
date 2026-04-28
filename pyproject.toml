@@ -31,6 +31,8 @@ dependencies = [
     "elasticsearch>=8,<9",
     "aiokafka",
     "websockets>=11.0",
+    "boto3",
+    "sqlalchemy>=2",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",
     "opentelemetry-instrumentation-fastapi",
@@ -54,6 +56,7 @@ dev = [
     "pytest-asyncio",
     "ruff",
     "black",
+    "pyright",
 ]
 
 [build-system]
@@ -78,7 +81,7 @@ markers = [
     "requires_debezium: requires Debezium Connect service (docker compose up debezium)",
     "requires_mongodb: requires MongoDB service (docker compose up mongodb)",
     "requires_pgbouncer: requires PgBouncer service (docker compose up pgbouncer)",
-    "requires_provisa_server: requires running Provisa server at localhost:8001",
+    "requires_provisa_server: requires running Provisa server at localhost:8000",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning:pytest_asyncio",

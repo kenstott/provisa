@@ -68,7 +68,16 @@ def rel_field_name(target_field_name: str, cardinality: str) -> str:
 def _to_pascal_case(name: str) -> str:
     """Convert snake_case or kebab-case to PascalCase."""
     parts = re.split(r"[_\-]+", name)
-    return "".join(p.capitalize() for p in parts if p)
+    result = []
+    for p in parts:
+        if not p:
+            continue
+        # If part already has internal uppercase (camelCase), just capitalize first letter
+        if any(c.isupper() for c in p[1:]):
+            result.append(p[0].upper() + p[1:])
+        else:
+            result.append(p.capitalize())
+    return "".join(result)
 
 
 def _to_camel_case(name: str) -> str:

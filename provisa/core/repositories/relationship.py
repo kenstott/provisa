@@ -38,8 +38,9 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
             INSERT INTO relationships (id, source_table_id, target_table_id,
                                        source_column, target_column, cardinality,
                                        materialize, refresh_interval,
-                                       target_function_name, function_arg, alias, graphql_alias)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                                       target_function_name, function_arg, alias, graphql_alias,
+                                       disable_cypher)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             ON CONFLICT (id) DO UPDATE SET
                 source_table_id = EXCLUDED.source_table_id,
                 target_table_id = EXCLUDED.target_table_id,
@@ -51,7 +52,8 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
                 target_function_name = EXCLUDED.target_function_name,
                 function_arg = EXCLUDED.function_arg,
                 alias = EXCLUDED.alias,
-                graphql_alias = EXCLUDED.graphql_alias
+                graphql_alias = EXCLUDED.graphql_alias,
+                disable_cypher = EXCLUDED.disable_cypher
             """,
             rel.id,
             source_tbl["id"],
@@ -65,6 +67,7 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
             rel.function_arg,
             rel.alias or None,
             rel.graphql_alias or None,
+            rel.disable_cypher,
         )
     except Exception as e:
         if "relationships_source_alias_unique" in str(e):
@@ -80,8 +83,11 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
             source_tbl["id"], rel.source_column,
         )
 
-    # Mark target_column as PK (or AK if another PK already exists) on target table
-    if target_tbl_id and rel.target_column:
+    # Mark target_column as PK (or AK if another PK already exists) on target table.
+    # Only applies for many-to-one: target_column is the PK of the target table.
+    # For one-to-many, target_column is a FK in the target — do not mark as PK.
+    from provisa.core.models import Cardinality
+    if target_tbl_id and rel.target_column and rel.cardinality == Cardinality.many_to_one:
         conflicting_pk = await conn.fetchval(
             "SELECT COUNT(*) FROM table_columns WHERE table_id = $1 AND is_primary_key = TRUE AND column_name != $2",
             target_tbl_id, rel.target_column,

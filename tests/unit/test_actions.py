@@ -34,7 +34,6 @@ from provisa.compiler.function_gen import (
 from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
 from provisa.webhooks.executor import execute_webhook, map_response_to_return_type, WebhookResult
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +271,7 @@ class TestWebhookMutationGeneration:
 # Webhooks: HTTP execution (mocked)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.asyncio(loop_scope="session")
 class TestWebhookExecution:
     async def test_webhook_executes_post_request(self):
         """execute_webhook sends an HTTP POST with arguments as JSON body."""

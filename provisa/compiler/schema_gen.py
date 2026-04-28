@@ -64,6 +64,7 @@ class SchemaInput:
     webhooks: list[dict] = field(default_factory=list)  # tracked webhooks
     enum_types: dict = field(default_factory=dict)  # pg_name → GraphQLEnumType (REQ-221)
     approved_queries: list[dict] = field(default_factory=list)  # approved persisted queries for subscription SDL
+    root_table_ids: set[int] | None = None  # if set, only these tables get root query fields; others are type-defs only
 
 
 @dataclass
@@ -233,9 +234,10 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
         col_meta = {m.column_name.lower(): m for m in si.column_types[table_id]}
 
         # Filter columns by role visibility; split native filter cols from regular cols
+        # visible_to=[] means unrestricted (visible to all roles)
         visible_cols = [
             c for c in table["columns"]
-            if role["id"] in c["visible_to"] and not c.get("native_filter_type")
+            if (not c["visible_to"] or role["id"] in c["visible_to"]) and not c.get("native_filter_type")
         ]
         # Native filter cols are API parameters (path/query params), not data columns.
         # They are always exposed as query args regardless of visible_to — the role
@@ -296,10 +298,15 @@ def _assign_names(
         domain_groups.setdefault(t.domain_id, []).append(t)
 
     for domain_id, group in domain_groups.items():
-        domain_table_names = [t.table_name for t in group]
+        domain_snake = domain_to_sql_name(domain_id)
+        dp = f"{domain_snake}__"
+        def _strip(name: str) -> str:
+            return name[len(dp):] if (domain_prefix and name.lower().startswith(dp)) else name
+        domain_table_names = [_strip(t.table_name) if not t.alias else t.table_name for t in group]
         for t in group:
+            base_table_name = _strip(t.table_name) if not t.alias else t.table_name
             t.field_name = generate_name(
-                t.table_name, t.schema_name, t.source_id,
+                base_table_name, t.schema_name, t.source_id,
                 domain_table_names, naming_rules,
                 alias=t.alias,
                 convention=t.naming_convention,
@@ -310,7 +317,6 @@ def _assign_names(
                     t.field_name = f"{alias}__{t.field_name}"
                     t.type_name = f"{alias.upper()}__{to_type_name(t.field_name.split('__', 1)[1])}"
                 else:
-                    domain_snake = domain_to_sql_name(domain_id)
                     t.field_name = f"{domain_snake}__{t.field_name}"
                     t.type_name = to_type_name(t.field_name)
             else:
@@ -364,10 +370,12 @@ def _build_column_fields(
         col_name = col["column_name"]
         meta = table.column_metadata.get(col_name.lower())
         if meta is None:
-            raise ValueError(
-                f"Registered column {col_name!r} on table {table.table_name!r} "
-                f"not found in Trino metadata."
+            import logging as _clog
+            _clog.getLogger(__name__).warning(
+                "Registered column %r on table %r not found in Trino metadata — skipping.",
+                col_name, table.table_name,
             )
+            continue
         object_fields = col.get("object_fields")
         if object_fields and meta.data_type in ("json", "jsonb"):
             gql_type: object = _build_object_type(col_name, object_fields, convention, _obj_registry)
@@ -416,6 +424,12 @@ def _build_where_input(
             filter_type = FILTER_TYPE_MAP.get(scalar)
             if filter_type:
                 input_fields[col_name] = GraphQLInputField(filter_type)
+
+    # Virtual columns support eq/neq filtering
+    _str_filter = FILTER_TYPE_MAP.get(GraphQLString)
+    if _str_filter:
+        input_fields["_name_"] = GraphQLInputField(_str_filter)
+        input_fields["_domain_"] = GraphQLInputField(_str_filter)
 
     if not input_fields:
         return None
@@ -785,12 +799,29 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
     # Create GraphQL object types with thunks (handles circular relationships)
     gql_types: dict[int, GraphQLObjectType] = {}
 
+    # Find the meta:registered_tables table for the _meta synthetic relationship
+    _meta_rt = next(
+        (t for t in tables if t.domain_id == "meta" and t.table_name == "registered_tables"),
+        None,
+    )
+
     for t in tables:
         tid = t.table_id
 
         def make_fields(tid=tid):
             info = table_lookup[tid]
             fields = dict(info.gql_fields)
+
+            # Virtual system columns — always present, no DB metadata needed
+            fields["_name_"] = GraphQLField(GraphQLNonNull(GraphQLString), description="Logical table name")
+            fields["_domain_"] = GraphQLField(GraphQLNonNull(GraphQLString), description="Domain identifier")
+
+            # Synthetic _meta field: every non-meta table links to its registered_tables row
+            if info.domain_id != "meta" and _meta_rt is not None:
+                fields["_meta"] = GraphQLField(
+                    gql_types[_meta_rt.table_id],
+                    description="Registration metadata for this table",
+                )
 
             # Add relationship fields
             for rel in visible_rels:
@@ -841,8 +872,11 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
 
     # Build root query fields
     query_fields: dict[str, GraphQLField] = {}
+    _root_ids = si.root_table_ids  # None → all tables are roots (normal build)
 
     for t in tables:
+        if _root_ids is not None and t.table_id not in _root_ids:
+            continue  # domain-filtered build: foreign-domain tables are type-defs only
         gql_type = gql_types[t.table_id]
         args: dict[str, GraphQLArgument] = {
             "limit": GraphQLArgument(GraphQLInt),

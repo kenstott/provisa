@@ -93,10 +93,14 @@ def path_to_recursive_sql(
 
     src_full = f'"{src_meta.catalog_name}"."{src_meta.schema_name}"."{src_meta.sql_table_name}"'
     tgt_full = f'"{tgt_meta.catalog_name}"."{tgt_meta.schema_name}"."{tgt_meta.sql_table_name}"'
-    src_id_col = rel_mapping.join_source_column
     tgt_id_col = rel_mapping.join_target_column
     src_pk = src_meta.id_column
     tgt_pk = tgt_meta.id_column
+
+    if rel_mapping.source_constant is not None:
+        src_join_expr = str(rel_mapping.source_constant)
+    else:
+        src_join_expr = f'src."{rel_mapping.join_source_column}"'
 
     is_shortest = path_func.func_name == "shortestpath"
 
@@ -111,7 +115,7 @@ WITH RECURSIVE _cypher_path AS (
     'forward' AS _direction,
     CAST(src."{src_pk}" AS VARCHAR) AS _visited
   FROM {src_full} src
-  JOIN {tgt_full} tgt ON src."{src_id_col}" = tgt."{tgt_id_col}"
+  JOIN {tgt_full} tgt ON {src_join_expr} = tgt."{tgt_id_col}"
   WHERE _depth <= {effective_max}
 
   UNION ALL

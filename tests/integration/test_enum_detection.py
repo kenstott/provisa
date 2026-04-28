@@ -41,7 +41,7 @@ from provisa.compiler.enum_detect import (
     _sanitize_enum_value,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.integration]
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -283,6 +283,7 @@ class TestBuildEnumFilterTypes:
 # fetch_enum_registry tests (asyncpg mock — no real PG required)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.asyncio(loop_scope="session")
 class TestFetchEnumRegistry:
     async def test_fetch_enum_registry_builds_correct_mapping(self):
         """fetch_enum_registry groups pg_enum rows into {type_name: [labels]}."""

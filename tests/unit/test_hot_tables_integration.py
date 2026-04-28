@@ -31,7 +31,6 @@ from provisa.compiler.sql_gen import (
     rewrite_hot_joins,
 )
 
-pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 # ---------------------------------------------------------------------------
 # Helpers / builders
@@ -96,6 +95,7 @@ def _make_manager_with_entry(table_name: str, rows: list[dict], column_names: li
 # Tests: loading from Trino (mocked)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.asyncio(loop_scope="session")
 class TestHotTableLoading:
     async def test_hot_table_loaded_from_trino(self):
         """HotTableManager.load_table populates in-memory entry from Trino cursor."""

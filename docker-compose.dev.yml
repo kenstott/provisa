@@ -145,22 +145,26 @@ services:
       retries: 18
       start_period: 60s
 
+  # Expose core observability service ports for direct host access
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.99.0
     volumes:
-      - ./observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
-    command: ["--config=/etc/otel-collector-config.yaml"]
+      - ./observability/otel-collector-config.dev.yaml:/etc/otel-collector-config.dev.yaml:ro
+    command:
+      - "--config=/etc/otel-collector-config.yaml"
+      - "--config=/etc/otel-collector-config.dev.yaml"
     ports:
-      - "4317:4317"   # OTLP gRPC — host backend → collector
-      - "4318:4318"   # OTLP HTTP — host backend → collector
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    depends_on:
+      - tempo
 
   prometheus:
-    image: prom/prometheus:v2.51.2
-    volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    depends_on:
-      - otel-collector
+    ports:
+      - "9090:9090"
+
+  otlp2parquet:
+    ports:
+      - "4319:4319"
 
   tempo:
     image: grafana/tempo:2.4.1
@@ -189,6 +193,5 @@ volumes:
   kafka_data:
   es_data:
   neo4j_data:
-  prometheus_data:
   tempo_data:
   grafana_data:

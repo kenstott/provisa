@@ -617,6 +617,14 @@ interface CanvasProps {
 
 type LayoutMode = "force" | "hierarchy";
 
+const PIN_SVG = "data:image/svg+xml;utf8," + encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>` +
+  `<circle cx='8' cy='6' r='5' fill='%23fbbf24' stroke='%2392400e' stroke-width='1.5'/>` +
+  `<circle cx='8' cy='6' r='2' fill='%2392400e'/>` +
+  `<line x1='8' y1='11' x2='8' y2='16' stroke='%2392400e' stroke-width='1.5' stroke-linecap='round'/>` +
+  `</svg>`
+);
+
 const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
   force: {
     name: "fcose",
@@ -666,6 +674,8 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
   const anchoredRef = useRef<Set<string>>(new Set());
   // Prevents concurrent layout runs from clobbering each other's unlock step
   const layoutRunningRef = useRef(false);
+  // Tracks the active cytoscape layout object so it can be stopped before starting a new one
+  const activeLayoutRef = useRef<{ stop: () => void } | null>(null);
   // Stable ref to nudgeLayout so event handlers can call it without stale closure
   const nudgeLayoutRef = useRef<() => void>(() => {});
   // Node right-click context menu
@@ -718,27 +728,39 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       opts = { ...LAYOUT_OPTIONS.force, idealEdgeLength: () => edgeDistanceRef.current } as CyLayoutOptions;
     }
     const layout = cy.layout(opts);
-    layout.one("layoutstop", () => {
-      cy.batch(() => {
-        cy.nodes().forEach((node) => {
-          const lbl = node.data("label") as string;
-          const n = node.data("_node") as GNode | undefined;
-          const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
-          node.style("background-color", base);
-
-          const sz = sizeOverridesRef.current[lbl] ?? 44;
-          node.style({ width: sz, height: sz, "text-max-width": `${sz - 8}px` });
-          if (n) {
-            const prop = labelPropertyRef.current[n.label];
-            node.style("label", prop
-              ? String(n.properties[prop] ?? n.id)
-              : String(n.properties["name"] ?? n.properties["title"] ?? n.id));
-          }
+    activeLayoutRef.current = layout;
+    const applyStyles = () => {
+      try {
+        cy.batch(() => {
+          cy.nodes().forEach((node) => {
+            const lbl = node.data("label") as string;
+            const n = node.data("_node") as GNode | undefined;
+            const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
+            node.style("background-color", base);
+            const sz = sizeOverridesRef.current[lbl] ?? 44;
+            node.style({ width: sz, height: sz, "text-max-width": `${sz - 8}px` });
+            if (n) {
+              const prop = labelPropertyRef.current[n.label];
+              node.style("label", prop
+                ? String(n.properties[prop] ?? n.id)
+                : String(n.properties["name"] ?? n.properties["title"] ?? n.id));
+            }
+            if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
+            else node.removeClass("pinned");
+          });
         });
-      });
-      cy.nodes().forEach((n) => { if (anchored.has(n.id())) n.unlock(); });
+      } catch { /* cy may have been destroyed */ }
+    };
+    const releaseRun = () => {
+      try { cy.nodes().forEach((n) => { if (anchored.has(n.id())) n.unlock(); }); } catch { /* cy may have been destroyed */ }
       layoutRunningRef.current = false;
-      cy.fit(undefined, 40);
+    };
+    const safetyTimer = setTimeout(() => { applyStyles(); releaseRun(); try { cy.fit(undefined, 40); } catch { /* cy may have been destroyed */ } }, 1000);
+    layout.one("layoutstop", () => {
+      clearTimeout(safetyTimer);
+      applyStyles();
+      releaseRun();
+      try { cy.fit(undefined, 40); } catch { /* cy may have been destroyed */ }
     });
     layout.run();
   }, []);
@@ -752,50 +774,69 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       return;
     }
     layoutRunningRef.current = true;
-    const anchored = anchoredRef.current;
-    // When freeNodes is provided, lock everything except those nodes (and unlock anchored after)
-    const tempLocked = new Set<string>();
-    cy.nodes().forEach((n) => {
-      const id = n.id() as string;
-      if (freeNodes && !freeNodes.has(id)) {
-        if (!n.locked()) { n.lock(); tempLocked.add(id); }
-      } else if (anchored.has(id)) {
-        n.lock();
-      }
-    });
-    const opts = {
-      ...LAYOUT_OPTIONS.force,
-      idealEdgeLength: () => edgeDistanceRef.current,
-      randomize: false,
-      animate: true,
-      animationDuration: 600,
-      animationEasing: "ease-out" as const,
-      numIter: 300,
-      fit: false,
-    } as CyLayoutOptions;
-    const layout = cy.layout(opts);
-    layout.one("layoutstop", () => {
-      cy.batch(() => {
-        cy.nodes().forEach((node) => {
-          const lbl = node.data("label") as string;
-          const n = node.data("_node") as GNode | undefined;
-          const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
-          node.style("background-color", base);
-          const sz = sizeOverridesRef.current[lbl] ?? 44;
-          node.style({ width: sz, height: sz, "text-max-width": `${sz - 8}px` });
-          if (n) {
-            const prop = labelPropertyRef.current[n.label];
-            node.style("label", prop
-              ? String(n.properties[prop] ?? n.id)
-              : String(n.properties["name"] ?? n.properties["title"] ?? n.id));
-          }
-        });
+    try {
+      const anchored = anchoredRef.current;
+      // When freeNodes is provided, lock everything except those nodes (and unlock anchored after)
+      const tempLocked = new Set<string>();
+      cy.nodes().forEach((n) => {
+        const id = n.id() as string;
+        if (freeNodes && !freeNodes.has(id)) {
+          if (!n.locked()) { n.lock(); tempLocked.add(id); }
+        } else if (anchored.has(id)) {
+          n.lock();
+        }
       });
-      tempLocked.forEach((id) => { const n = cy.$id(id); if (n.length > 0) n.unlock(); });
-      cy.nodes().forEach((n) => { if (anchored.has(n.id())) n.unlock(); });
+      const opts = {
+        ...LAYOUT_OPTIONS.force,
+        idealEdgeLength: () => edgeDistanceRef.current,
+        randomize: false,
+        animate: true,
+        animationDuration: 600,
+        animationEasing: "ease-out" as const,
+        numIter: 300,
+        fit: false,
+      } as CyLayoutOptions;
+      const layout = cy.layout(opts);
+      activeLayoutRef.current = layout;
+      const applyStylesNudge = () => {
+        try {
+          cy.batch(() => {
+            cy.nodes().forEach((node) => {
+              const lbl = node.data("label") as string;
+              const n = node.data("_node") as GNode | undefined;
+              const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
+              node.style("background-color", base);
+              const sz = sizeOverridesRef.current[lbl] ?? 44;
+              node.style({ width: sz, height: sz, "text-max-width": `${sz - 8}px` });
+              if (n) {
+                const prop = labelPropertyRef.current[n.label];
+                node.style("label", prop
+                  ? String(n.properties[prop] ?? n.id)
+                  : String(n.properties["name"] ?? n.properties["title"] ?? n.id));
+              }
+              if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
+              else node.removeClass("pinned");
+            });
+          });
+        } catch { /* cy may have been destroyed */ }
+      };
+      const releaseNudge = () => {
+        try {
+          tempLocked.forEach((id) => { const n = cy.$id(id); if (n.length > 0) n.unlock(); });
+          cy.nodes().forEach((n) => { if (anchored.has(n.id())) n.unlock(); });
+        } catch { /* cy may have been destroyed */ }
+        layoutRunningRef.current = false;
+      };
+      const safetyTimerNudge = setTimeout(() => { applyStylesNudge(); releaseNudge(); }, 1000);
+      layout.one("layoutstop", () => {
+        clearTimeout(safetyTimerNudge);
+        applyStylesNudge();
+        releaseNudge();
+      });
+      layout.run();
+    } catch {
       layoutRunningRef.current = false;
-    });
-    layout.run();
+    }
   }, [runLayout]);
 
   // Keep ref in sync so the cytoscape "free" event always calls the latest nudgeLayout
@@ -880,6 +921,19 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           },
         },
         {
+          selector: "node.pinned",
+          style: {
+            "background-image": PIN_SVG,
+            "background-width": "14px",
+            "background-height": "14px",
+            "background-position-x": "88%",
+            "background-position-y": "8%",
+            "background-fit": "none",
+            "background-clip": "none",
+            "background-image-opacity": 1,
+          },
+        },
+        {
           selector: "edge",
           style: {
             "line-color": "#3a3d4e",
@@ -946,16 +1000,19 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       grabPositions.delete(id);
       if (!before || (Math.abs(after.x - before.x) < 1 && Math.abs(after.y - before.y) < 1)) return;
       anchoredRef.current.add(id);
+      evt.target.addClass("pinned");
       nudgeLayoutRef.current();
     });
 
     cyRef.current = cy;
     onCyReady?.(cy);
     anchoredRef.current = new Set();
+    activeLayoutRef.current = null;
     layoutRunningRef.current = false;
     if (els.length > 0) runLayout(layoutModeRef.current);
     return () => {
       cyRef.current = null;
+      activeLayoutRef.current = null;
       onCyReady?.(null);
       cy.destroy();
     };
@@ -973,7 +1030,11 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     cy.batch(() => {
       // Remove nodes no longer in overlay
       prevNodes.forEach((_, k) => {
-        if (!overlayNodes.has(k)) cy.$id(`${k.split(":")[0]}:${k.split(":").slice(1).join(":")}`).remove();
+        if (!overlayNodes.has(k)) {
+          const cyId = `${k.split(":")[0]}:${k.split(":").slice(1).join(":")}`;
+          cy.$id(cyId).remove();
+          anchoredRef.current.delete(cyId);
+        }
       });
       // Remove edges no longer in overlay
       prevEdges.forEach((_, k) => {
@@ -1013,6 +1074,8 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         const angle = (2 * Math.PI * i) / children.length - Math.PI / 2;
         node.position({ x: pos.x + r * Math.cos(angle), y: pos.y + r * Math.sin(angle) });
         node.lock();
+        anchoredRef.current.add(node.id() as string);
+        node.addClass("pinned");
       });
     });
     // Arrange circular parents in a ring around their child node; lock so layout won't move them
@@ -1027,6 +1090,8 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         const angle = (2 * Math.PI * i) / parents.length - Math.PI / 2;
         node.position({ x: pos.x + r * Math.cos(angle), y: pos.y + r * Math.sin(angle) });
         node.lock();
+        anchoredRef.current.add(node.id() as string);
+        node.addClass("pinned");
       });
     });
 
@@ -1218,6 +1283,26 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           >
             Exclude {nodeCtxMenu.selectedNodeIds.length > 1 ? `${nodeCtxMenu.selectedNodeIds.length} nodes` : "from query"}
           </button>
+          {nodeCtxMenu.selectedNodeIds.some((id) => anchoredRef.current.has(id)) && (
+            <button
+              className="gf-node-ctx-item"
+              onClick={() => {
+                const cy = cyRef.current;
+                nodeCtxMenu.selectedNodeIds.forEach((id) => {
+                  anchoredRef.current.delete(id);
+                  if (cy) { cy.$id(id).unlock(); cy.$id(id).removeClass("pinned"); }
+                });
+                // Stop any in-progress layout and force-reset the gate so nudge can start fresh
+                try { activeLayoutRef.current?.stop(); } catch { /* ignore */ }
+                activeLayoutRef.current = null;
+                layoutRunningRef.current = false;
+                setNodeCtxMenu(null);
+                nudgeLayoutRef.current();
+              }}
+            >
+              Unfix position
+            </button>
+          )}
           <button
             className="gf-node-ctx-item"
             disabled={!hasChildRels}
@@ -1287,17 +1372,93 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           >
             Invert selection
           </button>
-          <button
-            className="gf-node-ctx-item"
-            onClick={() => {
-              const cy = cyRef.current;
-              if (cy) cy.nodes().select();
-              onSelect(null);
-              setNodeCtxMenu(null);
-            }}
-          >
-            Select all
-          </button>
+          <div className="gf-node-ctx-submenu-wrap">
+            <button className="gf-node-ctx-item gf-node-ctx-item--has-sub">Select</button>
+            <div className="gf-node-ctx-submenu">
+              <button
+                className="gf-node-ctx-item"
+                onClick={() => {
+                  const cy = cyRef.current;
+                  if (cy) cy.nodes().select();
+                  onSelect(null);
+                  setNodeCtxMenu(null);
+                }}
+              >
+                All
+              </button>
+              <button
+                className="gf-node-ctx-item"
+                onClick={() => {
+                  const cy = cyRef.current;
+                  if (cy) {
+                    const targetLabel = ctxNode?.label ?? "";
+                    cy.nodes().forEach((n) => {
+                      if ((n.data("label") as string) === targetLabel) n.select();
+                      else n.unselect();
+                    });
+                  }
+                  onSelect(null);
+                  setNodeCtxMenu(null);
+                }}
+              >
+                All of this type
+              </button>
+              <button
+                className="gf-node-ctx-item"
+                onClick={() => {
+                  const cy = cyRef.current;
+                  if (cy) {
+                    cy.nodes().unselect();
+                    nodeCtxMenu.selectedNodeIds.forEach((id) => {
+                      cy.$id(id).neighborhood("node").select();
+                    });
+                  }
+                  onSelect(null);
+                  setNodeCtxMenu(null);
+                }}
+              >
+                Connected
+              </button>
+              <button
+                className="gf-node-ctx-item"
+                onClick={() => {
+                  const cy = cyRef.current;
+                  if (cy) {
+                    cy.nodes().unselect();
+                    nodeCtxMenu.selectedNodeIds.forEach((id) => {
+                      // outgoing edges → targets
+                      cy.$id(id).neighborhood("edge").forEach((e) => {
+                        if ((e.source().id() as string) === id) e.target().select();
+                      });
+                    });
+                  }
+                  onSelect(null);
+                  setNodeCtxMenu(null);
+                }}
+              >
+                Children
+              </button>
+              <button
+                className="gf-node-ctx-item"
+                onClick={() => {
+                  const cy = cyRef.current;
+                  if (cy) {
+                    cy.nodes().unselect();
+                    nodeCtxMenu.selectedNodeIds.forEach((id) => {
+                      // incoming edges → sources
+                      cy.$id(id).neighborhood("edge").forEach((e) => {
+                        if ((e.target().id() as string) === id) e.source().select();
+                      });
+                    });
+                  }
+                  onSelect(null);
+                  setNodeCtxMenu(null);
+                }}
+              >
+                Parents
+              </button>
+            </div>
+          </div>
           <div className="gf-node-ctx-divider" />
           <button
             className="gf-node-ctx-item gf-node-ctx-item--danger"
@@ -1449,6 +1610,7 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
   const editQueryRef = useRef(editQuery);
   editQueryRef.current = editQuery;
   const [overlayData, setOverlayData] = useState<Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>>(new Map);
+  const [autoImpute, setAutoImpute] = useState(false);
   const handleRerun = useCallback((id: string, query: string) => {
     setOverlayData(new Map());
     onRerun(id, query);
@@ -1657,45 +1819,18 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
     const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
     const tl = norm(tableLabel);
     const rels = (relationships ?? []).filter((r) => norm(r.targetTableName) === tl);
-    const myPkKey = pkCols.join(",");
-    const siblingTargetRels = rels.length === 0 ? (() => {
-      const siblingTls = Object.entries(pkMap)
-        .filter(([lbl, cols]) => cols.join(",") === myPkKey && lbl !== gNode.label && lbl !== tableLabel)
-        .map(([lbl]) => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl));
-      return (relationships ?? []).filter(r => siblingTls.includes(norm(r.targetTableName)));
-    })() : null;
-    const effectiveRels = rels.length > 0 ? rels : (siblingTargetRels ?? []);
-    const effectiveLabel = rels.length > 0 ? tableLabel : (() => {
-      if (!siblingTargetRels || siblingTargetRels.length === 0) return tableLabel;
-      const sib = siblingTargetRels[0];
-      return Object.keys(pkMap).find(lbl => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl) === norm(sib.targetTableName))?.split(":").pop() ?? sib.targetTableName;
-    })();
-    if (effectiveRels.length === 0) return;
+    if (rels.length === 0) return;
     // Run each relationship as a separate query and merge — avoids Trino UNION schema mismatch
     const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = { nodes: new Map(), edges: new Map() };
-    await Promise.all(effectiveRels.map(async (r) => {
+    await Promise.all(rels.map(async (r) => {
       const relType = (r.alias ?? r.graphqlAlias ?? "").toUpperCase();
-      const q = `MATCH (parent)-[r:${relType}]->(n:${effectiveLabel}) WHERE n.${pkCol} = ${pkLit} RETURN n, r, parent`;
+      const q = `MATCH (parent)-[r:${relType}]->(n:${tableLabel}) WHERE n.${pkCol} = ${pkLit} RETURN n, r, parent`;
       const result = await _fetchNeighbors(q);
       if (result) {
         result.nodes.forEach((n, k) => merged.nodes.set(k, n));
         result.edges.forEach((e, k) => merged.edges.set(k, e));
       }
     }));
-    if (siblingTargetRels && siblingTargetRels.length > 0) {
-      const sibNodeKey = [...merged.nodes.keys()].find((k) => {
-        const n = merged.nodes.get(k)!;
-        return String(n.id) === String(pkValue) && n.label !== gNode.label;
-      });
-      if (sibNodeKey) {
-        merged.nodes.delete(sibNodeKey);
-        merged.edges.forEach((edge) => {
-          if (`${edge.endNode.label}:${edge.endNode.id}` === sibNodeKey) {
-            edge.endNode = gNode;
-          }
-        });
-      }
-    }
     if (merged.nodes.size > 0 || merged.edges.size > 0) {
       setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
     }
@@ -1847,13 +1982,15 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
     Array.from(overlayData.keys()).filter(k => k.endsWith(":parents:circular")).map(k => k.slice(0, -":parents:circular".length))
   ), [overlayData]);
 
-  const remainingRelsActive = overlayData.has("__remaining_rels");
+  const remainingRelsActive = autoImpute;
 
   const handleToggleRemainingRels = useCallback(async () => {
-    if (overlayData.has("__remaining_rels")) {
+    if (autoImpute) {
+      setAutoImpute(false);
       setOverlayData((prev) => { const next = new Map(prev); next.delete("__remaining_rels"); return next; });
       return;
     }
+    setAutoImpute(true);
     const queries = buildRemainingRelsQueries(mergedNodes, pkMap);
     if (queries.length === 0) return;
     const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = { nodes: new Map(), edges: new Map() };
@@ -1867,7 +2004,28 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
     if (merged.nodes.size > 0 || merged.edges.size > 0) {
       setOverlayData((prev) => new Map(prev).set("__remaining_rels", merged));
     }
-  }, [overlayData, mergedNodes, pkMap, _fetchNeighbors]);
+  }, [autoImpute, mergedNodes, pkMap, _fetchNeighbors]);
+
+  // Auto-run imputation whenever a new query result arrives while toggle is on
+  useEffect(() => {
+    if (!autoImpute || frame.status !== "done" || frame.nodes.size === 0) return;
+    let cancelled = false;
+    const queries = buildRemainingRelsQueries(frame.nodes, pkMap);
+    if (queries.length === 0) return;
+    const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = { nodes: new Map(), edges: new Map() };
+    Promise.all(queries.map(async (q) => {
+      const result = await _fetchNeighbors(q);
+      if (!cancelled && result) {
+        result.nodes.forEach((n, k) => merged.nodes.set(k, n));
+        result.edges.forEach((e, k) => merged.edges.set(k, e));
+      }
+    })).then(() => {
+      if (!cancelled && (merged.nodes.size > 0 || merged.edges.size > 0)) {
+        setOverlayData((prev) => new Map(prev).set("__remaining_rels", merged));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [autoImpute, frame.status, frame.nodes, pkMap, _fetchNeighbors]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
   const activeView: "graph" | "table" | "json" = hasGraph ? view : (view === "json" ? "json" : "table");
@@ -1910,9 +2068,9 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
         <button className="gf-run-inline-btn" onClick={() => handleRerun(frame.id, editQuery.trim())} title="Run">▶</button>
         {hasGraph && frame.status === "done" && (
           <button
-            className={`gf-icon-btn${remainingRelsActive ? " active" : ""}`}
+            className={`gf-icon-btn${remainingRelsActive ? " gf-icon-btn--on" : ""}`}
             onClick={handleToggleRemainingRels}
-            title={remainingRelsActive ? "Hide remaining relationships" : "Show remaining relationships between visible nodes"}
+            title={remainingRelsActive ? "Auto-impute relationships ON — click to disable" : "Auto-impute relationships between visible nodes (persists across reruns)"}
           >⊕</button>
         )}
         {hasGraph && (
@@ -2007,7 +2165,16 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
 
   const frameBody = (
     <div className="gf-body">
-      {frame.status === "error" && <div className="gf-error">{frame.error}</div>}
+      {frame.status === "error" && (
+        <div className="gf-error gf-error--copyable">
+          <span className="gf-error-text">{frame.error}</span>
+          <button
+            className="gf-error-copy-btn"
+            title="Copy error"
+            onClick={() => navigator.clipboard.writeText(frame.error ?? "")}
+          >⎘</button>
+        </div>
+      )}
       {frame.status !== "error" && hasGraph && (
         <div className="gf-graph-area" style={{ height: graphAreaHeight, display: activeView === "graph" ? undefined : "none" }}>
           <GraphCanvas nodes={frame.nodes} edges={frame.edges} overlayNodes={overlayNodes} overlayEdges={overlayEdges} onSelect={setSelected} colorOverrides={colorOverrides} sizeOverrides={sizeOverrides} labelProperty={labelProperty} relLineOverrides={relLineOverrides} onExcludeNode={handleExcludeNode} pkMap={pkMap} relationships={relationships ?? []} showingChildrenNatural={showingChildrenNatural} onToggleChildren={handleToggleChildren} showingChildrenCircular={showingChildrenCircular} onToggleChildrenCircular={handleToggleChildrenCircular} showingParents={showingParents} onToggleParents={handleToggleParents} showingParentsCircular={showingParentsCircular} onToggleParentsCircular={handleToggleParentsCircular} onCyReady={(cy) => { canvasCyRef.current = cy; }} />

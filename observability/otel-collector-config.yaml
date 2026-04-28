@@ -10,8 +10,8 @@ exporters:
   prometheus:
     endpoint: 0.0.0.0:8889
     namespace: provisa
-  otlp/tempo:
-    endpoint: tempo:4317
+  otlphttp/parquet:
+    endpoint: http://otlp2parquet:4318
     tls:
       insecure: true
   debug:
@@ -25,12 +25,12 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/tempo, debug]
+      exporters: [otlphttp/parquet, debug]
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [prometheus]
+      exporters: [prometheus, otlphttp/parquet]
     logs:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug]
+      exporters: [otlphttp/parquet, debug]

@@ -92,9 +92,11 @@ async def _load_config_in_txn(
     # Serialize concurrent config loads to prevent deadlocks when multiple
     # processes (e.g. parallel test app lifespans) upsert the same rows.
     await conn.execute("SELECT pg_advisory_xact_lock(7261748190)")
+    _SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel"]
+    _SYSTEM_DOMAIN_IDS = ["", "meta", "ops"]
     if replace:
-        new_source_ids = [src.id for src in config.sources]
-        new_domain_ids = [d.id for d in config.domains]
+        new_source_ids = list({src.id for src in config.sources} | set(_SYSTEM_SOURCE_IDS))
+        new_domain_ids = list({d.id for d in config.domains} | set(_SYSTEM_DOMAIN_IDS))
         new_role_ids = [r.id for r in config.roles]
         if new_source_ids:
             await conn.execute(
@@ -106,15 +108,24 @@ async def _load_config_in_txn(
                 new_source_ids,
             )
         else:
-            await conn.execute("DELETE FROM registered_tables")
-            await conn.execute("DELETE FROM sources")
+            await conn.execute(
+                "DELETE FROM registered_tables WHERE source_id != ALL($1::text[])",
+                _SYSTEM_SOURCE_IDS,
+            )
+            await conn.execute(
+                "DELETE FROM sources WHERE id != ALL($1::text[])",
+                _SYSTEM_SOURCE_IDS,
+            )
         if new_domain_ids:
             await conn.execute(
                 "DELETE FROM domains WHERE id != ALL($1::text[])",
                 new_domain_ids,
             )
         else:
-            await conn.execute("DELETE FROM domains")
+            await conn.execute(
+                "DELETE FROM domains WHERE id != ALL($1::text[])",
+                _SYSTEM_DOMAIN_IDS,
+            )
         if new_role_ids:
             await conn.execute(
                 "DELETE FROM roles WHERE id != ALL($1::text[])",
@@ -293,16 +304,40 @@ async def _load_config_in_txn(
                 pass  # analyze_source_tables already logs per-table failures
 
     # 6. Relationships (tables must exist first)
+    # Preserve relationships whose source or target table belongs to a dynamically-registered
+    # source (e.g. graphql_remote) — those are managed outside of this config file.
     current_rel_ids = [rel.id for rel in config.relationships]
     if current_rel_ids:
         await conn.execute(
-            "DELETE FROM relationships WHERE id != ALL($1::text[])",
+            """
+            DELETE FROM relationships r
+            WHERE r.id != ALL($1::text[])
+            AND NOT EXISTS (
+                SELECT 1 FROM registered_tables rt
+                JOIN sources s ON rt.source_id = s.id
+                WHERE (rt.id = r.source_table_id OR rt.id = r.target_table_id)
+                AND s.type = 'graphql_remote'
+            )
+            """,
             current_rel_ids,
         )
     else:
-        await conn.execute("DELETE FROM relationships")
+        await conn.execute(
+            """
+            DELETE FROM relationships r
+            WHERE NOT EXISTS (
+                SELECT 1 FROM registered_tables rt
+                JOIN sources s ON rt.source_id = s.id
+                WHERE (rt.id = r.source_table_id OR rt.id = r.target_table_id)
+                AND s.type = 'graphql_remote'
+            )
+            """,
+        )
     for rel in config.relationships:
-        await rel_repo.upsert(conn, rel)
+        try:
+            await rel_repo.upsert(conn, rel)
+        except ValueError:
+            pass  # referenced table not yet registered (dynamic source); retried after source registration
 
     # 7. RLS rules (tables + roles must exist first)
     for rule in config.rls_rules:

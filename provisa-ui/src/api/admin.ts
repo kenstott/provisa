@@ -45,7 +45,7 @@ export async function fetchRoles(): Promise<Role[]> {
 
 export async function fetchSources(): Promise<Source[]> {
   const data = await gql<{ sources: Source[] }>(
-    `{ sources { id type host port database username dialect cacheEnabled cacheTtl namingConvention } }`
+    `{ sources { id type host port database username dialect cacheEnabled cacheTtl namingConvention allowedDomains } }`
   );
   return data.sources;
 }
@@ -67,14 +67,14 @@ export async function deleteDomain(id: string): Promise<void> {
 
 export async function fetchTables(): Promise<RegisteredTable[]> {
   const data = await gql<{ tables: RegisteredTable[] }>(
-    `{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey } columnPresets { column source name value dataType } } }`
+    `{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey scope } columnPresets { column source name value dataType } } }`
   );
   return data.tables;
 }
 
 export async function fetchRelationships(): Promise<Relationship[]> {
   const data = await gql<{ relationships: Relationship[] }>(
-    `{ relationships { id sourceTableId targetTableId sourceTableName targetTableName sourceColumn targetColumn cardinality materialize refreshInterval targetFunctionName functionArg alias graphqlAlias computedCypherAlias } }`
+    `{ relationships { id sourceTableId targetTableId sourceTableName targetTableName sourceColumn targetColumn cardinality materialize refreshInterval targetFunctionName functionArg alias graphqlAlias computedCypherAlias autoSuggested disableCypher } }`
   );
   return data.relationships;
 }
@@ -92,6 +92,8 @@ export async function upsertRelationship(input: {
   functionArg?: string | null;
   alias?: string | null;
   graphqlAlias?: string | null;
+  disableCypher?: boolean;
+  recordCandidate?: boolean;
 }): Promise<MutationResult> {
   const data = await gql<{ upsertRelationship: MutationResult }>(
     `mutation($input: RelationshipInput!) { upsertRelationship(input: $input) { success message } }`,
@@ -186,7 +188,7 @@ export async function registerTable(input: {
   alias?: string;
   description?: string;
   watermarkColumn?: string | null;
-  columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null; isPrimaryKey?: boolean; isForeignKey?: boolean; isAlternateKey?: boolean }[];
+  columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null; isPrimaryKey?: boolean; isForeignKey?: boolean; isAlternateKey?: boolean; scope?: string }[];
   columnPresets?: { column: string; source: string; name?: string | null; value?: string | null; dataType?: string | null }[];
 }): Promise<MutationResult> {
   const data = await gql<{ registerTable: MutationResult }>(
@@ -205,7 +207,7 @@ export async function updateTable(input: {
   alias?: string;
   description?: string;
   watermarkColumn?: string | null;
-  columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null; isPrimaryKey?: boolean; isForeignKey?: boolean; isAlternateKey?: boolean }[];
+  columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null; isPrimaryKey?: boolean; isForeignKey?: boolean; isAlternateKey?: boolean; scope?: string }[];
   columnPresets?: { column: string; source: string; name?: string | null; value?: string | null; dataType?: string | null }[];
 }): Promise<MutationResult> {
   const data = await gql<{ updateTable: MutationResult }>(
@@ -652,6 +654,29 @@ export async function submitQuery(
   return { query_id: r.queryId, operation_name: r.operationName, message: r.message };
 }
 
+export async function runSql(
+  sqlText: string,
+  role: string = "admin",
+): Promise<{ columns: string[]; rows: Record<string, unknown>[]; error?: string }> {
+  try {
+    const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ sql: sqlText, role }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      return { columns: [], rows: [], error: text };
+    }
+    const json = await resp.json();
+    const rows: Record<string, unknown>[] = json?.data?.sql ?? [];
+    const columns = rows.length > 0 && rows[0] != null ? Object.keys(rows[0] as object) : [];
+    return { columns, rows };
+  } catch (e: any) {
+    return { columns: [], rows: [], error: e.message };
+  }
+}
+
 export async function executeQuery(
   roleId: string,
   query: string,
@@ -768,6 +793,14 @@ export async function updateSourceNaming(sourceId: string, namingConvention: str
   return data.updateSourceNaming;
 }
 
+export async function updateSourceAllowedDomains(sourceId: string, allowedDomains: string[]): Promise<MutationResult> {
+  const data = await gql<{ updateSourceAllowedDomains: MutationResult }>(
+    `mutation($sourceId: String!, $allowedDomains: [String!]!) { updateSourceAllowedDomains(sourceId: $sourceId, allowedDomains: $allowedDomains) { success message } }`,
+    { sourceId, allowedDomains }
+  );
+  return data.updateSourceAllowedDomains;
+}
+
 export async function updateTableNaming(tableId: number, namingConvention: string | null): Promise<MutationResult> {
   const data = await gql<{ updateTableNaming: MutationResult }>(
     `mutation($tableId: Int!, $namingConvention: String) { updateTableNaming(tableId: $tableId, namingConvention: $namingConvention) { success message } }`,
@@ -809,4 +842,12 @@ export async function purgeCacheByTable(tableId: number): Promise<MutationResult
     { tableId }
   );
   return data.purgeCacheByTable;
+}
+
+export async function invalidateFileSource(tableId: number): Promise<MutationResult> {
+  const data = await gql<{ invalidateFileSource: MutationResult }>(
+    `mutation($tableId: Int!) { invalidateFileSource(tableId: $tableId) { success message } }`,
+    { tableId }
+  );
+  return data.invalidateFileSource;
 }

@@ -11,7 +11,7 @@
 import React, { useState, useEffect } from "react";
 import { Trash2, Pencil, Save, X } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
-import { fetchSources, deleteSource, createSource, updateSource, renameSource, updateSourceCache, updateSourceNaming, fetchSettings } from "../api/admin";
+import { fetchSources, deleteSource, createSource, updateSource, renameSource, updateSourceCache, updateSourceNaming, updateSourceAllowedDomains, fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SchemaDiscovery } from "../components/SchemaDiscovery";
@@ -140,6 +140,7 @@ export function SourcesPage() {
     database: "", username: "", password: "",
     namingConvention: "", cacheTtl: "", cacheEnabled: true,
     path: "" as string,
+    allowedDomains: "" as string,
   });
   const [authType, setAuthType] = useState("none");
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
@@ -184,6 +185,7 @@ export function SourcesPage() {
       cacheTtl: s.cacheTtl != null ? String(s.cacheTtl) : "",
       cacheEnabled: s.cacheEnabled,
       path: s.path ?? "",
+      allowedDomains: (s.allowedDomains ?? []).join(", "),
     });
     setAuthType("none");
     setAuthFields({});
@@ -195,7 +197,7 @@ export function SourcesPage() {
   const handleCancelForm = () => {
     setShowForm(false);
     setEditingSourceId(null);
-    setForm({ id: "", type: "postgresql", host: "", port: 5432, database: "", username: "", password: "", namingConvention: "", cacheTtl: "", cacheEnabled: true, path: "" });
+    setForm({ id: "", type: "postgresql", host: "", port: 5432, database: "", username: "", password: "", namingConvention: "", cacheTtl: "", cacheEnabled: true, path: "", allowedDomains: "" });
     setAuthType("none");
     setAuthFields({});
   };
@@ -223,6 +225,9 @@ export function SourcesPage() {
         if (!cacheResult.success) throw new Error(cacheResult.message);
         const namingResult = await updateSourceNaming(effectiveId, form.namingConvention === "" ? null : form.namingConvention);
         if (!namingResult.success) throw new Error(namingResult.message);
+        const parsedDomains = form.allowedDomains.split(",").map((d) => d.trim()).filter(Boolean);
+        const domainsResult = await updateSourceAllowedDomains(effectiveId, parsedDomains);
+        if (!domainsResult.success) throw new Error(domainsResult.message);
       } else {
         await createSource(sourcePayload);
       }
@@ -702,6 +707,9 @@ export function SourcesPage() {
           <label>Cache TTL (seconds)
             <input type="number" min={0} value={form.cacheTtl} onChange={(e) => setForm({ ...form, cacheTtl: e.target.value })} placeholder="inherit global" />
           </label>
+          <label>Allowed Domains
+            <input value={form.allowedDomains} onChange={(e) => setForm({ ...form, allowedDomains: e.target.value })} placeholder="comma-separated domain IDs, blank = unrestricted" />
+          </label>
         </>
       )}
     </>
@@ -826,6 +834,7 @@ export function SourcesPage() {
                               ["Cache", s.cacheEnabled ? "enabled" : "disabled"],
                               ["Cache TTL", s.cacheTtl != null ? `${s.cacheTtl}s` : "inherit"],
                               ["Effective TTL", getEffectiveTtl(s)],
+                              ["Allowed Domains", (s.allowedDomains ?? []).length ? (s.allowedDomains ?? []).join(", ") : "unrestricted"],
                             ] as [string, string | number][]).map(([k, v]) => (
                               <React.Fragment key={k}>
                                 <dt style={{ color: "var(--text-muted)", fontWeight: 500, fontSize: "0.875rem" }}>{k}</dt>

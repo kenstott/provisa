@@ -20,9 +20,9 @@ import asyncpg
 from provisa.cache.store import CacheStore
 
 
-async def invalidate_cache_for_table(cache_store: CacheStore, table_id: int) -> None:
+async def invalidate_cache_for_table(response_cache_store: CacheStore, table_id: int) -> None:
     """Invalidate cached query results that reference a table (REQ-079)."""
-    await cache_store.invalidate_by_table(table_id)
+    await response_cache_store.invalidate_by_table(table_id)
 
 
 async def flag_queries_for_table(conn: asyncpg.Connection, table_id: int) -> int:

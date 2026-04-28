@@ -7,12 +7,14 @@ set -euo pipefail
 SEED_DATA=false
 OBSERVABILITY=true
 KEEP_DOCKER=false
+DEMO=false
 for arg in "$@"; do
   case "$arg" in
     --seed-data) SEED_DATA=true ;;
     --no-observability) OBSERVABILITY=false ;;
     --keep-docker) KEEP_DOCKER=true ;;
-    *) echo "Unknown option: $arg"; echo "Usage: $0 [--seed-data] [--no-observability] [--keep-docker]"; exit 1 ;;
+    --demo) DEMO=true ;;
+    *) echo "Unknown option: $arg"; echo "Usage: $0 [--seed-data] [--no-observability] [--keep-docker] [--demo]"; exit 1 ;;
   esac
 done
 
@@ -30,6 +32,8 @@ fi
 # Ensure required env vars are set
 export PG_PASSWORD="${PG_PASSWORD:-provisa}"
 export REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
+export PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
+export GRAPHQL_DEMO_ENABLED="${GRAPHQL_DEMO_ENABLED:-$DEMO}"
 export PROVISA_REDIRECT_ENABLED="${PROVISA_REDIRECT_ENABLED:-true}"
 export PROVISA_REDIRECT_ENDPOINT="${PROVISA_REDIRECT_ENDPOINT:-http://localhost:9000}"
 export PROVISA_REDIRECT_ACCESS_KEY="${PROVISA_REDIRECT_ACCESS_KEY:-minioadmin}"
@@ -40,6 +44,13 @@ export KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
 
 # Compose files for dev: core services + dev overlay (ports, kafka, mongo, elasticsearch, observability)
 COMPOSE_FILES="-f docker-compose.core.yml -f docker-compose.dev.yml"
+if [ "$DEMO" = true ]; then
+  COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.demo.yml"
+  if [ -f "$SCRIPT_DIR/demo/files/create_demo_files.py" ]; then
+    echo "Generating demo files..."
+    "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/demo/files/create_demo_files.py" 2>/dev/null || true
+  fi
+fi
 
 # Start infrastructure services via Docker Compose
 echo "Starting Docker Compose services..."
@@ -98,6 +109,57 @@ done
 echo "Docker Compose services are healthy."
 if [ "$OBSERVABILITY" = true ]; then
   echo "  Grafana: http://localhost:3100"
+fi
+
+if [ "$DEMO" = true ]; then
+  echo -n "Waiting for petstore-mock"
+  for i in $(seq 1 30); do
+    if curl -sf "${PETSTORE_BASE_URL}/openapi.json" > /dev/null 2>&1; then
+      echo " OK"
+      break
+    fi
+    if [ "$i" -eq 30 ]; then
+      echo " TIMEOUT (skipping user seed)"
+      break
+    fi
+    echo -n "."
+    sleep 2
+  done
+  curl -sf "${PETSTORE_BASE_URL}/openapi.json" > /dev/null 2>&1 && \
+  curl -s -X POST "${PETSTORE_BASE_URL}/user/createWithList" \
+    -H "Content-Type: application/json" \
+    -d '[
+      {"id":101,"username":"Sara Kim","firstName":"Sara","lastName":"Kim","email":"sara.kim@example.com","password":"demo","phone":"555-0101","userStatus":1},
+      {"id":102,"username":"Tom Evans","firstName":"Tom","lastName":"Evans","email":"tom.evans@example.com","password":"demo","phone":"555-0102","userStatus":1},
+      {"id":103,"username":"Amy Zhao","firstName":"Amy","lastName":"Zhao","email":"amy.zhao@example.com","password":"demo","phone":"555-0103","userStatus":1},
+      {"id":104,"username":"Carlos Ruiz","firstName":"Carlos","lastName":"Ruiz","email":"carlos.ruiz@example.com","password":"demo","phone":"555-0104","userStatus":1},
+      {"id":105,"username":"Nina Patel","firstName":"Nina","lastName":"Patel","email":"nina.patel@example.com","password":"demo","phone":"555-0105","userStatus":1},
+      {"id":106,"username":"James Park","firstName":"James","lastName":"Park","email":"james.park@example.com","password":"demo","phone":"555-0106","userStatus":1},
+      {"id":107,"username":"Lisa Chen","firstName":"Lisa","lastName":"Chen","email":"lisa.chen@example.com","password":"demo","phone":"555-0107","userStatus":1},
+      {"id":108,"username":"Mark Torres","firstName":"Mark","lastName":"Torres","email":"mark.torres@example.com","password":"demo","phone":"555-0108","userStatus":1},
+      {"id":109,"username":"Jen Wu","firstName":"Jen","lastName":"Wu","email":"jen.wu@example.com","password":"demo","phone":"555-0109","userStatus":1},
+      {"id":110,"username":"Derek Hall","firstName":"Derek","lastName":"Hall","email":"derek.hall@example.com","password":"demo","phone":"555-0110","userStatus":1},
+      {"id":111,"username":"Rachel Scott","firstName":"Rachel","lastName":"Scott","email":"rachel.scott@example.com","password":"demo","phone":"555-0111","userStatus":1}
+    ]' > /dev/null 2>&1 && echo "Petstore users seeded." || echo "Petstore user seed skipped."
+  if curl -sf "${PETSTORE_BASE_URL}/openapi.json" > /dev/null 2>&1; then
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+      curl -s -X DELETE "${PETSTORE_BASE_URL}/store/order/$i" > /dev/null 2>&1 || true
+    done
+    for order in \
+      '{"id":1,"petId":1,"quantity":1,"status":"delivered","complete":true}' \
+      '{"id":2,"petId":2,"quantity":1,"status":"delivered","complete":true}' \
+      '{"id":3,"petId":4,"quantity":1,"status":"approved","complete":false}' \
+      '{"id":4,"petId":7,"quantity":1,"status":"placed","complete":false}' \
+      '{"id":5,"petId":8,"quantity":1,"status":"placed","complete":false}' \
+      '{"id":6,"petId":9,"quantity":1,"status":"approved","complete":false}' \
+      '{"id":7,"petId":10,"quantity":1,"status":"delivered","complete":true}' \
+    ; do
+      curl -s -X POST "${PETSTORE_BASE_URL}/store/order" \
+        -H "Content-Type: application/json" \
+        -d "$order" > /dev/null 2>&1
+    done
+    echo "Petstore orders seeded."
+  fi
 fi
 
 # Seed Kafka with demo data (only if --seed-data flag passed)
@@ -205,9 +267,21 @@ for i in $(seq 1 15); do
 done
 
 echo ""
-echo "Provisa running:"
-echo "  Backend: http://localhost:8001  (logs: $LOG_DIR/server.log)"
-echo "  UI:      http://localhost:3000"
+if [ "$DEMO" = true ]; then
+  echo "Provisa running (demo mode):"
+  echo "  Backend: http://localhost:8001  (logs: $LOG_DIR/server.log)"
+  echo "  UI:      http://localhost:3000"
+  echo ""
+  echo "Demo sources:"
+  echo "  - pet-store-pg       (PostgreSQL, pet_store schema)"
+  echo "  - petstore-api       (OpenAPI, petstore3.swagger.io)"
+  echo "  - inquiries-sqlite   (SQLite, demo/files/inquiries.sqlite)"
+  echo "  - graphql-demo       (GraphQL remote, http://localhost:4000/graphql)"
+else
+  echo "Provisa running:"
+  echo "  Backend: http://localhost:8001  (logs: $LOG_DIR/server.log)"
+  echo "  UI:      http://localhost:3000"
+fi
 echo ""
 echo "Press Ctrl+C to stop. Press Ctrl+R to restart backend."
 

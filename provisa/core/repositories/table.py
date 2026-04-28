@@ -55,9 +55,9 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
             """
             INSERT INTO table_columns (table_id, column_name, visible_to, writable_by, unmasked_to,
                 mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
-                alias, description, path, native_filter_type, is_primary_key,
-                is_foreign_key, is_alternate_key, object_fields)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb)
+                alias, description, data_type, path, native_filter_type, is_primary_key,
+                is_foreign_key, is_alternate_key, object_fields, scope)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19::jsonb, $20)
             """,
             table_id,
             col.name,
@@ -71,12 +71,14 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
             getattr(col, "mask_precision", None),
             getattr(col, "alias", None),
             getattr(col, "description", None),
+            getattr(col, "data_type", None),
             getattr(col, "path", None),
             getattr(col, "native_filter_type", None),
             getattr(col, "is_primary_key", False),
             getattr(col, "is_foreign_key", False),
             getattr(col, "is_alternate_key", False),
             object_fields_json,
+            getattr(col, "scope", "domain"),
         )
     return table_id
 
@@ -87,7 +89,7 @@ async def get(conn: asyncpg.Connection, table_id: int) -> dict | None:
         return None
     result = dict(row)
     cols = await conn.fetch(
-        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields FROM table_columns WHERE table_id = $1 ORDER BY id",
+        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields, scope FROM table_columns WHERE table_id = $1 ORDER BY id",
         table_id,
     )
     result["columns"] = [dict(c) for c in cols]
@@ -110,7 +112,7 @@ async def get_by_name(
         return None
     result = dict(row)
     cols = await conn.fetch(
-        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields FROM table_columns WHERE table_id = $1 ORDER BY id",
+        "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields, scope FROM table_columns WHERE table_id = $1 ORDER BY id",
         result["id"],
     )
     result["columns"] = [dict(c) for c in cols]
@@ -144,7 +146,7 @@ async def list_all(conn: asyncpg.Connection) -> list[dict]:
     for row in rows:
         r = dict(row)
         cols = await conn.fetch(
-            "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields FROM table_columns WHERE table_id = $1 ORDER BY id",
+            "SELECT column_name, visible_to, writable_by, unmasked_to, mask_type, mask_pattern, mask_replace, mask_value, mask_precision, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, object_fields, scope FROM table_columns WHERE table_id = $1 ORDER BY id",
             r["id"],
         )
         r["columns"] = [dict(c) for c in cols]

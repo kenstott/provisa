@@ -12,13 +12,14 @@ import { useRef, useCallback, useState, useMemo, useEffect } from "react";
 import * as monaco from "monaco-editor";
 import { GraphiQL } from "graphiql";
 import { createGraphiQLFetcher, type Fetcher } from "@graphiql/toolkit";
-import { parse, getOperationAST } from "graphql";
+import { parse, getOperationAST, buildClientSchema, type GraphQLSchema } from "graphql";
 import "@graphiql/react/style.css";
 import "@graphiql/plugin-explorer/style.css";
 import "@graphiql/plugin-doc-explorer/style.css";
 import "graphiql/graphiql.css";
 import "./QueryPage.css";
 import { useAuth } from "../context/AuthContext";
+import { useDomainFilter } from "../context/DomainFilterContext";
 import { provisaToolsPlugin } from "../plugins/provisa-tools";
 import { ResponseTableOverlay } from "../plugins/table-view";
 import { setLastQueryElapsedMs, subscribeQueryTiming } from "../query-timing";
@@ -45,7 +46,84 @@ monaco.languages.registerCompletionItemProvider("graphql", {
     });
 
     const trimmed = lineText.trimStart();
-    if (!trimmed.startsWith("#")) return { suggestions: [] };
+
+    // Non-comment lines: suggest Provisa operation-level directives on "@"
+    if (!trimmed.startsWith("#")) {
+      const atMatch = lineText.match(/@(\w*)$/);
+      if (!atMatch) return { suggestions: [] };
+      const typed = atMatch[1];
+      const atStart = position.column - typed.length - 1; // column of "@"
+      const mkRangeAt = (startCol: number) => ({
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: startCol,
+        endColumn: position.column,
+      });
+      const directives = [
+        {
+          label: "@cached",
+          insertText: "cached(ttl: ${1:300})",
+          detail: "Cache results for N seconds",
+          documentation: "Cache this query's results server-side. ttl is the time-to-live in seconds (0 = disable).",
+        },
+        {
+          label: "@route",
+          insertText: "route(engine: ${1|FEDERATED,DIRECT|})",
+          detail: "Force execution engine",
+          documentation: "FEDERATED = Trino federation, DIRECT = native driver.",
+        },
+        {
+          label: "@join",
+          insertText: "join(strategy: ${1|BROADCAST,PARTITIONED|})",
+          detail: "Trino join strategy",
+          documentation: "BROADCAST: small dimension table. PARTITIONED: large fact-to-fact join.",
+        },
+        {
+          label: "@reorder",
+          insertText: "reorder(enabled: ${1|false,true|})",
+          detail: "Trino join reordering",
+          documentation: "enabled: false disables Trino's cost-based join reordering.",
+        },
+        {
+          label: "@broadcastSize",
+          insertText: "broadcastSize(size: \"${1:512MB}\")",
+          detail: "Max broadcast table size",
+          documentation: "Sets Trino join_max_broadcast_table_size session property.",
+        },
+        {
+          label: "@redirect",
+          insertText: "redirect(format: \"${1|parquet,csv,arrow,ndjson,json|}\", threshold: ${2:10000})",
+          detail: "Redirect large results to object store",
+          documentation: "Streams results to MinIO/S3 when row count exceeds threshold.",
+        },
+        {
+          label: "@sink",
+          insertText: "sink(topic: \"${1:topic-name}\")",
+          detail: "Stream results to Kafka topic",
+          documentation: "Publishes query results to the specified Kafka topic.",
+        },
+        {
+          label: "@watermark",
+          insertText: "watermark",
+          detail: "Mark watermark field (field-level)",
+          documentation: "Applied to a field to mark it as the watermark/cursor column for incremental queries.",
+        },
+      ];
+      return {
+        suggestions: directives
+          .filter((d) => d.label.slice(1).startsWith(typed))
+          .map((d) => ({
+            label: d.label,
+            kind: monaco.languages.CompletionItemKind.Keyword,
+            detail: d.detail,
+            documentation: d.documentation,
+            insertText: d.insertText,
+            insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
+            range: mkRangeAt(atStart),
+          })),
+      };
+    }
+
     const commentContent = trimmed.slice(1).trimStart();
 
     const mkRange = (startCol: number) => ({
@@ -347,11 +425,23 @@ function createProvisaFetch(
 /** Query development page — embeds GraphiQL with Explorer (REQ-062). */
 export function QueryPage() {
   const { role } = useAuth();
+  const { selectedDomain } = useDomainFilter();
+  const [domainSchema, setDomainSchema] = useState<GraphQLSchema | null>(null);
   const [redirectFormat, setRedirectFormat] = useState("");
   const [redirectThreshold, setRedirectThreshold] = useState("");
   const [statsEnabled, setStatsEnabled] = useState(false);
   const [queryElapsedMs, setQueryElapsedMs] = useState<number | null>(null);
   useEffect(() => subscribeQueryTiming(setQueryElapsedMs), []);
+
+  useEffect(() => {
+    if (!role || selectedDomain === "all") { setDomainSchema(null); return; }
+    fetch(`/data/introspection?domain=${encodeURIComponent(selectedDomain)}`, {
+      headers: { "X-Provisa-Role": role.id },
+    })
+      .then((r) => r.json())
+      .then((json) => { if (json.data) setDomainSchema(buildClientSchema(json.data)); })
+      .catch(() => setDomainSchema(null));
+  }, [role?.id, selectedDomain]);
 
   const settingsRef = useRef<RedirectSettings>({
     format: redirectFormat,
@@ -519,6 +609,7 @@ export function QueryPage() {
         fetcher={fetcher}
         plugins={plugins}
         forcedTheme="dark"
+        schema={domainSchema ?? undefined}
       >
         <GraphiQL.Footer>
           <ResponseTableOverlay />

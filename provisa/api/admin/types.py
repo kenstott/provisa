@@ -28,6 +28,7 @@ class SourceType:
     cache_ttl: int | None
     naming_convention: str | None
     path: str | None
+    allowed_domains: list[str] = strawberry.field(default_factory=list)
 
 
 @strawberry.type
@@ -78,10 +79,12 @@ class TableColumnType:
     mask_precision: str | None
     alias: str | None
     description: str | None
+    data_type: str | None = None
     native_filter_type: str | None = None
     is_primary_key: bool = False
     is_foreign_key: bool = False
     is_alternate_key: bool = False
+    scope: str = "domain"
 
 
 @strawberry.type
@@ -116,6 +119,11 @@ class RelationshipType:
     alias: str | None = None
     graphql_alias: str | None = None
     computed_cypher_alias: str | None = None
+    disable_cypher: bool = False
+
+    @strawberry.field
+    def auto_suggested(self) -> bool:
+        return self.id.startswith("fk__")
 
 
 @strawberry.type
@@ -173,6 +181,7 @@ class ColumnInput:
     is_primary_key: bool = False
     is_foreign_key: bool = False
     is_alternate_key: bool = False
+    scope: str = "domain"
 
 
 @strawberry.input
@@ -212,6 +221,8 @@ class RelationshipInput:
     function_arg: str | None = None
     alias: str | None = None  # e.g. WORKS_FOR; unique per (source_table, alias)
     graphql_alias: str | None = None
+    disable_cypher: bool = False  # when True, exclude from Cypher graph edges
+    record_candidate: bool = False  # when True, also insert accepted relationship_candidates record
 
 
 @strawberry.input

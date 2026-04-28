@@ -104,6 +104,18 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
         if "type" in data and ("identity" in data or "startNode" in data or "start_node" in data):
             return _parse_edge(data)
         return _parse_node(data)
+    if kind == GraphVarKind.PATH:
+        if "nodes" in data and "edges" in data:
+            return Path(
+                nodes=[_parse_node(n) for n in data["nodes"]],
+                edges=[_parse_edge(e) for e in data["edges"]],
+            )
+        # Flat-JOIN path: {start, end, length} — build stub path
+        start_id = str(data.get("start", ""))
+        end_id = str(data.get("end", ""))
+        start_node = Node(id=start_id, label="", properties={})
+        end_node = Node(id=end_id, label="", properties={})
+        return Path(nodes=[start_node, end_node], edges=[])
     raise CypherAssemblyError(f"Unknown GraphVarKind {kind!r} for column {col!r}")
 
 

@@ -42,6 +42,7 @@ class GraphQLRemoteRegistration(BaseModel):
     cache_ttl: int = 300
     tables: list[dict] = []
     functions: list[dict] = []
+    relationships: list[dict] = []
 
 
 async def _introspect_and_map(
@@ -50,12 +51,76 @@ async def _introspect_and_map(
     namespace: str,
     domain_id: str,
     auth: dict | None,
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict], list[dict]]:
     from provisa.graphql_remote.introspect import introspect_schema
     from provisa.graphql_remote.mapper import map_schema
     schema = await introspect_schema(url, auth)
-    tables, functions = map_schema(schema, namespace, source_id, domain_id)
-    return tables, functions
+    tables, functions, relationships = map_schema(schema, namespace, source_id, domain_id)
+    return tables, functions, relationships
+
+
+async def _upsert_tables_to_semantic_layer(
+    source_id: str,
+    domain_id: str,
+    tables: list[dict],
+    pg_pool,
+) -> None:
+    """Write discovered GraphQL tables into registered_tables with descriptions."""
+    from provisa.core.models import Column, GovernanceLevel, Table
+    from provisa.core.repositories import table as table_repo
+    from provisa.api.admin.actions_router import _ensure_tables
+
+    await _ensure_tables(pg_pool)
+    async with pg_pool.acquire() as conn:
+        for t in tables:
+            tbl = Table(
+                source_id=source_id,
+                domain_id=domain_id or "",
+                schema_name="graphql_remote",
+                table_name=t["name"],
+                governance=GovernanceLevel.pre_approved,
+                description=t.get("description"),
+                columns=[
+                    Column(
+                        name=c["name"],
+                        visible_to=[],
+                        description=c.get("description"),
+                    )
+                    for c in t.get("columns", [])
+                ],
+            )
+            await table_repo.upsert(conn, tbl)
+
+
+async def _upsert_relationships_to_semantic_layer(
+    relationships: list[dict],
+    pg_pool,
+    state=None,
+) -> None:
+    """Upsert detected intra-source relationships, then retry any config relationships deferred at startup."""
+    from provisa.core.models import Cardinality, Relationship
+    from provisa.core.repositories import relationship as rel_repo
+    async with pg_pool.acquire() as conn:
+        for r in (relationships or []):
+            try:
+                await rel_repo.upsert(conn, Relationship(
+                    id=r["id"],
+                    source_table_id=r["source_table_id"],
+                    target_table_id=r["target_table_id"],
+                    source_column=r["source_column"],
+                    target_column=r["target_column"],
+                    cardinality=Cardinality(r.get("cardinality", "many-to-one")),
+                ))
+            except Exception:
+                log.warning("Failed to upsert relationship %s", r["id"], exc_info=True)
+        # Retry config relationships deferred at startup (tables may now exist)
+        cfg = getattr(state, "config", None) if state is not None else None
+        if cfg is not None:
+            for rel in cfg.relationships:
+                try:
+                    await rel_repo.upsert(conn, rel)
+                except ValueError:
+                    pass
 
 
 @router.post("")
@@ -67,7 +132,7 @@ async def register_graphql_remote_source(
     state = request.app.state
 
     try:
-        tables, functions = await _introspect_and_map(
+        tables, functions, relationships = await _introspect_and_map(
             body.source_id, body.url, body.namespace, body.domain_id, body.auth,
         )
     except Exception as exc:
@@ -82,20 +147,33 @@ async def register_graphql_remote_source(
         cache_ttl=body.cache_ttl,
         tables=tables,
         functions=functions,
+        relationships=relationships,
     )
 
     if not hasattr(state, "graphql_remote_sources"):
         state.graphql_remote_sources = {}
     state.graphql_remote_sources[body.source_id] = registration.model_dump()
 
+    if getattr(state, "pg_pool", None) is not None:
+        await _upsert_tables_to_semantic_layer(
+            body.source_id, body.domain_id, tables, state.pg_pool,
+        )
+        await _upsert_relationships_to_semantic_layer(relationships, state.pg_pool, state)
+        try:
+            from provisa.api.app import _rebuild_schemas
+            await _rebuild_schemas()
+        except Exception:
+            log.warning("Schema rebuild failed after graphql-remote registration", exc_info=True)
+
     log.info(
-        "Registered GraphQL remote source %s (%d tables, %d functions)",
-        body.source_id, len(tables), len(functions),
+        "Registered GraphQL remote source %s (%d tables, %d functions, %d relationships)",
+        body.source_id, len(tables), len(functions), len(relationships),
     )
     return {
         "source_id": body.source_id,
         "tables": len(tables),
         "functions": len(functions),
+        "relationships": len(relationships),
         "table_names": [t["name"] for t in tables],
         "function_names": [f["name"] for f in functions],
     }
@@ -111,7 +189,7 @@ async def refresh_graphql_remote_source(source_id: str, request: Request):
 
     reg = sources[source_id]
     try:
-        tables, functions = await _introspect_and_map(
+        tables, functions, relationships = await _introspect_and_map(
             source_id, reg["url"], reg["namespace"], reg.get("domain_id", ""), reg.get("auth"),
         )
     except Exception as exc:
@@ -119,13 +197,26 @@ async def refresh_graphql_remote_source(source_id: str, request: Request):
 
     reg["tables"] = tables
     reg["functions"] = functions
+    reg["relationships"] = relationships
     state.graphql_remote_sources[source_id] = reg
 
-    log.info("Refreshed GraphQL remote source %s", source_id)
+    if getattr(state, "pg_pool", None) is not None:
+        await _upsert_tables_to_semantic_layer(
+            source_id, reg.get("domain_id", ""), tables, state.pg_pool,
+        )
+        await _upsert_relationships_to_semantic_layer(relationships, state.pg_pool, state)
+        try:
+            from provisa.api.app import _rebuild_schemas
+            await _rebuild_schemas()
+        except Exception:
+            log.warning("Schema rebuild failed after graphql-remote refresh", exc_info=True)
+
+    log.info("Refreshed GraphQL remote source %s (%d relationships)", source_id, len(relationships))
     return {
         "source_id": source_id,
         "tables": len(tables),
         "functions": len(functions),
+        "relationships": len(relationships),
         "table_names": [t["name"] for t in tables],
         "function_names": [f["name"] for f in functions],
     }

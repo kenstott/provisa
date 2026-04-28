@@ -145,7 +145,8 @@ async def _register_schema(
     domain_id: str,
 ) -> tuple[int, int]:
     """Upsert virtual tables and tracked functions for discovered gRPC methods."""
-    from provisa.grpc_remote.mapper import GrpcQuery, GrpcMutation
+    from provisa.core.models import Column, GovernanceLevel, Table
+    from provisa.core.repositories import table as table_repo
 
     prefix = f"{namespace}__" if namespace else ""
 
@@ -171,6 +172,18 @@ async def _register_schema(
             domain_id,
             f"grpc_query:{q.full_method_path}",
         )
+        tbl = Table(
+            source_id=source_id,
+            domain_id=domain_id or "",
+            schema_name="grpc_remote",
+            table_name=table_name,
+            governance=GovernanceLevel.pre_approved,
+            columns=[
+                Column(name=c.name, visible_to=[])
+                for c in q.columns
+            ],
+        )
+        await table_repo.upsert(conn, tbl)
 
     # Tracked functions from mutation methods
     for m in mutations:

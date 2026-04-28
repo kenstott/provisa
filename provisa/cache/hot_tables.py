@@ -115,6 +115,7 @@ class HotTableEntry:
     pk_column: str
     rows: list[dict] = field(default_factory=list)
     column_names: list[str] = field(default_factory=list)
+    is_api: bool = False
 
 
 @dataclass
@@ -231,10 +232,14 @@ class HotTableManager:
         base_url = source_cfg.get("base_url", "").rstrip("/")
         auth_config = source_cfg.get("auth_config")
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            spec_resp = await client.get(spec_url)
-            spec_resp.raise_for_status()
-            spec = spec_resp.json()
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                spec_resp = await client.get(spec_url)
+                spec_resp.raise_for_status()
+                spec = spec_resp.json()
+        except Exception as _e:
+            log.warning("OpenAPI spec fetch failed for %s: %s", table_name, _e)
+            return 0
 
         rows = await _openapi_list_rows(spec, base_url, table_name, auth_config, self._max_rows)
         if rows is None:
@@ -270,8 +275,9 @@ class HotTableManager:
         log.info("Hot table %s invalidated", table_name)
 
     def is_hot(self, table_name: str) -> bool:
-        """Check if a table is currently hot-cached."""
-        return table_name in self._hot_tables
+        """Check if a table is currently hot-cached with at least one row."""
+        entry = self._hot_tables.get(table_name)
+        return entry is not None and len(entry.rows) > 0
 
     def get_entry(self, table_name: str) -> HotTableEntry | None:
         """Get the hot table entry with metadata."""
@@ -436,12 +442,16 @@ async def _openapi_list_rows(
             return None  # required param with no enum — can't auto-fill
 
     url = base_url + best_path
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(url, params=query_params, headers=auth_headers)
-        if resp.status_code == 404:
-            return None
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(url, params=query_params, headers=auth_headers)
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as _e:
+        log.warning("OpenAPI list rows failed for %s: %s", url, _e)
+        return None
 
     rows = data if isinstance(data, list) else [data]
     return rows[:max_rows + 1]

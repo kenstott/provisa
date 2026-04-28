@@ -12,9 +12,10 @@
 
 import pytest
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.integration]
 
 
+@pytest.mark.asyncio(loop_scope="session")
 class TestPostgresConnectivity:
     async def test_pg_connects(self, pg_pool):
         async with pg_pool.acquire() as conn:

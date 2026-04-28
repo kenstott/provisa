@@ -1,0 +1,14 @@
+# Dev overlay: adds Grafana Tempo trace export on top of the core config.
+# Used via: --config=otel-collector-config.yaml --config=otel-collector-config.dev.yaml
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/parquet, otlp/tempo, debug]

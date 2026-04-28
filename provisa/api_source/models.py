@@ -61,7 +61,8 @@ class ApiColumn(BaseModel):
     filterable: bool = True
     param_type: ParamType | None = None
     param_name: str | None = None
-    object_fields: list[dict] = []  # sub-field dicts for object-typed columns
+    object_fields: list[dict] = []
+    description: str | None = None
 
 
 class PaginationConfig(BaseModel):

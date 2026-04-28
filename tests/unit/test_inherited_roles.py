@@ -27,7 +27,6 @@ from provisa.compiler.mask_inject import MaskingRules, inject_masking
 from provisa.core.models import Role, flatten_roles
 from provisa.security.masking import MaskType, MaskingRule
 
-pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 # ---------------------------------------------------------------------------
 # These tests do NOT require a database connection.

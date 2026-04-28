@@ -61,7 +61,8 @@ def _schema_to_columns(schema: dict, definitions: dict) -> list[ApiColumn]:
         else:
             col_type = _infer_column_type(prop)
         filterable = col_type != ApiColumnType.jsonb
-        columns.append(ApiColumn(name=name, type=col_type, filterable=filterable))
+        desc = prop.get("description") or prop.get("title") or None
+        columns.append(ApiColumn(name=name, type=col_type, filterable=filterable, description=desc))
     return columns
 
 

@@ -24,6 +24,7 @@ import {
 } from "../api/admin";
 import type { Role, Capability } from "../types/auth";
 import type { RLSRule, RegisteredTable, Domain } from "../types/admin";
+import { useDomainFilter } from "../context/DomainFilterContext";
 
 function MultiSelect({ options, value, onChange }: {
   options: { id: string; label: string }[];
@@ -114,6 +115,7 @@ const EMPTY_ROLE = { id: "", capabilities: [] as Capability[], domainAccess: [] 
 const EMPTY_RULE = { tableId: "", domainId: "", roleId: "", filterExpr: "", domainFilter: "", applyToDomain: false };
 
 export function SecurityPage() {
+  const { selectedDomain, setDomains: setContextDomains, setSelectedDomain } = useDomainFilter();
   const [roles, setRoles] = useState<Role[]>([]);
   const [rules, setRules] = useState<RLSRule[]>([]);
   const [tables, setTables] = useState<RegisteredTable[]>([]);
@@ -148,9 +150,11 @@ export function SecurityPage() {
     setRules(rls);
     setTables(t);
     setDomains(d);
+    setContextDomains(d.map((x) => x.id));
     setLoading(false);
   }, []);
 
+  useEffect(() => { setSelectedDomain("all"); }, []);
   useEffect(() => { load(); }, [load]);
 
   const normalizeDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
@@ -221,7 +225,7 @@ export function SecurityPage() {
 
   // --- RLS Rule handlers ---
   const handleNewRule = () => {
-    setRuleForm({ ...EMPTY_RULE });
+    setRuleForm({ ...EMPTY_RULE, domainFilter: selectedDomain !== "all" ? selectedDomain : "" });
     setShowRuleForm(true);
     setError("");
   };
@@ -515,12 +519,29 @@ export function SecurityPage() {
           <tr><th>ID</th><th>Table / Domain</th><th>Role</th><th>Filter</th></tr>
         </thead>
         <tbody>
-          {rules.filter((r) => {
-            if (!ruleSearch.trim()) return true;
-            const q = ruleSearch.toLowerCase();
-            const scope = r.domainId ? `domain:${r.domainId}` : (tableLabelById[r.tableId!] ?? String(r.tableId));
-            return r.roleId.toLowerCase().includes(q) || scope.toLowerCase().includes(q);
-          }).map((r) => {
+          {(() => {
+            const filtered = rules.filter((r) => {
+              if (selectedDomain !== "all") {
+                const ruleDomain = r.domainId
+                  ? r.domainId
+                  : tables.find((t) => t.id === r.tableId)?.domainId;
+                if (ruleDomain !== selectedDomain) return false;
+              }
+              if (!ruleSearch.trim()) return true;
+              const q = ruleSearch.toLowerCase();
+              const scope = r.domainId ? `domain:${r.domainId}` : (tableLabelById[r.tableId!] ?? String(r.tableId));
+              return r.roleId.toLowerCase().includes(q) || scope.toLowerCase().includes(q);
+            });
+            if (filtered.length === 0) {
+              return (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: "center", color: "var(--text-muted)", padding: "1.5rem" }}>
+                    {rules.length === 0 ? "No RLS rules defined." : "No rules match the current filter."}
+                  </td>
+                </tr>
+              );
+            }
+            return filtered.map((r) => {
             return (
               <React.Fragment key={r.id}>
                 <tr
@@ -629,7 +650,8 @@ export function SecurityPage() {
                 )}
               </React.Fragment>
             );
-          })}
+          });
+          })()}
         </tbody>
       </table>
     </div>

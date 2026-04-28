@@ -52,10 +52,6 @@ def resolve_policy(
     Returns:
         (policy, ttl_seconds) tuple.
     """
-    # Non-approved / test-mode queries are never cached
-    if stable_id is None:
-        return CachePolicy.NONE, 0
-
     # Source-level cache disabled → no caching for any table in this source
     if not source_cache_enabled:
         return CachePolicy.NONE, 0

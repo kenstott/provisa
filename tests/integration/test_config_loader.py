@@ -26,7 +26,7 @@ from provisa.core.repositories import (
     table as table_repo,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.integration]
 
 SCHEMA_SQL = (Path(__file__).parent.parent.parent / "provisa" / "core" / "schema.sql").read_text()
 FIXTURE_CONFIG = Path(__file__).parent.parent / "fixtures" / "sample_config.yaml"
@@ -56,6 +56,7 @@ class TestConfigLoader:
         assert len(config.sources) == 1
         assert config.sources[0].id == "sales-pg"
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_load_config_creates_sources(self, pg_pool):
         config = parse_config(FIXTURE_CONFIG)
         async with pg_pool.acquire() as conn:
@@ -65,6 +66,7 @@ class TestConfigLoader:
         assert sources[0]["id"] == "sales-pg"
         assert sources[0]["dialect"] == "postgres"
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_load_config_creates_domains(self, pg_pool):
         config = parse_config(FIXTURE_CONFIG)
         async with pg_pool.acquire() as conn:
@@ -74,6 +76,7 @@ class TestConfigLoader:
         ids = {d["id"] for d in domains}
         assert ids == {"sales-analytics", "product-catalog"}
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_load_config_creates_tables_with_columns(self, pg_pool):
         config = parse_config(FIXTURE_CONFIG)
         async with pg_pool.acquire() as conn:
@@ -84,6 +87,7 @@ class TestConfigLoader:
         assert orders["governance"] == "pre-approved"
         assert len(orders["columns"]) == 6
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_load_config_creates_relationships(self, pg_pool):
         config = parse_config(FIXTURE_CONFIG)
         async with pg_pool.acquire() as conn:
@@ -93,6 +97,7 @@ class TestConfigLoader:
         assert rels[0]["id"] == "orders-to-customers"
         assert rels[0]["cardinality"] == "many-to-one"
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_load_config_creates_roles(self, pg_pool):
         config = parse_config(FIXTURE_CONFIG)
         async with pg_pool.acquire() as conn:
@@ -103,6 +108,7 @@ class TestConfigLoader:
         assert "admin" in admin["capabilities"]
         assert admin["domain_access"] == ["*"]
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_load_config_creates_rls_rules(self, pg_pool):
         config = parse_config(FIXTURE_CONFIG)
         async with pg_pool.acquire() as conn:
@@ -111,6 +117,7 @@ class TestConfigLoader:
         assert len(rules) == 1
         assert rules[0]["role_id"] == "analyst"
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_load_config_idempotent(self, pg_pool):
         """Loading the same config twice produces the same state."""
         config = parse_config(FIXTURE_CONFIG)
@@ -122,6 +129,7 @@ class TestConfigLoader:
         assert len(sources) == 1
         assert len(tables) == 3
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_naming_rules_persisted(self, pg_pool):
         config = parse_config(FIXTURE_CONFIG)
         async with pg_pool.acquire() as conn:

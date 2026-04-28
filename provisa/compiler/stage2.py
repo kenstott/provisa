@@ -195,9 +195,13 @@ def _govern_select(node: exp.Select, gov_ctx: GovernanceContext) -> exp.Select:
 
     for expr in existing_exprs:
         if isinstance(expr, exp.Star):
-            # Expand SELECT * using all_columns, filtered by visibility
+            # Expand SELECT * using all_columns, filtered by visibility.
+            # Fall back to keeping * when column metadata is unavailable.
             expanded = _expand_star(alias_to_tid, gov_ctx)
-            new_exprs.extend(expanded)
+            if expanded:
+                new_exprs.extend(expanded)
+            else:
+                new_exprs.append(expr)
         elif isinstance(expr, exp.Column) and isinstance(expr.table, str):
             if not _is_column_visible(expr, alias_to_tid, gov_ctx):
                 pass  # drop invisible column

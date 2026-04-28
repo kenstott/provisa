@@ -23,7 +23,6 @@ import pytest
 from provisa.executor.drivers.registry import has_driver
 from provisa.transpiler.router import Route, RouteDecision, decide_route
 
-pytestmark = [pytest.mark.asyncio(loop_scope="session")]
 
 # ---------------------------------------------------------------------------
 # Shared source type / dialect fixtures

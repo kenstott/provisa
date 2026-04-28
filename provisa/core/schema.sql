@@ -26,6 +26,18 @@ ALTER TABLE domains ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
 INSERT INTO domains (id, description) VALUES ('', 'No domain')
 ON CONFLICT (id) DO NOTHING;
 
+-- Seed built-in system metadata domain
+INSERT INTO domains (id, description) VALUES ('meta', 'System metadata')
+ON CONFLICT (id) DO NOTHING;
+
+-- Seed built-in operational telemetry domain
+INSERT INTO domains (id, description) VALUES ('ops', 'Operational telemetry')
+ON CONFLICT (id) DO NOTHING;
+
+-- Seed demo shelter domain
+INSERT INTO domains (id, description) VALUES ('shelter', 'Animal shelter staff and breed management')
+ON CONFLICT (id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS naming_rules (
     id          SERIAL PRIMARY KEY,
     pattern     TEXT NOT NULL,
@@ -87,9 +99,11 @@ DO $$ BEGIN
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS is_foreign_key BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS is_alternate_key BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS object_fields JSONB NOT NULL DEFAULT '[]';
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'domain';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_enabled BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS path TEXT;
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS allowed_domains TEXT[] NOT NULL DEFAULT '{}';
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS column_presets JSONB NOT NULL DEFAULT '[]';
@@ -117,6 +131,7 @@ DO $$ BEGIN
     ALTER TABLE relationships ALTER COLUMN target_column DROP NOT NULL;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS alias TEXT;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS disable_cypher BOOLEAN NOT NULL DEFAULT FALSE;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
@@ -411,5 +426,20 @@ DO $$ BEGIN
     ALTER TABLE tracked_functions ADD COLUMN IF NOT EXISTS return_schema JSONB;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
+
+-- Bridge table: every registered user table → its meta:registered_tables row
+-- Populated automatically on register_table; enables REGISTERED_AS Cypher edges
+CREATE TABLE IF NOT EXISTS table_meta_links (
+    source_table_id INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    target_table_id INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    PRIMARY KEY (source_table_id)
+);
+
+-- File source staleness tracking — mtime per registered SQLite/CSV/Parquet table
+CREATE TABLE IF NOT EXISTS file_source_mtimes (
+    table_id     INTEGER PRIMARY KEY REFERENCES registered_tables(id) ON DELETE CASCADE,
+    source_mtime DOUBLE PRECISION NOT NULL,
+    synced_at    DOUBLE PRECISION NOT NULL
+);
 
 -- No auth tables needed — auth is config-driven, not DB-driven

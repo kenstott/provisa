@@ -14,10 +14,10 @@ from provisa.cache.policy import CachePolicy, resolve_policy
 
 
 class TestResolvePolicy:
-    def test_non_approved_query_returns_none(self):
+    def test_ad_hoc_query_uses_default_ttl(self):
         policy, ttl = resolve_policy(stable_id=None, cache_ttl=None)
-        assert policy == CachePolicy.NONE
-        assert ttl == 0
+        assert policy == CachePolicy.TTL
+        assert ttl == 300
 
     def test_approved_with_explicit_ttl(self):
         policy, ttl = resolve_policy(stable_id="abc-123", cache_ttl=600)
@@ -44,9 +44,10 @@ class TestResolvePolicy:
         assert policy == CachePolicy.TTL
         assert ttl == 120
 
-    def test_test_mode_ad_hoc_not_cached(self):
+    def test_ad_hoc_with_explicit_ttl(self):
         policy, ttl = resolve_policy(stable_id=None, cache_ttl=300)
-        assert policy == CachePolicy.NONE
+        assert policy == CachePolicy.TTL
+        assert ttl == 300
 
 
 class TestHierarchicalTTL:

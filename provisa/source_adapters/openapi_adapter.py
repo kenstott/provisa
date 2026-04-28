@@ -42,7 +42,7 @@ async def fetch(
     query: OpenAPIQuery,
     args: dict,
     auth_config: dict | None,
-    cache_store,
+    response_cache_store,
     source_id: str,
     role: str = "",
     ttl: int = 300,
@@ -51,7 +51,7 @@ async def fetch(
     args_hash = hashlib.sha256(json.dumps(sorted(args.items())).encode()).hexdigest()[:12]
     cache_key = f"openapi:{source_id}:{query.operation_id}:{args_hash}:{role}"
 
-    cached = await cache_store.get(cache_key)
+    cached = await response_cache_store.get(cache_key)
     if cached is not None:
         log.debug("Cache hit for %s", cache_key)
         return json.loads(cached)
@@ -75,7 +75,7 @@ async def fetch(
         data = resp.json()
 
     rows = data if isinstance(data, list) else [data]
-    await cache_store.set(cache_key, json.dumps(rows), ttl=ttl)
+    await response_cache_store.set(cache_key, json.dumps(rows), ttl=ttl)
     return rows
 
 

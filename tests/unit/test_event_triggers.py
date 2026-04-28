@@ -272,6 +272,8 @@ def test_on_notify_schedules_dispatch():
     with patch("provisa.events.triggers.asyncio.ensure_future") as mock_ef:
         mgr._on_notify(mock_conn, 123, _channel_name("public.orders"), payload)
         mock_ef.assert_called_once()
+        coro = mock_ef.call_args[0][0]
+        coro.close()
 
 
 def test_on_notify_ignored_when_stopped():

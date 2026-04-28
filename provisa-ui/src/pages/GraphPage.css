@@ -531,6 +531,26 @@
   border-radius: 0 0 6px 6px;
 }
 
+.gf-error--copyable {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.gf-error-text { flex: 1; }
+.gf-error-copy-btn {
+  flex-shrink: 0;
+  opacity: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--destructive);
+  font-size: 1rem;
+  padding: 0 0.25rem;
+  line-height: 1;
+  transition: opacity 0.15s;
+}
+.gf-error--copyable:hover .gf-error-copy-btn { opacity: 1; }
+
 /* ── Graph area ─────────────────────────────────────────────────────────────────── */
 .gf-graph-area {
   display: flex;

@@ -186,9 +186,13 @@ class PathFunctionsMixin:
             is_last = i == len(path) - 1
             nxt_alias = (tgt_var or nxt_nm.table_name) if is_last else f"_hop{i + 1}"
             on_cond = exp.EQ(
-                this=exp.Column(
-                    this=exp.Identifier(this=rel_mapping.join_source_column, quoted=True),
-                    table=exp.Identifier(this=prev_alias),
+                this=(
+                    exp.Literal.number(rel_mapping.source_constant)
+                    if rel_mapping.source_constant is not None
+                    else exp.Column(
+                        this=exp.Identifier(this=rel_mapping.join_source_column, quoted=True),
+                        table=exp.Identifier(this=prev_alias),
+                    )
                 ),
                 expression=exp.Column(
                     this=exp.Identifier(this=rel_mapping.join_target_column, quoted=True),
@@ -383,9 +387,13 @@ class PathFunctionsMixin:
                 .join(
                     _tbl(tgt_node_m, "_nxt"),
                     on=exp.EQ(
-                        this=exp.Column(
-                            this=exp.Identifier(this=rel.join_source_column, quoted=True),
-                            table=exp.Identifier(this="_seed"),
+                        this=(
+                            exp.Literal.number(rel.source_constant)
+                            if rel.source_constant is not None
+                            else exp.Column(
+                                this=exp.Identifier(this=rel.join_source_column, quoted=True),
+                                table=exp.Identifier(this="_seed"),
+                            )
                         ),
                         expression=exp.Column(
                             this=exp.Identifier(this=rel.join_target_column, quoted=True),
@@ -466,9 +474,13 @@ class PathFunctionsMixin:
                 .join(
                     _tbl(tgt_node_m, "_nxt"),
                     on=exp.EQ(
-                        this=exp.Column(
-                            this=exp.Identifier(this=rel.join_source_column, quoted=True),
-                            table=exp.Identifier(this="_cur"),
+                        this=(
+                            exp.Literal.number(rel.source_constant)
+                            if rel.source_constant is not None
+                            else exp.Column(
+                                this=exp.Identifier(this=rel.join_source_column, quoted=True),
+                                table=exp.Identifier(this="_cur"),
+                            )
                         ),
                         expression=exp.Column(
                             this=exp.Identifier(this=rel.join_target_column, quoted=True),

@@ -11,6 +11,7 @@
 import { lazy, Suspense, useState, useCallback } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
+import { DomainFilterProvider } from "./context/DomainFilterContext";
 import { NavBar } from "./components/NavBar";
 import { CapabilityGate } from "./components/CapabilityGate";
 import { SourcesPage } from "./pages/SourcesPage";
@@ -56,6 +57,7 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <DomainFilterProvider>
         <RequireAuth>
           <NavBar />
           <main>
@@ -164,6 +166,7 @@ function App() {
             </Routes>
           </main>
         </RequireAuth>
+        </DomainFilterProvider>
       </AuthProvider>
     </BrowserRouter>
   );

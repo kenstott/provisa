@@ -38,7 +38,7 @@ from provisa.core.repositories import (
     table as table_repo,
 )
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.integration]
 
 SCHEMA_SQL = (Path(__file__).parent.parent.parent / "provisa" / "core" / "schema.sql").read_text()
 FIXTURE_CONFIG = Path(__file__).parent.parent / "fixtures" / "sample_config.yaml"

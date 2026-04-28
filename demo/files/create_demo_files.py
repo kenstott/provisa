@@ -121,35 +121,72 @@ def create_orders_sqlite() -> None:
 
 
 def create_inquiries_sqlite() -> None:
-    # Customer inquiries from the pet store front-desk/CRM department
+    # Customer inquiries — users table + inquiries linked by user_id
     db_path = HERE / "inquiries.sqlite"
     db_path.unlink(missing_ok=True)
     conn = sqlite3.connect(db_path)
     conn.executescript("""
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            phone TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
         CREATE TABLE inquiries (
             id INTEGER PRIMARY KEY,
             pet_id INTEGER NOT NULL,
-            customer_name TEXT NOT NULL,
-            email TEXT NOT NULL,
+            user_id INTEGER NOT NULL REFERENCES users(id),
             inquiry_type TEXT NOT NULL,
             message TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'new',
             submitted_at TEXT NOT NULL
         );
 
-        -- pet_ids 1-7 map to: Cat 1, Cat 2, Dog 1, Lion 1, Lion 2, Lion 3, Rabbit 1
+        -- 10 prospective adopters
+        INSERT INTO users VALUES
+            (1,  'Alice Nguyen',  'alice@example.com',  '555-0101', '2025-10-01 09:00:00'),
+            (2,  'Bob Martinez',  'bob@example.com',    '555-0102', '2025-10-03 10:15:00'),
+            (3,  'Carol White',   'carol@example.com',  '555-0103', '2025-10-05 14:30:00'),
+            (4,  'David Kim',     'david@example.com',  '555-0104', '2025-10-07 11:00:00'),
+            (5,  'Eva Brown',     'eva@example.com',    '555-0105', '2025-10-09 16:45:00'),
+            (6,  'Frank Lee',     'frank@example.com',  '555-0106', '2025-10-12 08:20:00'),
+            (7,  'Grace Chen',    'grace@example.com',  '555-0107', '2025-10-14 13:10:00'),
+            (8,  'Hank Patel',    'hank@example.com',   '555-0108', '2025-10-16 09:55:00'),
+            (9,  'Iris Jordan',   'iris@example.com',   '555-0109', '2025-10-18 15:30:00'),
+            (10, 'Jay Singh',     'jay@example.com',    '555-0110', '2025-10-20 10:00:00');
+
+        -- pet_ids 1-7: Cat 1, Cat 2, Dog 1, Lion 1, Lion 2, Lion 3, Rabbit 1
         INSERT INTO inquiries VALUES
-            (1,  1,  'Sara Kim',      'sara@example.com',    'adoption',     'Is Cat 1 still available?',                                       '2025-03-01 09:15:00'),
-            (2,  3,  'Tom Evans',     'tom@example.com',     'price',        'Can I get a discount on Dog 1?',                                  '2025-03-02 11:00:00'),
-            (3,  2,  'Amy Zhao',      'amy@example.com',     'availability', 'When will Cat 2 be ready for pickup?',                            '2025-03-03 14:30:00'),
-            (4,  7,  'Carlos Ruiz',   'carlos@example.com',  'adoption',     'I am interested in adopting Rabbit 1.',                           '2025-03-04 10:00:00'),
-            (5,  1,  'Nina Patel',    'nina@example.com',    'general',      'Does Cat 1 get along with dogs?',                                 '2025-03-05 13:45:00'),
-            (6,  5,  'James Park',    'james@example.com',   'price',        'Is there a payment plan for Lion 2?',                             '2025-03-06 16:00:00'),
-            (7,  3,  'Lisa Chen',     'lisa@example.com',    'adoption',     'Dog 1 looks wonderful — how do I apply?',                         '2025-03-07 09:30:00'),
-            (8,  2,  'Mark Torres',   'mark@example.com',    'availability', 'Is Cat 2 still available? I visited last week.',                  '2025-03-08 12:15:00'),
-            (9,  6,  'Jen Wu',        'jen@example.com',     'general',      'Is Lion 3 good with small children?',                             '2025-03-09 11:00:00'),
-            (10, 7,  'Derek Hall',    'derek@example.com',   'adoption',     'Rabbit 1 looks great — please hold while I check with my family.','2025-03-10 15:00:00'),
-            (11, 1,  'Sara Kim',      'sara@example.com',    'adoption',     'Following up on Cat 1 — still interested.',                       '2025-03-12 10:00:00'),
-            (12, 3,  'Rachel Scott',  'rachel@example.com',  'price',        'What vaccinations are included in the price for Dog 1?',          '2025-03-13 14:00:00');
+            (1,  1, 1, 'adoption', 'Is Cat 1 still available?',              'converted', '2025-10-02 10:00:00'),
+            (2,  1, 3, 'adoption', 'We would love to adopt Cat 1.',          'closed',    '2025-10-06 11:30:00'),
+            (3,  1, 5, 'general',  'What is Cat 1 temperament?',             'open',      '2025-10-10 09:15:00'),
+            (4,  1, 7, 'adoption', 'Interested in Cat 1 for our family.',    'new',       '2025-10-15 14:00:00'),
+            (5,  1, 9, 'general',  'Does Cat 1 get along with dogs?',        'pending',   '2025-10-19 16:30:00'),
+            (6,  2, 2, 'adoption', 'How old is Cat 2?',                      'open',      '2025-10-04 09:00:00'),
+            (7,  2, 4, 'adoption', 'Cat 2 looks adorable, still available?', 'pending',   '2025-10-08 12:00:00'),
+            (8,  2, 6, 'general',  'Cat 2 indoor or outdoor?',               'new',       '2025-10-13 10:45:00'),
+            (9,  2, 8, 'adoption', 'Would like to schedule a visit for Cat 2.','open',    '2025-10-17 13:30:00'),
+            (10, 3, 1, 'adoption', 'Dog 1 — is a deposit required?',         'pending',   '2025-10-03 11:00:00'),
+            (11, 3, 3, 'general',  'Dog 1 house-trained?',                   'open',      '2025-10-07 14:30:00'),
+            (12, 3, 5, 'adoption', 'Would love to meet Dog 1.',              'converted', '2025-10-11 09:00:00'),
+            (13, 3, 7, 'general',  'What breed is Dog 1?',                   'closed',    '2025-10-15 11:15:00'),
+            (14, 3,10, 'adoption', 'Dog 1 — energy level?',                  'new',       '2025-10-21 08:45:00'),
+            (15, 4, 2, 'general',  'Lion 1 — is this a rescue?',             'open',      '2025-10-05 10:30:00'),
+            (16, 4, 6, 'adoption', 'Serious inquiry about Lion 1.',          'pending',   '2025-10-14 15:00:00'),
+            (17, 4, 9, 'general',  'Lion 1 diet requirements?',              'new',       '2025-10-20 09:30:00'),
+            (18, 5, 4, 'adoption', 'Lion 2 — do you have a waiting list?',   'open',      '2025-10-09 13:00:00'),
+            (19, 5, 6, 'general',  'Lion 2 — habitat needs?',                'pending',   '2025-10-14 16:45:00'),
+            (20, 5, 8, 'adoption', 'Very interested in Lion 2.',             'new',       '2025-10-17 14:00:00'),
+            (21, 5,10, 'general',  'Lion 2 age and health status?',          'open',      '2025-10-21 10:15:00'),
+            (22, 6, 1, 'adoption', 'Lion 3 — how do I apply?',               'closed',    '2025-10-02 16:00:00'),
+            (23, 6, 3, 'general',  'Lion 3 socialization history?',          'open',      '2025-10-07 09:00:00'),
+            (24, 6, 5, 'adoption', 'Interested in Lion 3.',                  'pending',   '2025-10-11 11:30:00'),
+            (25, 6, 7, 'general',  'Lion 3 — estimated weight?',             'new',       '2025-10-16 15:30:00'),
+            (26, 7, 2, 'adoption', 'Rabbit 1 — available now?',              'converted', '2025-10-04 14:00:00'),
+            (27, 7, 4, 'general',  'Rabbit 1 spayed/neutered?',              'open',      '2025-10-09 10:00:00'),
+            (28, 7, 8, 'adoption', 'Would like info on Rabbit 1.',           'new',       '2025-10-18 12:45:00');
     """)
     conn.commit()
     conn.close()

@@ -52,6 +52,22 @@ body {
 }
 .navbar-links a:hover { color: var(--text); background: var(--border); }
 .navbar-links a.active { color: var(--text); background: var(--primary); }
+.navbar-role {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.navbar-domain-select {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 0.375rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.navbar-domain-select:hover { border-color: var(--text-muted); }
 .role-selector { position: relative; }
 .role-selector-trigger {
   background: var(--surface);
@@ -136,6 +152,20 @@ body {
 .data-table th { font-weight: 600; color: var(--text-muted); }
 .data-table tr.clickable { cursor: pointer; }
 .data-table tr.clickable:hover { background: var(--border); }
+
+/* SQL Modal results grid */
+.sql-results-table { border-radius: 0; background: var(--bg); }
+.sql-results-table th { background: var(--surface); padding: 0; vertical-align: top; border-bottom: 1px solid var(--border); font-weight: 400; color: var(--text); }
+.sql-results-table th.col-sorted { background: rgba(99,102,241,0.08); }
+.sql-results-table td { font-weight: 400; color: var(--text); padding: 0.28rem 0.5rem; vertical-align: middle; }
+.sql-results-table tbody tr:hover td { background: rgba(99,102,241,0.05); }
+.sql-results-table .th-label { font-weight: 600; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); padding: 0.3rem 0.5rem 0.15rem; display: flex; align-items: center; gap: 0.25rem; cursor: pointer; white-space: nowrap; overflow: hidden; user-select: none; }
+.sql-results-table .th-label:hover { color: var(--text); }
+.sql-results-table .th-filter { display: block; width: 100%; font-size: 0.68rem; padding: 0.12rem 0.5rem; background: rgba(0,0,0,0.3); border: none; border-top: 1px solid var(--border); color: var(--text); outline: none; box-sizing: border-box; font-family: inherit; }
+.sql-results-table .th-filter::placeholder { color: var(--text-muted); opacity: 0.5; }
+.sql-results-table .th-filter:focus { background: rgba(99,102,241,0.07); border-top-color: var(--primary); }
+.sql-results-table td.col-num { text-align: right; font-variant-numeric: tabular-nums; font-family: monospace; }
+.sql-results-table .null-val { font-style: italic; color: var(--text-muted); opacity: 0.6; font-size: 0.85em; }
 
 /* Form */
 .form-card {

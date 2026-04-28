@@ -8,14 +8,14 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect, useRef, useLayoutEffect, Fragment } from "react";
+import { useState, useEffect, useRef, useLayoutEffect, Fragment, useCallback } from "react";
 import { Trash2, Pencil, Sparkles, Save, X, Copy } from "lucide-react";
 import { createPortal } from "react-dom";
 import {
   fetchTables, fetchSources, fetchDomains, fetchRoles,
   fetchAvailableSchemas, fetchAvailableTables, fetchAvailableColumnsMetadata,
   registerTable, deleteTable, updateTable, updateTableCache, updateTableNaming,
-  purgeCacheByTable, fetchSettings, generateTableDescription, generateColumnDescription,
+  purgeCacheByTable, invalidateFileSource, fetchSettings, generateTableDescription, generateColumnDescription,
 } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import type { TableMetadata } from "../api/admin";
@@ -23,6 +23,7 @@ import type { RegisteredTable, Source } from "../types/admin";
 import type { Role } from "../types/auth";
 import { ColumnPresetsEditor } from "../components/admin/ColumnPresetsEditor";
 import { FilterInput } from "../components/admin/FilterInput";
+import { useDomainFilter } from "../context/DomainFilterContext";
 
 function DescriptionField({ value, onChange, placeholder, rows = 2, onGenerate, generating }: {
   value: string;
@@ -32,6 +33,7 @@ function DescriptionField({ value, onChange, placeholder, rows = 2, onGenerate, 
   onGenerate?: () => void;
   generating?: boolean;
 }) {
+  const [focused, setFocused] = useState(false);
   return (
     <div className="desc-field">
       <textarea
@@ -39,6 +41,9 @@ function DescriptionField({ value, onChange, placeholder, rows = 2, onGenerate, 
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         rows={rows}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={focused ? { height: 300, transition: "height 0.15s ease" } : { transition: "height 0.15s ease" }}
       />
       <div className="desc-field-toolbar">
         <button type="button" title="Copy" onClick={() => navigator.clipboard.writeText(value)}><Copy size={11} /></button>
@@ -187,6 +192,7 @@ interface ColumnForm {
   nativeFilterType: string | null;
   dataType: string;
   isPrimaryKey: boolean;
+  scope: string;
 }
 
 export function TablesPage() {
@@ -199,6 +205,7 @@ export function TablesPage() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState("");
+  const { selectedDomain, setDomains } = useDomainFilter();
 
   // Form state
   const [sourceId, setSourceId] = useState("");
@@ -229,12 +236,15 @@ export function TablesPage() {
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [cacheTtlEdits, setCacheTtlEdits] = useState<Record<number, { value: string; dirty: boolean; saving: boolean }>>({});
   const [purging, setPurging] = useState<Record<number, boolean>>({});
+  const [invalidating, setInvalidating] = useState<Record<number, boolean>>({});
 
-  const reload = () => {
+  const reload = useCallback(() => {
     setLoading(true);
     Promise.all([fetchTables(), fetchSources(), fetchDomains(), fetchRoles(), fetchSettings()])
       .then(([t, s, doms, r, st]) => {
-        setTables(t); setSources(s); setDomainHints(doms.map((d) => d.id)); setRoles(r); setSettings(st);
+        const domIds = doms.map((d) => d.id);
+        setTables(t); setSources(s); setDomainHints(domIds); setRoles(r); setSettings(st);
+        setDomains(domIds);
         const edits: Record<number, { value: string; dirty: boolean; saving: boolean }> = {};
         for (const tbl of t) {
           edits[tbl.id] = { value: tbl.cacheTtl != null ? String(tbl.cacheTtl) : "", dirty: false, saving: false };
@@ -242,7 +252,7 @@ export function TablesPage() {
         setCacheTtlEdits(edits);
       })
       .finally(() => setLoading(false));
-  };
+  }, [setDomains]);
 
   const getEffectiveTableTtl = (t: RegisteredTable): string => {
     if (t.cacheTtl != null) return `${t.cacheTtl}s (custom)`;
@@ -282,6 +292,19 @@ export function TablesPage() {
     }
   };
 
+  const handleInvalidateFileSource = async (tableId: number) => {
+    setInvalidating((prev) => ({ ...prev, [tableId]: true }));
+    setError(null);
+    try {
+      const result = await invalidateFileSource(tableId);
+      if (!result.success) throw new Error(result.message);
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setInvalidating((prev) => ({ ...prev, [tableId]: false }));
+    }
+  };
+
   const handleNamingChange = async (tableId: number, value: string) => {
     setError(null);
     try {
@@ -293,7 +316,7 @@ export function TablesPage() {
     }
   };
 
-  useEffect(reload, []);
+  useEffect(() => { reload(); }, [reload]);
 
   useEffect(() => {
     setSchemaName(""); setTableName(""); setTableDescription(""); setColumns([]);
@@ -356,6 +379,7 @@ export function TablesPage() {
             nativeFilterType: c.nativeFilterType,
             dataType: c.dataType,
             isPrimaryKey: c.isPrimaryKey ?? false,
+            scope: c.nativeFilterType ? "public" : "domain",
           };
         });
         setColumns(formed);
@@ -389,6 +413,7 @@ export function TablesPage() {
         description: c.description || undefined,
         nativeFilterType: c.nativeFilterType || undefined,
         isPrimaryKey: c.isPrimaryKey || undefined,
+        scope: c.scope || "domain",
       }));
     if (!sourceId || !schemaName || !tableName) {
       setError("Source, schema, and table name are required.");
@@ -400,7 +425,7 @@ export function TablesPage() {
     }
     try {
       const result = await registerTable({
-        sourceId, domainId, schemaName, tableName, governance,
+        sourceId, domainId, schemaName: domainId ? normalizeDomain(domainId) : schemaName, tableName, governance,
         alias: tableAlias || undefined,
         description: tableDescription || undefined,
         watermarkColumn: watermarkColumn || null,
@@ -481,6 +506,7 @@ export function TablesPage() {
           isPrimaryKey: c.isPrimaryKey || undefined,
           isForeignKey: c.isForeignKey || undefined,
           isAlternateKey: c.isAlternateKey || undefined,
+          scope: c.scope || "domain",
         })),
       });
       if (!result.success) { setError(result.message); return; }
@@ -499,7 +525,7 @@ export function TablesPage() {
     <div className="page">
       <div className="page-header">
         <h2>Registered Tables</h2>
-        <FilterInput value={tableSearch} onChange={setTableSearch} placeholder="Filter by source or table…" />
+        <FilterInput value={tableSearch} onChange={setTableSearch} placeholder="Filter by source, domain, or table…" />
         <button onClick={() => setShowForm(!showForm)}>
           {showForm ? "Cancel" : "+ Table"}
         </button>
@@ -513,14 +539,16 @@ export function TablesPage() {
             Source
             <select value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
               <option value="">Select source...</option>
-              {sources.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
+              {sources
+                .filter((s) => selectedDomain === "all" || s.allowedDomains.length === 0 || s.allowedDomains.includes(selectedDomain))
+                .map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
             </select>
           </label>
           <label>
             Domain
             <select value={domainId} onChange={(e) => setDomainId(e.target.value)}>
               <option value="">Select domain...</option>
-              {domainHints.map((d) => <option key={d} value={d}>{d}</option>)}
+              {domainHints.filter((d) => d !== "" && d !== "meta" && d !== "ops").map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
           </label>
           <label>
@@ -544,13 +572,6 @@ export function TablesPage() {
           <label>
             Description <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(optional)</span>
             <input value={tableDescription} onChange={(e) => setTableDescription(e.target.value)} placeholder="Appears in SDL docs" />
-          </label>
-          <label>
-            Governance
-            <select value={governance} onChange={(e) => setGovernance(e.target.value)}>
-              <option value="pre-approved">pre-approved</option>
-              <option value="registry-required">registry-required</option>
-            </select>
           </label>
           {sourceId && (
             <label>
@@ -585,6 +606,7 @@ export function TablesPage() {
                   <span className="col-flex-header">Masking</span>
                   <span className="col-flex-header">Alias</span>
                   <span className="col-flex-header">Description</span>
+                  <span className="col-flex-header">Scope</span>
                 </div>
                 {columns.map((col, i) => (
                   <Fragment key={col.name}>
@@ -636,6 +658,15 @@ export function TablesPage() {
                         placeholder="description"
                         className="col-flex-input"
                       />
+                      <select
+                        value={col.scope}
+                        onChange={(e) => updateCol(i, "scope", e.target.value)}
+                        className="col-flex-input"
+                      >
+                        <option value="domain">domain</option>
+                        <option value="public">public</option>
+                        <option value="restricted">restricted</option>
+                      </select>
                     </div>
                     {col.maskType && (
                       <div className="column-editor-row column-mask-row">
@@ -699,14 +730,17 @@ export function TablesPage() {
         <thead>
           <tr>
             <th>ID</th><th>Source</th><th>Domain</th><th>Table</th>
-            <th>Governance</th><th>Naming</th><th>Cache TTL</th><th>Effective TTL</th><th>Cols</th><th></th>
+            <th>Naming</th><th>Cache TTL</th><th>Effective TTL</th><th>Cols</th><th></th>
           </tr>
         </thead>
         <tbody>
           {tables.filter((t) => {
-            if (!tableSearch.trim()) return true;
-            const q = tableSearch.toLowerCase();
-            return t.sourceId.toLowerCase().includes(q) || t.tableName.toLowerCase().includes(q);
+            if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
+            if (selectedDomain !== "all" && t.domainId !== selectedDomain) return false;
+            const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+            if (terms.length === 0) return true;
+            const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
+            return terms.every((term) => haystack.includes(term));
           }).map((t) => {
             const isEditing = editingTable?.id === t.id;
             return (
@@ -726,7 +760,6 @@ export function TablesPage() {
                       </div>
                     )}
                   </td>
-                  <td>{t.governance}</td>
                   <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                     {NAMING_CONVENTIONS.find((nc) => nc.value === (t.namingConvention ?? ""))?.label ?? t.namingConvention ?? "Inherit (source)"}
                   </td>
@@ -740,15 +773,29 @@ export function TablesPage() {
                       {(() => {
                         const srcType = sources.find((s) => s.id === t.sourceId)?.type;
                         const hasCacheable = srcType === "graphql_remote" || srcType === "openapi" || srcType === "grpc_remote";
-                        return hasCacheable ? (
-                          <button
-                            onClick={() => handlePurgeTableCache(t.id)}
-                            disabled={purging[t.id]}
-                            style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
-                          >
-                            {purging[t.id] ? "Purging..." : "Invalidate Cache"}
-                          </button>
-                        ) : null;
+                        const isFileBacked = srcType === "sqlite";
+                        return (
+                          <>
+                            {hasCacheable && (
+                              <button
+                                onClick={() => handlePurgeTableCache(t.id)}
+                                disabled={purging[t.id]}
+                                style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                              >
+                                {purging[t.id] ? "Purging..." : "Invalidate Cache"}
+                              </button>
+                            )}
+                            {isFileBacked && (
+                              <button
+                                onClick={() => handleInvalidateFileSource(t.id)}
+                                disabled={invalidating[t.id]}
+                                style={{ padding: "0.25rem 0.5rem", fontSize: "0.75rem" }}
+                              >
+                                {invalidating[t.id] ? "Refreshing..." : "Refresh Data"}
+                              </button>
+                            )}
+                          </>
+                        );
                       })()}
                     </div>
                   </td>
@@ -761,7 +808,7 @@ export function TablesPage() {
                           <table className="data-table" style={{ margin: 0 }}>
                             <thead>
                               <tr>
-                                <th>Column</th><th>PK</th><th>Alias</th><th>Description</th><th>Visible To (Read)</th><th>Writable By (R/W)</th><th>Masking</th>
+                                <th>Column</th><th>PK</th><th>Alias</th><th>Description</th><th>Visible To (Read)</th><th>Writable By (R/W)</th><th>Masking</th><th>Scope</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -784,6 +831,7 @@ export function TablesPage() {
                                     <td>{c.visibleTo.length > 0 ? c.visibleTo.join(", ") : "all"}</td>
                                     <td>{c.writableBy.length > 0 ? c.writableBy.join(", ") : "none"}</td>
                                     <td>{c.maskType || "none"}</td>
+                                    <td>{c.scope || "domain"}</td>
                                   </tr>
                                   {c.maskType && (
                                     <tr>
@@ -922,7 +970,7 @@ export function TablesPage() {
                           <table className="data-table" style={{ margin: "0 0 0.5rem" }}>
                             <thead>
                               <tr>
-                                <th>Column</th><th>PK</th><th>Alias</th><th>Description</th><th>Visible To (Read)</th><th>Writable By (R/W)</th><th>Masking</th>
+                                <th>Column</th><th>PK</th><th>Alias</th><th>Description</th><th>Visible To (Read)</th><th>Writable By (R/W)</th><th>Masking</th><th>Scope</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -991,6 +1039,16 @@ export function TablesPage() {
                                         <option value="regex">Regex</option>
                                         <option value="constant">Constant</option>
                                         <option value="truncate">Truncate</option>
+                                      </select>
+                                    </td>
+                                    <td>
+                                      <select
+                                        value={c.scope || "domain"}
+                                        onChange={(e) => updateEditCol(i, "scope", e.target.value)}
+                                      >
+                                        <option value="domain">domain</option>
+                                        <option value="public">public</option>
+                                        <option value="restricted">restricted</option>
                                       </select>
                                     </td>
                                   </tr>

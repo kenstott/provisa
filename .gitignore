@@ -42,6 +42,8 @@ htmlcov/
 
 # Misc
 .DS_Store
+._*
+__MACOSX/
 *.log
 .logs/
 

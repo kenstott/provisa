@@ -83,6 +83,9 @@ class QueryDirectives:
     redirect_format: str | None = None    # "parquet" | "csv" | "arrow"
     redirect_threshold: int | None = None
 
+    # @cached
+    cache_ttl: int | None = None          # seconds; 0 = disable; None = use server default
+
     # -----------------------------------------------------------------------
     # Convenience helpers
     # -----------------------------------------------------------------------
@@ -198,6 +201,10 @@ def extract_directives(document: DocumentNode) -> QueryDirectives:
                 threshold = args.get("threshold")
                 if threshold is not None:
                     result.redirect_threshold = int(threshold)
+            elif name == "cached":
+                ttl = args.get("ttl")
+                if ttl is not None:
+                    result.cache_ttl = int(ttl)
 
         # Field-level @watermark scan
         if defn.selection_set:
@@ -259,6 +266,11 @@ def extract_directives_from_sql_comments(sql: str) -> QueryDirectives:
                     result.redirect_threshold = int(value)
                 except ValueError:
                     pass
+            elif key == "cache_ttl":
+                try:
+                    result.cache_ttl = int(value)
+                except ValueError:
+                    pass
 
     return result
 
@@ -283,5 +295,7 @@ def merge_directives(*sources: QueryDirectives) -> QueryDirectives:
             result.redirect_format = src.redirect_format
         if src.redirect_threshold is not None:
             result.redirect_threshold = src.redirect_threshold
+        if src.cache_ttl is not None:
+            result.cache_ttl = src.cache_ttl
         result.watermark_fields |= src.watermark_fields
     return result

@@ -22,6 +22,7 @@ export interface Source {
   cacheTtl: number | null;
   namingConvention: string | null;
   path: string | null;
+  allowedDomains: string[];
 }
 
 export interface Domain {
@@ -51,10 +52,12 @@ export interface TableColumn {
   maskPrecision: string | null;
   alias: string | null;
   description: string | null;
+  dataType: string | null;
   nativeFilterType: string | null;
   isPrimaryKey: boolean;
   isForeignKey: boolean;
   isAlternateKey: boolean;
+  scope: string;
 }
 
 export interface ColumnPreset {
@@ -98,6 +101,8 @@ export interface Relationship {
   alias: string | null;
   graphqlAlias: string | null;
   computedCypherAlias: string | null;
+  autoSuggested: boolean;
+  disableCypher: boolean;
 }
 
 export interface RLSRule {

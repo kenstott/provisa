@@ -47,7 +47,7 @@ async def fetch(
     pb2,
     args: dict,
     grpc_remote_sources: dict,
-    cache_store,
+    response_cache_store,
     role: str = "",
     ttl: int = 300,
     server_streaming: bool = False,
@@ -57,7 +57,7 @@ async def fetch(
         f"grpc_remote:{source_id}:{full_method_path}:{_args_hash(args)}:{role}"
     )
 
-    cached = await cache_store.get(cache_key)
+    cached = await response_cache_store.get(cache_key)
     if cached is not None:
         log.debug("Cache hit %s", cache_key)
         return json.loads(cached)
@@ -73,7 +73,7 @@ async def fetch(
         server_streaming=server_streaming,
     )
 
-    await cache_store.set(cache_key, json.dumps(rows, default=str), ttl=ttl)
+    await response_cache_store.set(cache_key, json.dumps(rows, default=str), ttl=ttl)
     return rows
 
 

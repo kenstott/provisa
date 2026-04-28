@@ -18,7 +18,7 @@ import os
 import pytest
 import pytest_asyncio
 
-pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
+pytestmark = [pytest.mark.integration]
 
 # ---------------------------------------------------------------------------
 # Optional-dependency guards
@@ -115,6 +115,7 @@ class TestNdjsonFormat:
         obj = json.loads(output.strip())
         assert "customer.name" in obj
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_ndjson_with_real_pg_rows(self, source_pool):
         result = await _fetch_orders(source_pool)
         cols = [
@@ -171,6 +172,7 @@ class TestTabularFormat:
         lines = [ln for ln in csv_output.strip().splitlines() if ln]
         assert len(lines) == 1  # header only
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_tabular_with_real_pg_rows(self, source_pool):
         result = await _fetch_orders(source_pool)
         cols = [
@@ -234,6 +236,7 @@ class TestArrowFormat:
         assert recovered.num_rows == 50
         assert list(recovered.column("id").to_pylist()) == list(range(50))
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_arrow_with_real_pg_rows(self, source_pool):
         result = await _fetch_orders(source_pool)
         cols = [

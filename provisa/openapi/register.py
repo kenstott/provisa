@@ -81,11 +81,18 @@ def _schema_to_columns(schema: dict | None) -> list[dict]:
     cols = []
     for name, prop in props.items():
         col: dict = {"name": name, "type": _openapi_to_provisa_type(prop.get("type"))}
+        desc = prop.get("description") or prop.get("title")
+        if desc:
+            col["description"] = desc
         if prop.get("type") == "object" and prop.get("properties"):
-            col["object_fields"] = [
-                {"name": sub_name, "type": _openapi_to_provisa_type(sub_prop.get("type"))}
-                for sub_name, sub_prop in prop["properties"].items()
-            ]
+            sub_fields = []
+            for sub_name, sub_prop in prop["properties"].items():
+                sf: dict = {"name": sub_name, "type": _openapi_to_provisa_type(sub_prop.get("type"))}
+                sub_desc = sub_prop.get("description") or sub_prop.get("title")
+                if sub_desc:
+                    sf["description"] = sub_desc
+                sub_fields.append(sf)
+            col["object_fields"] = sub_fields
         cols.append(col)
     return cols
 
@@ -131,6 +138,7 @@ async def upsert_table(
                 visible_to=[],
                 native_filter_type=c.get("native_filter_type"),
                 object_fields=[ObjectField(**f) for f in c.get("object_fields", [])],
+                description=c.get("description"),
             )
             for c in columns
         ],

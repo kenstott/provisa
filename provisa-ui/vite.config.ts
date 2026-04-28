@@ -54,7 +54,9 @@ export default defineConfig(({ mode }) => ({
   },
   optimizeDeps: {
     // graphiql-explorer is aliased to src/plugins/graphiql-explorer-fork.cjs (CJS → needs pre-bundle)
-    include: ['graphiql-explorer', 'picomatch-browser'],
+    include: ['graphiql-explorer', 'picomatch-browser', 'lodash.includes', 'lodash.find'],
+    // rolldown (Vite 8) rejects internal ./lib/ sub-path imports not listed in package exports
+    exclude: ['@neo4j-cypher/codemirror'],
   },
   build: {
     rollupOptions: {
@@ -66,10 +68,14 @@ export default defineConfig(({ mode }) => ({
   },
   server: {
     port: 3000,
+    watch: {
+      // macOS creates binary ._* AppleDouble files on exFAT volumes — exclude from watching
+      ignored: ['**\/._*'],
+    },
     proxy: {
-      '/data': 'http://127.0.0.1:8001',
-      '/admin': 'http://127.0.0.1:8001',
-      '/health': 'http://127.0.0.1:8001',
+      '/data': 'http://127.0.0.1:8000',
+      '/admin': 'http://127.0.0.1:8000',
+      '/health': 'http://127.0.0.1:8000',
     },
   },
 }))

@@ -144,6 +144,7 @@ class TestSSEGenerator:
         original_wait_for = asyncio.wait_for
 
         async def fast_timeout(coro, timeout):
+            coro.close()
             raise asyncio.TimeoutError()
 
         with patch("asyncio.wait_for", side_effect=fast_timeout):

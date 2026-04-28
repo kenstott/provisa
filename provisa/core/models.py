@@ -253,6 +253,7 @@ class Column(BaseModel):
     is_foreign_key: bool = False  # derived from relationships (source_column side)
     is_alternate_key: bool = False  # derived from relationships (target_column when PK already exists)
     object_fields: list[ObjectField] = []  # sub-fields for object/jsonb columns
+    scope: str = "domain"  # "domain" | "public" | "restricted"
 
 
 class ColumnPreset(BaseModel):

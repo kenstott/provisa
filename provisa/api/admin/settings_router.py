@@ -67,11 +67,14 @@ async def get_settings():
             "default_sample_size": get_sample_size(),
         },
         "cache": {
-            "default_ttl": state.cache_default_ttl,
+            "default_ttl": state.response_cache_default_ttl,
         },
         "naming": {
             "domain_prefix": naming_cfg.get("domain_prefix", False),
             "convention": naming_cfg.get("convention", "apollo_graphql"),
+        },
+        "relationships": {
+            "auto_track_fk": os.environ.get("PROVISA_AUTO_TRACK_FK", "true").lower() not in ("0", "false", "no"),
         },
         "otel": {
             "endpoint": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or otel_cfg.get("endpoint", ""),
@@ -112,7 +115,7 @@ async def update_settings(request: Request):
     if "cache" in body:
         c = body["cache"]
         if "default_ttl" in c:
-            state.cache_default_ttl = int(c["default_ttl"])
+            state.response_cache_default_ttl = int(c["default_ttl"])
             updated.append("cache.default_ttl")
 
     if "naming" in body:
@@ -137,6 +140,12 @@ async def update_settings(request: Request):
                 await _load_and_build(str(path))
             except Exception:
                 pass
+
+    if "relationships" in body:
+        r = body["relationships"]
+        if "auto_track_fk" in r:
+            os.environ["PROVISA_AUTO_TRACK_FK"] = "true" if r["auto_track_fk"] else "false"
+            updated.append("relationships.auto_track_fk")
 
     if "otel" in body:
         o = body["otel"]

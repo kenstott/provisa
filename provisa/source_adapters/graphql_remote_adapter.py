@@ -22,7 +22,7 @@ async def fetch_rows(
     url: str,
     auth: dict | None,
     columns: list[str],
-    cache_store,
+    response_cache_store,
     ttl: int = 300,
 ) -> list[dict]:
     """Fetch rows from a remote GraphQL source with cache-aside pattern.
@@ -32,7 +32,7 @@ async def fetch_rows(
     col_hash = hashlib.sha256(json.dumps(sorted(columns)).encode()).hexdigest()[:12]
     cache_key = f"graphql_remote:{source_id}:{field_name}:{col_hash}"
 
-    cached = await cache_store.get(cache_key)
+    cached = await response_cache_store.get(cache_key)
     if cached is not None:
         log.debug("Cache hit for %s", cache_key)
         return json.loads(cached)
@@ -40,5 +40,5 @@ async def fetch_rows(
     from provisa.graphql_remote.executor import execute_remote
     rows = await execute_remote(url=url, auth=auth, field_name=field_name, columns=columns)
 
-    await cache_store.set(cache_key, json.dumps(rows), ttl=ttl)
+    await response_cache_store.set(cache_key, json.dumps(rows), ttl=ttl)
     return rows

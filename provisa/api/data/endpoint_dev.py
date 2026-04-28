@@ -16,6 +16,7 @@ each module under the project's 1000-line limit.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
@@ -24,7 +25,7 @@ from pydantic import BaseModel
 
 from provisa.api.admin._dev_shared import detect_target
 from provisa.compiler.rls import RLSContext
-from provisa.compiler.sql_gen import rewrite_semantic_to_physical
+from provisa.compiler.sql_gen import qualify_with_catalogs, rewrite_semantic_to_physical
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
 from provisa.transpiler.router import Route, decide_route
 from provisa.transpiler.transpile import transpile, transpile_to_trino
@@ -124,6 +125,13 @@ async def sql_endpoint(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"SQL parse error: {exc}")
 
+    # --- Step 1b: Normalize table refs — qualify unique unquoted names ---
+    normalized_sql = rewrite_semantic_to_physical(request.sql, ctx)
+    try:
+        parsed_tree = sqlglot.parse_one(normalized_sql, read="postgres")
+    except Exception:
+        normalized_sql = request.sql  # fall back to original if normalize broke it
+
     # --- Step 2: Build GovernanceContext — table_map includes semantic refs ---
     gov_ctx = build_governance_context(
         role_id, rls, state.masking_rules, ctx,
@@ -156,8 +164,8 @@ async def sql_endpoint(
             ),
         )
 
-    # --- Step 4: Governance on semantic SQL ---
-    governed_semantic = apply_governance(request.sql, gov_ctx)
+    # --- Step 4: Governance on normalized SQL ---
+    governed_semantic = apply_governance(normalized_sql, gov_ctx)
 
     # --- Step 5: Routing decision (on governed semantic SQL) ---
     sources = extract_sources(governed_semantic, gov_ctx, ctx)
@@ -174,21 +182,25 @@ async def sql_endpoint(
         has_json_extract="->>" in governed_semantic,
     )
 
-    # --- Step 6: Rewrite semantic → physical intermediate, then transpile ---
-    governed_physical = rewrite_semantic_to_physical(governed_semantic, ctx)
+    # --- Step 6: governed_semantic is already physical after Step 1b normalization ---
+    governed_physical = governed_semantic
 
     output_format = _parse_accept(accept)
 
     # --- Step 7: Execute ---
-    if decision.route == Route.TRINO:
-        sql_to_run = transpile_to_trino(governed_physical)
-        result = await execute_trino(sql_to_run, [])
-    else:
-        dialect = decision.dialect or "postgres"
-        sql_to_run = transpile(governed_physical, dialect)
-        result = await execute_direct(
-            state.source_pools, decision.source_id or _default_source, sql_to_run, [],
-        )
+    try:
+        if decision.route == Route.TRINO:
+            sql_to_run = transpile_to_trino(qualify_with_catalogs(governed_physical, ctx))
+            _loop = asyncio.get_event_loop()
+            result = await _loop.run_in_executor(None, lambda: execute_trino(state.trino_conn, sql_to_run))
+        else:
+            dialect = decision.dialect or "postgres"
+            sql_to_run = transpile(governed_physical, dialect)
+            result = await execute_direct(
+                state.source_pools, decision.source_id or _default_source, sql_to_run, [],
+            )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     rows_as_dicts = [dict(zip(result.column_names, row)) for row in result.rows]
     if output_format == "json":

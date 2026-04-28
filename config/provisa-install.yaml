@@ -323,6 +323,20 @@ relationships:
     target_column: id
     cardinality: many-to-one
     alias: DETAIL
+  - id: pets-to-shelter-breed
+    source_table_id: pets
+    target_table_id: animalBreeds
+    source_column: breed_name
+    target_column: name
+    cardinality: many-to-one
+    alias: BREED_INFO
+  - id: shelter-breed-to-pets
+    source_table_id: animalBreeds
+    target_table_id: pets
+    source_column: name
+    target_column: breed_name
+    cardinality: one-to-many
+    alias: PETS_OF_BREED
 
 roles:
   - id: admin
@@ -342,6 +356,35 @@ roles:
       - pet-store
       - shelter
 
+webhooks:
+  - name: add_pet
+    url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/pet
+    method: POST
+    timeout_ms: 5000
+    domain_id: pet-store
+    description: "Add a new pet to the store via Petstore API"
+    visible_to: [admin]
+    kind: mutation
+    arguments:
+      - name: name
+        type: String
+      - name: status
+        type: String
+
+  - name: place_order
+    url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/store/order
+    method: POST
+    timeout_ms: 5000
+    domain_id: pet-store
+    description: "Place a purchase order for a pet via Petstore API"
+    visible_to: [admin]
+    kind: mutation
+    arguments:
+      - name: petId
+        type: Int
+      - name: quantity
+        type: Int
+
 cache:
   enabled: true
   redis_url: redis://${env:REDIS_HOST:-localhost}:6379
@@ -359,6 +402,6 @@ server:
     request_timeout: 60
 
 observability:
-  endpoint: ""
+  endpoint: "http://localhost:4317"
   service_name: provisa
   sample_rate: 1.0

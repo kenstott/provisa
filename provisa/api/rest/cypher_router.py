@@ -523,6 +523,12 @@ async def _execute_with_gql_remote(
         required_args: list[dict] = info.get("required_args", [])
         # Build variables for this table from nf_args keyed by arg name
         gql_vars = {a["name"]: nf_args[a["name"]] for a in required_args if a["name"] in nf_args}
+        missing = [a["name"] for a in required_args if a["name"] not in nf_args]
+        if missing:
+            raise ValueError(
+                f"Table '{tn}' requires argument(s) {missing} — "
+                f"add a WHERE clause, e.g. WHERE n.{missing[0]} = <value>"
+            )
 
         cache_loc = cache_location(info["source_id"], info["cache_catalog"], "gql_cache")
         cache_tbl = cache_table_name(info["source_id"], tn, gql_vars)

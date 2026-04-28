@@ -122,6 +122,33 @@ kafka_sources:
           - name: status
           - name: created_at
 
+functions:
+  - name: get_customers_by_region
+    source_id: sales-pg
+    schema: public
+    function_name: get_customers_by_region
+    returns: customers
+    domain_id: sales-analytics
+    description: "Returns customers filtered by region — pass no argument to return all"
+    visible_to: [admin, analyst]
+    kind: query
+    arguments:
+      - name: p_region
+        type: String
+
+webhooks:
+  - name: notify_support
+    url: http://localhost:9999/notify
+    method: POST
+    timeout_ms: 3000
+    domain_id: sales-analytics
+    description: "Send a support notification (example webhook)"
+    visible_to: [admin]
+    kind: mutation
+    arguments:
+      - name: message
+        type: String
+
 server:
   limits:
     default_row_limit: 10000    # rows returned when no LIMIT specified; env PROVISA_DEFAULT_ROW_LIMIT overrides
