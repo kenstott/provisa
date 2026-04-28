@@ -163,6 +163,7 @@ class Source(BaseModel):
     cache_schema: str = "api_cache"   # schema within that catalog
     naming_convention: str | None = None  # overrides global; None = inherit
     federation_hints: dict[str, str] = Field(default_factory=dict)  # Trino session props
+    allowed_domains: list[str] = Field(default_factory=list)  # restrict this source to specific domains; empty = unrestricted
 
     @property
     def connector(self) -> str:

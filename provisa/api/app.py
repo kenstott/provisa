@@ -82,6 +82,7 @@ class AppState:
     live_engine: object | None = None  # Phase AM: LiveEngine instance
     hostname: str = "localhost"  # publicly reachable hostname (PROVISA_HOSTNAME)
     source_federation_hints: dict[str, dict[str, str]] = {}  # source_id → Trino session props (AL3)
+    source_allowed_domains: dict[str, list[str]] = {}  # source_id → allowed domain ids (empty = unrestricted)
     server_cfg: dict = {}  # raw server section from provisa.yaml
     server_limits: dict = {}  # resolved query/request limits (from config + env overrides)
     tracked_functions: dict[str, dict] = {}  # gql field name → fn dict
@@ -642,6 +643,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
         }
         if src.federation_hints:
             state.source_federation_hints[src.id] = dict(src.federation_hints)
+        if src.allowed_domains:
+            state.source_allowed_domains[src.id] = list(src.allowed_domains)
         if has_driver(src.type.value):
             resolved_pw = resolve_secrets(src.password)
             resolved_host = resolve_secrets(src.host) if src.host else "localhost"
@@ -962,6 +965,23 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     async with state.pg_pool.acquire() as conn:
         tables = await _fetch_tables(conn)
         relationships = await _fetch_relationships(conn)
+
+        # Apply schema visibility filters (schema.include_ops / schema.include_metrics)
+        _schema_cfg = raw_config.get("schema", {}) if raw_config else {}
+        if not _schema_cfg.get("include_ops", True):
+            tables = [t for t in tables if t.get("domain_id") != "ops"]
+        elif not _schema_cfg.get("include_metrics", True):
+            tables = [t for t in tables if not (
+                t.get("domain_id") == "ops" and t.get("table_name") == "metrics"
+            )]
+
+        # Apply per-source domain restrictions (allowed_domains in provisa.yaml)
+        if state.source_allowed_domains:
+            tables = [
+                t for t in tables
+                if not state.source_allowed_domains.get(t["source_id"])
+                or t.get("domain_id", "") in state.source_allowed_domains[t["source_id"]]
+            ]
 
         # Install LISTEN/NOTIFY triggers on pre-approved PostgreSQL tables
         from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
