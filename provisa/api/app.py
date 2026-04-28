@@ -110,14 +110,16 @@ state = AppState()
 # Views replace tables that have text[] columns Trino can't surface; arrays cast to JSON text.
 _META_TABLE_VIEWS: dict[str, str] = {
     "registered_tables": """
-        CREATE OR REPLACE VIEW public.registered_tables_meta AS
+        DROP VIEW IF EXISTS public.registered_tables_meta CASCADE;
+        CREATE VIEW public.registered_tables_meta AS
         SELECT id, source_id, domain_id, schema_name, table_name, governance,
                alias, description, cache_ttl, naming_convention, watermark_column,
                column_presets::text AS column_presets
         FROM public.registered_tables
     """,
     "table_columns": """
-        CREATE OR REPLACE VIEW public.table_columns_meta AS
+        DROP VIEW IF EXISTS public.table_columns_meta CASCADE;
+        CREATE VIEW public.table_columns_meta AS
         SELECT id, table_id, column_name, data_type, is_primary_key,
                alias, description, path,
                mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
