@@ -532,3 +532,15 @@ These must never be conflated. `alias` must not appear as a GraphQL field name f
 - **REQ-438** (2026-04-28): Column visibility is determined by visible_to on each column, checked against the identity's role for the matching domain.
 
 - **REQ-439** (2026-04-28): Column masking is determined by unmasked_to on each column, checked against the identity's role for the matching domain. Role proliferation is the accepted trade-off for keeping visible_to/unmasked_to as plain role ID lists (no domain-role pair syntax in column config).
+
+- **REQ-440** (2026-04-28): Domain boundaries are permission gates. Within a domain a role can query any table freely. To access data in another domain, the query must traverse a registered relationship — there is no other path.
+
+- **REQ-441** (2026-04-28): GraphQL enforces cross-domain access control by not exposing cross-domain tables as root types; they are only reachable as nested fields via registered relationships.
+
+- **REQ-442** (2026-04-28): Cypher enforces cross-domain access control at translator/parse time: starting node labels must map to a domain in the role's domain_access; cross-domain hops must follow a registered relationship. Direct MATCH on a node label outside the role's domain_access is rejected.
+
+- **REQ-443** (2026-04-28): SQL enforces cross-domain access control at query-validation/parse time using the SQLGlot AST: any cross-domain table reference must be connected to an in-domain table via a JOIN whose column pair matches a registered relationship's source_column/target_column. Unapproved cross-domain references are rejected.
+
+- **REQ-444** (2026-04-28): The registered relationships table is the single authority for what cross-domain connections are permitted across all three interfaces (GraphQL, Cypher, SQL). The enforcement logic is designed for reuse across interfaces.
+
+- **REQ-445** (2026-04-28): Views feature (domain SQL views) must validate that all foreign tables referenced are connected to the domain via registered relationships. At view save time: for every table outside the role's domain_access, an approved relationship must exist (matching source_column/target_column in the relationships registry) that links it—directly or transitively—back to an owned-domain table. Any foreign table reachable only through unregistered joins is rejected. Order and direction of the join condition are irrelevant; only graph reachability via registered edges matters. This validation applies to Views only, not to general query execution.

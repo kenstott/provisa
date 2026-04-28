@@ -446,6 +446,11 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     from_expr = self._build_domain_union(fv, self._domain_nodes[fv])
                 elif fv and fv in self._var_table and self._var_table[fv][1]:
                     nm = self._var_table[fv][1]
+                    if getattr(nm, "traversal_only", False):
+                        raise CypherTranslateError(
+                            f"Node '{nm.label}' is in a domain outside your access. "
+                            f"Start the pattern from a node in your own domain and traverse to '{nm.label}' via a relationship."
+                        )
                     from_expr = exp.alias_(
                         exp.Table(
                             this=exp.Identifier(this=nm.sql_table_name, quoted=True),
@@ -458,6 +463,11 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     type_label, _ = self._resolve_node_type(first_node.labels)
                     nm = self._lm.nodes.get(type_label) if type_label else None
                     if nm:
+                        if getattr(nm, "traversal_only", False):
+                            raise CypherTranslateError(
+                                f"Node '{nm.label}' is in a domain outside your access. "
+                                f"Start the pattern from a node in your own domain and traverse to '{nm.label}' via a relationship."
+                            )
                         alias = fv or type_label.lower()
                         from_expr = exp.alias_(
                             exp.Table(

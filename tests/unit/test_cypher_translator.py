@@ -1062,3 +1062,63 @@ def test_from_schema_table_label_physical_table_map():
     assert resolved.table_label == "SupportTicketsResolved"
     assert "SupportTicketsCreated" in lm.nodes_by_table
     assert "SupportTicketsResolved" in lm.nodes_by_table
+
+
+# ---------------------------------------------------------------------------
+# Cross-domain traversal_only enforcement (REQ-441)
+# ---------------------------------------------------------------------------
+
+def _make_cross_domain_label_map() -> CypherLabelMap:
+    """Label map with one owned node (Sales domain) and one traversal_only cross-domain node."""
+    orders = NodeMapping(
+        label="Sales:Orders", type_name="Sales_Orders", domain_label="Sales",
+        table_label="Orders", table_id=1, source_id="pg", id_column="id", pk_columns=[],
+        catalog_name="postgresql", schema_name="sales", table_name="orders",
+        properties={"id": "id", "amount": "amount"},
+    )
+    shipments = NodeMapping(
+        label="Logistics:Shipments", type_name="Logistics_Shipments", domain_label="Logistics",
+        table_label="Shipments", table_id=2, source_id="pg2", id_column="shipment_id", pk_columns=[],
+        catalog_name="postgresql", schema_name="logistics", table_name="shipments",
+        properties={"shipmentId": "shipment_id", "status": "status"},
+        traversal_only=True,
+    )
+    rel = RelationshipMapping(
+        rel_type="SHIPPED_VIA",
+        source_label="Sales_Orders",
+        target_label="Logistics_Shipments",
+        join_source_column="shipment_id",
+        join_target_column="shipment_id",
+        field_name="shipped_via",
+    )
+    nodes = {
+        "Sales_Orders": orders,
+        "Logistics_Shipments": shipments,
+    }
+    return CypherLabelMap(
+        nodes=nodes,
+        relationships={"SHIPPED_VIA": rel},
+        domains={"Sales": ["Sales_Orders"], "Logistics": ["Logistics_Shipments"]},
+        nodes_by_table={"Orders": ["Sales_Orders"], "Shipments": ["Logistics_Shipments"]},
+    )
+
+
+def test_traversal_only_node_as_start_raises():
+    """Starting a MATCH on a traversal_only (cross-domain) node must raise CypherTranslateError."""
+    from provisa.cypher.translator import CypherTranslateError
+    lm = _make_cross_domain_label_map()
+    ast = parse_cypher("MATCH (s:Logistics:Shipments) RETURN s.status")
+    with pytest.raises(CypherTranslateError, match="domain outside your access"):
+        cypher_to_sql(ast, lm, {})
+
+
+def test_traversal_only_node_as_target_succeeds():
+    """Traversing FROM an owned node TO a traversal_only (cross-domain) node must succeed."""
+    lm = _make_cross_domain_label_map()
+    ast = parse_cypher(
+        "MATCH (o:Sales:Orders)-[:SHIPPED_VIA]->(s:Logistics:Shipments) RETURN o.id, s.status"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "shipments" in sql.lower()
+    assert "orders" in sql.lower()

@@ -35,6 +35,7 @@ class NodeMapping:
     properties: dict[str, str]  # cypher prop name → SQL column name
     native_filter_columns: set[str] = field(default_factory=set)  # SQL column names that are native API params
     physical_table_name: str = ""  # physical DB table name; "" means same as table_name
+    traversal_only: bool = False  # True = cross-domain node; may not be a MATCH starting node
 
     @property
     def sql_table_name(self) -> str:
@@ -168,8 +169,20 @@ class CypherLabelMap:
         return result
 
     @classmethod
-    def from_schema(cls, ctx: object) -> "CypherLabelMap":
-        """Build CypherLabelMap from an existing CompilationContext."""
+    def from_schema(
+        cls,
+        ctx: object,
+        domain_access: list[str] | None = None,
+        all_tables: list[dict] | None = None,
+        all_relationships: list[dict] | None = None,
+        all_column_types: dict | None = None,
+    ) -> "CypherLabelMap":
+        """Build CypherLabelMap from an existing CompilationContext.
+
+        When domain_access/all_tables/all_relationships/all_column_types are supplied,
+        cross-domain nodes reachable via registered relationships are included and
+        marked traversal_only=True — they cannot be used as MATCH starting nodes.
+        """
         from provisa.compiler.sql_gen import CompilationContext, TableMeta, JoinMeta
 
         nodes: dict[str, NodeMapping] = {}
@@ -274,6 +287,94 @@ class CypherLabelMap:
                 )
                 relationships[f"REGISTERED_TABLE::{type_name}"] = rm
                 aliases.setdefault("REGISTERED_TABLE", []).append(rm)
+
+        # Cross-domain traversal nodes: reachable via registered relationships but not
+        # directly accessible. Marked traversal_only=True — cannot be MATCH start nodes.
+        _all_access = domain_access is not None and "*" in domain_access
+        if (
+            not _all_access
+            and all_tables is not None
+            and all_relationships is not None
+            and all_column_types is not None
+        ):
+            table_id_to_type: dict[int, str] = {nm.table_id: tn for tn, nm in nodes.items()}
+            all_tables_by_id: dict[int, dict] = {t["id"]: t for t in all_tables}
+            owned_ids: set[int] = set(table_id_to_type)
+
+            for rel in all_relationships:
+                if rel.get("disable_cypher"):
+                    continue
+                src_id: int = rel["source_table_id"]
+                tgt_id: int = rel["target_table_id"]
+                src_type = table_id_to_type.get(src_id)
+                if src_type is None or tgt_id in owned_ids:
+                    continue
+                tgt_table = all_tables_by_id.get(tgt_id)
+                if tgt_table is None:
+                    continue
+                col_metas = all_column_types.get(tgt_id, [])
+                if not col_metas:
+                    continue
+
+                tgt_domain_id = tgt_table.get("domain_id") or None
+                tgt_domain_label = _pascal(tgt_domain_id) if tgt_domain_id else None
+                tgt_raw_name = tgt_table["table_name"]
+                tgt_table_label = _pascal(_strip_domain_prefix(tgt_raw_name, tgt_domain_id))
+                tgt_logical = _strip_domain_prefix(tgt_raw_name, tgt_domain_id)
+                tgt_type_name = (
+                    f"{tgt_domain_label}_{tgt_table_label}" if tgt_domain_label else tgt_table_label
+                )
+                tgt_cypher_label = f"{tgt_domain_label}:{tgt_table_label}" if tgt_domain_label else tgt_table_label
+
+                if tgt_type_name not in nodes:
+                    col_names = [c.column_name for c in col_metas]
+                    props: dict[str, str] = {_to_camel(c): c for c in col_names}
+                    id_col = _resolve_id_column(tgt_type_name, col_names, {}, [])
+                    from provisa.compiler.introspect import ColumnMetadata as _CM
+                    tgt_source_id = tgt_table.get("source_id") or ""
+                    tgt_schema = tgt_table.get("schema_name") or ""
+                    tgt_catalog = ""  # catalog resolved at query time via source catalog
+                    from provisa.compiler.naming import source_to_catalog as _s2c
+                    try:
+                        tgt_catalog = _s2c(tgt_source_id) if tgt_source_id else ""
+                    except Exception:
+                        pass
+                    nodes[tgt_type_name] = NodeMapping(
+                        label=tgt_cypher_label,
+                        type_name=tgt_type_name,
+                        domain_label=tgt_domain_label,
+                        table_label=tgt_table_label,
+                        table_id=tgt_id,
+                        source_id=tgt_source_id,
+                        id_column=id_col,
+                        pk_columns=[],
+                        catalog_name=tgt_catalog,
+                        schema_name=tgt_schema,
+                        table_name=tgt_logical,
+                        properties=props,
+                        traversal_only=True,
+                    )
+                    if tgt_domain_label:
+                        domains.setdefault(tgt_domain_label, []).append(tgt_type_name)
+                    nodes_by_table.setdefault(tgt_table_label, []).append(tgt_type_name)
+                    owned_ids.add(tgt_id)
+                    table_id_to_type[tgt_id] = tgt_type_name
+
+                cypher_alias = rel.get("alias") or rel.get("computed_cypher_alias")
+                rel_type = cypher_alias if cypher_alias else _to_rel_type(rel.get("graphql_alias") or tgt_raw_name)
+                rel_key = f"{rel_type}::{src_type}→{tgt_type_name}"
+                if rel_key not in relationships:
+                    xrel = RelationshipMapping(
+                        rel_type=rel_type,
+                        source_label=src_type,
+                        target_label=tgt_type_name,
+                        join_source_column=rel["source_column"],
+                        join_target_column=rel["target_column"],
+                        field_name=rel.get("graphql_alias") or "",
+                        alias=cypher_alias,
+                    )
+                    relationships[rel_key] = xrel
+                    aliases.setdefault(rel_type, []).append(xrel)
 
         return cls(nodes=nodes, relationships=relationships, domains=domains, nodes_by_table=nodes_by_table, aliases=aliases)
 

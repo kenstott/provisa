@@ -82,7 +82,6 @@ async def cypher_query(
 
     try:
         from provisa.cypher.parser import parse_cypher, CypherParseError
-        from provisa.cypher.label_map import CypherLabelMap
         from provisa.cypher.translator import cypher_to_sql, CypherCrossSourceError, CypherTranslateError
         from provisa.cypher.graph_rewriter import apply_graph_rewrites
         from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
@@ -103,8 +102,7 @@ async def cypher_query(
     # Intercept Neo4j-compatible schema procedures before parse
     _proc = _detect_procedure(body.query)
     if _proc is not None:
-        from provisa.cypher.label_map import CypherLabelMap
-        label_map = CypherLabelMap.from_schema(ctx)
+        label_map = _build_label_map(ctx, role_id, state)
         if _proc == "db.labels":
             # Return individual domain labels + table labels (multi-label nodes).
             # Each node contributes up to two labels; deduplicate and sort.
@@ -132,7 +130,7 @@ async def cypher_query(
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
     # Build label map
-    label_map = CypherLabelMap.from_schema(ctx)
+    label_map = _build_label_map(ctx, role_id, state)
 
     # Validate and bind params
     param_names = collect_param_names(body.query)
@@ -301,14 +299,13 @@ async def cypher_query(
 async def graph_schema(request: Request) -> JSONResponse:
     """Return node labels and relationship types for the current role."""
     from provisa.api.app import state
-    from provisa.cypher.label_map import CypherLabelMap
 
     role_id = _resolve_role_id(request, state)
     ctx = state.contexts.get(role_id)
     if ctx is None:
         return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
 
-    label_map = CypherLabelMap.from_schema(ctx)
+    label_map = _build_label_map(ctx, role_id, state)
     return JSONResponse(content={
         "node_labels": [
             {
@@ -319,6 +316,7 @@ async def graph_schema(request: Request) -> JSONResponse:
                 "pk_columns": n.pk_columns,      # user-designated PK column names
                 "id_column": n.id_column,        # resolved PK column (heuristic fallback)
                 "native_filter_columns": sorted(n.native_filter_columns),
+                "traversal_only": n.traversal_only,  # cross-domain; cannot start a MATCH pattern
             }
             for n in label_map.nodes.values()
         ],
@@ -340,6 +338,20 @@ def _resolve_role_id(request: Request, state: object) -> str:
     if roles:
         return next(iter(roles))
     return "default"
+
+
+def _build_label_map(ctx: object, role_id: str, state: object) -> "object":
+    """Build CypherLabelMap with cross-domain traversal nodes for the given role."""
+    from provisa.cypher.label_map import CypherLabelMap
+    role = getattr(state, "roles", {}).get(role_id, {})
+    cache = getattr(state, "schema_build_cache", {})
+    return CypherLabelMap.from_schema(
+        ctx,
+        domain_access=role.get("domain_access"),
+        all_tables=cache.get("tables"),
+        all_relationships=cache.get("relationships"),
+        all_column_types=cache.get("column_types"),
+    )
 
 
 def _lookup_api_endpoint(state: object, table_name: str):
