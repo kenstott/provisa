@@ -83,6 +83,7 @@ class AppState:
     hostname: str = "localhost"  # publicly reachable hostname (PROVISA_HOSTNAME)
     source_federation_hints: dict[str, dict[str, str]] = {}  # source_id → Trino session props (AL3)
     source_allowed_domains: dict[str, list[str]] = {}  # source_id → allowed domain ids (empty = unrestricted)
+    trino_fte_hints: dict[str, str] = {}  # FTE session properties injected into every Trino query
     server_cfg: dict = {}  # raw server section from provisa.yaml
     server_limits: dict = {}  # resolved query/request limits (from config + env overrides)
     tracked_functions: dict[str, dict] = {}  # gql field name → fn dict
@@ -495,16 +496,27 @@ async def _load_and_build(config_path: str | None = None) -> None:
         state.flight_client = create_flight_connection(
             host=trino_host, port=trino_flight_port,
         )
-        import logging
-        logging.getLogger(__name__).info(
-            "Arrow Flight SQL connected to %s:%d", trino_host, trino_flight_port,
-        )
     except Exception:
         import logging
         logging.getLogger(__name__).warning(
             "Arrow Flight SQL unavailable — falling back to REST",
             exc_info=True,
         )
+
+    # Fault-Tolerant Execution (FTE) — env var > server.trino_fte config > disabled
+    _fte_cfg = state.server_cfg.get("trino_fte", {})
+    _fte_enabled = os.environ.get(
+        "TRINO_FTE_ENABLED", str(_fte_cfg.get("enabled", False))
+    ).lower() not in ("0", "false", "no")
+    if _fte_enabled:
+        _retry_policy = os.environ.get(
+            "TRINO_FTE_RETRY_POLICY", _fte_cfg.get("retry_policy", "TASK")
+        ).upper()
+        state.trino_fte_hints = {"retry_policy": _retry_policy}
+        for _k, _v in _fte_cfg.items():
+            if _k in ("enabled", "retry_policy"):
+                continue
+            state.trino_fte_hints.setdefault(_k, str(_v))
 
     # Ensure MinIO results bucket exists (REQ-171)
     from provisa.executor.redirect import RedirectConfig, ensure_results_bucket

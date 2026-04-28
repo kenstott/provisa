@@ -89,8 +89,14 @@ def execute_trino(
 
         # Inject session properties before the main query when hints are present.
         # Always inject query timeout so runaway queries don't starve workers.
+        # FTE hints (retry_policy etc.) are merged in when FTE is enabled globally.
         effective_hints = dict(session_hints or {})
         effective_hints.setdefault("query_max_execution_time", f"{_trino_query_timeout()}s")
+        try:
+            from provisa.api.app import state as _app_state
+            effective_hints = {**_app_state.trino_fte_hints, **effective_hints}
+        except Exception:
+            pass
         cur = conn.cursor()
         for key, value in effective_hints.items():
             safe_key = key.replace("'", "")
