@@ -52,6 +52,7 @@ class AppState:
     trino_conn: trino.dbapi.Connection | None = None
     flight_client: object | None = None  # pyarrow.flight.FlightClient
     schemas: dict[str, object] = {}  # role_id → GraphQLSchema
+    schema_build_cache: dict = {}  # raw data for on-demand domain-filtered schema building
     contexts: dict[str, CompilationContext] = {}  # role_id → CompilationContext
     rls_contexts: dict[str, RLSContext] = {}  # role_id → RLSContext
     roles: dict[str, dict] = {}  # role_id → role dict
@@ -398,7 +399,7 @@ def _seed_ops_trino(trino_conn: object) -> None:
             except Exception:
                 _log.warning("ops view %s: create failed (table may not exist yet)", view_name)
     except Exception:
-        _log.warning("ops Iceberg DDL failed — tables will be created on first compaction", exc_info=True)
+        _log.warning("ops Iceberg DDL failed — will retry before next schema introspection", exc_info=True)
 
 
 async def _load_and_build(config_path: str | None = None) -> None:
@@ -503,8 +504,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
             exc_info=True,
         )
 
-    # Fault-Tolerant Execution (FTE) — env var > server.trino_fte config > disabled
-    _fte_cfg = state.server_cfg.get("trino_fte", {})
+    # Fault-Tolerant Execution (FTE) — env var > server.federation_fte config > disabled
+    _fte_cfg = state.server_cfg.get("federation_fte", {})
     _fte_enabled = os.environ.get(
         "TRINO_FTE_ENABLED", str(_fte_cfg.get("enabled", False))
     ).lower() not in ("0", "false", "no")
@@ -1040,9 +1041,18 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         ]
 
         # Inject source-level naming convention into table dicts for hierarchical resolution
+        # Also merge PG-stored allowed_domains into state (PG overrides config-file values).
+        for src_id, src_row in sources.items():
+            pg_domains = list(src_row.get("allowed_domains") or [])
+            if pg_domains:
+                state.source_allowed_domains[src_id] = pg_domains
         for tbl in tables:
             src = sources.get(tbl["source_id"], {})
             tbl["source_naming_convention"] = src.get("naming_convention")
+
+        # Ensure ops Iceberg tables exist before introspection — idempotent, self-healing
+        # if _seed_ops_trino failed at startup because the otel catalog wasn't ready yet.
+        _seed_ops_trino(state.trino_conn)
 
         # Introspect Trino metadata
         kafka_physical = getattr(state, "kafka_table_physical", {})
@@ -1249,6 +1259,22 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             except ValueError:
                 pass
 
+    # Cache raw build data for on-demand domain-filtered schema generation
+    state.schema_build_cache = {
+        "tables": tables,
+        "relationships": relationships,
+        "column_types": col_types_converted,
+        "naming_rules": naming_rules,
+        "domains": domains,
+        "domain_prefix": domain_prefix,
+        "naming_convention": state.global_naming_convention,
+        "functions": tracked_functions,
+        "webhooks": tracked_webhooks,
+        "enum_types": state.pg_enum_types,
+        "approved_queries": approved_queries,
+        "physical_table_map": {**_META_TABLE_ALIAS, **(kafka_physical or {})},
+    }
+
     # Compile inline view SQLs now that a context is available
     if state.view_sql_map and state.contexts:
         from provisa.compiler.sql_gen import rewrite_semantic_to_trino_physical
@@ -1325,6 +1351,36 @@ async def lifespan(app: FastAPI):
                         _log.exception("Hot table refresh failed: %s", entry.table_name)
 
         state._hot_refresh_task = asyncio.create_task(_hot_refresh_loop())
+
+    # Start SQLite staleness check loop
+    _sqlite_check_interval = 60
+
+    async def _sqlite_stale_loop() -> None:
+        from provisa.file_source.pg_migrate import migrate_if_stale
+        while True:
+            await asyncio.sleep(_sqlite_check_interval)
+            try:
+                async with state.pg_pool.acquire() as conn:
+                    rows = await conn.fetch(
+                        """SELECT rt.id, rt.table_name, rt.schema_name, s.path
+                           FROM registered_tables rt
+                           JOIN sources s ON s.id = rt.source_id
+                           WHERE s.type = 'sqlite' AND s.path IS NOT NULL"""
+                    )
+                    for r in rows:
+                        try:
+                            migrated = await migrate_if_stale(
+                                r["id"], r["path"], r["table_name"],
+                                conn, r["schema_name"], r["table_name"],
+                            )
+                            if migrated:
+                                _log.info("SQLite stale: re-migrated table %d (%s)", r["id"], r["table_name"])
+                        except Exception:
+                            _log.exception("SQLite stale check failed for table %d", r["id"])
+            except Exception:
+                _log.exception("SQLite staleness loop error")
+
+    state._sqlite_stale_task = asyncio.create_task(_sqlite_stale_loop())
 
     # Start gRPC server if protos were generated
     if state.proto_files:
