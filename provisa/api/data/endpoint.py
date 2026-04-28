@@ -472,6 +472,18 @@ def _lookup_ep(state, table_name: str):
     return None
 
 
+def _lookup_gql_remote_table(state, table_name: str):
+    """Find a graphql_remote table registration by GQL field name."""
+    from provisa.compiler.naming import to_snake_case
+    gql_srcs = getattr(state, "graphql_remote_sources", {})
+    snake_tn = to_snake_case(table_name)
+    for reg in gql_srcs.values():
+        for tbl in reg.get("tables", []):
+            if tbl["name"] == table_name or to_snake_case(tbl["name"]) == snake_tn:
+                return reg, tbl
+    return None, None
+
+
 async def _promote_joined_from_pg(state, ep, tn, hot_mgr, col_names, meta_cols, cache_loc, hot_threshold) -> None:
     """Fetch joined API table rows from PG and store in hot_mgr for next-request Values CTE."""
     import json as _json
@@ -558,6 +570,31 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
         ep = _lookup_ep(state, tn)
         log.warning("[MAT] table %r → ep=%s", tn, ep.table_name if ep else None)
         if ep is None:
+            gql_reg, gql_tbl = _lookup_gql_remote_table(state, tn)
+            if gql_reg is not None and not gql_tbl.get("required_args"):
+                try:
+                    from provisa.graphql_remote.executor import execute_remote
+                    from provisa.cache.hot_tables import HotTableEntry
+                    col_names = [c["name"] for c in gql_tbl.get("columns", [])]
+                    gql_rows = await execute_remote(
+                        url=gql_reg["url"],
+                        auth=gql_reg.get("auth"),
+                        field_name=gql_tbl["name"],
+                        columns=col_names,
+                    )
+                    entry = HotTableEntry(
+                        table_name=tn,
+                        catalog="",
+                        schema="",
+                        pk_column=col_names[0] if col_names else "id",
+                        rows=gql_rows,
+                        column_names=col_names,
+                        is_api=True,
+                    )
+                    values_cte_entries[tn] = entry
+                    log.warning("[GQL REMOTE] VALUES CTE inline for %s (%d rows)", tn, len(gql_rows))
+                except Exception as exc:
+                    log.warning("[GQL REMOTE] fetch failed for %s: %s — skipping", tn, exc)
             continue
         source_id = ep.source_id
         api_source = getattr(state, "api_sources", {}).get(source_id)
