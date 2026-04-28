@@ -13,9 +13,12 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 import asyncpg
 import trino
@@ -106,12 +109,20 @@ state = AppState()
 
 # Views replace tables that have text[] columns Trino can't surface; arrays cast to JSON text.
 _META_TABLE_VIEWS: dict[str, str] = {
+    "registered_tables": """
+        CREATE OR REPLACE VIEW public.registered_tables_meta AS
+        SELECT id, source_id, domain_id, schema_name, table_name, governance,
+               alias, description, cache_ttl, naming_convention, watermark_column,
+               column_presets::text AS column_presets
+        FROM public.registered_tables
+    """,
     "table_columns": """
         CREATE OR REPLACE VIEW public.table_columns_meta AS
         SELECT id, table_id, column_name, data_type, is_primary_key,
                alias, description, path,
                mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
-               native_filter_type, is_foreign_key, is_alternate_key, object_fields,
+               native_filter_type, is_foreign_key, is_alternate_key,
+               object_fields::text AS object_fields,
                array_to_json(visible_to)::text  AS visible_to,
                array_to_json(unmasked_to)::text AS unmasked_to,
                array_to_json(writable_by)::text AS writable_by
@@ -127,6 +138,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
 }
 # Maps original table name → view name (or itself if no view needed).
 _META_TABLE_ALIAS: dict[str, str] = {
+    "registered_tables": "registered_tables_meta",
     "table_columns": "table_columns_meta",
     "roles": "roles_meta",
 }
@@ -278,11 +290,11 @@ async def _seed_meta_domain(conn: asyncpg.Connection) -> None:
                 tbl,
             )
         }
-        # Query the view (or table) for its column list; arrays appear as 'text' after casting.
+        # Query the view (or table) for its column list; arrays and jsonb appear as 'text' after view casting.
         cols = await conn.fetch(
             """
             SELECT column_name,
-                   CASE WHEN data_type = 'ARRAY' THEN 'text' ELSE data_type END AS data_type
+                   CASE WHEN data_type IN ('ARRAY', 'jsonb', 'json') THEN 'text' ELSE data_type END AS data_type
             FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = $1
             ORDER BY ordinal_position
@@ -589,6 +601,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
 
     # Load config into PG (and create Trino catalogs)
     config = parse_config_dict(raw_config)
+    state.config = config
 
     # Apply observability config to state
     if config.observability:
@@ -982,6 +995,28 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         column_types = introspect_tables(state.trino_conn, tables, sources, kafka_physical)
         col_types_converted: dict[int, list[ColumnMetadata]] = column_types
 
+        # Synthesize ColumnMetadata for graphql_remote tables (no Trino catalog)
+        _gql_remote_srcs = getattr(state, "graphql_remote_sources", {})
+        if _gql_remote_srcs:
+            _provisa_to_trino = {
+                "text": "varchar", "integer": "integer",
+                "numeric": "double", "boolean": "boolean", "jsonb": "varchar",
+            }
+            _tbl_lookup = {(t["source_id"], t["table_name"]): t["id"] for t in tables}
+            for _reg in _gql_remote_srcs.values():
+                _sid = _reg.get("source_id", "")
+                for _tbl in _reg.get("tables", []):
+                    _tid = _tbl_lookup.get((_sid, _tbl["name"]))
+                    if _tid is not None and _tid not in col_types_converted:
+                        col_types_converted[_tid] = [
+                            ColumnMetadata(
+                                column_name=c["name"],
+                                data_type=_provisa_to_trino.get(c.get("type", "text"), "varchar"),
+                                is_nullable=True,
+                            )
+                            for c in _tbl.get("columns", [])
+                        ]
+
         # Load API sources and endpoints (Phase U)
         from provisa.api_source.loader import load_api_sources
         state.api_endpoints, state.api_sources = await load_api_sources(
@@ -1326,7 +1361,7 @@ async def lifespan(app: FastAPI):
                 GraphQLRemoteRegistration,
             )
             try:
-                tables, functions = await _introspect_and_map(
+                tables, functions, relationships = await _introspect_and_map(
                     "graphql-demo", _graphql_demo_url, "shelter", "shelter", None,
                 )
                 reg = GraphQLRemoteRegistration(
@@ -1337,6 +1372,7 @@ async def lifespan(app: FastAPI):
                     cache_ttl=300,
                     tables=tables,
                     functions=functions,
+                    relationships=relationships,
                 )
                 if not hasattr(state, "graphql_remote_sources"):
                     state.graphql_remote_sources = {}
@@ -1359,26 +1395,13 @@ async def lifespan(app: FastAPI):
                     await _upsert_tables_to_semantic_layer(
                         "graphql-demo", "shelter", tables, state.pg_pool,
                     )
-                    # Cross-domain relationship: shelter assignments → pet-store pets via breed_name
-                    from provisa.core.models import Cardinality, Relationship
-                    from provisa.core.repositories import relationship as rel_repo
-                    async with state.pg_pool.acquire() as _conn:
-                        try:
-                            await rel_repo.upsert(_conn, Relationship(
-                                id="assignments-to-pets",
-                                source_table_id="shelter__assignments",
-                                target_table_id="pets",
-                                source_column="breed_name",
-                                target_column="breed_name",
-                                cardinality=Cardinality.many_to_one,
-                                alias="MANAGES_BREED",
-                            ))
-                        except Exception:
-                            _log.warning("Cross-domain relationship assignments→pets skipped", exc_info=True)
+                    from provisa.api.admin.graphql_remote_router import _upsert_relationships_to_semantic_layer
+                    await _upsert_relationships_to_semantic_layer(relationships, state.pg_pool, state)
                 _log.info(
                     "Auto-registered graphql-demo source (%d tables, %d functions)",
                     len(tables), len(functions),
                 )
+                await _rebuild_schemas()
             except Exception:
                 _log.warning("graphql-demo auto-registration failed (service may not be up yet)", exc_info=True)
 

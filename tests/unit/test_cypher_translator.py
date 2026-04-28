@@ -946,6 +946,26 @@ def test_compound_label_domain_only():
     assert "n" in graph_vars
 
 
+def test_compound_label_case_insensitive_table():
+    """MATCH (n:Support:Supporttickets) — wrong case on table label — should still resolve."""
+    lm = _make_label_map_compound()
+    ast = parse_cypher("MATCH (n:Support:Supporttickets) RETURN n LIMIT 25")
+    sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "support_tickets" in sql.lower()
+    assert "n" in graph_vars
+
+
+def test_compound_label_case_insensitive_domain():
+    """MATCH (n:support:SupportTickets) — wrong case on domain label — should still resolve."""
+    lm = _make_label_map_compound()
+    ast = parse_cypher("MATCH (n:support:SupportTickets) RETURN n LIMIT 25")
+    sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "support_tickets" in sql.lower()
+    assert "n" in graph_vars
+
+
 def test_from_schema_table_label_from_field_name():
     """from_schema() derives table_label from field_name (pascalized), not from physical table_name.
 

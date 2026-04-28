@@ -141,6 +141,48 @@ async def cypher_query(
     except CypherParamError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
+    # Multi-CALL pattern: independent (non-correlated) CALL blocks with no outer MATCH.
+    # Translate and execute each body independently, then Python CROSS JOIN the results.
+    _non_corr_calls = [cs for cs in ast.call_subqueries if not cs.imported_vars]
+    if _non_corr_calls and not ast.match_clauses:
+        try:
+            rls = state.rls_contexts.get(role_id, RLSContext.empty())
+            gov_ctx = build_governance_context(
+                role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
+            )
+        except Exception as exc:
+            log.exception("Cypher governance setup failed")
+            return JSONResponse(status_code=500, content={"error": f"Governance setup failed: {exc}"})
+
+        all_rows: list[list[dict]] = []
+        merged_graph_vars: dict = {}
+        for call_sq in _non_corr_calls:
+            try:
+                rows_i, gvars_i = await _execute_call_body(
+                    call_sq.body, label_map, body.params, state, gov_ctx, ctx
+                )
+                all_rows.append(rows_i)
+                merged_graph_vars.update(gvars_i)
+            except Exception as exc:
+                log.exception("Cypher multi-CALL execution failed")
+                return JSONResponse(status_code=500, content={"error": f"Execution failed: {exc}"})
+
+        combined: list[dict] = [{}]
+        for rs in all_rows:
+            combined = [{**a, **b} for a in combined for b in (rs or [{}])]
+
+        try:
+            assembled = assemble_rows(combined, merged_graph_vars)
+        except Exception as exc:
+            return JSONResponse(status_code=500, content={"error": f"Assembly failed: {exc}"})
+        try:
+            columns = list(combined[0].keys()) if combined else []
+            serializable_rows = [to_serializable(r) for r in assembled]
+        except Exception as exc:
+            log.exception("Cypher serialization failed")
+            return JSONResponse(status_code=500, content={"error": f"Serialization failed: {exc}"})
+        return JSONResponse(content={"columns": columns, "rows": serializable_rows})
+
     # Stage 1: Translate to SQLGlot (physical catalog.schema.table refs)
     try:
         sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, body.params)
@@ -203,9 +245,13 @@ async def cypher_query(
     # Route through REST+cache whenever any table is API-backed, even with no nf_args.
     # This ensures JSONB columns (exposed as json by Trino's PG connector) are always
     # accessed as VARCHAR from the Trino cache, avoiding INVALID_CAST_ARGUMENT errors.
-    _api_table_names = find_api_table_names(exec_sql)
+    _api_table_names = find_api_table_names(governed_sql)
     _has_api_tables = any(
         _lookup_api_endpoint(state, tn) is not None
+        for tn in _api_table_names
+    )
+    _has_gql_remote = any(
+        _lookup_gql_remote_table(state, tn) is not None
         for tn in _api_table_names
     )
 
@@ -218,6 +264,8 @@ async def cypher_query(
     try:
         if nf_args or _has_api_tables:
             rows = await _execute_with_api(clean_exec_sql, clean_params, nf_args, state)
+        elif _has_gql_remote:
+            rows = await _execute_with_gql_remote(exec_sql, resolved_params, state)
         else:
             rows = await _execute(trino_sql, resolved_params, state)
     except Exception as exc:
@@ -314,6 +362,23 @@ def _lookup_api_endpoint(state: object, table_name: str):
     return None
 
 
+def _lookup_gql_remote_table(state: object, table_name: str) -> dict | None:
+    """Look up graphql_remote source info by physical table name."""
+    for reg in getattr(state, "graphql_remote_sources", {}).values():
+        for t in reg.get("tables", []):
+            if t["name"] == table_name or t.get("field_name") == table_name:
+                return {
+                    "source_id": reg["source_id"],
+                    "url": reg["url"],
+                    "auth": reg.get("auth"),
+                    "field_name": t["field_name"],
+                    "columns": t.get("columns", []),
+                    "cache_ttl": reg.get("cache_ttl", 300),
+                    "cache_catalog": reg.get("cache_catalog", "provisa_admin"),
+                }
+    return None
+
+
 async def _execute_with_api(
     exec_sql: str,
     params: list,
@@ -396,12 +461,12 @@ async def _execute_with_api(
                 conn=state.trino_conn,
                 source=api_source,
                 source_ttl=getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
-                global_ttl=getattr(state, "cache_default_ttl", None),
+                global_ttl=getattr(state, "response_cache_default_ttl", None),
             )
 
             ttl = (
                 getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl")
-                or getattr(state, "cache_default_ttl", None)
+                or getattr(state, "response_cache_default_ttl", None)
                 or endpoint.ttl
             )
             asyncio.create_task(schedule_drop(state.trino_conn, _cache_loc, cache_tbl, ttl, redirect_config))
@@ -415,6 +480,73 @@ async def _execute_with_api(
     trino_sql = transpile_to_trino(rewritten_sql)
     trino_result = execute_trino(state.trino_conn, trino_sql, params)
 
+    return [dict(zip(trino_result.column_names, row)) for row in trino_result.rows]
+
+
+async def _execute_with_gql_remote(
+    exec_sql: str,
+    params: list,
+    state: object,
+) -> list[dict]:
+    """Materialize graphql_remote tables into Trino cache and execute the query."""
+    import asyncio
+    from dataclasses import dataclass
+    from provisa.graphql_remote.executor import execute_remote
+    from provisa.api_source.trino_cache import (
+        cache_table_name, cache_location, ensure_cache_schema, table_exists,
+        create_and_insert, rewrite_all_from_cache, schedule_drop,
+    )
+    from provisa.executor.trino import execute_trino
+    from provisa.transpiler.transpile import transpile_to_trino
+    from provisa.compiler.nf_extractor import find_api_table_names
+
+    @dataclass
+    class _Col:
+        name: str
+        type: str
+
+    _GQL_TO_CACHE_TYPE = {
+        "text": "string", "integer": "integer", "numeric": "number",
+        "boolean": "boolean", "jsonb": "jsonb",
+    }
+
+    table_names = find_api_table_names(exec_sql)
+    cache_rewrites: dict[str, tuple] = {}
+
+    for tn in table_names:
+        info = _lookup_gql_remote_table(state, tn)
+        if info is None:
+            continue
+        cache_loc = cache_location(info["source_id"], info["cache_catalog"], "gql_cache")
+        cache_tbl = cache_table_name(info["source_id"], tn, {})
+        cache_rewrites[tn] = (cache_loc, cache_tbl)
+
+        ensure_cache_schema(state.trino_conn, cache_loc)
+        if not table_exists(state.trino_conn, cache_loc, cache_tbl):
+            col_names = [c["name"] for c in info["columns"]]
+            rows = await execute_remote(
+                url=info["url"],
+                auth=info["auth"],
+                field_name=info["field_name"],
+                columns=col_names,
+            )
+            col_objs = [
+                _Col(name=c["name"], type=_GQL_TO_CACHE_TYPE.get(c.get("type", "text"), "string"))
+                for c in info["columns"]
+            ]
+            create_and_insert(state.trino_conn, cache_loc, cache_tbl, rows, col_objs)
+            asyncio.create_task(
+                schedule_drop(state.trino_conn, cache_loc, cache_tbl, info["cache_ttl"])
+            )
+        else:
+            log.info("[GQL CACHE] hit — %s", cache_tbl)
+
+    if not cache_rewrites:
+        raise RuntimeError(f"No graphql_remote table found for: {table_names}")
+
+    rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites)
+    trino_sql = transpile_to_trino(rewritten_sql)
+    trino_result = execute_trino(state.trino_conn, trino_sql, params)
     return [dict(zip(trino_result.column_names, row)) for row in trino_result.rows]
 
 
@@ -436,3 +568,43 @@ async def _execute(sql: str, params: list, state: object) -> list[dict]:
             cursor.close()
 
     return await asyncio.get_event_loop().run_in_executor(None, _run)
+
+
+async def _execute_call_body(
+    call_body: object,
+    label_map: object,
+    params: dict,
+    state: object,
+    gov_ctx: object,
+    ctx: object,
+) -> tuple[list[dict], dict]:
+    """Full pipeline execution for a single CALL subquery body."""
+    from provisa.cypher.translator import cypher_to_sql
+    from provisa.cypher.graph_rewriter import apply_graph_rewrites
+    from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_trino_physical
+    from provisa.compiler.stage2 import apply_governance
+    from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
+    import sqlglot
+
+    sql_ast, ordered_params, graph_vars = cypher_to_sql(call_body, label_map, params)
+    sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
+    sql_str = sql_ast.sql(dialect="postgres")
+    semantic_sql = make_semantic_sql(sql_str, ctx)
+    governed_sql = apply_governance(semantic_sql, gov_ctx)
+    exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
+    trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
+    resolved_params = [params.get(name) for name in ordered_params]
+
+    clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)
+    api_table_names = find_api_table_names(exec_sql)
+    has_api = any(_lookup_api_endpoint(state, tn) is not None for tn in api_table_names)
+    has_gql_remote = any(_lookup_gql_remote_table(state, tn) is not None for tn in api_table_names)
+
+    if nf_args or has_api:
+        rows = await _execute_with_api(clean_exec_sql, clean_params, nf_args, state)
+    elif has_gql_remote:
+        rows = await _execute_with_gql_remote(exec_sql, resolved_params, state)
+    else:
+        rows = await _execute(trino_sql, resolved_params, state)
+
+    return rows, graph_vars

@@ -282,6 +282,8 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
   const [section, setSection] = useState<"db" | "history">("db");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [relContextMenu, setRelContextMenu] = useState<RelContextMenuState | null>(null);
+  const [nodeLabelsCollapsed, setNodeLabelsCollapsed] = useState(false);
+  const [relTypesCollapsed, setRelTypesCollapsed] = useState(false);
   const dragging = useRef(false);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -356,8 +358,11 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
               </div>
             )}
             <div className="graph-schema-section">
-              <div className="graph-schema-heading">Node Labels</div>
-              {schemaLoading ? (
+              <div className="graph-schema-heading graph-schema-heading--collapsible" onClick={() => setNodeLabelsCollapsed(c => !c)}>
+                Node Labels
+                <span className={`graph-schema-chevron ${nodeLabelsCollapsed ? "graph-schema-chevron--collapsed" : ""}`}>▾</span>
+              </div>
+              {!nodeLabelsCollapsed && (schemaLoading ? (
                 <div className="graph-schema-empty">Loading…</div>
               ) : schemaNodeLabels.length === 0 ? (
                 <div className="graph-schema-empty">No labels found</div>
@@ -383,12 +388,15 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
                     );
                   })}
                 </div>
-              )}
+              ))}
             </div>
 
             <div className="graph-schema-section">
-              <div className="graph-schema-heading">Relationship Types</div>
-              {schemaLoading ? (
+              <div className="graph-schema-heading graph-schema-heading--collapsible" onClick={() => setRelTypesCollapsed(c => !c)}>
+                Relationship Types
+                <span className={`graph-schema-chevron ${relTypesCollapsed ? "graph-schema-chevron--collapsed" : ""}`}>▾</span>
+              </div>
+              {!relTypesCollapsed && (schemaLoading ? (
                 <div className="graph-schema-empty">Loading…</div>
               ) : schemaRels.length === 0 ? (
                 <div className="graph-schema-empty">No relationship types found</div>
@@ -410,7 +418,7 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
                     );
                   })}
                 </div>
-              )}
+              ))}
             </div>
           </>
         )}
@@ -634,11 +642,18 @@ export function GraphPage() {
             nativeFilterColumns: n.native_filter_columns ?? [],
           })
         );
-        const rels: SchemaRel[] = (data.relationship_types ?? []).map((r: { type: string; source: string; target: string }) => ({
-          type: r.type,
-          source: r.source ?? "",
-          target: r.target ?? "",
-        }));
+        const seenRel = new Set<string>();
+        const rels: SchemaRel[] = (data.relationship_types ?? [])
+          .filter((r: { type: string }) => {
+            if (seenRel.has(r.type)) return false;
+            seenRel.add(r.type);
+            return true;
+          })
+          .map((r: { type: string; source: string; target: string }) => ({
+            type: r.type,
+            source: r.source ?? "",
+            target: r.target ?? "",
+          }));
         const seen = new Set<string>();
         const uniqueNodeLabels = nodeLabels.filter((n) => {
           const key = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;

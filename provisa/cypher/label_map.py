@@ -50,6 +50,7 @@ class RelationshipMapping:
     join_target_column: str
     field_name: str        # GraphQL field name that defines this join
     alias: str | None = None  # relationship alias from config (e.g. WORKS_FOR)
+    source_constant: int | None = None  # when set, use as literal join value instead of source column
 
 
 class CypherLabelMap:
@@ -72,6 +73,10 @@ class CypherLabelMap:
         self.nodes_by_table: dict[str, list[str]] = nodes_by_table or {}
         # rel_type → all RelationshipMappings with that type (supports UNION fan-out)
         self.aliases: dict[str, list[RelationshipMapping]] = aliases or {}
+        # case-insensitive lookup indexes: lowercase → canonical key
+        self._nodes_ci: dict[str, str] = {k.lower(): k for k in self.nodes}
+        self._domains_ci: dict[str, str] = {k.lower(): k for k in self.domains}
+        self._nodes_by_table_ci: dict[str, str] = {k.lower(): k for k in self.nodes_by_table}
 
     def display_label(self, nm: "NodeMapping") -> str:
         """Return the shortest unambiguous label for a node.
@@ -82,6 +87,15 @@ class CypherLabelMap:
         if len(self.nodes_by_table.get(nm.table_label, [])) > 1:
             return nm.label
         return nm.table_label
+
+    def canonical_label(self, label: str) -> str:
+        """Return the canonical-cased label, falling back to input if not found."""
+        return (
+            self._nodes_ci.get(label.lower())
+            or self._domains_ci.get(label.lower())
+            or self._nodes_by_table_ci.get(label.lower())
+            or label
+        )
 
     def node(self, label: str) -> NodeMapping:
         try:
@@ -223,6 +237,8 @@ class CypherLabelMap:
         # Build relationship mappings from join metadata
         aliases: dict[str, list[RelationshipMapping]] = {}
         for (source_type_name, gql_field_name), join_meta in ctx_typed.joins.items():
+            if getattr(join_meta, "disable_cypher", False):
+                continue
             # Cypher rel type: use explicit alias (e.g. OPENED_BY) else derive from GraphQL field name
             cypher_alias = getattr(join_meta, "cypher_alias", None)
             rel_type = cypher_alias if cypher_alias else _to_rel_type(gql_field_name)
@@ -237,6 +253,27 @@ class CypherLabelMap:
             )
             relationships[rel_type] = rm
             aliases.setdefault(rel_type, []).append(rm)
+
+        # Add REGISTERED_TABLE edges: every non-meta user node → Meta:RegisteredTables
+        meta_rt = next(
+            (nm for nm in nodes.values() if nm.domain_label == "Meta" and nm.table_name == "registered_tables"),
+            None,
+        )
+        if meta_rt:
+            for type_name, nm in list(nodes.items()):
+                if nm.domain_label == "Meta":
+                    continue
+                rm = RelationshipMapping(
+                    rel_type="REGISTERED_TABLE",
+                    source_label=type_name,
+                    target_label=meta_rt.type_name,
+                    join_source_column="__table_id__",
+                    join_target_column="id",
+                    field_name="_meta",
+                    source_constant=nm.table_id,
+                )
+                relationships[f"REGISTERED_TABLE::{type_name}"] = rm
+                aliases.setdefault("REGISTERED_TABLE", []).append(rm)
 
         return cls(nodes=nodes, relationships=relationships, domains=domains, nodes_by_table=nodes_by_table, aliases=aliases)
 

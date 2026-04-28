@@ -584,11 +584,16 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         tgt_alias = tgt_var
                         join_table = self._build_domain_union(tgt_var, self._domain_nodes[tgt_var])
                         src_table_ref = self._var_table.get(src_var, (src_var, None))[0] if src_var else src_nm.table_name
-                        on_cond = exp.EQ(
-                            this=exp.Column(
+                        src_col_expr = (
+                            exp.Literal.number(rel_mapping.source_constant)
+                            if rel_mapping.source_constant is not None
+                            else exp.Column(
                                 this=exp.Identifier(this=rel_mapping.join_source_column, quoted=True),
                                 table=exp.Identifier(this=src_table_ref),
-                            ),
+                            )
+                        )
+                        on_cond = exp.EQ(
+                            this=src_col_expr,
                             expression=exp.Column(
                                 this=exp.Identifier(this=rel_mapping.join_target_column, quoted=True),
                                 table=exp.Identifier(this=tgt_alias),
@@ -684,11 +689,16 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                             ),
                         )
                     else:
-                        cond = exp.EQ(
-                            this=exp.Column(
+                        src_col_expr = (
+                            exp.Literal.number(rm.source_constant)
+                            if rm.source_constant is not None
+                            else exp.Column(
                                 this=exp.Identifier(this=rm.join_source_column, quoted=True),
                                 table=exp.Identifier(this=src_table_ref),
-                            ),
+                            )
+                        )
+                        cond = exp.EQ(
+                            this=src_col_expr,
                             expression=exp.Column(
                                 this=exp.Identifier(this=rm.join_target_column, quoted=True),
                                 table=exp.Identifier(this=tgt_alias),
@@ -910,6 +920,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
           (n:SalesAnalytics)         — domain only (union over all tables in domain)
           (n:SalesAnalytics_Orders)  — legacy full type_name (backward compat)
         """
+        # Normalize labels to canonical case before lookup
+        labels = [self._lm.canonical_label(l) for l in labels]
         # Classify each label
         full_type: list[str] = [l for l in labels if l in self._lm.nodes]
         domain_hits: list[str] = [l for l in labels if l in self._lm.domains]
@@ -1086,9 +1098,13 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     alias=ta,
                 ),
                 on=exp.EQ(
-                    this=exp.Column(
-                        this=exp.Identifier(this=rm.join_source_column, quoted=True),
-                        table=exp.Identifier(this=sa),
+                    this=(
+                        exp.Literal.number(rm.source_constant)
+                        if rm.source_constant is not None
+                        else exp.Column(
+                            this=exp.Identifier(this=rm.join_source_column, quoted=True),
+                            table=exp.Identifier(this=sa),
+                        )
                     ),
                     expression=exp.Column(
                         this=exp.Identifier(this=rm.join_target_column, quoted=True),

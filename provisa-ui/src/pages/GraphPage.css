@@ -90,6 +90,32 @@
   padding: 0 0.25rem;
 }
 
+.graph-schema-heading--collapsible {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 3px;
+  padding: 0.1rem 0.25rem;
+  margin: 0 -0.25rem 0.5rem;
+  transition: background 0.15s;
+}
+
+.graph-schema-heading--collapsible:hover {
+  background: #1e2130;
+}
+
+.graph-schema-chevron {
+  font-size: 0.75rem;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+
+.graph-schema-chevron--collapsed {
+  transform: rotate(-90deg);
+}
+
 .graph-schema-empty {
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -1222,6 +1248,40 @@
   height: 1px;
   background: var(--border);
   margin: 3px 0;
+}
+
+.gf-node-ctx-submenu-wrap {
+  position: relative;
+}
+
+.gf-node-ctx-item--has-sub::after {
+  content: "▶";
+  float: right;
+  font-size: 0.65rem;
+  opacity: 0.6;
+  margin-top: 1px;
+}
+
+.gf-node-ctx-submenu {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: 0;
+  background: #1a1d26;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 180px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  z-index: 1001;
+}
+
+.gf-node-ctx-submenu-wrap:hover .gf-node-ctx-submenu {
+  display: block;
+}
+
+.gf-node-ctx-submenu-wrap:hover > .gf-node-ctx-item {
+  background: rgba(255,255,255,0.07);
 }
 
 /* ── Native filter modal ───────────────────────────────────────────────── */
