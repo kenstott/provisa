@@ -934,6 +934,29 @@ async def _load_and_build(config_path: str | None = None) -> None:
         state.hot_manager = hot_mgr
 
 
+def _filter_tables_by_schema_cfg(
+    tables: list[dict],
+    schema_cfg: dict,
+    source_allowed_domains: dict[str, list[str]],
+) -> list[dict]:
+    """Filter registered tables based on schema visibility config and source domain restrictions."""
+    if not schema_cfg.get("include_ops", True):
+        tables = [t for t in tables if t.get("domain_id") != "ops"]
+    elif not schema_cfg.get("include_metrics", True):
+        tables = [t for t in tables if not (
+            t.get("domain_id") == "ops" and t.get("table_name") == "metrics"
+        )]
+
+    if source_allowed_domains:
+        tables = [
+            t for t in tables
+            if not source_allowed_domains.get(t["source_id"])
+            or t.get("domain_id", "") in source_allowed_domains[t["source_id"]]
+        ]
+
+    return tables
+
+
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     """Re-introspect Trino and rebuild schemas for all roles from current DB state.
 
@@ -967,21 +990,11 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         relationships = await _fetch_relationships(conn)
 
         # Apply schema visibility filters (schema.include_ops / schema.include_metrics)
-        _schema_cfg = raw_config.get("schema", {}) if raw_config else {}
-        if not _schema_cfg.get("include_ops", True):
-            tables = [t for t in tables if t.get("domain_id") != "ops"]
-        elif not _schema_cfg.get("include_metrics", True):
-            tables = [t for t in tables if not (
-                t.get("domain_id") == "ops" and t.get("table_name") == "metrics"
-            )]
-
-        # Apply per-source domain restrictions (allowed_domains in provisa.yaml)
-        if state.source_allowed_domains:
-            tables = [
-                t for t in tables
-                if not state.source_allowed_domains.get(t["source_id"])
-                or t.get("domain_id", "") in state.source_allowed_domains[t["source_id"]]
-            ]
+        tables = _filter_tables_by_schema_cfg(
+            tables,
+            raw_config.get("schema", {}) if raw_config else {},
+            state.source_allowed_domains,
+        )
 
         # Install LISTEN/NOTIFY triggers on pre-approved PostgreSQL tables
         from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
