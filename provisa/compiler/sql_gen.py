@@ -330,7 +330,7 @@ def build_context(si: object) -> CompilationContext:
             source_id=meta_rt.source_id,
             catalog_name=source_to_catalog(meta_rt.source_id),
             schema_name=meta_rt.schema_name,
-            table_name=meta_rt.table_name,
+            table_name=physical_map.get(meta_rt.table_name, meta_rt.table_name),
             domain_id=meta_rt.domain_id,
         )
         for t in tables:

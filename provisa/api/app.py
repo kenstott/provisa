@@ -264,8 +264,15 @@ async def _seed_meta_domain(conn: asyncpg.Connection) -> None:
     for ddl in _META_TABLE_VIEWS.values():
         await conn.execute(ddl)
 
+    # Remove any stale view-named entries left by older code versions.
+    for view_name in _META_TABLE_ALIAS.values():
+        await conn.execute(
+            "DELETE FROM registered_tables "
+            "WHERE source_id = 'provisa-admin' AND schema_name = 'public' AND table_name = $1",
+            view_name,
+        )
+
     for tbl in _META_TABLES:
-        reg_name = _META_TABLE_ALIAS.get(tbl, tbl)
         table_id = await conn.fetchval(
             """
             INSERT INTO registered_tables
@@ -275,7 +282,7 @@ async def _seed_meta_domain(conn: asyncpg.Connection) -> None:
                 DO UPDATE SET domain_id = 'meta'
             RETURNING id
             """,
-            reg_name,
+            tbl,
         )
         pk_cols = {
             row["column_name"]
@@ -1147,7 +1154,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 domains=domains,
                 source_types=state.source_types,
                 domain_prefix=domain_prefix,
-                physical_table_map=kafka_physical or None,
+                physical_table_map={**_META_TABLE_ALIAS, **(kafka_physical or {})},
                 naming_convention=state.global_naming_convention,
                 functions=tracked_functions,
                 webhooks=tracked_webhooks,
