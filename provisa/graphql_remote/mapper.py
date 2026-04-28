@@ -45,12 +45,27 @@ def _build_columns(fields: list[dict]) -> list[dict]:
         for f in (fields or [])
     ]
 
-def _has_required_args(field: dict) -> bool:
-    """Return True if any argument is non-null with no default value (required arg)."""
+def _gql_type_string(type_ref: dict) -> str:
+    """Reconstruct GQL type string for variable declarations (e.g. 'Int!', '[String!]!')."""
+    kind = type_ref.get("kind")
+    if kind == "NON_NULL":
+        return _gql_type_string(type_ref.get("ofType", {})) + "!"
+    if kind == "LIST":
+        return f"[{_gql_type_string(type_ref.get('ofType', {}))}]"
+    return type_ref.get("name", "String")
+
+
+def _build_required_args(field: dict) -> list[dict]:
+    """Return required arg metadata for non-null args with no default value."""
+    result = []
     for arg in (field.get("args") or []):
         if arg.get("type", {}).get("kind") == "NON_NULL" and arg.get("defaultValue") is None:
-            return True
-    return False
+            result.append({
+                "name": arg["name"],
+                "gql_type": _gql_type_string(arg["type"]),
+                "provisa_type": _gql_to_provisa_type(arg["type"]),
+            })
+    return result
 
 def _build_return_schema(fields: list[dict]) -> list[dict]:
     """Build inline_return_type compatible schema from object fields."""
@@ -171,8 +186,7 @@ def map_schema(
         ret_kind, ret_name = _unwrap_type(field["type"])
         if ret_kind != "OBJECT":
             continue  # skip scalars at the top level
-        if _has_required_args(field):
-            continue  # skip fields requiring arguments — can't be called as collections
+        required_args = _build_required_args(field)
         return_type = _find_type(types, ret_name)
         columns = _build_columns((return_type or {}).get("fields") or [])
         table_name = f"{namespace}__{field['name']}"
@@ -183,6 +197,7 @@ def map_schema(
             "columns": columns,
             "domain_id": domain_id,
             "description": field.get("description") or (return_type or {}).get("description") or None,
+            "required_args": required_args,
         })
 
     for field in (mutation_type or {}).get("fields") or []:

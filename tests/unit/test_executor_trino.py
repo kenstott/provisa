@@ -72,6 +72,9 @@ class _FakeCursor:
     def fetchall(self):
         return list(self._rows)
 
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
 
 class _FakeConnection:
     def __init__(self, rows=None, cols=None):
@@ -148,6 +151,9 @@ class TestExecuteTrinoParameterSubstitution:
 
             def fetchall(self):
                 return [(1,)]
+
+            def fetchone(self):
+                return (1,)
 
         class _TrackingConn:
             def cursor(self):

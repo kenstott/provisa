@@ -341,11 +341,12 @@ class TestSamplingAppliedPerRootField:
         orders_sampled = apply_sampling(orders_q, 10)
         customers_sampled = apply_sampling(customers_q, 50)
 
-        assert "LIMIT 10" in orders_sampled.sql
-        assert "LIMIT 50" in customers_sampled.sql
-        # The original objects are unchanged (CompiledQuery is effectively immutable here)
-        assert "LIMIT" not in orders_q.sql
-        assert "LIMIT" not in customers_q.sql
+        import re
+        assert re.search(r"LIMIT\s+10\b", orders_sampled.sql)
+        assert re.search(r"LIMIT\s+50\b", customers_sampled.sql)
+        # The original queries carry the default row cap but not the sample limits
+        assert not re.search(r"LIMIT\s+10\b", orders_q.sql)
+        assert not re.search(r"LIMIT\s+50\b", customers_q.sql)
 
 
 # ---------------------------------------------------------------------------

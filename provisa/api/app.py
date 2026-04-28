@@ -1004,8 +1004,32 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         column_types = introspect_tables(state.trino_conn, tables, sources, kafka_physical)
         col_types_converted: dict[int, list[ColumnMetadata]] = column_types
 
-        # Synthesize ColumnMetadata for graphql_remote tables (no Trino catalog)
+        # Inject required GQL args as native filter columns for graphql_remote tables.
+        # This lets the Cypher translator rewrite WHERE n.id → WHERE n._nf_id so the
+        # GQL executor can pick them up as variables (e.g. employee(id: $id)).
         _gql_remote_srcs = getattr(state, "graphql_remote_sources", {})
+        if _gql_remote_srcs:
+            _gql_req_args: dict[tuple, list[dict]] = {}
+            for _reg in _gql_remote_srcs.values():
+                _sid = _reg.get("source_id", "")
+                for _tbl in _reg.get("tables", []):
+                    _req = _tbl.get("required_args", [])
+                    if _req:
+                        _gql_req_args[(_sid, _tbl["name"])] = _req
+            if _gql_req_args:
+                for _tbl in tables:
+                    _key = (_tbl["source_id"], _tbl["table_name"])
+                    _req = _gql_req_args.get(_key, [])
+                    for _arg in _req:
+                        _tbl.setdefault("columns", [])
+                        _tbl["columns"].append({
+                            "name": _arg["name"],
+                            "column_name": _arg["name"],
+                            "visible_to": [],
+                            "native_filter_type": "query_param",
+                        })
+
+        # Synthesize ColumnMetadata for graphql_remote tables (no Trino catalog)
         if _gql_remote_srcs:
             _provisa_to_trino = {
                 "text": "varchar", "integer": "integer",

@@ -116,7 +116,7 @@ def test_query_field_with_scalar_fields_produces_virtual_table():
         query_fields=[{"name": "users", "type": _list_of_object("User"), "args": []}],
         extra_types=[user_type],
     )
-    tables, functions = map_schema(schema, "myns", "src1")
+    tables, functions, _ = map_schema(schema, "myns", "src1")
     assert len(tables) == 1
     t = tables[0]
     assert t["name"] == "myns__users"
@@ -134,7 +134,7 @@ def test_namespace_prefix_applied():
         query_fields=[{"name": "products", "type": _object_type("Product"), "args": []}],
         extra_types=[user_type],
     )
-    tables, _ = map_schema(schema, "shop", "src2")
+    tables, _, _rels = map_schema(schema, "shop", "src2")
     assert tables[0]["name"] == "shop__products"
 
 
@@ -152,7 +152,7 @@ def test_non_scalar_nested_field_becomes_jsonb():
         query_fields=[{"name": "users", "type": _object_type("User"), "args": []}],
         extra_types=[user_type, address_type],
     )
-    tables, _ = map_schema(schema, "ns", "src3")
+    tables, _, _rels = map_schema(schema, "ns", "src3")
     cols = {c["name"]: c["type"] for c in tables[0]["columns"]}
     assert cols["address"] == "jsonb"
     assert cols["id"] == "text"
@@ -160,7 +160,7 @@ def test_non_scalar_nested_field_becomes_jsonb():
 
 def test_empty_query_type_no_tables():
     schema = _make_schema(query_fields=[])
-    tables, functions = map_schema(schema, "ns", "src")
+    tables, functions, _ = map_schema(schema, "ns", "src")
     assert tables == []
     assert functions == []
 
@@ -175,7 +175,7 @@ def test_multiple_query_fields_produce_multiple_tables():
         ],
         extra_types=[type_a, type_b],
     )
-    tables, _ = map_schema(schema, "ns", "src")
+    tables, _, _rels = map_schema(schema, "ns", "src")
     assert len(tables) == 2
     names = {t["name"] for t in tables}
     assert "ns__things_a" in names
@@ -187,7 +187,7 @@ def test_scalar_query_fields_are_skipped():
     schema = _make_schema(
         query_fields=[{"name": "ping", "type": _scalar_type("String"), "args": []}],
     )
-    tables, _ = map_schema(schema, "ns", "src")
+    tables, _, _rels = map_schema(schema, "ns", "src")
     assert tables == []
 
 
@@ -209,7 +209,7 @@ def test_mutation_field_produces_tracked_function():
         }],
         extra_types=[result_type],
     )
-    _, functions = map_schema(schema, "api", "src")
+    _, functions, _rels = map_schema(schema, "api", "src")
     assert len(functions) == 1
     fn = functions[0]
     assert fn["name"] == "api__createUser"
@@ -228,7 +228,7 @@ def test_domain_id_propagated():
         query_fields=[{"name": "users", "type": _object_type("User"), "args": []}],
         extra_types=[user_type],
     )
-    tables, _ = map_schema(schema, "ns", "src", domain_id="dom-1")
+    tables, _, _rels = map_schema(schema, "ns", "src", domain_id="dom-1")
     assert tables[0]["domain_id"] == "dom-1"
 
 
@@ -239,5 +239,5 @@ def test_no_mutation_type_no_functions():
         extra_types=[user_type],
     )
     # no mutation_fields → mutationType is None
-    _, functions = map_schema(schema, "ns", "src")
+    _, functions, _rels = map_schema(schema, "ns", "src")
     assert functions == []

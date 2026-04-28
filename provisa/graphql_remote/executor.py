@@ -19,6 +19,7 @@ async def execute_remote(
     field_name: str,
     columns: list[str],
     variables: dict | None = None,
+    required_args: list[dict] | None = None,
 ) -> list[dict]:
     """Build a minimal GraphQL query and forward to the remote endpoint.
 
@@ -27,7 +28,12 @@ async def execute_remote(
     Raises ValueError if the response contains errors.
     """
     col_selection = "\n".join(columns) if columns else "__typename"
-    query = f"query {{ {field_name} {{ {col_selection} }} }}"
+    if variables and required_args:
+        var_decls = ", ".join(f"${a['name']}: {a['gql_type']}" for a in required_args if a["name"] in variables)
+        arg_pass = ", ".join(f"{a['name']}: ${a['name']}" for a in required_args if a["name"] in variables)
+        query = f"query({var_decls}) {{ {field_name}({arg_pass}) {{ {col_selection} }} }}"
+    else:
+        query = f"query {{ {field_name} {{ {col_selection} }} }}"
     headers = {"Content-Type": "application/json", **_build_headers(auth)}
     payload: dict = {"query": query}
     if variables:

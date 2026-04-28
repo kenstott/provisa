@@ -124,14 +124,14 @@ class TestSimpleSelect:
         assert len(results) == 1
         q = results[0]
         assert q.root_field == "orders"
-        assert q.sql == 'SELECT "id", "amount", "status" FROM "public"."orders"'
+        assert q.sql == 'SELECT "id", "amount", "status" FROM "public"."orders" LIMIT 10000'
         assert q.params == []
 
     def test_single_field(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
         doc = parse("{ orders { id } }")
         results = compile_query(doc, ctx)
-        assert results[0].sql == 'SELECT "id" FROM "public"."orders"'
+        assert results[0].sql == 'SELECT "id" FROM "public"."orders" LIMIT 10000'
 
     def test_sources_tracked(self, schema_and_ctx):
         schema, ctx = schema_and_ctx

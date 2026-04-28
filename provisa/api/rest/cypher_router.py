@@ -262,10 +262,10 @@ async def cypher_query(
 
     log.info("Cypher final SQL: %s", trino_sql)
     try:
-        if nf_args or _has_api_tables:
+        if _has_gql_remote:
+            rows = await _execute_with_gql_remote(clean_exec_sql, clean_params, nf_args, state)
+        elif nf_args or _has_api_tables:
             rows = await _execute_with_api(clean_exec_sql, clean_params, nf_args, state)
-        elif _has_gql_remote:
-            rows = await _execute_with_gql_remote(exec_sql, resolved_params, state)
         else:
             rows = await _execute(trino_sql, resolved_params, state)
     except Exception as exc:
@@ -373,6 +373,7 @@ def _lookup_gql_remote_table(state: object, table_name: str) -> dict | None:
                     "auth": reg.get("auth"),
                     "field_name": t["field_name"],
                     "columns": t.get("columns", []),
+                    "required_args": t.get("required_args", []),
                     "cache_ttl": reg.get("cache_ttl", 300),
                     "cache_catalog": reg.get("cache_catalog", "provisa_admin"),
                 }
@@ -486,6 +487,7 @@ async def _execute_with_api(
 async def _execute_with_gql_remote(
     exec_sql: str,
     params: list,
+    nf_args: dict,
     state: object,
 ) -> list[dict]:
     """Materialize graphql_remote tables into Trino cache and execute the query."""
@@ -517,8 +519,13 @@ async def _execute_with_gql_remote(
         info = _lookup_gql_remote_table(state, tn)
         if info is None:
             continue
+
+        required_args: list[dict] = info.get("required_args", [])
+        # Build variables for this table from nf_args keyed by arg name
+        gql_vars = {a["name"]: nf_args[a["name"]] for a in required_args if a["name"] in nf_args}
+
         cache_loc = cache_location(info["source_id"], info["cache_catalog"], "gql_cache")
-        cache_tbl = cache_table_name(info["source_id"], tn, {})
+        cache_tbl = cache_table_name(info["source_id"], tn, gql_vars)
         cache_rewrites[tn] = (cache_loc, cache_tbl)
 
         ensure_cache_schema(state.trino_conn, cache_loc)
@@ -529,6 +536,8 @@ async def _execute_with_gql_remote(
                 auth=info["auth"],
                 field_name=info["field_name"],
                 columns=col_names,
+                variables=gql_vars or None,
+                required_args=required_args or None,
             )
             col_objs = [
                 _Col(name=c["name"], type=_GQL_TO_CACHE_TYPE.get(c.get("type", "text"), "string"))

@@ -100,9 +100,8 @@ class TestExecuteTrinoSessionHints:
         # cursor().execute should have been called for SET SESSION + main query
         calls = [c.args[0] for c in mock_cursor.execute.call_args_list]
         set_calls = [c for c in calls if c.startswith("SET SESSION")]
-        assert len(set_calls) == 1
-        assert "join_distribution_type" in set_calls[0]
-        assert "BROADCAST" in set_calls[0]
+        assert len(set_calls) >= 1
+        assert any("join_distribution_type" in c and "BROADCAST" in c for c in set_calls)
 
     def test_no_session_hints_no_set_session(self):
         from unittest.mock import MagicMock
@@ -118,4 +117,5 @@ class TestExecuteTrinoSessionHints:
 
         calls = [c.args[0] for c in mock_cursor.execute.call_args_list]
         set_calls = [c for c in calls if c.startswith("SET SESSION")]
-        assert set_calls == []
+        # Only the default timeout hint is injected; no user-supplied hints
+        assert all("query_max_execution_time" in c for c in set_calls)
