@@ -573,26 +573,57 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
             gql_reg, gql_tbl = _lookup_gql_remote_table(state, tn)
             if gql_reg is not None and not gql_tbl.get("required_args"):
                 try:
+                    from dataclasses import dataclass as _dc
                     from provisa.graphql_remote.executor import execute_remote
                     from provisa.cache.hot_tables import HotTableEntry
-                    col_names = [c["name"] for c in gql_tbl.get("columns", [])]
-                    gql_rows = await execute_remote(
-                        url=gql_reg["url"],
-                        auth=gql_reg.get("auth"),
-                        field_name=gql_tbl["name"],
-                        columns=col_names,
-                    )
-                    entry = HotTableEntry(
-                        table_name=tn,
-                        catalog="",
-                        schema="",
-                        pk_column=col_names[0] if col_names else "id",
-                        rows=gql_rows,
-                        column_names=col_names,
-                        is_api=True,
-                    )
-                    values_cte_entries[tn] = entry
-                    log.warning("[GQL REMOTE] VALUES CTE inline for %s (%d rows)", tn, len(gql_rows))
+
+                    @_dc
+                    class _GCol:
+                        name: str
+                        type: str
+
+                    _GQL_TYPE_MAP = {
+                        "text": "string", "integer": "integer", "numeric": "number",
+                        "boolean": "boolean", "jsonb": "jsonb",
+                    }
+                    col_dicts = gql_tbl.get("columns", [])
+                    col_names = [c["name"] for c in col_dicts]
+                    col_objs = [_GCol(name=c["name"], type=_GQL_TYPE_MAP.get(c.get("type", "text"), "string")) for c in col_dicts]
+
+                    gql_cache_loc = cache_location(gql_reg["source_id"], "provisa_admin", "gql_cache")
+                    gql_cache_tbl = cache_table_name(gql_reg["source_id"], tn, {})
+
+                    ensure_cache_schema(state.trino_conn, gql_cache_loc)
+                    if table_known_live(gql_cache_loc, gql_cache_tbl) or table_exists(state.trino_conn, gql_cache_loc, gql_cache_tbl):
+                        log.warning("[GQL REMOTE] cache hit — %s", gql_cache_tbl)
+                        cache_rewrites[tn] = (gql_cache_loc, gql_cache_tbl)
+                    else:
+                        gql_rows = await execute_remote(
+                            url=gql_reg["url"],
+                            auth=gql_reg.get("auth"),
+                            field_name=gql_tbl["name"],
+                            columns=col_names,
+                        )
+                        create_and_insert(state.trino_conn, gql_cache_loc, gql_cache_tbl, gql_rows, col_objs)
+                        asyncio.create_task(schedule_drop(state.trino_conn, gql_cache_loc, gql_cache_tbl, 300, redirect_config))
+
+                        if 0 < len(gql_rows) <= _hot_threshold:
+                            entry = HotTableEntry(
+                                table_name=tn,
+                                catalog=gql_cache_loc.catalog,
+                                schema=gql_cache_loc.schema,
+                                pk_column=col_names[0] if col_names else "id",
+                                rows=gql_rows,
+                                column_names=col_names,
+                                is_api=True,
+                            )
+                            if hot_mgr is not None:
+                                hot_mgr._hot_tables[tn] = entry
+                            values_cte_entries[tn] = entry
+                            log.warning("[GQL REMOTE] VALUES CTE inline for %s (%d rows)", tn, len(gql_rows))
+                        else:
+                            cache_rewrites[tn] = (gql_cache_loc, gql_cache_tbl)
+                            log.warning("[GQL REMOTE] materialized %d rows → Trino cache %s.%s.%s", len(gql_rows), gql_cache_loc.catalog, gql_cache_loc.schema, gql_cache_tbl)
                 except Exception as exc:
                     log.warning("[GQL REMOTE] fetch failed for %s: %s — skipping", tn, exc)
             continue
