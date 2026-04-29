@@ -93,6 +93,7 @@ class JoinMeta:
     cypher_alias: str | None = None  # Cypher rel type override (e.g. OPENED_BY)
     disable_cypher: bool = False  # when True, suppress this edge in the Cypher graph
     source_constant: int | None = None  # when set, use as literal join value instead of source column
+    source_json_key: str | None = None  # when set, extract key from JSON object column via ->>'key'
 
 
 @dataclass
@@ -115,6 +116,8 @@ class CompilationContext:
     native_filter_columns: dict[int, set[str]] = field(default_factory=dict)
     # table_id → {virtual_col_name → literal_value}
     virtual_columns: dict[int, dict[str, str]] = field(default_factory=dict)
+    # (table_id, col_name) pairs where the column is a GQL OBJECT stored as JSON
+    gql_json_columns: set[tuple[int, str]] = field(default_factory=set)
 
 
 # --- Compiled query result ---
@@ -267,11 +270,17 @@ def build_context(si: object) -> CompilationContext:
             if col_path:
                 ctx.column_paths[(t.table_id, gql)] = col_path
 
+        for col_name in (si.gql_object_columns.get(t.table_name) or {}):
+            ctx.gql_json_columns.add((t.table_id, col_name))
+
     # Build join metadata from visible relationships
     for rel in si.relationships:
         src_id = rel["source_table_id"]
         tgt_id = rel["target_table_id"]
         if src_id not in table_lookup or tgt_id not in table_lookup:
+            continue
+        # Remote-managed relationships with no inferred FK columns cannot be SQL-joined
+        if not rel.get("source_column") and not rel.get("target_function_name"):
             continue
 
         src_info = table_lookup[src_id]
@@ -315,6 +324,7 @@ def build_context(si: object) -> CompilationContext:
             cardinality=rel["cardinality"],
             cypher_alias=rel.get("alias") or None,
             disable_cypher=rel.get("disable_cypher", False),
+            source_json_key=rel.get("source_json_key") or None,
         )
 
     # Inject synthetic _meta join: every non-meta table → meta:registered_tables
@@ -776,6 +786,8 @@ def _collect_nested_columns(
             elif nested_join_meta.source_column in _VIRTUAL_COLS:
                 _svc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(nested_join_meta.source_column, "")
                 src_expr = _sql_str_literal(_svc)
+            elif nested_join_meta.source_json_key:
+                src_expr = f'CAST({_q(parent_alias)}.{_q(nested_join_meta.source_column)} AS JSON)->>\'{nested_join_meta.source_json_key}\''
             else:
                 src_expr = _join_column_expr(
                     parent_alias, nested_join_meta.source_column,
@@ -813,6 +825,44 @@ def _collect_nested_columns(
                     cardinality=nested_join_meta.cardinality,
                 )
         else:
+            # GQL OBJECT column stored as JSON — expand sub-selections recursively via -> / ->>
+            if nested_sel.selection_set and (parent_table.table_id, nested_name) in ctx.gql_json_columns:
+                def _emit_json_cols(
+                    sels,
+                    json_base: str,
+                    col_prefix: str,
+                    nesting: str,
+                ) -> None:
+                    for ss in sels:
+                        if not isinstance(ss, FieldNode):
+                            continue
+                        sn = ss.name.value
+                        sk = ss.alias.value if ss.alias else sn
+                        if ss.selection_set:
+                            _emit_json_cols(
+                                ss.selection_set.selections,
+                                f"{json_base}->'{sn}'",
+                                f"{col_prefix}__{sn}",
+                                f"{nesting}.{sn}",
+                            )
+                        else:
+                            expr = f"{json_base}->>\'{sn}\'"
+                            col_alias = f"{col_prefix}__{sn}"
+                            select_parts.append(f'{expr} AS {_q(col_alias)}')
+                            columns.append(ColumnRef(
+                                alias=parent_alias,
+                                column=col_alias,
+                                field_name=sk,
+                                nested_in=nesting,
+                                cardinality=cardinality,
+                            ))
+                _emit_json_cols(
+                    nested_sel.selection_set.selections,
+                    f'{_q(parent_alias)}.{_q(nested_name)}',
+                    nested_name,
+                    f"{nesting_path}.{nested_name}",
+                )
+                continue
             # Scalar column from the parent join
             nested_response_key = nested_sel.alias.value if nested_sel.alias else nested_name
             nested_phys = ctx.gql_to_physical.get((parent_table.table_id, nested_name), nested_name)
@@ -875,6 +925,8 @@ def _compile_root_field(
             elif join_meta.source_column in _VIRTUAL_COLS:
                 _svc = (ctx.virtual_columns.get(table.table_id) or {}).get(join_meta.source_column, "")
                 src_expr = _sql_str_literal(_svc)
+            elif join_meta.source_json_key:
+                src_expr = f'CAST({_q(root_alias)}.{_q(join_meta.source_column)} AS JSON)->>\'{join_meta.source_json_key}\''
             else:
                 src_expr = _join_column_expr(
                     root_alias, join_meta.source_column,
@@ -912,6 +964,40 @@ def _compile_root_field(
                     cardinality=join_meta.cardinality,
                 )
         else:
+            # GQL OBJECT column stored as JSON — expand sub-selections recursively via -> / ->>
+            if sel.selection_set and (table.table_id, sel_name) in ctx.gql_json_columns:
+                def _emit_root_json_cols(
+                    sels,
+                    json_base: str,
+                    col_prefix: str,
+                    nesting: str,
+                ) -> None:
+                    for ss in sels:
+                        if not isinstance(ss, FieldNode):
+                            continue
+                        sn = ss.name.value
+                        sk = ss.alias.value if ss.alias else sn
+                        if ss.selection_set:
+                            _emit_root_json_cols(
+                                ss.selection_set.selections,
+                                f"{json_base}->'{sn}'",
+                                f"{col_prefix}__{sn}",
+                                f"{nesting}.{sn}",
+                            )
+                        else:
+                            expr = f"{json_base}->>\'{sn}\'"
+                            col_alias = f"{col_prefix}__{sn}"
+                            select_parts.append(f'{expr} AS {_q(col_alias)}')
+                            columns.append(ColumnRef(
+                                alias=root_alias,
+                                column=col_alias,
+                                field_name=sk,
+                                nested_in=nesting,
+                                cardinality=None,
+                            ))
+                base = f'{_q(root_alias)}.{_q(sel_name)}' if use_aliases else _q(sel_name)
+                _emit_root_json_cols(sel.selection_set.selections, base, sel_name, sel_name)
+                continue
             # Scalar field — check for JSON path extraction
             response_key = sel.alias.value if sel.alias else sel_name
             gql_field_name = response_key

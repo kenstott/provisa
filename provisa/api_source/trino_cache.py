@@ -184,20 +184,38 @@ def create_and_insert(conn, loc: CacheLocation, table_name: str, rows: list[dict
             return "TRUE" if v else "FALSE"
         if isinstance(v, (int, float)):
             return str(v)
+        if isinstance(v, (dict, list)):
+            return "'" + json.dumps(v).replace("'", "''") + "'"
         return "'" + str(v).replace("'", "''") + "'"
 
-    for i in range(0, max(len(rows), 1), 500):
-        batch = rows[i : i + 500]
-        if not batch:
-            break
-        vals = ", ".join(
-            "(" + ", ".join(_lit(r.get(c)) for c in col_names) + ")"
-            for r in batch
-        )
-        insert_sql = f'INSERT INTO {loc.catalog}.{loc.schema}."{table_name}" VALUES {vals}'
-        cur = conn.cursor()
-        cur.execute(insert_sql)
-        cur.fetchall()
+    def _do_inserts() -> None:
+        for i in range(0, max(len(rows), 1), 500):
+            batch = rows[i : i + 500]
+            if not batch:
+                break
+            vals = ", ".join(
+                "(" + ", ".join(_lit(r.get(c)) for c in col_names) + ")"
+                for r in batch
+            )
+            insert_sql = f'INSERT INTO {loc.catalog}.{loc.schema}."{table_name}" VALUES {vals}'
+            cur2 = conn.cursor()
+            cur2.execute(insert_sql)
+            cur2.fetchall()
+
+    try:
+        _do_inserts()
+    except Exception as exc:
+        if "TYPE_MISMATCH" in str(exc):
+            # Stale cache table has wrong schema — drop and recreate
+            drop_cur = conn.cursor()
+            drop_cur.execute(f'DROP TABLE IF EXISTS {loc.catalog}.{loc.schema}."{table_name}"')
+            drop_cur.fetchall()
+            create_cur = conn.cursor()
+            create_cur.execute(create_sql.replace("IF NOT EXISTS ", ""))
+            create_cur.fetchall()
+            _do_inserts()
+        else:
+            raise
 
     log.info(
         '[API CACHE] materialized %d rows → %s.%s."%s"',

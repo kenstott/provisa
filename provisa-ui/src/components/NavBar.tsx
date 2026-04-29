@@ -9,16 +9,53 @@
 // permission from the copyright holder.
 
 import { NavLink, useLocation } from "react-router-dom";
+import { ChevronDown } from "lucide-react";
 import { CapabilityGate } from "./CapabilityGate";
 import { RoleSelector } from "./RoleSelector";
 import { useDomainFilter } from "../context/DomainFilterContext";
 
 const SYSTEM_DOMAINS = new Set(["meta", "ops"]);
 
+interface DropdownItem {
+  to: string;
+  label: string;
+  capability: string;
+  comingSoon?: boolean;
+}
+
+function NavDropdown({ label, items }: { label: string; items: DropdownItem[] }) {
+  const location = useLocation();
+  const isActive = items.some((i) => !i.comingSoon && location.pathname === i.to);
+
+  return (
+    <div className={`nav-dropdown${isActive ? " nav-dropdown-active" : ""}`}>
+      <span className="nav-dropdown-trigger">
+        {label} <ChevronDown size={11} />
+      </span>
+      <div className="nav-dropdown-menu">
+        {items.map((item) =>
+          item.comingSoon ? (
+            <span key={item.to} className="coming-soon">{item.label} — coming soon</span>
+          ) : (
+            <CapabilityGate key={item.to} capability={item.capability}>
+              <NavLink to={item.to}>{item.label}</NavLink>
+            </CapabilityGate>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function NavBar() {
   const location = useLocation();
   const { domains, selectedDomain, setSelectedDomain } = useDomainFilter();
-  const onTablesPage = location.pathname === "/tables" || location.pathname === "/relationships" || location.pathname === "/security" || location.pathname === "/schema" || location.pathname === "/query";
+  const onTablesPage =
+    location.pathname === "/tables" ||
+    location.pathname === "/relationships" ||
+    location.pathname === "/security" ||
+    location.pathname === "/schema" ||
+    location.pathname === "/query";
 
   return (
     <nav className="navbar">
@@ -32,30 +69,32 @@ export function NavBar() {
         <CapabilityGate capability="table_registration">
           <NavLink to="/tables">Tables</NavLink>
         </CapabilityGate>
-        <CapabilityGate capability="table_registration">
-          <NavLink to="/views">Views</NavLink>
-        </CapabilityGate>
-        <CapabilityGate capability="admin">
-          <NavLink to="/commands">Commands</NavLink>
-        </CapabilityGate>
         <CapabilityGate capability="relationship_registration">
           <NavLink to="/relationships">Relationships</NavLink>
         </CapabilityGate>
-        <CapabilityGate capability="security_config">
-          <NavLink to="/security">Security</NavLink>
-        </CapabilityGate>
-        <CapabilityGate capability="query_development">
-          <NavLink to="/schema">Schema</NavLink>
-        </CapabilityGate>
-        <CapabilityGate capability="query_development">
-          <NavLink to="/graph">Graph</NavLink>
-        </CapabilityGate>
-        <CapabilityGate capability="query_development">
-          <NavLink to="/query">Query</NavLink>
-        </CapabilityGate>
-        <CapabilityGate capability="query_approval">
-          <NavLink to="/approvals">Approvals</NavLink>
-        </CapabilityGate>
+        <NavDropdown
+          label="Explore"
+          items={[
+            { to: "/query", label: "GraphQL", capability: "query_development" },
+            { to: "/schema", label: "Schema", capability: "query_development" },
+            { to: "/graph", label: "Cypher", capability: "query_development" },
+            { to: "/sql", label: "SQL", capability: "query_development", comingSoon: true },
+          ]}
+        />
+        <NavDropdown
+          label="Model"
+          items={[
+            { to: "/views", label: "Views", capability: "table_registration" },
+            { to: "/commands", label: "Commands", capability: "admin" },
+          ]}
+        />
+        <NavDropdown
+          label="Security"
+          items={[
+            { to: "/security", label: "Policies", capability: "security_config" },
+            { to: "/approvals", label: "Approvals", capability: "query_approval" },
+          ]}
+        />
         <CapabilityGate capability="admin">
           <NavLink to="/admin">Admin</NavLink>
         </CapabilityGate>

@@ -59,6 +59,22 @@ async def _introspect_and_map(
     return tables, functions, relationships
 
 
+def _build_object_fields(raw_fields: list) -> list:
+    """Recursively build ObjectField instances from structured gql_object_fields dicts."""
+    from provisa.core.models import ObjectField
+    result = []
+    for f in (raw_fields or []):
+        if isinstance(f, str):
+            result.append(ObjectField(name=f, type="string"))
+        else:
+            result.append(ObjectField(
+                name=f["name"],
+                type=f.get("type", "string"),
+                fields=_build_object_fields(f.get("fields") or []),
+            ))
+    return result
+
+
 async def _upsert_tables_to_semantic_layer(
     source_id: str,
     domain_id: str,
@@ -85,6 +101,7 @@ async def _upsert_tables_to_semantic_layer(
                         name=c["name"],
                         visible_to=[],
                         description=c.get("description"),
+                        object_fields=_build_object_fields(c.get("gql_object_fields") or []),
                     )
                     for c in t.get("columns", [])
                 ],
@@ -110,6 +127,7 @@ async def _upsert_relationships_to_semantic_layer(
                     source_column=r["source_column"],
                     target_column=r["target_column"],
                     cardinality=Cardinality(r.get("cardinality", "many-to-one")),
+                    source_json_key=r.get("source_json_key") or None,
                 ))
             except Exception:
                 log.warning("Failed to upsert relationship %s", r["id"], exc_info=True)
@@ -155,6 +173,21 @@ async def register_graphql_remote_source(
     state.graphql_remote_sources[body.source_id] = registration.model_dump()
 
     if getattr(state, "pg_pool", None) is not None:
+        async with state.pg_pool.acquire() as _conn:
+            await _conn.execute(
+                """
+                INSERT INTO sources (id, type, host, port, database, username, dialect, path)
+                VALUES ($1, 'graphql_remote', '', 0, '', '', '', $2)
+                ON CONFLICT (id) DO UPDATE SET path = EXCLUDED.path
+                """,
+                body.source_id,
+                body.url,
+            )
+            if body.domain_id:
+                await _conn.execute(
+                    "INSERT INTO domains (id) VALUES ($1) ON CONFLICT (id) DO NOTHING",
+                    body.domain_id,
+                )
         await _upsert_tables_to_semantic_layer(
             body.source_id, body.domain_id, tables, state.pg_pool,
         )

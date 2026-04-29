@@ -158,6 +158,55 @@ def test_non_scalar_nested_field_becomes_jsonb():
     assert cols["id"] == "text"
 
 
+def test_object_column_gets_gql_selection():
+    """OBJECT-typed columns must include gql_selection for proper nested GQL query."""
+    address_type = {"kind": "OBJECT", "name": "Address", "fields": [{"name": "city", "type": _scalar_type("String")}]}
+    user_type = {
+        "kind": "OBJECT",
+        "name": "User",
+        "fields": [
+            {"name": "id", "type": _scalar_type("ID")},
+            {"name": "address", "type": _object_type("Address")},
+        ],
+    }
+    schema = _make_schema(
+        query_fields=[{"name": "users", "type": _object_type("User"), "args": []}],
+        extra_types=[user_type, address_type],
+    )
+    tables, _, _ = map_schema(schema, "ns", "src3")
+    col_map = {c["name"]: c for c in tables[0]["columns"]}
+    assert "gql_selection" not in col_map["id"]
+    assert col_map["address"]["gql_selection"] == "address { city }"
+
+
+def test_deeply_nested_object_gql_selection():
+    """Nested OBJECT within OBJECT gets recursive selection."""
+    breed_type = {"kind": "OBJECT", "name": "Breed", "fields": [{"name": "name", "type": _scalar_type("String")}]}
+    assignment_type = {
+        "kind": "OBJECT",
+        "name": "Assignment",
+        "fields": [
+            {"name": "id", "type": _scalar_type("ID")},
+            {"name": "animalBreed", "type": _object_type("Breed")},
+        ],
+    }
+    employee_type = {
+        "kind": "OBJECT",
+        "name": "Employee",
+        "fields": [
+            {"name": "firstName", "type": _scalar_type("String")},
+            {"name": "assignments", "type": _object_type("Assignment")},
+        ],
+    }
+    schema = _make_schema(
+        query_fields=[{"name": "employees", "type": _list_of_object("Employee"), "args": []}],
+        extra_types=[employee_type, assignment_type, breed_type],
+    )
+    tables, _, _ = map_schema(schema, "s", "src")
+    col_map = {c["name"]: c for c in tables[0]["columns"]}
+    assert col_map["assignments"]["gql_selection"] == "assignments { id animalBreed { name } }"
+
+
 def test_empty_query_type_no_tables():
     schema = _make_schema(query_fields=[])
     tables, functions, _ = map_schema(schema, "ns", "src")

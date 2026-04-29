@@ -380,26 +380,35 @@ def _seed_ops_trino(trino_conn: object) -> None:
     """Create Iceberg schema/tables/views in Trino for the ops domain (idempotent)."""
     import logging as _ops_log
     _log = _ops_log.getLogger(__name__)
+
+    def _exec(ddl: str) -> None:
+        cur = trino_conn.cursor()  # type: ignore[union-attr]
+        cur.execute(ddl)
+        cur.fetchall()
+
+    # Schema + physical tables — one exception aborts all (catalog not ready).
     try:
-        cursor = trino_conn.cursor()  # type: ignore[union-attr]
-        cursor.execute("CREATE SCHEMA IF NOT EXISTS otel.signals")
+        _exec("CREATE SCHEMA IF NOT EXISTS otel.signals")
         for tbl_name, cols in _OPS_TABLES.items():
-            col_defs = []
-            for col_name, pg_type, _ in cols:
-                trino_type = _OPS_PG_TO_TRINO.get(pg_type, "VARCHAR")
-                col_defs.append(f'"{col_name}" {trino_type}')
-            cursor.execute(
+            col_defs = [
+                f'"{col_name}" {_OPS_PG_TO_TRINO.get(pg_type, "VARCHAR")}'
+                for col_name, pg_type, _ in cols
+            ]
+            _exec(
                 f"CREATE TABLE IF NOT EXISTS otel.signals.{tbl_name} "
                 f"({', '.join(col_defs)}) "
                 f"WITH (partitioning = ARRAY['_date'], format = 'PARQUET')"
             )
-        for view_name, _, view_ddl in _OPS_VIEWS:
-            try:
-                cursor.execute(view_ddl)
-            except Exception:
-                _log.warning("ops view %s: create failed (table may not exist yet)", view_name)
     except Exception:
         _log.warning("ops Iceberg DDL failed — will retry before next schema introspection", exc_info=True)
+        return
+
+    # Views — attempted independently after tables are guaranteed to exist.
+    for view_name, _, view_ddl in _OPS_VIEWS:
+        try:
+            _exec(view_ddl)
+        except Exception:
+            _log.warning("ops view %s: create failed", view_name, exc_info=True)
 
 
 async def _load_and_build(config_path: str | None = None) -> None:
@@ -938,6 +947,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 rel_cfg["id"], src_source, src_table, tgt_source, tgt_table,
             )
 
+    await _load_graphql_remote_sources_from_db()
+
     await _rebuild_schemas(raw_config)
 
     # Initialize hot tables (Phase AD6)
@@ -968,6 +979,77 @@ def _filter_tables_by_schema_cfg(
         ]
 
     return tables
+
+
+async def _load_graphql_remote_sources_from_db() -> None:
+    """Load persisted graphql_remote sources from DB into state.graphql_remote_sources."""
+    if state.pg_pool is None:
+        log.warning("[GQL REMOTE] pg_pool is None — skipping DB load")
+        return
+    try:
+        async with state.pg_pool.acquire() as _conn:
+            src_rows = await _conn.fetch("SELECT id, path FROM sources WHERE type = 'graphql_remote'")
+            for src in src_rows:
+                source_id = src["id"]
+                url = src["path"] or ""
+                if source_id in getattr(state, "graphql_remote_sources", {}):
+                    continue
+                tbl_rows = await _conn.fetch(
+                    "SELECT id, table_name, domain_id, description FROM registered_tables "
+                    "WHERE source_id = $1 AND schema_name = 'graphql_remote'",
+                    source_id,
+                )
+                tables: list[dict] = []
+                for tr in tbl_rows:
+                    col_rows = await _conn.fetch(
+                        "SELECT column_name, data_type, object_fields, native_filter_type "
+                        "FROM table_columns WHERE table_id = $1",
+                        tr["id"],
+                    )
+                    columns = []
+                    required_args: list[dict] = []
+                    import json as _json
+                    for cr in col_rows:
+                        if cr["native_filter_type"] == "query_param":
+                            required_args.append({"name": cr["column_name"], "gql_type": "String", "provisa_type": "text"})
+                            continue
+                        col_dict: dict = {"name": cr["column_name"], "type": cr["data_type"] or "text"}
+                        raw_of = cr["object_fields"]
+                        if raw_of:
+                            try:
+                                col_dict["gql_object_fields"] = _json.loads(raw_of) if isinstance(raw_of, str) else raw_of
+                            except Exception:
+                                pass
+                        columns.append(col_dict)
+                    tname = tr["table_name"]
+                    tables.append({
+                        "name": tname,
+                        "field_name": tname.split("__", 1)[-1] if "__" in tname else tname,
+                        "source_id": source_id,
+                        "columns": columns,
+                        "domain_id": tr["domain_id"] or "",
+                        "description": tr["description"],
+                        "required_args": required_args,
+                    })
+                if not tables:
+                    continue
+                namespace = tables[0]["name"].split("__", 1)[0] if "__" in tables[0]["name"] else ""
+                if not hasattr(state, "graphql_remote_sources"):
+                    state.graphql_remote_sources = {}
+                state.graphql_remote_sources[source_id] = {
+                    "source_id": source_id,
+                    "url": url,
+                    "namespace": namespace,
+                    "domain_id": tables[0]["domain_id"],
+                    "auth": None,
+                    "cache_ttl": 300,
+                    "tables": tables,
+                    "functions": [],
+                    "relationships": [],
+                }
+                log.warning("[GQL REMOTE] Loaded source %s from DB (%d tables)", source_id, len(tables))
+    except Exception:
+        log.warning("Failed to load graphql_remote sources from DB", exc_info=True)
 
 
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:
@@ -1084,11 +1166,47 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                             "native_filter_type": "query_param",
                         })
 
+        # Build gql_object_columns: {table_name: {col_name: [sub_field_names]}} for JSON extraction
+        _gql_object_cols: dict[str, dict[str, list[str]]] = {}
+        for _reg in _gql_remote_srcs.values():
+            for _tbl in _reg.get("tables", []):
+                _tbl_obj: dict[str, list[str]] = {}
+                for _col in _tbl.get("columns", []):
+                    _sub = _col.get("gql_object_fields")
+                    if _sub:
+                        _tbl_obj[_col["name"]] = _sub
+                if _tbl_obj:
+                    _gql_object_cols[_tbl["name"]] = _tbl_obj
+
+        # Synthesize ColumnMetadata for ops views when Trino introspection returns empty.
+        # Iceberg JDBC information_schema.columns does not expose view columns — physical
+        # tables (traces/logs/metrics) introspect correctly; views need static synthesis.
+        _ops_view_cols: dict[str, list[ColumnMetadata]] = {
+            view_name: [
+                ColumnMetadata(
+                    column_name=col_name,
+                    data_type=_OPS_PG_TO_TRINO.get(pg_type, "VARCHAR").lower(),
+                    is_nullable=not is_pk,
+                )
+                for col_name, pg_type, is_pk in cols
+            ]
+            for view_name, cols, _ in _OPS_VIEWS
+        }
+        for _tbl in tables:
+            if _tbl["source_id"] != "provisa-otel":
+                continue
+            _vname = _tbl["table_name"]
+            if _vname not in _ops_view_cols:
+                continue
+            _tid = _tbl["id"]
+            if not col_types_converted.get(_tid):
+                col_types_converted[_tid] = _ops_view_cols[_vname]
+
         # Synthesize ColumnMetadata for graphql_remote tables (no Trino catalog)
         if _gql_remote_srcs:
             _provisa_to_trino = {
                 "text": "varchar", "integer": "integer",
-                "numeric": "double", "boolean": "boolean", "jsonb": "varchar",
+                "numeric": "double", "boolean": "boolean", "jsonb": "json",
             }
             _tbl_lookup = {(t["source_id"], t["table_name"]): t["id"] for t in tables}
             for _reg in _gql_remote_srcs.values():
@@ -1239,6 +1357,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 webhooks=tracked_webhooks,
                 enum_types=state.pg_enum_types,
                 approved_queries=approved_queries,
+                gql_object_columns=_gql_object_cols,
             )
             try:
                 state.schemas[role["id"]] = generate_schema(si)
@@ -1531,6 +1650,20 @@ async def lifespan(app: FastAPI):
                     )
                     from provisa.api.admin.graphql_remote_router import _upsert_relationships_to_semantic_layer
                     await _upsert_relationships_to_semantic_layer(relationships, state.pg_pool, state)
+                    from provisa.core.models import Cardinality, Relationship
+                    from provisa.core.repositories import relationship as rel_repo
+                    async with state.pg_pool.acquire() as _rel_conn:
+                        try:
+                            await rel_repo.upsert(_rel_conn, Relationship(
+                                id="employees_to_assignments",
+                                source_table_id="shelter__employees",
+                                target_table_id="shelter__assignments",
+                                source_column="id",
+                                target_column="employeeId",
+                                cardinality=Cardinality("one-to-many"),
+                            ))
+                        except Exception:
+                            _log.warning("Failed to upsert employees_to_assignments", exc_info=True)
                 _log.info(
                     "Auto-registered graphql-demo source (%d tables, %d functions)",
                     len(tables), len(functions),

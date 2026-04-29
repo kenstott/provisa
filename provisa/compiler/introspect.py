@@ -86,6 +86,8 @@ def introspect_tables(
     """
     result: dict[int, list[ColumnMetadata]] = {}
     for table in registered_tables:
+        if table.get("schema_name") == "graphql_remote":
+            continue  # columns synthesized from registration metadata, not Trino
         source = sources[table["source_id"]]
         catalog_name = source_to_catalog(source["id"])
         # Use physical table name if mapped (e.g., Kafka discriminated tables)

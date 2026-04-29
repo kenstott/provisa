@@ -59,6 +59,7 @@ def execute_trino(
     session_hints: dict[str, str] | None = None,
     conn_kwargs: dict | None = None,
     span_attrs: dict[str, str] | None = None,
+    extra_table_attrs: list[dict[str, str]] | None = None,
 ) -> QueryResult:
     span_name = "provisa.query.trino" if span_attrs else "trino.execute"
     with _tracer.start_as_current_span(span_name) as span:
@@ -127,4 +128,11 @@ def execute_trino(
 
         span.set_attribute("db.row_count", len(rows))
         log.info("[EXEC TRINO] rows=%d", len(rows))
+
+        if extra_table_attrs:
+            for _attrs in extra_table_attrs:
+                with _tracer.start_as_current_span("provisa.query.trino") as _child:
+                    for k, v in _attrs.items():
+                        _child.set_attribute(k, v)
+
         return QueryResult(rows=rows, column_names=column_names)

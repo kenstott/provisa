@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 import asyncpg
 import trino
 
+from provisa.compiler.introspect import introspect_fk_candidates
 from provisa.compiler.naming import source_to_catalog
 
 log = logging.getLogger(__name__)
@@ -168,3 +169,65 @@ async def collect_metadata(
         existing_relationships=existing_rels,
         rejected_pairs=[],
     )
+
+
+async def collect_fk_candidates(
+    trino_conn: trino.dbapi.Connection,
+    pg_conn: asyncpg.Connection,
+    scope: str,
+    scope_id: str | int | None = None,
+) -> list:
+    """Return RelationshipCandidate objects derived from FK constraints in Trino information_schema.
+
+    Imported lazily to avoid circular import with analyzer.
+    """
+    from provisa.discovery.analyzer import RelationshipCandidate
+
+    all_tables = await pg_conn.fetch(
+        "SELECT id, source_id, domain_id, schema_name, table_name FROM registered_tables ORDER BY id"
+    )
+    all_tables = [dict(r) for r in all_tables]
+    table_by_name: dict[str, dict] = {t["table_name"]: t for t in all_tables}
+
+    if scope == "table":
+        target = next((t for t in all_tables if t["id"] == scope_id), None)
+        if target is None:
+            return []
+        domain_id = target["domain_id"]
+        tables = [t for t in all_tables if t["domain_id"] == domain_id]
+    elif scope == "domain":
+        tables = [t for t in all_tables if t["domain_id"] == scope_id]
+    elif scope == "cross-domain":
+        tables = all_tables
+    else:
+        return []
+
+    existing = {
+        (r["source_table_id"], r["source_column"], r["target_table_id"], r["target_column"])
+        for r in await pg_conn.fetch(
+            "SELECT source_table_id, source_column, target_table_id, target_column FROM relationships"
+        )
+    }
+
+    candidates: list[RelationshipCandidate] = []
+    for t in tables:
+        catalog = source_to_catalog(t["source_id"])
+        fks = introspect_fk_candidates(trino_conn, catalog, t["schema_name"], t["table_name"])
+        for fk in fks:
+            target = table_by_name.get(fk["referenced_table"])
+            if target is None:
+                continue
+            key = (t["id"], fk["column_name"], target["id"], fk["referenced_column"])
+            if key in existing:
+                continue
+            candidates.append(RelationshipCandidate(
+                source_table_id=t["id"],
+                source_column=fk["column_name"],
+                target_table_id=target["id"],
+                target_column=fk["referenced_column"],
+                cardinality="many_to_one",
+                confidence=1.0,
+                reasoning="Foreign key constraint",
+                suggested_name=f"{t['table_name']}-{fk['column_name']}-to-{fk['referenced_table']}",
+            ))
+    return candidates

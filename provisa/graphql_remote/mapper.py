@@ -35,15 +35,67 @@ def _gql_to_provisa_type(type_ref: dict) -> str:
     # Non-scalar (OBJECT, ENUM, etc.) → JSON string in V1
     return "jsonb"
 
-def _build_columns(fields: list[dict]) -> list[dict]:
-    return [
-        {
+def _build_gql_field_selection(fields: list[dict], types: list[dict], depth: int = 0) -> str:
+    """Recursively build a GQL selection string for object type fields."""
+    if depth > 3:
+        return "__typename"
+    parts = []
+    for f in (fields or []):
+        kind, name = _unwrap_type(f["type"])
+        if kind in ("SCALAR", "ENUM"):
+            parts.append(f["name"])
+        elif kind == "OBJECT" and name:
+            sub_type = _find_type(types, name)
+            if sub_type and sub_type.get("fields"):
+                sub_sel = _build_gql_field_selection(sub_type["fields"], types, depth + 1)
+                parts.append(f"{f['name']} {{ {sub_sel} }}")
+    return " ".join(parts) if parts else "__typename"
+
+
+def _is_list_type(type_ref: dict) -> bool:
+    """Return True if the outermost non-NON_NULL wrapper is LIST."""
+    while type_ref.get("kind") == "NON_NULL":
+        type_ref = type_ref.get("ofType", {})
+    return type_ref.get("kind") == "LIST"
+
+
+def _build_object_fields_recursive(fields: list[dict], types: list[dict], depth: int = 0) -> list[dict]:
+    """Build structured object field dicts (with nested 'fields') from GQL type fields."""
+    if depth > 3:
+        return []
+    result = []
+    for f in (fields or []):
+        kind, name = _unwrap_type(f["type"])
+        if kind in ("SCALAR", "ENUM"):
+            result.append({"name": f["name"], "type": _gql_to_provisa_type(f["type"])})
+        elif kind == "OBJECT" and name:
+            obj_type = _find_type(types, name)
+            if obj_type and obj_type.get("fields"):
+                sub_fields = _build_object_fields_recursive(obj_type["fields"], types, depth + 1)
+                if sub_fields:
+                    result.append({"name": f["name"], "type": "object", "fields": sub_fields})
+    return result
+
+
+def _build_columns(fields: list[dict], types: list[dict] | None = None) -> list[dict]:
+    result = []
+    for f in (fields or []):
+        kind, name = _unwrap_type(f["type"])
+        col: dict = {
             "name": f["name"],
             "type": _gql_to_provisa_type(f["type"]),
             "description": f.get("description") or None,
         }
-        for f in (fields or [])
-    ]
+        if kind == "OBJECT" and types is not None and name:
+            obj_type = _find_type(types, name)
+            if obj_type and obj_type.get("fields"):
+                sub_sel = _build_gql_field_selection(obj_type["fields"], types, 0)
+                col["gql_selection"] = f"{f['name']} {{ {sub_sel} }}"
+                col["gql_object_fields"] = _build_object_fields_recursive(obj_type["fields"], types, 0)
+                col["gql_object_type"] = name
+                col["gql_is_list"] = _is_list_type(f["type"])
+        result.append(col)
+    return result
 
 def _gql_type_string(type_ref: dict) -> str:
     """Reconstruct GQL type string for variable declarations (e.g. 'Int!', '[String!]!')."""
@@ -80,74 +132,73 @@ def _find_type(types: list[dict], name: str) -> dict | None:
             return t
     return None
 
-def _detect_relationships(tables: list[dict], types: list[dict], queryable_type_names: set[str]) -> list[dict]:
-    """Detect intra-source relationships from explicit GQL object references.
+def _infer_fk_columns(
+    field_name: str,
+    gql_type_name: str,
+    source_scalar_names: set[str],
+    types: list[dict],
+) -> tuple[str, str]:
+    """Infer (source_column, target_column) from naming conventions.
 
-    For each OBJECT-typed field that references a queryable type, emits both directions:
-    - many-to-one: source.field → target.pk
-    - one-to-many (reverse): target.pk → source.field
-
-    Also detects scalar FK fields matching the pattern <field>_id where a table named
-    <field>s exists, emitting both directions using the scalar column.
+    For a many-to-one object field named F of type T:
+    - Check source scalars for {F}{TargetField.capitalize()} pattern for each
+      scalar field on T. The first match wins.
+    - Returns ("", "") when no match is found.
     """
-    gql_type_to_table: dict[str, dict] = {}
-    for t in tables:
-        for typ in types:
-            if typ.get("name", "").lower() == t["field_name"].rstrip("s").lower():
-                gql_type_to_table.setdefault(typ["name"], t)
-                break
+    target_type = _find_type(types, gql_type_name)
+    if not target_type:
+        return "", ""
+    scalar_fields = [
+        f["name"] for f in (target_type.get("fields") or [])
+        if _unwrap_type(f["type"])[0] in ("SCALAR", "ENUM")
+    ]
+    for sf in scalar_fields:
+        candidate = field_name + sf[0].upper() + sf[1:]
+        if candidate in source_scalar_names:
+            return candidate, sf
+    return "", ""
 
-    tables_by_name: dict[str, dict] = {t["name"]: t for t in tables}
-    types_by_name: dict[str, dict] = {t.get("name", ""): t for t in types}
 
-    relationships: list[dict] = []
-    seen: set[str] = set()
+def _detect_relationships(
+    tables: list[dict],
+    types: list[dict],
+    queryable_type_names: set[str],
+    type_to_table: dict[str, str],
+) -> list[dict]:
+    """Emit relationships for intra-source OBJECT column references.
 
-    def _add_rel(src_table: str, src_col: str, tgt_table: str, tgt_col: str, cardinality: str) -> None:
-        key = f"{src_table}.{src_col}->{tgt_table}.{tgt_col}"
-        if key in seen:
-            return
-        seen.add(key)
-        relationships.append({
-            "id": f"gql_auto__{src_table}__{src_col}-to-{tgt_table}__{tgt_col}",
-            "source_table_id": src_table,
-            "target_table_id": tgt_table,
-            "source_column": src_col,
-            "target_column": tgt_col,
-            "cardinality": cardinality,
-        })
-
-    for t in tables:
-        raw_type = types_by_name.get(t["field_name"].rstrip("s").title()) or types_by_name.get(
-            t["field_name"].rstrip("s").capitalize()
-        )
-        if not raw_type:
-            continue
-        for rf in raw_type.get("fields") or []:
-            rf_kind, rf_type_name = _unwrap_type(rf["type"])
-            if rf_kind == "OBJECT" and rf_type_name in queryable_type_names:
-                target = gql_type_to_table.get(rf_type_name)
-                if target and target["name"] != t["name"]:
-                    tgt_cols = {c["name"] for c in target.get("columns", [])}
-                    pk = next((c for c in ("id", "name") if c in tgt_cols), None)
-                    if pk:
-                        # Check if a scalar FK column exists (e.g. employee_id for employee field)
-                        src_cols = {c["name"] for c in t.get("columns", [])}
-                        scalar_fk = rf["name"] + "_id" if rf["name"] + "_id" in src_cols else None
-                        src_col = scalar_fk if scalar_fk else rf["name"]
-                        _add_rel(t["name"], src_col, target["name"], pk, "many-to-one")
-                        _add_rel(target["name"], pk, t["name"], src_col, "one-to-many")
-            elif rf_kind == "SCALAR" and rf["name"].endswith("_name"):
-                # Detect scalar _name FKs: breed_name → animalBreeds.name
-                prefix = rf["name"][:-5]  # strip "_name"
-                for candidate_name, candidate in tables_by_name.items():
-                    if candidate_name != t["name"] and candidate_name.lower().startswith(prefix.lower()):
-                        cand_cols = {c["name"] for c in candidate.get("columns", [])}
-                        if "name" in cand_cols:
-                            _add_rel(t["name"], rf["name"], candidate_name, "name", "many-to-one")
-                            _add_rel(candidate_name, "name", t["name"], rf["name"], "one-to-many")
-                            break
-
+    For many-to-one fields, infers source_column/target_column from naming
+    conventions (e.g. breedName → breed.name). Falls back to empty columns
+    for list (one-to-many) object fields where the FK lives on the target side.
+    """
+    relationships = []
+    for table in tables:
+        src_scalars = {
+            c["name"] for c in (table.get("columns") or [])
+            if c.get("type") != "jsonb"
+        }
+        for col in table.get("columns") or []:
+            gql_type = col.get("gql_object_type")
+            if not gql_type or gql_type not in queryable_type_names:
+                continue
+            target_table = type_to_table.get(gql_type)
+            if not target_table or target_table == table["name"]:
+                continue
+            cardinality = "one-to-many" if col.get("gql_is_list") else "many-to-one"
+            rel_id = f"gql_remote__{table['source_id']}__{table['name']}__{col['name']}"
+            if cardinality == "many-to-one":
+                src_col, tgt_col = _infer_fk_columns(col["name"], gql_type, src_scalars, types)
+            else:
+                src_col, tgt_col = "", ""
+            relationships.append({
+                "id": rel_id,
+                "source_table_id": table["name"],
+                "target_table_id": target_table,
+                "source_column": src_col,
+                "target_column": tgt_col,
+                "cardinality": cardinality,
+                "remote_managed": True,
+            })
     return relationships
 
 
@@ -173,11 +224,18 @@ def map_schema(
     mutation_type = _find_type(types, mutation_type_name) if mutation_type_name else None
 
     # Collect which GQL type names are directly queryable (root query return types)
+    # and build a mapping from GQL type name → registered table name.
+    # Prefer no-required-arg fields so join targets can be bulk-fetched.
     queryable_type_names: set[str] = set()
+    type_to_table: dict[str, str] = {}
     for field in (query_type or {}).get("fields") or []:
         _, ret_name = _unwrap_type(field["type"])
         if ret_name:
             queryable_type_names.add(ret_name)
+            tname = f"{namespace}__{field['name']}" if namespace else field['name']
+            has_required = bool(_build_required_args(field))
+            if ret_name not in type_to_table or has_required is False:
+                type_to_table[ret_name] = tname
 
     tables: list[dict] = []
     functions: list[dict] = []
@@ -188,7 +246,7 @@ def map_schema(
             continue  # skip scalars at the top level
         required_args = _build_required_args(field)
         return_type = _find_type(types, ret_name)
-        columns = _build_columns((return_type or {}).get("fields") or [])
+        columns = _build_columns((return_type or {}).get("fields") or [], types)
         table_name = f"{namespace}__{field['name']}" if namespace else field['name']
         tables.append({
             "name": table_name,
@@ -219,5 +277,5 @@ def map_schema(
             "description": field.get("description") or None,
         })
 
-    relationships = _detect_relationships(tables, types, queryable_type_names)
+    relationships = _detect_relationships(tables, types, queryable_type_names, type_to_table)
     return tables, functions, relationships

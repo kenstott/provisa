@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from provisa.api.app import state
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery.analyzer import analyze
-from provisa.discovery.collector import collect_metadata
+from provisa.discovery.collector import collect_fk_candidates, collect_metadata
 from provisa.discovery.prompt import build_prompt
 
 router = APIRouter(prefix="/admin/discover")
@@ -54,9 +54,7 @@ _log = _logging.getLogger(__name__)
 
 @router.post("/relationships")
 async def trigger_discovery(body: DiscoverRequest):
-    """Trigger LLM relationship discovery."""
-    api_key = _get_api_key()
-
+    """Trigger relationship discovery: FK constraints always, LLM inference if ANTHROPIC_API_KEY set."""
     scope_id: str | int | None = None
     if body.scope == "table":
         if body.table_id is None:
@@ -67,21 +65,32 @@ async def trigger_discovery(body: DiscoverRequest):
             raise HTTPException(status_code=400, detail="domain_id required for domain scope")
         scope_id = body.domain_id
 
+    all_candidates = []
     async with state.pg_pool.acquire() as conn:
-        discovery_input = await collect_metadata(
+        fk_candidates = await collect_fk_candidates(
             state.trino_conn, conn, body.scope, scope_id,
         )
-        _log.warning(
-            "Discovery metadata: %d tables, columns per table: %s",
-            len(discovery_input.tables),
-            {t.table_name: len(t.columns) for t in discovery_input.tables},
-        )
-        prompt = build_prompt(discovery_input)
-        candidates = analyze(prompt, api_key, discovery_input)
-        _log.warning("LLM returned %d candidates after validation", len(candidates))
-        stored_ids = await candidates_repo.store_candidates(conn, candidates, body.scope)
+        _log.warning("FK introspection returned %d candidates", len(fk_candidates))
+        all_candidates.extend(fk_candidates)
 
-    return {"candidates_found": len(candidates), "stored_ids": stored_ids}
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if api_key:
+            discovery_input = await collect_metadata(
+                state.trino_conn, conn, body.scope, scope_id,
+            )
+            _log.warning(
+                "LLM discovery metadata: %d tables, columns per table: %s",
+                len(discovery_input.tables),
+                {t.table_name: len(t.columns) for t in discovery_input.tables},
+            )
+            prompt = build_prompt(discovery_input)
+            llm_candidates = analyze(prompt, api_key, discovery_input)
+            _log.warning("LLM returned %d candidates after validation", len(llm_candidates))
+            all_candidates.extend(llm_candidates)
+
+        stored_ids = await candidates_repo.store_candidates(conn, all_candidates, body.scope)
+
+    return {"candidates_found": len(all_candidates), "stored_ids": stored_ids}
 
 
 @router.get("/candidates")

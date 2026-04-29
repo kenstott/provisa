@@ -54,6 +54,9 @@ def _sql_literal(val) -> str:
         return f"TIMESTAMP '{val.isoformat()}'"
     if isinstance(val, date):
         return f"DATE '{val}'"
+    if isinstance(val, (dict, list)):
+        escaped = json.dumps(val).replace("'", "''")
+        return f"'{escaped}'"
     escaped = str(val).replace("'", "''")
     return f"'{escaped}'"
 
@@ -101,7 +104,8 @@ def build_values_cte_sql(sql: str, table_name: str, entry: "HotTableEntry") -> s
 
     _with_re = re.compile(r"^\s*WITH\s+", re.IGNORECASE)
     if _with_re.match(rewritten):
-        return _with_re.sub(f"WITH {cte_sql}, ", rewritten)
+        _prefix = f"WITH {cte_sql}, "
+        return _with_re.sub(lambda _: _prefix, rewritten, count=1)
     return f"WITH {cte_sql} {rewritten}"
 
 

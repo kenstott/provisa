@@ -115,19 +115,29 @@ def serialize_rows(
                 seen[root_key] = len(result_rows)
                 result_rows.append(obj)
 
-            # Accumulate one-to-many children
+            # Accumulate one-to-many children — build one merged child per top_path per row
             parent_idx = seen[root_key]
             parent_obj = result_rows[parent_idx]
-            for nest_path, nest_cols in nested_groups.items():
-                top_path = nest_path.split(".")[0]
-                if top_path not in one_to_many_paths:
-                    continue
-                all_none = all(row[idx] is None for idx, _ in nest_cols)
-                if not all_none:
-                    child = {col.field_name: _convert_value(row[idx]) for idx, col in nest_cols}
-                    # Avoid duplicate children (same row may appear when there are multiple one-to-many paths)
-                    if child not in parent_obj[top_path]:
-                        parent_obj[top_path].append(child)
+            for top_path in one_to_many_paths:
+                child: dict = {}
+                for nest_path, nest_cols in nested_groups.items():
+                    if nest_path.split(".")[0] != top_path:
+                        continue
+                    all_none = all(row[idx] is None for idx, _ in nest_cols)
+                    if all_none:
+                        continue
+                    sub_path = nest_path[len(top_path):].lstrip(".")
+                    if not sub_path:
+                        for idx, col in nest_cols:
+                            child[col.field_name] = _convert_value(row[idx])
+                    else:
+                        parts = sub_path.split(".")
+                        target = child
+                        for part in parts[:-1]:
+                            target = target.setdefault(part, {})
+                        target[parts[-1]] = {col.field_name: _convert_value(row[idx]) for idx, col in nest_cols}
+                if child and child not in parent_obj[top_path]:
+                    parent_obj[top_path].append(child)
 
         return {"data": {root_field: result_rows}}
 

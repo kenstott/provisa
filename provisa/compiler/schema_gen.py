@@ -65,6 +65,7 @@ class SchemaInput:
     enum_types: dict = field(default_factory=dict)  # pg_name → GraphQLEnumType (REQ-221)
     approved_queries: list[dict] = field(default_factory=list)  # approved persisted queries for subscription SDL
     root_table_ids: set[int] | None = None  # if set, only these tables get root query fields; others are type-defs only
+    gql_object_columns: dict[str, dict[str, list[str]]] = field(default_factory=dict)  # {table_name: {col_name: [sub_fields]}}
 
 
 @dataclass
@@ -345,7 +346,11 @@ def _build_object_type(
     for sf in object_fields:
         sf_name = sf["name"]
         sf_alias = sf.get("alias") or apply_convention(sf_name, convention) or sf_name
-        sf_gql = _OBJECT_FIELD_TYPE_MAP.get(sf.get("type", "string"), GraphQLString)
+        nested = sf.get("fields") or []
+        if nested and sf.get("type") == "object":
+            sf_gql: object = _build_object_type(sf_name, nested, convention, registry)
+        else:
+            sf_gql = _OBJECT_FIELD_TYPE_MAP.get(sf.get("type", "string"), GraphQLString)
         sub_fields[sf_alias] = GraphQLField(sf_gql, description=sf.get("description"))
     obj_type = GraphQLObjectType(type_name, lambda: sub_fields)
     registry[type_name] = obj_type
@@ -499,13 +504,19 @@ def _can_see_relationship(
     if src_id not in table_lookup:
         return False
     src_visible = {c["column_name"] for c in table_lookup[src_id].visible_columns}
-    if not rel.get("source_column") or rel["source_column"] not in src_visible:
-        return False
     if rel.get("target_function_name"):
         # Computed relationship — target is a DB function, no table check needed
+        if not rel.get("source_column") or rel["source_column"] not in src_visible:
+            return False
         return True
     tgt_id = rel.get("target_table_id")
     if tgt_id not in table_lookup:
+        return False
+    # Remote-managed relationships (e.g. GraphQL remote) have no FK columns — allow when
+    # both tables are visible.
+    if not rel.get("source_column"):
+        return True
+    if rel["source_column"] not in src_visible:
         return False
     tgt_visible = {c["column_name"] for c in table_lookup[tgt_id].visible_columns}
     return rel.get("target_column") in tgt_visible

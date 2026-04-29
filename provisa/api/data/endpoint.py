@@ -546,9 +546,7 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
     cache_rewrites: dict = {}
     values_cte_entries: dict = {}
     hot_mgr = getattr(state, "hot_manager", None)
-    log.warning("[MAT] _materialize_api_to_trino_cache called | exec_sql=%s", exec_sql[:500])
     table_names = find_api_table_names(exec_sql)
-    log.warning("[MAT] exec_sql table names: %s | api_endpoints keys: %s", table_names, list(getattr(state, "api_endpoints", {}).keys()))
     if not table_names:
         return cache_rewrites, values_cte_entries
 
@@ -571,7 +569,6 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
                 continue
 
         ep = _lookup_ep(state, tn)
-        log.warning("[MAT] table %r → ep=%s", tn, ep.table_name if ep else None)
         if ep is None:
             gql_reg, gql_tbl = _lookup_gql_remote_table(state, tn)
             if gql_reg is not None and not gql_tbl.get("required_args"):
@@ -590,6 +587,7 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
                 }
                 col_dicts = gql_tbl.get("columns", [])
                 col_names = [c["name"] for c in col_dicts]
+                col_selections = [c.get("gql_selection", c["name"]) for c in col_dicts]
                 col_objs = [_GCol(name=c["name"], type=_GQL_TYPE_MAP.get(c.get("type", "text"), "string")) for c in col_dicts]
 
                 gql_cache_loc = cache_location(gql_reg["source_id"], "provisa_admin", "gql_cache")
@@ -597,10 +595,10 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
 
                 gql_rows: list[dict] | None = None
 
-                # Cache hit — promote to hot_mgr in background, use cache rewrite
+                # Cache hit — only trust in-process table_known_live; table_exists can return
+                # stale GQL cache tables with wrong column types after server restart.
                 ensure_cache_schema(state.trino_conn, gql_cache_loc)
-                if table_known_live(gql_cache_loc, gql_cache_tbl) or table_exists(state.trino_conn, gql_cache_loc, gql_cache_tbl):
-                    log.warning("[GQL REMOTE] cache hit — %s", gql_cache_tbl)
+                if table_known_live(gql_cache_loc, gql_cache_tbl):
                     cache_rewrites[tn] = (gql_cache_loc, gql_cache_tbl)
                     continue
 
@@ -610,7 +608,7 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
                         url=gql_reg["url"],
                         auth=gql_reg.get("auth"),
                         field_name=gql_tbl.get("field_name") or gql_tbl["name"],
-                        columns=col_names,
+                        columns=col_selections,
                     )
                 except Exception as fetch_exc:
                     log.warning("[GQL REMOTE] fetch failed for %s: %s — skipping", tn, fetch_exc)
@@ -1397,7 +1395,6 @@ async def _execute_one_field(
 
             # Materialize API-backed tables into Trino cache (VARCHAR cols) to avoid
             # INVALID_CAST_ARGUMENT from Trino's PG connector exposing JSONB as json type.
-            log.warning("[MAT] pre-call | route=TRINO sources=%s exec_sql=%s", compiled.sources, exec_sql[:300])
             _api_cache_rewrites, _api_values_ctes = await _materialize_api_to_trino_cache(exec_sql, compiled, state)
             if _api_values_ctes:
                 from provisa.cache.hot_tables import build_values_cte_sql
@@ -1428,6 +1425,25 @@ async def _execute_one_field(
                 _span_attrs["provisa.domain"] = _domain
             if role_id:
                 _span_attrs["provisa.role"] = role_id
+
+            # Build per-table child spans for any additional tables joined into this query.
+            from provisa.compiler.naming import domain_to_sql_name as _d2sql
+            _seen_tbl_ids: set[int] = {_tbl_meta.table_id} if _tbl_meta else set()
+            _extra_table_attrs: list[dict[str, str]] = []
+            for _f, _m in ctx.tables.items():
+                if _m.table_id in _seen_tbl_ids:
+                    continue
+                _tbl_part = _f.split("__", 1)[1] if "__" in _f else _f
+                _sem = f'"{_d2sql(_m.domain_id)}"."{_tbl_part}"'
+                if _sem in compiled.sql:
+                    _attrs: dict[str, str] = {"provisa.table": _f}
+                    if _m.domain_id:
+                        _attrs["provisa.domain"] = _m.domain_id
+                    if role_id:
+                        _attrs["provisa.role"] = role_id
+                    _extra_table_attrs.append(_attrs)
+                    _seen_tbl_ids.add(_m.table_id)
+
             result = await _loop.run_in_executor(
                 None,
                 lambda: execute_trino(
@@ -1435,6 +1451,7 @@ async def _execute_one_field(
                     session_hints=session_hints or None,
                     conn_kwargs=_trino_ck,
                     span_attrs=_span_attrs,
+                    extra_table_attrs=_extra_table_attrs or None,
                 ),
             )
             _trino_ms = (_time.perf_counter() - _t_trino) * 1000

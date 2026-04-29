@@ -229,10 +229,11 @@ class NamingConfig(BaseModel):
 
 class ObjectField(BaseModel):
     name: str
-    type: str = "string"  # provisa scalar type: string, integer, number, boolean
+    type: str = "string"  # provisa scalar type: string, integer, number, boolean, object
     alias: str | None = None
     description: str | None = None
     visible_to: list[str] = []  # empty = inherit from parent column
+    fields: list["ObjectField"] = []  # nested sub-fields when type == "object"
 
 
 class Column(BaseModel):
@@ -322,6 +323,7 @@ class Relationship(BaseModel):
     alias: str | None = None  # human-readable relationship type (e.g. WORKS_FOR); unique per source table
     graphql_alias: str | None = None  # persisted GraphQL field name override (computed from target+cardinality when absent)
     disable_cypher: bool = False  # when True, exclude this relationship from Cypher graph edges
+    source_json_key: str | None = None  # when set, JOIN extracts this key from source column as JSON object
 
 
 class Role(BaseModel):
