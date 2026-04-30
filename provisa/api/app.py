@@ -433,6 +433,22 @@ def _seed_ops_trino(trino_conn: object) -> None:
         except Exception:
             _log.warning("ops view %s: create failed", view_name, exc_info=True)
 
+    # In demo mode, expire old snapshots and orphan files to prevent MinIO disk exhaustion.
+    import os as _os
+    if _os.environ.get("GRAPHQL_DEMO_ENABLED", "").lower() in ("1", "true"):
+        import datetime as _dt
+        threshold = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S.000")
+        for tbl_name in _OPS_TABLES:
+            for proc, arg in [
+                ("expire_snapshots", f"retention_threshold => TIMESTAMP '{threshold}'"),
+                ("remove_orphan_files", f"retention_threshold => TIMESTAMP '{threshold}'"),
+            ]:
+                try:
+                    _exec(f"ALTER TABLE otel.signals.{tbl_name} EXECUTE {proc}({arg})")
+                    _log.info("ops Iceberg demo: %s on %s", proc, tbl_name)
+                except Exception:
+                    _log.warning("ops Iceberg demo: %s on %s failed (non-fatal)", proc, tbl_name, exc_info=True)
+
 
 async def _load_and_build(config_path: str | None = None) -> None:
     """Load config, introspect Trino, build schemas for all roles."""
