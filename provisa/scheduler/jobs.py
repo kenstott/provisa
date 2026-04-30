@@ -313,11 +313,11 @@ def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -
         pass
 
     # For traces: extract provisa-specific span attributes into dedicated columns.
-    # otlp2parquet stores attributes as a JSON string; we project three fields out.
-    extract_trace_attrs = signal == "traces" and "attributes" in table.schema.names
+    # otlp2parquet stores attributes as JSON in span_attributes (not "attributes").
+    extract_trace_attrs = signal == "traces" and "span_attributes" in table.schema.names
     extra_cols: list[str] = []
     if extract_trace_attrs:
-        extra_cols = ["table_name", "domain_id", "role_id"]
+        extra_cols = ["table_name", "domain_id", "role_id", "query_text"]
 
     _TRINO_CAST = {
         "bigint": "BIGINT", "integer": "INTEGER", "double": "DOUBLE", "real": "REAL",
@@ -343,13 +343,18 @@ def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -
         if not extract_trace_attrs or "table_name" in table.schema.names:
             return base
         attrs: dict = {}
-        raw = row.get("attributes")
+        raw = row.get("span_attributes")
         if raw:
             try:
                 attrs = json.loads(raw)
             except Exception:
                 pass
-        _attr_keys = {"table_name": "provisa.table", "domain_id": "provisa.domain", "role_id": "provisa.role"}
+        _attr_keys = {
+            "table_name": "provisa.table",
+            "domain_id": "provisa.domain",
+            "role_id": "provisa.role",
+            "query_text": "provisa.query_text",
+        }
         return base + tuple(attrs.get(_attr_keys[ec]) for ec in extra_cols if ec.lower() in trino_cols)
 
     rows = [_row(r) for r in table.to_pylist()]

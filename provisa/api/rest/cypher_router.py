@@ -269,6 +269,7 @@ async def cypher_query(
         "provisa.table": ", ".join(sorted(set(_cypher_node_labels))) or "cypher",
         "provisa.domain": ", ".join(sorted(_cypher_domains)) or "cypher",
         "provisa.role": role_id,
+        "provisa.query_text": body.query,
     }
 
     stats_enabled = (x_provisa_stats or "").lower() == "true"

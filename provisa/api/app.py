@@ -187,6 +187,7 @@ _OPS_TABLES: dict[str, list[tuple[str, str, bool]]] = {
         ("table_name", "text", False),
         ("domain_id", "text", False),
         ("role_id", "text", False),
+        ("query_text", "text", False),
         ("_date", "date", False),
     ],
     "metrics": [
@@ -239,6 +240,7 @@ _OPS_VIEWS: list[tuple[str, list[tuple[str, str, bool]], str]] = [
             ("table_name", "text", False),
             ("domain_id", "text", False),
             ("role_id", "text", False),
+            ("query_text", "text", False),
             ("_date", "date", False),
         ],
         """\
@@ -256,6 +258,7 @@ SELECT
     table_name,
     domain_id,
     role_id,
+    query_text,
     _date
 FROM otel.signals.traces
 WHERE span_name LIKE 'provisa.query%'
