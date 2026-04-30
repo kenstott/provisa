@@ -41,10 +41,20 @@ build_provisa_image() {
   fi
 
   info "Building provisa/provisa:local for linux/amd64 (source stays on build host)..."
-  docker build \
+  local retries=3
+  local attempt=0
+  until docker build \
     --platform linux/amd64 \
     --tag provisa/provisa:local \
-    "${REPO_ROOT}"
+    "${REPO_ROOT}"; do
+    attempt=$((attempt + 1))
+    if [ "$attempt" -ge "$retries" ]; then
+      err "docker build failed after ${retries} attempts"
+      exit 1
+    fi
+    info "docker build failed (attempt ${attempt}/${retries}), retrying in 30s..."
+    sleep 30
+  done
 
   info "Saving provisa/provisa:local → $(basename "$out")..."
   mkdir -p "$IMAGES_DIR"

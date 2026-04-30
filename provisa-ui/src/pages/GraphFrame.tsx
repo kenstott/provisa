@@ -47,6 +47,7 @@ interface CyElement {
   data(key: string, value: unknown): CyElement;
   lock(): CyElement;
   unlock(): CyElement;
+  locked(): boolean;
   select(): CyElement;
   unselect(): CyElement;
   style(name: string, value: unknown): CyElement;
@@ -73,6 +74,8 @@ interface CyCollection {
   lock(): this;
   unlock(): this;
   locked(): boolean;
+  addClass(cls: string): this;
+  removeClass(cls: string): this;
   neighborhood(selector?: string): CyCollection;
   data(key: string): unknown;
   id(): string;
@@ -94,7 +97,7 @@ interface CyInstance {
   add(eles: CyElementDef | CyElementDef[] | CyCollection): CyCollection;
   remove(eles: CyCollection | string): CyCollection;
   batch(fn: () => void): void;
-  layout(options: CyLayoutOptions): { run(): void; one(evt: string, fn: () => void): void };
+  layout(options: CyLayoutOptions): { run(): void; stop(): void; one(evt: string, fn: () => void): void };
   fit(eles?: CyCollection, padding?: number): void;
   zoom(): number;
   zoom(level: number): void;
@@ -647,7 +650,7 @@ const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
   } as CyLayoutOptions,
 };
 
-function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, labelSiblings, showingChildrenNatural, onToggleChildren, showingChildrenCircular, onToggleChildrenCircular, showingParents, onToggleParents, showingParentsCircular, onToggleParentsCircular, onCyReady }: CanvasProps) {
+function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, labelSiblings: _labelSiblings, showingChildrenNatural, onToggleChildren, showingChildrenCircular, onToggleChildrenCircular, showingParents, onToggleParents, showingParentsCircular, onToggleParentsCircular, onCyReady }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
   const colorOverridesRef = useRef(colorOverrides);
@@ -1211,7 +1214,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         </button>
         <button
           className="gf-ctrl-btn"
-          onClick={nudgeLayout}
+          onClick={() => nudgeLayout()}
           title="Nudge layout (refine from current positions)"
         >
           ⟳

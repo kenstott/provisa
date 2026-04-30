@@ -141,7 +141,7 @@ function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: CanvasTa
       </div>
 
       {/* Columns */}
-      {tbl.columns.map((col, colIdx) => (
+      {tbl.columns.map((col, _colIdx) => (
         <div
           key={col.columnName}
           data-table={ct.tableName}
@@ -206,7 +206,7 @@ function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: CanvasTa
 
 // ── JoinCanvas ───────────────────────────────────────────────────────────────
 
-function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
+function JoinCanvas({ tables, existingRels: _existingRels, onGenerateSql }: JoinCanvasProps) {
   const [canvasTables, setCanvasTables] = useState<CanvasTable[]>([]);
   const [canvasJoins, setCanvasJoins] = useState<CanvasJoin[]>([]);
   const [connectingMouse, setConnectingMouse] = useState<{ x: number; y: number } | null>(null);
@@ -859,7 +859,6 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
       aliasMap[alias] = tbl;
       aliasMap[tbl] = tbl;
     }
-    const ident = String.raw`(?:"([^"]+)"|([\w$]+))`;
     const colRef = String.raw`(?:"[^"]+"|[\w$]+)\.(?:"[^"]+"|[\w$]+)`;
     const castRef = String.raw`cast\s*\(\s*${colRef}\s+as\s+[\w$]+\s*\)`;
     const colRefCapture = String.raw`(?:(?:"([^"]+)"|([\w$]+))\.(?:"([^"]+)"|([\w$]+)))`;
@@ -905,12 +904,6 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
     await onPromote(candidates[idx]);
     setCandidates((prev) => prev.map((c, i) => i === idx ? { ...c, promoted: true } : c));
   }, [candidates, onPromote]);
-
-  const resultCount = resultTab === "results" ? resultRows.length
-    : resultTab === "profile" ? profile.length
-    : resultTab === "candidates" ? candidates.length
-    : resultTab === "errors" ? errors.length
-    : history.length;
 
   return (
     <div className="modal-overlay" onClick={onClose}>

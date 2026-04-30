@@ -13,13 +13,14 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { CapabilityGate } from "./CapabilityGate";
 import { RoleSelector } from "./RoleSelector";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import type { Capability } from "../types/auth";
 
 
 
 interface DropdownItem {
   to: string;
   label: string;
-  capability: string;
+  capability: Capability;
   comingSoon?: boolean;
   separatorBefore?: boolean;
 }

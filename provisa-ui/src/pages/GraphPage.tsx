@@ -11,10 +11,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import CodeMirror from "@uiw/react-codemirror";
-import {
-  getCypherLanguageExtensions,
-  useAutocompleteExtensions,
-} from "@neo4j-cypher/codemirror";
+import * as _neo4jCypherMod from "@neo4j-cypher/codemirror";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const { getCypherLanguageExtensions, useAutocompleteExtensions } = _neo4jCypherMod as any;
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
@@ -559,6 +558,7 @@ function QueryBar({ onRun, initialQuery, onQueryChange, cypherSchema }: QueryBar
     try {
       // editorSupportField is included by getCypherLanguageExtensions
       // eslint-disable-next-line @typescript-eslint/no-require-imports
+      // @ts-ignore
       const { editorSupportField } = require("@neo4j-cypher/codemirror/lib/cypher-state-definitions") as { editorSupportField: import("@codemirror/state").StateField<{ setSchema: (s: CypherSchema) => void }> };
       const editorSupport = viewRef.current.state.field(editorSupportField, false);
       if (editorSupport) editorSupport.setSchema(cypherSchema);
