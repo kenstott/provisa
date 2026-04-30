@@ -40,6 +40,40 @@ import trino.exceptions as _trino_exc
 _PROC_RE = _re.compile(r"^\s*CALL\s+(db\.labels|db\.relationshipTypes|db\.propertyKeys)\s*\(\s*\)\s*$", _re.IGNORECASE)
 
 
+def _span_attrs_from_semantic_sql(
+    semantic_sql: str,
+    role_id: str,
+    query_text: str | None = None,
+) -> dict[str, str]:
+    """Extract normalized table names from semantic SQL for OTel span attributes.
+
+    Semantic SQL uses domain_to_sql_name(domain_id) as schema, e.g. pet_store.pets.
+    sqlglot Table nodes expose .db (schema/domain) and .name (table).
+    """
+    import sqlglot
+    tables: set[str] = set()
+    domains: set[str] = set()
+    try:
+        for tbl in sqlglot.parse_one(semantic_sql, dialect="postgres").find_all(sqlglot.exp.Table):
+            db = tbl.db
+            name = tbl.name
+            if db:
+                tables.add(f"{db}.{name}")
+                domains.add(db)
+            elif name:
+                tables.add(name)
+    except Exception:
+        pass
+    attrs: dict[str, str] = {
+        "provisa.table": ", ".join(sorted(tables)) or "cypher",
+        "provisa.domain": ", ".join(sorted(domains)) or "cypher",
+        "provisa.role": role_id,
+    }
+    if query_text is not None:
+        attrs["provisa.query_text"] = query_text
+    return attrs
+
+
 def _federation_error(exc: Exception) -> str:
     """Format execution errors without leaking the Trino backend name."""
     if isinstance(exc, _trino_exc.TrinoQueryError):
@@ -253,26 +287,10 @@ async def cypher_query(
         for tn in _api_table_names
     )
 
-    # Build span attrs for OTel: collect SQL domain.tablename equivalents from parsed AST
-    _cypher_sql_tables: set[str] = set()
-    _cypher_domains: set[str] = set()
-    for _mc in ast.match_clauses:
-        for _np in _mc.pattern.nodes:
-            for _lbl in _np.labels:
-                _nm = label_map.nodes.get(_lbl) or next(
-                    (v for v in label_map.nodes.values() if v.table_label == _lbl), None
-                )
-                if _nm:
-                    _sql_name = f"{_nm.domain_id}.{_nm.table_name}" if _nm.domain_id else _nm.table_name
-                    _cypher_sql_tables.add(_sql_name)
-                    if _nm.domain_id:
-                        _cypher_domains.add(_nm.domain_id)
-    _cypher_span_attrs: dict[str, str] = {
-        "provisa.table": ", ".join(sorted(_cypher_sql_tables)) or "cypher",
-        "provisa.domain": ", ".join(sorted(_cypher_domains)) or "cypher",
-        "provisa.role": role_id,
-        "provisa.query_text": body.query,
-    }
+    # Build span attrs from semantic SQL table refs (already normalized: pet_store.pets)
+    _cypher_span_attrs: dict[str, str] = _span_attrs_from_semantic_sql(
+        semantic_sql, role_id, body.query
+    )
 
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:
@@ -637,29 +655,11 @@ async def _execute_call_body(
     from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
     import sqlglot
 
-    _cb_sql_tables: set[str] = set()
-    _cb_domains: set[str] = set()
-    for _mc in getattr(call_body, "match_clauses", []):
-        for _np in _mc.pattern.nodes:
-            for _lbl in _np.labels:
-                _nm = label_map.nodes.get(_lbl) or next(
-                    (v for v in label_map.nodes.values() if v.table_label == _lbl), None
-                )
-                if _nm:
-                    _sql_name = f"{_nm.domain_id}.{_nm.table_name}" if _nm.domain_id else _nm.table_name
-                    _cb_sql_tables.add(_sql_name)
-                    if _nm.domain_id:
-                        _cb_domains.add(_nm.domain_id)
-    _cb_span_attrs: dict[str, str] = {
-        "provisa.table": ", ".join(sorted(_cb_sql_tables)) or "cypher",
-        "provisa.domain": ", ".join(sorted(_cb_domains)) or "cypher",
-        "provisa.role": role_id,
-    }
-
     sql_ast, ordered_params, graph_vars = cypher_to_sql(call_body, label_map, params)
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
     sql_str = sql_ast.sql(dialect="postgres")
     semantic_sql = make_semantic_sql(sql_str, ctx)
+    _cb_span_attrs: dict[str, str] = _span_attrs_from_semantic_sql(semantic_sql, role_id)
     governed_sql = apply_governance(semantic_sql, gov_ctx)
     exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
     trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]

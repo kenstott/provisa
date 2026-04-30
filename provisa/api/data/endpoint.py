@@ -1418,31 +1418,27 @@ async def _execute_one_field(
             _t_trino = _time.perf_counter()
             _loop = asyncio.get_running_loop()
             _trino_ck = getattr(state, "trino_conn_kwargs", None)
-            _tbl_meta = ctx.tables.get(root_field)
-            _domain = getattr(_tbl_meta, "domain_id", None) if _tbl_meta else None
-            _span_attrs: dict[str, str] = {"provisa.table": root_field}
-            if _domain:
-                _span_attrs["provisa.domain"] = _domain
-            if role_id:
-                _span_attrs["provisa.role"] = role_id
-
-            # Build per-table child spans for any additional tables joined into this query.
-            from provisa.compiler.naming import domain_to_sql_name as _d2sql
-            _seen_tbl_ids: set[int] = {_tbl_meta.table_id} if _tbl_meta else set()
+            # Extract normalized table names from semantic SQL (e.g. pet_store.pets)
+            import sqlglot as _sg
+            _sem_tables: set[str] = set()
+            _sem_domains: set[str] = set()
+            try:
+                for _tbl in _sg.parse_one(compiled.sql, dialect="postgres").find_all(_sg.exp.Table):
+                    _db = _tbl.db
+                    _tbl_nm = _tbl.name
+                    if _db:
+                        _sem_tables.add(f"{_db}.{_tbl_nm}")
+                        _sem_domains.add(_db)
+                    elif _tbl_nm:
+                        _sem_tables.add(_tbl_nm)
+            except Exception:
+                pass
+            _span_attrs: dict[str, str] = {
+                "provisa.table": ", ".join(sorted(_sem_tables)) or root_field,
+                "provisa.domain": ", ".join(sorted(_sem_domains)) or "",
+                "provisa.role": role_id or "",
+            }
             _extra_table_attrs: list[dict[str, str]] = []
-            for _f, _m in ctx.tables.items():
-                if _m.table_id in _seen_tbl_ids:
-                    continue
-                _tbl_part = _f.split("__", 1)[1] if "__" in _f else _f
-                _sem = f'"{_d2sql(_m.domain_id)}"."{_tbl_part}"'
-                if _sem in compiled.sql:
-                    _attrs: dict[str, str] = {"provisa.table": _f}
-                    if _m.domain_id:
-                        _attrs["provisa.domain"] = _m.domain_id
-                    if role_id:
-                        _attrs["provisa.role"] = role_id
-                    _extra_table_attrs.append(_attrs)
-                    _seen_tbl_ids.add(_m.table_id)
 
             result = await _loop.run_in_executor(
                 None,
