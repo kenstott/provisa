@@ -353,7 +353,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         text = self._rewrite_cte_vars(text)
         text = _rewrite_property_access(text)
         try:
-            return sqlglot.parse_one(text, dialect="trino")
+            # No dialect: $N executor placeholders must survive as identifiers.
+            # dialect="postgres" turns $1 into a Parameter node that renders as @1.
+            return sqlglot.parse_one(text)
         except Exception:
             return exp.column(text)
 
@@ -795,10 +797,17 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         expr_text = _coerce_ts_literals(expr_text)
         expr_text = self._rewrite_subquery_exprs(expr_text)
         try:
-            parsed = sqlglot.parse_one(expr_text, dialect="trino")
+            parsed = sqlglot.parse_one(expr_text, dialect="postgres")
             return parsed.transform(_rewrite_cypher_fn_node)
         except Exception:
-            return exp.condition(expr_text)
+            try:
+                from sqlglot.errors import ErrorLevel
+                parsed = sqlglot.parse_one(expr_text, dialect="postgres", error_level=ErrorLevel.IGNORE)
+                if parsed is not None:
+                    return parsed.transform(_rewrite_cypher_fn_node)
+            except Exception:
+                pass
+            return exp.true()
 
     def _build_order_by(self, order_by: list[OrderItem]) -> list[exp.Expression]:
         exprs: list[exp.Expression] = []
@@ -872,9 +881,16 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         text = _rewrite_string_predicates(text)
         text = self._rewrite_subquery_exprs(text)
         try:
-            parsed = sqlglot.parse_one(text, dialect="trino")
+            parsed = sqlglot.parse_one(text, dialect="postgres")
             return parsed.transform(_rewrite_cypher_fn_node)
         except Exception:
+            try:
+                from sqlglot.errors import ErrorLevel
+                parsed = sqlglot.parse_one(text, dialect="postgres", error_level=ErrorLevel.IGNORE)
+                if parsed is not None:
+                    return parsed.transform(_rewrite_cypher_fn_node)
+            except Exception:
+                pass
             return exp.column(text)
 
     def _rewrite_cte_vars(self, text: str) -> str:
@@ -1285,25 +1301,28 @@ _CYPHER_CAST_FNS: dict[str, tuple[str, bool]] = {
 # String predicates: (pattern, replacement)
 _STRING_PREDICATE_REWRITES: list[tuple[re.Pattern[str], str]] = [
     # n . name STARTS WITH 'x'  →  starts_with(n.name, 'x')
+    # Also handles function calls on the left: toLower(n.name) STARTS WITH 'x'
     (
         re.compile(
-            r"([\w]+(?:\s*\.\s*[\w]+)?)\s+STARTS\s+WITH\s+('(?:[^'\\]|\\.)*'|[\w.$]+)",
+            r"([\w]+(?:\s*\.\s*[\w]+)?|\w+\s*\([^)]*\))\s+STARTS\s+WITH\s+('(?:[^'\\]|\\.)*'|[\w.$]+)",
             re.IGNORECASE,
         ),
         lambda m: f"starts_with({m.group(1).replace(' ', '')}, {m.group(2)})",
     ),
     # n . name ENDS WITH 'x'  →  (n.name LIKE CONCAT('%', 'x'))
+    # Also handles function calls on the left: toLower(n.name) ENDS WITH 'x'
     (
         re.compile(
-            r"([\w]+(?:\s*\.\s*[\w]+)?)\s+ENDS\s+WITH\s+('(?:[^'\\]|\\.)*'|[\w.$]+)",
+            r"([\w]+(?:\s*\.\s*[\w]+)?|\w+\s*\([^)]*\))\s+ENDS\s+WITH\s+('(?:[^'\\]|\\.)*'|[\w.$]+)",
             re.IGNORECASE,
         ),
         lambda m: f"({m.group(1).replace(' ', '')} LIKE CONCAT('%', {m.group(2)}))",
     ),
     # n . name CONTAINS 'x'  →  (strpos(n.name, 'x') > 0)
+    # Also handles function calls on the left: toLower(n.name) CONTAINS 'x'
     (
         re.compile(
-            r"([\w]+(?:\s*\.\s*[\w]+)?)\s+CONTAINS\s+('(?:[^'\\]|\\.)*'|[\w.$]+)",
+            r"([\w]+(?:\s*\.\s*[\w]+)?|\w+\s*\([^)]*\))\s+CONTAINS\s+('(?:[^'\\]|\\.)*'|[\w.$]+)",
             re.IGNORECASE,
         ),
         lambda m: f"(strpos({m.group(1).replace(' ', '')}, {m.group(2)}) > 0)",

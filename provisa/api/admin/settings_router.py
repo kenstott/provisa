@@ -165,6 +165,10 @@ async def update_settings(request: Request):
                 cfg["observability"]["sample_rate"] = float(o["sample_rate"])
                 updated.append("otel.sample_rate")
             write_config(path, cfg)
+            if "endpoint" in o and o["endpoint"]:
+                from provisa.api.otel_setup import attach_otlp_exporters
+                service = cfg["observability"].get("service_name", "provisa")
+                attach_otlp_exporters(o["endpoint"], service)
         except Exception:
             pass
 

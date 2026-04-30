@@ -103,6 +103,7 @@ export interface Relationship {
   computedCypherAlias: string | null;
   autoSuggested: boolean;
   disableCypher: boolean;
+  ownerDomainId: string | null;
 }
 
 export interface RLSRule {

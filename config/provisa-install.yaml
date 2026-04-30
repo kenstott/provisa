@@ -1,408 +1,488 @@
-# Provisa install-simulation config — pet store demo only.
-# Used by start-ui-install.sh via PROVISA_CONFIG env var.
-# Completely isolated from dev config (config/provisa.yaml).
 sources:
-  - id: pet-store-pg
-    type: postgresql
-    host: ${env:POSTGRES_HOST:-postgres}
-    port: 5432
-    database: provisa
-    username: provisa
-    password: ${env:PG_PASSWORD:-provisa}
-
-  - id: petstore-api
-    type: openapi
-    path: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/openapi.json
-    base_url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}
-    cache_ttl: 300
-    auth_config:
-      type: none
-
-  - id: inquiries-sqlite
-    type: sqlite
-    path: ./demo/files/inquiries.sqlite
-
+- id: pet-store-pg
+  type: postgresql
+  host: ${env:POSTGRES_HOST:-postgres}
+  port: 5432
+  database: provisa
+  username: provisa
+  password: ${env:PG_PASSWORD:-provisa}
+- id: petstore-api
+  type: openapi
+  path: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/openapi.json
+  base_url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}
+  cache_ttl: 300
+  auth_config:
+    type: none
+- id: inquiries-sqlite
+  type: sqlite
+  path: ./demo/files/inquiries.sqlite
 domains:
-  - id: pet-store
-    description: "Pet store — Petstore public API (OpenAPI), internal inventory (PG), and customer inquiries (SQLite) federated into one virtual database"
-
-  - id: shelter
-    description: "Animal shelter staff and breed management — employees, assignments, schedules from GraphQL demo server"
-
+- id: pet-store
+  description: "Pet store \u2014 Petstore public API (OpenAPI), internal inventory\
+    \ (PG), and customer inquiries (SQLite) federated into one virtual database"
+- id: shelter
+  description: "Animal shelter staff and breed management \u2014 employees, assignments,\
+    \ schedules from GraphQL demo server"
 naming:
   domain_prefix: true
   rules: []
-
 tables:
-  - source_id: pet-store-pg
-    domain_id: pet-store
-    schema: pet_store
-    table: pets
-    governance: pre-approved
-    description: "Pet inventory — managed by the inventory department"
-    columns:
-      - name: id
-        visible_to: [admin, analyst]
-      - name: name
-        visible_to: [admin, analyst]
-      - name: species
-        visible_to: [admin, analyst]
-      - name: breed_name
-        visible_to: [admin, analyst]
-      - name: price
-        visible_to: [admin]
-      - name: available
-        visible_to: [admin, analyst]
-
-  # Petstore API — GET /pet/findByStatus (returns array of Pet)
-  - source_id: petstore-api
-    domain_id: pet-store
-    schema: default
-    table: find_pets_by_status
-    alias: pet_by_status
-    governance: pre-approved
-    description: "Pets available for purchase — filtered by status from Petstore API"
-    columns:
-      - name: _nf_status
-        native_filter_type: query_param
-        visible_to: []
-      - name: id
-        visible_to: [admin, analyst]
-      - name: name
-        visible_to: [admin, analyst]
-      - name: status
-        visible_to: [admin, analyst]
-      - name: photoUrls
-        visible_to: [admin, analyst]
-      - name: tags
-        visible_to: [admin, analyst]
-      - name: category
-        visible_to: [admin, analyst]
-
-  # Petstore API — GET /pet/findByTags (returns array of Pet)
-  - source_id: petstore-api
-    domain_id: pet-store
-    schema: default
-    table: find_pets_by_tags
-    alias: pet_by_tags
-    governance: pre-approved
-    description: "Pets filtered by tag from Petstore API"
-    columns:
-      - name: _nf_tags
-        native_filter_type: query_param
-        visible_to: []
-      - name: id
-        visible_to: [admin, analyst]
-      - name: name
-        visible_to: [admin, analyst]
-      - name: status
-        visible_to: [admin, analyst]
-      - name: photoUrls
-        visible_to: [admin, analyst]
-      - name: tags
-        visible_to: [admin, analyst]
-      - name: category
-        visible_to: [admin, analyst]
-
-  # Petstore API — GET /pet/{petId} (returns single Pet — empty table for schema introspection)
-  - source_id: petstore-api
-    domain_id: pet-store
-    schema: default
-    table: get_pet_by_id
-    alias: pet_by_id
-    governance: pre-approved
-    description: "Individual pet record by ID from Petstore API"
-    columns:
-      - name: _nf_petId
-        native_filter_type: path_param
-        visible_to: []
-      - name: id
-        visible_to: [admin, analyst]
-      - name: name
-        visible_to: [admin, analyst]
-      - name: status
-        visible_to: [admin, analyst]
-      - name: photoUrls
-        visible_to: [admin, analyst]
-      - name: tags
-        visible_to: [admin, analyst]
-      - name: category
-        visible_to: [admin, analyst]
-
-  # Petstore API — GET /store/inventory (returns map of status → count)
-  - source_id: petstore-api
-    domain_id: pet-store
-    schema: default
-    table: get_inventory
-    alias: inventory
-    governance: pre-approved
-    description: "Pet inventory counts by status from Petstore API"
-    columns:
-      - name: status
-        visible_to: [admin, analyst]
-      - name: count
-        visible_to: [admin, analyst]
-
-  # Petstore API — GET /store/order/{orderId} (returns single Order — empty table for schema introspection)
-  - source_id: petstore-api
-    domain_id: pet-store
-    schema: default
-    table: get_order_by_id
-    alias: order_by_id
-    governance: pre-approved
-    description: "Individual purchase order by ID from Petstore API"
-    columns:
-      - name: orderId
-        native_filter_type: path_param
-        visible_to: []
-      - name: id
-        visible_to: [admin, analyst]
-      - name: petId
-        visible_to: [admin, analyst]
-      - name: quantity
-        visible_to: [admin, analyst]
-      - name: shipDate
-        visible_to: [admin, analyst]
-      - name: status
-        visible_to: [admin, analyst]
-      - name: complete
-        visible_to: [admin, analyst]
-
-  # Petstore API — GET /user/{username} (returns single User — empty table for schema introspection)
-  - source_id: petstore-api
-    domain_id: pet-store
-    schema: default
-    table: get_user_by_name
-    alias: user_by_name
-    governance: pre-approved
-    description: "User account by username from Petstore API"
-    columns:
-      - name: id
-        visible_to: [admin]
-      - name: username
-        visible_to: [admin, analyst]
-        native_filter_type: path_param
-      - name: firstName
-        visible_to: [admin, analyst]
-      - name: lastName
-        visible_to: [admin, analyst]
-      - name: email
-        visible_to: [admin]
-      - name: phone
-        visible_to: [admin]
-      - name: userStatus
-        visible_to: [admin]
-
-  - source_id: inquiries-sqlite
-    domain_id: pet-store
-    schema: default
-    table: users
-    governance: pre-approved
-    description: "Prospective adopters who have submitted inquiries"
-    columns:
-      - name: id
-        visible_to: [admin, analyst]
-      - name: name
-        visible_to: [admin, analyst]
-      - name: email
-        visible_to: [admin]
-      - name: phone
-        visible_to: [admin]
-      - name: created_at
-        visible_to: [admin, analyst]
-
-  - source_id: inquiries-sqlite
-    domain_id: pet-store
-    schema: default
-    table: inquiries
-    governance: pre-approved
-    description: "Customer adoption inquiries — managed by the front-desk/CRM team"
-    columns:
-      - name: id
-        visible_to: [admin, analyst]
-      - name: pet_id
-        visible_to: [admin, analyst]
-      - name: user_id
-        visible_to: [admin, analyst]
-      - name: inquiry_type
-        visible_to: [admin, analyst]
-      - name: message
-        visible_to: [admin, analyst]
-      - name: status
-        visible_to: [admin, analyst]
-      - name: submitted_at
-        visible_to: [admin, analyst]
-
+- source_id: pet-store-pg
+  domain_id: pet-store
+  schema: pet_store
+  table: pets
+  governance: pre-approved
+  description: "Pet inventory \u2014 managed by the inventory department"
+  columns:
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: name
+    visible_to:
+    - admin
+    - analyst
+  - name: species
+    visible_to:
+    - admin
+    - analyst
+  - name: breed_name
+    visible_to:
+    - admin
+    - analyst
+  - name: price
+    visible_to:
+    - admin
+  - name: available
+    visible_to:
+    - admin
+    - analyst
+- source_id: petstore-api
+  domain_id: pet-store
+  schema: default
+  table: find_pets_by_status
+  alias: pet_by_status
+  governance: pre-approved
+  description: "Pets available for purchase \u2014 filtered by status from Petstore\
+    \ API"
+  columns:
+  - name: _nf_status
+    native_filter_type: query_param
+    visible_to: []
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: name
+    visible_to:
+    - admin
+    - analyst
+  - name: status
+    visible_to:
+    - admin
+    - analyst
+  - name: photoUrls
+    visible_to:
+    - admin
+    - analyst
+  - name: tags
+    visible_to:
+    - admin
+    - analyst
+  - name: category
+    visible_to:
+    - admin
+    - analyst
+- source_id: petstore-api
+  domain_id: pet-store
+  schema: default
+  table: find_pets_by_tags
+  alias: pet_by_tags
+  governance: pre-approved
+  description: Pets filtered by tag from Petstore API
+  columns:
+  - name: _nf_tags
+    native_filter_type: query_param
+    visible_to: []
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: name
+    visible_to:
+    - admin
+    - analyst
+  - name: status
+    visible_to:
+    - admin
+    - analyst
+  - name: photoUrls
+    visible_to:
+    - admin
+    - analyst
+  - name: tags
+    visible_to:
+    - admin
+    - analyst
+  - name: category
+    visible_to:
+    - admin
+    - analyst
+- source_id: petstore-api
+  domain_id: pet-store
+  schema: default
+  table: get_pet_by_id
+  alias: pet_by_id
+  governance: pre-approved
+  description: Individual pet record by ID from Petstore API
+  columns:
+  - name: _nf_petId
+    native_filter_type: path_param
+    visible_to: []
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: name
+    visible_to:
+    - admin
+    - analyst
+  - name: status
+    visible_to:
+    - admin
+    - analyst
+  - name: photoUrls
+    visible_to:
+    - admin
+    - analyst
+  - name: tags
+    visible_to:
+    - admin
+    - analyst
+  - name: category
+    visible_to:
+    - admin
+    - analyst
+- source_id: petstore-api
+  domain_id: pet-store
+  schema: default
+  table: get_inventory
+  alias: inventory
+  governance: pre-approved
+  description: Pet inventory counts by status from Petstore API
+  columns:
+  - name: status
+    visible_to:
+    - admin
+    - analyst
+  - name: count
+    visible_to:
+    - admin
+    - analyst
+- source_id: petstore-api
+  domain_id: pet-store
+  schema: default
+  table: get_order_by_id
+  alias: order_by_id
+  governance: pre-approved
+  description: Individual purchase order by ID from Petstore API
+  columns:
+  - name: orderId
+    native_filter_type: path_param
+    visible_to: []
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: petId
+    visible_to:
+    - admin
+    - analyst
+  - name: quantity
+    visible_to:
+    - admin
+    - analyst
+  - name: shipDate
+    visible_to:
+    - admin
+    - analyst
+  - name: status
+    visible_to:
+    - admin
+    - analyst
+  - name: complete
+    visible_to:
+    - admin
+    - analyst
+- source_id: petstore-api
+  domain_id: pet-store
+  schema: default
+  table: get_user_by_name
+  alias: user_by_name
+  governance: pre-approved
+  description: User account by username from Petstore API
+  columns:
+  - name: id
+    visible_to:
+    - admin
+  - name: username
+    visible_to:
+    - admin
+    - analyst
+    native_filter_type: path_param
+  - name: firstName
+    visible_to:
+    - admin
+    - analyst
+  - name: lastName
+    visible_to:
+    - admin
+    - analyst
+  - name: email
+    visible_to:
+    - admin
+  - name: phone
+    visible_to:
+    - admin
+  - name: userStatus
+    visible_to:
+    - admin
+- source_id: inquiries-sqlite
+  domain_id: pet-store
+  schema: default
+  table: users
+  governance: pre-approved
+  description: Prospective adopters who have submitted inquiries
+  columns:
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: name
+    visible_to:
+    - admin
+    - analyst
+  - name: email
+    visible_to:
+    - admin
+  - name: phone
+    visible_to:
+    - admin
+  - name: created_at
+    visible_to:
+    - admin
+    - analyst
+- source_id: inquiries-sqlite
+  domain_id: pet-store
+  schema: default
+  table: inquiries
+  governance: pre-approved
+  description: "Customer adoption inquiries \u2014 managed by the front-desk/CRM team"
+  columns:
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: pet_id
+    visible_to:
+    - admin
+    - analyst
+  - name: user_id
+    visible_to:
+    - admin
+    - analyst
+  - name: inquiry_type
+    visible_to:
+    - admin
+    - analyst
+  - name: message
+    visible_to:
+    - admin
+    - analyst
+  - name: status
+    visible_to:
+    - admin
+    - analyst
+  - name: submitted_at
+    visible_to:
+    - admin
+    - analyst
 views:
-  - id: pet-adoption-overview
-    sql: |
-      SELECT p.id                    AS pet_id,
-             p.name                  AS pet_name,
-             p.species,
-             p.breed_name,
-             p.price,
-             p.available,
-             api.status              AS api_status,
-             COUNT(i.id)             AS inquiry_count,
-             COUNT(DISTINCT i.user_id) AS unique_inquirer_count
-      FROM pet_store.pets p
-      LEFT JOIN pet_store.pet_by_status api ON p.name = api.name
-      LEFT JOIN pet_store.inquiries i ON p.id = i.pet_id
-      GROUP BY p.id, p.name, p.species, p.breed_name, p.price, p.available, api.status
-    description: "Cross-source view: internal inventory (PG) + Petstore public API (OpenAPI) + inquiries (SQLite)"
-    domain_id: pet-store
-    governance: pre-approved
-    materialize: false
-    columns:
-      - name: pet_id
-        visible_to: [admin, analyst]
-      - name: pet_name
-        visible_to: [admin, analyst]
-      - name: species
-        visible_to: [admin, analyst]
-      - name: breed_name
-        visible_to: [admin, analyst]
-      - name: price
-        visible_to: [admin]
-      - name: available
-        visible_to: [admin, analyst]
-      - name: api_status
-        visible_to: [admin, analyst]
-      - name: inquiry_count
-        visible_to: [admin, analyst]
-      - name: unique_inquirer_count
-        visible_to: [admin, analyst]
-
+- id: pet-adoption-overview
+  sql: "SELECT p.id                    AS pet_id,\n       p.name                 \
+    \ AS pet_name,\n       p.species,\n       p.breed_name,\n       p.price,\n   \
+    \    p.available,\n       api.status              AS api_status,\n       COUNT(i.id)\
+    \             AS inquiry_count,\n       COUNT(DISTINCT i.user_id) AS unique_inquirer_count\n\
+    FROM pet_store.pets p\nLEFT JOIN pet_store.pet_by_status api ON p.name = api.name\n\
+    LEFT JOIN pet_store.inquiries i ON p.id = i.pet_id\nGROUP BY p.id, p.name, p.species,\
+    \ p.breed_name, p.price, p.available, api.status\n"
+  description: 'Cross-source view: internal inventory (PG) + Petstore public API (OpenAPI)
+    + inquiries (SQLite)'
+  domain_id: pet-store
+  governance: pre-approved
+  materialize: false
+  columns:
+  - name: pet_id
+    visible_to:
+    - admin
+    - analyst
+  - name: pet_name
+    visible_to:
+    - admin
+    - analyst
+  - name: species
+    visible_to:
+    - admin
+    - analyst
+  - name: breed_name
+    visible_to:
+    - admin
+    - analyst
+  - name: price
+    visible_to:
+    - admin
+  - name: available
+    visible_to:
+    - admin
+    - analyst
+  - name: api_status
+    visible_to:
+    - admin
+    - analyst
+  - name: inquiry_count
+    visible_to:
+    - admin
+    - analyst
+  - name: unique_inquirer_count
+    visible_to:
+    - admin
+    - analyst
 relationships:
-  - id: pets-to-find-pets-by-status
-    source_table_id: pets
-    target_table_id: pet_by_status
-    source_column: name
-    target_column: name
-    cardinality: many-to-one
-    alias: LISTED_AS
-  - id: pets-to-inquiries
-    source_table_id: pets
-    target_table_id: inquiries
-    source_column: id
-    target_column: pet_id
-    cardinality: one-to-many
-    alias: HAS_INQUIRY
-  - id: users-to-inquiries
-    source_table_id: users
-    target_table_id: inquiries
-    source_column: id
-    target_column: user_id
-    cardinality: one-to-many
-    alias: SUBMITTED
-  - id: inquiries-to-users
-    source_table_id: inquiries
-    target_table_id: users
-    source_column: user_id
-    target_column: id
-    cardinality: many-to-one
-    alias: SUBMITTED_BY
-  - id: inquiries-to-pets
-    source_table_id: inquiries
-    target_table_id: pets
-    source_column: pet_id
-    target_column: id
-    cardinality: many-to-one
-    alias: ABOUT_PET
-  - id: order-to-find-pets-by-status
-    source_table_id: order_by_id
-    target_table_id: pet_by_status
-    source_column: petId
-    target_column: id
-    cardinality: many-to-one
-    alias: FOR_PET
-  - id: find-pets-by-status-to-get-pet-by-id
-    source_table_id: pet_by_status
-    target_table_id: pet_by_id
-    source_column: id
-    target_column: id
-    cardinality: many-to-one
-    alias: DETAIL
-  - id: pets-to-shelter-breed
-    source_table_id: pets
-    target_table_id: animalBreeds
-    source_column: breed_name
-    target_column: name
-    cardinality: many-to-one
-    alias: BREED_INFO
-  - id: shelter-breed-to-pets
-    source_table_id: animalBreeds
-    target_table_id: pets
-    source_column: name
-    target_column: breed_name
-    cardinality: one-to-many
-    alias: PETS_OF_BREED
-
+- id: pets-to-find-pets-by-status
+  source_table_id: pets
+  target_table_id: pet_by_status
+  source_column: name
+  target_column: name
+  cardinality: many-to-one
+  alias: LISTED_AS
+- id: pets-to-inquiries
+  source_table_id: pets
+  target_table_id: inquiries
+  source_column: id
+  target_column: pet_id
+  cardinality: one-to-many
+  alias: HAS_INQUIRY
+- id: users-to-inquiries
+  source_table_id: users
+  target_table_id: inquiries
+  source_column: id
+  target_column: user_id
+  cardinality: one-to-many
+  alias: SUBMITTED
+- id: inquiries-to-users
+  source_table_id: inquiries
+  target_table_id: users
+  source_column: user_id
+  target_column: id
+  cardinality: many-to-one
+  alias: SUBMITTED_BY
+- id: inquiries-to-pets
+  source_table_id: inquiries
+  target_table_id: pets
+  source_column: pet_id
+  target_column: id
+  cardinality: many-to-one
+  alias: ABOUT_PET
+- id: order-to-find-pets-by-status
+  source_table_id: order_by_id
+  target_table_id: pet_by_status
+  source_column: petId
+  target_column: id
+  cardinality: many-to-one
+  alias: FOR_PET
+- id: find-pets-by-status-to-get-pet-by-id
+  source_table_id: pet_by_status
+  target_table_id: pet_by_id
+  source_column: id
+  target_column: id
+  cardinality: many-to-one
+  alias: DETAIL
+- id: pets-to-shelter-breed
+  source_table_id: pets
+  target_table_id: shelter__animal_breeds
+  source_column: breed_name
+  target_column: name
+  cardinality: many-to-one
+  alias: BREED_INFO
+- id: shelter-breed-to-pets
+  source_table_id: shelter__animal_breeds
+  target_table_id: pets
+  source_column: name
+  target_column: breed_name
+  cardinality: one-to-many
+  alias: PETS_OF_BREED
 roles:
-  - id: admin
-    capabilities:
-      - source_registration
-      - table_registration
-      - relationship_registration
-      - security_config
-      - query_development
-      - query_approval
-      - admin
-    domain_access: ["*"]
-  - id: analyst
-    capabilities:
-      - query_development
-    domain_access:
-      - pet-store
-      - shelter
-
+- id: admin
+  capabilities:
+  - source_registration
+  - table_registration
+  - relationship_registration
+  - security_config
+  - query_development
+  - query_approval
+  - admin
+  domain_access:
+  - '*'
+- id: analyst
+  capabilities:
+  - query_development
+  domain_access:
+  - pet-store
+  - shelter
 webhooks:
-  - name: add_pet
-    url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/pet
-    method: POST
-    timeout_ms: 5000
-    domain_id: pet-store
-    description: "Add a new pet to the store via Petstore API"
-    visible_to: [admin]
-    kind: mutation
-    arguments:
-      - name: name
-        type: String
-      - name: status
-        type: String
-
-  - name: place_order
-    url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/store/order
-    method: POST
-    timeout_ms: 5000
-    domain_id: pet-store
-    description: "Place a purchase order for a pet via Petstore API"
-    visible_to: [admin]
-    kind: mutation
-    arguments:
-      - name: petId
-        type: Int
-      - name: quantity
-        type: Int
-
+- name: add_pet
+  url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/pet
+  method: POST
+  timeout_ms: 5000
+  domain_id: pet-store
+  description: Add a new pet to the store via Petstore API
+  visible_to:
+  - admin
+  kind: mutation
+  arguments:
+  - name: name
+    type: String
+  - name: status
+    type: String
+- name: place_order
+  url: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/store/order
+  method: POST
+  timeout_ms: 5000
+  domain_id: pet-store
+  description: Place a purchase order for a pet via Petstore API
+  visible_to:
+  - admin
+  kind: mutation
+  arguments:
+  - name: petId
+    type: Int
+  - name: quantity
+    type: Int
 cache:
   enabled: true
   redis_url: redis://${env:REDIS_HOST:-localhost}:6379
   default_ttl: 300
-
 discovery:
   sample_size: 20
   min_confidence: 0.7
   api_key: ${env:ANTHROPIC_API_KEY}
-
 server:
   limits:
     default_row_limit: 10000
     trino_query_timeout: 120
     request_timeout: 60
-
 observability:
-  endpoint: "http://localhost:4317"
+  endpoint: http://localhost:4318
   service_name: provisa
   sample_rate: 1.0
   ops_snapshot_retention_hours: 1

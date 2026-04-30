@@ -156,7 +156,7 @@ server:
     request_timeout: 60         # seconds before the API returns 504; env PROVISA_REQUEST_TIMEOUT overrides
 
 observability:
-  endpoint: ""
+  endpoint: "http://localhost:4317"
   service_name: provisa
   sample_rate: 1.0
   log_level: WARNING

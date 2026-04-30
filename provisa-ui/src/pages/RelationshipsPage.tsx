@@ -110,6 +110,11 @@ export function RelationshipsPage() {
   const tableDomainById = Object.fromEntries(
     tables.map((t) => [t.id, normalizeDomain(t.domainId)]),
   );
+  const remoteTableIds = new Set(
+    tables
+      .filter((t) => t.schemaName === "graphql_remote" || t.schemaName === "grpc_remote")
+      .map((t) => t.id),
+  );
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -449,7 +454,13 @@ export function RelationshipsPage() {
               {rels.length} relationships — use the filter above to browse
             </td></tr>
           ) : rels.filter((r) => {
-            if (selectedDomain !== "all" && tableDomainById[r.sourceTableId] !== selectedDomain) return false;
+            if (remoteTableIds.has(r.sourceTableId)) return false;
+            if (selectedDomain !== "all") {
+              const srcDomain = tableDomainById[r.sourceTableId];
+              const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
+              const ownerDomain = r.ownerDomainId ? normalizeDomain(r.ownerDomainId) : null;
+              if (srcDomain !== selectedDomain && tgtDomain !== selectedDomain && ownerDomain !== selectedDomain) return false;
+            }
             if (!relSearch.trim()) return true;
             const q = relSearch.toLowerCase();
             return r.sourceTableName.toLowerCase().includes(q) || r.targetTableName.toLowerCase().includes(q);

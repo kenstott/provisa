@@ -53,6 +53,82 @@ query_counter: Any = None
 query_duration: Any = None
 
 
+def _is_http_endpoint(endpoint: str) -> bool:
+    """Return True when endpoint uses an http:// or https:// scheme (OTLP/HTTP)."""
+    return endpoint.startswith("http://") or endpoint.startswith("https://")
+
+
+def _make_span_exporter(endpoint: str):
+    if _is_http_endpoint(endpoint):
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as HTTPSpanExporter
+        return HTTPSpanExporter(endpoint=endpoint + "/v1/traces")
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    return OTLPSpanExporter(endpoint=endpoint, insecure=True)
+
+
+def _make_metric_exporter(endpoint: str):
+    if _is_http_endpoint(endpoint):
+        from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter as HTTPMetricExporter
+        return HTTPMetricExporter(endpoint=endpoint + "/v1/metrics")
+    from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+    return OTLPMetricExporter(endpoint=endpoint, insecure=True)
+
+
+def _make_log_exporter(endpoint: str):
+    if _is_http_endpoint(endpoint):
+        from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter as HTTPLogExporter
+        return HTTPLogExporter(endpoint=endpoint + "/v1/logs")
+    from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+    return OTLPLogExporter(endpoint=endpoint, insecure=True)
+
+
+def attach_otlp_exporters(endpoint: str, service_name: str = "provisa") -> None:
+    """Attach OTLP exporters to existing providers when endpoint is set at runtime."""
+    import logging
+    import provisa.api.otel_setup as _self
+    _log = logging.getLogger(__name__)
+    try:
+        from opentelemetry import trace, metrics
+        from opentelemetry.sdk.resources import Resource
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
+        from opentelemetry.sdk.metrics import MeterProvider
+        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+        from opentelemetry._logs import set_logger_provider
+
+        resource = Resource.create({"service.name": service_name})
+
+        provider = trace.get_tracer_provider()
+        if hasattr(provider, "add_span_processor"):
+            provider.add_span_processor(
+                BatchSpanProcessor(_make_span_exporter(endpoint))
+            )
+
+        metric_reader = PeriodicExportingMetricReader(
+            _make_metric_exporter(endpoint),
+            export_interval_millis=15000,
+        )
+        meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+        metrics.set_meter_provider(meter_provider)
+        _meter = metrics.get_meter("provisa")
+        _self.query_counter = _meter.create_counter("provisa.query.executed", description="Total queries executed")
+        _self.query_duration = _meter.create_histogram("provisa.query.duration_ms", description="Query execution time in milliseconds", unit="ms")
+
+        import logging as _logging
+        log_provider = LoggerProvider(resource=resource)
+        log_provider.add_log_record_processor(
+            BatchLogRecordProcessor(_make_log_exporter(endpoint))
+        )
+        set_logger_provider(log_provider)
+        handler = LoggingHandler(level=_logging.WARNING, logger_provider=log_provider)
+        _logging.getLogger().addHandler(handler)
+
+        _log.info("OTel exporters attached → %s (service=%s)", endpoint, service_name)
+    except Exception as e:
+        _log.warning("Failed to attach OTel exporters: %s", e)
+
+
 def setup_otel(app: "object") -> None:
     """Initialize OpenTelemetry tracing unconditionally.
 
@@ -102,9 +178,8 @@ def setup_otel(app: "object") -> None:
         provider.add_span_processor(_BufferProcessor())
         if endpoint:
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
             provider.add_span_processor(
-                BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True))
+                BatchSpanProcessor(_make_span_exporter(endpoint))
             )
             _log.info("OTel tracing → %s (service=%s)", endpoint, service_name)
         else:
@@ -119,9 +194,8 @@ def setup_otel(app: "object") -> None:
             from opentelemetry import metrics
             from opentelemetry.sdk.metrics import MeterProvider
             from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
             metric_reader = PeriodicExportingMetricReader(
-                OTLPMetricExporter(endpoint=endpoint, insecure=True),
+                _make_metric_exporter(endpoint),
                 export_interval_millis=15000,
             )
             meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
@@ -145,12 +219,11 @@ def setup_otel(app: "object") -> None:
             import logging as _logging
             from opentelemetry.sdk._logs import LoggerProvider
             from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-            from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
             from opentelemetry._logs import set_logger_provider
             from opentelemetry.sdk._logs import LoggingHandler
             log_provider = LoggerProvider(resource=resource)
             log_provider.add_log_record_processor(
-                BatchLogRecordProcessor(OTLPLogExporter(endpoint=endpoint, insecure=True))
+                BatchLogRecordProcessor(_make_log_exporter(endpoint))
             )
             set_logger_provider(log_provider)
             handler = LoggingHandler(level=getattr(_logging, log_level_name, _logging.WARNING), logger_provider=log_provider)

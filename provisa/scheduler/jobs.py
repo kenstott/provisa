@@ -201,7 +201,7 @@ async def compact_otel_signals() -> None:
         config=BotoConfig(signature_version="s3v4"),
     )
 
-    for signal in ("traces", "metrics", "logs"):
+    for signal in ("logs", "metrics", "traces"):
         # List all objects under signal/ and filter to today's date partition
         prefix = f"{signal}/"
         try:
@@ -364,9 +364,9 @@ def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -
     # Batch inserts: build multi-row VALUES per execute call (avoids per-row round trips).
     try:
         from provisa.api.app import state as _state
-        _BATCH = _state.otel_compact_batch_size
+        _BATCH = max(_state.otel_compact_batch_size, 100)
     except Exception:
-        _BATCH = 10
+        _BATCH = 100
     row_ph = f"({', '.join(placeholders)})"
     for i in range(0, len(rows), _BATCH):
         batch = rows[i : i + _BATCH]

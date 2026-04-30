@@ -24,16 +24,25 @@ from provisa.cypher.label_map import CypherLabelMap
 
 
 def apply_graph_rewrites(
-    sql_ast: exp.Select,
+    sql_ast: exp.Select | exp.Union,
     graph_vars: dict[str, GraphVarKind],
     label_map: CypherLabelMap,
-) -> exp.Select:
+) -> exp.Select | exp.Union:
     """Rewrite graph variable columns in SELECT to CAST(ROW(...) AS JSON).
 
     Modifies and returns the sql_ast. Scalar columns are untouched.
+    Handles exp.Union by recursing into each arm.
     """
     if not graph_vars:
         return sql_ast
+
+    if isinstance(sql_ast, exp.Union):
+        left = apply_graph_rewrites(sql_ast.this, graph_vars, label_map)
+        right = apply_graph_rewrites(sql_ast.expression, graph_vars, label_map)
+        result = sql_ast.copy()
+        result.set("this", left)
+        result.set("expression", right)
+        return result
 
     # Build alias → NodeMapping from the FROM/JOIN clauses
     alias_to_node = _extract_alias_mappings(sql_ast, label_map)
@@ -71,7 +80,7 @@ def apply_graph_rewrites(
         else:
             new_expressions.append(sel_expr)
 
-    return sql_ast.select(*new_expressions, append=False)
+    return sql_ast.select(*new_expressions, append=False)  # type: ignore[return-value]
 
 
 def _build_row_cast(tbl: str, node_meta: object) -> exp.Expression:
