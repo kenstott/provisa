@@ -157,7 +157,7 @@ async def cypher_query(
         for call_sq in _non_corr_calls:
             try:
                 rows_i, gvars_i = await _execute_call_body(
-                    call_sq.body, label_map, body.params, state, gov_ctx, ctx
+                    call_sq.body, label_map, body.params, state, gov_ctx, ctx, role_id
                 )
                 all_rows.append(rows_i)
                 merged_graph_vars.update(gvars_i)
@@ -253,6 +253,24 @@ async def cypher_query(
         for tn in _api_table_names
     )
 
+    # Build span attrs for OTel: collect node labels + domains from parsed AST
+    _cypher_node_labels: list[str] = []
+    _cypher_domains: set[str] = set()
+    for _mc in ast.match_clauses:
+        for _np in _mc.pattern.nodes:
+            for _lbl in _np.labels:
+                _cypher_node_labels.append(_lbl)
+                _nm = label_map.nodes.get(_lbl) or next(
+                    (v for v in label_map.nodes.values() if v.table_label == _lbl), None
+                )
+                if _nm and _nm.domain_id:
+                    _cypher_domains.add(_nm.domain_id)
+    _cypher_span_attrs: dict[str, str] = {
+        "provisa.table": ", ".join(sorted(set(_cypher_node_labels))) or "cypher",
+        "provisa.domain": ", ".join(sorted(_cypher_domains)) or "cypher",
+        "provisa.role": role_id,
+    }
+
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:
         _qs_mod.begin()
@@ -261,11 +279,11 @@ async def cypher_query(
     log.info("Cypher final SQL: %s", trino_sql)
     try:
         if _has_gql_remote:
-            rows = await _execute_with_gql_remote(clean_exec_sql, clean_params, nf_args, state)
+            rows = await _execute_with_gql_remote(clean_exec_sql, clean_params, nf_args, state, _cypher_span_attrs)
         elif nf_args or _has_api_tables:
-            rows = await _execute_with_api(clean_exec_sql, clean_params, nf_args, state)
+            rows = await _execute_with_api(clean_exec_sql, clean_params, nf_args, state, _cypher_span_attrs)
         else:
-            rows = await _execute(trino_sql, resolved_params, state)
+            rows = await _execute(trino_sql, resolved_params, state, _cypher_span_attrs)
     except Exception as exc:
         log.exception("Cypher execution failed: %s", trino_sql)
         return JSONResponse(status_code=500, content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql})
@@ -401,6 +419,7 @@ async def _execute_with_api(
     params: list,
     nf_args: dict,
     state: object,
+    span_attrs: dict[str, str] | None = None,
 ) -> list[dict]:
     """Phase 1 (REST) + Phase 2 (Trino) execution for ALL API-backed tables in the query.
 
@@ -441,7 +460,7 @@ async def _execute_with_api(
             hot_sql = build_values_cte_sql(exec_sql, table_name, entry)
             trino_sql = transpile_to_trino(hot_sql)
             log.info("[HOT TABLE] hit — %s (%d rows inline)", table_name, len(entry.rows))
-            trino_result = execute_trino(state.trino_conn, trino_sql, params)
+            trino_result = execute_trino(state.trino_conn, trino_sql, params, span_attrs=span_attrs)
             return [dict(zip(trino_result.column_names, row)) for row in trino_result.rows]
 
     from provisa.executor.redirect import RedirectConfig
@@ -495,7 +514,7 @@ async def _execute_with_api(
 
     rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites)
     trino_sql = transpile_to_trino(rewritten_sql)
-    trino_result = execute_trino(state.trino_conn, trino_sql, params)
+    trino_result = execute_trino(state.trino_conn, trino_sql, params, span_attrs=span_attrs)
 
     return [dict(zip(trino_result.column_names, row)) for row in trino_result.rows]
 
@@ -505,6 +524,7 @@ async def _execute_with_gql_remote(
     params: list,
     nf_args: dict,
     state: object,
+    span_attrs: dict[str, str] | None = None,
 ) -> list[dict]:
     """Materialize graphql_remote tables into Trino cache and execute the query."""
     import asyncio
@@ -577,12 +597,13 @@ async def _execute_with_gql_remote(
 
     rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites)
     trino_sql = transpile_to_trino(rewritten_sql)
-    trino_result = execute_trino(state.trino_conn, trino_sql, params)
+    trino_result = execute_trino(state.trino_conn, trino_sql, params, span_attrs=span_attrs)
     return [dict(zip(trino_result.column_names, row)) for row in trino_result.rows]
 
 
-async def _execute(sql: str, params: list, state: object) -> list[dict]:
+async def _execute(sql: str, params: list, state: object, span_attrs: dict[str, str] | None = None) -> list[dict]:
     """Execute SQL against the federation engine and return rows as dicts."""
+    from provisa.executor.trino import execute_trino
     trino_conn = getattr(state, "trino_conn", None)
     if trino_conn is None:
         raise RuntimeError("Federation engine not connected")
@@ -590,13 +611,8 @@ async def _execute(sql: str, params: list, state: object) -> list[dict]:
     import asyncio
 
     def _run() -> list[dict]:
-        cursor = trino_conn.cursor()
-        try:
-            cursor.execute(sql, params or [])
-            cols = [d[0] for d in (cursor.description or [])]
-            return [dict(zip(cols, row)) for row in cursor.fetchall()]
-        finally:
-            cursor.close()
+        result = execute_trino(trino_conn, sql, params or [], span_attrs=span_attrs)
+        return [dict(zip(result.column_names, row)) for row in result.rows]
 
     return await asyncio.get_event_loop().run_in_executor(None, _run)
 
@@ -608,6 +624,7 @@ async def _execute_call_body(
     state: object,
     gov_ctx: object,
     ctx: object,
+    role_id: str = "default",
 ) -> tuple[list[dict], dict]:
     """Full pipeline execution for a single CALL subquery body."""
     from provisa.cypher.translator import cypher_to_sql
@@ -616,6 +633,23 @@ async def _execute_call_body(
     from provisa.compiler.stage2 import apply_governance
     from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
     import sqlglot
+
+    _cb_labels: list[str] = []
+    _cb_domains: set[str] = set()
+    for _mc in getattr(call_body, "match_clauses", []):
+        for _np in _mc.pattern.nodes:
+            for _lbl in _np.labels:
+                _cb_labels.append(_lbl)
+                _nm = label_map.nodes.get(_lbl) or next(
+                    (v for v in label_map.nodes.values() if v.table_label == _lbl), None
+                )
+                if _nm and _nm.domain_id:
+                    _cb_domains.add(_nm.domain_id)
+    _cb_span_attrs: dict[str, str] = {
+        "provisa.table": ", ".join(sorted(set(_cb_labels))) or "cypher",
+        "provisa.domain": ", ".join(sorted(_cb_domains)) or "cypher",
+        "provisa.role": role_id,
+    }
 
     sql_ast, ordered_params, graph_vars = cypher_to_sql(call_body, label_map, params)
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
@@ -632,10 +666,10 @@ async def _execute_call_body(
     has_gql_remote = any(_lookup_gql_remote_table(state, tn) is not None for tn in api_table_names)
 
     if nf_args or has_api:
-        rows = await _execute_with_api(clean_exec_sql, clean_params, nf_args, state)
+        rows = await _execute_with_api(clean_exec_sql, clean_params, nf_args, state, _cb_span_attrs)
     elif has_gql_remote:
-        rows = await _execute_with_gql_remote(exec_sql, resolved_params, state)
+        rows = await _execute_with_gql_remote(exec_sql, resolved_params, nf_args, state, _cb_span_attrs)
     else:
-        rows = await _execute(trino_sql, resolved_params, state)
+        rows = await _execute(trino_sql, resolved_params, state, _cb_span_attrs)
 
     return rows, graph_vars
