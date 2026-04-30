@@ -96,6 +96,7 @@ done
 set -- "${_ARGS[@]+"${_ARGS[@]}"}"
 
 # Compose files: airgap overlay added when running in Lima to replace build: with image:
+# Extensions in ~/.provisa/extensions/*/docker-compose.*.yml are appended automatically.
 _build_compose_files() {
     local files="-f ${PROJECT_DIR}/docker-compose.core.yml -f ${PROJECT_DIR}/docker-compose.app.yml"
     if { [ "$RUNTIME" = "lima" ] || [ "$RUNTIME" = "virtualbox" ] || [ "$RUNTIME" = "bundled" ]; } && [ -f "${PROJECT_DIR}/docker-compose.airgap.yml" ]; then
@@ -103,6 +104,17 @@ _build_compose_files() {
     fi
     if [ "$OBSERVABILITY" = "true" ] && [ -f "${PROJECT_DIR}/docker-compose.dev.yml" ]; then
         files="${files} -f ${PROJECT_DIR}/docker-compose.dev.yml"
+    fi
+    # bundled runtime (Linux AppImage): obs is always-on, compose file lives in PROJECT_DIR
+    if [ "$RUNTIME" = "bundled" ] && [ -f "${PROJECT_DIR}/docker-compose.observability.yml" ]; then
+        files="${files} -f ${PROJECT_DIR}/docker-compose.observability.yml"
+    fi
+    # Enumerate installed extensions (observability, demo, etc.)
+    local ext_dir="${PROVISA_HOME}/extensions"
+    if [ -d "$ext_dir" ]; then
+        for ext_compose in "${ext_dir}"/*/docker-compose.*.yml; do
+            [ -f "$ext_compose" ] && files="${files} -f ${ext_compose}"
+        done
     fi
     echo "$files"
 }
@@ -254,7 +266,8 @@ cmd_start() {
         info "Starting ${FED_WORKERS} query worker(s)..."
     fi
 
-    if [ "$OBSERVABILITY" = "true" ]; then
+    local obs_ext="${PROVISA_HOME}/extensions/observability/docker-compose.observability.yml"
+    if [ "$OBSERVABILITY" = "true" ] || [ -f "$obs_ext" ]; then
         export OTEL_EXPORTER_OTLP_ENDPOINT="${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}"
         export OTEL_SERVICE_NAME="${OTEL_SERVICE_NAME:-provisa}"
     fi
@@ -270,7 +283,7 @@ cmd_start() {
         if [ "$AUTO_OPEN" = "true" ]; then
             printf "\nRun ${BOLD}provisa open${NC} to open the UI.\n"
         fi
-        if [ "$OBSERVABILITY" = "true" ]; then
+        if [ "$OBSERVABILITY" = "true" ] || [ -f "${PROVISA_HOME}/extensions/observability/docker-compose.observability.yml" ]; then
             printf "Grafana: ${BOLD}http://localhost:3100${NC}\n"
         fi
     else

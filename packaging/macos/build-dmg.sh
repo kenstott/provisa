@@ -22,12 +22,11 @@ NERDCTL_ARCHIVE="nerdctl-full-${NERDCTL_VERSION}-linux-arm64.tar.gz"
 # sha256 of the official nerdctl-full-2.2.2-linux-arm64.tar.gz
 NERDCTL_DIGEST="sha256:55d68d2613b5f065021146bac21f620cde9e7fdd4bd3eff74cd324f5462e107a"
 
-# Service images from docker-compose (use digest-pinning in production)
+# Core service images only — obs images ship in the separate Obs DMG
 IMAGES=(
   "python:3.12-slim"
   "postgres:16"
   "edoburu/pgbouncer:latest"
-  "minio/minio:latest"
   "redis:7-alpine"
   "trinodb/trino:480"
 )
@@ -238,6 +237,7 @@ save_images() {
     info "Images pre-populated (${count} tarballs) — skipping docker pull."
     return
   fi
+  # Core: 5 images + zaychik = 6 tarballs expected
   if ! command -v docker &>/dev/null; then
     err "docker not found and images not pre-populated in ${IMAGES_DIR}"
     exit 1
@@ -275,7 +275,6 @@ embed_compose() {
   cp "${REPO_ROOT}/docker-compose.airgap.yml" "${res}/docker-compose.airgap.yml"
   cp -r "${REPO_ROOT}/config" "${res}/config"
   cp -r "${REPO_ROOT}/db" "${res}/db"
-  cp -r "${REPO_ROOT}/demo" "${res}/demo"
   cp -r "${REPO_ROOT}/trino" "${res}/trino"
   cp -r "${REPO_ROOT}/observability" "${res}/observability"
   cp "${REPO_ROOT}/scripts/provisa" "${res}/provisa-cli"

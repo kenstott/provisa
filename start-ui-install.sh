@@ -55,8 +55,13 @@ fi
 # Remove macOS AppleDouble metadata files that break Docker builds on exFAT volumes
 find "$SCRIPT_DIR" -name "._*" -not -path "*/.git/*" -delete 2>/dev/null || true
 
-echo "Starting Docker Compose services (core only)..."
+if [ "$DEMO" = true ]; then
+  echo "Starting Docker Compose services (core + observability + demo)..."
+else
+  echo "Starting Docker Compose services (core only)..."
+fi
 cd "$SCRIPT_DIR"
+# shellcheck disable=SC2086
 docker compose $COMPOSE_FILES up -d 2>&1 || true
 
 CREATED=$(docker ps -a --filter "label=com.docker.compose.project=provisa" \
@@ -197,30 +202,39 @@ BACKEND_PID=""
 
 start_backend() {
   cd "$SCRIPT_DIR"
-  PG_HOST=localhost \
-  PG_PORT=5432 \
-  PG_DATABASE=provisa \
-  PG_USER=provisa \
-  PG_PASSWORD="${PG_PASSWORD:-provisa}" \
-  POSTGRES_HOST=localhost \
-  TRINO_HOST=localhost \
-  TRINO_PORT=8080 \
-  TRINO_FLIGHT_PORT=8480 \
-  REDIS_URL="redis://localhost:6379" \
-  REDIS_HOST=localhost \
-  PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}" \
-  GRAPHQL_DEMO_ENABLED="${GRAPHQL_DEMO_ENABLED:-false}" \
-  GRAPHQL_DEMO_URL="http://localhost:4000/graphql" \
-  PROVISA_CONFIG="${PROVISA_CONFIG}" \
-  PROVISA_CONFIG_REPLACE="true" \
-  PROVISA_REDIRECT_ENABLED="true" \
-  PROVISA_REDIRECT_ENDPOINT="http://localhost:9000" \
-  PROVISA_REDIRECT_ACCESS_KEY="${PROVISA_REDIRECT_ACCESS_KEY:-minioadmin}" \
-  PROVISA_REDIRECT_SECRET_KEY="${PROVISA_REDIRECT_SECRET_KEY:-minioadmin}" \
-  PROVISA_REDIRECT_BUCKET="${PROVISA_REDIRECT_BUCKET:-provisa-results}" \
-  PROVISA_OTEL_S3_ENDPOINT="http://localhost:9000" \
-  PROVISA_OTEL_S3_ACCESS_KEY="${PROVISA_OTEL_S3_ACCESS_KEY:-minioadmin}" \
-  PROVISA_OTEL_S3_SECRET_KEY="${PROVISA_OTEL_S3_SECRET_KEY:-minioadmin}" \
+  _BACKEND_ENV=(
+    PG_HOST=localhost
+    PG_PORT=5432
+    PG_DATABASE=provisa
+    PG_USER=provisa
+    PG_PASSWORD="${PG_PASSWORD:-provisa}"
+    POSTGRES_HOST=localhost
+    TRINO_HOST=localhost
+    TRINO_PORT=8080
+    TRINO_FLIGHT_PORT=8480
+    REDIS_URL="redis://localhost:6379"
+    REDIS_HOST=localhost
+    PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
+    GRAPHQL_DEMO_ENABLED="${GRAPHQL_DEMO_ENABLED:-false}"
+    GRAPHQL_DEMO_URL="http://localhost:4000/graphql"
+    PROVISA_CONFIG="${PROVISA_CONFIG}"
+    PROVISA_CONFIG_REPLACE="true"
+  )
+  if [ "$DEMO" = true ]; then
+    _BACKEND_ENV+=(
+      PROVISA_REDIRECT_ENABLED="true"
+      PROVISA_REDIRECT_ENDPOINT="http://localhost:9000"
+      PROVISA_REDIRECT_ACCESS_KEY="${PROVISA_REDIRECT_ACCESS_KEY:-minioadmin}"
+      PROVISA_REDIRECT_SECRET_KEY="${PROVISA_REDIRECT_SECRET_KEY:-minioadmin}"
+      PROVISA_REDIRECT_BUCKET="${PROVISA_REDIRECT_BUCKET:-provisa-results}"
+      PROVISA_OTEL_S3_ENDPOINT="http://localhost:9000"
+      PROVISA_OTEL_S3_ACCESS_KEY="${PROVISA_OTEL_S3_ACCESS_KEY:-minioadmin}"
+      PROVISA_OTEL_S3_SECRET_KEY="${PROVISA_OTEL_S3_SECRET_KEY:-minioadmin}"
+      OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+      OTEL_SERVICE_NAME="provisa"
+    )
+  fi
+  env "${_BACKEND_ENV[@]}" \
     "$SCRIPT_DIR/.venv/bin/uvicorn" main:app \
       --reload --reload-dir provisa --reload-dir config \
       --host 0.0.0.0 --port 8000 \
@@ -323,6 +337,7 @@ cleanup() {
   else
     echo "Stopping Docker Compose services..."
     cd "$SCRIPT_DIR"
+    # shellcheck disable=SC2086
     docker compose $COMPOSE_FILES down --remove-orphans
   fi
   echo "Done."

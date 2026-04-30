@@ -106,7 +106,7 @@ save_images() {
   mkdir -p "$IMAGES_DIR"
   local count
   count=$(find "${IMAGES_DIR}" -maxdepth 1 -name "*.tar.gz" 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$count" -ge 6 ]; then
+  if [ "$count" -ge 11 ]; then
     info "Images pre-populated (${count} tarballs) — skipping docker pull."
     return
   fi
@@ -114,13 +114,20 @@ save_images() {
     err "docker not found and images not pre-populated in ${IMAGES_DIR}"
     exit 1
   fi
-  info "Saving service images..."
+  info "Saving service images (core + obs)..."
   local images=(
+    # Core
     "postgres:16"
     "edoburu/pgbouncer:latest"
-    "minio/minio:latest"
     "redis:7-alpine"
     "trinodb/trino:480"
+    # Obs (bundled directly on Linux — no separate download)
+    "minio/minio:latest"
+    "ghcr.io/smithclay/otlp2parquet:latest"
+    "otel/opentelemetry-collector-contrib:0.99.0"
+    "prom/prometheus:v2.51.2"
+    "grafana/tempo:2.4.1"
+    "grafana/grafana:10.4.2"
   )
   for img in "${images[@]}"; do
     local tag="${img##*/}"
@@ -163,14 +170,15 @@ build_appdir() {
     cp "$f" "${APPDIR}/images/"
   done
 
-  # Copy compose files and config
-  cp "${REPO_ROOT}/docker-compose.core.yml"   "${APPDIR}/compose/"
-  cp "${REPO_ROOT}/docker-compose.app.yml"    "${APPDIR}/compose/"
-  cp "${REPO_ROOT}/docker-compose.airgap.yml" "${APPDIR}/compose/"
-  cp -r "${REPO_ROOT}/config"                "${APPDIR}/compose/config"
-  cp -r "${REPO_ROOT}/db"                    "${APPDIR}/compose/db"
-  cp -r "${REPO_ROOT}/demo"                  "${APPDIR}/compose/demo"
-  cp -r "${REPO_ROOT}/trino"                 "${APPDIR}/compose/trino"
+  # Copy compose files and config (core + obs always-on; demo excluded on Linux)
+  cp "${REPO_ROOT}/docker-compose.core.yml"        "${APPDIR}/compose/"
+  cp "${REPO_ROOT}/docker-compose.app.yml"         "${APPDIR}/compose/"
+  cp "${REPO_ROOT}/docker-compose.airgap.yml"      "${APPDIR}/compose/"
+  cp "${REPO_ROOT}/docker-compose.observability.yml" "${APPDIR}/compose/"
+  cp -r "${REPO_ROOT}/config"                      "${APPDIR}/compose/config"
+  cp -r "${REPO_ROOT}/db"                          "${APPDIR}/compose/db"
+  cp -r "${REPO_ROOT}/trino"                       "${APPDIR}/compose/trino"
+  cp -r "${REPO_ROOT}/observability"               "${APPDIR}/compose/observability"
 
   # Copy CLI and launch scripts
   cp "${REPO_ROOT}/scripts/provisa"         "${APPDIR}/provisa-cli"

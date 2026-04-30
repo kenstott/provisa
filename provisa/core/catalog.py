@@ -61,6 +61,7 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
             "connection-url": jdbc,
             "connection-user": pg_user,
             "connection-password": pg_pw,
+            "statistics.enabled": "false",
         }
 
     # MongoDB connector
@@ -89,6 +90,7 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
         props["connection-url"] = jdbc_url
         props["connection-user"] = username
         props["connection-password"] = resolved_password
+        props["statistics.enabled"] = "false"
     return props
 
 

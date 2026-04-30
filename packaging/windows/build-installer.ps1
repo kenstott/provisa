@@ -11,11 +11,15 @@ Write-Host '[build-installer] Preparing build directory...' -ForegroundColor Cya
 # ── Assemble build tree ────────────────────────────────────────────────────────
 $BuildDir = Join-Path $ScriptDir 'build'
 
-# images/ — exclude provisa-local.tar.gz (built at first-launch from bundled source)
+# Core images only — obs/demo images ship in separate installers
 $BuildImages = Join-Path $BuildDir 'images'
 New-Item -ItemType Directory -Path $BuildImages -Force | Out-Null
+$ObsImages = @('minio-latest.tar.gz','otlp2parquet-latest.tar.gz',
+    'opentelemetry-collector-contrib-0.99.0.tar.gz','prometheus-v2.51.2.tar.gz',
+    'tempo-2.4.1.tar.gz','grafana-10.4.2.tar.gz',
+    'petstore3-unstable.tar.gz','graphql-demo-local.tar.gz')
 Get-ChildItem -Path (Join-Path $ScriptDir 'images') -Filter '*.tar.gz' |
-  Where-Object { $_.Name -ne 'provisa-local.tar.gz' } |
+  Where-Object { $_.Name -ne 'provisa-local.tar.gz' -and $ObsImages -notcontains $_.Name } |
   Copy-Item -Destination $BuildImages
 
 # compose/
@@ -26,7 +30,6 @@ Copy-Item (Join-Path $RepoRoot 'docker-compose.app.yml')    $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'docker-compose.airgap.yml') $BuildCompose
 Copy-Item (Join-Path $RepoRoot 'config')  (Join-Path $BuildCompose 'config')  -Recurse -Force
 Copy-Item (Join-Path $RepoRoot 'db')      (Join-Path $BuildCompose 'db')      -Recurse -Force
-Copy-Item (Join-Path $RepoRoot 'demo')    (Join-Path $BuildCompose 'demo')    -Recurse -Force
 Copy-Item (Join-Path $RepoRoot 'trino')   (Join-Path $BuildCompose 'trino')   -Recurse -Force
 
 # provisa-source/ — used by first-launch to build provisa/provisa:local image

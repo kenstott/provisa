@@ -1,5 +1,5 @@
-# Runtime deps only — no host ports (all internal to the docker network).
-# Usage: docker compose -f docker-compose.core.yml [-f docker-compose.app.yml] up
+# Core services only — postgres, redis, trino, zaychik. No observability, no demo.
+# Usage: docker compose -f docker-compose.core.yml -f docker-compose.dev-install.yml up
 services:
   postgres:
     image: postgres:16
@@ -34,21 +34,6 @@ services:
       postgres:
         condition: service_healthy
 
-  minio:
-    image: minio/minio:latest
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
-    command: server /data --console-address ":9001"
-    volumes:
-      - minio_data:/data
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 5s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
-
   redis:
     image: redis:7-alpine
     volumes:
@@ -72,7 +57,7 @@ services:
       - trino_cache:/data/trino/cache
       - ./observability/trino-otel:/etc/trino/otel:ro
     environment:
-      JAVA_TOOL_OPTIONS: "${TRINO_JAVA_TOOL_OPTIONS:-}"
+      JAVA_TOOL_OPTIONS: "-Dotel.javaagent.enabled=false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,6 +79,8 @@ services:
       - ./trino/kafka:/etc/trino/kafka:ro
       - trino_worker_cache:/data/trino/cache
       - ./observability/trino-otel:/etc/trino/otel:ro
+    environment:
+      JAVA_TOOL_OPTIONS: "-Dotel.javaagent.enabled=false"
     depends_on:
       trino:
         condition: service_healthy
@@ -121,40 +108,8 @@ services:
       retries: 18
       start_period: 60s
 
-  otlp2parquet:
-    image: ghcr.io/smithclay/otlp2parquet:latest
-    environment:
-      OTLP2PARQUET_STORAGE_BACKEND: "${OTLP2PARQUET_STORAGE_BACKEND:-s3}"
-      OTLP2PARQUET_S3_BUCKET: "${PROVISA_OTEL_BUCKET:-provisa-otel}"
-      OTLP2PARQUET_S3_ENDPOINT: "${PROVISA_OTEL_S3_ENDPOINT:-http://minio:9000}"
-      OTLP2PARQUET_S3_REGION: "${PROVISA_OTEL_S3_REGION:-us-east-1}"
-      OTLP2PARQUET_HTTP_PORT: "${OTLP2PARQUET_HTTP_PORT:-4318}"
-      AWS_ACCESS_KEY_ID: "${PROVISA_OTEL_S3_ACCESS_KEY:-minioadmin}"
-      AWS_SECRET_ACCESS_KEY: "${PROVISA_OTEL_S3_SECRET_KEY:-minioadmin}"
-    depends_on:
-      minio:
-        condition: service_healthy
-
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.99.0
-    volumes:
-      - ./observability/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    depends_on:
-      - otlp2parquet
-
-  prometheus:
-    image: prom/prometheus:v2.51.2
-    volumes:
-      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    depends_on:
-      - otel-collector
-
 volumes:
   pg_data:
-  minio_data:
   redis_data:
   trino_cache:
   trino_worker_cache:
-  prometheus_data:

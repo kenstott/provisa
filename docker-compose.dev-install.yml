@@ -10,11 +10,6 @@ services:
     ports:
       - "6432:6432"
 
-  minio:
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-
   redis:
     ports:
       - "6379:6379"
@@ -24,14 +19,10 @@ services:
       - "8080:8080"
     volumes:
       - ./trino/catalog-install:/etc/trino/catalog
-    environment:
-      JAVA_TOOL_OPTIONS: "-Dotel.javaagent.enabled=false"
 
   trino-worker:
     volumes:
       - ./trino/catalog-install:/etc/trino/catalog
-    environment:
-      JAVA_TOOL_OPTIONS: "-Dotel.javaagent.enabled=false"
 
   zaychik:
     ports:
