@@ -45,11 +45,14 @@ export default defineConfig(({ mode }) => ({
       : []),
   ],
   resolve: {
-    conditions: ['browser', 'import', 'module', 'default'],
     alias: {
       'graphiql-explorer': path.resolve(
         __dirname,
         'src/plugins/graphiql-explorer-fork.cjs'
+      ),
+      '@neo4j-cypher/codemirror/lib/cypher-state-definitions': path.resolve(
+        __dirname,
+        'node_modules/@neo4j-cypher/codemirror/lib/cypher-state-definitions.js'
       ),
     },
   },
