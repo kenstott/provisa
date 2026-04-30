@@ -249,13 +249,13 @@ SELECT
     parent_span_id,
     span_name,
     service_name,
-    timestamp,
+    "timestamp",
     end_timestamp,
     duration,
     status_code,
-    json_extract_scalar(span_attributes, '$.table_name') AS table_name,
-    json_extract_scalar(span_attributes, '$.domain_id') AS domain_id,
-    json_extract_scalar(span_attributes, '$.role_id') AS role_id,
+    table_name,
+    domain_id,
+    role_id,
     _date
 FROM otel.signals.traces
 WHERE span_name LIKE 'provisa.query%'

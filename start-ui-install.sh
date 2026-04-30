@@ -102,6 +102,15 @@ done
 
 echo "Docker Compose services ready."
 
+# On demo reset, MinIO data is deleted but the Iceberg JDBC catalog in Postgres retains
+# stale table entries. Clear them so Trino recreates the tables against the fresh bucket.
+if [ "$DEMO" = true ]; then
+  docker exec provisa-postgres-1 psql -U provisa -d provisa -c "
+    DELETE FROM iceberg_tables WHERE catalog_name = 'otel';
+    DELETE FROM iceberg_namespace_properties WHERE catalog_name = 'otel';
+  " 2>/dev/null || true
+fi
+
 # Ensure pet_store schema exists (idempotent — init.sql only runs on first volume creation)
 docker exec provisa-postgres-1 psql -U provisa -d provisa -c "
   CREATE SCHEMA IF NOT EXISTS pet_store;
