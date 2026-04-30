@@ -253,20 +253,22 @@ async def cypher_query(
         for tn in _api_table_names
     )
 
-    # Build span attrs for OTel: collect node labels + domains from parsed AST
-    _cypher_node_labels: list[str] = []
+    # Build span attrs for OTel: collect SQL domain.tablename equivalents from parsed AST
+    _cypher_sql_tables: set[str] = set()
     _cypher_domains: set[str] = set()
     for _mc in ast.match_clauses:
         for _np in _mc.pattern.nodes:
             for _lbl in _np.labels:
-                _cypher_node_labels.append(_lbl)
                 _nm = label_map.nodes.get(_lbl) or next(
                     (v for v in label_map.nodes.values() if v.table_label == _lbl), None
                 )
-                if _nm and _nm.domain_id:
-                    _cypher_domains.add(_nm.domain_id)
+                if _nm:
+                    _sql_name = f"{_nm.domain_id}.{_nm.table_name}" if _nm.domain_id else _nm.table_name
+                    _cypher_sql_tables.add(_sql_name)
+                    if _nm.domain_id:
+                        _cypher_domains.add(_nm.domain_id)
     _cypher_span_attrs: dict[str, str] = {
-        "provisa.table": ", ".join(sorted(set(_cypher_node_labels))) or "cypher",
+        "provisa.table": ", ".join(sorted(_cypher_sql_tables)) or "cypher",
         "provisa.domain": ", ".join(sorted(_cypher_domains)) or "cypher",
         "provisa.role": role_id,
         "provisa.query_text": body.query,
@@ -635,19 +637,21 @@ async def _execute_call_body(
     from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
     import sqlglot
 
-    _cb_labels: list[str] = []
+    _cb_sql_tables: set[str] = set()
     _cb_domains: set[str] = set()
     for _mc in getattr(call_body, "match_clauses", []):
         for _np in _mc.pattern.nodes:
             for _lbl in _np.labels:
-                _cb_labels.append(_lbl)
                 _nm = label_map.nodes.get(_lbl) or next(
                     (v for v in label_map.nodes.values() if v.table_label == _lbl), None
                 )
-                if _nm and _nm.domain_id:
-                    _cb_domains.add(_nm.domain_id)
+                if _nm:
+                    _sql_name = f"{_nm.domain_id}.{_nm.table_name}" if _nm.domain_id else _nm.table_name
+                    _cb_sql_tables.add(_sql_name)
+                    if _nm.domain_id:
+                        _cb_domains.add(_nm.domain_id)
     _cb_span_attrs: dict[str, str] = {
-        "provisa.table": ", ".join(sorted(set(_cb_labels))) or "cypher",
+        "provisa.table": ", ".join(sorted(_cb_sql_tables)) or "cypher",
         "provisa.domain": ", ".join(sorted(_cb_domains)) or "cypher",
         "provisa.role": role_id,
     }
