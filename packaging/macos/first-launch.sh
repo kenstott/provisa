@@ -3,6 +3,7 @@
 # Called by provisa-launcher on first run only.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUNDLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RESOURCES="${BUNDLE_DIR}/Resources"
 IMAGES_DIR="${RESOURCES}/images"
@@ -627,6 +628,99 @@ YAML
   ok "Config written to ${PROVISA_HOME}/config.yaml"
 }
 
+# ── Discover or download extension images (obs / demo) ───────────────────────
+# Usage: _get_extension_images <label> <tarball_filename> <dest_dir>
+# Checks (in order): already in dest_dir, ~/Downloads/, same dir as script,
+# any mounted DMG volume, then offers GitHub download.
+_get_extension_images() {
+  local label="$1"         # e.g. "Observability"
+  local filename="$2"      # e.g. "provisa-obs-images-v0.1.0-alpha.115.tar.gz"
+  local dest_dir="$3"      # directory to extract into
+
+  if [ -d "$dest_dir" ] && [ "$(ls -A "$dest_dir" 2>/dev/null)" ]; then
+    info "${label} images already present — skipping."
+    return 0
+  fi
+
+  mkdir -p "$dest_dir"
+
+  local src=""
+  # 1. ~/Downloads/
+  [ -f "${HOME}/Downloads/${filename}" ] && src="${HOME}/Downloads/${filename}"
+  # 2. Same directory as this script
+  [ -z "$src" ] && [ -f "${SCRIPT_DIR}/${filename}" ] && src="${SCRIPT_DIR}/${filename}"
+  # 3. Mounted DMG volumes
+  if [ -z "$src" ]; then
+    for vol_file in "/Volumes/"*"/${filename}"; do
+      [ -f "$vol_file" ] && src="$vol_file" && break
+    done
+  fi
+
+  if [ -n "$src" ]; then
+    info "Extracting ${label} images from ${src}..."
+    tar -xzf "$src" -C "$dest_dir"
+    ok "${label} images extracted."
+    return 0
+  fi
+
+  # 4. Offer GitHub download
+  local version
+  version="${PROVISA_VERSION:-}"
+  if [ -z "$version" ] && command -v provisa &>/dev/null; then
+    version="$(provisa version 2>/dev/null | head -1 | awk '{print $NF}')" || version=""
+  fi
+
+  local download_url=""
+  if [ -n "$version" ]; then
+    download_url="https://github.com/kenstott/provisa/releases/download/${version}/${filename}"
+  fi
+
+  local answer=""
+  if [[ -n "${PROVISA_NONINTERACTIVE:-}" ]]; then
+    answer="${PROVISA_INSTALL_OBS:-n}"
+    [[ "$label" == Demo* ]] && answer="${PROVISA_INSTALL_DEMO:-n}"
+  else
+    printf "\n${BOLD}%s Extension${NC}\n" "$label"
+    printf "No local %s images found.\n" "$label"
+    if [ -n "$download_url" ]; then
+      printf "Download now from GitHub? (~1–2 GB) [y/N]: "
+      read -r answer
+    else
+      printf "(Place %s in ~/Downloads/ and re-run setup to install later.)\n" "$filename"
+      answer="n"
+    fi
+  fi
+
+  if [[ "${answer,,}" == "y" ]] && [ -n "$download_url" ]; then
+    info "Downloading ${filename}..."
+    local tmp_file="${PROVISA_HOME}/${filename}"
+    if curl -fL --retry 3 --retry-delay 5 -o "$tmp_file" "$download_url"; then
+      tar -xzf "$tmp_file" -C "$dest_dir"
+      rm -f "$tmp_file"
+      ok "${label} images downloaded and extracted."
+    else
+      err "Download failed. Place ${filename} in ~/Downloads/ and re-run setup."
+      rm -rf "$dest_dir"
+    fi
+  else
+    info "Skipping ${label} extension. Install later: place ${filename} in ~/Downloads/ and run 'provisa install-${label,,}'."
+    rm -d "$dest_dir" 2>/dev/null || true
+  fi
+}
+
+# ── Ask and install optional obs/demo extensions ─────────────────────────────
+install_extensions() {
+  local version="${PROVISA_VERSION:-}"
+  if [ -z "$version" ] && command -v provisa &>/dev/null; then
+    version="$(provisa version 2>/dev/null | head -1 | awk '{print $NF}')" || version=""
+  fi
+  local obs_file="provisa-obs-images-${version}.tar.gz"
+  local demo_file="provisa-demo-images-${version}.tar.gz"
+
+  _get_extension_images "Observability" "$obs_file" "${PROVISA_HOME}/obs-images"
+  _get_extension_images "Demo" "$demo_file" "${PROVISA_HOME}/demo-images"
+}
+
 # ── Install CLI symlink ───────────────────────────────────────────────────────
 install_cli() {
   local cli_src="${RESOURCES}/provisa-cli"
@@ -687,6 +781,9 @@ main() {
 
   echo "PROGRESS:build"
   build_provisa_image     # builds provisa/provisa:local inside Lima from bundled source
+
+  echo "PROGRESS:extensions"
+  install_extensions      # optional obs/demo image sets (discover local or download)
 
   echo "PROGRESS:finalize"
   install_cli

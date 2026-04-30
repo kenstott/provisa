@@ -5,7 +5,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ScriptDir   = Split-Path -Parent (Resolve-Path $MyInvocation.MyCommand.Path)
 $ImagesDir   = Join-Path $ScriptDir 'images'
 $ComposeDir  = Join-Path $ScriptDir 'compose'
 $SourceDir   = Join-Path $ScriptDir 'provisa-source'
@@ -222,6 +222,103 @@ function Build-ProvisaImage {
   Write-Ok 'provisa/provisa:local built.'
 }
 
+# ── Discover or download extension images (obs / demo) ───────────────────────
+function Get-ExtensionImages {
+  param(
+    [string]$Label,      # e.g. "Observability"
+    [string]$Filename,   # e.g. "provisa-obs-images-v0.1.0-alpha.115.tar.gz"
+    [string]$DestDir     # directory to extract into
+  )
+
+  if ((Test-Path $DestDir) -and (Get-ChildItem $DestDir -ErrorAction SilentlyContinue)) {
+    Write-Info "$Label images already present — skipping."
+    return
+  }
+
+  New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
+
+  # Discovery order: Downloads folder, script dir, any mounted volumes
+  $src = $null
+  $downloads = Join-Path $env:USERPROFILE 'Downloads'
+  if (Test-Path (Join-Path $downloads $Filename)) { $src = Join-Path $downloads $Filename }
+  if (-not $src) {
+    $scriptSibling = Join-Path $ScriptDir $Filename
+    if (Test-Path $scriptSibling) { $src = $scriptSibling }
+  }
+  if (-not $src) {
+    foreach ($drive in [System.IO.DriveInfo]::GetDrives() | Where-Object { $_.DriveType -eq 'CDRom' -or $_.DriveType -eq 'Removable' }) {
+      $candidate = Join-Path $drive.RootDirectory.FullName $Filename
+      if (Test-Path $candidate) { $src = $candidate; break }
+    }
+  }
+
+  if ($src) {
+    Write-Info "Extracting $Label images from $src..."
+    tar -xzf $src -C $DestDir
+    if ($LASTEXITCODE -ne 0) { Write-Err "Extraction failed for $Label images."; Remove-Item $DestDir -Recurse -Force; return }
+    Write-Ok "$Label images extracted."
+    return
+  }
+
+  # Offer GitHub download
+  $version = $env:PROVISA_VERSION
+  if (-not $version) {
+    try { $version = (& provisa version 2>$null | Select-Object -First 1).Split()[-1] } catch {}
+  }
+
+  $downloadUrl = $null
+  if ($version) {
+    $downloadUrl = "https://github.com/kenstott/provisa/releases/download/${version}/${Filename}"
+  }
+
+  $nonInteractive = $env:PROVISA_NONINTERACTIVE
+  $answer = 'n'
+  if ($nonInteractive) {
+    $answer = if ($Label -like 'Demo*') { $env:PROVISA_INSTALL_DEMO ?? 'n' } else { $env:PROVISA_INSTALL_OBS ?? 'n' }
+  } elseif ($downloadUrl) {
+    Write-Host ''
+    Write-Host "$Label Extension" -ForegroundColor White
+    Write-Host "No local $Label images found."
+    $answer = Read-Host "Download now from GitHub? (~1-2 GB) [y/N]"
+    $answer = $answer.Trim().ToLower()
+  } else {
+    Write-Info "No local $Label images found. Place $Filename in Downloads and re-run setup to install later."
+    Remove-Item $DestDir -Recurse -Force -ErrorAction SilentlyContinue
+    return
+  }
+
+  if ($answer -eq 'y' -and $downloadUrl) {
+    Write-Info "Downloading $Filename..."
+    $tmpFile = Join-Path $ProvisaHome $Filename
+    try {
+      Invoke-WebRequest -Uri $downloadUrl -OutFile $tmpFile -UseBasicParsing
+      tar -xzf $tmpFile -C $DestDir
+      if ($LASTEXITCODE -ne 0) { throw "tar extraction failed" }
+      Remove-Item $tmpFile -Force
+      Write-Ok "$Label images downloaded and extracted."
+    } catch {
+      Write-Err "Download failed: $_. Place $Filename in Downloads and re-run setup."
+      Remove-Item $DestDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  } else {
+    Write-Info "Skipping $Label extension. Install later by placing $Filename in Downloads and running 'provisa install-$($Label.ToLower())'."
+    Remove-Item $DestDir -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
+# ── Install optional obs/demo extensions ─────────────────────────────────────
+function Install-Extensions {
+  $version = $env:PROVISA_VERSION
+  if (-not $version) {
+    try { $version = (& provisa version 2>$null | Select-Object -First 1).Split()[-1] } catch {}
+  }
+  $obsFile  = "provisa-obs-images-${version}.tar.gz"
+  $demoFile = "provisa-demo-images-${version}.tar.gz"
+
+  Get-ExtensionImages -Label 'Observability' -Filename $obsFile  -DestDir (Join-Path $ProvisaHome 'obs-images')
+  Get-ExtensionImages -Label 'Demo'          -Filename $demoFile -DestDir (Join-Path $ProvisaHome 'demo-images')
+}
+
 # ── Ask hostname ─────────────────────────────────────────────────────────────
 function Ask-Hostname {
   $input = Read-Host 'Hostname for Provisa [localhost]'
@@ -296,6 +393,7 @@ Import-Vm
 Start-Vm
 Load-Images
 Build-ProvisaImage
+Install-Extensions
 Write-Config
 Set-DockerHostEnv
 
