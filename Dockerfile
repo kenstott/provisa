@@ -3,8 +3,7 @@
 FROM python:3.12-slim AS installer
 WORKDIR /app
 COPY pyproject.toml .
-COPY wheels/ /wheels/
-RUN pip install --no-cache-dir --no-index --find-links /wheels .
+RUN pip install --no-cache-dir .
 
 # Stage 2: lean runtime image — no wheels, only app source + installed packages
 FROM python:3.12-slim

@@ -45,6 +45,7 @@ export default defineConfig(({ mode }) => ({
       : []),
   ],
   resolve: {
+    conditions: ['browser', 'import', 'module', 'default'],
     alias: {
       'graphiql-explorer': path.resolve(
         __dirname,
