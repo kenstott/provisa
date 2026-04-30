@@ -84,7 +84,7 @@ if (Test-Path $ComposeSrc) {
     Write-Ok "Extension compose file written: $ExtCompose"
 } else {
     # Write inline demo compose — graphql-demo uses pre-built local image
-    @'
+    @"
 # Provisa Demo Extension — petstore-mock + graphql-demo
 services:
   petstore-mock:
@@ -104,12 +104,12 @@ services:
     ports:
       - "4000:4000"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/graphql?query=%7B__typename%7D')\""]
+      test: ["CMD-SHELL", "python -c \`"import urllib.request; urllib.request.urlopen('http://localhost:4000/graphql?query=%7B__typename%7D')\`""]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
-'@ | Set-Content -Path $ExtCompose -Encoding UTF8
+"@ | Set-Content -Path $ExtCompose -Encoding UTF8
     Write-Ok "Extension compose file written: $ExtCompose"
 }
 
