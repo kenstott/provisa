@@ -42,6 +42,9 @@ COMPOSE_FILES="-f docker-compose.core.yml -f docker-compose.dev-install.yml"
 
 if [ "$DEMO" = true ]; then
   COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.observability.yml -f docker-compose.demo.yml"
+  # Clear MinIO data so the demo starts with a fresh empty bucket (no stale OTel data).
+  echo "Clearing MinIO volume (demo reset)..."
+  docker volume rm provisa_minio_data 2>/dev/null || true
   # Ensure demo files exist (SQLite inquiries DB, etc.)
   if [ -f "$SCRIPT_DIR/demo/files/create_demo_files.py" ]; then
     echo "Generating demo files..."

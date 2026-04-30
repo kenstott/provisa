@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useLocation } from "react-router-dom";
 import { Trash2 } from "lucide-react";
 import {
   fetchSources,
@@ -33,12 +34,21 @@ import { SystemHealth } from "../components/admin/SystemHealth";
 import { ScheduledTasks } from "../components/admin/ScheduledTasks";
 
 const FORMAT_OPTIONS = ["parquet", "orc", "json", "ndjson", "csv", "arrow"];
-const TABS = ["Overview", "Domains", "Materialized Views", "Cache", "Scheduled Tasks", "System Health", "Observability"] as const;
-type Tab = typeof TABS[number];
+
+const ROUTE_TO_SECTION: Record<string, string> = {
+  "/admin/overview": "Overview",
+  "/admin/domains": "Domains",
+  "/admin/materialized-views": "Materialized Views",
+  "/admin/cache": "Cache",
+  "/admin/scheduled-tasks": "Scheduled Tasks",
+  "/admin/system-health": "System Health",
+  "/admin/observability": "Observability",
+};
 
 /** Admin overview page — dashboard, config management, platform settings. */
 export function AdminPage() {
-  const [activeTab, setActiveTab] = useState<Tab>("Overview");
+  const location = useLocation();
+  const activeTab = ROUTE_TO_SECTION[location.pathname] ?? "Overview";
   const [stats, setStats] = useState<Record<string, number>>({});
   const [domains, setDomains] = useState<Domain[]>([]);
   const [newDomainId, setNewDomainId] = useState("");
@@ -155,18 +165,6 @@ export function AdminPage() {
   return (
     <div className="page">
       <h2>Admin Dashboard</h2>
-
-      <div className="admin-tabs">
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            className={`admin-tab${activeTab === tab ? " active" : ""}`}
-            onClick={() => setActiveTab(tab)}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
 
       <div className="admin-tab-content">
       {activeTab === "Overview" && (

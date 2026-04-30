@@ -12,6 +12,8 @@ interface DomainFilterContextValue {
   setDomains: (d: string[]) => void;
   selectedDomain: string;
   setSelectedDomain: (d: string) => void;
+  checkedDomains: Set<string>;
+  toggleDomain: (id: string) => void;
 }
 
 const DomainFilterContext = createContext<DomainFilterContextValue>({
@@ -19,28 +21,47 @@ const DomainFilterContext = createContext<DomainFilterContextValue>({
   setDomains: () => {},
   selectedDomain: "all",
   setSelectedDomain: () => {},
+  checkedDomains: new Set(),
+  toggleDomain: () => {},
 });
 
 export function DomainFilterProvider({ children }: { children: React.ReactNode }) {
   const { role } = useAuth();
   const [domains, setDomains] = useState<string[]>([]);
   const [selectedDomain, setSelectedDomain] = useState("all");
+  const [checkedDomains, setCheckedDomains] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!role) return;
     if (role.domain_access.includes("*")) {
       fetch("/data/domains", { headers: { "X-Role": role.id } })
         .then((r) => r.json())
-        .then((ids: string[]) => { if (ids.length > 0) setDomains(ids); })
+        .then((ids: string[]) => {
+          if (ids.length > 0) {
+            setDomains(ids);
+            setCheckedDomains(new Set(ids));
+          }
+        })
         .catch(() => {});
     } else {
       const ds = role.domain_access.filter((d) => d !== "*");
-      if (ds.length > 0) setDomains(ds);
+      if (ds.length > 0) {
+        setDomains(ds);
+        setCheckedDomains(new Set(ds));
+      }
     }
   }, [role?.id]);
 
+  function toggleDomain(id: string) {
+    setCheckedDomains((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
   return (
-    <DomainFilterContext.Provider value={{ domains, setDomains, selectedDomain, setSelectedDomain }}>
+    <DomainFilterContext.Provider value={{ domains, setDomains, selectedDomain, setSelectedDomain, checkedDomains, toggleDomain }}>
       {children}
     </DomainFilterContext.Provider>
   );

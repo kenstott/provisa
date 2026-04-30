@@ -311,6 +311,7 @@ async def graph_schema(request: Request) -> JSONResponse:
             {
                 "label": n.label,          # e.g. "SalesAnalytics:Orders"
                 "domain_label": n.domain_label,  # e.g. "SalesAnalytics" or null
+                "domain_id": n.domain_id,        # e.g. "pet-store" or null
                 "table_label": n.table_label,    # e.g. "Orders"
                 "properties": list(n.properties.keys()),
                 "pk_columns": n.pk_columns,      # user-designated PK column names
@@ -332,9 +333,11 @@ async def graph_schema(request: Request) -> JSONResponse:
 
 
 def _resolve_role_id(request: Request, state: object) -> str:
-    """Resolve the role_id from the request context."""
-    # Use the first registered role as default
+    """Resolve the role_id from X-Provisa-Role header, falling back to the first registered role."""
     roles: dict = getattr(state, "roles", {})
+    header_role = request.headers.get("x-provisa-role") or request.headers.get("X-Provisa-Role")
+    if header_role and header_role in roles:
+        return header_role
     if roles:
         return next(iter(roles))
     return "default"
@@ -351,6 +354,7 @@ def _build_label_map(ctx: object, role_id: str, state: object) -> "object":
         all_tables=cache.get("tables"),
         all_relationships=cache.get("relationships"),
         all_column_types=cache.get("column_types"),
+        source_catalogs=getattr(state, "source_catalogs", None),
     )
 
 

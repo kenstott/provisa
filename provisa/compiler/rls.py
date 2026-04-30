@@ -156,8 +156,13 @@ def _qualify_filter(filter_expr: str, alias: str) -> str:
         if word.lower() in _SQL_KEYWORDS:
             return word
         start = m.start(2)
-        if start > 0 and filter_expr[start - 1] in (".", "'"):
+        if start > 0 and filter_expr[start - 1] == "'":
             return word
+        if start > 0 and filter_expr[start - 1] == ".":
+            return word  # column name after dot — don't qualify
+        end = m.end(2)
+        if end < len(filter_expr) and filter_expr[end] == ".":
+            return f'"{alias}"'  # replace existing table alias with correct alias
         return f'"{alias}".{word}'
 
     # Match single-quoted strings first (to skip them), then bare identifiers

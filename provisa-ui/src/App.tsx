@@ -155,14 +155,26 @@ function App() {
                 }
               />
               <Route path="/actions" element={<Navigate to="/commands" replace />} />
-              <Route
-                path="/admin"
-                element={
-                  <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
-                    <AdminPage />
-                  </CapabilityGate>
-                }
-              />
+              <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
+              {[
+                "/admin/overview",
+                "/admin/domains",
+                "/admin/materialized-views",
+                "/admin/cache",
+                "/admin/scheduled-tasks",
+                "/admin/system-health",
+                "/admin/observability",
+              ].map((path) => (
+                <Route
+                  key={path}
+                  path={path}
+                  element={
+                    <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
+                      <AdminPage />
+                    </CapabilityGate>
+                  }
+                />
+              ))}
             </Routes>
           </main>
         </RequireAuth>

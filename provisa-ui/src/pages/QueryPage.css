@@ -10,9 +10,10 @@ body.graphiql-dark .graphiql-dialog {
   --color-error: 0, 84%, 60%;
 }
 
-/* Override the navbar height variable for proper sizing */
+/* query-page fills remaining height via #root flex layout */
 .query-page {
-  height: calc(100vh - 49px);
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;

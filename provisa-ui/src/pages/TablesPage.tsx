@@ -205,7 +205,7 @@ export function TablesPage() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState("");
-  const { selectedDomain, setDomains } = useDomainFilter();
+  const { checkedDomains, setDomains } = useDomainFilter();
 
   // Form state
   const [sourceId, setSourceId] = useState("");
@@ -540,7 +540,7 @@ export function TablesPage() {
             <select value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
               <option value="">Select source...</option>
               {sources
-                .filter((s) => selectedDomain === "all" || s.allowedDomains.length === 0 || s.allowedDomains.includes(selectedDomain))
+                .filter((s) => s.allowedDomains.length === 0 || s.allowedDomains.some((d) => checkedDomains.has(d)))
                 .map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
             </select>
           </label>
@@ -736,7 +736,7 @@ export function TablesPage() {
         <tbody>
           {tables.filter((t) => {
             if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
-            if (selectedDomain !== "all" && t.domainId !== selectedDomain) return false;
+            if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId)) return false;
             const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
             if (terms.length === 0) return true;
             const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();

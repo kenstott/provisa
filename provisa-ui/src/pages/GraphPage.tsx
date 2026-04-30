@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useDomainFilter } from "../context/DomainFilterContext";
 import CodeMirror from "@uiw/react-codemirror";
 import {
   getCypherLanguageExtensions,
@@ -28,6 +29,7 @@ import {
   type GEdge,
 } from "./GraphFrame";
 import { fetchRelationships, upsertRelationship } from "../api/admin";
+import { useAuth } from "../context/AuthContext";
 import type { Relationship } from "../types/admin";
 import "./GraphPage.css";
 
@@ -55,6 +57,7 @@ function useLocalStorage<T>(key: string, initial: T): [T, (v: T | ((prev: T) => 
 
 interface SchemaNodeLabel {
   domainLabel: string | null;
+  domainId: string | null;
   tableLabel: string;
   properties: string[];
   pkColumns: string[];
@@ -269,6 +272,7 @@ interface SidebarProps {
   relLineOverrides: Record<string, RelLineOverride>;
   onHistorySelect: (q: string) => void;
   onLabelClick: (label: string) => void;
+  onDomainClick: (domainId: string) => void;
   onRelClick: (type: string) => void;
   onColorChange: (label: string, color: string) => void;
   onSizeChange: (label: string, size: number) => void;
@@ -278,7 +282,7 @@ interface SidebarProps {
   onWidthChange: (w: number) => void;
 }
 
-function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onHistorySelect, onLabelClick, onRelClick, onColorChange, onSizeChange, onLabelPropertyChange, onRelLineChange, width, onWidthChange }: SidebarProps) {
+function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onHistorySelect, onLabelClick, onDomainClick, onRelClick, onColorChange, onSizeChange, onLabelPropertyChange, onRelLineChange, width, onWidthChange }: SidebarProps) {
   const [section, setSection] = useState<"db" | "history">("db");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [relContextMenu, setRelContextMenu] = useState<RelContextMenuState | null>(null);
@@ -312,10 +316,6 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
     setRelContextMenu({ x: e.clientX, y: e.clientY, type });
   }, []);
 
-  const domainLabels = schemaLoading ? [] : [...new Set(
-    schemaNodeLabels.filter(n => n.domainLabel).map(n => n.domainLabel!)
-  )].sort();
-
   return (
     <aside className="graph-sidebar" style={{ width }}>
       <div className="graph-sidebar-tabs">
@@ -338,25 +338,32 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
       <div className="graph-sidebar-body">
         {section === "db" && (
           <>
-            {domainLabels.length > 0 && (
-              <div className="graph-schema-section">
-                <div className="graph-schema-heading">Domain Labels</div>
-                <div className="graph-label-list">
-                  {domainLabels.map((lbl) => (
-                    <div key={lbl} className="graph-label-item">
-                      <span
-                        className="graph-label-pill"
-                        style={{ background: colorOverrides[lbl] ?? labelColor(lbl) }}
-                        onClick={() => onLabelClick(lbl)}
-                        title={`MATCH (n:${lbl}) RETURN n LIMIT 25`}
-                      >
-                        {lbl}
-                      </span>
-                    </div>
-                  ))}
+            {!schemaLoading && (() => {
+              const domainLabels = [...new Set(schemaNodeLabels.map(n => n.domainLabel).filter(Boolean) as string[])].sort();
+              return domainLabels.length > 0 ? (
+                <div className="graph-schema-section">
+                  <div className="graph-schema-heading">Domain Labels</div>
+                  <div className="graph-label-list">
+                    {domainLabels.map((lbl) => {
+                      const color = colorOverrides[lbl] ?? labelColor(lbl);
+                      return (
+                        <div key={lbl} className="graph-label-item">
+                          <span
+                            className="graph-label-pill"
+                            style={{ background: color }}
+                            onClick={() => onDomainClick(lbl)}
+                            onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, compoundLabel: lbl, tableLabel: lbl, properties: [] }); }}
+                            title={`MATCH (n:${lbl}) RETURN n LIMIT 25`}
+                          >
+                            {lbl}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : null;
+            })()}
             <div className="graph-schema-section">
               <div className="graph-schema-heading graph-schema-heading--collapsible" onClick={() => setNodeLabelsCollapsed(c => !c)}>
                 Node Labels
@@ -368,7 +375,7 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
                 <div className="graph-schema-empty">No labels found</div>
               ) : (
                 <div className="graph-label-list">
-                  {schemaNodeLabels.map((node) => {
+                  {[...schemaNodeLabels].sort((a, b) => a.tableLabel.localeCompare(b.tableLabel)).map((node) => {
                     const compoundLabel = node.domainLabel
                       ? `${node.domainLabel}:${node.tableLabel}`
                       : node.tableLabel;
@@ -607,6 +614,8 @@ function QueryBar({ onRun, initialQuery, onQueryChange, cypherSchema }: QueryBar
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function GraphPage() {
+  const { role } = useAuth();
+  const { checkedDomains } = useDomainFilter();
   const [frames, setFrames] = useState<FrameData[]>(_graphState.frames);
   const [history, setHistory] = useState<string[]>(_graphState.history);
   const [historyQuery, setHistoryQuery] = useState<string | null>(null);
@@ -627,14 +636,18 @@ export function GraphPage() {
     fetchRelationships().then(setAdminRels).catch(() => {});
   }, []);
 
-  // Fetch schema on mount via dedicated graph-schema endpoint
+  // Fetch schema when role changes via dedicated graph-schema endpoint
   useEffect(() => {
-    fetch("/data/graph-schema")
+    setSchemaLoading(true);
+    const headers: Record<string, string> = {};
+    if (role) headers["X-Provisa-Role"] = role.id;
+    fetch("/data/graph-schema", { headers })
       .then((r) => r.json())
       .then((data) => {
         const nodeLabels: SchemaNodeLabel[] = (data.node_labels ?? []).map(
-          (n: { label: string; domain_label: string | null; table_label: string; properties: string[]; pk_columns: string[]; id_column?: string; native_filter_columns?: string[] }) => ({
+          (n: { label: string; domain_label: string | null; domain_id: string | null; table_label: string; properties: string[]; pk_columns: string[]; id_column?: string; native_filter_columns?: string[] }) => ({
             domainLabel: n.domain_label ?? null,
+            domainId: n.domain_id ?? null,
             tableLabel: n.table_label,
             properties: n.properties ?? [],
             pkColumns: n.pk_columns ?? [],
@@ -666,7 +679,7 @@ export function GraphPage() {
       })
       .catch(() => {})
       .finally(() => setSchemaLoading(false));
-  }, []);
+  }, [role?.id]);
 
   const runQuery = useCallback(async (query: string) => {
     if (!query) return;
@@ -685,9 +698,11 @@ export function GraphPage() {
       return next;
     });
     try {
+      const hdrs: Record<string, string> = { "Content-Type": "application/json" };
+      if (role) hdrs["X-Provisa-Role"] = role.id;
       const res = await fetch("/data/cypher", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: hdrs,
         body: JSON.stringify({ query, params: {} }),
       });
       const elapsed = Date.now() - start;
@@ -706,7 +721,7 @@ export function GraphPage() {
     } catch (err) {
       setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });
     }
-  }, []);
+  }, [role]);
 
   // Auto-execute a query forwarded from another page (e.g. Cypher panel → Graph).
   useEffect(() => {
@@ -727,9 +742,11 @@ export function GraphPage() {
     const start = Date.now();
     setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, query, status: "loading" as const, nodes: new Map(), edges: new Map(), rows: [], columns: [], elapsed: undefined, error: undefined } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });
     try {
+      const hdrs2: Record<string, string> = { "Content-Type": "application/json" };
+      if (role) hdrs2["X-Provisa-Role"] = role.id;
       const res = await fetch("/data/cypher", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: hdrs2,
         body: JSON.stringify({ query, params: {} }),
       });
       const elapsed = Date.now() - start;
@@ -748,7 +765,7 @@ export function GraphPage() {
     } catch (err) {
       setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });
     }
-  }, []);
+  }, [role]);
 
   const handleColorChange = useCallback((label: string, color: string) => {
     setColorOverrides((prev) => ({ ...prev, [label]: color }));
@@ -788,9 +805,13 @@ export function GraphPage() {
   }, [adminRels]);
 
   // Build pkMap: compound label (e.g. "SalesAnalytics:Orders") → pk_columns
+  const visibleNodeLabels = checkedDomains.size === 0
+    ? schemaNodeLabels
+    : schemaNodeLabels.filter((n) => !n.domainId || checkedDomains.has(n.domainId));
+
   // Falls back to idColumn (heuristically resolved) when no user-designated PKs
   const pkMap: Record<string, string[]> = {};
-  for (const node of schemaNodeLabels) {
+  for (const node of visibleNodeLabels) {
     const compoundLabel = node.domainLabel ? `${node.domainLabel}:${node.tableLabel}` : node.tableLabel;
     pkMap[compoundLabel] = node.pkColumns.length > 0
       ? node.pkColumns
@@ -798,14 +819,17 @@ export function GraphPage() {
   }
 
   const cypherSchema: CypherSchema = {
-    labels: schemaNodeLabels.flatMap((n) =>
+    labels: visibleNodeLabels.flatMap((n) =>
       n.domainLabel ? [`${n.domainLabel}:${n.tableLabel}`, n.domainLabel, n.tableLabel] : [n.tableLabel]
     ).filter((v, i, a) => a.indexOf(v) === i),
     relationshipTypes: schemaRels.map((r) => r.type),
-    propertyKeys: [...new Set(schemaNodeLabels.flatMap((n) => [...n.properties, ...n.nativeFilterColumns]))],
+    propertyKeys: [...new Set(visibleNodeLabels.flatMap((n) => [...n.properties, ...n.nativeFilterColumns]))],
   };
 
   const handleHistorySelect = useCallback((q: string) => setHistoryQuery(q), []);
+  const handleDomainClick = useCallback((domainId: string) => {
+    runQuery(`MATCH (n:${domainId}) RETURN n LIMIT 25`);
+  }, [runQuery]);
   const handleLabelClick = useCallback((compoundLabel: string) => {
     const node = schemaNodeLabels.find((n) => {
       const cl = n.domainLabel ? `${n.domainLabel}:${n.tableLabel}` : n.tableLabel;
@@ -844,7 +868,7 @@ export function GraphPage() {
         />
       )}
       <Sidebar
-        schemaNodeLabels={schemaNodeLabels}
+        schemaNodeLabels={visibleNodeLabels}
         schemaRels={schemaRels}
         schemaLoading={schemaLoading}
         history={history}
@@ -854,6 +878,7 @@ export function GraphPage() {
         relLineOverrides={relLineOverrides}
         onHistorySelect={handleHistorySelect}
         onLabelClick={handleLabelClick}
+        onDomainClick={handleDomainClick}
         onRelClick={handleRelClick}
         onColorChange={handleColorChange}
         onSizeChange={handleSizeChange}

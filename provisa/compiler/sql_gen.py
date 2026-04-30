@@ -222,7 +222,7 @@ def build_context(si: object) -> CompilationContext:
             field_name=t.field_name,
             type_name=t.type_name,
             source_id=t.source_id,
-            catalog_name=source_to_catalog(t.source_id),
+            catalog_name=(si.source_catalogs or {}).get(t.source_id) or source_to_catalog(t.source_id),
             schema_name=t.schema_name,
             table_name=physical_name,
             domain_id=t.domain_id,

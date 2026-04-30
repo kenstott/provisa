@@ -89,7 +89,7 @@ def introspect_tables(
         if table.get("schema_name") == "graphql_remote":
             continue  # columns synthesized from registration metadata, not Trino
         source = sources[table["source_id"]]
-        catalog_name = source_to_catalog(source["id"])
+        catalog_name = source.get("database") or source_to_catalog(source["id"])
         # Use physical table name if mapped (e.g., Kafka discriminated tables)
         trino_table_name = table["table_name"]
         if physical_table_map:

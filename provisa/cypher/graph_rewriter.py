@@ -119,7 +119,10 @@ def _build_domain_json(var: str, props: list[str] | None = None) -> exp.Expressi
             ),
         ),
     ]
+    _reserved = {"id", "label"}
     for prop in (props or []):
+        if prop in _reserved:
+            continue
         kv.append(exp.JSONKeyValue(
             this=exp.Literal.string(prop),
             expression=exp.Column(

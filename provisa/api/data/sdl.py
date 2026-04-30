@@ -56,18 +56,25 @@ def _reachable_table_ids(domain_id: str, tables: list[dict], relationships: list
 _ALWAYS_VISIBLE_DOMAINS = {"meta"}
 
 
-def _build_domain_schema(role: dict, domain_id: str, cache: dict):
+def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
     from provisa.api.app import state
     from provisa.compiler.schema_gen import SchemaInput, generate_schema
     tables = cache["tables"]
     relationships = cache["relationships"]
-    reachable = _reachable_table_ids(domain_id, tables, relationships)
-    # Always include system-metadata domain tables — implicit relationship with every type.
     always_ids = {t["id"] for t in tables if t["domain_id"] in _ALWAYS_VISIBLE_DOMAINS}
-    reachable |= always_ids
+    reachable: set[int] = set(always_ids)
+    seed_ids: set[int] = set()
+    for domain_id in domain_ids:
+        reachable |= _reachable_table_ids(domain_id, tables, relationships)
+        seed_ids |= {t["id"] for t in tables if t["domain_id"] == domain_id}
+    reachable |= seed_ids
     filtered_tables = [t for t in tables if t["id"] in reachable]
-    # Root query fields: seed domain + always-visible system domains.
-    root_ids = {t["id"] for t in tables if t["domain_id"] == domain_id} | always_ids
+    root_ids = seed_ids
+    # Ensure always-visible domains and the requested domains bypass per-role
+    # domain_access check in _build_visible_tables (which skips inaccessible domains).
+    existing = role.get("domain_access") or []
+    if "*" not in existing:
+        role = {**role, "domain_access": list(set(existing) | _ALWAYS_VISIBLE_DOMAINS | set(domain_ids))}
     si = SchemaInput(
         tables=filtered_tables,
         root_table_ids=root_ids,
@@ -100,8 +107,7 @@ async def get_domains(request: Request, x_role: str = Header(None, alias="X-Role
     role = state.roles.get(role_id)
     if role is None:
         raise HTTPException(status_code=404, detail=f"No role {role_id!r}")
-    _system = {"", "meta", "ops"}
-    all_domains = [d["id"] for d in (state.schema_build_cache.get("domains") or []) if d["id"] not in _system]
+    all_domains = [d["id"] for d in (state.schema_build_cache.get("domains") or []) if d["id"] != ""]
     access = role.get("domain_access") or []
     if "*" in access:
         return JSONResponse(all_domains)
@@ -122,13 +128,14 @@ async def get_sdl(
     if role_id is None:
         raise HTTPException(status_code=422, detail="Missing X-Role header")
 
-    if domain and domain != "all":
+    domain_list = [d for d in (domain or "").split(",") if d and d != "all"]
+    if domain_list:
         role = state.roles.get(role_id)
         if role is None:
             raise HTTPException(status_code=404, detail=f"No role {role_id!r}")
         if not state.schema_build_cache:
             raise HTTPException(status_code=503, detail="Schema build cache not ready")
-        schema = _build_domain_schema(role, domain, state.schema_build_cache)
+        schema = _build_domain_schema(role, domain_list, state.schema_build_cache)
     else:
         schema = state.schemas.get(role_id)
         if schema is None:
@@ -184,13 +191,14 @@ async def get_introspection(
     if role_id is None:
         raise HTTPException(status_code=422, detail="Missing X-Provisa-Role header")
 
-    if domain and domain != "all":
+    domain_list = [d for d in (domain or "").split(",") if d and d != "all"]
+    if domain_list:
         role = state.roles.get(role_id)
         if role is None:
             raise HTTPException(status_code=404, detail=f"No role {role_id!r}")
         if not state.schema_build_cache:
             raise HTTPException(status_code=503, detail="Schema build cache not ready")
-        schema = _build_domain_schema(role, domain, state.schema_build_cache)
+        schema = _build_domain_schema(role, domain_list, state.schema_build_cache)
     else:
         schema = state.schemas.get(role_id)
         if schema is None:

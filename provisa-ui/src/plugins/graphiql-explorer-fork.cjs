@@ -1840,7 +1840,7 @@ var defaultStyles = {
  * expand/collapse to avoid React state interfering with the
  * Explorer's query manipulation.
  */
-function _renderGroupedFields(fields, renderField, selections) {
+function _renderGroupedFields(fields, renderField, selections, domainLabels) {
   var fieldNames = Object.keys(fields).sort();
 
   // Build set of currently-selected top-level field names from AST selections
@@ -1917,7 +1917,7 @@ function _renderGroupedFields(fields, renderField, selections) {
             },
             '\u25B6'
           ),
-          domain
+          (domainLabels && domainLabels[domain]) || domain
         ),
         React.createElement(
           'div',
@@ -2131,7 +2131,7 @@ var RootView = function (_React$PureComponent8) {
             definition: _this13.props.definition,
             availableFragments: _this13.props.availableFragments
           });
-        }, selections)
+        }, selections, _this13.props.domainLabels)
       );
     }
   }]);
@@ -2639,7 +2639,8 @@ var Explorer = function (_React$PureComponent9) {
                 }
               },
               styleConfig: styleConfig,
-              availableFragments: availableFragments
+              availableFragments: availableFragments,
+              domainLabels: _this15.props.domainLabels
             });
           }),
           attribution

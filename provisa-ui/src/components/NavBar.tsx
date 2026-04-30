@@ -8,112 +8,199 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { NavLink, useLocation } from "react-router-dom";
-import { ChevronDown } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { CapabilityGate } from "./CapabilityGate";
 import { RoleSelector } from "./RoleSelector";
 import { useDomainFilter } from "../context/DomainFilterContext";
 
-const SYSTEM_DOMAINS = new Set(["meta", "ops"]);
+
 
 interface DropdownItem {
   to: string;
   label: string;
   capability: string;
   comingSoon?: boolean;
+  separatorBefore?: boolean;
 }
 
-function NavDropdown({ label, items }: { label: string; items: DropdownItem[] }) {
-  const location = useLocation();
-  const isActive = items.some((i) => !i.comingSoon && location.pathname === i.to);
+interface NavGroup {
+  id: string;
+  label: string;
+  items: DropdownItem[];
+}
 
-  return (
-    <div className={`nav-dropdown${isActive ? " nav-dropdown-active" : ""}`}>
-      <span className="nav-dropdown-trigger">
-        {label} <ChevronDown size={11} />
-      </span>
-      <div className="nav-dropdown-menu">
-        {items.map((item) =>
-          item.comingSoon ? (
-            <span key={item.to} className="coming-soon">{item.label} — coming soon</span>
-          ) : (
-            <CapabilityGate key={item.to} capability={item.capability}>
-              <NavLink to={item.to}>{item.label}</NavLink>
-            </CapabilityGate>
-          )
-        )}
-      </div>
-    </div>
-  );
+const NAV_GROUPS: NavGroup[] = [
+  {
+    id: "explore",
+    label: "Explore",
+    items: [
+      { to: "/schema", label: "Schema", capability: "query_development" },
+      { to: "/query", label: "GraphQL", capability: "query_development", separatorBefore: true },
+      { to: "/graph", label: "Cypher", capability: "query_development" },
+      { to: "/sql", label: "SQL", capability: "query_development", comingSoon: true },
+    ],
+  },
+  {
+    id: "model",
+    label: "Model",
+    items: [
+      { to: "/views", label: "Views", capability: "table_registration" },
+      { to: "/commands", label: "Commands", capability: "admin" },
+    ],
+  },
+  {
+    id: "security",
+    label: "Security",
+    items: [
+      { to: "/security", label: "Policies", capability: "security_config" },
+      { to: "/approvals", label: "Approvals", capability: "query_approval" },
+    ],
+  },
+  {
+    id: "admin",
+    label: "Admin",
+    items: [
+      { to: "/admin/overview", label: "Overview", capability: "admin" },
+      { to: "/admin/domains", label: "Domains", capability: "admin" },
+      { to: "/admin/materialized-views", label: "Materialized Views", capability: "admin" },
+      { to: "/admin/cache", label: "Cache", capability: "admin" },
+      { to: "/admin/scheduled-tasks", label: "Scheduled Tasks", capability: "admin" },
+      { to: "/admin/system-health", label: "System Health", capability: "admin" },
+      { to: "/admin/observability", label: "Observability", capability: "admin" },
+    ],
+  },
+];
+
+function activeGroupId(pathname: string): string | null {
+  for (const group of NAV_GROUPS) {
+    if (group.items.some((i) => !i.comingSoon && (pathname === i.to || pathname.startsWith(i.to + "/")))) {
+      return group.id;
+    }
+  }
+  return null;
 }
 
 export function NavBar() {
   const location = useLocation();
-  const { domains, selectedDomain, setSelectedDomain } = useDomainFilter();
+  const navigate = useNavigate();
+  const { domains, checkedDomains, toggleDomain } = useDomainFilter();
+  const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
+  const [domainOpen, setDomainOpen] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
+  const subnavRef = useRef<HTMLElement>(null);
+  const domainRef = useRef<HTMLDivElement>(null);
+
+  const routeGroup = activeGroupId(location.pathname);
+
+  // When route changes into a group, clear any manual pin so the route drives display
+  useEffect(() => {
+    setPinnedGroup(null);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (pinnedGroup && !navRef.current?.contains(e.target as Node) && !subnavRef.current?.contains(e.target as Node)) {
+        setPinnedGroup(null);
+      }
+      if (domainOpen && !domainRef.current?.contains(e.target as Node)) {
+        setDomainOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [pinnedGroup, domainOpen]);
+
+  const displayedGroupId = pinnedGroup ?? routeGroup;
+  const displayedGroup = NAV_GROUPS.find((g) => g.id === displayedGroupId) ?? null;
+
   const onTablesPage =
     location.pathname === "/tables" ||
     location.pathname === "/relationships" ||
     location.pathname === "/security" ||
     location.pathname === "/schema" ||
-    location.pathname === "/query";
+    location.pathname === "/query" ||
+    location.pathname === "/graph";
+
+  function toggleGroup(id: string) {
+    // If already in this group's route, just toggle the pin
+    if (routeGroup === id) {
+      setPinnedGroup((prev) => (prev === id ? null : id));
+      return;
+    }
+    // Navigate to first non-comingSoon item in the group
+    const group = NAV_GROUPS.find((g) => g.id === id);
+    const first = group?.items.find((i) => !i.comingSoon);
+    if (first) navigate(first.to);
+    setPinnedGroup(null);
+  }
 
   return (
-    <nav className="navbar">
-      <div className="navbar-brand">
-        <NavLink to="/">Provisa</NavLink>
-      </div>
-      <div className="navbar-links">
-        <CapabilityGate capability="source_registration">
-          <NavLink to="/sources">Sources</NavLink>
-        </CapabilityGate>
-        <CapabilityGate capability="table_registration">
-          <NavLink to="/tables">Tables</NavLink>
-        </CapabilityGate>
-        <CapabilityGate capability="relationship_registration">
-          <NavLink to="/relationships">Relationships</NavLink>
-        </CapabilityGate>
-        <NavDropdown
-          label="Explore"
-          items={[
-            { to: "/query", label: "GraphQL", capability: "query_development" },
-            { to: "/schema", label: "Schema", capability: "query_development" },
-            { to: "/graph", label: "Cypher", capability: "query_development" },
-            { to: "/sql", label: "SQL", capability: "query_development", comingSoon: true },
-          ]}
-        />
-        <NavDropdown
-          label="Model"
-          items={[
-            { to: "/views", label: "Views", capability: "table_registration" },
-            { to: "/commands", label: "Commands", capability: "admin" },
-          ]}
-        />
-        <NavDropdown
-          label="Security"
-          items={[
-            { to: "/security", label: "Policies", capability: "security_config" },
-            { to: "/approvals", label: "Approvals", capability: "query_approval" },
-          ]}
-        />
-        <CapabilityGate capability="admin">
-          <NavLink to="/admin">Admin</NavLink>
-        </CapabilityGate>
-      </div>
-      <div className="navbar-role">
-        {onTablesPage && domains.length > 0 && (
-          <select
-            className="navbar-domain-select"
-            value={selectedDomain}
-            onChange={(e) => setSelectedDomain(e.target.value)}
-          >
-            <option value="all">All Domains</option>
-            {domains.filter((d) => !SYSTEM_DOMAINS.has(d)).map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-        )}
-        <RoleSelector />
-      </div>
-    </nav>
+    <>
+      <nav className="navbar" ref={navRef}>
+        <div className="navbar-brand">
+          <NavLink to="/">Provisa</NavLink>
+        </div>
+        <div className="navbar-links">
+          <CapabilityGate capability="source_registration">
+            <NavLink to="/sources">Sources</NavLink>
+          </CapabilityGate>
+          <CapabilityGate capability="table_registration">
+            <NavLink to="/tables">Tables</NavLink>
+          </CapabilityGate>
+          <CapabilityGate capability="relationship_registration">
+            <NavLink to="/relationships">Relationships</NavLink>
+          </CapabilityGate>
+          {NAV_GROUPS.map((group) => {
+            const isActive = routeGroup === group.id || pinnedGroup === group.id;
+            return (
+              <button
+                key={group.id}
+                className={`nav-group-label${isActive ? " nav-group-active" : ""}`}
+                onClick={() => toggleGroup(group.id)}
+              >
+                {group.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="navbar-role">
+          {onTablesPage && domains.length > 0 && (
+            <div className="navbar-domain-wrapper" ref={domainRef}>
+              <button className="navbar-domain-btn" onClick={() => setDomainOpen((o) => !o)}>
+                Domains ({checkedDomains.size}/{domains.length}) ▾
+              </button>
+              {domainOpen && (
+                <div className="navbar-domain-panel">
+                  {domains.map((d) => (
+                    <label key={d} className="navbar-domain-item">
+                      <input type="checkbox" checked={checkedDomains.has(d)} onChange={() => toggleDomain(d)} />
+                      {d}
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <RoleSelector />
+        </div>
+      </nav>
+      {displayedGroup && (
+        <nav className="subnav" ref={subnavRef}>
+          {displayedGroup.items.map((item) => (
+            <span key={item.to} className="subnav-item-wrapper">
+              {item.separatorBefore && <span className="subnav-sep">|</span>}
+              {item.comingSoon ? (
+                <span className="subnav-coming-soon">{item.label} — coming soon</span>
+              ) : (
+                <CapabilityGate capability={item.capability}>
+                  <NavLink to={item.to}>{item.label}</NavLink>
+                </CapabilityGate>
+              )}
+            </span>
+          ))}
+        </nav>
+      )}
+    </>
   );
 }

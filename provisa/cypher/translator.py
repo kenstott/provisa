@@ -1023,11 +1023,12 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     if domain == "__all__"
                     else self._lm.domains.get(domain, [])
                 )
+                _reserved = {"id", "label"}
                 all_props: set[str] = set()
                 for label in type_labels:
                     nm = self._lm.nodes.get(label)
                     if nm:
-                        all_props.update(nm.properties.keys())
+                        all_props.update(k for k in nm.properties.keys() if k not in _reserved)
                 props = sorted(all_props)
 
         return props
@@ -1147,6 +1148,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             nm = self._lm.nodes.get(label)
             if nm is None:
                 continue
+            if nm.native_filter_columns:
+                continue
             select_items: list[exp.Expression] = [
                 exp.alias_(exp.Literal.string(nm.label), alias="__label"),
                 exp.alias_(
@@ -1162,7 +1165,10 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 if sql_col:
                     select_items.append(
                         exp.alias_(
-                            exp.Column(this=exp.Identifier(this=sql_col, quoted=True)),
+                            exp.Cast(
+                                this=exp.Column(this=exp.Identifier(this=sql_col, quoted=True)),
+                                to=exp.DataType(this=exp.DataType.Type.VARCHAR),
+                            ),
                             alias=prop,
                         )
                     )

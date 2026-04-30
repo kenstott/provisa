@@ -36,6 +36,7 @@ class NodeMapping:
     native_filter_columns: set[str] = field(default_factory=set)  # SQL column names that are native API params
     physical_table_name: str = ""  # physical DB table name; "" means same as table_name
     traversal_only: bool = False  # True = cross-domain node; may not be a MATCH starting node
+    domain_id: str | None = None  # raw domain id, e.g. "pet-store"; None if no domain
 
     @property
     def sql_table_name(self) -> str:
@@ -176,6 +177,7 @@ class CypherLabelMap:
         all_tables: list[dict] | None = None,
         all_relationships: list[dict] | None = None,
         all_column_types: dict | None = None,
+        source_catalogs: dict[str, str] | None = None,
     ) -> "CypherLabelMap":
         """Build CypherLabelMap from an existing CompilationContext.
 
@@ -227,6 +229,7 @@ class CypherLabelMap:
                 label=cypher_label,
                 type_name=table_meta.type_name,
                 domain_label=domain_label,
+                domain_id=domain_id,
                 table_label=table_label,
                 table_id=table_meta.table_id,
                 source_id=table_meta.source_id,
@@ -333,16 +336,15 @@ class CypherLabelMap:
                     from provisa.compiler.introspect import ColumnMetadata as _CM
                     tgt_source_id = tgt_table.get("source_id") or ""
                     tgt_schema = tgt_table.get("schema_name") or ""
-                    tgt_catalog = ""  # catalog resolved at query time via source catalog
                     from provisa.compiler.naming import source_to_catalog as _s2c
-                    try:
-                        tgt_catalog = _s2c(tgt_source_id) if tgt_source_id else ""
-                    except Exception:
-                        pass
+                    tgt_catalog = (source_catalogs or {}).get(tgt_source_id) or (
+                        _s2c(tgt_source_id) if tgt_source_id else ""
+                    )
                     nodes[tgt_type_name] = NodeMapping(
                         label=tgt_cypher_label,
                         type_name=tgt_type_name,
                         domain_label=tgt_domain_label,
+                        domain_id=tgt_domain_id,
                         table_label=tgt_table_label,
                         table_id=tgt_id,
                         source_id=tgt_source_id,

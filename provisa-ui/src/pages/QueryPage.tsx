@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useRef, useCallback, useState, useMemo, useEffect } from "react";
+import { useRef, useCallback, useState, useMemo, useEffect, type ReactNode } from "react";
 import * as monaco from "monaco-editor";
 import { GraphiQL } from "graphiql";
 import { createGraphiQLFetcher, type Fetcher } from "@graphiql/toolkit";
@@ -33,6 +33,8 @@ import {
 
 // @ts-ignore — CJS fork, no type declarations
 import { Explorer } from "graphiql-explorer";
+import { fetchDomains } from "../api/admin";
+import { domainGqlAlias } from "../types/admin";
 
 /** Register # @provisa hint completions in the GraphQL Monaco editor. */
 monaco.languages.registerCompletionItemProvider("graphql", {
@@ -267,6 +269,14 @@ export function SyncedExplorerContent() {
   const { setOperationName, run } = useGraphiQLActions();
   const schema = useGraphiQL((s) => s.schema);
   const activeTabIndex = useGraphiQL((s) => s.activeTabIndex);
+  const [domainLabels, setDomainLabels] = useState<Record<string, string>>({});
+  useEffect(() => {
+    fetchDomains().then((ds) => {
+      const map: Record<string, string> = {};
+      for (const d of ds) map[domainGqlAlias(d)] = d.id;
+      setDomainLabels(map);
+    }).catch(() => {});
+  }, []);
   // Canonical per-tab query from the store — reliable during tab switches
   const tabQuery = useGraphiQL((s) => s.tabs[s.activeTabIndex]?.query ?? "");
   const [liveQuery, setQuery] = useOptimisticState(useOperationsEditorState());
@@ -300,6 +310,7 @@ export function SyncedExplorerContent() {
       checkboxChecked={checkboxChecked}
       styles={explorerStyles}
       title=""
+      domainLabels={domainLabels}
     />
   );
 }
@@ -425,7 +436,7 @@ function createProvisaFetch(
 /** Query development page — embeds GraphiQL with Explorer (REQ-062). */
 export function QueryPage() {
   const { role } = useAuth();
-  const { selectedDomain } = useDomainFilter();
+  const { checkedDomains } = useDomainFilter();
   const [domainSchema, setDomainSchema] = useState<GraphQLSchema | null>(null);
   const [redirectFormat, setRedirectFormat] = useState("");
   const [redirectThreshold, setRedirectThreshold] = useState("");
@@ -434,14 +445,18 @@ export function QueryPage() {
   useEffect(() => subscribeQueryTiming(setQueryElapsedMs), []);
 
   useEffect(() => {
-    if (!role || selectedDomain === "all") { setDomainSchema(null); return; }
-    fetch(`/data/introspection?domain=${encodeURIComponent(selectedDomain)}`, {
+    if (!role || checkedDomains.size === 0) { setDomainSchema(null); return; }
+    const controller = new AbortController();
+    const domain = [...checkedDomains].join(",");
+    fetch(`/data/introspection?domain=${encodeURIComponent(domain)}`, {
       headers: { "X-Provisa-Role": role.id },
+      signal: controller.signal,
     })
       .then((r) => r.json())
       .then((json) => { if (json.data) setDomainSchema(buildClientSchema(json.data)); })
-      .catch(() => setDomainSchema(null));
-  }, [role?.id, selectedDomain]);
+      .catch((err) => { if (err.name !== "AbortError") setDomainSchema(null); });
+    return () => controller.abort();
+  }, [role?.id, checkedDomains]);
 
   const settingsRef = useRef<RedirectSettings>({
     format: redirectFormat,

@@ -20,10 +20,14 @@ import { useDomainFilter } from "../context/DomainFilterContext";
  */
 export function SchemaExplorer() {
   const { role } = useAuth();
-  const { selectedDomain } = useDomainFilter();
+  const { domains, checkedDomains } = useDomainFilter();
   const [srcDoc, setSrcDoc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const domainParam = checkedDomains.size > 0 && checkedDomains.size < domains.length
+    ? `?domain=${encodeURIComponent([...checkedDomains].sort().join(","))}`
+    : "";
 
   useEffect(() => {
     if (!role) return;
@@ -31,8 +35,7 @@ export function SchemaExplorer() {
     setSrcDoc(null);
     setLoading(true);
 
-    const params = selectedDomain !== "all" ? `?domain=${encodeURIComponent(selectedDomain)}` : "";
-    fetch(`/data/introspection${params}`, {
+    fetch(`/data/introspection${domainParam}`, {
       headers: { "X-Provisa-Role": role.id },
     })
       .then((r) => r.json())
@@ -63,7 +66,7 @@ setTimeout(function() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [role?.id, selectedDomain]);
+  }, [role?.id, domainParam]);
 
   if (!role) return <div className="page">Select a role to view schema.</div>;
   if (error) return <div className="page error">Failed to load schema: {error}</div>;

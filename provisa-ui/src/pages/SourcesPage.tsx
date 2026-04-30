@@ -54,6 +54,9 @@ const SOURCE_TYPES = [
   { value: "redis", label: "Redis", category: "NoSQL", defaultPort: 6379 },
   { value: "kudu", label: "Apache Kudu", category: "NoSQL", defaultPort: 7051 },
   { value: "accumulo", label: "Accumulo", category: "NoSQL", defaultPort: 9995 },
+  // Graph
+  { value: "neo4j", label: "Neo4j", category: "Graph", defaultPort: 7474 },
+  { value: "sparql", label: "SPARQL", category: "Graph", defaultPort: 443 },
   // File
   { value: "sqlite", label: "SQLite", category: "File", defaultPort: 0 },
   { value: "csv", label: "CSV File", category: "File", defaultPort: 0 },
@@ -679,6 +682,35 @@ export function SourcesPage() {
               <label>API Key <input required value={authFields.api_key ?? ""} onChange={(e) => setAuthFields({ ...authFields, api_key: e.target.value })} placeholder="${env:API_KEY}" /></label>
             </>
           )}
+        </>
+      )}
+      {form.type === "neo4j" && (
+        <>
+          <label>Host <input required value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="localhost" /></label>
+          <label>Port <input type="number" required value={form.port} onChange={(e) => setForm({ ...form, port: +e.target.value })} /></label>
+          <label>Database <input value={form.database} onChange={(e) => setForm({ ...form, database: e.target.value })} placeholder="neo4j" /></label>
+          <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem", whiteSpace: "nowrap" }}>
+            <input type="checkbox" checked={authFields.use_https === "true"} onChange={(e) => setAuthFields({ ...authFields, use_https: e.target.checked ? "true" : "false" })} style={{ width: "auto" }} />
+            HTTPS
+          </label>
+          <label>Username <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="neo4j" /></label>
+          <label>Password <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} /></label>
+        </>
+      )}
+      {form.type === "sparql" && (
+        <>
+          <label style={{ gridColumn: "1 / -1" }}>Endpoint URL <input required value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="https://dbpedia.org/sparql" /></label>
+          <label style={{ gridColumn: "1 / -1" }}>Authentication
+            <select value={authType} onChange={(e) => { setAuthType(e.target.value); setAuthFields({}); }}>
+              <option value="none">No Auth</option>
+              <option value="bearer">Bearer Token</option>
+              <option value="basic">Basic Auth</option>
+            </select>
+          </label>
+          {authType === "bearer" && (
+            <label style={{ gridColumn: "1 / -1" }}>Token <input required value={authFields.token ?? ""} onChange={(e) => setAuthFields({ ...authFields, token: e.target.value })} placeholder="${env:SPARQL_TOKEN}" /></label>
+          )}
+          {authType === "basic" && <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />}
         </>
       )}
       {isKafka && (

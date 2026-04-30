@@ -29,6 +29,7 @@ from provisa.api.data.endpoint import router as data_router
 from provisa.api.data.endpoint_dev import router as dev_router
 from provisa.api.data.sdl import router as sdl_router
 from provisa.compiler.introspect import ColumnMetadata, introspect_tables
+from provisa.compiler.naming import source_to_catalog
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.rls import RLSContext, build_rls_context
 from provisa.compiler.sql_gen import CompilationContext, build_context
@@ -58,6 +59,7 @@ class AppState:
     roles: dict[str, dict] = {}  # role_id → role dict
     source_pools: SourcePool = SourcePool()
     source_types: dict[str, str] = {}  # source_id → source_type
+    source_catalogs: dict[str, str] = {}  # source_id → Trino catalog name
     source_dialects: dict[str, str] = {}  # source_id → sqlglot dialect
     masking_rules: MaskingRules = {}  # (table_id, role_id) → {col: (rule, dtype)}
     response_cache_store: CacheStore = NoopCacheStore()
@@ -251,9 +253,9 @@ SELECT
     end_timestamp,
     duration,
     status_code,
-    table_name,
-    domain_id,
-    role_id,
+    json_extract_scalar(span_attributes, '$.table_name') AS table_name,
+    json_extract_scalar(span_attributes, '$.domain_id') AS domain_id,
+    json_extract_scalar(span_attributes, '$.role_id') AS role_id,
     _date
 FROM otel.signals.traces
 WHERE span_name LIKE 'provisa.query%'
@@ -386,7 +388,7 @@ def _seed_ops_trino(trino_conn: object) -> None:
         cur.execute(ddl)
         cur.fetchall()
 
-    # Schema + physical tables — one exception aborts all (catalog not ready).
+    # Schema + physical tables — one exception aborts table creation (catalog not ready).
     try:
         _exec("CREATE SCHEMA IF NOT EXISTS otel.signals")
         for tbl_name, cols in _OPS_TABLES.items():
@@ -403,10 +405,31 @@ def _seed_ops_trino(trino_conn: object) -> None:
         _log.warning("ops Iceberg DDL failed — will retry before next schema introspection", exc_info=True)
         return
 
-    # Views — attempted independently after tables are guaranteed to exist.
+    # Column additions are non-fatal and isolated per table.
+    for tbl_name, cols in _OPS_TABLES.items():
+        try:
+            cur = trino_conn.cursor()  # type: ignore[union-attr]
+            cur.execute(f"SHOW COLUMNS FROM otel.signals.{tbl_name}")
+            existing_cols = {row[0].lower() for row in cur.fetchall()}
+            for col_name, pg_type, _ in cols:
+                if col_name.lower() not in existing_cols:
+                    trino_type = _OPS_PG_TO_TRINO.get(pg_type, "VARCHAR")
+                    try:
+                        _exec(f'ALTER TABLE otel.signals.{tbl_name} ADD COLUMN "{col_name}" {trino_type}')
+                        _log.info("ops Iceberg: added column %s.%s", tbl_name, col_name)
+                    except Exception:
+                        _log.warning("ops Iceberg: could not add column %s.%s", tbl_name, col_name, exc_info=True)
+        except Exception:
+            _log.warning("ops Iceberg: could not inspect columns for %s", tbl_name, exc_info=True)
+
+    # Views — always attempted; independent of column-addition failures.
+    # Use DROP IF EXISTS + CREATE VIEW for broad Trino version compatibility
+    # (CREATE OR REPLACE VIEW for Iceberg requires Trino 418+).
     for view_name, _, view_ddl in _OPS_VIEWS:
         try:
-            _exec(view_ddl)
+            _exec(f"DROP VIEW IF EXISTS otel.signals.{view_name}")
+            clean_ddl = view_ddl.replace("CREATE OR REPLACE VIEW", "CREATE VIEW")
+            _exec(clean_ddl)
         except Exception:
             _log.warning("ops view %s: create failed", view_name, exc_info=True)
 
@@ -654,10 +677,17 @@ async def _load_and_build(config_path: str | None = None) -> None:
         _replace_mode = os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in ("1", "true", "yes")
         await load_config(config, conn, state.trino_conn, replace=_replace_mode)
 
+    # Seed system source catalogs (not in config.sources, so must be explicit).
+    state.source_catalogs["provisa-admin"] = source_to_catalog("provisa-admin")  # provisa_admin
+    state.source_catalogs["provisa-otel"] = "otel"
+
     # Build source metadata and direct connection pools
     from provisa.executor.drivers.registry import has_driver
     for src in config.sources:
         state.source_types[src.id] = src.type.value
+        # PostgreSQL sources: database is the PG db name, not the Trino catalog name.
+        _pg_cat = source_to_catalog(src.id) if src.type.value == "postgresql" else (src.database or source_to_catalog(src.id))
+        state.source_catalogs[src.id] = _pg_cat
         state.source_dialects[src.id] = src.dialect or ""
         state.source_cache[src.id] = {
             "cache_enabled": src.cache_enabled,
@@ -1116,6 +1146,14 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         sources = {
             r["id"]: dict(r) for r in await conn.fetch("SELECT * FROM sources")
         }
+        # PostgreSQL sources store database=<pg_db_name>, but Trino accesses them via
+        # a catalog named source_to_catalog(source_id). Patch all postgresql-type sources
+        # so introspect_tables uses the right Trino catalog name.
+        # Use the DB-fetched type field (not state.source_types) so system sources like
+        # provisa-admin (not in config.sources) are also patched.
+        for _sid, _src_dict in list(sources.items()):
+            if _src_dict.get("type") == "postgresql":
+                sources[_sid] = {**_src_dict, "database": source_to_catalog(_sid)}
         roles = [
             dict(r) for r in await conn.fetch(
                 "SELECT id, capabilities, domain_access FROM roles"
@@ -1138,7 +1176,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
 
         # Introspect Trino metadata
         kafka_physical = getattr(state, "kafka_table_physical", {})
-        column_types = introspect_tables(state.trino_conn, tables, sources, kafka_physical)
+        column_types = introspect_tables(state.trino_conn, tables, sources, {**_META_TABLE_ALIAS, **(kafka_physical or {})})
         col_types_converted: dict[int, list[ColumnMetadata]] = column_types
 
         # Inject required GQL args as native filter columns for graphql_remote tables.
@@ -1350,6 +1388,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 role=role,
                 domains=domains,
                 source_types=state.source_types,
+                source_catalogs=state.source_catalogs,
                 domain_prefix=domain_prefix,
                 physical_table_map={**_META_TABLE_ALIAS, **(kafka_physical or {})},
                 naming_convention=state.global_naming_convention,

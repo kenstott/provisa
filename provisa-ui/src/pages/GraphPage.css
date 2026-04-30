@@ -1397,3 +1397,31 @@
 .nf-modal-run:hover {
   background: #818cf8;
 }
+
+.graph-domain-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.graph-domain-check-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: var(--text, #e2e8f0);
+}
+
+.graph-domain-check-item input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--accent, #6366f1);
+}
+
+.graph-domain-check-pill {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
