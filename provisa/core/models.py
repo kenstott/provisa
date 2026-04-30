@@ -465,6 +465,8 @@ class OtelConfig(BaseModel):
     log_level: Python log level name forwarded to the OTLP log exporter (default WARNING).
     compact_cron: cron expression for the Parquet→Iceberg compaction job (default every minute).
     compact_batch_size: rows per INSERT batch during compaction; reduce for low-memory Trino.
+    ops_snapshot_retention_hours: if set, expire Iceberg snapshots and orphan files older than
+        this many hours on each startup. None (default) disables expiry.
     """
 
     endpoint: str = ""
@@ -473,6 +475,7 @@ class OtelConfig(BaseModel):
     log_level: str = "WARNING"
     compact_cron: str = "* * * * *"
     compact_batch_size: int = 10
+    ops_snapshot_retention_hours: int | None = None
 
 
 class ServerConfig(BaseModel):

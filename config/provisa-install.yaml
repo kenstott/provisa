@@ -405,3 +405,4 @@ observability:
   endpoint: "http://localhost:4317"
   service_name: provisa
   sample_rate: 1.0
+  ops_snapshot_retention_hours: 1

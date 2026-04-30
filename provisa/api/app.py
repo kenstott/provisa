@@ -378,7 +378,7 @@ async def _seed_ops_pg(conn: asyncpg.Connection) -> None:
             )
 
 
-def _seed_ops_trino(trino_conn: object) -> None:
+def _seed_ops_trino(trino_conn: object, snapshot_retention_hours: int | None = None) -> None:
     """Create Iceberg schema/tables/views in Trino for the ops domain (idempotent)."""
     import logging as _ops_log
     _log = _ops_log.getLogger(__name__)
@@ -433,11 +433,10 @@ def _seed_ops_trino(trino_conn: object) -> None:
         except Exception:
             _log.warning("ops view %s: create failed", view_name, exc_info=True)
 
-    # In demo mode, expire old snapshots and orphan files to prevent MinIO disk exhaustion.
-    import os as _os
-    if _os.environ.get("GRAPHQL_DEMO_ENABLED", "").lower() in ("1", "true"):
+    # Expire old Iceberg snapshots and orphan files when retention is configured.
+    if snapshot_retention_hours is not None:
         import datetime as _dt
-        threshold = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S.000")
+        threshold = (_dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=snapshot_retention_hours)).strftime("%Y-%m-%d %H:%M:%S.000")
         for tbl_name in _OPS_TABLES:
             for proc, arg in [
                 ("expire_snapshots", f"retention_threshold => TIMESTAMP '{threshold}'"),
@@ -445,9 +444,9 @@ def _seed_ops_trino(trino_conn: object) -> None:
             ]:
                 try:
                     _exec(f"ALTER TABLE otel.signals.{tbl_name} EXECUTE {proc}({arg})")
-                    _log.info("ops Iceberg demo: %s on %s", proc, tbl_name)
+                    _log.info("ops Iceberg: %s on %s (retention %dh)", proc, tbl_name, snapshot_retention_hours)
                 except Exception:
-                    _log.warning("ops Iceberg demo: %s on %s failed (non-fatal)", proc, tbl_name, exc_info=True)
+                    _log.warning("ops Iceberg: %s on %s failed (non-fatal)", proc, tbl_name, exc_info=True)
 
 
 async def _load_and_build(config_path: str | None = None) -> None:
@@ -536,7 +535,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
     from provisa.compiler import schema_service
     schema_service.init(state.trino_conn)
 
-    _seed_ops_trino(state.trino_conn)
+    _seed_ops_trino(state.trino_conn, getattr(state, "otel_snapshot_retention_hours", None))
 
     # Create Arrow Flight SQL connection to Trino (separate gRPC port)
     trino_flight_port = int(os.environ.get("TRINO_FLIGHT_PORT", "8480"))
@@ -678,6 +677,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
     if config.observability:
         state.otel_compact_cron = config.observability.compact_cron
         state.otel_compact_batch_size = config.observability.compact_batch_size
+        state.otel_snapshot_retention_hours = config.observability.ops_snapshot_retention_hours
 
     # Initialize cache store — REDIS_URL env var overrides config
     cache_config = raw_config.get("cache", {})
@@ -1188,7 +1188,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
 
         # Ensure ops Iceberg tables exist before introspection — idempotent, self-healing
         # if _seed_ops_trino failed at startup because the otel catalog wasn't ready yet.
-        _seed_ops_trino(state.trino_conn)
+        _seed_ops_trino(state.trino_conn, getattr(state, "otel_snapshot_retention_hours", None))
 
         # Introspect Trino metadata
         kafka_physical = getattr(state, "kafka_table_physical", {})
