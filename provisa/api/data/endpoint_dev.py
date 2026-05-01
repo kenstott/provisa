@@ -138,8 +138,13 @@ async def sql_endpoint(
         getattr(state, "tables", []),
     )
 
-    # --- Step 3: Reject tables outside this role's schema scope (REQ-267) ---
-    forbidden_tables: list[str] = []
+    # --- Step 3: Validate SQL against role-scoped GraphQL-equivalent rules ---
+    from provisa.compiler.sql_validator import validate_sql
+
+    raw_tables = getattr(state, "tables", [])
+    violations = validate_sql(normalized_sql, ctx, gov_ctx, role or {}, raw_tables)
+
+    # Also reject any table not in the role's schema scope (fast path for unknown tables)
     for tbl in parsed_tree.find_all(exp.Table):
         tbl_name = tbl.name
         tbl_db = tbl.db
@@ -148,20 +153,19 @@ async def sql_endpoint(
             full_key not in gov_ctx.table_map
             and tbl_name not in gov_ctx.table_map
         ):
-            forbidden_tables.append(full_key or tbl_name)
+            from provisa.compiler.sql_validator import ValidationViolation
+            ref = full_key or tbl_name
+            violations.append(ValidationViolation(
+                "V000",
+                f"Table {ref!r} is not accessible for role {role_id!r}",
+            ))
 
-    if forbidden_tables:
-        log.warning(
-            "[SQL] role=%s forbidden tables referenced: %s",
-            role_id,
-            forbidden_tables,
-        )
+    if violations:
+        msgs = [f"[{v.code}] {v.message}" for v in violations]
+        log.warning("[SQL] role=%s violations: %s", role_id, msgs)
         raise HTTPException(
             status_code=403,
-            detail=(
-                f"Query references table(s) not accessible for role {role_id!r}: "
-                + ", ".join(forbidden_tables)
-            ),
+            detail={"violations": [{"code": v.code, "message": v.message} for v in violations]},
         )
 
     # --- Step 4: Governance on normalized SQL ---

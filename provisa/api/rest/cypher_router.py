@@ -248,6 +248,17 @@ async def cypher_query(
             role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
         )
         semantic_sql = make_semantic_sql(sql_str, ctx)
+
+        # Validate against role-scoped GraphQL-equivalent rules
+        from provisa.compiler.sql_validator import validate_sql
+        _role_dict = (state.roles.get(role_id) or {})
+        _violations = validate_sql(semantic_sql, ctx, gov_ctx, _role_dict, getattr(state, "tables", []))
+        if _violations:
+            return JSONResponse(
+                status_code=403,
+                content={"violations": [{"code": v.code, "message": v.message} for v in _violations]},
+            )
+
         governed_sql = apply_governance(semantic_sql, gov_ctx)
     except Exception as exc:
         log.exception("Cypher governance failed")

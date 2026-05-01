@@ -451,7 +451,20 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
     gov_ctx = build_governance_context(
         role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
     )
-    compiled.sql = apply_governance(make_semantic_sql(compiled.sql, ctx), gov_ctx)
+
+    # Validate semantic SQL against role-scoped GraphQL-equivalent rules
+    from provisa.compiler.sql_validator import validate_sql
+    semantic_sql_for_validation = make_semantic_sql(compiled.sql, ctx)
+    _violations = validate_sql(
+        semantic_sql_for_validation, ctx, gov_ctx, role or {}, getattr(state, "tables", [])
+    )
+    if _violations:
+        raise HTTPException(
+            status_code=403,
+            detail={"violations": [{"code": v.code, "message": v.message} for v in _violations]},
+        )
+
+    compiled.sql = apply_governance(semantic_sql_for_validation, gov_ctx)
     if compiled.nodes_sql is not None:
         compiled.nodes_sql = apply_governance(make_semantic_sql(compiled.nodes_sql, ctx), gov_ctx)
 
