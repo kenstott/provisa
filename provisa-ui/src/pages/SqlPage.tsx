@@ -983,7 +983,7 @@ export function SqlPage() {
                 <select
                   value={sampleMode}
                   onChange={(e) => setSampleMode(e.target.value as "first" | "last" | "random")}
-                  style={{ fontSize: "0.78rem", padding: "0.2rem 0.4rem", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "3px" }}
+                  className="toolbar-select"
                 >
                   <option value="first">First</option>
                   <option value="last">Last</option>
@@ -995,13 +995,14 @@ export function SqlPage() {
                   min={1}
                   max={10000}
                   onChange={(e) => setSampleSize(Math.max(1, parseInt(e.target.value) || 100))}
-                  style={{ width: "60px", fontSize: "0.78rem", padding: "0.2rem 0.4rem", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "3px" }}
+                  className="toolbar-input"
+                  style={{ width: "60px" }}
                   title="Row count"
                 />
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
-                  style={{ fontSize: "0.78rem", padding: "0.2rem 0.4rem", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "3px" }}
+                  className="toolbar-select"
                 >
                   {roles.map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
