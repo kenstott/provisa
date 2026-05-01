@@ -74,10 +74,11 @@ class TableMeta:
     source_id: str
     catalog_name: str  # Trino catalog name (source_id with hyphens → underscores)
     schema_name: str
-    table_name: str
+    table_name: str  # post-alias physical name (e.g. "registered_tables_meta")
     domain_id: str = ""  # semantic domain name (as JDBC clients see it)
     column_presets: list = field(default_factory=list)
     source_type: str = ""  # source type string (e.g. "iceberg", "postgresql") for time-travel
+    original_table_name: str = ""  # pre-alias name (e.g. "registered_tables"); empty if no alias
 
 
 @dataclass(frozen=True)
@@ -228,6 +229,7 @@ def build_context(si: object) -> CompilationContext:
             domain_id=t.domain_id,
             column_presets=table_preset_map.get(t.table_id, []),
             source_type=src_type,
+            original_table_name=t.table_name if physical_name != t.table_name else "",
         )
         ctx.tables[t.field_name] = meta
         ctx.virtual_columns[t.table_id] = {
@@ -657,6 +659,11 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:
         sl = meta.schema_name.lower()
         by_name.setdefault(nl, []).append((meta.schema_name, meta.table_name))
         by_schema_name[(sl, nl)] = (meta.schema_name, meta.table_name)
+        # Also map pre-alias name → physical name (e.g. "registered_tables" → "registered_tables_meta")
+        if meta.original_table_name:
+            orig_nl = meta.original_table_name.lower()
+            by_name.setdefault(orig_nl, []).append((meta.schema_name, meta.table_name))
+            by_schema_name[(sl, orig_nl)] = (meta.schema_name, meta.table_name)
 
     try:
         tree = sqlglot.parse_one(sql, read="postgres")

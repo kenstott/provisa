@@ -263,7 +263,9 @@ function JoinCanvas({ tables, existingRels: _existingRels, onGenerateSql }: Join
   const handleGenerateSql = () => {
     if (canvasTables.length === 0) return;
     const aliasOf = (name: string) => name.replace(/\W/g, "_").toLowerCase();
-    const schemaOf = (tbl: RegisteredTable | undefined) => tbl?.schemaName ?? "public";
+    const normDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
+    const schemaOf = (tbl: RegisteredTable | undefined) =>
+      tbl?.domainId ? normDomain(tbl.domainId) : (tbl?.schemaName ?? "public");
     const tbl0 = canvasTables[0];
     const tblObj0 = tableMap[tbl0.tableName];
     let s = `SELECT *\nFROM "${schemaOf(tblObj0)}"."${tbl0.tableName}" ${aliasOf(tbl0.tableName)}`;
@@ -895,14 +897,18 @@ export function SqlPage() {
                               >ⓘ</span>
                             )}
                           </div>
-                          {tOpen && t.columns.map((col) => (
+                          {tOpen && [
+                            ...t.columns.map((col) => ({ columnName: col.columnName, dataType: col.dataType, description: col.description, virtual: false })),
+                            { columnName: "_name_", dataType: "text", description: "Table alias/name", virtual: true },
+                            { columnName: "_domain_", dataType: "text", description: "Domain ID", virtual: true },
+                          ].map((col) => (
                             <div key={col.columnName} style={{ display: "flex", alignItems: "center" }}>
                               <button
                                 onClick={() => topTab === "sql" ? insertAtCursor(`"${t.tableName}"."${col.columnName}"`) : undefined}
-                                style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", cursor: topTab === "sql" ? "pointer" : "default", padding: "0.15rem 0 0.15rem 2.5rem", display: "flex", alignItems: "center", gap: "0.3rem", color: "var(--text-muted)", fontSize: "0.72rem", fontFamily: "monospace" }}
+                                style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", cursor: topTab === "sql" ? "pointer" : "default", padding: "0.15rem 0 0.15rem 2.5rem", display: "flex", alignItems: "center", gap: "0.3rem", color: col.virtual ? "var(--text-muted)" : "var(--text-muted)", fontSize: "0.72rem", fontFamily: "monospace", opacity: col.virtual ? 0.6 : 1 }}
                                 title={col.description ?? (topTab === "sql" ? "Click to insert quoted column" : undefined)}
                               >
-                                <Columns3 size={8} style={{ flexShrink: 0 }} />
+                                <Columns3 size={8} style={{ flexShrink: 0, color: col.virtual ? "var(--accent)" : undefined }} />
                                 <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{col.columnName}</span>
                                 {col.dataType && (
                                   <span style={{ flexShrink: 0, fontSize: "0.6rem", color: "var(--text-muted)", opacity: 0.5, fontFamily: "monospace", paddingRight: "0.1rem" }}>{col.dataType}</span>
