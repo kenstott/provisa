@@ -93,7 +93,7 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:
     for row in rows:
         table = dict(row)
         col_rows = await conn.fetch(
-            "SELECT column_name, visible_to, writable_by, unmasked_to, "
+            "SELECT column_name, data_type, visible_to, writable_by, unmasked_to, "
             "mask_type, alias, description, path, is_primary_key, object_fields, native_filter_type "
             "FROM table_columns WHERE table_id = $1 ORDER BY id",
             row["id"],
@@ -102,6 +102,7 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:
         table["columns"] = [
             {
                 "column_name": r["column_name"],
+                "data_type": r.get("data_type"),
                 "visible_to": list(r["visible_to"]),
                 "writable_by": list(r.get("writable_by") or []),
                 "unmasked_to": list(r.get("unmasked_to") or []),

@@ -194,9 +194,9 @@ def semantic_sql_to_cypher(
     offset = tree.args.get("offset")
     limit = tree.args.get("limit")
     if offset:
-        cypher_lines.append(f"SKIP {offset.this.sql()}")
+        cypher_lines.append(f"SKIP {offset.expression.sql()}")
     if limit:
-        cypher_lines.append(f"LIMIT {limit.this.sql()}")
+        cypher_lines.append(f"LIMIT {limit.expression.sql()}")
 
     return "\n".join(cypher_lines)
 

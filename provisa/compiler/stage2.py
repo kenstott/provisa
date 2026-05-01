@@ -108,6 +108,15 @@ def build_governance_context(
         gov.table_map[key_short] = meta.table_id
         gov.table_map[key_semantic] = meta.table_id
 
+    # Also allow domain.original_table_name refs (e.g. "meta.registered_tables")
+    # The ctx.tables use aliased/camelCase names; raw tables have original names.
+    for tbl in tables:
+        domain_id = tbl.get("domain_id") or ""
+        original_name = tbl.get("table_name") or ""
+        if domain_id and original_name:
+            key = f"{domain_to_sql_name(domain_id)}.{original_name}"
+            gov.table_map[key] = tbl["id"]
+
     return gov
 
 

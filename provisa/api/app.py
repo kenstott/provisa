@@ -1259,6 +1259,32 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             if not col_types_converted.get(_tid):
                 col_types_converted[_tid] = _ops_view_cols[_vname]
 
+        # Synthesize ColumnMetadata for provisa-admin meta tables (no provisa_admin Trino catalog)
+        _pg_to_trino: dict[str, str] = {
+            "text": "varchar", "character varying": "varchar", "varchar": "varchar",
+            "integer": "integer", "bigint": "bigint", "smallint": "smallint",
+            "boolean": "boolean", "double precision": "double", "float8": "double",
+            "numeric": "double", "date": "date", "timestamp": "timestamp",
+            "timestamp without time zone": "timestamp", "json": "json", "jsonb": "json",
+        }
+        for _tbl in tables:
+            if _tbl["source_id"] != "provisa-admin":
+                continue
+            _tid = _tbl["id"]
+            if col_types_converted.get(_tid):
+                continue
+            _cols = _tbl.get("columns", [])
+            if not _cols:
+                continue
+            col_types_converted[_tid] = [
+                ColumnMetadata(
+                    column_name=c["column_name"],
+                    data_type=_pg_to_trino.get(c.get("data_type") or "text", "varchar"),
+                    is_nullable=not c.get("is_primary_key", False),
+                )
+                for c in _cols
+            ]
+
         # Synthesize ColumnMetadata for graphql_remote tables (no Trino catalog)
         if _gql_remote_srcs:
             _provisa_to_trino = {

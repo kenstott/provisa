@@ -698,6 +698,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:
 
 def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
     """Replace semantic (domain.field_name) refs with physical (schema.table) refs."""
+    from provisa.compiler.naming import domain_to_sql_name, to_snake_case
     replacements: dict[str, str] = {}
     seen: set[tuple[str, str]] = set()
     for meta in ctx.tables.values():
@@ -706,7 +707,18 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
             continue
         seen.add(key)
         semantic = _semantic_table_ref(meta)
-        replacements[semantic] = _table_ref(meta, use_catalog=False)
+        physical = _table_ref(meta, use_catalog=False)
+        replacements[semantic] = physical
+        # Also handle snake_case variant of the semantic ref (e.g. "meta"."registered_tables")
+        # _semantic_table_ref strips the domain prefix then keeps camelCase; users may write snake_case
+        if "__" in meta.field_name:
+            table_part = meta.field_name.split("__", 1)[1]
+        else:
+            table_part = meta.field_name
+        snake_part = to_snake_case(table_part)
+        if snake_part != table_part:
+            domain_sql = domain_to_sql_name(meta.domain_id)
+            replacements[f'{_q(domain_sql)}.{_q(snake_part)}'] = physical
     sql = _apply_replacements(sql, replacements)
     return normalize_table_refs(sql, ctx)
 

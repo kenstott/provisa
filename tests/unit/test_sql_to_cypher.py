@@ -123,6 +123,22 @@ class TestSimpleTable:
         assert result is not None
         assert "WHERE" in result
 
+    def test_limit_produces_cypher_limit(self):
+        """Regression: LIMIT in semantic SQL must emit LIMIT in Cypher (not crash)."""
+        ctx, lm = _make_simple_ctx_and_label_map()
+        sql = 'SELECT "id", "name" FROM "public"."persons" LIMIT 10000'
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert "LIMIT 10000" in result
+
+    def test_limit_and_offset(self):
+        ctx, lm = _make_simple_ctx_and_label_map()
+        sql = 'SELECT "id" FROM "public"."persons" LIMIT 50 OFFSET 10'
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert "LIMIT 50" in result
+        assert "SKIP 10" in result
+
 
 class TestDomainPrefixedFieldName:
     """Regression: field_name with __ prefix must still resolve in domain_to_label."""

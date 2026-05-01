@@ -25,6 +25,7 @@ import { ViewsPage } from "./pages/ViewsPage";
 import { CommandsPage } from "./pages/CommandsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { GraphPage } from "./pages/GraphPage";
+import { SqlPage } from "./pages/SqlPage";
 import "./App.css";
 
 // Lazy-load SchemaExplorer — graphql-voyager requires @mui/material and browser globals
@@ -135,6 +136,14 @@ function App() {
                 element={
                   <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
                     <GraphPage />
+                  </CapabilityGate>
+                }
+              />
+              <Route
+                path="/sql"
+                element={
+                  <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
+                    <SqlPage />
                   </CapabilityGate>
                 }
               />
