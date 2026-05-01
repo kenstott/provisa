@@ -789,7 +789,7 @@ export function SqlPage() {
 
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg)" }}>
+    <div className="page" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg)" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
