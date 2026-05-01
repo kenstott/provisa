@@ -122,7 +122,7 @@ def _check_domain_access(
     table_id_to_meta: dict[int, TableMeta],
     domain_access: list[str],
 ) -> list[ValidationViolation]:
-    if not domain_access:
+    if not domain_access or "*" in domain_access:
         return []
 
     violations = []
