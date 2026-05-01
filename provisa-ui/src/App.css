@@ -648,19 +648,19 @@ main {
 .toolbar-input { cursor: text; }
 .toolbar-input::-webkit-inner-spin-button, .toolbar-input::-webkit-outer-spin-button { opacity: 0.4; }
 
-/* Button variants */
-.page .btn-primary { background: var(--primary); color: white; }
-.page .btn-primary:hover { background: var(--primary-hover); }
-.page .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
-.page .btn-secondary:hover { background: var(--border); }
-.page .btn-danger { background: var(--destructive); color: white; }
-.page .btn-danger:hover { background: #dc2626; }
-.page .btn-icon-danger { background: var(--destructive); color: white; border: none; padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; }
-.page .btn-icon-danger:hover { background: #dc2626; }
-.page .btn-icon { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; }
-.page .btn-icon:hover { background: var(--border); }
-.page .btn-icon-primary { background: var(--primary); color: white; border: none; padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; }
-.page .btn-icon-primary:hover { background: var(--primary-hover); }
+/* Button variants (scoped to .page and global) */
+.btn-primary { background: var(--primary); color: white; }
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { background: var(--border); }
+.btn-danger { background: var(--destructive); color: white; }
+.btn-danger:hover { background: #dc2626; }
+.btn-icon-danger { background: var(--destructive); color: white; border: none; padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; }
+.btn-icon-danger:hover { background: #dc2626; }
+.btn-icon { background: var(--surface); color: var(--text); border: 1px solid var(--border); padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; }
+.btn-icon:hover { background: var(--border); }
+.btn-icon-primary { background: var(--primary); color: white; border: none; padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; }
+.btn-icon-primary:hover { background: var(--primary-hover); }
 .page .btn-icon-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .page .btn-sm { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
 
