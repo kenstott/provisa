@@ -24,8 +24,27 @@ import {
   updateSettings,
   createDomain,
   deleteDomain,
+  fetchLocalUsers,
+  createLocalUser,
+  deleteLocalUser,
+  fetchUserAssignments,
+  addUserAssignment,
+  removeUserAssignment,
+  fetchOrgs,
+  createOrg,
+  deleteOrg,
+  fetchOrgMembers,
+  addOrgMember,
+  removeOrgMember,
+  fetchOrgRoles,
+  deleteOrgRole,
+  fetchInvites,
+  createInvite,
+  revokeInvite,
 } from "../api/admin";
+import type { LocalUser, UserAssignment, Org, OrgMember, OrgInvite } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
+import { useAuth } from "../context/AuthContext";
 import type { Domain } from "../types/admin";
 import { domainGqlAlias } from "../types/admin";
 import { MVManager } from "../components/admin/MVManager";
@@ -43,12 +62,18 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/scheduled-tasks": "Scheduled Tasks",
   "/admin/system-health": "System Health",
   "/admin/observability": "Observability",
+  "/admin/local-users": "Local Users",
+  "/admin/orgs": "Orgs",
+  "/admin/roles": "Roles",
 };
 
 /** Admin overview page — dashboard, config management, platform settings. */
 export function AdminPage() {
   const location = useLocation();
   const activeTab = ROUTE_TO_SECTION[location.pathname] ?? "Overview";
+  const { capabilities, activeOrgId } = useAuth();
+  const isSuperAdmin = capabilities.includes("superadmin") || capabilities.includes("admin");
+  const orgId = activeOrgId ?? "root";
   const [stats, setStats] = useState<Record<string, number>>({});
   const [domains, setDomains] = useState<Domain[]>([]);
   const [newDomainId, setNewDomainId] = useState("");
@@ -63,6 +88,34 @@ export function AdminPage() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [localUsers, setLocalUsers] = useState<LocalUser[]>([]);
+  const [allRoles, setAllRoles] = useState<string[]>([]);
+  const [allDomains, setAllDomains] = useState<string[]>([]);
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newDisplayName, setNewDisplayName] = useState("");
+  const [userMsg, setUserMsg] = useState("");
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  const [userAssignments, setUserAssignments] = useState<Record<string, UserAssignment[]>>({});
+  const [assignRole, setAssignRole] = useState("");
+  const [assignDomain, setAssignDomain] = useState("");
+
+  const [orgs, setOrgs] = useState<Org[]>([]);
+  const [newOrgId, setNewOrgId] = useState("");
+  const [newOrgName, setNewOrgName] = useState("");
+  const [orgMsg, setOrgMsg] = useState("");
+  const [expandedOrgId, setExpandedOrgId] = useState<string | null>(null);
+  const [orgMembers, setOrgMembers] = useState<Record<string, OrgMember[]>>({});
+  const [addMemberUserId, setAddMemberUserId] = useState("");
+
+  const [orgRoles, setOrgRoles] = useState<import("../types/auth").Role[]>([]);
+  const [roleMsg, setRoleMsg] = useState("");
+
+  const [orgInvites, setOrgInvites] = useState<OrgInvite[]>([]);
+  const [inviteOrgId, setInviteOrgId] = useState("");
+  const [inviteMsg, setInviteMsg] = useState("");
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -73,8 +126,12 @@ export function AdminPage() {
       fetchRoles(),
       fetchRlsRules(),
       fetchSettings(),
+      fetchLocalUsers().catch(() => [] as LocalUser[]),
+      fetchOrgs().catch(() => [] as Org[]),
+      fetchOrgRoles(orgId).catch(() => [] as import("../types/auth").Role[]),
+      fetchInvites().catch(() => [] as OrgInvite[]),
     ])
-      .then(([sources, doms, tables, rels, roles, rls, s]) => {
+      .then(([sources, doms, tables, rels, roles, rls, s, users, orgsResult, rolesResult, invitesResult]) => {
         setStats({
           Sources: sources.length,
           Domains: doms.length,
@@ -85,9 +142,15 @@ export function AdminPage() {
         });
         setDomains(doms);
         setSettings(s);
+        setLocalUsers(users as LocalUser[]);
+        setAllRoles(roles.map((r) => r.id));
+        setAllDomains(doms.filter((d) => d.id !== "").map((d) => d.id));
+        setOrgs(orgsResult as Org[]);
+        setOrgRoles(rolesResult as import("../types/auth").Role[]);
+        setOrgInvites(invitesResult as OrgInvite[]);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [orgId]);
 
   const handleDownload = async () => {
     const yaml = await downloadConfig();
@@ -158,6 +221,134 @@ export function AdminPage() {
     setDomains(updated);
     setStats((s) => ({ ...s, Domains: updated.length }));
     setDomainMsg(`Deleted "${id}"`);
+  };
+
+  const handleAddUser = async () => {
+    if (!newUsername.trim() || !newPassword.trim()) return;
+    setUserMsg("");
+    try {
+      await createLocalUser({
+        username: newUsername.trim(),
+        password: newPassword,
+        email: newEmail.trim() || undefined,
+        display_name: newDisplayName.trim() || undefined,
+      });
+      const updated = await fetchLocalUsers();
+      setLocalUsers(updated);
+      setNewUsername("");
+      setNewPassword("");
+      setNewEmail("");
+      setNewDisplayName("");
+      setUserMsg(`Created "${newUsername.trim()}"`);
+    } catch (e: unknown) {
+      setUserMsg(e instanceof Error ? e.message : "Create failed");
+    }
+  };
+
+  const handleDeleteUser = async (userId: string, username: string) => {
+    await deleteLocalUser(userId);
+    setLocalUsers((prev) => prev.filter((u) => u.id !== userId));
+    if (expandedUserId === userId) setExpandedUserId(null);
+    setUserMsg(`Deleted "${username}"`);
+  };
+
+  const handleExpandUser = async (userId: string) => {
+    if (expandedUserId === userId) {
+      setExpandedUserId(null);
+      return;
+    }
+    setExpandedUserId(userId);
+    setAssignRole(allRoles[0] ?? "");
+    setAssignDomain("*");
+    if (!userAssignments[userId]) {
+      const rows = await fetchUserAssignments(userId);
+      setUserAssignments((prev) => ({ ...prev, [userId]: rows }));
+    }
+  };
+
+  const handleAddAssignment = async (userId: string) => {
+    if (!assignRole) return;
+    try {
+      await addUserAssignment(userId, assignRole, assignDomain || "*");
+      const rows = await fetchUserAssignments(userId);
+      setUserAssignments((prev) => ({ ...prev, [userId]: rows }));
+    } catch (e: unknown) {
+      setUserMsg(e instanceof Error ? e.message : "Assignment failed");
+    }
+  };
+
+  const handleRemoveAssignment = async (userId: string, assignmentId: number) => {
+    await removeUserAssignment(userId, assignmentId);
+    setUserAssignments((prev) => ({
+      ...prev,
+      [userId]: (prev[userId] ?? []).filter((a) => a.id !== assignmentId),
+    }));
+  };
+
+  const handleCreateOrg = async () => {
+    if (!newOrgId.trim() || !newOrgName.trim()) return;
+    await createOrg(newOrgId.trim(), newOrgName.trim());
+    setOrgs(await fetchOrgs());
+    setNewOrgId(""); setNewOrgName(""); setOrgMsg(`Created "${newOrgName.trim()}"`);
+  };
+
+  const handleDeleteOrg = async (id: string) => {
+    await deleteOrg(id);
+    setOrgs(await fetchOrgs());
+    setOrgMsg(`Deleted "${id}"`);
+  };
+
+  const handleExpandOrg = async (id: string) => {
+    if (expandedOrgId === id) { setExpandedOrgId(null); return; }
+    setExpandedOrgId(id);
+    if (!orgMembers[id]) {
+      const members = await fetchOrgMembers(id);
+      setOrgMembers((prev) => ({ ...prev, [id]: members }));
+    }
+  };
+
+  const handleAddOrgMember = async (oid: string) => {
+    if (!addMemberUserId.trim()) return;
+    await addOrgMember(oid, addMemberUserId.trim());
+    const members = await fetchOrgMembers(oid);
+    setOrgMembers((prev) => ({ ...prev, [oid]: members }));
+    setAddMemberUserId("");
+  };
+
+  const handleRemoveOrgMember = async (oid: string, userId: string) => {
+    await removeOrgMember(oid, userId);
+    setOrgMembers((prev) => ({
+      ...prev,
+      [oid]: (prev[oid] ?? []).filter((m) => m.user_id !== userId),
+    }));
+  };
+
+  const handleDeleteOrgRole = async (roleId: string) => {
+    await deleteOrgRole(orgId, roleId);
+    setOrgRoles((prev) => prev.filter((r) => r.id !== roleId));
+    setRoleMsg(`Deleted "${roleId}"`);
+  };
+
+  const handleCreateInvite = async () => {
+    if (!inviteOrgId.trim()) return;
+    const invite = await createInvite(inviteOrgId.trim());
+    setOrgInvites(await fetchInvites());
+    const url = `${window.location.origin}/register?invite=${invite.token}`;
+    await navigator.clipboard.writeText(url);
+    setInviteMsg(`Invite created and copied: ${url}`);
+    setInviteOrgId("");
+  };
+
+  const handleRevokeInvite = async (token: string) => {
+    await revokeInvite(token);
+    setOrgInvites((prev) => prev.filter((i) => i.token !== token));
+  };
+
+  const handleCopyInvite = async (token: string) => {
+    const url = `${window.location.origin}/register?invite=${token}`;
+    await navigator.clipboard.writeText(url);
+    setCopiedToken(token);
+    setTimeout(() => setCopiedToken(null), 2000);
   };
 
   if (loading) return <div className="page">Loading admin dashboard...</div>;
@@ -382,6 +573,251 @@ export function AdminPage() {
       {activeTab === "System Health" && <SystemHealth />}
       {activeTab === "Observability" && settings && (
         <ObservabilityTab settings={settings} setSettings={setSettings} />
+      )}
+      {activeTab === "Local Users" && (
+        <>
+          {userMsg && <div className="success" style={{ marginBottom: "0.5rem" }}>{userMsg}</div>}
+          <table className="data-table" style={{ marginBottom: "1rem" }}>
+            <thead>
+              <tr><th>Username</th><th>Email</th><th>Display Name</th><th>Active</th><th></th></tr>
+            </thead>
+            <tbody>
+              {localUsers.length === 0 && (
+                <tr><td colSpan={5} style={{ color: "var(--text-muted)", textAlign: "center" }}>No local users</td></tr>
+              )}
+              {localUsers.map((u) => (
+                <>
+                  <tr key={u.id}>
+                    <td style={{ fontFamily: "monospace" }}>
+                      <button
+                        style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", padding: 0, fontFamily: "monospace" }}
+                        onClick={() => handleExpandUser(u.id)}
+                      >
+                        {expandedUserId === u.id ? "▾" : "▸"} {u.username}
+                      </button>
+                    </td>
+                    <td>{u.email || "—"}</td>
+                    <td>{u.display_name || "—"}</td>
+                    <td>{u.is_active ? "Yes" : "No"}</td>
+                    <td>
+                      <button className="btn-icon-danger" title="Delete" onClick={() => handleDeleteUser(u.id, u.username)}>
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                  {expandedUserId === u.id && (
+                    <tr key={`${u.id}-assign`}>
+                      <td colSpan={5} style={{ paddingLeft: "2rem", background: "var(--bg-alt, var(--bg))" }}>
+                        <div style={{ padding: "0.75rem 0" }}>
+                          <strong style={{ fontSize: "0.85rem" }}>Role:Domain Assignments</strong>
+                          <div style={{ marginTop: "0.5rem", display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
+                            {(userAssignments[u.id] ?? []).length === 0 && (
+                              <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>No assignments</span>
+                            )}
+                            {(userAssignments[u.id] ?? []).map((a) => (
+                              <span key={a.id} style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", background: "var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.8rem" }}>
+                                {a.role_id}:{a.domain_id}
+                                <button
+                                  style={{ background: "none", border: "none", color: "var(--danger, #e55)", cursor: "pointer", padding: 0, lineHeight: 1 }}
+                                  onClick={() => handleRemoveAssignment(u.id, a.id)}
+                                  title="Remove"
+                                >×</button>
+                              </span>
+                            ))}
+                          </div>
+                          <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                            <select
+                              value={assignRole}
+                              onChange={(e) => setAssignRole(e.target.value)}
+                              style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.3rem", borderRadius: "4px", fontSize: "0.85rem" }}
+                            >
+                              {allRoles.map((r) => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                            <select
+                              value={assignDomain}
+                              onChange={(e) => setAssignDomain(e.target.value)}
+                              style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.3rem", borderRadius: "4px", fontSize: "0.85rem" }}
+                            >
+                              <option value="*">* (all domains)</option>
+                              {allDomains.map((d) => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                            <button className="btn-primary" style={{ fontSize: "0.8rem", padding: "0.3rem 0.7rem" }} onClick={() => handleAddAssignment(u.id)} disabled={!assignRole}>
+                              Add
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ))}
+            </tbody>
+          </table>
+          <h4 style={{ marginBottom: "0.5rem" }}>Create User</h4>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: "480px" }}>
+            <input
+              value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value)}
+              placeholder="Username *"
+              style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }}
+            />
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Password *"
+              style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }}
+            />
+            <input
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              placeholder="Email (optional)"
+              style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }}
+            />
+            <input
+              value={newDisplayName}
+              onChange={(e) => setNewDisplayName(e.target.value)}
+              placeholder="Display name (optional)"
+              style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }}
+            />
+            <button
+              className="btn-primary"
+              onClick={handleAddUser}
+              disabled={!newUsername.trim() || !newPassword.trim()}
+              style={{ alignSelf: "flex-start" }}
+            >
+              Create User
+            </button>
+          </div>
+        </>
+      )}
+      {activeTab === "Orgs" && isSuperAdmin && (
+        <div>
+          <h3>Organizations</h3>
+          {orgMsg && <p className="form-msg">{orgMsg}</p>}
+          <table className="admin-table">
+            <thead><tr><th>ID</th><th>Name</th><th>Members</th><th></th></tr></thead>
+            <tbody>
+              {orgs.map((org) => (
+                <>
+                  <tr key={org.id}>
+                    <td>{org.id}</td>
+                    <td>{org.name}</td>
+                    <td>
+                      <button className="btn-secondary" onClick={() => handleExpandOrg(org.id)}>
+                        {expandedOrgId === org.id ? "Hide" : "Members"}
+                      </button>
+                    </td>
+                    <td>
+                      {org.id !== "root" && (
+                        <button className="btn-danger" onClick={() => handleDeleteOrg(org.id)}>
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                  {expandedOrgId === org.id && (
+                    <tr key={`${org.id}-members`}>
+                      <td colSpan={4}>
+                        <div className="assignment-panel">
+                          {(orgMembers[org.id] ?? []).map((m) => (
+                            <span key={m.user_id} className="assignment-chip">
+                              {m.display_name ?? m.email ?? m.user_id}
+                              <button onClick={() => handleRemoveOrgMember(org.id, m.user_id)}>×</button>
+                            </span>
+                          ))}
+                          <div className="assignment-add">
+                            <input
+                              placeholder="user_id"
+                              value={addMemberUserId}
+                              onChange={(e) => setAddMemberUserId(e.target.value)}
+                            />
+                            <button className="btn-primary" onClick={() => handleAddOrgMember(org.id)}>Add</button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </>
+              ))}
+            </tbody>
+          </table>
+          <h4>Create Org</h4>
+          <div className="form-row">
+            <input placeholder="ID (slug)" value={newOrgId} onChange={(e) => setNewOrgId(e.target.value)} />
+            <input placeholder="Name" value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} />
+            <button className="btn-primary" onClick={handleCreateOrg}>Create</button>
+          </div>
+          <h3 style={{ marginTop: 24 }}>Invite Links</h3>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <select value={inviteOrgId} onChange={(e) => setInviteOrgId(e.target.value)}>
+              <option value="">Select org...</option>
+              {orgs.map((o) => <option key={o.id} value={o.id}>{o.name} ({o.id})</option>)}
+            </select>
+            <button className="btn-primary" onClick={handleCreateInvite} disabled={!inviteOrgId}>
+              Generate Invite Link
+            </button>
+          </div>
+          {inviteMsg && <div style={{ marginBottom: 8, color: "var(--muted-foreground)", fontSize: 13 }}>{inviteMsg}</div>}
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr>
+                {["Org", "Token", "Created By", "Expires", "Status", ""].map((h) => (
+                  <th key={h} style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid var(--border)" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {orgInvites.map((inv) => (
+                <tr key={inv.token}>
+                  <td style={{ padding: "4px 8px" }}>{inv.org_name}</td>
+                  <td style={{ padding: "4px 8px", fontFamily: "monospace", fontSize: 11 }}>{inv.token.slice(0, 8)}…</td>
+                  <td style={{ padding: "4px 8px" }}>{inv.created_by}</td>
+                  <td style={{ padding: "4px 8px" }}>{new Date(inv.expires_at).toLocaleDateString()}</td>
+                  <td style={{ padding: "4px 8px" }}>{inv.used_at ? `Used ${new Date(inv.used_at).toLocaleDateString()}` : "Active"}</td>
+                  <td style={{ padding: "4px 8px", display: "flex", gap: 4 }}>
+                    {!inv.used_at && (
+                      <button onClick={() => handleCopyInvite(inv.token)} style={{ fontSize: 12 }}>
+                        {copiedToken === inv.token ? "Copied!" : "Copy"}
+                      </button>
+                    )}
+                    {!inv.used_at && (
+                      <button onClick={() => handleRevokeInvite(inv.token)} style={{ fontSize: 12, color: "var(--destructive)" }}>
+                        Revoke
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {orgInvites.length === 0 && (
+                <tr><td colSpan={6} style={{ padding: "8px", color: "var(--muted-foreground)" }}>No invites</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {activeTab === "Roles" && (
+        <div>
+          <h3>Roles — {orgId}</h3>
+          {roleMsg && <p className="form-msg">{roleMsg}</p>}
+          <table className="admin-table">
+            <thead><tr><th>ID</th><th>Capabilities</th><th>Domain Access</th><th></th></tr></thead>
+            <tbody>
+              {orgRoles.map((role) => (
+                <tr key={role.id}>
+                  <td>{role.id}</td>
+                  <td>{role.capabilities.join(", ")}</td>
+                  <td>{role.domain_access.join(", ")}</td>
+                  <td>
+                    <button className="btn-danger" onClick={() => handleDeleteOrgRole(role.id)}>
+                      <Trash2 size={14} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       </div>
     </div>

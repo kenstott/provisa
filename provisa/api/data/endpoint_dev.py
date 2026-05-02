@@ -38,6 +38,7 @@ router = APIRouter(prefix="/data", tags=["data"])
 class SQLRequest(BaseModel):
     sql: str
     role: str = "admin"
+    discovery_mode: bool = False
 
 
 def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, request_role: str) -> str:
@@ -108,7 +109,7 @@ async def sql_endpoint(
         raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
 
     role = state.roles.get(role_id)
-    if role:
+    if role and not request.discovery_mode:
         try:
             check_capability(role, Capability.QUERY_DEVELOPMENT)
         except InsufficientRightsError as e:
@@ -142,23 +143,32 @@ async def sql_endpoint(
     from provisa.compiler.sql_validator import validate_sql
 
     raw_tables = getattr(state, "tables", [])
-    violations = validate_sql(normalized_sql, ctx, gov_ctx, role or {}, raw_tables)
 
-    # Also reject any table not in the role's schema scope (fast path for unknown tables)
-    for tbl in parsed_tree.find_all(exp.Table):
-        tbl_name = tbl.name
-        tbl_db = tbl.db
-        full_key = f"{tbl_db}.{tbl_name}" if tbl_db else tbl_name
-        if (
-            full_key not in gov_ctx.table_map
-            and tbl_name not in gov_ctx.table_map
-        ):
-            from provisa.compiler.sql_validator import ValidationViolation
-            ref = full_key or tbl_name
-            violations.append(ValidationViolation(
-                "V000",
-                f"Table {ref!r} is not accessible for role {role_id!r}",
-            ))
+    # In discovery mode, augment table_map with all tables from all contexts
+    if request.discovery_mode:
+        for all_ctx in state.contexts.values():
+            for meta in all_ctx.tables.values():
+                gov_ctx.table_map.setdefault(meta.table_name, meta.table_id)
+                gov_ctx.table_map.setdefault(f"{meta.schema_name}.{meta.table_name}", meta.table_id)
+
+    violations = validate_sql(normalized_sql, ctx, gov_ctx, role or {}, raw_tables, discovery_mode=request.discovery_mode)
+
+    if not request.discovery_mode:
+        # Reject any table not in the role's schema scope (fast path for unknown tables)
+        for tbl in parsed_tree.find_all(exp.Table):
+            tbl_name = tbl.name
+            tbl_db = tbl.db
+            full_key = f"{tbl_db}.{tbl_name}" if tbl_db else tbl_name
+            if (
+                full_key not in gov_ctx.table_map
+                and tbl_name not in gov_ctx.table_map
+            ):
+                from provisa.compiler.sql_validator import ValidationViolation
+                ref = full_key or tbl_name
+                violations.append(ValidationViolation(
+                    "V000",
+                    f"Table {ref!r} is not accessible for role {role_id!r}",
+                ))
 
     if violations:
         msgs = [f"[{v.code}] {v.message}" for v in violations]

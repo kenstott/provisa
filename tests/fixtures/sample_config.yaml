@@ -79,10 +79,10 @@ roles:
     capabilities:
       - source_registration
       - table_registration
-      - relationship_registration
-      - security_config
+      - create_relationship
+      - access_config
       - query_development
-      - query_approval
+      - approve_view
       - admin
     domain_access: ["*"]
   - id: analyst

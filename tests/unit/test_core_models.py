@@ -520,7 +520,7 @@ class TestRole:
     def test_role_with_parent(self):
         r = Role(
             id="senior_analyst",
-            capabilities=["query_approval"],
+            capabilities=["approve_view"],
             domain_access=["finance"],
             parent_role_id="analyst",
         )
@@ -547,7 +547,7 @@ class TestFlattenRoles:
             Role(id="base", capabilities=["query_development"], domain_access=["sales"]),
             Role(
                 id="senior",
-                capabilities=["query_approval"],
+                capabilities=["approve_view"],
                 domain_access=["finance"],
                 parent_role_id="base",
             ),
@@ -555,14 +555,14 @@ class TestFlattenRoles:
         flat = flatten_roles(roles)
         senior = next(r for r in flat if r.id == "senior")
         assert "query_development" in senior.capabilities
-        assert "query_approval" in senior.capabilities
+        assert "approve_view" in senior.capabilities
 
     def test_child_inherits_parent_domain_access(self):
         roles = [
             Role(id="base", capabilities=["query_development"], domain_access=["sales"]),
             Role(
                 id="senior",
-                capabilities=["query_approval"],
+                capabilities=["approve_view"],
                 domain_access=["finance"],
                 parent_role_id="base",
             ),
@@ -591,7 +591,7 @@ class TestFlattenRoles:
             Role(id="analyst", capabilities=["query_development"], domain_access=["sales"]),
             Role(
                 id="lead",
-                capabilities=["query_approval"],
+                capabilities=["approve_view"],
                 domain_access=["finance"],
                 parent_role_id="analyst",
             ),
@@ -612,7 +612,7 @@ class TestFlattenRoles:
             Role(id="base", capabilities=["query_development"], domain_access=["sales"]),
             Role(
                 id="child",
-                capabilities=["query_approval"],
+                capabilities=["approve_view"],
                 domain_access=[],
                 parent_role_id="base",
             ),

@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 import { useState, useEffect, useRef, useLayoutEffect, Fragment, useCallback } from "react";
-import { Trash2, Pencil, Sparkles, Save, X, Copy } from "lucide-react";
+import { Trash2, Pencil, Sparkles, Save, X } from "lucide-react";
+import { CopyButton } from "../components/CopyButton";
 import { createPortal } from "react-dom";
 import {
   fetchTables, fetchSources, fetchDomains, fetchRoles,
@@ -46,7 +47,7 @@ function DescriptionField({ value, onChange, placeholder, rows = 2, onGenerate, 
         style={focused ? { height: 300, transition: "height 0.15s ease" } : { transition: "height 0.15s ease" }}
       />
       <div className="desc-field-toolbar">
-        <button type="button" title="Copy" onClick={() => navigator.clipboard.writeText(value)}><Copy size={11} /></button>
+        <CopyButton text={value} size={11} />
         {onGenerate && (
           <button type="button" title="Generate with AI" onClick={onGenerate} disabled={generating}><Sparkles size={11} /></button>
         )}

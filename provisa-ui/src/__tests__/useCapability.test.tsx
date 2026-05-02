@@ -32,10 +32,22 @@ function makeAuthValue(caps: Capability[]) {
     selectedRoles: [role],
     capabilities: caps,
     domainAccess: ['*'],
-    toggleRole: vi.fn(),
+    selectedRole: role as Role | 'all',
+    selectedDomain: null,
+    selectRole: vi.fn(),
+    selectDomain: vi.fn(),
     availableRoles: [role],
+    availableDomains: ['*'],
+    assignments: [],
+    devMode: false,
     loading: false,
     error: null,
+    selectOrg: vi.fn(),
+    activeOrgId: null,
+    orgMemberships: [],
+    userId: null,
+    email: null,
+    displayName: null,
   }
 }
 
@@ -67,10 +79,10 @@ describe('useCapability', () => {
     const capabilitiesToCheck: Capability[] = [
       'source_registration',
       'table_registration',
-      'relationship_registration',
-      'security_config',
+      'create_relationship',
+      'access_config',
       'query_development',
-      'query_approval',
+      'approve_view',
       'full_results',
     ]
 
@@ -97,7 +109,7 @@ describe('useCapabilities', () => {
   })
 
   it('returns true when all required capabilities are present', () => {
-    mockUseAuth.mockReturnValue(makeAuthValue(['query_development', 'full_results', 'query_approval']))
+    mockUseAuth.mockReturnValue(makeAuthValue(['query_development', 'full_results', 'approve_view']))
 
     const { result } = renderHook(() => useCapabilities(['query_development', 'full_results']))
     expect(result.current).toBe(true)
@@ -114,7 +126,7 @@ describe('useCapabilities', () => {
     mockUseAuth.mockReturnValue(makeAuthValue(['admin']))
 
     const { result } = renderHook(() =>
-      useCapabilities(['source_registration', 'security_config', 'query_approval'])
+      useCapabilities(['source_registration', 'access_config', 'approve_view'])
     )
     expect(result.current).toBe(true)
   })

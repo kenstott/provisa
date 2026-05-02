@@ -215,6 +215,12 @@ def _build_connection_types(
     return edge_type, connection_type
 
 
+# Domains implicitly reachable via JOIN from any data domain (traversal only).
+# Tables in these domains are included in all role contexts so SQL JOINs
+# can reference them, but V001 still blocks direct FROM-clause access.
+_IMPLICIT_TRAVERSAL_DOMAINS: frozenset[str] = frozenset({"meta", "ops"})
+
+
 def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
     """Filter tables by role's domain access. Build per-table metadata."""
     role = si.role
@@ -223,7 +229,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
 
     result: list[_TableInfo] = []
     for table in si.tables:
-        if not all_access and table["domain_id"] not in accessible:
+        if not all_access and table["domain_id"] not in accessible and table["domain_id"] not in _IMPLICIT_TRAVERSAL_DOMAINS:
             continue
 
         table_id = table["id"]
@@ -817,6 +823,13 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         None,
     )
 
+    # Find ops tables with a table_name FK column for synthetic traversal fields
+    _ops_traversal_targets: list[_TableInfo] = [
+        t for t in tables
+        if t.domain_id == "ops"
+        and any(c["column_name"] == "table_name" for c in t.visible_columns)
+    ]
+
     for t in tables:
         tid = t.table_id
 
@@ -834,6 +847,15 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
                     gql_types[_meta_rt.table_id],
                     description="Registration metadata for this table",
                 )
+
+            # Synthetic traversal fields: every data table → ops tables with table_name FK
+            if info.domain_id not in _IMPLICIT_TRAVERSAL_DOMAINS:
+                for ops_t in _ops_traversal_targets:
+                    if ops_t.table_id in gql_types:
+                        fields[f"_{ops_t.field_name}"] = GraphQLField(
+                            GraphQLList(GraphQLNonNull(gql_types[ops_t.table_id])),
+                            description=f"Operational {ops_t.table_name} records for this table",
+                        )
 
             # Add relationship fields
             for rel in visible_rels:
@@ -886,9 +908,15 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
     query_fields: dict[str, GraphQLField] = {}
     _root_ids = si.root_table_ids  # None → all tables are roots (normal build)
 
+    _accessible_domains = set(si.role.get("domain_access") or [])
+    _all_access = "*" in _accessible_domains
+
     for t in tables:
         if _root_ids is not None and t.table_id not in _root_ids:
             continue  # domain-filtered build: foreign-domain tables are type-defs only
+        # Implicit traversal domains are type-defs only unless role has direct access
+        if not _all_access and t.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS and t.domain_id not in _accessible_domains:
+            continue
         gql_type = gql_types[t.table_id]
         args: dict[str, GraphQLArgument] = {
             "limit": GraphQLArgument(GraphQLInt),

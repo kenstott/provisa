@@ -9,7 +9,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { Copy, X } from "lucide-react";
+import { X } from "lucide-react";
+import { CopyButton } from "../CopyButton";
 
 export function FilterInput({ value, onChange, placeholder }: {
   value: string;
@@ -26,7 +27,7 @@ export function FilterInput({ value, onChange, placeholder }: {
         onChange={(e) => onChange(e.target.value)}
       />
       <div className="filter-hover-btns">
-        <button type="button" title="Copy" onClick={() => navigator.clipboard.writeText(value)}><Copy size={11} /></button>
+        <CopyButton text={value} size={11} />
         <button type="button" title="Clear" onClick={() => onChange("")}><X size={11} /></button>
       </div>
     </div>

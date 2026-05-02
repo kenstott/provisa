@@ -226,7 +226,7 @@ _OPS_TABLES: dict[str, list[tuple[str, str, bool]]] = {
 # Each entry: (view_name, [(col_name, data_type, is_pk)], ddl_sql)
 _OPS_VIEWS: list[tuple[str, list[tuple[str, str, bool]], str]] = [
     (
-        "provisa_queries",
+        "queries",
         [
             ("trace_id", "text", True),
             ("span_id", "text", False),
@@ -244,7 +244,7 @@ _OPS_VIEWS: list[tuple[str, list[tuple[str, str, bool]], str]] = [
             ("_date", "date", False),
         ],
         """\
-CREATE OR REPLACE VIEW otel.signals.provisa_queries AS
+CREATE OR REPLACE VIEW otel.signals.queries AS
 SELECT
     trace_id,
     span_id,
@@ -331,6 +331,24 @@ async def _seed_meta_domain(conn: asyncpg.Connection) -> None:
                 col["data_type"],
                 col["column_name"] in pk_cols,
             )
+
+    # Register registered_tables → table_columns relationship (table_id FK)
+    await conn.execute(
+        """
+        INSERT INTO relationships (id, source_table_id, target_table_id,
+                                   source_column, target_column, cardinality,
+                                   materialize, refresh_interval,
+                                   target_function_name, function_arg,
+                                   alias, graphql_alias, disable_cypher, source_json_key)
+        SELECT 'meta:registered_tables:table_columns', rt.id, tc.id,
+               'id', 'table_id', 'one-to-many',
+               false, 300, null, null, null, null, false, null
+        FROM registered_tables rt, registered_tables tc
+        WHERE rt.source_id = 'provisa-admin' AND rt.table_name = 'registered_tables'
+          AND tc.source_id = 'provisa-admin' AND tc.table_name = 'table_columns'
+        ON CONFLICT (id) DO NOTHING
+        """
+    )
 
 
 async def _seed_ops_pg(conn: asyncpg.Connection) -> None:
@@ -529,7 +547,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
         host=trino_host,
         port=trino_port,
         user="provisa",
-        catalog="postgresql",
+        catalog="system",
         schema="public",
         http_scheme="http",
         request_timeout=10,
@@ -1887,7 +1905,7 @@ def create_app() -> FastAPI:
 
     # Conditionally add auth middleware and routes
     from provisa.auth.wiring import wire_auth
-    wire_auth(app, state.auth_config)
+    wire_auth(app, state.auth_config, db_pool=state.pg_pool)
 
     app.include_router(data_router)
     app.include_router(dev_router)
@@ -1960,6 +1978,24 @@ def create_app() -> FastAPI:
 
     from provisa.api.admin.views import router as views_router
     app.include_router(views_router)
+
+    from provisa.api.admin.local_users_router import router as local_users_router
+    app.include_router(local_users_router)
+
+    from provisa.api.admin.orgs_router import router as orgs_router
+    app.include_router(orgs_router)
+
+    from provisa.api.admin.invites_router import router as invites_router
+    app.include_router(invites_router)
+
+    from provisa.api.admin.roles_router import router as roles_router
+    app.include_router(roles_router)
+
+    from provisa.api.auth_router import router as auth_router
+    app.include_router(auth_router)
+
+    from provisa.api.setup_router import router as setup_router
+    app.include_router(setup_router)
 
     # Cypher query endpoint (Phase AU)
     try:

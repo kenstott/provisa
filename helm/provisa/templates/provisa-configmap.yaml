@@ -144,7 +144,7 @@ data:
 
     roles:
       - id: admin
-        capabilities: [source_registration, table_registration, relationship_registration, security_config, query_development, query_approval, full_results, admin]
+        capabilities: [source_registration, table_registration, create_relationship, access_config, query_development, approve_view, full_results, admin]
         domain_access: ["*"]
       - id: analyst
         capabilities: [query_development]

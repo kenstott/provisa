@@ -13,13 +13,23 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { LoginPage } from '../pages/LoginPage'
 
+vi.mock('../api/admin', () => ({
+  fetchProviderType: vi.fn().mockResolvedValue(null),
+  registerAccount: vi.fn(),
+}))
+
+import { fetchProviderType } from '../api/admin'
+const mockFetchProviderType = vi.mocked(fetchProviderType)
+
 describe('LoginPage', () => {
   const onLoginSuccess = vi.fn()
 
   beforeEach(() => {
     onLoginSuccess.mockReset()
-    // Reset fetch mock between tests
+    mockFetchProviderType.mockResolvedValue(null)
     vi.restoreAllMocks()
+    // Re-apply the mock after restoreAllMocks
+    mockFetchProviderType.mockResolvedValue(null)
   })
 
   afterEach(() => {
@@ -38,25 +48,25 @@ describe('LoginPage', () => {
 
   // ── Form rendering ─────────────────────────────────────────────────────────
 
-  it('renders login form with username, password fields and submit button', () => {
+  it('renders login form with username, password fields and submit button', async () => {
     render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />)
 
-    expect(screen.getByRole('heading', { name: 'Login' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Login' })).toBeInTheDocument()
     expect(screen.getByLabelText('Username')).toBeInTheDocument()
     expect(screen.getByLabelText('Password')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument()
   })
 
-  it('password field has type="password"', () => {
+  it('password field has type="password"', async () => {
     render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />)
 
-    expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password')
+    expect(await screen.findByLabelText('Password')).toHaveAttribute('type', 'password')
   })
 
-  it('username field has autocomplete="username"', () => {
+  it('username field has autocomplete="username"', async () => {
     render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />)
 
-    expect(screen.getByLabelText('Username')).toHaveAttribute('autocomplete', 'username')
+    expect(await screen.findByLabelText('Username')).toHaveAttribute('autocomplete', 'username')
   })
 
   // ── Successful login ───────────────────────────────────────────────────────
@@ -69,7 +79,7 @@ describe('LoginPage', () => {
 
     render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />)
 
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } })
+    fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'admin' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } })
     fireEvent.click(screen.getByRole('button', { name: 'Login' }))
 
@@ -86,7 +96,7 @@ describe('LoginPage', () => {
 
     render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />)
 
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } })
+    fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'admin' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } })
     fireEvent.click(screen.getByRole('button', { name: 'Login' }))
 
@@ -107,7 +117,7 @@ describe('LoginPage', () => {
 
     render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />)
 
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'wrong' } })
+    fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'wrong' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'bad' } })
     fireEvent.click(screen.getByRole('button', { name: 'Login' }))
 
@@ -127,7 +137,7 @@ describe('LoginPage', () => {
 
     render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />)
 
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'u' } })
+    fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'u' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'p' } })
     fireEvent.click(screen.getByRole('button', { name: 'Login' }))
 
@@ -146,7 +156,7 @@ describe('LoginPage', () => {
 
     render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />)
 
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } })
+    fireEvent.change(await screen.findByLabelText('Username'), { target: { value: 'admin' } })
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } })
     fireEvent.click(screen.getByRole('button', { name: 'Login' }))
 
@@ -160,10 +170,10 @@ describe('LoginPage', () => {
 
   // ── Input binding ──────────────────────────────────────────────────────────
 
-  it('updates username and password fields as user types', () => {
+  it('updates username and password fields as user types', async () => {
     render(<LoginPage onLoginSuccess={onLoginSuccess} authDisabled={false} />)
 
-    const userInput = screen.getByLabelText('Username')
+    const userInput = await screen.findByLabelText('Username')
     const passInput = screen.getByLabelText('Password')
 
     fireEvent.change(userInput, { target: { value: 'alice' } })

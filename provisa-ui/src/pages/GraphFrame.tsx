@@ -17,6 +17,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { createPortal } from "react-dom";
+import { CopySymbolButton } from "../components/CopyButton";
 import cytoscape from "cytoscape";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 import fcoseRaw from "cytoscape-fcose";
@@ -2051,11 +2052,7 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
           onChange={(val) => setEditQuery(val)}
           basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
         />
-        <button
-          className="gf-copy-query-btn"
-          title="Copy query"
-          onClick={() => navigator.clipboard.writeText(editQuery)}
-        >⎘</button>
+        <CopySymbolButton text={editQuery} className="gf-copy-query-btn" title="Copy query" />
       </div>
       <div className="gf-header-meta">
         {frame.status === "loading" && <span className="gf-loading">Running…</span>}
@@ -2171,11 +2168,7 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
       {frame.status === "error" && (
         <div className="gf-error gf-error--copyable">
           <span className="gf-error-text">{frame.error}</span>
-          <button
-            className="gf-error-copy-btn"
-            title="Copy error"
-            onClick={() => navigator.clipboard.writeText(frame.error ?? "")}
-          >⎘</button>
+          <CopySymbolButton text={frame.error ?? ""} className="gf-error-copy-btn" title="Copy error" />
         </div>
       )}
       {frame.status !== "error" && hasGraph && (

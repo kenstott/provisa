@@ -103,12 +103,20 @@ function MultiSelect({ options, value, onChange }: {
 const ALL_CAPABILITIES: Capability[] = [
   "source_registration",
   "table_registration",
-  "relationship_registration",
-  "security_config",
+  "create_relationship",
+  "access_config",
   "query_development",
-  "query_approval",
+  "approve_view",
   "full_results",
   "admin",
+  "usage",
+  "read_restricted",
+  "approve_relationship",
+  "create_view",
+  "column_grant",
+  "user_management",
+  "masking_config",
+  "superadmin",
 ];
 
 const EMPTY_ROLE = { id: "", capabilities: [] as Capability[], domainAccess: [] as string[] };

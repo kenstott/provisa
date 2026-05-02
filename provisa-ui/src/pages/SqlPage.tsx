@@ -490,7 +490,7 @@ export function SqlPage() {
   const [resultRows, setResultRows] = useState<Record<string, unknown>[]>([]);
   const [resultError, setResultError] = useState("");
   const [execMs, setExecMs] = useState<number | null>(null);
-  const [errors, setErrors] = useState<string[]>([]);
+  const [errors, _setErrors] = useState<string[]>([]);
   const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
@@ -542,15 +542,11 @@ export function SqlPage() {
     [sqlSchema],
   );
 
-  const tableNameSet = useMemo(
-    () => new Set(tables.map((t) => t.tableName.toLowerCase())),
-    [tables],
-  );
-
   const domainGroups = useMemo(() => {
     const groups: Record<string, RegisteredTable[]> = {};
     for (const t of tables) {
-      if (checkedDomains.size > 0 && t.domainId && !checkedDomains.has(t.domainId)) continue;
+      const isImplicitDomain = t.domainId === "meta" || t.domainId === "ops";
+      if (!isImplicitDomain && checkedDomains.size > 0 && t.domainId && !checkedDomains.has(t.domainId)) continue;
       const d = t.domainId ? normalizeDomain(t.domainId) : "(no domain)";
       (groups[d] = groups[d] || []).push(t);
     }

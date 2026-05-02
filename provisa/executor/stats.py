@@ -58,7 +58,7 @@ class QueryStats:
         return result
 
 
-_ctx: ContextVar[QueryStats | None] = ContextVar("provisa_query_stats", default=None)
+_ctx: ContextVar[QueryStats | None] = ContextVar("query_stats", default=None)
 
 
 def begin() -> QueryStats:

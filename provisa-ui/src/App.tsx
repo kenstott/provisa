@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { lazy, Suspense, useState, useCallback } from "react";
+import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { DomainFilterProvider } from "./context/DomainFilterContext";
@@ -26,6 +26,8 @@ import { CommandsPage } from "./pages/CommandsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { GraphPage } from "./pages/GraphPage";
 import { SqlPage } from "./pages/SqlPage";
+import { SetupPage } from "./pages/SetupPage";
+import { fetchSetupStatus } from "./api/setup";
 import "./App.css";
 
 // Lazy-load SchemaExplorer — graphql-voyager requires @mui/material and browser globals
@@ -54,139 +56,171 @@ function App() {
   const handleLoginSuccess = useCallback(() => {
     setAuthVersion((v) => v + 1);
   }, []);
+  const [setupChecked, setSetupChecked] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(false);
+
+  useEffect(() => {
+    fetchSetupStatus().then(({ needs_setup }) => {
+      setNeedsSetup(needs_setup);
+      setSetupChecked(true);
+    });
+  }, []);
 
   return (
     <BrowserRouter>
       <AuthProvider>
         <DomainFilterProvider>
-        <RequireAuth>
-          <NavBar />
-          <main>
+          {!setupChecked ? (
+            <div className="page"><p>Loading...</p></div>
+          ) : needsSetup ? (
             <Routes>
-              <Route path="/" element={<Navigate to="/query" replace />} />
-              <Route
-                path="/login"
-                element={
-                  <LoginPage
-                    onLoginSuccess={handleLoginSuccess}
-                    authDisabled={!AUTH_ENABLED}
-                  />
-                }
-              />
-              <Route
-                path="/sources"
-                element={
-                  <CapabilityGate capability="source_registration" fallback={<NotAuthorized />}>
-                    <SourcesPage />
-                  </CapabilityGate>
-                }
-              />
-              <Route
-                path="/tables"
-                element={
-                  <CapabilityGate capability="table_registration" fallback={<NotAuthorized />}>
-                    <TablesPage />
-                  </CapabilityGate>
-                }
-              />
-              <Route
-                path="/relationships"
-                element={
-                  <CapabilityGate capability="relationship_registration" fallback={<NotAuthorized />}>
-                    <RelationshipsPage />
-                  </CapabilityGate>
-                }
-              />
-              <Route
-                path="/views"
-                element={
-                  <CapabilityGate capability="table_registration" fallback={<NotAuthorized />}>
-                    <ViewsPage />
-                  </CapabilityGate>
-                }
-              />
-              <Route
-                path="/security"
-                element={
-                  <CapabilityGate capability="security_config" fallback={<NotAuthorized />}>
-                    <SecurityPage />
-                  </CapabilityGate>
-                }
-              />
-              <Route
-                path="/query"
-                element={
-                  <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
-                    <QueryPage />
-                  </CapabilityGate>
-                }
-              />
-              <Route
-                path="/schema"
-                element={
-                  <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
-                    <Suspense fallback={<div className="page">Loading schema explorer...</div>}>
-                      <SchemaExplorer />
-                    </Suspense>
-                  </CapabilityGate>
-                }
-              />
-              <Route
-                path="/graph"
-                element={
-                  <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
-                    <GraphPage />
-                  </CapabilityGate>
-                }
-              />
-              <Route
-                path="/sql"
-                element={
-                  <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
-                    <SqlPage />
-                  </CapabilityGate>
-                }
-              />
-              <Route
-                path="/approvals"
-                element={
-                  <CapabilityGate capability="query_approval" fallback={<NotAuthorized />}>
-                    <ApprovalsPage />
-                  </CapabilityGate>
-                }
-              />
-              <Route
-                path="/commands"
-                element={
-                  <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
-                    <CommandsPage />
-                  </CapabilityGate>
-                }
-              />
-              <Route path="/actions" element={<Navigate to="/commands" replace />} />
-              <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
-              {[
-                "/admin/overview",
-                "/admin/domains",
-                "/admin/materialized-views",
-                "/admin/cache",
-                "/admin/scheduled-tasks",
-                "/admin/system-health",
-                "/admin/observability",
-              ].map((path) => (
-                <Route
-                  key={path}
-                  path={path}
-                  element={
-                    <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
-                      <AdminPage />
-                    </CapabilityGate>
-                  }
-                />
-              ))}
+              <Route path="*" element={
+                <SetupPage onSetupComplete={() => { setNeedsSetup(false); }} />
+              } />
             </Routes>
-          </main>
-        </RequireAuth>
+          ) : (
+            <RequireAuth>
+              <NavBar />
+              <main>
+                <Routes>
+                  <Route path="/" element={<Navigate to="/query" replace />} />
+                  <Route
+                    path="/login"
+                    element={
+                      <LoginPage
+                        onLoginSuccess={handleLoginSuccess}
+                        authDisabled={!AUTH_ENABLED}
+                      />
+                    }
+                  />
+                  <Route
+                    path="/register"
+                    element={
+                      <LoginPage
+                        onLoginSuccess={handleLoginSuccess}
+                        authDisabled={!AUTH_ENABLED}
+                      />
+                    }
+                  />
+                  <Route path="/setup" element={<Navigate to="/" replace />} />
+                  <Route
+                    path="/sources"
+                    element={
+                      <CapabilityGate capability="source_registration" fallback={<NotAuthorized />}>
+                        <SourcesPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/tables"
+                    element={
+                      <CapabilityGate capability="table_registration" fallback={<NotAuthorized />}>
+                        <TablesPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/relationships"
+                    element={
+                      <CapabilityGate capability="create_relationship" fallback={<NotAuthorized />}>
+                        <RelationshipsPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/views"
+                    element={
+                      <CapabilityGate capability="table_registration" fallback={<NotAuthorized />}>
+                        <ViewsPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/security"
+                    element={
+                      <CapabilityGate capability="access_config" fallback={<NotAuthorized />}>
+                        <SecurityPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/query"
+                    element={
+                      <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
+                        <QueryPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/schema"
+                    element={
+                      <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
+                        <Suspense fallback={<div className="page">Loading schema explorer...</div>}>
+                          <SchemaExplorer />
+                        </Suspense>
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/graph"
+                    element={
+                      <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
+                        <GraphPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/sql"
+                    element={
+                      <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
+                        <SqlPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/approvals"
+                    element={
+                      <CapabilityGate capability="approve_view" fallback={<NotAuthorized />}>
+                        <ApprovalsPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/commands"
+                    element={
+                      <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
+                        <CommandsPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route path="/actions" element={<Navigate to="/commands" replace />} />
+                  <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
+                  {[
+                    "/admin/overview",
+                    "/admin/domains",
+                    "/admin/materialized-views",
+                    "/admin/cache",
+                    "/admin/scheduled-tasks",
+                    "/admin/system-health",
+                    "/admin/observability",
+                    "/admin/local-users",
+                    "/admin/orgs",
+                    "/admin/roles",
+                  ].map((path) => (
+                    <Route
+                      key={path}
+                      path={path}
+                      element={
+                        <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
+                          <AdminPage />
+                        </CapabilityGate>
+                      }
+                    />
+                  ))}
+                </Routes>
+              </main>
+            </RequireAuth>
+          )}
         </DomainFilterProvider>
       </AuthProvider>
     </BrowserRouter>

@@ -10,10 +10,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { User } from "lucide-react";
 import { CapabilityGate } from "./CapabilityGate";
 import { RoleSelector } from "./RoleSelector";
+import { UserProfileModal } from "./UserProfileModal";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { useAuth } from "../context/AuthContext";
 import type { Capability } from "../types/auth";
+
+const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED === "true";
 
 
 
@@ -54,8 +59,8 @@ const NAV_GROUPS: NavGroup[] = [
     id: "security",
     label: "Security",
     items: [
-      { to: "/security", label: "Policies", capability: "security_config" },
-      { to: "/approvals", label: "Approvals", capability: "query_approval" },
+      { to: "/security", label: "Policies", capability: "access_config" },
+      { to: "/approvals", label: "Approvals", capability: "approve_view" },
     ],
   },
   {
@@ -69,6 +74,9 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/scheduled-tasks", label: "Scheduled Tasks", capability: "admin" },
       { to: "/admin/system-health", label: "System Health", capability: "admin" },
       { to: "/admin/observability", label: "Observability", capability: "admin" },
+      { to: "/admin/local-users", label: "Local Users", capability: "admin" },
+      { to: "/admin/orgs", label: "Orgs", capability: "admin" },
+      { to: "/admin/roles", label: "Roles", capability: "admin" },
     ],
   },
 ];
@@ -86,11 +94,15 @@ export function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { domains, checkedDomains, toggleDomain } = useDomainFilter();
+  const { displayName, email, devMode } = useAuth();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
   const [domainOpen, setDomainOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const navRef = useRef<HTMLElement>(null);
   const subnavRef = useRef<HTMLElement>(null);
   const domainRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   const routeGroup = activeGroupId(location.pathname);
 
@@ -107,10 +119,20 @@ export function NavBar() {
       if (domainOpen && !domainRef.current?.contains(e.target as Node)) {
         setDomainOpen(false);
       }
+      if (userMenuOpen && !userMenuRef.current?.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [pinnedGroup, domainOpen]);
+  }, [pinnedGroup, domainOpen, userMenuOpen]);
+
+  function handleLogout() {
+    localStorage.removeItem("provisa_token");
+    localStorage.removeItem("provisa_org");
+    setUserMenuOpen(false);
+    navigate("/login");
+  }
 
   const displayedGroupId = pinnedGroup ?? routeGroup;
   const displayedGroup = NAV_GROUPS.find((g) => g.id === displayedGroupId) ?? null;
@@ -150,9 +172,7 @@ export function NavBar() {
           <CapabilityGate capability="table_registration">
             <NavLink to="/tables">Tables</NavLink>
           </CapabilityGate>
-          <CapabilityGate capability="relationship_registration">
-            <NavLink to="/relationships">Relationships</NavLink>
-          </CapabilityGate>
+          <NavLink to="/relationships">Relationships</NavLink>
           {NAV_GROUPS.map((group) => {
             const isActive = routeGroup === group.id || pinnedGroup === group.id;
             return (
@@ -185,6 +205,39 @@ export function NavBar() {
             </div>
           )}
           <RoleSelector />
+          <div className="navbar-user-wrapper" ref={userMenuRef}>
+            <button
+              className="navbar-user-btn"
+              onClick={() => setUserMenuOpen((o) => !o)}
+              title={displayName ?? email ?? "User menu"}
+            >
+              <User size={16} />
+            </button>
+            {userMenuOpen && (
+              <div className="navbar-user-panel">
+                {(displayName || email) && (
+                  <div className="navbar-user-identity">
+                    {displayName && <span className="navbar-user-name">{displayName}</span>}
+                    {email && <span className="navbar-user-email">{email}</span>}
+                    {devMode && <span className="navbar-user-dev">DEV</span>}
+                  </div>
+                )}
+                <button className="navbar-user-item" onClick={() => { setProfileOpen(true); setUserMenuOpen(false); }}>
+                  Profile
+                </button>
+                <CapabilityGate capability="admin">
+                  <button className="navbar-user-item" onClick={() => { navigate("/admin/overview"); setUserMenuOpen(false); }}>
+                    Settings
+                  </button>
+                </CapabilityGate>
+                {AUTH_ENABLED && (
+                  <button className="navbar-user-item navbar-user-logout" onClick={handleLogout}>
+                    Logout
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </nav>
       {displayedGroup && (
@@ -203,6 +256,7 @@ export function NavBar() {
           ))}
         </nav>
       )}
+      {profileOpen && <UserProfileModal onClose={() => setProfileOpen(false)} />}
     </>
   );
 }

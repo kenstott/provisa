@@ -34,19 +34,34 @@ const ANALYST_ROLE: Role = {
 }
 
 function makeAuthValue(overrides: {
-  selectedRoles?: Role[]
+  selectedRole?: Role | 'all'
   availableRoles?: Role[]
-  toggleRole?: (role: Role) => void
+  selectRole?: (role: Role | 'all') => void
+  devMode?: boolean
 }) {
+  const selectedRole = overrides.selectedRole ?? 'all'
+  const availableRoles = overrides.availableRoles ?? [ADMIN_ROLE, ANALYST_ROLE]
   return {
-    role: overrides.selectedRoles?.[0] ?? ADMIN_ROLE,
-    selectedRoles: overrides.selectedRoles ?? [ADMIN_ROLE],
+    role: selectedRole === 'all' ? (availableRoles[0] ?? null) : selectedRole,
+    selectedRoles: selectedRole === 'all' ? availableRoles : [selectedRole as Role],
     capabilities: ['admin'] as Capability[],
     domainAccess: ['*'],
-    toggleRole: overrides.toggleRole ?? vi.fn(),
-    availableRoles: overrides.availableRoles ?? [ADMIN_ROLE, ANALYST_ROLE],
+    selectedRole,
+    selectedDomain: null,
+    selectRole: overrides.selectRole ?? vi.fn(),
+    selectDomain: vi.fn(),
+    availableRoles,
+    availableDomains: [],
+    assignments: [],
+    devMode: overrides.devMode ?? false,
     loading: false,
     error: null,
+    selectOrg: vi.fn(),
+    activeOrgId: null,
+    orgMemberships: [],
+    userId: null,
+    email: null,
+    displayName: null,
   }
 }
 
@@ -56,81 +71,89 @@ describe('RoleSelector', () => {
   })
 
   it('shows "No roles configured" when availableRoles is empty', () => {
-    mockUseAuth.mockReturnValue(makeAuthValue({ availableRoles: [], selectedRoles: [] }))
+    mockUseAuth.mockReturnValue(makeAuthValue({ availableRoles: [], selectedRole: 'all' }))
 
     render(<RoleSelector />)
     expect(screen.getByText('No roles configured')).toBeInTheDocument()
   })
 
-  it('renders trigger button with current role label', () => {
-    mockUseAuth.mockReturnValue(makeAuthValue({ selectedRoles: [ADMIN_ROLE] }))
+  it('renders trigger button with "All" label when selectedRole is "all"', () => {
+    mockUseAuth.mockReturnValue(makeAuthValue({ selectedRole: 'all' }))
 
     render(<RoleSelector />)
-
-    expect(screen.getByRole('button')).toHaveTextContent('Role: admin')
+    expect(screen.getByRole('button')).toHaveTextContent('Role: All')
   })
 
-  it('shows role label for multiple selected roles joined by comma', () => {
-    mockUseAuth.mockReturnValue(
-      makeAuthValue({ selectedRoles: [ADMIN_ROLE, ANALYST_ROLE] })
-    )
+  it('renders trigger button with role id when a specific role is selected', () => {
+    mockUseAuth.mockReturnValue(makeAuthValue({ selectedRole: ADMIN_ROLE }))
 
     render(<RoleSelector />)
-
-    expect(screen.getByRole('button')).toHaveTextContent('admin, analyst')
+    expect(screen.getByRole('button')).toHaveTextContent('Role: admin')
   })
 
   it('dropdown is hidden before trigger is clicked', () => {
     mockUseAuth.mockReturnValue(makeAuthValue({}))
 
     render(<RoleSelector />)
-
-    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
   })
 
-  it('opens dropdown with all available roles when trigger is clicked', () => {
+  it('opens dropdown with "All" and all available roles when trigger is clicked', () => {
     mockUseAuth.mockReturnValue(makeAuthValue({}))
 
     render(<RoleSelector />)
     fireEvent.click(screen.getByRole('button'))
 
-    // Should show checkbox labels for each available role
-    expect(screen.getByLabelText('admin')).toBeInTheDocument()
-    expect(screen.getByLabelText('analyst')).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'All' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'admin' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'analyst' })).toBeInTheDocument()
   })
 
-  it('closes dropdown when trigger is clicked again', () => {
-    mockUseAuth.mockReturnValue(makeAuthValue({}))
+  it('closes dropdown when an option is selected', () => {
+    const selectRole = vi.fn()
+    mockUseAuth.mockReturnValue(makeAuthValue({ selectRole }))
 
     render(<RoleSelector />)
     fireEvent.click(screen.getByRole('button'))
-    expect(screen.getByLabelText('admin')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('option', { name: 'analyst' }))
 
-    fireEvent.click(screen.getByRole('button'))
-    expect(screen.queryByLabelText('admin')).not.toBeInTheDocument()
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+    expect(selectRole).toHaveBeenCalledWith(ANALYST_ROLE)
   })
 
-  it('marks the selected role checkbox as checked', () => {
-    mockUseAuth.mockReturnValue(
-      makeAuthValue({ selectedRoles: [ADMIN_ROLE], availableRoles: [ADMIN_ROLE, ANALYST_ROLE] })
-    )
+  it('calls selectRole with "all" when All option is clicked', () => {
+    const selectRole = vi.fn()
+    mockUseAuth.mockReturnValue(makeAuthValue({ selectedRole: ADMIN_ROLE, selectRole }))
+
+    render(<RoleSelector />)
+    fireEvent.click(screen.getByRole('button'))
+    fireEvent.click(screen.getByRole('option', { name: 'All' }))
+
+    expect(selectRole).toHaveBeenCalledWith('all')
+  })
+
+  it('marks selected option with aria-selected=true', () => {
+    mockUseAuth.mockReturnValue(makeAuthValue({ selectedRole: ADMIN_ROLE }))
 
     render(<RoleSelector />)
     fireEvent.click(screen.getByRole('button'))
 
-    expect(screen.getByLabelText('admin')).toBeChecked()
-    expect(screen.getByLabelText('analyst')).not.toBeChecked()
+    expect(screen.getByRole('option', { name: 'admin' })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('option', { name: 'analyst' })).toHaveAttribute('aria-selected', 'false')
   })
 
-  it('calls toggleRole when a role checkbox is changed', () => {
-    const toggleRole = vi.fn()
-    mockUseAuth.mockReturnValue(makeAuthValue({ toggleRole }))
+  it('shows DEV badge in dev mode', () => {
+    mockUseAuth.mockReturnValue(makeAuthValue({ devMode: true }))
 
     render(<RoleSelector />)
-    fireEvent.click(screen.getByRole('button'))
-    fireEvent.click(screen.getByLabelText('analyst'))
+    expect(screen.getByText('DEV')).toBeInTheDocument()
+  })
 
-    expect(toggleRole).toHaveBeenCalledWith(ANALYST_ROLE)
+  it('does not show DEV badge outside dev mode', () => {
+    mockUseAuth.mockReturnValue(makeAuthValue({ devMode: false }))
+
+    render(<RoleSelector />)
+    expect(screen.queryByText('DEV')).not.toBeInTheDocument()
   })
 
   it('trigger button has aria-expanded=true when open', () => {

@@ -12,12 +12,20 @@
 export type Capability =
   | "source_registration"
   | "table_registration"
-  | "relationship_registration"
-  | "security_config"
+  | "create_relationship"
+  | "access_config"
   | "query_development"
-  | "query_approval"
+  | "approve_view"
   | "full_results"
-  | "admin";
+  | "admin"
+  | "usage"
+  | "read_restricted"
+  | "approve_relationship"
+  | "create_view"
+  | "column_grant"
+  | "user_management"
+  | "masking_config"
+  | "superadmin";
 
 export interface Role {
   id: string;
@@ -25,15 +33,35 @@ export interface Role {
   domain_access: string[];
 }
 
+/** A single role:domain pair from a user's identity claims or DB assignments. */
+export interface RoleAssignment {
+  role_id: string;
+  domain_id: string;
+}
+
+export interface OrgMembership {
+  org_id: string;
+  org_name: string;
+}
+
 export interface AuthState {
   /** First selected role — used for API headers that require a single role. */
   role: Role | null;
-  /** All currently selected roles. */
+  /** All currently selected roles (kept for backwards compat). */
   selectedRoles: Role[];
   /** Unioned capabilities across all selected roles. */
   capabilities: Capability[];
   /** Unioned domain_access across all selected roles. */
   domainAccess: string[];
+  selectedRole: Role | "all";
+  selectedDomain: string | null;
+  /** All role:domain pairs for the authenticated user (empty in dev mode until roles load). */
+  assignments: RoleAssignment[];
   loading: boolean;
   error: string | null;
+  activeOrgId: string | null;
+  orgMemberships: OrgMembership[];
+  userId: string | null;
+  email: string | null;
+  displayName: string | null;
 }

@@ -288,6 +288,7 @@ def build_context(si: object) -> CompilationContext:
         src_info = table_lookup[src_id]
         tgt_info = table_lookup[tgt_id]
 
+        _tgt_physical_name = physical_map.get(tgt_info.table_name, tgt_info.table_name)
         tgt_meta = TableMeta(
             table_id=tgt_info.table_id,
             field_name=tgt_info.field_name,
@@ -295,8 +296,9 @@ def build_context(si: object) -> CompilationContext:
             source_id=tgt_info.source_id,
             catalog_name=source_to_catalog(tgt_info.source_id),
             schema_name=tgt_info.schema_name,
-            table_name=tgt_info.table_name,
+            table_name=_tgt_physical_name,
             domain_id=tgt_info.domain_id,
+            original_table_name=tgt_info.table_name if _tgt_physical_name != tgt_info.table_name else "",
         )
 
         # Look up column types for the join columns; fall back to schema_service on miss
@@ -357,6 +359,39 @@ def build_context(si: object) -> CompilationContext:
                 cardinality="many-to-one",
                 cypher_alias="REGISTERED_TABLE",
                 source_constant=t.table_id,
+            )
+
+    # Inject synthetic traversal joins: every data table → implicit-domain tables
+    # that carry a `table_name` FK column (e.g. traces, queries).
+    # Join key: data._name_ (virtual → literal table name) = ops_table.table_name
+    _IMPLICIT_DOMAINS = {"meta", "ops"}
+    for ops_t in tables:
+        if ops_t.domain_id not in _IMPLICIT_DOMAINS or ops_t.domain_id == "meta":
+            continue
+        if not any(c["column_name"] == "table_name" for c in ops_t.visible_columns):
+            continue
+        ops_tgt = TableMeta(
+            table_id=ops_t.table_id,
+            field_name=ops_t.field_name,
+            type_name=ops_t.type_name,
+            source_id=ops_t.source_id,
+            catalog_name=source_to_catalog(ops_t.source_id),
+            schema_name=ops_t.schema_name,
+            table_name=physical_map.get(ops_t.table_name, ops_t.table_name),
+            domain_id=ops_t.domain_id,
+        )
+        join_field = f"_{ops_t.field_name}"
+        for t in tables:
+            if t.domain_id in _IMPLICIT_DOMAINS:
+                continue
+            ctx.joins[(t.type_name, join_field)] = JoinMeta(
+                source_column="_name_",
+                target_column="table_name",
+                source_column_type="text",
+                target_column_type="text",
+                target=ops_tgt,
+                cardinality="one-to-many",
+                cypher_alias=ops_t.field_name.upper(),
             )
 
     return ctx

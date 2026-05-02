@@ -31,6 +31,7 @@ import { fetchRelationships, upsertRelationship } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
 import type { Relationship } from "../types/admin";
 import "./GraphPage.css";
+import { CopySymbolButton } from "../components/CopyButton";
 
 // ── localStorage-backed state ─────────────────────────────────────────────────
 function useLocalStorage<T>(key: string, initial: T): [T, (v: T | ((prev: T) => T)) => void] {
@@ -595,11 +596,7 @@ function QueryBar({ onRun, initialQuery, onQueryChange, cypherSchema }: QueryBar
           basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false, completionKeymap: false }}
           placeholder="MATCH (n) RETURN n LIMIT 25"
         />
-        <button
-          className="gf-copy-query-btn"
-          title="Copy query"
-          onClick={() => navigator.clipboard.writeText(query)}
-        >⎘</button>
+        <CopySymbolButton text={query} className="gf-copy-query-btn" title="Copy query" />
       </div>
       <button
         className="graph-run-btn"
@@ -805,9 +802,10 @@ export function GraphPage() {
   }, [adminRels]);
 
   // Build pkMap: compound label (e.g. "SalesAnalytics:Orders") → pk_columns
+  const SYSTEM_DOMAINS = new Set(["meta", "ops"]);
   const visibleNodeLabels = checkedDomains.size === 0
     ? schemaNodeLabels
-    : schemaNodeLabels.filter((n) => !n.domainId || checkedDomains.has(n.domainId));
+    : schemaNodeLabels.filter((n) => !n.domainId || checkedDomains.has(n.domainId) || SYSTEM_DOMAINS.has(n.domainId));
 
   // Falls back to idColumn (heuristically resolved) when no user-designated PKs
   const pkMap: Record<string, string[]> = {};

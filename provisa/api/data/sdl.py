@@ -53,7 +53,7 @@ def _reachable_table_ids(domain_id: str, tables: list[dict], relationships: list
     return reachable
 
 
-_ALWAYS_VISIBLE_DOMAINS = {"meta"}
+_ALWAYS_VISIBLE_DOMAINS = {"meta", "ops"}
 
 
 def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):

@@ -12,6 +12,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Trash2, Pencil, Sparkles, Save, X, ArrowLeftRight, Code2 } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { useAuth } from "../context/AuthContext";
 import { SqlModelingModal } from "../components/SqlModelingModal";
 import {
   fetchRelationships,
@@ -82,6 +83,8 @@ export function RelationshipsPage() {
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
 
   const { selectedDomain, setDomains } = useDomainFilter();
+  const { capabilities } = useAuth();
+  const canManage = capabilities.includes("create_relationship");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -312,21 +315,25 @@ export function RelationshipsPage() {
         <h2>Relationships</h2>
         <FilterInput value={relSearch} onChange={setRelSearch} placeholder="Filter by source or target…" />
         <div className="page-actions">
-          <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? "Cancel" : "+ Relationship"}
-          </button>
+          {canManage && (
+            <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
+              {showForm ? "Cancel" : "+ Relationship"}
+            </button>
+          )}
           <button
             className="btn-icon"
             title="SQL Modeling tool"
             onClick={() => setShowModelingModal(true)}
           ><Code2 size={14} /></button>
-          <button
-            className="btn-icon"
-            title={discovering ? "Discovering..." : "Suggest with AI"}
-            onClick={handleDiscover}
-            disabled={discovering}
-          ><Sparkles size={14} /></button>
-          {rejectedCount > 0 && (
+          {canManage && (
+            <button
+              className="btn-icon"
+              title={discovering ? "Discovering..." : "Suggest with AI"}
+              onClick={handleDiscover}
+              disabled={discovering}
+            ><Sparkles size={14} /></button>
+          )}
+          {canManage && rejectedCount > 0 && (
             <button className="btn-secondary" onClick={handleClearRejections}>
               Clear Rejections
             </button>
@@ -510,11 +517,13 @@ export function RelationshipsPage() {
                             {r.materialize && <><dt style={{ color: "var(--text-muted)" }}><strong>Refresh Interval (s)</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.refreshInterval ?? "—"}</dd></>}
                             <dt style={{ color: "var(--text-muted)" }}><strong>Cypher Graph</strong></dt><dd style={{ color: "var(--text)", margin: 0 }}>{r.disableCypher ? <em style={{ color: "var(--text-muted)" }}>excluded</em> : "included"}</dd>
                           </dl>
-                          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
-                            <button className="btn-icon" title="Edit" onClick={(e) => { e.stopPropagation(); startEditing(r); }}><Pencil size={14} /></button>
-                            <button className="btn-icon" title="Generate reverse relationship" onClick={(e) => { e.stopPropagation(); setReverseForm(buildReverse(r)); }}><ArrowLeftRight size={14} /></button>
-                            <button className="btn-icon-danger" title="Delete" onClick={(e) => { e.stopPropagation(); handleDelete(id); }}><Trash2 size={14} /></button>
-                          </div>
+                          {canManage && (
+                            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
+                              <button className="btn-icon" title="Edit" onClick={(e) => { e.stopPropagation(); startEditing(r); }}><Pencil size={14} /></button>
+                              <button className="btn-icon" title="Generate reverse relationship" onClick={(e) => { e.stopPropagation(); setReverseForm(buildReverse(r)); }}><ArrowLeftRight size={14} /></button>
+                              <button className="btn-icon-danger" title="Delete" onClick={(e) => { e.stopPropagation(); handleDelete(id); }}><Trash2 size={14} /></button>
+                            </div>
+                          )}
                         </div>
                       ) : (
                         <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
@@ -650,7 +659,7 @@ export function RelationshipsPage() {
           tables={tables}
           existingRels={rels}
           onClose={() => setShowModelingModal(false)}
-          onPromote={async (c) => {
+          onPromote={canManage ? async (c) => {
             const existing = rels.find(
               (r) =>
                 r.sourceTableName === c.sourceTable &&
@@ -678,7 +687,7 @@ export function RelationshipsPage() {
               recordCandidate: true,
             });
             load();
-          }}
+          } : undefined}
         />
       )}
 

@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { Role } from "../types/auth";
+import type { Role, RoleAssignment, OrgMembership } from "../types/auth";
 import type {
   Source,
   Domain,
@@ -33,6 +33,137 @@ async function gql<T>(query: string, variables?: Record<string, unknown>): Promi
   const json = await resp.json();
   if (json.errors) throw new Error(json.errors[0].message);
   return json.data;
+}
+
+export async function fetchMe(): Promise<{
+  user_id: string;
+  email: string | null;
+  display_name: string | null;
+  dev_mode: boolean;
+  active_org_id: string | null;
+  org_memberships: OrgMembership[];
+  assignments: RoleAssignment[];
+}> {
+  const res = await fetch("/auth/me");
+  if (!res.ok) throw new Error("auth/me failed");
+  return res.json();
+}
+
+export async function fetchProviderType(): Promise<string | null> {
+  const res = await fetch("/auth/provider-type");
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.provider ?? null;
+}
+
+export async function registerAccount(body: {
+  username: string;
+  password: string;
+  email?: string;
+  display_name?: string;
+  invite_token?: string;
+}): Promise<{ user_id: string; username: string }> {
+  const res = await fetch("/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `Registration failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export interface Org {
+  id: string;
+  name: string;
+  created_by: string | null;
+  created_at: string;
+}
+
+export async function fetchOrgs(): Promise<Org[]> {
+  const res = await fetch(`${API_BASE}/admin/orgs`);
+  if (!res.ok) throw new Error(`fetchOrgs failed: ${res.status}`);
+  return res.json();
+}
+
+export async function createOrg(id: string, name: string): Promise<Org> {
+  const res = await fetch(`${API_BASE}/admin/orgs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, name }),
+  });
+  if (!res.ok) throw new Error(`createOrg failed: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteOrg(orgId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`deleteOrg failed: ${res.status}`);
+}
+
+export interface OrgMember {
+  user_id: string;
+  email: string | null;
+  display_name: string | null;
+  provider: string | null;
+}
+
+export async function fetchOrgMembers(orgId: string): Promise<OrgMember[]> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/members`);
+  if (!res.ok) throw new Error(`fetchOrgMembers failed: ${res.status}`);
+  return res.json();
+}
+
+export async function addOrgMember(orgId: string, userId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/members`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId }),
+  });
+  if (!res.ok) throw new Error(`addOrgMember failed: ${res.status}`);
+}
+
+export async function removeOrgMember(orgId: string, userId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/members/${userId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`removeOrgMember failed: ${res.status}`);
+}
+
+export async function fetchOrgRoles(orgId: string): Promise<Role[]> {
+  const res = await fetch(`${API_BASE}/admin/roles`, {
+    headers: { "X-Org-Id": orgId },
+  });
+  if (!res.ok) throw new Error(`fetchOrgRoles failed: ${res.status}`);
+  const rows: Array<{ id: string; capabilities: string[]; domain_access: string[] }> = await res.json();
+  return rows.map((r) => ({
+    id: r.id,
+    capabilities: r.capabilities as import("../types/auth").Capability[],
+    domain_access: r.domain_access,
+  }));
+}
+
+export async function createOrgRole(
+  orgId: string,
+  id: string,
+  capabilities: string[],
+  domain_access: string[],
+): Promise<Role> {
+  const res = await fetch(`${API_BASE}/admin/roles`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Org-Id": orgId },
+    body: JSON.stringify({ id, capabilities, domain_access }),
+  });
+  if (!res.ok) throw new Error(`createOrgRole failed: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteOrgRole(orgId: string, roleId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/roles/${roleId}`, {
+    method: "DELETE",
+    headers: { "X-Org-Id": orgId },
+  });
+  if (!res.ok) throw new Error(`deleteOrgRole failed: ${res.status}`);
 }
 
 export async function fetchRoles(): Promise<Role[]> {
@@ -657,12 +788,13 @@ export async function submitQuery(
 export async function runSql(
   sqlText: string,
   role: string = "admin",
+  discoveryMode: boolean = false,
 ): Promise<{ columns: string[]; rows: Record<string, unknown>[]; error?: string }> {
   try {
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/json" },
-      body: JSON.stringify({ sql: sqlText, role }),
+      body: JSON.stringify({ sql: sqlText, role, ...(discoveryMode && { discovery_mode: true }) }),
     });
     if (!resp.ok) {
       const text = await resp.text();
@@ -850,4 +982,126 @@ export async function invalidateFileSource(tableId: number): Promise<MutationRes
     { tableId }
   );
   return data.invalidateFileSource;
+}
+
+export interface LocalUser {
+  id: string;
+  username: string;
+  email: string | null;
+  display_name: string | null;
+  roles: string[];
+  attributes: Record<string, unknown>;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchLocalUsers(): Promise<LocalUser[]> {
+  const res = await fetch(`${API_BASE}/admin/users`);
+  if (!res.ok) throw new Error(`Failed to fetch users: ${res.status}`);
+  return res.json();
+}
+
+export async function createLocalUser(body: {
+  username: string;
+  password: string;
+  email?: string;
+  display_name?: string;
+  roles?: string[];
+}): Promise<LocalUser> {
+  const res = await fetch(`${API_BASE}/admin/users`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to create user: ${text.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
+export async function deleteLocalUser(userId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/users/${userId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Failed to delete user: ${res.status}`);
+}
+
+export interface UserAssignment {
+  id: number;
+  role_id: string;
+  domain_id: string;
+  created_at: string;
+}
+
+export async function fetchUserAssignments(userId: string): Promise<UserAssignment[]> {
+  const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments`);
+  if (!res.ok) throw new Error(`Failed to fetch assignments: ${res.status}`);
+  return res.json();
+}
+
+export async function addUserAssignment(userId: string, roleId: string, domainId: string): Promise<UserAssignment> {
+  const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role_id: roleId, domain_id: domainId }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to add assignment: ${text.slice(0, 200)}`);
+  }
+  return res.json();
+}
+
+export async function removeUserAssignment(userId: string, assignmentId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments/${assignmentId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`Failed to remove assignment: ${res.status}`);
+}
+
+export interface OrgInvite {
+  token: string;
+  org_id: string;
+  org_name: string;
+  role_id: string | null;
+  created_by: string;
+  expires_at: string;
+  used_at: string | null;
+  used_by: string | null;
+}
+
+export interface InviteInfo {
+  token: string;
+  org_id: string;
+  org_name: string;
+  role_id: string | null;
+  valid: boolean;
+}
+
+export async function fetchInvites(): Promise<OrgInvite[]> {
+  const res = await fetch(`${API_BASE}/admin/invites`);
+  if (!res.ok) throw new Error(`fetchInvites failed: ${res.status}`);
+  return res.json();
+}
+
+export async function createInvite(orgId: string, roleId?: string, expiresInDays = 7): Promise<OrgInvite> {
+  const res = await fetch(`${API_BASE}/admin/invites`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ org_id: orgId, role_id: roleId ?? null, expires_in_days: expiresInDays }),
+  });
+  if (!res.ok) throw new Error(`createInvite failed: ${res.status}`);
+  return res.json();
+}
+
+export async function revokeInvite(token: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/invites/${token}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`revokeInvite failed: ${res.status}`);
+}
+
+export async function fetchInviteInfo(token: string): Promise<InviteInfo> {
+  const res = await fetch(`/auth/invite/${token}`);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `Invalid invite: ${res.status}`);
+  }
+  return res.json();
 }

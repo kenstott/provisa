@@ -78,8 +78,16 @@ export default defineConfig(({ mode }) => ({
     },
     proxy: {
       '/data': 'http://127.0.0.1:8000',
-      '/admin': 'http://127.0.0.1:8000',
+      '/admin': {
+        target: 'http://127.0.0.1:8000',
+        bypass(req) {
+          // Page navigations (Accept: text/html) are SPA routes — serve index.html
+          if (req.headers.accept?.includes('text/html')) return '/index.html';
+        },
+      },
       '/health': 'http://127.0.0.1:8000',
+      '/setup': 'http://127.0.0.1:8000',
+      '/auth': 'http://127.0.0.1:8000',
     },
   },
 }))

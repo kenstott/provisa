@@ -67,14 +67,13 @@ def serialize_rows(
         else:
             nested_groups.setdefault(col.nested_in, []).append((i, col))
 
-    # Detect which top-level nested paths are one-to-many
-    # (cardinality is stored on the leaf ColumnRefs of the relationship)
+    # Detect one-to-many paths using each path's own cardinality (not its children's).
+    # Handles both top-level (e.g. "_o__traces") and nested (e.g. "_meta.tableColumns").
     one_to_many_paths: set[str] = set()
     for nest_path, nest_cols in nested_groups.items():
-        top_path = nest_path.split(".")[0]
         for _, col in nest_cols:
             if col.cardinality == "one-to-many":
-                one_to_many_paths.add(top_path)
+                one_to_many_paths.add(nest_path)
                 break
 
     if one_to_many_paths:
@@ -89,55 +88,60 @@ def serialize_rows(
                 obj: dict = {}
                 for idx, col in root_cols:
                     obj[col.field_name] = _convert_value(row[idx])
-                # Initialize one-to-many paths as empty lists
-                for path in one_to_many_paths:
-                    obj[path] = []
-                # Seed many-to-one paths with first row's values
-                for nest_path, nest_cols in nested_groups.items():
-                    top_path = nest_path.split(".")[0]
-                    if top_path in one_to_many_paths:
-                        continue
-                    all_none = all(row[idx] is None for idx, _ in nest_cols)
+                # Seed all nested paths in sorted order (parents before children).
+                # one-to-many paths → initialize as []; many-to-one → seed from first row.
+                for nest_path in sorted(nested_groups.keys()):
+                    nest_cols_for_path = nested_groups[nest_path]
                     parts = nest_path.split(".")
                     target = obj
                     skip = False
                     for part in parts[:-1]:
-                        target = target.setdefault(part, {})
-                        if target is None:
+                        cur = target.get(part)
+                        if isinstance(cur, dict):
+                            target = cur
+                        elif part not in target:
+                            target[part] = {}
+                            target = target[part]
+                        else:
                             skip = True
                             break
-                    if not skip:
-                        leaf = parts[-1]
+                    if skip:
+                        continue
+                    leaf = parts[-1]
+                    if nest_path in one_to_many_paths:
+                        target[leaf] = []
+                    else:
+                        all_none = all(row[idx] is None for idx, _ in nest_cols_for_path)
                         if all_none:
                             target[leaf] = None
                         else:
-                            target[leaf] = {col.field_name: _convert_value(row[idx]) for idx, col in nest_cols}
+                            target[leaf] = {col.field_name: _convert_value(row[idx]) for idx, col in nest_cols_for_path}
                 seen[root_key] = len(result_rows)
                 result_rows.append(obj)
 
-            # Accumulate one-to-many children — build one merged child per top_path per row
+            # Accumulate into every one-to-many array (at any depth)
             parent_idx = seen[root_key]
             parent_obj = result_rows[parent_idx]
-            for top_path in one_to_many_paths:
-                child: dict = {}
-                for nest_path, nest_cols in nested_groups.items():
-                    if nest_path.split(".")[0] != top_path:
-                        continue
-                    all_none = all(row[idx] is None for idx, _ in nest_cols)
-                    if all_none:
-                        continue
-                    sub_path = nest_path[len(top_path):].lstrip(".")
-                    if not sub_path:
-                        for idx, col in nest_cols:
-                            child[col.field_name] = _convert_value(row[idx])
-                    else:
-                        parts = sub_path.split(".")
-                        target = child
-                        for part in parts[:-1]:
-                            target = target.setdefault(part, {})
-                        target[parts[-1]] = {col.field_name: _convert_value(row[idx]) for idx, col in nest_cols}
-                if child and child not in parent_obj[top_path]:
-                    parent_obj[top_path].append(child)
+            for oto_path in one_to_many_paths:
+                nest_cols_for_path = nested_groups[oto_path]
+                all_none = all(row[idx] is None for idx, _ in nest_cols_for_path)
+                if all_none:
+                    continue
+                child: dict = {col.field_name: _convert_value(row[idx]) for idx, col in nest_cols_for_path}
+                parts = oto_path.split(".")
+                target = parent_obj
+                skip = False
+                for part in parts[:-1]:
+                    cur = target.get(part)
+                    if not isinstance(cur, dict):
+                        skip = True
+                        break
+                    target = cur
+                if skip:
+                    continue
+                arr = target.get(parts[-1])
+                if isinstance(arr, list) and child not in arr:
+                    arr.append(child)
 
         return {"data": {root_field: result_rows}}
 

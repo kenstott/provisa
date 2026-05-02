@@ -451,6 +451,9 @@ class AuthConfig(BaseModel):
     superuser: dict | None = None
     role_mapping: list[dict] = Field(default_factory=list)
     default_role: str = "analyst"
+    assignments_source: str = "claims"   # claims | provisa
+    default_assignments: list[dict] = Field(default_factory=list)
+    trust_upstream: bool = False
 
 
 class OtelConfig(BaseModel):
@@ -500,6 +503,8 @@ class ServerConfig(BaseModel):
 
 class ProvisaConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
+    multitenancy: bool = False
+    default_org_id: str = "root"
     sources: list[Source]
     domains: list[Domain]
     naming: NamingConfig = Field(default_factory=NamingConfig)

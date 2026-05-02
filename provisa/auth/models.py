@@ -18,17 +18,37 @@ from dataclasses import dataclass, field
 
 @dataclass
 class AuthIdentity:
-    """Authenticated user identity extracted from a token."""
+    """Authenticated user identity extracted from a token.
+
+    roles: list of structured claims in 'role_id:domain_id' or plain 'role_id' format.
+    A list supports enterprise IdPs that emit multiple role claims per user.
+    """
 
     user_id: str
     email: str | None
     display_name: str | None
     roles: list[str]
     raw_claims: dict = field(default_factory=dict)
+    active_org_id: str | None = None
+
+
+@dataclass
+class RoleAssignment:
+    """A resolved (role_id, domain_id) pair for a user.
+
+    domain_id == '*' means the role applies across all domains.
+    """
+
+    role_id: str
+    domain_id: str
 
 
 class AuthProvider(ABC):
     """Abstract base for authentication providers."""
+
+    @property
+    def auth_scheme(self) -> str:
+        return "bearer"
 
     @abstractmethod
     async def validate_token(self, token: str) -> AuthIdentity:

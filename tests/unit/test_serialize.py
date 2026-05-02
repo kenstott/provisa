@@ -158,6 +158,74 @@ class TestSerializeOneToMany:
         assert c3["orders"] == [{"oid": 20}]
 
 
+class TestSerializeMixedNesting:
+    def test_many_to_one_with_nested_one_to_many_and_sibling_one_to_many(self):
+        """_meta (many-to-one) with _meta.tableColumns (one-to-many) alongside _o__traces (one-to-many).
+
+        Bug: _meta was incorrectly treated as one-to-many because its child
+        _meta.tableColumns has cardinality=one-to-many, causing _meta to be [] not {}.
+        """
+        columns = [
+            ColumnRef(alias="t0", column="id", field_name="id", nested_in=None, cardinality=None),
+            ColumnRef(alias="t0", column="name", field_name="name", nested_in=None, cardinality=None),
+            ColumnRef(alias="t1", column="alias", field_name="alias", nested_in="_meta", cardinality="many-to-one"),
+            ColumnRef(alias="t1", column="table_name", field_name="tableName", nested_in="_meta", cardinality="many-to-one"),
+            ColumnRef(alias="t2", column="column_name", field_name="columnName", nested_in="_meta.tableColumns", cardinality="one-to-many"),
+            ColumnRef(alias="t2", column="data_type", field_name="dataType", nested_in="_meta.tableColumns", cardinality="one-to-many"),
+            ColumnRef(alias="t3", column="trace_name", field_name="traceName", nested_in="_o__traces", cardinality="one-to-many"),
+        ]
+        # SQL cross-product: 1 root × 2 tableColumns × 2 traces = 4 rows
+        rows = [
+            (1, "buddy", "ps__pets", "pets", "id",   "int4",    "trace1"),
+            (1, "buddy", "ps__pets", "pets", "name", "varchar", "trace1"),
+            (1, "buddy", "ps__pets", "pets", "id",   "int4",    "trace2"),
+            (1, "buddy", "ps__pets", "pets", "name", "varchar", "trace2"),
+        ]
+        result = serialize_rows(rows, columns, "pets")
+        data = result["data"]["pets"]
+        assert len(data) == 1
+        row = data[0]
+        assert row["id"] == 1
+        assert row["name"] == "buddy"
+        # _meta must be a dict (many-to-one), not a list
+        assert isinstance(row["_meta"], dict), f"_meta should be dict, got {type(row['_meta'])}"
+        assert row["_meta"]["alias"] == "ps__pets"
+        assert row["_meta"]["tableName"] == "pets"
+        # tableColumns inside _meta must be a list with 2 unique entries
+        tc = row["_meta"]["tableColumns"]
+        assert isinstance(tc, list), f"tableColumns should be list, got {type(tc)}"
+        assert len(tc) == 2
+        assert {"columnName": "id", "dataType": "int4"} in tc
+        assert {"columnName": "name", "dataType": "varchar"} in tc
+        # _o__traces must be a list with 2 unique entries
+        traces = row["_o__traces"]
+        assert isinstance(traces, list), f"_o__traces should be list, got {type(traces)}"
+        assert len(traces) == 2
+        assert {"traceName": "trace1"} in traces
+        assert {"traceName": "trace2"} in traces
+
+    def test_many_to_one_with_nested_one_to_many_no_sibling(self):
+        """_meta (many-to-one) with _meta.tableColumns (one-to-many), no other joins."""
+        columns = [
+            ColumnRef(alias="t0", column="id", field_name="id", nested_in=None, cardinality=None),
+            ColumnRef(alias="t1", column="alias", field_name="alias", nested_in="_meta", cardinality="many-to-one"),
+            ColumnRef(alias="t2", column="column_name", field_name="columnName", nested_in="_meta.tableColumns", cardinality="one-to-many"),
+        ]
+        rows = [
+            (1, "ps__pets", "id"),
+            (1, "ps__pets", "name"),
+        ]
+        result = serialize_rows(rows, columns, "pets")
+        data = result["data"]["pets"]
+        assert len(data) == 1
+        row = data[0]
+        assert isinstance(row["_meta"], dict)
+        assert row["_meta"]["alias"] == "ps__pets"
+        tc = row["_meta"]["tableColumns"]
+        assert isinstance(tc, list)
+        assert len(tc) == 2
+
+
 class TestSerializeNullIntermediatePath:
     def test_null_parent_does_not_crash_deep_path(self):
         """When a.b is None, processing a.b.c must not raise TypeError."""

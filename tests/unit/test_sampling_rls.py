@@ -209,7 +209,7 @@ class TestHasCapability:
     def test_multiple_capabilities_checks_correct_one(self):
         role = {
             "id": "power_user",
-            "capabilities": ["query_development", "query_approval", "full_results"],
+            "capabilities": ["query_development", "approve_view", "full_results"],
         }
         assert has_capability(role, Capability.FULL_RESULTS) is True
         assert has_capability(role, Capability.SOURCE_REGISTRATION) is False
@@ -217,5 +217,5 @@ class TestHasCapability:
     def test_admin_capability_grants_everything(self):
         role = {"id": "sysadmin", "capabilities": ["admin"]}
         assert has_capability(role, Capability.FULL_RESULTS) is True
-        assert has_capability(role, Capability.SECURITY_CONFIG) is True
+        assert has_capability(role, Capability.ACCESS_CONFIG) is True
         assert has_capability(role, Capability.TABLE_REGISTRATION) is True

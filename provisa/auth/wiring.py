@@ -19,9 +19,13 @@ from fastapi import FastAPI
 from provisa.auth.models import AuthProvider
 
 
-def build_auth_provider(auth_config: dict) -> AuthProvider:
+# auth.provider: basic — uses local_users table; db_pool injected at startup
+def build_auth_provider(auth_config: dict, db_pool=None) -> AuthProvider:
     """Instantiate the configured auth provider from the auth config section."""
     provider_name = auth_config["provider"]
+    if provider_name == "basic":
+        from provisa.auth.providers.basic import BasicAuthProvider
+        return BasicAuthProvider(db_pool=db_pool)
     if provider_name == "simple":
         from provisa.auth.providers.simple import SimpleAuthProvider
         simple_cfg = auth_config.get("simple", {})
@@ -45,14 +49,19 @@ def build_auth_provider(auth_config: dict) -> AuthProvider:
     raise ValueError(f"Unknown auth provider: {provider_name!r}")
 
 
-def wire_auth(app: FastAPI, auth_config: dict | None) -> None:
+def wire_auth(app: FastAPI, auth_config: dict | None, db_pool=None) -> None:
     """Conditionally register AuthMiddleware and auth routes based on config."""
     if auth_config is None:
         return
 
-    provider = build_auth_provider(auth_config)
+    provider = build_auth_provider(auth_config, db_pool=db_pool)
     mapping_rules = auth_config.get("role_mapping", [])
     default_role = auth_config.get("default_role", "analyst")
+
+    from provisa.api.app import state as _app_state
+    cfg = getattr(_app_state, "config", None)
+    multitenancy = getattr(cfg, "multitenancy", False) if cfg else False
+    default_org_id = getattr(cfg, "default_org_id", "root") if cfg else "root"
 
     from provisa.auth.middleware import AuthMiddleware
     app.add_middleware(
@@ -60,6 +69,11 @@ def wire_auth(app: FastAPI, auth_config: dict | None) -> None:
         provider=provider,
         mapping_rules=mapping_rules,
         default_role=default_role,
+        db_pool=db_pool,
+        assignments_source=auth_config.get("assignments_source", "claims"),
+        default_assignments=auth_config.get("default_assignments", []),
+        multitenancy=multitenancy,
+        default_org_id=default_org_id,
     )
 
     # Mount simple auth login route when provider=simple

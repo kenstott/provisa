@@ -26,11 +26,15 @@ except ImportError:
 class FirebaseAuthProvider(AuthProvider):
     """Validates Firebase ID tokens via firebase-admin SDK."""
 
-    def __init__(self, project_id: str, service_account_key: str | None = None) -> None:
+    provider_name: str = "firebase"
+
+    def __init__(self, firebase_config: dict) -> None:
         if not _HAS_FIREBASE:
             raise ImportError(
                 "firebase-admin is required: pip install provisa[firebase]"
             )
+        project_id = firebase_config.get("project_id", "")
+        service_account_key = firebase_config.get("service_account_key")
         self._project_id = project_id
         if not firebase_admin._apps:
             cred = (

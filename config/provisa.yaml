@@ -87,10 +87,10 @@ roles:
     capabilities:
       - source_registration
       - table_registration
-      - relationship_registration
-      - security_config
+      - create_relationship
+      - access_config
       - query_development
-      - query_approval
+      - approve_view
       - admin
     domain_access: ["*"]
   - id: analyst
@@ -148,6 +148,16 @@ webhooks:
     arguments:
       - name: message
         type: String
+
+auth:
+  provider: firebase
+  assignments_source: provisa
+  default_assignments:
+    - role_id: analyst
+      domain_id: "*"
+  firebase:
+    project_id: ${env:FIREBASE_PROJECT_ID:-provisa-dev}
+    service_account_key: ${env:FIREBASE_SERVICE_ACCOUNT_KEY:-}
 
 server:
   limits:

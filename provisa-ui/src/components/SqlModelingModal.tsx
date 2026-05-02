@@ -33,7 +33,7 @@ interface Props {
   tables: RegisteredTable[];
   existingRels: Relationship[];
   onClose: () => void;
-  onPromote: (candidate: ModelingCandidate) => Promise<void>;
+  onPromote?: (candidate: ModelingCandidate) => Promise<void>;
 }
 
 type ResultTab = "results" | "profile" | "candidates" | "errors" | "history";
@@ -799,7 +799,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
         : sampleMode === "last"
         ? `SELECT * FROM (\n${inner}\n) _sample ORDER BY 1 DESC LIMIT ${sampleSize}`
         : `SELECT * FROM (\n${inner}\n) _sample ORDER BY random() LIMIT ${sampleSize}`;
-    const result = await runSql(sampledSql, role);
+    const result = await runSql(sampledSql, role, true);
     const durationMs = Math.round(performance.now() - t0);
     setExecMs(durationMs);
     if (result.error) {
@@ -901,6 +901,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   }, [sqlText, existingRels]);
 
   const handlePromote = useCallback(async (idx: number) => {
+    if (!onPromote) return;
     await onPromote(candidates[idx]);
     setCandidates((prev) => prev.map((c, i) => i === idx ? { ...c, promoted: true } : c));
   }, [candidates, onPromote]);
@@ -1376,7 +1377,9 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                                     ? <span style={{ color: "var(--text-muted)", fontSize: "0.72rem", whiteSpace: "nowrap" }}>already exists</span>
                                     : c.promoted
                                       ? <span style={{ color: "var(--approve)", fontSize: "0.78rem" }}>✓ Promoted</span>
-                                      : <button className="btn-primary" style={{ fontSize: "0.72rem", padding: "0.15rem 0.5rem" }} onClick={() => handlePromote(idx)}>Promote</button>
+                                      : onPromote
+                                        ? <button className="btn-primary" style={{ fontSize: "0.72rem", padding: "0.15rem 0.5rem" }} onClick={() => handlePromote(idx)}>Promote</button>
+                                        : null
                                   }
                                 </td>
                               </tr>

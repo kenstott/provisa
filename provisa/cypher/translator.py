@@ -671,6 +671,20 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         candidates = [(m, False) for m in fwd_cands]
 
                 if not candidates:
+                    # No relationship between these two resolved node types.
+                    # Add an impossible predicate so the query returns empty results
+                    # rather than generating unjoined table references.
+                    if src_nm is not None and tgt_nm is not None and tgt_var:
+                        tgt_alias = tgt_var or tgt_nm.table_name
+                        jt = exp.alias_(
+                            exp.Table(
+                                this=exp.Identifier(this=tgt_nm.sql_table_name, quoted=True),
+                                db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
+                                catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
+                            ),
+                            alias=tgt_alias,
+                        )
+                        joins.append({"table": jt, "on": exp.false(), "join_type": "INNER"})
                     continue
 
                 join_type = "LEFT" if clause.optional else "INNER"

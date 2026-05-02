@@ -8,11 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Map auth identity claims to Provisa role IDs."""
+"""Map auth identity claims to Provisa role IDs and role:domain assignments."""
 
 from __future__ import annotations
 
-from provisa.auth.models import AuthIdentity
+from provisa.auth.models import AuthIdentity, RoleAssignment
 
 
 def resolve_role(
@@ -43,3 +43,26 @@ def resolve_role(
                 return role_id
 
     return default_role
+
+
+def resolve_assignments(identity: AuthIdentity) -> list[RoleAssignment]:
+    """Parse structured role claims into RoleAssignment pairs.
+
+    Each claim in identity.roles can be:
+      - "role_id:domain_id"  → RoleAssignment(role_id, domain_id)
+      - "role_id"            → RoleAssignment(role_id, "*")
+
+    Enterprise IdPs emit lists of claims (e.g. ["analyst:trading_ops", "steward:trading_risk"]).
+    Plain role names (no colon) are treated as global (all-domain) assignments.
+    """
+    result: list[RoleAssignment] = []
+    for claim in identity.roles:
+        claim = claim.strip()
+        if not claim:
+            continue
+        if ":" in claim:
+            role_id, domain_id = claim.split(":", 1)
+            result.append(RoleAssignment(role_id=role_id.strip(), domain_id=domain_id.strip()))
+        else:
+            result.append(RoleAssignment(role_id=claim, domain_id="*"))
+    return result

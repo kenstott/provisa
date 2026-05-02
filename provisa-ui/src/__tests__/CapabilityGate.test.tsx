@@ -61,7 +61,7 @@ describe('CapabilityGate', () => {
 
     render(
       <CapabilityGate
-        capability={'security_config' as Capability}
+        capability={'access_config' as Capability}
         fallback={<div>Not Authorized</div>}
       >
         <span>Security Settings</span>
@@ -92,11 +92,11 @@ describe('CapabilityGate', () => {
     mockUseCapability.mockReturnValue(true)
 
     render(
-      <CapabilityGate capability={'query_approval' as Capability}>
+      <CapabilityGate capability={'approve_view' as Capability}>
         <span>Approvals</span>
       </CapabilityGate>
     )
 
-    expect(mockUseCapability).toHaveBeenCalledWith('query_approval')
+    expect(mockUseCapability).toHaveBeenCalledWith('approve_view')
   })
 })

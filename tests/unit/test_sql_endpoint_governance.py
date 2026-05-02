@@ -132,7 +132,10 @@ class TestSQLForbiddenTable:
         resp = await sql_client.post("/data/sql", json=payload)
 
         assert resp.status_code == 403
-        assert "secret_table" in resp.json()["detail"]
+        detail = resp.json()["detail"]
+        # detail may be a string or {"violations": [...]}
+        detail_str = detail if isinstance(detail, str) else str(detail)
+        assert "secret_table" in detail_str
 
     async def test_sql_accessible_table_not_forbidden(self, sql_client):
         """SQL referencing an accessible table does not get a 403."""
@@ -233,3 +236,118 @@ class TestSQLGovernanceApplied:
         sql = "SELECT id FROM orders"
         result = apply_governance(sql, gov)
         assert "WHERE" not in result
+
+
+class TestImplicitTraversalDomains:
+    """meta and ops domain tables are implicitly traversable via JOIN (V002 exempt)."""
+
+    def _make_validate_fixtures(self):
+        from provisa.compiler.sql_gen import CompilationContext, TableMeta
+        from provisa.compiler.stage2 import GovernanceContext
+
+        orders_meta = TableMeta(
+            table_id=1, field_name="orders", type_name="Orders",
+            source_id="pg", catalog_name="pg", schema_name="public", table_name="orders",
+            domain_id="pet-store",
+        )
+        meta_table_meta = TableMeta(
+            table_id=2, field_name="registered_tables", type_name="RegisteredTables",
+            source_id="provisa-admin", catalog_name="provisa-admin",
+            schema_name="public", table_name="registered_tables",
+            domain_id="meta",
+        )
+        ops_table_meta = TableMeta(
+            table_id=3, field_name="metrics", type_name="Metrics",
+            source_id="provisa-ops", catalog_name="provisa-ops",
+            schema_name="public", table_name="metrics",
+            domain_id="ops",
+        )
+
+        ctx = CompilationContext()
+        ctx.tables = {
+            "orders": orders_meta,
+            "registered_tables": meta_table_meta,
+            "metrics": ops_table_meta,
+        }
+        ctx.joins = {}
+
+        gov_ctx = GovernanceContext(
+            rls_rules={},
+            table_map={
+                "orders": 1,
+                "registered_tables": 2,
+                "metrics": 3,
+            },
+        )
+
+        role = {"id": "analyst", "domain_access": ["pet-store"]}
+        raw_tables = [
+            {"id": 1, "source_id": "pg", "schema_name": "public", "table_name": "orders",
+             "columns": [{"column_name": "id"}, {"column_name": "table_name"}]},
+            {"id": 2, "source_id": "provisa-admin", "schema_name": "public",
+             "table_name": "registered_tables",
+             "columns": [{"column_name": "table_name"}, {"column_name": "domain_id"}]},
+            {"id": 3, "source_id": "provisa-ops", "schema_name": "public",
+             "table_name": "metrics",
+             "columns": [{"column_name": "table_name"}, {"column_name": "value"}]},
+        ]
+        return ctx, gov_ctx, role, raw_tables
+
+    def test_join_to_meta_domain_no_registered_rel_is_allowed(self):
+        """JOIN from a data table to a meta domain table requires no registered relationship (V002 exempt)."""
+        from provisa.compiler.sql_validator import validate_sql
+
+        ctx, gov_ctx, role, raw_tables = self._make_validate_fixtures()
+        sql = (
+            "SELECT o.id, r.domain_id "
+            "FROM orders o "
+            "JOIN registered_tables r ON o.table_name = r.table_name"
+        )
+        violations = validate_sql(sql, ctx, gov_ctx, role, raw_tables)
+        v002 = [v for v in violations if v.code == "V002"]
+        assert v002 == [], f"Expected no V002 violations for meta JOIN, got: {v002}"
+
+    def test_join_to_ops_domain_no_registered_rel_is_allowed(self):
+        """JOIN from a data table to an ops domain table requires no registered relationship (V002 exempt)."""
+        from provisa.compiler.sql_validator import validate_sql
+
+        ctx, gov_ctx, role, raw_tables = self._make_validate_fixtures()
+        sql = (
+            "SELECT o.id, m.value "
+            "FROM orders o "
+            "JOIN metrics m ON o.table_name = m.table_name"
+        )
+        violations = validate_sql(sql, ctx, gov_ctx, role, raw_tables)
+        v002 = [v for v in violations if v.code == "V002"]
+        assert v002 == [], f"Expected no V002 violations for ops JOIN, got: {v002}"
+
+    def test_join_to_regular_domain_without_rel_is_blocked(self):
+        """JOIN between two non-implicit domains without a registered relationship still raises V002."""
+        from provisa.compiler.sql_gen import TableMeta
+        from provisa.compiler.sql_validator import validate_sql
+
+        ctx, gov_ctx, role, raw_tables = self._make_validate_fixtures()
+        # Add a second data-domain table with no relationship to orders
+        other_meta = TableMeta(
+            table_id=4, field_name="cats", type_name="Cats",
+            source_id="pg", catalog_name="pg", schema_name="public", table_name="cats",
+            domain_id="shelter",
+        )
+        ctx.tables["cats"] = other_meta
+        gov_ctx.table_map["cats"] = 4
+
+        sql = "SELECT o.id FROM orders o JOIN cats c ON o.id = c.id"
+        violations = validate_sql(sql, ctx, gov_ctx, role, raw_tables)
+        v002 = [v for v in violations if v.code == "V002"]
+        assert v002, "Expected V002 for JOIN between unrelated data domains without a registered relationship"
+
+    def test_direct_meta_table_in_from_blocked_by_v001(self):
+        """Direct FROM-clause use of a meta table is still domain-access checked (V001)."""
+        from provisa.compiler.sql_validator import validate_sql
+
+        ctx, gov_ctx, role, raw_tables = self._make_validate_fixtures()
+        sql = "SELECT table_name FROM registered_tables"
+        violations = validate_sql(sql, ctx, gov_ctx, role, raw_tables)
+        # meta domain not in role's domain_access ["pet-store"] → V001
+        v001 = [v for v in violations if v.code == "V001"]
+        assert v001, "Expected V001 when meta table appears directly in FROM clause without domain access"

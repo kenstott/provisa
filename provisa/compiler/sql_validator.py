@@ -7,6 +7,7 @@
 Rules:
   V001 – FROM-clause table's domain must be in role's domain_access (or domain_access empty).
   V002 – Every JOIN ON condition must match an approved relationship (source_col = target_col).
+          Exception: JOINs to 'meta' or 'ops' domain tables are implicitly authorized (traversal only).
   V003 – Referenced columns must be visible to this role.
   V004 – Join graph must be a DAG (no cycles).
 """
@@ -17,6 +18,7 @@ from dataclasses import dataclass
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.compiler.schema_gen import _IMPLICIT_TRAVERSAL_DOMAINS
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import GovernanceContext
 
@@ -33,6 +35,7 @@ def validate_sql(
     gov_ctx: GovernanceContext,
     role: dict,
     raw_tables: list[dict],
+    discovery_mode: bool = False,
 ) -> list[ValidationViolation]:
     """Validate SQL against role-scoped GraphQL-equivalent access rules."""
     try:
@@ -62,8 +65,9 @@ def validate_sql(
 
     domain_access: list[str] = role.get("domain_access") or []
 
-    violations += _check_domain_access(tree, gov_ctx, table_id_to_meta, domain_access)
-    violations += _check_join_relationships(tree, gov_ctx, valid_joins, table_id_to_meta)
+    if not discovery_mode:
+        violations += _check_domain_access(tree, gov_ctx, table_id_to_meta, domain_access)
+        violations += _check_join_relationships(tree, gov_ctx, valid_joins, table_id_to_meta)
     violations += _check_column_visibility(tree, gov_ctx)
     violations += _check_dag(tree, gov_ctx, valid_joins)
 
@@ -213,6 +217,10 @@ def _check_join_relationships(
                 continue
             tgt_tid = _resolve_table_id(tbl, gov_ctx)
             if tgt_tid is None:
+                continue
+            # meta/ops tables are implicitly traversable — no registered relationship required
+            tgt_meta = table_id_to_meta.get(tgt_tid)
+            if tgt_meta and tgt_meta.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS:
                 continue
             on_sql = on_expr.sql(dialect="postgres")
             for lt, lc, rt, rc in pairs:

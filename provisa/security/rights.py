@@ -21,12 +21,20 @@ from enum import Enum
 class Capability(str, Enum):
     SOURCE_REGISTRATION = "source_registration"
     TABLE_REGISTRATION = "table_registration"
-    RELATIONSHIP_REGISTRATION = "relationship_registration"
-    SECURITY_CONFIG = "security_config"
+    CREATE_RELATIONSHIP = "create_relationship"
+    ACCESS_CONFIG = "access_config"
     QUERY_DEVELOPMENT = "query_development"
-    QUERY_APPROVAL = "query_approval"
+    APPROVE_VIEW = "approve_view"
     FULL_RESULTS = "full_results"  # bypass sampling mode
     ADMIN = "admin"
+    USAGE = "usage"
+    READ_RESTRICTED = "read_restricted"
+    APPROVE_RELATIONSHIP = "approve_relationship"
+    CREATE_VIEW = "create_view"
+    COLUMN_GRANT = "column_grant"
+    USER_MANAGEMENT = "user_management"
+    MASKING_CONFIG = "masking_config"
+    SUPERADMIN = "superadmin"
 
 
 class InsufficientRightsError(Exception):

@@ -133,7 +133,7 @@ async def _load_config_in_txn(
             )
         else:
             await conn.execute("DELETE FROM roles")
-        await conn.execute("DELETE FROM relationships")
+        await conn.execute("DELETE FROM relationships WHERE id NOT LIKE 'meta:%'")
         await conn.execute("DELETE FROM tracked_functions")
         await conn.execute("DELETE FROM tracked_webhooks")
 
@@ -306,12 +306,14 @@ async def _load_config_in_txn(
     # 6. Relationships (tables must exist first)
     # Preserve relationships whose source or target table belongs to a dynamically-registered
     # source (e.g. graphql_remote) — those are managed outside of this config file.
+    # Also preserve 'meta:*' relationships seeded by _seed_meta_domain.
     current_rel_ids = [rel.id for rel in config.relationships]
     if current_rel_ids:
         await conn.execute(
             """
             DELETE FROM relationships r
             WHERE r.id != ALL($1::text[])
+            AND r.id NOT LIKE 'meta:%'
             AND NOT EXISTS (
                 SELECT 1 FROM registered_tables rt
                 JOIN sources s ON rt.source_id = s.id
@@ -325,7 +327,8 @@ async def _load_config_in_txn(
         await conn.execute(
             """
             DELETE FROM relationships r
-            WHERE NOT EXISTS (
+            WHERE r.id NOT LIKE 'meta:%'
+            AND NOT EXISTS (
                 SELECT 1 FROM registered_tables rt
                 JOIN sources s ON rt.source_id = s.id
                 WHERE (rt.id = r.source_table_id OR rt.id = r.target_table_id)

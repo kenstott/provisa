@@ -10,10 +10,10 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
+import type { Role } from "../types/auth";
 
-/** Multi-role selector — appears in the header as a chip-based dropdown. */
 export function RoleSelector() {
-  const { selectedRoles, availableRoles, toggleRole } = useAuth();
+  const { selectedRole, availableRoles, selectRole, devMode } = useAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -30,11 +30,15 @@ export function RoleSelector() {
 
   if (availableRoles.length === 0) return <span>No roles configured</span>;
 
-  const selectedIds = new Set(selectedRoles.map((r) => r.id));
-  const label = selectedRoles.map((r) => r.id).join(", ");
+  const label = selectedRole === "all" ? "All" : (selectedRole as Role).id;
+
+  function handleSelect(value: Role | "all") {
+    selectRole(value);
+    setOpen(false);
+  }
 
   return (
-    <div className="role-selector" ref={ref}>
+    <div className={`role-selector${devMode ? " role-selector--dev" : ""}`} ref={ref}>
       <button
         type="button"
         className="role-selector-trigger"
@@ -42,19 +46,29 @@ export function RoleSelector() {
         aria-expanded={open}
       >
         <span className="role-selector-label">Role: {label}</span>
-        <span className="role-selector-arrow">{open ? "\u25B4" : "\u25BE"}</span>
+        {devMode && <span className="role-selector-dev-badge">DEV</span>}
+        <span className="role-selector-arrow">{open ? "▴" : "▾"}</span>
       </button>
       {open && (
         <div className="role-selector-dropdown">
+          <div
+            className={`role-selector-option${selectedRole === "all" ? " role-selector-option--selected" : ""}`}
+            onClick={() => handleSelect("all")}
+            role="option"
+            aria-selected={selectedRole === "all"}
+          >
+            All
+          </div>
           {availableRoles.map((r) => (
-            <label key={r.id} className="role-selector-option">
-              <input
-                type="checkbox"
-                checked={selectedIds.has(r.id)}
-                onChange={() => toggleRole(r)}
-              />
+            <div
+              key={r.id}
+              className={`role-selector-option${selectedRole !== "all" && (selectedRole as Role).id === r.id ? " role-selector-option--selected" : ""}`}
+              onClick={() => handleSelect(r)}
+              role="option"
+              aria-selected={selectedRole !== "all" && (selectedRole as Role).id === r.id}
+            >
               {r.id}
-            </label>
+            </div>
           ))}
         </div>
       )}

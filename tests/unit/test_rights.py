@@ -34,7 +34,7 @@ class TestCheckCapability:
         role = {"id": "admin", "capabilities": ["admin"]}
         check_capability(role, Capability.QUERY_DEVELOPMENT)
         check_capability(role, Capability.SOURCE_REGISTRATION)
-        check_capability(role, Capability.SECURITY_CONFIG)
+        check_capability(role, Capability.ACCESS_CONFIG)
 
     def test_each_capability_independent(self):
         role = {"id": "reg", "capabilities": ["source_registration"]}
@@ -43,9 +43,9 @@ class TestCheckCapability:
             check_capability(role, Capability.QUERY_DEVELOPMENT)
 
     def test_multiple_capabilities(self):
-        role = {"id": "steward", "capabilities": ["query_development", "query_approval"]}
+        role = {"id": "steward", "capabilities": ["query_development", "approve_view"]}
         check_capability(role, Capability.QUERY_DEVELOPMENT)
-        check_capability(role, Capability.QUERY_APPROVAL)
+        check_capability(role, Capability.APPROVE_VIEW)
         with pytest.raises(InsufficientRightsError):
             check_capability(role, Capability.ADMIN)
 

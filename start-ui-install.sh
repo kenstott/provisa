@@ -8,14 +8,19 @@ set -euo pipefail
 KEEP_DOCKER=false
 FAST=false
 DEMO=false
+IDP=""
 for arg in "$@"; do
   case "$arg" in
     --keep-docker) KEEP_DOCKER=true ;;
     --fast) FAST=true; KEEP_DOCKER=true ;;
     --demo) DEMO=true ;;
-    *) echo "Unknown option: $arg"; echo "Usage: $0 [--keep-docker] [--fast] [--demo]"; exit 1 ;;
+    --idp=*) IDP="${arg#--idp=}" ;;
+    *) echo "Unknown option: $arg"; echo "Usage: $0 [--keep-docker] [--fast] [--demo] [--idp=basic|firebase]"; exit 1 ;;
   esac
 done
+if [ -n "$IDP" ] && [ "$IDP" != "basic" ] && [ "$IDP" != "firebase" ]; then
+  echo "Unknown IDP: $IDP. Must be 'basic' or 'firebase'"; exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/.logs"
@@ -31,6 +36,8 @@ fi
 export PG_PASSWORD="${PG_PASSWORD:-provisa}"
 export PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
 export GRAPHQL_DEMO_ENABLED="${GRAPHQL_DEMO_ENABLED:-$DEMO}"
+export PROVISA_DEMO="${DEMO}"
+export PROVISA_IDP="${IDP}"
 if [ "$DEMO" = true ]; then
   export PROVISA_CONFIG="config/provisa-install.yaml"
 else
@@ -216,6 +223,8 @@ start_backend() {
     REDIS_HOST=localhost
     PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
     GRAPHQL_DEMO_ENABLED="${GRAPHQL_DEMO_ENABLED:-false}"
+    PROVISA_DEMO="${DEMO}"
+    PROVISA_IDP="${IDP}"
     GRAPHQL_DEMO_URL="http://localhost:4000/graphql"
     PROVISA_CONFIG="${PROVISA_CONFIG}"
     PROVISA_CONFIG_REPLACE="true"
@@ -287,7 +296,7 @@ if command -v nvm >/dev/null 2>&1; then
   nvm use 2>/dev/null || nvm use 22 2>/dev/null || true
 fi
 cd "$SCRIPT_DIR/provisa-ui"
-npx vite --host 0.0.0.0 --force &
+VITE_AUTH_ENABLED="${IDP:+true}" npx vite --host 0.0.0.0 --force &
 UI_PID=$!
 
 echo -n "  Waiting for UI"

@@ -8,15 +8,20 @@ SEED_DATA=false
 OBSERVABILITY=true
 KEEP_DOCKER=false
 DEMO=false
+IDP=""
 for arg in "$@"; do
   case "$arg" in
     --seed-data) SEED_DATA=true ;;
     --no-observability) OBSERVABILITY=false ;;
     --keep-docker) KEEP_DOCKER=true ;;
     --demo) DEMO=true ;;
-    *) echo "Unknown option: $arg"; echo "Usage: $0 [--seed-data] [--no-observability] [--keep-docker] [--demo]"; exit 1 ;;
+    --idp=*) IDP="${arg#--idp=}" ;;
+    *) echo "Unknown option: $arg"; echo "Usage: $0 [--seed-data] [--no-observability] [--keep-docker] [--demo] [--idp=basic|firebase]"; exit 1 ;;
   esac
 done
+if [ -n "$IDP" ] && [ "$IDP" != "basic" ] && [ "$IDP" != "firebase" ]; then
+  echo "Unknown IDP: $IDP. Must be 'basic' or 'firebase'"; exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/.logs"
@@ -34,6 +39,8 @@ export PG_PASSWORD="${PG_PASSWORD:-provisa}"
 export REDIS_URL="${REDIS_URL:-redis://localhost:6379}"
 export PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
 export GRAPHQL_DEMO_ENABLED="${GRAPHQL_DEMO_ENABLED:-$DEMO}"
+export PROVISA_DEMO="${DEMO}"
+export PROVISA_IDP="${IDP}"
 export PROVISA_REDIRECT_ENABLED="${PROVISA_REDIRECT_ENABLED:-true}"
 export PROVISA_REDIRECT_ENDPOINT="${PROVISA_REDIRECT_ENDPOINT:-http://localhost:9000}"
 export PROVISA_REDIRECT_ACCESS_KEY="${PROVISA_REDIRECT_ACCESS_KEY:-minioadmin}"

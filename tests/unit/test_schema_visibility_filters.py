@@ -35,7 +35,7 @@ def _ops_tables() -> list[dict]:
         _table("traces", "ops", "provisa-otel"),
         _table("metrics", "ops", "provisa-otel"),
         _table("logs", "ops", "provisa-otel"),
-        _table("provisa_queries", "ops", "provisa-otel"),
+        _table("queries", "ops", "provisa-otel"),
     ]
 
 
@@ -149,7 +149,7 @@ class TestIncludeMetrics:
         assert "metrics" not in names
         assert "traces" in names
         assert "logs" in names
-        assert "provisa_queries" in names
+        assert "queries" in names
 
 
 # ---------------------------------------------------------------------------
