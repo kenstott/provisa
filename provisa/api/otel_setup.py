@@ -130,6 +130,25 @@ def attach_otlp_exporters(endpoint: str, service_name: str = "provisa") -> None:
         _log.warning("Failed to attach OTel exporters: %s", e)
 
 
+def _write_otlp2parquet_toml(max_age_secs: int, config_path: str) -> None:
+    """Regenerate observability/otlp2parquet.toml from provisa config values."""
+    import logging
+    _log = logging.getLogger(__name__)
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(config_path)))
+    toml_path = os.path.join(project_root, "observability", "otlp2parquet.toml")
+    content = (
+        "[storage]\nbackend = \"s3\"\n\n"
+        "[storage.s3]\nbucket = \"provisa-otel\"\n"
+        "endpoint = \"http://minio:9000\"\nregion = \"us-east-1\"\n\n"
+        f"[batch]\nmax_rows = 200000\nmax_bytes = 134217728\nmax_age_secs = {max_age_secs}\n"
+    )
+    try:
+        with open(toml_path, "w") as _f:
+            _f.write(content)
+    except Exception as exc:
+        _log.debug("Could not write otlp2parquet.toml: %s", exc)
+
+
 def setup_otel(app: "object") -> None:
     """Initialize OpenTelemetry tracing unconditionally.
 
@@ -154,6 +173,8 @@ def setup_otel(app: "object") -> None:
     log_level_name = os.environ.get("OTEL_LOG_LEVEL") or _otel_cfg.get("log_level", "WARNING")
     compact_batch_size = int(os.environ.get("OTEL_COMPACT_BATCH_SIZE") or _otel_cfg.get("compact_batch_size", 10))
     span_export_delay_millis = int(os.environ.get("OTEL_SPAN_EXPORT_DELAY_MILLIS") or _otel_cfg.get("span_export_delay_millis", 1000))
+    otlp2parquet_max_age_secs = int(os.environ.get("OTLP2PARQUET_MAX_AGE_SECS") or _otel_cfg.get("otlp2parquet_max_age_secs", 5))
+    _write_otlp2parquet_toml(otlp2parquet_max_age_secs, config_path)
     try:
         from opentelemetry import trace
         from opentelemetry.sdk.resources import Resource

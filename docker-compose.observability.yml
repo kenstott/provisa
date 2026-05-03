@@ -22,6 +22,11 @@ services:
 
   otlp2parquet:
     image: ghcr.io/smithclay/otlp2parquet:latest
+    volumes:
+      - ./observability/otlp2parquet.toml:/etc/otlp2parquet.toml:ro
+    command:
+      - "-c"
+      - "/etc/otlp2parquet.toml"
     environment:
       OTLP2PARQUET_STORAGE_BACKEND: "${OTLP2PARQUET_STORAGE_BACKEND:-s3}"
       OTLP2PARQUET_S3_BUCKET: "${PROVISA_OTEL_BUCKET:-provisa-otel}"
@@ -44,6 +49,8 @@ services:
     command:
       - "--config=/etc/otel-collector-config.yaml"
       - "--config=/etc/otel-collector-config.dev.yaml"
+    environment:
+      OTEL_COLLECTOR_BATCH_TIMEOUT: "${OTEL_COLLECTOR_BATCH_TIMEOUT:-200ms}"
     ports:
       - "4317:4317"
       - "4318:4318"

@@ -19,6 +19,7 @@ exporters:
 
 processors:
   batch:
+    timeout: ${OTEL_COLLECTOR_BATCH_TIMEOUT:-200ms}
 
 service:
   pipelines:

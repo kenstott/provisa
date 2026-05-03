@@ -472,6 +472,10 @@ class OtelConfig(BaseModel):
         this many hours on each startup. None (default) disables expiry.
     span_export_delay_millis: how often the BatchSpanProcessor flushes spans to the collector
         (milliseconds). Lower values reduce trace latency; default 1000.
+    otlp2parquet_max_age_secs: max age before otlp2parquet flushes a Parquet batch to S3
+        (seconds). Lower values reduce trace latency; default 5.
+    collector_batch_timeout_ms: OTel Collector batch processor timeout (milliseconds).
+        Lower values reduce trace latency; default 200.
     """
 
     endpoint: str = ""
@@ -482,6 +486,8 @@ class OtelConfig(BaseModel):
     compact_batch_size: int = 10
     ops_snapshot_retention_hours: int | None = None
     span_export_delay_millis: int = 1000
+    otlp2parquet_max_age_secs: int = 5
+    collector_batch_timeout_ms: int = 200
 
 
 class ServerConfig(BaseModel):
