@@ -1009,7 +1009,7 @@ def _compile_root_field(
                     f' WHERE {_q(join_meta.target_column)} = {src_expr}'
                     f' LIMIT {_user_limit})'
                 )
-                join_clauses.append(f'LEFT JOIN {_tref} {_q(join_alias)} ON TRUE')
+                join_clauses.append(f'LEFT JOIN LATERAL {_tref} {_q(join_alias)} ON TRUE')
             else:
                 join_clauses.append(
                     f'LEFT JOIN {_table_ref(join_meta.target, use_catalog)}'
