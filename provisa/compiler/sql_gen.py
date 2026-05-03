@@ -232,8 +232,10 @@ def build_context(si: object) -> CompilationContext:
             original_table_name=t.table_name if physical_name != t.table_name else "",
         )
         ctx.tables[t.field_name] = meta
+        from provisa.compiler.naming import domain_to_sql_name as _d2s
+        _field_part = t.field_name.split("__", 1)[1] if "__" in t.field_name else t.field_name
         ctx.virtual_columns[t.table_id] = {
-            "_name_": f"{t.schema_name}.{physical_name}" if t.schema_name else physical_name,
+            "_name_": f"{_d2s(t.domain_id)}.{_field_part}",
             "_domain_": t.domain_id,
         }
         # Register aggregate variant pointing to same TableMeta
