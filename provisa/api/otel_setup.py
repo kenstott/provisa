@@ -101,8 +101,9 @@ def attach_otlp_exporters(endpoint: str, service_name: str = "provisa") -> None:
 
         provider = trace.get_tracer_provider()
         if hasattr(provider, "add_span_processor"):
+            _delay = int(os.environ.get("OTEL_SPAN_EXPORT_DELAY_MILLIS", 1000))
             provider.add_span_processor(
-                BatchSpanProcessor(_make_span_exporter(endpoint))
+                BatchSpanProcessor(_make_span_exporter(endpoint), schedule_delay_millis=_delay)
             )
 
         metric_reader = PeriodicExportingMetricReader(
@@ -152,6 +153,7 @@ def setup_otel(app: "object") -> None:
     sample_rate = float(_otel_cfg.get("sample_rate", 1.0))
     log_level_name = os.environ.get("OTEL_LOG_LEVEL") or _otel_cfg.get("log_level", "WARNING")
     compact_batch_size = int(os.environ.get("OTEL_COMPACT_BATCH_SIZE") or _otel_cfg.get("compact_batch_size", 10))
+    span_export_delay_millis = int(os.environ.get("OTEL_SPAN_EXPORT_DELAY_MILLIS") or _otel_cfg.get("span_export_delay_millis", 1000))
     try:
         from opentelemetry import trace
         from opentelemetry.sdk.resources import Resource
@@ -179,7 +181,7 @@ def setup_otel(app: "object") -> None:
         if endpoint:
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
             provider.add_span_processor(
-                BatchSpanProcessor(_make_span_exporter(endpoint))
+                BatchSpanProcessor(_make_span_exporter(endpoint), schedule_delay_millis=span_export_delay_millis)
             )
             _log.info("OTel tracing → %s (service=%s)", endpoint, service_name)
         else:

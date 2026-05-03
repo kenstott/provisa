@@ -470,6 +470,8 @@ class OtelConfig(BaseModel):
     compact_batch_size: rows per INSERT batch during compaction; reduce for low-memory Trino.
     ops_snapshot_retention_hours: if set, expire Iceberg snapshots and orphan files older than
         this many hours on each startup. None (default) disables expiry.
+    span_export_delay_millis: how often the BatchSpanProcessor flushes spans to the collector
+        (milliseconds). Lower values reduce trace latency; default 1000.
     """
 
     endpoint: str = ""
@@ -479,6 +481,7 @@ class OtelConfig(BaseModel):
     compact_cron: str = "* * * * *"
     compact_batch_size: int = 10
     ops_snapshot_retention_hours: int | None = None
+    span_export_delay_millis: int = 1000
 
 
 class ServerConfig(BaseModel):
