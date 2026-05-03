@@ -95,6 +95,7 @@ class JoinMeta:
     disable_cypher: bool = False  # when True, suppress this edge in the Cypher graph
     source_constant: int | None = None  # when set, use as literal join value instead of source column
     source_json_key: str | None = None  # when set, extract key from JSON object column via ->>'key'
+    default_limit: int | None = None  # when set, wrap join target in a LIMIT subquery
 
 
 @dataclass
@@ -382,7 +383,8 @@ def build_context(si: object) -> CompilationContext:
             table_name=physical_map.get(ops_t.table_name, ops_t.table_name),
             domain_id=ops_t.domain_id,
         )
-        join_field = f"_{ops_t.field_name}"
+        _base = ops_t.field_name.split("__", 1)[1] if "__" in ops_t.field_name else ops_t.field_name
+        join_field = f"_{_base}"
         for t in tables:
             if t.domain_id in _IMPLICIT_DOMAINS:
                 continue
@@ -394,6 +396,7 @@ def build_context(si: object) -> CompilationContext:
                 target=ops_tgt,
                 cardinality="one-to-many",
                 cypher_alias=ops_t.field_name.upper(),
+                default_limit=10,
             )
 
     return ctx
@@ -996,11 +999,19 @@ def _compile_root_field(
                     join_alias, join_meta.target_column,
                     join_meta.target_column_type, join_meta.source_column_type,
                 )
-            join_clauses.append(
-                f'LEFT JOIN {_table_ref(join_meta.target, use_catalog)}'
-                f' {_q(join_alias)}'
-                f' ON {src_expr} = {tgt_expr}'
-            )
+            if join_meta.default_limit is not None:
+                _tref = (
+                    f'(SELECT * FROM {_table_ref(join_meta.target, use_catalog)}'
+                    f' WHERE {_q(join_meta.target_column)} = {src_expr}'
+                    f' LIMIT {join_meta.default_limit})'
+                )
+                join_clauses.append(f'LEFT JOIN {_tref} {_q(join_alias)} ON TRUE')
+            else:
+                join_clauses.append(
+                    f'LEFT JOIN {_table_ref(join_meta.target, use_catalog)}'
+                    f' {_q(join_alias)}'
+                    f' ON {src_expr} = {tgt_expr}'
+                )
 
             # Add nested columns (recursively handle sub-relationships)
             if sel.selection_set:

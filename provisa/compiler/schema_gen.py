@@ -864,7 +864,8 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             if info.domain_id not in _IMPLICIT_TRAVERSAL_DOMAINS:
                 for ops_t in _ops_traversal_targets:
                     if ops_t.table_id in gql_types:
-                        fields[f"_{ops_t.field_name}"] = GraphQLField(
+                        _ops_base = ops_t.field_name.split("__", 1)[1] if "__" in ops_t.field_name else ops_t.field_name
+                    fields[f"_{_ops_base}"] = GraphQLField(
                             GraphQLList(GraphQLNonNull(gql_types[ops_t.table_id])),
                             description=f"Operational {ops_t.table_name} records for this table",
                         )
