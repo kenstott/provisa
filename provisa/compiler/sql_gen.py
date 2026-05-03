@@ -233,7 +233,7 @@ def build_context(si: object) -> CompilationContext:
         )
         ctx.tables[t.field_name] = meta
         ctx.virtual_columns[t.table_id] = {
-            "_name_": t.alias or t.table_name,
+            "_name_": f"{t.schema_name}.{physical_name}" if t.schema_name else physical_name,
             "_domain_": t.domain_id,
         }
         # Register aggregate variant pointing to same TableMeta
