@@ -1000,10 +1000,14 @@ def _compile_root_field(
                     join_meta.target_column_type, join_meta.source_column_type,
                 )
             if join_meta.default_limit is not None:
+                _user_limit = next(
+                    (int(_extract_value(a.value, variables)) for a in sel.arguments if a.name.value == "limit"),
+                    join_meta.default_limit,
+                )
                 _tref = (
                     f'(SELECT * FROM {_table_ref(join_meta.target, use_catalog)}'
                     f' WHERE {_q(join_meta.target_column)} = {src_expr}'
-                    f' LIMIT {join_meta.default_limit})'
+                    f' LIMIT {_user_limit})'
                 )
                 join_clauses.append(f'LEFT JOIN {_tref} {_q(join_alias)} ON TRUE')
             else:
