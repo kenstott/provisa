@@ -177,6 +177,18 @@ PROVISA_DIRECTIVES = [
         },
         description="Redirect large results to object store.",
     ),
+    GraphQLDirective(
+        name="cached",
+        locations=_QMS,
+        args={"ttl": GraphQLArgument(GraphQLInt, description="Cache TTL in seconds; 0 = disable caching")},
+        description="Override response cache TTL for this query.",
+    ),
+    GraphQLDirective(
+        name="noCache",
+        locations=_QMS,
+        args={},
+        description="Bypass the response cache entirely — skip both read and write.",
+    ),
 ]
 
 # --- Relay-style connection types for cursor pagination (REQ-218) ---

@@ -376,6 +376,7 @@ async def graphql_endpoint(
             steward_hint=steward_hint,
             query_session_props=directives.to_session_props(),
             cache_ttl=directives.cache_ttl,
+            no_cache=directives.no_cache,
         )
 
     if stats_enabled:
@@ -1175,6 +1176,7 @@ async def _execute_one_field(
     steward_hint: str | None = None,
     query_session_props: dict | None = None,
     response_cache_ttl: int | None = None,
+    no_cache: bool = False,
 ):
     """Execute a single compiled query field through the full pipeline.
 
@@ -1238,7 +1240,7 @@ async def _execute_one_field(
     # Cache check
     rls_rules_for_key = rls.rules if rls.has_rules() else {}
     ck = cache_key(compiled.sql, compiled.params, role_id, rls_rules_for_key)
-    cached = await check_cache(state.response_cache_store, ck)
+    cached = None if no_cache else await check_cache(state.response_cache_store, ck)
     if cached is not None:
         cached_data = json.loads(cached.data)
         field_rows = cached_data.get("data", {}).get(root_field, [])
@@ -1334,7 +1336,7 @@ async def _execute_one_field(
                 source_cache_ttl=_src_cache.get("cache_ttl"),
                 table_cache_ttl=_tbl_cache_ttl,
             )
-            if _resolved_ttl > 0:
+            if _resolved_ttl > 0 and not no_cache:
                 await store_result(
                     state.response_cache_store, ck, response_data,
                     ttl=_resolved_ttl, table_ids=_table_ids,
@@ -1595,7 +1597,7 @@ async def _execute_one_field(
             source_cache_ttl=src_cache.get("cache_ttl"),
             table_cache_ttl=tbl_cache_ttl,
         )
-        if resolved_ttl > 0:
+        if resolved_ttl > 0 and not no_cache:
             await store_result(
                 state.response_cache_store, ck, response_data,
                 ttl=resolved_ttl, table_ids=table_ids,
@@ -1642,7 +1644,7 @@ async def _execute_one_field(
 
 
 
-async def _handle_query(document, ctx, rls, state, variables, role, output_format="json", role_id="admin", *, force_redirect=False, redirect_threshold=None, redirect_format=None, steward_hint: str | None = None, query_session_props: dict | None = None, cache_ttl: int | None = None):
+async def _handle_query(document, ctx, rls, state, variables, role, output_format="json", role_id="admin", *, force_redirect=False, redirect_threshold=None, redirect_format=None, steward_hint: str | None = None, query_session_props: dict | None = None, cache_ttl: int | None = None, no_cache: bool = False):
     """Handle a GraphQL query operation with content negotiation.
 
     Pipeline per root field: compile → RLS → masking → MV rewrite → sampling
@@ -1708,6 +1710,7 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
                     steward_hint=steward_hint,
                     query_session_props=query_session_props,
                     response_cache_ttl=cache_ttl,
+                    no_cache=no_cache,
                 ),
                 timeout=_request_timeout(),
             )
@@ -1747,6 +1750,7 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
                     steward_hint=steward_hint,
                     query_session_props=query_session_props,
                     response_cache_ttl=cache_ttl,
+                    no_cache=no_cache,
                 )
                 for compiled in prepared
             ]),

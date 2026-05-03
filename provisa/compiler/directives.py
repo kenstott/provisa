@@ -19,6 +19,8 @@ Supported GraphQL directives (operation-level unless noted):
     @watermark                                      — field-level; marks watermark column
     @sink(topic: String!, broker: String)           — Kafka sink redirect
     @redirect(format: String, threshold: Int)       — redirect large results to object store
+    @cached(ttl: Int)                               — override response cache TTL in seconds
+    @noCache                                        — bypass response cache (no read, no write)
 
 Equivalent SQL comment syntax (``-- @provisa key=value``):
 
@@ -31,6 +33,7 @@ Equivalent SQL comment syntax (``-- @provisa key=value``):
     -- @provisa broker=broker_host:port
     -- @provisa redirect_format=parquet | csv | arrow
     -- @provisa redirect_threshold=10000
+    -- @provisa no_cache=true
 """
 
 from __future__ import annotations
@@ -85,6 +88,9 @@ class QueryDirectives:
 
     # @cached
     cache_ttl: int | None = None          # seconds; 0 = disable; None = use server default
+
+    # @noCache
+    no_cache: bool = False                # True = skip cache read and write entirely
 
     # -----------------------------------------------------------------------
     # Convenience helpers
@@ -205,6 +211,8 @@ def extract_directives(document: DocumentNode) -> QueryDirectives:
                 ttl = args.get("ttl")
                 if ttl is not None:
                     result.cache_ttl = int(ttl)
+            elif name == "noCache":
+                result.no_cache = True
 
         # Field-level @watermark scan
         if defn.selection_set:
@@ -271,6 +279,8 @@ def extract_directives_from_sql_comments(sql: str) -> QueryDirectives:
                     result.cache_ttl = int(value)
                 except ValueError:
                     pass
+            elif key == "no_cache" and value.lower() in ("true", "1", "yes"):
+                result.no_cache = True
 
     return result
 
@@ -297,5 +307,7 @@ def merge_directives(*sources: QueryDirectives) -> QueryDirectives:
             result.redirect_threshold = src.redirect_threshold
         if src.cache_ttl is not None:
             result.cache_ttl = src.cache_ttl
+        if src.no_cache:
+            result.no_cache = True
         result.watermark_fields |= src.watermark_fields
     return result
