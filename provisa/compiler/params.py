@@ -44,8 +44,7 @@ def _parse_sql_literal(s: str) -> object:
     return s
 
 
-_COMMENT_PREFIX = "/* provisa-params:"
-_COMMENT_SUFFIX = " */"
+_COMMENT_PREFIX = "-- provisa-params:"
 # Matches $N=<value> where value is NULL/TRUE/FALSE, a number, or a single-quoted string
 _PARAM_RE = _re.compile(
     r"\$(\d+)=(NULL|TRUE|FALSE|-?\d+(?:\.\d+)?|'(?:[^']|'')*')"
@@ -59,7 +58,7 @@ def embed_params_comment(sql: str, params: list) -> str:
     parts = ", ".join(
         f"${i + 1}={_sql_literal(v)}" for i, v in enumerate(params)
     )
-    return f"{_COMMENT_PREFIX} {parts}{_COMMENT_SUFFIX}\n{sql}"
+    return f"{_COMMENT_PREFIX} {parts}\n{sql}"
 
 
 def extract_params_comment(sql: str) -> tuple[str, list]:
@@ -70,9 +69,9 @@ def extract_params_comment(sql: str) -> tuple[str, list]:
     """
     if not sql.startswith(_COMMENT_PREFIX):
         return sql, []
-    end = sql.index(_COMMENT_SUFFIX) + len(_COMMENT_SUFFIX)
-    comment = sql[:end]
-    rest = sql[end:].lstrip("\n")
+    newline = sql.index("\n")
+    comment = sql[:newline]
+    rest = sql[newline + 1:]
     matches = _PARAM_RE.findall(comment)
     if not matches:
         return rest, []
