@@ -119,19 +119,23 @@ async def sql_endpoint(
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
 
     # --- Step 1: Parse semantic SQL via SQLGlot (REQ-266) ---
+    # Strip provisa-params comment before SQLGlot (it strips comments); carry params forward.
+    from provisa.compiler.params import extract_params_comment
+    raw_sql, embedded_params = extract_params_comment(request.sql)
+
     # Clients write semantic SQL (domain.field_name refs). Physical translation
     # happens after routing — governance runs on semantic refs.
     try:
-        parsed_tree = sqlglot.parse_one(request.sql, read="postgres")
+        parsed_tree = sqlglot.parse_one(raw_sql, read="postgres")
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"SQL parse error: {exc}")
 
     # --- Step 1b: Normalize table refs — qualify unique unquoted names ---
-    normalized_sql = rewrite_semantic_to_physical(request.sql, ctx)
+    normalized_sql = rewrite_semantic_to_physical(raw_sql, ctx)
     try:
         parsed_tree = sqlglot.parse_one(normalized_sql, read="postgres")
     except Exception:
-        normalized_sql = request.sql  # fall back to original if normalize broke it
+        normalized_sql = raw_sql  # fall back to comment-stripped sql if normalize broke it
 
     # --- Step 2: Build GovernanceContext — table_map includes semantic refs ---
     gov_ctx = build_governance_context(
@@ -203,15 +207,16 @@ async def sql_endpoint(
 
     # --- Step 7: Execute ---
     try:
+        exec_params = embedded_params or None
         if decision.route == Route.TRINO:
             sql_to_run = transpile_to_trino(qualify_with_catalogs(governed_physical, ctx))
             _loop = asyncio.get_event_loop()
-            result = await _loop.run_in_executor(None, lambda: execute_trino(state.trino_conn, sql_to_run))
+            result = await _loop.run_in_executor(None, lambda: execute_trino(state.trino_conn, sql_to_run, params=exec_params))
         else:
             dialect = decision.dialect or "postgres"
             sql_to_run = transpile(governed_physical, dialect)
             result = await execute_direct(
-                state.source_pools, decision.source_id or _default_source, sql_to_run, [],
+                state.source_pools, decision.source_id or _default_source, sql_to_run, exec_params,
             )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
