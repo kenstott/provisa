@@ -279,6 +279,11 @@ def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -
     for name, typ in zip(table.schema.names, table.schema.types):
         trino_type = _PA_TO_TRINO.get(typ, "VARCHAR")
         col_defs.append(f'"{name}" {trino_type}')
+    if signal == "traces":
+        existing = {n.lower() for n in table.schema.names}
+        for ec in ["table_name", "domain_id", "role_id", "query_text"]:
+            if ec not in existing:
+                col_defs.append(f'"{ec}" VARCHAR')
     col_defs.append('"_date" DATE')
 
     create_ddl = (

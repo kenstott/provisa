@@ -160,6 +160,8 @@ class CompiledQuery:
     agg_alias: str = "aggregate"
     # Native filter args for API-routed sources (path/query params extracted from GQL args)
     api_args: dict = field(default_factory=dict)
+    # Python-level row limit applied after grouping (used when LATERAL ops joins are present)
+    result_limit: int | None = None
 
 
 # --- Build CompilationContext from SchemaInput ---
@@ -623,13 +625,19 @@ def _sql_str_literal(val: str) -> str:
     return "VARCHAR '" + val.replace("'", "''") + "'"
 
 
-def _join_column_expr(alias: str, column: str, my_type: str, other_type: str) -> str:
+def _join_column_expr_for(
+    alias: str | None, column: str, my_type: str, other_type: str
+) -> str:
     """Build a column expression, adding CAST only when types are incompatible."""
-    col = f'{_q(alias)}.{_q(column)}'
+    col = _q(column) if alias is None else f'{_q(alias)}.{_q(column)}'
     if _types_compatible(my_type, other_type):
         return col
     cast_type = _common_cast_type(my_type, other_type)
     return f'CAST({col} AS {cast_type})'
+
+
+def _join_column_expr(alias: str, column: str, my_type: str, other_type: str) -> str:
+    return _join_column_expr_for(alias, column, my_type, other_type)
 
 
 # --- Table reference helpers ---
@@ -811,6 +819,79 @@ def _has_joins(field_node: FieldNode, ctx: CompilationContext, type_name: str) -
     return False
 
 
+_NESTED_DB_ARGS = frozenset({"where", "order_by", "limit", "offset", "distinct_on"})
+
+
+def _has_nested_db_args(field_node: FieldNode) -> bool:
+    return any(arg.name.value in _NESTED_DB_ARGS for arg in field_node.arguments)
+
+
+def _extract_non_negative_int(value: object, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{name} must be an integer")
+    if value < 0:
+        raise ValueError(f"{name} must be non-negative")
+    return value
+
+
+def _field_args(field_node: FieldNode, variables: dict | None) -> dict:
+    return {
+        arg.name.value: _extract_value(arg.value, variables)
+        for arg in field_node.arguments
+    }
+
+
+def _lateral_join(
+    field_node: FieldNode,
+    join_meta: JoinMeta,
+    join_alias: str,
+    src_expr: str,
+    collector: ParamCollector,
+    variables: dict | None,
+    use_catalog: bool,
+) -> str:
+    args = _field_args(field_node, variables)
+    target_expr = _join_column_expr_for(
+        None,
+        join_meta.target_column,
+        join_meta.target_column_type,
+        join_meta.source_column_type,
+    )
+    sql = (
+        f'LEFT JOIN LATERAL (SELECT * FROM {_table_ref(join_meta.target, use_catalog)}'
+        f' WHERE {target_expr} = {src_expr}'
+    )
+    if "where" in args:
+        where_sql = _compile_where(
+            args["where"],
+            collector,
+            None,
+            None,
+        )
+        sql += f" AND ({where_sql})"
+    if "distinct_on" in args:
+        distinct_cols = args["distinct_on"]
+        if isinstance(distinct_cols, str):
+            distinct_cols = [distinct_cols]
+        distinct_prefix = ", ".join(_q(c) for c in distinct_cols)
+        sql = sql.replace("SELECT *", f"SELECT DISTINCT ON ({distinct_prefix}) *", 1)
+    if "order_by" in args:
+        order_by_val = args["order_by"]
+        if isinstance(order_by_val, dict):
+            order_by_val = [order_by_val]
+        sql += f" ORDER BY {_compile_order_by(order_by_val, None)}"
+    limit_value = args.get("limit", join_meta.default_limit)
+    if limit_value is not None:
+        limit_value = _extract_non_negative_int(limit_value, "limit")
+        sql += f" LIMIT {collector.add(limit_value)}"
+    if "offset" in args:
+        offset_value = _extract_non_negative_int(args["offset"], "offset")
+        sql += f" OFFSET {collector.add(offset_value)}"
+    return (
+        f'{sql}) {_q(join_alias)} ON TRUE'
+    )
+
+
 def _collect_nested_columns(
     selections,
     parent_alias: str,
@@ -824,6 +905,8 @@ def _collect_nested_columns(
     sources: set[str],
     alias_counter: int,
     use_catalog: bool,
+    collector: ParamCollector,
+    variables: dict | None,
     cardinality: str | None = None,
 ) -> int:
     """Recursively collect columns and JOINs from nested selections."""
@@ -860,11 +943,24 @@ def _collect_nested_columns(
                     nested_alias, nested_join_meta.target_column,
                     nested_join_meta.target_column_type, nested_join_meta.source_column_type,
                 )
-            join_clauses.append(
-                f'LEFT JOIN {_table_ref(nested_join_meta.target, use_catalog)}'
-                f' {_q(nested_alias)}'
-                f' ON {src_expr} = {tgt_expr}'
-            )
+            if nested_join_meta.default_limit is not None or _has_nested_db_args(nested_sel):
+                join_clauses.append(
+                    _lateral_join(
+                        nested_sel,
+                        nested_join_meta,
+                        nested_alias,
+                        src_expr,
+                        collector,
+                        variables,
+                        use_catalog,
+                    )
+                )
+            else:
+                join_clauses.append(
+                    f'LEFT JOIN {_table_ref(nested_join_meta.target, use_catalog)}'
+                    f' {_q(nested_alias)}'
+                    f' ON {src_expr} = {tgt_expr}'
+                )
 
             sub_path = f"{nesting_path}.{nested_name}"
             if nested_sel.selection_set:
@@ -881,6 +977,8 @@ def _collect_nested_columns(
                     sources,
                     alias_counter,
                     use_catalog,
+                    collector,
+                    variables,
                     cardinality=nested_join_meta.cardinality,
                 )
         else:
@@ -959,6 +1057,7 @@ def _compile_root_field(
     use_aliases = _has_joins(field_node, ctx, table.type_name)
     root_alias = "t0" if use_aliases else None
     alias_counter = 1
+    has_lateral_ops_joins = False
 
     # Collect SELECT columns and JOINs
     select_parts: list[str] = []
@@ -999,17 +1098,20 @@ def _compile_root_field(
                     join_alias, join_meta.target_column,
                     join_meta.target_column_type, join_meta.source_column_type,
                 )
-            if join_meta.default_limit is not None:
-                _user_limit = next(
-                    (int(_extract_value(a.value, variables)) for a in sel.arguments if a.name.value == "limit"),
-                    join_meta.default_limit,
+            if join_meta.default_limit is not None or _has_nested_db_args(sel):
+                if join_meta.default_limit is not None:
+                    has_lateral_ops_joins = True
+                join_clauses.append(
+                    _lateral_join(
+                        sel,
+                        join_meta,
+                        join_alias,
+                        src_expr,
+                        collector,
+                        variables,
+                        use_catalog,
+                    )
                 )
-                _tref = (
-                    f'(SELECT * FROM {_table_ref(join_meta.target, use_catalog)}'
-                    f' WHERE {_q(join_meta.target_column)} = {src_expr}'
-                    f' LIMIT {_user_limit})'
-                )
-                join_clauses.append(f'LEFT JOIN LATERAL {_tref} {_q(join_alias)} ON TRUE')
             else:
                 join_clauses.append(
                     f'LEFT JOIN {_table_ref(join_meta.target, use_catalog)}'
@@ -1032,6 +1134,8 @@ def _compile_root_field(
                     sources,
                     alias_counter,
                     use_catalog,
+                    collector,
+                    variables,
                     cardinality=join_meta.cardinality,
                 )
         else:
@@ -1172,21 +1276,32 @@ def _compile_root_field(
     # ORDER BY
     if "order_by" in args:
         order_by_val = args["order_by"]
-        # order_by can be a single object or a list
         if isinstance(order_by_val, dict):
             order_by_val = [order_by_val]
         order_sql = _compile_order_by(order_by_val, root_alias)
         sql += f" ORDER BY {order_sql}"
 
-    # LIMIT / OFFSET — always parameterized, never interpolated.
-    # Apply _DEFAULT_ROW_LIMIT when caller supplies no explicit limit so that
-    # unbounded scans over large tables (e.g. OTel Iceberg) cannot OOM Trino.
-    if "limit" in args:
-        sql += f" LIMIT {collector.add(int(args['limit']))}"
-    elif "offset" not in args:
+    # LIMIT / OFFSET
+    # When ops LATERAL joins are present, SQL LIMIT would cut the expanded join rows,
+    # not the base rows. Record result_limit for Python-level truncation after grouping.
+    result_limit: int | None = None
+    if has_lateral_ops_joins:
+        if "limit" in args:
+            result_limit = int(args["limit"])
+        # Apply a safety cap to prevent unbounded Trino scans
         sql += f" LIMIT {_get_default_row_limit()}"
-    if "offset" in args:
-        sql += f" OFFSET {collector.add(int(args['offset']))}"
+        if "offset" in args:
+            sql += f" OFFSET {collector.add(int(args['offset']))}"
+    else:
+        # Always parameterized, never interpolated.
+        # Apply _DEFAULT_ROW_LIMIT when caller supplies no explicit limit so that
+        # unbounded scans over large tables (e.g. OTel Iceberg) cannot OOM Trino.
+        if "limit" in args:
+            sql += f" LIMIT {collector.add(int(args['limit']))}"
+        elif "offset" not in args:
+            sql += f" LIMIT {_get_default_row_limit()}"
+        if "offset" in args:
+            sql += f" OFFSET {collector.add(int(args['offset']))}"
 
     # Collect native filter args (any arg not handled by SQL compilation above)
     _STANDARD_ARGS = {"where", "order_by", "limit", "offset", "distinct_on", "as_of"}
@@ -1220,6 +1335,7 @@ def _compile_root_field(
         columns=columns,
         sources=sources,
         api_args=api_args,
+        result_limit=result_limit,
     )
 
 
@@ -1662,5 +1778,3 @@ def compile_query(
                 results.append(compiled)
 
     return results
-
-

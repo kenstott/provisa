@@ -514,6 +514,41 @@ def _build_order_by_inputs(
     return order_by_types
 
 
+def _build_distinct_on_enum(
+    table: _TableInfo,
+) -> GraphQLEnumType | None:
+    visible_col_names = [
+        c["column_name"] for c in table.visible_columns
+        if c["column_name"].lower() in table.column_metadata
+    ]
+    if not visible_col_names:
+        return None
+    return GraphQLEnumType(
+        f"{table.type_name}DistinctOnColumn",
+        {name: GraphQLEnumValue(name) for name in visible_col_names},
+    )
+
+
+def _build_db_field_args(
+    where_input: GraphQLInputObjectType | None,
+    order_by_input: GraphQLInputObjectType | None,
+    distinct_enum: GraphQLEnumType | None,
+) -> dict[str, GraphQLArgument]:
+    args: dict[str, GraphQLArgument] = {
+        "limit": GraphQLArgument(GraphQLInt),
+        "offset": GraphQLArgument(GraphQLInt),
+    }
+    if where_input:
+        args["where"] = GraphQLArgument(where_input)
+    if order_by_input:
+        args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(order_by_input)))
+    if distinct_enum:
+        args["distinct_on"] = GraphQLArgument(
+            GraphQLList(GraphQLNonNull(distinct_enum))
+        )
+    return args
+
+
 def _can_see_relationship(
     rel: dict, table_lookup: dict[int, _TableInfo]
 ) -> bool:
@@ -842,6 +877,16 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         and any(c["column_name"] == "table_name" for c in t.visible_columns)
     ]
 
+    order_by_types = _build_order_by_inputs(tables, visible_rels, table_lookup)
+    where_types = {
+        t.table_id: _build_where_input(t, t.type_name, enum_types=si.enum_types)
+        for t in tables
+    }
+    distinct_enums = {
+        t.table_id: _build_distinct_on_enum(t)
+        for t in tables
+    }
+
     for t in tables:
         tid = t.table_id
 
@@ -865,8 +910,13 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
                 for ops_t in _ops_traversal_targets:
                     if ops_t.table_id in gql_types:
                         _ops_base = ops_t.field_name.split("__", 1)[1] if "__" in ops_t.field_name else ops_t.field_name
-                    fields[f"_{_ops_base}"] = GraphQLField(
+                        fields[f"_{_ops_base}"] = GraphQLField(
                             GraphQLList(GraphQLNonNull(gql_types[ops_t.table_id])),
+                            args=_build_db_field_args(
+                                where_types.get(ops_t.table_id),
+                                order_by_types.get(ops_t.table_id),
+                                distinct_enums.get(ops_t.table_id),
+                            ),
                             description=f"Operational {ops_t.table_name} records for this table",
                         )
 
@@ -905,7 +955,12 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
                             fields[field_name] = GraphQLField(target_type)
                         elif cardinality == "one-to-many":
                             fields[field_name] = GraphQLField(
-                                GraphQLList(GraphQLNonNull(target_type))
+                                GraphQLList(GraphQLNonNull(target_type)),
+                                args=_build_db_field_args(
+                                    where_types.get(target.table_id),
+                                    order_by_types.get(target.table_id),
+                                    distinct_enums.get(target.table_id),
+                                ),
                             )
 
             return fields
@@ -913,9 +968,6 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         gql_types[tid] = GraphQLObjectType(
             t.type_name, make_fields, description=t.description,
         )
-
-    # Pre-build all ORDER BY input types (shared across root fields)
-    order_by_types = _build_order_by_inputs(tables, visible_rels, table_lookup)
 
     # Build root query fields
     query_fields: dict[str, GraphQLField] = {}
@@ -931,36 +983,19 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         if not _all_access and t.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS and t.domain_id not in _accessible_domains:
             continue
         gql_type = gql_types[t.table_id]
-        args: dict[str, GraphQLArgument] = {
-            "limit": GraphQLArgument(GraphQLInt),
-            "offset": GraphQLArgument(GraphQLInt),
-        }
-
-        where_input = _build_where_input(t, t.type_name, enum_types=si.enum_types)
-        if where_input:
-            args["where"] = GraphQLArgument(where_input)
-
-        order_by_input = order_by_types.get(t.table_id)
-        if order_by_input:
-            args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(order_by_input)))
-
-        # distinct_on: deduplicate by specified columns
-        visible_col_names = [
-            c["column_name"] for c in t.visible_columns
-            if c["column_name"].lower() in t.column_metadata
-        ]
-        if visible_col_names:
-            distinct_enum = GraphQLEnumType(
-                f"{t.type_name}DistinctOnColumn",
-                {name: GraphQLEnumValue(name) for name in visible_col_names},
-            )
-            args["distinct_on"] = GraphQLArgument(
-                GraphQLList(GraphQLNonNull(distinct_enum))
-            )
+        args = _build_db_field_args(
+            where_types.get(t.table_id),
+            order_by_types.get(t.table_id),
+            distinct_enums.get(t.table_id),
+        )
 
         # Native filter args: path params (required) and query params (optional).
         # Follow Hasura DDN convention: direct top-level args, no prefix unless there is
         # a name collision with a response body field, in which case prefix with "_".
+        visible_col_names = [
+            c["column_name"] for c in t.visible_columns
+            if c["column_name"].lower() in t.column_metadata
+        ]
         _response_field_names = set(visible_col_names) | {"where", "order_by", "limit", "offset", "distinct_on"}
         for nfc in t.native_filter_columns:
             col_name = nfc["column_name"]

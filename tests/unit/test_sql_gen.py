@@ -31,7 +31,7 @@ def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> 
 
 
 def _build_schema_and_ctx(
-    tables=None, relationships=None, role_id="admin", naming_rules=None
+    tables=None, relationships=None, role_id="admin", naming_rules=None, column_types=None
 ):
     """Build a schema + compilation context from minimal test data."""
     if tables is None:
@@ -78,21 +78,22 @@ def _build_schema_and_ctx(
             },
         ]
 
-    column_types = {
-        1: [
-            _col("id", "integer"),
-            _col("customer_id", "integer"),
-            _col("amount", "decimal(10,2)"),
-            _col("region", "varchar(50)"),
-            _col("status", "varchar(20)"),
-            _col("created_at", "timestamp"),
-        ],
-        2: [
-            _col("id", "integer"),
-            _col("name", "varchar(100)"),
-            _col("email", "varchar(200)"),
-        ],
-    }
+    if column_types is None:
+        column_types = {
+            1: [
+                _col("id", "integer"),
+                _col("customer_id", "integer"),
+                _col("amount", "decimal(10,2)"),
+                _col("region", "varchar(50)"),
+                _col("status", "varchar(20)"),
+                _col("created_at", "timestamp"),
+            ],
+            2: [
+                _col("id", "integer"),
+                _col("name", "varchar(100)"),
+                _col("email", "varchar(200)"),
+            ],
+        }
 
     role = {"id": role_id, "capabilities": ["query_development"], "domain_access": ["*"]}
     domains = [{"id": "sales", "description": "Sales"}]
@@ -220,6 +221,124 @@ class TestPagination:
         results = compile_query(doc, ctx)
         assert '"amount" ASC NULLS FIRST' in results[0].sql
 
+    def test_synthetic_ops_queries_path_accepts_limit(self):
+        tables = [
+            {
+                "id": 1,
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [{"column_name": "id", "visible_to": ["admin"]}],
+            },
+            {
+                "id": 3,
+                "source_id": "provisa-otel",
+                "domain_id": "ops",
+                "schema_name": "public",
+                "table_name": "queries",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "table_name", "visible_to": ["admin"]},
+                    {"column_name": "query", "visible_to": ["admin"]},
+                ],
+            },
+        ]
+        column_types = {
+            1: [_col("id", "integer")],
+            3: [_col("table_name"), _col("query")],
+        }
+        schema, ctx = _build_schema_and_ctx(
+            tables=tables,
+            relationships=[],
+            column_types=column_types,
+        )
+        doc = parse("{ orders { id _queries(limit: 2) { query } } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx)
+        assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."queries"' in results[0].sql
+        assert 'LIMIT $1) "t1" ON TRUE' in results[0].sql
+        assert results[0].params == [2]
+
+    def test_synthetic_ops_traces_path_accepts_limit(self):
+        tables = [
+            {
+                "id": 1,
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [{"column_name": "id", "visible_to": ["admin"]}],
+            },
+            {
+                "id": 4,
+                "source_id": "provisa-otel",
+                "domain_id": "ops",
+                "schema_name": "public",
+                "table_name": "traces",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "table_name", "visible_to": ["admin"]},
+                    {"column_name": "trace_id", "visible_to": ["admin"]},
+                ],
+            },
+        ]
+        column_types = {
+            1: [_col("id", "integer")],
+            4: [_col("table_name"), _col("trace_id")],
+        }
+        schema, ctx = _build_schema_and_ctx(
+            tables=tables,
+            relationships=[],
+            column_types=column_types,
+        )
+        doc = parse("{ orders { id _traces(limit: 3) { traceId } } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx)
+        assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."traces"' in results[0].sql
+        assert 'LIMIT $1) "t1" ON TRUE' in results[0].sql
+        assert results[0].params == [3]
+
+    def test_synthetic_ops_path_rejects_negative_limit(self):
+        tables = [
+            {
+                "id": 1,
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [{"column_name": "id", "visible_to": ["admin"]}],
+            },
+            {
+                "id": 3,
+                "source_id": "provisa-otel",
+                "domain_id": "ops",
+                "schema_name": "public",
+                "table_name": "queries",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "table_name", "visible_to": ["admin"]},
+                    {"column_name": "query", "visible_to": ["admin"]},
+                ],
+            },
+        ]
+        column_types = {
+            1: [_col("id", "integer")],
+            3: [_col("table_name"), _col("query")],
+        }
+        schema, ctx = _build_schema_and_ctx(
+            tables=tables,
+            relationships=[],
+            column_types=column_types,
+        )
+        doc = parse("{ orders { id _queries(limit: -1) { query } } }")
+        assert not validate(schema, doc)
+        with pytest.raises(ValueError, match="limit must be non-negative"):
+            compile_query(doc, ctx)
+
     def test_order_by_nulls_last(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
         doc = parse("{ orders(order_by: [{ amount: desc_nulls_last }]) { id } }")
@@ -304,6 +423,94 @@ class TestNestedRelationship:
         assert '"t1"."email"' in q.sql
         assert 'LEFT JOIN "public"."customers" "t1"' in q.sql
         assert '"t0"."customer_id" = "t1"."id"' in q.sql
+
+    def test_many_to_one_path_rejects_args(self, schema_and_ctx):
+        schema, _ctx = schema_and_ctx
+        doc = parse("""
+            {
+                orders {
+                    id
+                    customer(
+                        where: { name: { like: "A%" } }
+                        order_by: [{ name: asc }]
+                        limit: 1
+                        offset: 0
+                        distinct_on: [id]
+                    ) { name }
+                }
+            }
+        """)
+        errors = validate(schema, doc)
+        assert errors
+        assert "Unknown argument" in errors[0].message
+
+    def test_one_to_many_path_args(self):
+        tables = [
+            {
+                "id": 1,
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "customers",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "name", "visible_to": ["admin"]},
+                ],
+            },
+            {
+                "id": 2,
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "customer_id", "visible_to": ["admin"]},
+                    {"column_name": "amount", "visible_to": ["admin"]},
+                ],
+            },
+        ]
+        relationships = [
+            {
+                "id": "cust-orders",
+                "source_table_id": 1,
+                "target_table_id": 2,
+                "source_column": "id",
+                "target_column": "customer_id",
+                "cardinality": "one-to-many",
+            },
+        ]
+        column_types = {
+            1: [_col("id", "integer"), _col("name")],
+            2: [_col("id", "integer"), _col("customer_id", "integer"), _col("amount", "integer")],
+        }
+        schema, ctx = _build_schema_and_ctx(
+            tables=tables,
+            relationships=relationships,
+            column_types=column_types,
+        )
+        doc = parse("""
+            {
+                customers {
+                    id
+                    orders(
+                        where: { amount: { gt: 100 } }
+                        order_by: [{ amount: desc }]
+                        limit: 2
+                        offset: 1
+                    ) { id amount }
+                }
+            }
+        """)
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx)
+        sql = results[0].sql
+        assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."orders"' in sql
+        assert 'WHERE "customer_id" = "t0"."id" AND ("amount" > $1)' in sql
+        assert 'ORDER BY "amount" DESC LIMIT $2 OFFSET $3) "t1" ON TRUE' in sql
+        assert results[0].params == [100, 2, 1]
 
     def test_join_tracks_multiple_sources(self):
         """When join crosses sources, both source_ids are tracked."""

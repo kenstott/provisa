@@ -100,10 +100,10 @@ def _parse_accept(accept: str | None) -> str:
     return "json"
 
 
-def _format_response(rows, columns, root_field, output_format):
+def _format_response(rows, columns, root_field, output_format, result_limit: int | None = None):
     """Serialize query results in the requested output format."""
     if output_format == "json":
-        return serialize_rows(rows, columns, root_field)
+        return serialize_rows(rows, columns, root_field, result_limit=result_limit)
 
     if output_format == "ndjson":
         from provisa.executor.formats.ndjson import rows_to_ndjson
@@ -125,7 +125,7 @@ def _format_response(rows, columns, root_field, output_format):
         content = rows_to_arrow_ipc(rows, columns)
         return Response(content=content, media_type="application/vnd.apache.arrow.stream")
 
-    return serialize_rows(rows, columns, root_field)
+    return serialize_rows(rows, columns, root_field, result_limit=result_limit)
 
 
 import re as _re
@@ -1097,7 +1097,7 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, ck, o
         _t0 = _time.perf_counter()
         trino_result = await _loop.run_in_executor(None, lambda: execute_trino(_api_conn, trino_sql, _exec_params))
         phase2_ms = (_time.perf_counter() - _t0) * 1000
-        response_data = _format_response(trino_result.rows, compiled.columns, root_field, output_format)
+        response_data = _format_response(trino_result.rows, compiled.columns, root_field, output_format, result_limit=compiled.result_limit)
         field_rows = response_data.get("data", {}).get(root_field, []) if isinstance(response_data, dict) else response_data
         return field_rows, response_data, 0.0, phase2_ms, trino_sql, True
 
@@ -1563,7 +1563,7 @@ async def _execute_one_field(
             agg_alias=compiled.agg_alias,
         )
     else:
-        response_data = _format_response(result.rows, compiled.columns, root_field, output_format)
+        response_data = _format_response(result.rows, compiled.columns, root_field, output_format, result_limit=compiled.result_limit)
 
     # Extract rows from serialized response for merging
     if isinstance(response_data, dict):

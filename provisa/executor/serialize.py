@@ -46,6 +46,7 @@ def serialize_rows(
     rows: list[tuple],
     columns: list[ColumnRef],
     root_field: str,
+    result_limit: int | None = None,
 ) -> dict:
     """Serialize flat SQL rows into nested GraphQL JSON.
 
@@ -143,6 +144,8 @@ def serialize_rows(
                 if isinstance(arr, list) and child not in arr:
                     arr.append(child)
 
+        if result_limit is not None:
+            result_rows = result_rows[:result_limit]
         return {"data": {root_field: result_rows}}
 
     # No one-to-many: original logic (many-to-one or flat)
@@ -183,6 +186,8 @@ def serialize_rows(
 
         result_rows.append(obj)
 
+    if result_limit is not None:
+        result_rows = result_rows[:result_limit]
     return {"data": {root_field: result_rows}}
 
 

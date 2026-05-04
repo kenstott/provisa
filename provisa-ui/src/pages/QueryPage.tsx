@@ -360,7 +360,7 @@ function createProvisaFetch(
     }
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
     let res: Response;
     const _t0 = performance.now();
     try {

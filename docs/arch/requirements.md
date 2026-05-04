@@ -550,3 +550,11 @@ These must never be conflated. `alias` must not appear as a GraphQL field name f
 ## API & Integration
 
 - **REQ-447** (2026-05-04): The Arrow Flight approved-queries listing path must accept an optional `limit` value and return at most that many approved query records. Invalid limit values must be rejected.
+
+- **REQ-448** (2026-05-04): GraphQL synthetic ops traversal fields including `_queries` and `_traces` must accept a `limit` argument in SDL and apply it when compiling the traversal SQL.
+
+- **REQ-449** (2026-05-04): GraphQL DB-backed fields used as nested paths must expose root-query controls (`limit`, `offset`, `where`, `order_by`, `distinct_on`) and apply them during SQL compilation.
+
+- **REQ-450** (2026-05-04): Every GraphQL one-to-many nested path must expose the same query arguments as the related target table's root query field.
+
+- **REQ-451** (2026-05-04): GraphQL object relationship paths (`many-to-one` and `one-to-one`) must not expose collection query arguments such as `limit`, `offset`, `where`, `order_by`, or `distinct_on`; this follows Hasura v2 object relationship behavior.
