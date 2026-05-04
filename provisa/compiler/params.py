@@ -10,6 +10,77 @@
 
 """GraphQL variables to parameterized SQL. Never interpolates values."""
 
+import re as _re
+
+
+def _sql_literal(val: object) -> str:
+    if val is None:
+        return "NULL"
+    if isinstance(val, bool):
+        return "TRUE" if val else "FALSE"
+    if isinstance(val, (int, float)):
+        return str(val)
+    return "'" + str(val).replace("'", "''") + "'"
+
+
+def _parse_sql_literal(s: str) -> object:
+    s = s.strip()
+    if s == "NULL":
+        return None
+    if s == "TRUE":
+        return True
+    if s == "FALSE":
+        return False
+    try:
+        return int(s)
+    except ValueError:
+        pass
+    try:
+        return float(s)
+    except ValueError:
+        pass
+    if s.startswith("'") and s.endswith("'"):
+        return s[1:-1].replace("''", "'")
+    return s
+
+
+_COMMENT_PREFIX = "/* provisa-params:"
+_COMMENT_SUFFIX = " */"
+# Matches $N=<value> where value is NULL/TRUE/FALSE, a number, or a single-quoted string
+_PARAM_RE = _re.compile(
+    r"\$(\d+)=(NULL|TRUE|FALSE|-?\d+(?:\.\d+)?|'(?:[^']|'')*')"
+)
+
+
+def embed_params_comment(sql: str, params: list) -> str:
+    """Prepend a provisa-params comment so the SQL is self-contained and executable."""
+    if not params:
+        return sql
+    parts = ", ".join(
+        f"${i + 1}={_sql_literal(v)}" for i, v in enumerate(params)
+    )
+    return f"{_COMMENT_PREFIX} {parts}{_COMMENT_SUFFIX}\n{sql}"
+
+
+def extract_params_comment(sql: str) -> tuple[str, list]:
+    """Strip the provisa-params comment and return (sql, params_list).
+
+    If no comment is present, returns (sql, []) so callers can fall back to
+    an explicit params argument.
+    """
+    if not sql.startswith(_COMMENT_PREFIX):
+        return sql, []
+    end = sql.index(_COMMENT_SUFFIX) + len(_COMMENT_SUFFIX)
+    comment = sql[:end]
+    rest = sql[end:].lstrip("\n")
+    matches = _PARAM_RE.findall(comment)
+    if not matches:
+        return rest, []
+    # matches is list of (index_str, value_str); sort by index to build ordered list
+    indexed = sorted((int(idx), _parse_sql_literal(val)) for idx, val in matches)
+    params = [v for _, v in indexed]
+    return rest, params
+
 
 class ParamCollector:
     """Collects parameter values and returns positional placeholders ($1, $2, ...)."""

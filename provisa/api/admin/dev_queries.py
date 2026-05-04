@@ -121,7 +121,9 @@ async def _compile_graphql(query: str, variables: dict | None, role_id: str, ctx
         root_table = ctx.tables.get(governed.root_field)
         if root_table:
             target_tables.append(root_table.table_id)
-        sql_parts.append(make_semantic_sql(governed.sql, ctx))
+        from provisa.compiler.params import embed_params_comment
+        display_sql = embed_params_comment(governed.sql, governed.params)
+        sql_parts.append(make_semantic_sql(display_sql, ctx))
 
     compiled_sql = sql_parts[0] if len(sql_parts) == 1 else json.dumps(sql_parts)
 

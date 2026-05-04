@@ -73,12 +73,15 @@ def execute_trino(
                 state.trino_conn = conn
             except Exception as reconnect_exc:
                 raise ConnectionError(f"Trino reconnect failed: {reconnect_exc}") from reconnect_exc
+        # Extract embedded provisa-params comment if present; fall back to explicit params.
+        from provisa.compiler.params import extract_params_comment
+        exec_sql, embedded = extract_params_comment(sql)
+        effective_params = params if params is not None else embedded
         # Trino Python client uses ? for parameter placeholders.
         # After SQLGlot transpilation, PG $N becomes Trino @N.
         # Replace both @N and $N with ? in reverse order to avoid $1 matching $10.
-        exec_sql = sql
-        if params:
-            for i in range(len(params), 0, -1):
+        if effective_params:
+            for i in range(len(effective_params), 0, -1):
                 exec_sql = exec_sql.replace(f"@{i}", "?")
                 exec_sql = exec_sql.replace(f"${i}", "?")
 
@@ -109,8 +112,8 @@ def execute_trino(
         log.info("[EXEC TRINO] sql=%s", exec_sql[:200])
         cur = conn.cursor()
         try:
-            if params:
-                cur.execute(exec_sql, params)
+            if effective_params:
+                cur.execute(exec_sql, effective_params)
             else:
                 cur.execute(exec_sql)
             rows = cur.fetchall()

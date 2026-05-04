@@ -44,10 +44,13 @@ async def execute_direct(
         QueryResult with rows and column names.
     """
     with _tracer.start_as_current_span("direct.execute") as span:
+        from provisa.compiler.params import extract_params_comment
+        sql, embedded = extract_params_comment(sql)
+        effective_params = params if params is not None else embedded
         span.set_attribute("db.source_id", source_id)
         span.set_attribute("db.statement", sql[:1000])
         log.info("[EXEC DIRECT] source=%s | sql=%s", source_id, sql[:200])
-        result = await pool.execute(source_id, sql, params)
+        result = await pool.execute(source_id, sql, effective_params)
         span.set_attribute("db.row_count", len(result.rows))
         log.info("[EXEC DIRECT] source=%s | rows=%d", source_id, len(result.rows))
         return result
