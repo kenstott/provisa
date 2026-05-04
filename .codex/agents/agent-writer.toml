@@ -1,3 +1,0 @@
-description = "Creates Claude Code agents optimized for ~3000 token prompts with maximum signal density."
-model = "gpt-4o"
-instructions_file = "../../.claude/agents/agent-writer.md"

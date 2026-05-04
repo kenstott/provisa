@@ -1,3 +1,0 @@
-description = "Adversarial testing advisor that designs test strategies and identifies edge cases."
-model = "gpt-4o"
-instructions_file = "../../.claude/agents/test-strategist.md"

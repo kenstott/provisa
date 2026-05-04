@@ -1,3 +1,0 @@
-description = "Software architecture advisor for design decisions and trade-off analysis."
-model = "o4-mini"
-instructions_file = "../../.claude/agents/architect.md"

@@ -1,15 +1,57 @@
-[agents]
-agent-writer = ".codex/agents/agent-writer.toml"
-architect = ".codex/agents/architect.toml"
-bug-fixer = ".codex/agents/bug-fixer.toml"
-code-reviewer = ".codex/agents/code-reviewer.toml"
-debugger = ".codex/agents/debugger.toml"
-doc-writer = ".codex/agents/doc-writer.toml"
-marketer = ".codex/agents/marketer.toml"
-refactorer = ".codex/agents/refactorer.toml"
-requirements-tracker = ".codex/agents/requirements-tracker.toml"
-sql-analyst = ".codex/agents/sql-analyst.toml"
-test-strategist = ".codex/agents/test-strategist.toml"
+[agents.agent-writer]
+description = "Creates agent prompts optimized for maximum signal density."
+model = "gpt-4o"
+instructions_file = ".claude/agents/agent-writer.md"
+
+[agents.architect]
+description = "Software architecture advisor for design decisions and trade-off analysis."
+model = "o4-mini"
+instructions_file = ".claude/agents/architect.md"
+
+[agents.bug-fixer]
+description = "Bug-fix specialist. Diagnoses failures, writes regression tests, fixes code. TDD only."
+model = "o4-mini"
+instructions_file = ".claude/agents/bug-fixer.md"
+
+[agents.code-reviewer]
+description = "Python code review specialist focusing on DRY principles, type safety, and security."
+model = "gpt-4o"
+instructions_file = ".claude/agents/code-reviewer.md"
+
+[agents.debugger]
+description = "Diagnostic specialist for root cause analysis."
+model = "o4-mini"
+instructions_file = ".claude/agents/debugger.md"
+
+[agents.doc-writer]
+description = "Technical documentation specialist. READMEs, API docs, ADRs, runbooks."
+model = "gpt-4o-mini"
+instructions_file = ".claude/agents/doc-writer.md"
+
+[agents.marketer]
+description = "Product marketing analyst for GTM strategy, competitive positioning, and commercial viability."
+model = "gpt-4o-mini"
+instructions_file = ".claude/agents/marketer.md"
+
+[agents.refactorer]
+description = "Code structure specialist that improves design without changing behavior."
+model = "gpt-4o"
+instructions_file = ".claude/agents/refactorer.md"
+
+[agents.requirements-tracker]
+description = "Extracts requirements from conversation and code, appends to docs/arch/requirements.md."
+model = "gpt-4o-mini"
+instructions_file = ".claude/agents/requirements-tracker.md"
+
+[agents.sql-analyst]
+description = "SQL query analysis expert specializing in Trino execution plans and cross-source query optimization."
+model = "o4-mini"
+instructions_file = ".claude/agents/sql-analyst.md"
+
+[agents.test-strategist]
+description = "Adversarial testing advisor. Designs test strategies and identifies edge cases."
+model = "o4-mini"
+instructions_file = ".claude/agents/test-strategist.md"
 
 [[skills.config]]
 path = ".claude/skills/anti-patterns/SKILL.md"

@@ -1,3 +1,0 @@
-description = "Bug-fix specialist that diagnoses failures, writes regression tests, and fixes code. TDD only."
-model = "o4-mini"
-instructions_file = "../../.claude/agents/bug-fixer.md"

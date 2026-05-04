@@ -1,3 +1,0 @@
-description = "Technical documentation specialist. READMEs, API docs, ADRs, runbooks."
-model = "gpt-4o-mini"
-instructions_file = "../../.claude/agents/doc-writer.md"

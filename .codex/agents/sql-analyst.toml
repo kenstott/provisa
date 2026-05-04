@@ -1,3 +1,0 @@
-description = "SQL query analysis expert specializing in Trino execution plans and cross-source query optimization."
-model = "o4-mini"
-instructions_file = "../../.claude/agents/sql-analyst.md"

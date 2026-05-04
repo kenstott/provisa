@@ -1,3 +1,0 @@
-description = "Diagnostic specialist for root cause analysis. Investigates methodically before recommending fixes."
-model = "o4-mini"
-instructions_file = "../../.claude/agents/debugger.md"

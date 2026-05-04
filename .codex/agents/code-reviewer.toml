@@ -1,3 +1,0 @@
-description = "Python code review specialist focusing on DRY principles, type safety, and security."
-model = "gpt-4o"
-instructions_file = "../../.claude/agents/code-reviewer.md"

@@ -1,3 +1,0 @@
-description = "Product marketing analyst for GTM strategy, competitive positioning, and commercial viability."
-model = "gpt-4o-mini"
-instructions_file = "../../.claude/agents/marketer.md"

@@ -1,3 +1,0 @@
-description = "Extracts requirements from conversation and code, appends them to docs/arch/requirements.md."
-model = "gpt-4o-mini"
-instructions_file = "../../.claude/agents/requirements-tracker.md"
