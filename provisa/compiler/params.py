@@ -64,21 +64,21 @@ def embed_params_comment(sql: str, params: list) -> str:
 def extract_params_comment(sql: str) -> tuple[str, list]:
     """Strip the provisa-params comment and return (sql, params_list).
 
-    If no comment is present, returns (sql, []) so callers can fall back to
-    an explicit params argument.
+    Searches all lines — the comment may be embedded inside a subquery wrapper
+    added by the UI (e.g. SELECT * FROM (<comment>\n...) _sample LIMIT N).
     """
-    if not sql.startswith(_COMMENT_PREFIX):
-        return sql, []
-    newline = sql.index("\n")
-    comment = sql[:newline]
-    rest = sql[newline + 1:]
-    matches = _PARAM_RE.findall(comment)
-    if not matches:
-        return rest, []
-    # matches is list of (index_str, value_str); sort by index to build ordered list
-    indexed = sorted((int(idx), _parse_sql_literal(val)) for idx, val in matches)
-    params = [v for _, v in indexed]
-    return rest, params
+    lines = sql.split("\n")
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith(_COMMENT_PREFIX):
+            continue
+        matches = _PARAM_RE.findall(stripped)
+        remaining = "\n".join(lines[:i] + lines[i + 1:])
+        if not matches:
+            return remaining, []
+        indexed = sorted((int(idx), _parse_sql_literal(val)) for idx, val in matches)
+        return remaining, [v for _, v in indexed]
+    return sql, []
 
 
 class ParamCollector:
