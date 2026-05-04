@@ -257,7 +257,7 @@ class TestPagination:
         doc = parse("{ orders { id _queries(limit: 2) { query } } }")
         assert not validate(schema, doc)
         results = compile_query(doc, ctx)
-        assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."queries"' in results[0].sql
+        assert 'LEFT JOIN LATERAL (SELECT "query" FROM "public"."queries"' in results[0].sql
         assert 'LIMIT $1) "t1" ON TRUE' in results[0].sql
         assert results[0].params == [2]
 
@@ -297,7 +297,7 @@ class TestPagination:
         doc = parse("{ orders { id _traces(limit: 3) { traceId } } }")
         assert not validate(schema, doc)
         results = compile_query(doc, ctx)
-        assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."traces"' in results[0].sql
+        assert 'LEFT JOIN LATERAL (SELECT "trace_id" FROM "public"."traces"' in results[0].sql
         assert 'LIMIT $1) "t1" ON TRUE' in results[0].sql
         assert results[0].params == [3]
 
@@ -507,7 +507,7 @@ class TestNestedRelationship:
         assert not validate(schema, doc)
         results = compile_query(doc, ctx)
         sql = results[0].sql
-        assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."orders"' in sql
+        assert 'LEFT JOIN LATERAL (SELECT "id", "amount" FROM "public"."orders"' in sql
         assert 'WHERE "customer_id" = "t0"."id" AND ("amount" > $1)' in sql
         assert 'ORDER BY "amount" DESC LIMIT $2 OFFSET $3) "t1" ON TRUE' in sql
         assert results[0].params == [100, 2, 1]

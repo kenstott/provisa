@@ -306,7 +306,8 @@ async def compile_query(role_id: str, query: str, variables: dict | None) -> lis
         if sampling:
             optimizations.append("Sampling applied (role lacks FULL_RESULTS capability)")
 
-        raw_semantic_sql = make_semantic_sql(compiled.sql, ctx)
+        from provisa.compiler.params import embed_params_comment
+        raw_semantic_sql = make_semantic_sql(embed_params_comment(compiled.sql, compiled.params), ctx)
         semantic_sql_str = sql_comment_prefix + raw_semantic_sql
 
         compiled_cypher = None
