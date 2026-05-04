@@ -482,7 +482,7 @@ server:
     trino_query_timeout: 120
     request_timeout: 60
 observability:
-  endpoint: http://localhost:4318
+  endpoint: http://localhost:4319
   service_name: provisa
   sample_rate: 1.0
   ops_snapshot_retention_hours: 1

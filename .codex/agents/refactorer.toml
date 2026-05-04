@@ -1,0 +1,3 @@
+description = "Code structure specialist that improves design without changing behavior."
+model = "gpt-4o"
+instructions_file = "../../.claude/agents/refactorer.md"

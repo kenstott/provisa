@@ -29,6 +29,7 @@ from provisa.api.flight.catalog import (
     _trino_type_to_arrow,
 )
 from provisa.api.flight.server import ProvisaFlightServer
+from provisa.api.flight.server import _parse_limit_value
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +283,28 @@ class TestServerApprovedTables:
         result = ProvisaFlightServer._build_approved_queries_table(queries)
         assert result.num_rows == 2
         assert result.column("stable_id").to_pylist() == ["id-1", "id-2"]
+
+    def test_approved_queries_table_limit(self):
+        queries = [
+            _make_approved_query("id-1", "q1", "sql1"),
+            _make_approved_query("id-2", "q2", "sql2"),
+        ]
+        result = ProvisaFlightServer._build_approved_queries_table(queries, limit=1)
+        assert result.num_rows == 1
+        assert result.column("stable_id").to_pylist() == ["id-1"]
+
+    def test_approved_queries_limit_zero(self):
+        queries = [_make_approved_query("id-1", "q1", "sql1")]
+        result = ProvisaFlightServer._build_approved_queries_table(queries, limit=0)
+        assert result.num_rows == 0
+
+    def test_limit_value_rejects_negative(self):
+        with pytest.raises(flight.FlightServerError, match="non-negative integer"):
+            _parse_limit_value(-1)
+
+    def test_limit_value_rejects_bool(self):
+        with pytest.raises(flight.FlightServerError, match="non-negative integer"):
+            _parse_limit_value(True)
 
     def test_single_approved_query_table(self):
         q = _make_approved_query()

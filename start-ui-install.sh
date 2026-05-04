@@ -239,7 +239,7 @@ start_backend() {
       PROVISA_OTEL_S3_ENDPOINT="http://localhost:9000"
       PROVISA_OTEL_S3_ACCESS_KEY="${PROVISA_OTEL_S3_ACCESS_KEY:-minioadmin}"
       PROVISA_OTEL_S3_SECRET_KEY="${PROVISA_OTEL_S3_SECRET_KEY:-minioadmin}"
-      OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+      OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4319"
       OTEL_SERVICE_NAME="provisa"
     )
   fi

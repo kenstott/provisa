@@ -1,0 +1,76 @@
+[agents]
+agent-writer = ".codex/agents/agent-writer.toml"
+architect = ".codex/agents/architect.toml"
+bug-fixer = ".codex/agents/bug-fixer.toml"
+code-reviewer = ".codex/agents/code-reviewer.toml"
+debugger = ".codex/agents/debugger.toml"
+doc-writer = ".codex/agents/doc-writer.toml"
+marketer = ".codex/agents/marketer.toml"
+refactorer = ".codex/agents/refactorer.toml"
+requirements-tracker = ".codex/agents/requirements-tracker.toml"
+sql-analyst = ".codex/agents/sql-analyst.toml"
+test-strategist = ".codex/agents/test-strategist.toml"
+
+[[skills.config]]
+path = ".claude/skills/anti-patterns/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/async-patterns/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/audit-workflow/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/bug-reporter/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/code-review/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/commit-message/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/debug-python/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/dependency-rules/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/domain-model/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/next-phase/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/project-layout/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/pytest-patterns/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/python-style/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/test-first/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/test-tiers/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = ".claude/skills/venv-setup/SKILL.md"
+enabled = true

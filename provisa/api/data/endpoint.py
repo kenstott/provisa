@@ -1433,24 +1433,19 @@ async def _execute_one_field(
             _t_trino = _time.perf_counter()
             _loop = asyncio.get_running_loop()
             _trino_ck = getattr(state, "trino_conn_kwargs", None)
-            # Extract normalized table names from semantic SQL (e.g. pet_store.pets)
-            import sqlglot as _sg
-            _sem_tables: set[str] = set()
-            _sem_domains: set[str] = set()
-            try:
-                for _tbl in _sg.parse_one(compiled.sql, dialect="postgres").find_all(_sg.exp.Table):
-                    _db = _tbl.db
-                    _tbl_nm = _tbl.name
-                    if _db:
-                        _sem_tables.add(f"{_db}.{_tbl_nm}")
-                        _sem_domains.add(_db)
-                    elif _tbl_nm:
-                        _sem_tables.add(_tbl_nm)
-            except Exception:
-                pass
+            # Use the root table's virtual _name_ (e.g. "ps.pets") so the ops-traversal
+            # join (data._name_ = traces.table_name) matches exactly. Parsing compiled.sql
+            # would include LATERAL-joined OTel/meta tables and produce a multi-table
+            # comma string that never matches the exact-match join condition.
+            _root_meta = ctx.tables.get(root_field)
+            _root_name = (
+                (ctx.virtual_columns.get(_root_meta.table_id) or {}).get("_name_", "")
+                if _root_meta else ""
+            ) or root_field
+            _root_domain = _root_meta.domain_id if _root_meta else ""
             _span_attrs: dict[str, str] = {
-                "provisa.table": ", ".join(sorted(_sem_tables)) or root_field,
-                "provisa.domain": ", ".join(sorted(_sem_domains)) or "",
+                "provisa.table": _root_name,
+                "provisa.domain": _root_domain,
                 "provisa.role": role_id or "",
             }
             _extra_table_attrs: list[dict[str, str]] = []

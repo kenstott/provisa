@@ -285,24 +285,32 @@ def approved_query_to_flight_info(
     return flight.FlightInfo(schema, descriptor, endpoints, -1, -1)
 
 
-def fetch_approved_queries(state) -> list[ApprovedQuery]:
+def fetch_approved_queries(state, limit: int | None = None) -> list[ApprovedQuery]:
     """Fetch approved persisted queries from PG."""
     if not state.pg_pool:
         return []
     loop = asyncio.new_event_loop()
     try:
-        return loop.run_until_complete(fetch_approved_queries_async(state))
+        return loop.run_until_complete(fetch_approved_queries_async(state, limit=limit))
     finally:
         loop.close()
 
 
-async def fetch_approved_queries_async(state) -> list[ApprovedQuery]:
+async def fetch_approved_queries_async(state, limit: int | None = None) -> list[ApprovedQuery]:
     async with state.pg_pool.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT stable_id, query_text, compiled_sql "
-            "FROM persisted_queries WHERE status = 'approved' "
-            "ORDER BY approved_at"
-        )
+        if limit is None:
+            rows = await conn.fetch(
+                "SELECT stable_id, query_text, compiled_sql "
+                "FROM persisted_queries WHERE status = 'approved' "
+                "ORDER BY approved_at"
+            )
+        else:
+            rows = await conn.fetch(
+                "SELECT stable_id, query_text, compiled_sql "
+                "FROM persisted_queries WHERE status = 'approved' "
+                "ORDER BY approved_at LIMIT $1",
+                limit,
+            )
     return [
         ApprovedQuery(
             stable_id=r["stable_id"],

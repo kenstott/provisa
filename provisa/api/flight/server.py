@@ -91,6 +91,16 @@ def _parse_where_variables(sql: str) -> dict:
     return variables
 
 
+def _parse_limit_value(value) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise flight.FlightServerError("limit must be a non-negative integer")
+    if value < 0:
+        raise flight.FlightServerError("limit must be a non-negative integer")
+    return value
+
+
 class ProvisaFlightServer(flight.FlightServerBase):
     """Arrow Flight server that executes GraphQL queries and streams Arrow data.
 
@@ -145,6 +155,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
 
     def list_flights(self, context, criteria):
         """List available flights based on mode."""
+        criteria_payload = self._criteria_payload(criteria)
         mode = self._mode_from_criteria(criteria)
 
         if mode == "catalog":
@@ -153,7 +164,8 @@ class ProvisaFlightServer(flight.FlightServerBase):
                 yield catalog_table_to_flight_info(table)
 
         elif mode == "approved":
-            queries = fetch_approved_queries(self._state)
+            limit = _parse_limit_value(criteria_payload.get("limit"))
+            queries = fetch_approved_queries(self._state, limit=limit)
             for q in queries:
                 yield approved_query_to_flight_info(q)
 
@@ -264,13 +276,20 @@ class ProvisaFlightServer(flight.FlightServerBase):
 
     def _mode_from_criteria(self, criteria: bytes) -> str:
         """Extract mode from list_flights criteria bytes."""
+        return self._criteria_payload(criteria).get("mode", "default")
+
+    @staticmethod
+    def _criteria_payload(criteria: bytes) -> dict:
+        """Extract criteria JSON object."""
         if not criteria:
-            return "default"
+            return {}
         try:
             data = json.loads(criteria.decode("utf-8"))
-            return data.get("mode", "default")
+            if not isinstance(data, dict):
+                return {}
+            return data
         except (json.JSONDecodeError, UnicodeDecodeError):
-            return "default"
+            return {}
 
     def _do_get_catalog(self, ticket) -> flight.RecordBatchStream:
         """Return catalog metadata as Arrow record batches."""
@@ -296,8 +315,12 @@ class ProvisaFlightServer(flight.FlightServerBase):
         """Return approved query data as Arrow record batches."""
         request = json.loads(ticket.ticket.decode("utf-8"))
         stable_id = request.get("stable_id")
+        limit = _parse_limit_value(request.get("limit"))
 
-        queries = fetch_approved_queries(self._state)
+        queries = fetch_approved_queries(
+            self._state,
+            limit=None if stable_id else limit,
+        )
 
         if stable_id:
             for q in queries:
@@ -365,8 +388,11 @@ class ProvisaFlightServer(flight.FlightServerBase):
     @staticmethod
     def _build_approved_queries_table(
         queries: list[ApprovedQuery],
+        limit: int | None = None,
     ) -> pa.Table:
         """Build Arrow table listing approved queries."""
+        if limit is not None:
+            queries = queries[:limit]
         stable_ids = [q.stable_id for q in queries]
         query_texts = [q.query_text for q in queries]
         compiled_sqls = [q.compiled_sql for q in queries]
