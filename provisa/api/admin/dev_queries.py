@@ -311,13 +311,16 @@ async def compile_query(role_id: str, query: str, variables: dict | None) -> lis
         semantic_sql_str = sql_comment_prefix + raw_semantic_sql
 
         compiled_cypher = None
+        cypher_error = None
         try:
             from provisa.cypher.label_map import CypherLabelMap
             from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
             _label_map = CypherLabelMap.from_schema(ctx)
             compiled_cypher = semantic_sql_to_cypher(raw_semantic_sql, _label_map, ctx)
-        except Exception:
-            pass
+            if compiled_cypher is None:
+                cypher_error = "Query structure cannot be represented as a Cypher pattern"
+        except Exception as e:
+            cypher_error = str(e)
 
         results.append({
             "sql": compiled.sql,
@@ -337,6 +340,7 @@ async def compile_query(role_id: str, query: str, variables: dict | None) -> lis
             "optimizations": optimizations,
             "warnings": warnings,
             "compiled_cypher": compiled_cypher,
+            "cypher_error": cypher_error,
         })
 
     cypher_parts = [r["compiled_cypher"] for r in results if r.get("compiled_cypher")]

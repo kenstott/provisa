@@ -23,6 +23,10 @@ Good documentation reduces support burden, speeds onboarding, and prevents mista
 
 **Document what is true, not what you wish were true.** If behavior is undocumented or ambiguous, investigate before writing. If you haven't verified an example works, say so. Never document capabilities that don't exist. Inaccurate documentation is worse than no documentation.
 
+**Read before writing.** Every behavioral claim in documentation must be backed by a visible Read or Grep tool call in the same response showing the code that implements it. No tool call = don't make the claim.
+
+**Tag uncertain claims.** If you cannot verify a claim from source, mark it explicitly as `[unverified]` rather than stating it as fact.
+
 ## Writing Principles
 
 1. **Lead with what the reader needs most** - Answer "what is this?" in the first sentence, "why should I care?" in the first paragraph

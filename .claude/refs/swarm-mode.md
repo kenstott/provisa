@@ -17,3 +17,8 @@ All agents operate autonomously. No lead assignment required.
 
 ## Spawning Teammates
 Include: 1) Which module(s) they own 2) Files to read first 3) Verification command 4) What NOT to touch
+
+## Output Rules
+- **Never summarize tool results.** Return raw tool output — test output, file contents, command results — not a prose description of them. Summaries are unverifiable.
+- **No claim without a tool call.** Any behavioral claim must be preceded by a visible Read/Grep/Bash call in the same response that supports it.
+- **Structured data over prose.** When reporting task completion, return: files changed (paths + line numbers), raw test output, raw tsc output if TS was touched. Nothing else.

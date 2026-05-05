@@ -90,7 +90,22 @@ def semantic_sql_to_cypher(
     # sqlglot stores the Table directly (with alias embedded) in from_.this
     from_tbl = from_clause.this
     if not isinstance(from_tbl, exp.Table):
-        return None  # subquery in FROM
+        # Unwrap simple limit subquery: (SELECT * FROM table LIMIT N) alias
+        if isinstance(from_tbl, exp.Subquery):
+            inner = from_tbl.this
+            inner_from = inner.args.get("from_") if isinstance(inner, exp.Select) else None
+            inner_exprs = inner.args.get("expressions") or [] if isinstance(inner, exp.Select) else []
+            is_star = len(inner_exprs) == 1 and isinstance(inner_exprs[0], exp.Star)
+            if inner_from and is_star and isinstance(inner_from.this, exp.Table):
+                inner_tbl = inner_from.this
+                if from_tbl.alias:
+                    inner_tbl.set("alias", exp.TableAlias(this=exp.to_identifier(from_tbl.alias)))
+                inner_limit = inner.args.get("limit")
+                if inner_limit and not tree.args.get("limit"):
+                    tree.set("limit", inner_limit)
+                from_tbl = inner_tbl
+        if not isinstance(from_tbl, exp.Table):
+            return None  # non-unwrappable subquery in FROM
 
     base_label = _resolve_label(from_tbl, domain_to_label)
     if base_label is None:
@@ -106,11 +121,11 @@ def semantic_sql_to_cypher(
     for join in joins:
         join_tbl = join.this
         if not isinstance(join_tbl, exp.Table):
-            return None  # subquery join — can't translate
+            continue  # LATERAL or subquery join — skip, no Cypher equivalent
 
         tgt_label = _resolve_label(join_tbl, domain_to_label)
         if tgt_label is None:
-            return None
+            continue  # meta/ops table not in graph schema — skip
 
         tgt_sql_alias = join_tbl.alias or join_tbl.name
 

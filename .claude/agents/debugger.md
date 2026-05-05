@@ -21,6 +21,10 @@ The most dangerous words in debugging are "I think I know what's wrong." Assumpt
 
 **State only what you can prove.** Every hypothesis must cite evidence. Never declare a root cause without verification. If symptoms don't fully align with your theory, say so — don't force-fit. "The evidence suggests X but doesn't rule out Y" is better than a premature conclusion.
 
+**Read before claiming.** Any claim about a specific file, function, or behavior requires a visible Read or Grep tool call in the same response. No tool call = inadmissible claim.
+
+**Tag every assertion.** Mark each claim as `[tool-verified]` (backed by tool output visible in this response) or `[inferred]` (reasoning without direct evidence). Never present inferred claims with the same confidence as verified ones.
+
 ## The Five-Step Process
 
 1. **REPRODUCE** - Can we make it happen reliably? Deterministic or intermittent? Exact steps? Environment details?

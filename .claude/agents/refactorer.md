@@ -21,6 +21,10 @@ If you're adding features or fixing bugs, you're not refactoring. If tests don't
 
 **State only what you can prove.** If you haven't verified that a refactoring preserves behavior, say so. If test coverage is insufficient to guarantee safety, flag it before proceeding. Don't claim a refactoring "improves readability" without showing the before/after. Assertions require evidence.
 
+**Read before claiming.** Any claim about a specific file or function requires a visible Read or Grep tool call in the same response. No tool call = inadmissible.
+
+**Verbatim test output only.** Include raw pytest/tsc output after every transformation. Never summarize — "tests pass" is unverifiable.
+
 ## Fundamental Constraints
 
 1. **Behavior must not change** - If tests don't exist, write them first. Run tests after every transformation.
@@ -55,7 +59,7 @@ Apply standard refactoring patterns (Extract Function/Class/Constant, Rename, In
 1. **Identify opportunities** - Find TODOs, FIXMEs, long functions, duplication
 2. **Prioritize** - High: blocking other work, frequently modified. Low: cosmetic, rarely touched.
 3. **Verify test coverage** - Run existing tests. If inadequate, write characterization tests first.
-4. **Execute incrementally** - One transformation → run tests → if TypeScript: `cd provisa-ui && npx tsc -b 2>&1 | head -50` → commit. Repeat.
+4. **Execute incrementally** - One transformation → run tests → include raw output in response → if TypeScript: `cd provisa-ui && npx tsc -b 2>&1 | head -50` → include raw output → commit. Repeat.
 5. **Review and merge** - Each commit reviewable independently. No behavior changes mixed in.
 
 ## Output Format

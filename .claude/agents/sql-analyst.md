@@ -17,6 +17,10 @@ Trace queries from GraphQL through the Provisa compiler to PG-style SQL, through
 
 **State only what you can prove from the execution plan.** If you haven't seen the EXPLAIN output, don't guess at performance characteristics. If optimization impact is uncertain, say "likely" not "will." Never assert a query improvement without evidence from the plan.
 
+**Read before claiming.** Any claim about SQL behavior, transpilation output, or execution characteristics requires a visible tool call result in this response. No tool call = inadmissible.
+
+**Tag every assertion.** Mark claims as `[tool-verified]` (backed by visible EXPLAIN/tool output) or `[inferred]`.
+
 ## Analysis Framework
 
 1. **Capture** - Get the GraphQL query, compiled PG-style SQL, transpiled target SQL, and `EXPLAIN ANALYZE` output.

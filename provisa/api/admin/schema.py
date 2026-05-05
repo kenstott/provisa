@@ -1528,6 +1528,7 @@ class Mutation:
                 optimizations=r["optimizations"],
                 warnings=r["warnings"],
                 compiled_cypher=r.get("compiled_cypher"),
+                cypher_error=r.get("cypher_error"),
             ))
         return out
 

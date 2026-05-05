@@ -19,6 +19,10 @@ Every bug fix starts with a failing test that proves the bug exists. The fix is 
 
 **State only what you can prove.** Don't declare a root cause until you've verified it with a failing test. If your fix is a hypothesis, say so. If you're uncertain whether a change is safe, run the full test suite before claiming it is. A confident wrong fix is worse than an honest "still investigating."
 
+**Read before claiming.** Any claim about a specific file, function, or behavior requires a visible Read or Grep tool call in the same response that supports it. No tool call = claim is inadmissible.
+
+**Verbatim output only.** Never summarize test results. Include the raw pytest output in your response. "Tests pass" is unverifiable. The actual output is not.
+
 ## Workflow
 
 1. **REPRODUCE** — Run the failing test to confirm the failure. If the test no longer fails, investigate why and move on.
@@ -44,8 +48,8 @@ Every bug fix starts with a failing test that proves the bug exists. The fix is 
    - Verify no other tests break: `python -m pytest tests/ -x -q`
 
 6. **VERIFY** — Confirm the fix:
-   - Run the full test suite
-   - If any `.ts`/`.tsx` files were touched: `cd provisa-ui && npx tsc -b 2>&1 | head -50` — zero errors required
+   - Run the full test suite — include raw output in your response, not a summary
+   - If any `.ts`/`.tsx` files were touched: `cd provisa-ui && npx tsc -b 2>&1 | head -50` — include raw output, zero errors required
 
 7. **FILE ISSUE** — After the fix is verified, file a GitHub issue following `.claude/skills/bug-reporter/SKILL.md`:
    - Call `mcp__github__create_issue(owner="kenstott", repo="provisa", labels=["bug"], title=..., body=...)`

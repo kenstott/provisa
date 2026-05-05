@@ -503,6 +503,11 @@ export function SqlPage() {
   const editorViewRef = useRef<EditorView | null>(null);
 
   useEffect(() => {
+    const pending = localStorage.getItem("provisa.sql.pending_query");
+    if (pending) {
+      setSqlText(pending);
+      localStorage.removeItem("provisa.sql.pending_query");
+    }
     fetchRoles().catch(() => []).then((r) => {
       const ids = r.map((x: any) => x.id);
       if (ids.length) setRoles(ids);

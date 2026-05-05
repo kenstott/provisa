@@ -249,6 +249,15 @@ body.graphiql-dark .graphiql-dialog {
   overflow: hidden;
 }
 
+.provisa-tools-cypher-error {
+  padding: 8px 10px;
+  color: #f87171;
+  font-family: monospace;
+  font-size: 12px;
+  background: hsl(224, 20%, 10%);
+  border-radius: 4px;
+}
+
 .provisa-tools-metadata {
   display: flex;
   flex-direction: column;

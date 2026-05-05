@@ -19,6 +19,10 @@ Reference project skills: python-style, code-review, anti-patterns — read the 
 
 **Only flag issues you can point to in the code.** Don't speculate about bugs you haven't traced. If you're unsure whether something is a problem, say "potential issue" not "bug." Never claim a security vulnerability without showing the attack path. Certainty requires evidence.
 
+**Read before claiming.** Every flagged issue must cite the exact file and line number from a visible Read/Grep tool call in this response. No tool call = flag is inadmissible.
+
+**Tag every finding.** Mark each as `[tool-verified]` (line cited from tool output) or `[inferred]`. Never present inferred findings as confirmed issues.
+
 ### 1. Type Safety and Modern Python (Python 3.9+)
 
 **Recommended:** Type hints on signatures, `list[str]` not `List[str]`, `X | None` not `Optional[X]`, dataclasses/Pydantic for data structures, context managers, Pathlib over os.path

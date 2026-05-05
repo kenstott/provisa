@@ -849,7 +849,6 @@ def _lateral_join(
     collector: ParamCollector,
     variables: dict | None,
     use_catalog: bool,
-    ctx: "CompilationContext | None" = None,
 ) -> str:
     args = _field_args(field_node, variables)
     target_expr = _join_column_expr_for(
@@ -858,22 +857,8 @@ def _lateral_join(
         join_meta.target_column_type,
         join_meta.source_column_type,
     )
-    # Build explicit column list from selection set instead of SELECT *
-    select_cols = "*"
-    if ctx is not None and field_node.selection_set:
-        col_parts = []
-        for sel in field_node.selection_set.selections:
-            if not isinstance(sel, FieldNode) or sel.selection_set:
-                continue
-            gql_name = sel.name.value
-            if gql_name in _VIRTUAL_COLS:
-                continue
-            phys = ctx.gql_to_physical.get((join_meta.target.table_id, gql_name), gql_name)
-            col_parts.append(_q(phys))
-        if col_parts:
-            select_cols = ", ".join(col_parts)
     sql = (
-        f'LEFT JOIN LATERAL (SELECT {select_cols} FROM {_table_ref(join_meta.target, use_catalog)}'
+        f'LEFT JOIN LATERAL (SELECT * FROM {_table_ref(join_meta.target, use_catalog)}'
         f' WHERE {target_expr} = {src_expr}'
     )
     if "where" in args:
@@ -889,7 +874,7 @@ def _lateral_join(
         if isinstance(distinct_cols, str):
             distinct_cols = [distinct_cols]
         distinct_prefix = ", ".join(_q(c) for c in distinct_cols)
-        sql = sql.replace(f"SELECT {select_cols}", f"SELECT DISTINCT ON ({distinct_prefix}) {select_cols}", 1)
+        sql = sql.replace("SELECT *", f"SELECT DISTINCT ON ({distinct_prefix}) *", 1)
     if "order_by" in args:
         order_by_val = args["order_by"]
         if isinstance(order_by_val, dict):
@@ -968,7 +953,6 @@ def _collect_nested_columns(
                         collector,
                         variables,
                         use_catalog,
-                        ctx,
                     )
                 )
             else:
@@ -1126,7 +1110,6 @@ def _compile_root_field(
                         collector,
                         variables,
                         use_catalog,
-                        ctx,
                     )
                 )
             else:
@@ -1266,6 +1249,17 @@ def _compile_root_field(
         else:
             from_clause = f'{ref}{time_travel_clause}'
 
+    # When ops LATERAL joins are present, wrap the base table in a subquery so that
+    # the user's limit applies to base rows before the lateral Cartesian expansion.
+    result_limit: int | None = None
+    if has_lateral_ops_joins and "limit" in args:
+        user_limit = int(args["limit"])
+        result_limit = user_limit
+        if use_aliases:
+            from_clause = f'(SELECT * FROM {ref} LIMIT {user_limit}) {_q(root_alias)}'
+        else:
+            from_clause = f'(SELECT * FROM {ref} LIMIT {user_limit})'
+
     sql = f'SELECT {", ".join(select_parts)} FROM {from_clause}'
 
     # JOIN clauses
@@ -1300,10 +1294,10 @@ def _compile_root_field(
 
     # LIMIT / OFFSET
     # When ops LATERAL joins are present, SQL LIMIT would cut the expanded join rows,
-    # not the base rows. Record result_limit for Python-level truncation after grouping.
-    result_limit: int | None = None
+    # not the base rows. result_limit is set above (base-table subquery) for the SQL path;
+    # it's also used for Python-level truncation after grouping in the GraphQL path.
     if has_lateral_ops_joins:
-        if "limit" in args:
+        if result_limit is None and "limit" in args:
             result_limit = int(args["limit"])
         # Apply a safety cap to prevent unbounded Trino scans
         sql += f" LIMIT {_get_default_row_limit()}"

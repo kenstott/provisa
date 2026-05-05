@@ -351,6 +351,7 @@ class CompileQueryResult:
     optimizations: list[str]
     warnings: list[str]
     compiled_cypher: str | None
+    cypher_error: str | None
 
 
 @strawberry.input

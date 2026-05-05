@@ -703,6 +703,7 @@ export interface CompileResult {
   optimizations?: string[];
   warnings?: string[];
   compiled_cypher?: string | null;
+  cypher_error?: string | null;
 }
 
 export async function compileQuery(
@@ -714,7 +715,7 @@ export async function compileQuery(
     `mutation CompileQuery($input: CompileQueryInput!) {
       compileQuery(input: $input) {
         sql semanticSql trinoSql directSql route routeReason sources
-        rootField canonicalField compiledCypher optimizations warnings
+        rootField canonicalField compiledCypher cypherError optimizations warnings
         columnAliases { fieldName column }
         enforcement { rlsFiltersApplied columnsExcluded schemaScope maskingApplied ceilingApplied route }
       }
@@ -730,6 +731,7 @@ export async function compileQuery(
     root_field: r.rootField ?? r.root_field,
     canonical_field: r.canonicalField ?? r.canonical_field,
     compiled_cypher: r.compiledCypher ?? r.compiled_cypher,
+    cypher_error: r.cypherError ?? r.cypher_error,
     column_aliases: (r.columnAliases ?? r.column_aliases ?? []).map((ca: any) => ({
       field_name: ca.fieldName ?? ca.field_name,
       column: ca.column,
