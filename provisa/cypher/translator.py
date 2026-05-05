@@ -795,7 +795,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 if sql_col:
                     return f"{var}.{sql_col}"
             return m.group(0)
-        return re.sub(r'\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b', _replace, text)
+        return re.sub(r'\b([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)\b', _replace, text)
 
     def _rewrite_nf_props(self, text: str) -> str:
         """Rewrite var.col or var."col" → var."_nf_col" for native filter columns."""
@@ -819,9 +819,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         expr_text = rewrite_list_comprehensions(expr_text)
         expr_text = _rewrite_in_list(expr_text)
         expr_text = self._rewrite_cypher_props(expr_text)
+        expr_text = _rewrite_string_predicates(expr_text)
         expr_text = _rewrite_property_access(expr_text)
         expr_text = self._rewrite_nf_props(expr_text)
-        expr_text = _rewrite_string_predicates(expr_text)
         expr_text = _coerce_ts_literals(expr_text)
         expr_text = self._rewrite_subquery_exprs(expr_text)
         try:
@@ -900,13 +900,14 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         """Parse a Cypher expression fragment into a SQLGlot expression."""
         text = self._rewrite_params_in_expr(text)
         text = self._rewrite_cte_vars(text)
+        text = self._rewrite_cypher_props(text)
         text = self._rewrite_map_projections(text)
         text = self._rewrite_graph_fns(text)
         text = self._rewrite_path_comprehensions(text)
         text = rewrite_list_comprehensions(text)
         text = _rewrite_in_list(text)
-        text = _rewrite_property_access(text)
         text = _rewrite_string_predicates(text)
+        text = _rewrite_property_access(text)
         text = self._rewrite_subquery_exprs(text)
         try:
             parsed = sqlglot.parse_one(text, dialect="postgres")
@@ -1284,7 +1285,7 @@ def _rewrite_cypher_dquote_strings(expr: str) -> str:
 def _rewrite_property_access(expr: str) -> str:
     """Rewrite n.prop → n."prop" for SQL."""
     return re.sub(
-        r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b",
+        r"\b([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)\b",
         lambda m: f'{m.group(1)}."{m.group(2)}"',
         expr,
     )

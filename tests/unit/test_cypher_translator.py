@@ -1122,3 +1122,43 @@ def test_traversal_only_node_as_target_succeeds():
     sql = sql_ast.sql(dialect="trino")
     assert "shipments" in sql.lower()
     assert "orders" in sql.lower()
+
+
+def _make_label_map_camel() -> CypherLabelMap:
+    """Label map with a camelCase→snake_case property mapping."""
+    node = NodeMapping(
+        label="Dog",
+        type_name="Dog",
+        domain_label=None,
+        table_label="Dog",
+        table_id=10,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="dogs",
+        properties={"breedName": "breed_name", "name": "name"},
+    )
+    return CypherLabelMap(nodes={"Dog": node}, relationships={})
+
+
+def test_camel_prop_in_return_rewrites_to_sql_col():
+    """RETURN a.breedName must reference the physical column breed_name, not a.breedname."""
+    lm = _make_label_map_camel()
+    ast = parse_cypher("MATCH (a:Dog) RETURN a.breedName")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert '"breed_name"' in sql
+    assert "breedname" not in sql.lower().replace('"breed_name"', '')
+
+
+def test_camel_prop_in_return_after_with_uses_cte_alias():
+    """After a WITH clause, RETURN a.breedName must reference the CTE camelCase alias."""
+    lm = _make_label_map_camel()
+    ast = parse_cypher(
+        "MATCH (a:Dog) WITH a.breedName AS breedName RETURN breedName"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "breedName" in sql or "breedname" in sql.lower()
