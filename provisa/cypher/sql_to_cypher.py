@@ -150,13 +150,35 @@ def semantic_sql_to_cypher(
     for _is_opt, _rt, _src, tgt_a, tgt_lbl in join_segments:
         alias_label[tgt_a] = tgt_lbl
 
+    # Build sql_alias → {sql_col: cypher_prop} from NodeMapping.properties (inverted)
+    def _prop_map_for_label(display_lbl: str) -> dict[str, str]:
+        type_names = label_map.nodes_by_table.get(display_lbl, [])
+        if not type_names:
+            return {}
+        nm = label_map.nodes.get(type_names[0])
+        if nm is None:
+            return {}
+        return {sql_col: cypher_prop for cypher_prop, sql_col in nm.properties.items()}
+
+    alias_prop_map: dict[str, dict[str, str]] = {
+        sql_a: _prop_map_for_label(lbl) for sql_a, lbl in alias_label.items()
+    }
+
     def _node(short: str, label: str) -> str:
         return f"({short}:{label})"
 
     def _remap(text: str) -> str:
-        """Replace verbose SQL aliases with short Cypher aliases."""
+        """Replace verbose SQL aliases with short Cypher aliases and sql_col names with cypher prop names."""
         for sql_a in sorted(alias_map, key=len, reverse=True):
             text = re.sub(rf'\b{re.escape(sql_a)}\b', alias_map[sql_a], text)
+        # Rewrite short_alias.sql_col → short_alias.cypherProp using prop map
+        prop_lookup: dict[str, dict[str, str]] = {
+            alias_map[sql_a]: pm for sql_a, pm in alias_prop_map.items() if sql_a in alias_map
+        }
+        def _col_sub(m: re.Match) -> str:
+            node_alias, sql_col = m.group(1), m.group(2)
+            return f"{node_alias}.{prop_lookup.get(node_alias, {}).get(sql_col, sql_col)}"
+        text = re.sub(r'(\b\w+)\.(\w+)\b', _col_sub, text)
         return text
 
     # --- Build MATCH pattern ---
@@ -187,7 +209,7 @@ def semantic_sql_to_cypher(
     # --- RETURN ---
     select_exprs = tree.args.get("expressions") or []
     default_sql_alias = sql_base_alias if not join_segments else None
-    return_items = _build_return(select_exprs, default_sql_alias, alias_map)
+    return_items = _build_return(select_exprs, default_sql_alias, alias_map, alias_prop_map)
     cypher_lines.append(f"RETURN {', '.join(return_items)}" if return_items else "RETURN *")
 
     # --- ORDER BY ---
@@ -197,7 +219,8 @@ def semantic_sql_to_cypher(
         for o in order.expressions:
             col_expr = o.this
             if isinstance(col_expr, exp.Column) and not col_expr.table and default_sql_alias:
-                col_sql = f"{alias_map[default_sql_alias]}.{col_expr.name}"
+                prop = alias_prop_map.get(default_sql_alias, {}).get(col_expr.name, col_expr.name)
+                col_sql = f"{alias_map[default_sql_alias]}.{prop}"
             else:
                 col_sql = _remap(_sql_to_cypher_expr(col_expr.sql(dialect="postgres")))
             direction = " DESC" if o.args.get("desc") else ""
@@ -268,12 +291,17 @@ def _build_return(
     select_exprs: list[exp.Expression],
     default_sql_alias: str | None = None,
     alias_map: dict[str, str] | None = None,
+    alias_prop_map: dict[str, dict[str, str]] | None = None,
 ) -> list[str]:
     """Convert SELECT expressions to RETURN items."""
     am = alias_map or {}
+    apm = alias_prop_map or {}
 
     def _short(sql_tbl: str) -> str:
         return am.get(sql_tbl, sql_tbl)
+
+    def _prop(sql_tbl: str, sql_col: str) -> str:
+        return apm.get(sql_tbl, {}).get(sql_col, sql_col)
 
     items = []
     for expr in select_exprs:
@@ -286,7 +314,8 @@ def _build_return(
             if col == "*":
                 items.append(tbl if tbl else "*")
             else:
-                items.append(f"{tbl}.{col}" if tbl else col)
+                cypher_prop = _prop(raw_tbl, col)
+                items.append(f"{tbl}.{cypher_prop}" if tbl else cypher_prop)
         elif isinstance(expr, exp.Alias):
             raw = _sql_to_cypher_expr(expr.this.sql(dialect="postgres"))
             for sql_a in sorted(am, key=len, reverse=True):
