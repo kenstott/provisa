@@ -905,7 +905,6 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         text = self._rewrite_path_comprehensions(text)
         text = rewrite_list_comprehensions(text)
         text = _rewrite_in_list(text)
-        text = self._rewrite_cypher_props(text)
         text = _rewrite_property_access(text)
         text = _rewrite_string_predicates(text)
         text = self._rewrite_subquery_exprs(text)
