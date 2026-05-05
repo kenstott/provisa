@@ -442,9 +442,9 @@ def _to_rel_type(field_name: str, cardinality: str | None = None) -> str:
     """Convert a camelCase or snake_case GraphQL field name to a verb-prefixed UPPER_SNAKE relationship type.
 
     many-to-one → IS_ prefix (e.g. animalBreed → IS_ANIMAL_BREED)
-    one-to-many / unknown → HAS_ prefix (e.g. tableColumns → HAS_TABLE_COLUMNS)
+    one-to-many / unknown → HAS_ prefix (e.g. tableColumns → HAS_TABLE_COLUMNS, _queries → HAS_QUERIES)
     """
-    s = re.sub(r'([a-z])([A-Z])', r'\1_\2', field_name).upper()
+    s = re.sub(r'([a-z])([A-Z])', r'\1_\2', field_name).upper().lstrip("_")
     prefix = "IS_" if cardinality == "many-to-one" else "HAS_"
     return f"{prefix}{s}"
 
