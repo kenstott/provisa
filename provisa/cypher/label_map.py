@@ -271,7 +271,7 @@ class CypherLabelMap:
             relationships[rel_type] = rm
             aliases.setdefault(rel_type, []).append(rm)
 
-        # Add REGISTERED_TABLE edges: every non-meta user node → Meta:RegisteredTables
+        # Add HAS_TABLE edges: every non-meta user node → Meta:RegisteredTables
         meta_rt = next(
             (nm for nm in nodes.values() if nm.domain_label == "Meta" and nm.table_name == "registered_tables"),
             None,
@@ -281,7 +281,7 @@ class CypherLabelMap:
                 if nm.domain_label == "Meta":
                     continue
                 rm = RelationshipMapping(
-                    rel_type="REGISTERED_TABLE",
+                    rel_type="HAS_TABLE",
                     source_label=type_name,
                     target_label=meta_rt.type_name,
                     join_source_column="__table_id__",
@@ -289,8 +289,8 @@ class CypherLabelMap:
                     field_name="_meta",
                     source_constant=nm.table_id,
                 )
-                relationships[f"REGISTERED_TABLE::{type_name}"] = rm
-                aliases.setdefault("REGISTERED_TABLE", []).append(rm)
+                relationships[f"HAS_TABLE::{type_name}"] = rm
+                aliases.setdefault("HAS_TABLE", []).append(rm)
 
         # Cross-domain traversal nodes: reachable via registered relationships but not
         # directly accessible. Marked traversal_only=True — cannot be MATCH start nodes.

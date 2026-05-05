@@ -1214,11 +1214,11 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                                 this=exp.Column(this=exp.Identifier(this=sql_col, quoted=True)),
                                 to=exp.DataType(this=exp.DataType.Type.VARCHAR),
                             ),
-                            alias=prop,
+                            alias=exp.Identifier(this=prop, quoted=True),
                         )
                     )
                 else:
-                    select_items.append(exp.alias_(exp.null(), alias=prop))
+                    select_items.append(exp.alias_(exp.null(), alias=exp.Identifier(this=prop, quoted=True)))
             branch = exp.select(*select_items).from_(
                 exp.alias_(
                     exp.Table(
