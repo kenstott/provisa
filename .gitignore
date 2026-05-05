@@ -73,8 +73,9 @@ Screenshot*
 # Node
 node_modules/
 
-# Claude Code
-.claude/scheduled_tasks.lock
+# Claude Code / Codex — local only
+/.claude/
+/.codex/
 /jdbc-driver/target/
 /.wrangler/cache/pages.json
 
@@ -88,5 +89,4 @@ node_modules/
 /packaging/macos/Provisa.app/Contents/MacOS/first-launch.sh
 /packaging/macos/Provisa.app/Contents/Resources/
 /packaging/macos/Provisa.app/Contents/_CodeSignature/
-/.claude/worktrees/
 identifier.sqlite
