@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { get as idbGet, set as idbSet } from "idb-keyval";
 import { Play, ChevronRight, ChevronDown, Table2, Columns3, History, Copy, Check, BarChart2, Network } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
@@ -71,16 +72,8 @@ function saveSqlQuery(text: string) {
   try { localStorage.setItem(SQL_QUERY_KEY, text); } catch { /* quota */ }
 }
 
-function loadSqlResults(): SqlResults {
-  try {
-    return JSON.parse(localStorage.getItem(SQL_RESULTS_KEY) ?? "null") ?? { columns: [], rows: [], error: "" };
-  } catch {
-    return { columns: [], rows: [], error: "" };
-  }
-}
-
-function saveSqlResults(results: SqlResults) {
-  try { localStorage.setItem(SQL_RESULTS_KEY, JSON.stringify(results)); } catch { /* quota */ }
+async function saveSqlResults(results: SqlResults) {
+  await idbSet(SQL_RESULTS_KEY, results);
 }
 
 // ── CanvasTableCard ──────────────────────────────────────────────────────────
@@ -514,10 +507,9 @@ export function SqlPage() {
   const [sampleMode, setSampleMode] = useState<"first" | "last" | "random">("first");
   const [sampleSize, setSampleSize] = useState(100);
   const [resultTab, setResultTab] = useState<ResultTab>("results");
-  const _savedResults = loadSqlResults();
-  const [resultColumns, setResultColumns] = useState<string[]>(_savedResults.columns);
-  const [resultRows, setResultRows] = useState<Record<string, unknown>[]>(_savedResults.rows);
-  const [resultError, setResultError] = useState(_savedResults.error);
+  const [resultColumns, setResultColumns] = useState<string[]>([]);
+  const [resultRows, setResultRows] = useState<Record<string, unknown>[]>([]);
+  const [resultError, setResultError] = useState("");
   const [execMs, setExecMs] = useState<number | null>(null);
   const [errors, _setErrors] = useState<string[]>([]);
   const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
@@ -530,6 +522,16 @@ export function SqlPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
+
+  useEffect(() => {
+    idbGet<SqlResults>(SQL_RESULTS_KEY).then((saved) => {
+      if (saved) {
+        setResultColumns(saved.columns);
+        setResultRows(saved.rows);
+        setResultError(saved.error);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const pending = localStorage.getItem("provisa.sql.pending_query");

@@ -39,6 +39,7 @@
     "graphiql": "^5.2.2",
     "graphql": "^16.13.2",
     "graphql-voyager": "^2.1.0",
+    "idb-keyval": "^6.2.2",
     "lucide-react": "^1.8.0",
     "mermaid": "^11.14.0",
     "react": "^19.2.4",

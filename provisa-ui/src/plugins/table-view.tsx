@@ -17,6 +17,7 @@
  */
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { get as idbGet, set as idbSet } from "idb-keyval";
 import { Copy } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEditorContext } from "@graphiql/react";
@@ -190,10 +191,9 @@ export function ResponseTableOverlay() {
     const editor = editorContext.responseEditor;
     if (!editor) return;
     if (!editor.getValue()) {
-      try {
-        const saved = localStorage.getItem("provisa.graphql.response");
+      idbGet<string>("provisa.graphql.response").then((saved) => {
         if (saved) { (editor as any).setValue?.(saved); setResponseText(saved); }
-      } catch { /* ignore */ }
+      });
     }
   }, [editorContext.responseEditor]);
 
@@ -250,7 +250,7 @@ export function ResponseTableOverlay() {
   // Persist response and reset sort/tab/expanded rows when response changes
   useEffect(() => {
     if (responseText) {
-      try { localStorage.setItem("provisa.graphql.response", responseText); } catch { /* quota */ }
+      idbSet("provisa.graphql.response", responseText);
     }
     setSortCol(null);
     setActiveTab(0);
