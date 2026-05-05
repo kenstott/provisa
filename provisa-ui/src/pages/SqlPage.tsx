@@ -42,6 +42,14 @@ const COL_ROW_H = 27;
 
 const HISTORY_KEY = "sql_modeling_history";
 const HISTORY_MAX = 50;
+const SQL_QUERY_KEY = "provisa.sql.query";
+const SQL_RESULTS_KEY = "provisa.sql.results";
+
+interface SqlResults {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  error: string;
+}
 
 function loadHistory(): HistoryEntry[] {
   try {
@@ -53,6 +61,26 @@ function loadHistory(): HistoryEntry[] {
 
 function saveHistory(entries: HistoryEntry[]) {
   localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(0, HISTORY_MAX)));
+}
+
+function loadSqlQuery(): string {
+  return localStorage.getItem(SQL_QUERY_KEY) ?? "";
+}
+
+function saveSqlQuery(text: string) {
+  try { localStorage.setItem(SQL_QUERY_KEY, text); } catch { /* quota */ }
+}
+
+function loadSqlResults(): SqlResults {
+  try {
+    return JSON.parse(localStorage.getItem(SQL_RESULTS_KEY) ?? "null") ?? { columns: [], rows: [], error: "" };
+  } catch {
+    return { columns: [], rows: [], error: "" };
+  }
+}
+
+function saveSqlResults(results: SqlResults) {
+  try { localStorage.setItem(SQL_RESULTS_KEY, JSON.stringify(results)); } catch { /* quota */ }
 }
 
 // ── CanvasTableCard ──────────────────────────────────────────────────────────
@@ -478,7 +506,7 @@ export function SqlPage() {
   const [tables, setTables] = useState<RegisteredTable[]>([]);
   const [existingRels, setExistingRels] = useState<Relationship[]>([]);
   const [topTab, setTopTab] = useState<TopTab>("sql");
-  const [sqlText, setSqlText] = useState("");
+  const [sqlText, setSqlText] = useState(() => loadSqlQuery());
   const [role, setRole] = useState("admin");
   const [roles, setRoles] = useState<string[]>(["admin"]);
   const [domainMap, setDomainMap] = useState<Record<string, Domain>>({});
@@ -486,9 +514,10 @@ export function SqlPage() {
   const [sampleMode, setSampleMode] = useState<"first" | "last" | "random">("first");
   const [sampleSize, setSampleSize] = useState(100);
   const [resultTab, setResultTab] = useState<ResultTab>("results");
-  const [resultColumns, setResultColumns] = useState<string[]>([]);
-  const [resultRows, setResultRows] = useState<Record<string, unknown>[]>([]);
-  const [resultError, setResultError] = useState("");
+  const _savedResults = loadSqlResults();
+  const [resultColumns, setResultColumns] = useState<string[]>(_savedResults.columns);
+  const [resultRows, setResultRows] = useState<Record<string, unknown>[]>(_savedResults.rows);
+  const [resultError, setResultError] = useState(_savedResults.error);
   const [execMs, setExecMs] = useState<number | null>(null);
   const [errors, _setErrors] = useState<string[]>([]);
   const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
@@ -506,6 +535,7 @@ export function SqlPage() {
     const pending = localStorage.getItem("provisa.sql.pending_query");
     if (pending) {
       setSqlText(pending);
+      saveSqlQuery(pending);
       localStorage.removeItem("provisa.sql.pending_query");
     }
     fetchRoles().catch(() => []).then((r) => {
@@ -763,9 +793,11 @@ export function SqlPage() {
       setResultError(result.error);
       setResultColumns([]);
       setResultRows([]);
+      saveSqlResults({ columns: [], rows: [], error: result.error });
     } else {
       setResultColumns(result.columns);
       setResultRows(result.rows);
+      saveSqlResults({ columns: result.columns, rows: result.rows, error: "" });
     }
     setSorts([]);
     setFilters({});
@@ -956,7 +988,7 @@ export function SqlPage() {
                   height="220px"
                   theme={oneDark}
                   extensions={sqlExtensions}
-                  onChange={(v) => setSqlText(v)}
+                  onChange={(v) => { setSqlText(v); saveSqlQuery(v); }}
                   onCreateEditor={(view) => { editorViewRef.current = view; }}
                   style={{ fontSize: "0.8rem" }}
                 />

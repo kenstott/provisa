@@ -185,6 +185,18 @@ export function ResponseTableOverlay() {
 
   useEffect(() => subscribeQueryStats(setQueryStats), []);
 
+  // Restore persisted response on first editor mount
+  useEffect(() => {
+    const editor = editorContext.responseEditor;
+    if (!editor) return;
+    if (!editor.getValue()) {
+      try {
+        const saved = localStorage.getItem("provisa.graphql.response");
+        if (saved) { (editor as any).setValue?.(saved); setResponseText(saved); }
+      } catch { /* ignore */ }
+    }
+  }, [editorContext.responseEditor]);
+
   // Poll for response editor value since GraphiQL doesn't re-render on content change
   useEffect(() => {
     const editor = editorContext.responseEditor;
@@ -235,8 +247,11 @@ export function ResponseTableOverlay() {
     return () => clearInterval(interval);
   }, [editorContext.responseEditor]);
 
-  // Reset sort, tab, and expanded rows when response changes
+  // Persist response and reset sort/tab/expanded rows when response changes
   useEffect(() => {
+    if (responseText) {
+      try { localStorage.setItem("provisa.graphql.response", responseText); } catch { /* quota */ }
+    }
     setSortCol(null);
     setActiveTab(0);
     setExpandedRows(new Set());
