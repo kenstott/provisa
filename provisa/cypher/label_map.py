@@ -437,8 +437,10 @@ def _resolve_id_column(
 
 
 def _to_rel_type(field_name: str) -> str:
-    """Convert a snake_case GraphQL field name to UPPER_SNAKE relationship type."""
-    return field_name.upper()
+    """Convert a camelCase or snake_case GraphQL field name to UPPER_SNAKE relationship type."""
+    # Insert underscore before uppercase letters (camelCase → CAMEL_CASE)
+    s = re.sub(r'([a-z])([A-Z])', r'\1_\2', field_name)
+    return s.upper()
 
 
 def _pascal(s: str) -> str:
