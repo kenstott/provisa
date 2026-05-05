@@ -154,10 +154,11 @@ def semantic_sql_to_cypher(
         return f"({short}:{label})"
 
     def _remap(text: str) -> str:
-        """Replace verbose SQL aliases with short Cypher aliases."""
-        # Sort longest first to avoid partial replacements
+        """Replace verbose SQL aliases with short Cypher aliases, and convert property names to camelCase."""
         for sql_a in sorted(alias_map, key=len, reverse=True):
             text = re.sub(rf'\b{re.escape(sql_a)}\b', alias_map[sql_a], text)
+        # Convert node.snake_property → node.camelProperty
+        text = re.sub(r'(\b\w+\.)([a-z]+(?:_[a-z]+)+)\b', lambda m: m.group(1) + _snake_to_camel(m.group(2)), text)
         return text
 
     # --- Build MATCH pattern ---
@@ -198,7 +199,7 @@ def semantic_sql_to_cypher(
         for o in order.expressions:
             col_expr = o.this
             if isinstance(col_expr, exp.Column) and not col_expr.table and default_sql_alias:
-                col_sql = f"{alias_map[default_sql_alias]}.{col_expr.name}"
+                col_sql = f"{alias_map[default_sql_alias]}.{_snake_to_camel(col_expr.name)}"
             else:
                 col_sql = _remap(_sql_to_cypher_expr(col_expr.sql(dialect="postgres")))
             direction = " DESC" if o.args.get("desc") else ""
@@ -265,6 +266,11 @@ def _src_alias_from_on(
     return default_alias
 
 
+def _snake_to_camel(name: str) -> str:
+    parts = name.split("_")
+    return parts[0] + "".join(p.capitalize() for p in parts[1:])
+
+
 def _build_return(
     select_exprs: list[exp.Expression],
     default_sql_alias: str | None = None,
@@ -287,7 +293,8 @@ def _build_return(
             if col == "*":
                 items.append(tbl if tbl else "*")
             else:
-                items.append(f"{tbl}.{col}" if tbl else col)
+                camel_col = _snake_to_camel(col)
+                items.append(f"{tbl}.{camel_col}" if tbl else camel_col)
         elif isinstance(expr, exp.Alias):
             raw = _sql_to_cypher_expr(expr.this.sql(dialect="postgres"))
             for sql_a in sorted(am, key=len, reverse=True):
