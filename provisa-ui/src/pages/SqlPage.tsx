@@ -1466,7 +1466,7 @@ export function SqlPage() {
                 You do not have <code>create_view</code>. This will be submitted as a suggested view pending approval.
               </p>
             )}
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", overflow: "auto", flex: 1, paddingRight: "1rem" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", overflow: "auto", flex: 1, paddingRight: "1rem", paddingLeft: "2px" }}>
               <div style={{ display: "flex", gap: "0.75rem", flexShrink: 0 }}>
                 <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.875rem", color: "var(--text-muted)", flex: 1, minWidth: 0 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>View ID <span style={{ color: "var(--destructive)" }}>*</span></span>
