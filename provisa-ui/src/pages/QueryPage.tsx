@@ -444,6 +444,16 @@ export function QueryPage() {
   const [queryElapsedMs, setQueryElapsedMs] = useState<number | null>(null);
   useEffect(() => subscribeQueryTiming(setQueryElapsedMs), []);
 
+  const [schemaVersion, setSchemaVersion] = useState(0);
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "provisa.schema.version") setSchemaVersion((v) => v + 1);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   useEffect(() => {
     if (!role || checkedDomains.size === 0) { setDomainSchema(null); return; }
     const controller = new AbortController();
@@ -456,7 +466,7 @@ export function QueryPage() {
       .then((json) => { if (json.data) setDomainSchema(buildClientSchema(json.data)); })
       .catch((err) => { if (err.name !== "AbortError") setDomainSchema(null); });
     return () => controller.abort();
-  }, [role?.id, checkedDomains]);
+  }, [role?.id, checkedDomains, schemaVersion]);
 
   const settingsRef = useRef<RedirectSettings>({
     format: redirectFormat,

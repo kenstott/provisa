@@ -29,6 +29,7 @@ class SourceType:
     naming_convention: str | None
     path: str | None
     allowed_domains: list[str] = strawberry.field(default_factory=list)
+    description: str = ""
 
 
 @strawberry.type
@@ -63,6 +64,8 @@ class RegisteredTableType:
     columns: list[TableColumnType]
     column_presets: list[ColumnPresetType] = strawberry.field(default_factory=list)
     api_endpoint: str | None = None
+    view_sql: str | None = None
+    data_product: bool = False
 
 
 @strawberry.type
@@ -155,6 +158,7 @@ class SourceInput:
     username: str = ""
     password: str = ""
     path: str | None = None
+    description: str = ""
 
 
 @strawberry.input
@@ -205,6 +209,8 @@ class TableInput:
     description: str | None = None
     watermark_column: str | None = None
     column_presets: list[ColumnPresetInput] = strawberry.field(default_factory=list)
+    view_sql: str | None = None
+    data_product: bool = False
 
 
 @strawberry.input

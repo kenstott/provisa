@@ -31,6 +31,7 @@ class GraphQLRemoteSourceRequest(BaseModel):
     domain_id: str = ""
     auth: dict | None = None
     cache_ttl: int = 300
+    description: str = ""
 
 
 class GraphQLRemoteRegistration(BaseModel):
@@ -176,12 +177,13 @@ async def register_graphql_remote_source(
         async with state.pg_pool.acquire() as _conn:
             await _conn.execute(
                 """
-                INSERT INTO sources (id, type, host, port, database, username, dialect, path)
-                VALUES ($1, 'graphql_remote', '', 0, '', '', '', $2)
-                ON CONFLICT (id) DO UPDATE SET path = EXCLUDED.path
+                INSERT INTO sources (id, type, host, port, database, username, dialect, path, description)
+                VALUES ($1, 'graphql_remote', '', 0, '', '', '', $2, $3)
+                ON CONFLICT (id) DO UPDATE SET path = EXCLUDED.path, description = EXCLUDED.description
                 """,
                 body.source_id,
                 body.url,
+                body.description,
             )
             if body.domain_id:
                 await _conn.execute(

@@ -104,9 +104,15 @@ DO $$ BEGIN
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS path TEXT;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS allowed_domains TEXT[] NOT NULL DEFAULT '{}';
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS column_presets JSONB NOT NULL DEFAULT '[]';
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_sql TEXT;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS data_product BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE registered_tables DROP CONSTRAINT IF EXISTS registered_tables_governance_check;
+    ALTER TABLE registered_tables ADD CONSTRAINT registered_tables_governance_check
+        CHECK (governance IN ('pre-approved', 'registry-required', 'suggested'));
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

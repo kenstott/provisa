@@ -183,7 +183,10 @@ async def preview_openapi_spec(body: OpenAPIPreviewRequest):
         raise HTTPException(status_code=422, detail=f"Spec load failed: {exc}") from exc
 
     queries, mutations = parse_spec(spec)
+    info = spec.get("info", {})
+    spec_description = info.get("description") or info.get("title", "")
     return {
+        "spec_description": spec_description,
         "queries": [
             {
                 "operation_id": q.operation_id,

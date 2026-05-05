@@ -56,6 +56,7 @@ def adbc_connect(
         role=role,
         token=token,
         base_url=base_url,
+        mode=mode,
     )
 
 
@@ -68,11 +69,13 @@ class AdbcConnection:
         role: str,
         token: str | None,
         base_url: str,
+        mode: str = "approved",
     ) -> None:
         self._flight_client = flight_client
         self._role = role
         self._token = token
         self._base_url = base_url
+        self._mode = mode
         self._closed = False
 
     def cursor(self) -> "AdbcCursor":
@@ -106,7 +109,7 @@ class AdbcCursor:
         self._closed = False
 
     def _build_ticket(self, query: str) -> fl.Ticket:
-        data = {"query": query, "role": self._conn._role}
+        data = {"query": query, "role": self._conn._role, "mode": self._conn._mode}
         if self._conn._token:
             data["token"] = self._conn._token
         return fl.Ticket(json.dumps(data).encode())

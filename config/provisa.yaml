@@ -7,10 +7,12 @@ sources:
     database: provisa
     username: provisa
     password: ${env:PG_PASSWORD:-provisa}
+    description: Operational sales database — orders placed by customers, regional revenue tracking, and the product catalog managed by the sales and operations teams
   - id: kafka-support
     type: kafka
     host: ${env:KAFKA_HOST:-kafka}
     port: 9092
+    description: Live support ticket stream from the customer helpdesk — captures issue submissions and status changes in real time for support operations and SLA tracking
 
 domains:
   - id: sales-analytics
@@ -30,6 +32,7 @@ tables:
     schema: public
     table: orders
     governance: pre-approved
+    description: Customer purchase orders — records every transaction placed through the sales channel, including amount, region, and fulfillment status
     columns:
       - name: id
         visible_to: [admin, analyst]
@@ -50,6 +53,7 @@ tables:
     schema: public
     table: customers
     governance: pre-approved
+    description: Customer master — accounts registered with the business, including contact details and regional assignment used for sales territory reporting
     columns:
       - name: id
         visible_to: [admin, analyst]
@@ -64,6 +68,7 @@ tables:
     schema: public
     table: products
     governance: registry-required
+    description: Product catalog — all SKUs offered for sale, with pricing and category classification maintained by the product management team
     columns:
       - name: id
         visible_to: [admin, analyst]
@@ -115,6 +120,7 @@ kafka_sources:
       - id: tickets
         topic: support.tickets
         domain_id: sales-analytics
+        description: Inbound support tickets — real-time issue submissions from customers routed through the helpdesk platform for triage and resolution tracking
         default_window: 1h
         columns:
           - name: id

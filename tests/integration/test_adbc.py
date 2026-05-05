@@ -246,28 +246,30 @@ class TestLiveAdbcExecution:
           }
         }
         """
-        _submit_mutation = """
+        submit_mutation = """
         mutation SubmitQuery($input: SubmitQueryInput!) {
           submitQuery(input: $input) { queryId operationName message }
         }
         """
-        for op_name, query_text in self._GOVERNED_QUERIES.items():
-            try:
+        try:
+            for op_name, query_text in self._GOVERNED_QUERIES.items():
                 submit_resp = httpx.post(
                     f"{base}/admin/graphql",
                     json={
-                        "query": _submit_mutation,
+                        "query": submit_mutation,
                         "variables": {"input": {"query": query_text, "role": "admin"}},
                     },
                     timeout=10,
                 )
                 if submit_resp.status_code != 200:
-                    continue
+                    pytest.skip(
+                        f"seed {op_name}: HTTP {submit_resp.status_code} — {submit_resp.text[:200]}"
+                    )
                 body = submit_resp.json()
                 if "errors" in body:
-                    continue
+                    pytest.skip(f"seed {op_name}: GQL errors — {body['errors']}")
                 query_id = body["data"]["submitQuery"]["queryId"]
-                httpx.post(
+                approve_resp = httpx.post(
                     f"{base}/admin/graphql",
                     json={
                         "query": approve_mutation,
@@ -275,8 +277,15 @@ class TestLiveAdbcExecution:
                     },
                     timeout=10,
                 )
-            except Exception:
-                pass
+                if approve_resp.status_code != 200:
+                    pytest.skip(
+                        f"approve {op_name}: HTTP {approve_resp.status_code} — {approve_resp.text[:200]}"
+                    )
+                approve_body = approve_resp.json()
+                if "errors" in approve_body:
+                    pytest.skip(f"approve {op_name}: GQL errors — {approve_body['errors']}")
+        except httpx.ConnectError:
+            pytest.skip("seed_governed_queries: server not reachable")
 
     @pytest.fixture
     def conn(self):

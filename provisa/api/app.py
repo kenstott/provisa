@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 import asyncpg
 import trino
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from provisa.api.data.endpoint import router as data_router
 from provisa.api.data.endpoint_dev import router as dev_router
@@ -501,19 +501,26 @@ async def _load_and_build(config_path: str | None = None) -> None:
     async with state.pg_pool.acquire() as _conn:
         await _conn.execute(
             """
-            INSERT INTO sources (id, type, host, port, database, username, dialect)
-            VALUES ('provisa-admin', 'postgresql', $1, $2, $3, $4, 'postgresql')
-            ON CONFLICT (id) DO NOTHING
+            INSERT INTO sources (id, type, host, port, database, username, dialect, description)
+            VALUES ('provisa-admin', 'postgresql', $1, $2, $3, $4, 'postgresql', 'Provisa internal administration database — stores source registrations, table metadata, relationships, roles, and governance configuration')
+            ON CONFLICT (id) DO UPDATE SET description = COALESCE(NULLIF(sources.description, ''), EXCLUDED.description)
             """,
             pg_host, pg_port, pg_database, pg_user,
         )
         await _conn.execute(
             """
-            INSERT INTO sources (id, type, host, port, database, username, dialect)
-            VALUES ('provisa-otel', 'iceberg', $1, $2, 'otel', 'provisa', 'trino')
-            ON CONFLICT (id) DO NOTHING
+            INSERT INTO sources (id, type, host, port, database, username, dialect, description)
+            VALUES ('provisa-otel', 'iceberg', $1, $2, 'otel', 'provisa', 'trino', 'Observability telemetry store — OpenTelemetry spans and traces collected from Provisa query execution, used for performance monitoring and query analytics')
+            ON CONFLICT (id) DO UPDATE SET description = COALESCE(NULLIF(sources.description, ''), EXCLUDED.description)
             """,
             trino_host_early, trino_port_early,
+        )
+        await _conn.execute(
+            """
+            INSERT INTO sources (id, type, description)
+            VALUES ('__provisa__', 'trino', 'Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products')
+            ON CONFLICT (id) DO NOTHING
+            """
         )
         await _seed_meta_domain(_conn)
         await _seed_ops_pg(_conn)
@@ -1016,6 +1023,16 @@ async def _load_and_build(config_path: str | None = None) -> None:
 
     await _load_graphql_remote_sources_from_db()
 
+    # Retry config relationships deferred at load_config time (graphql_remote tables now available)
+    if getattr(state, "config", None) is not None and state.pg_pool is not None:
+        from provisa.core.repositories import relationship as _rel_repo
+        async with state.pg_pool.acquire() as _retry_conn:
+            for _rel in state.config.relationships:
+                try:
+                    await _rel_repo.upsert(_retry_conn, _rel)
+                except ValueError:
+                    pass
+
     await _rebuild_schemas(raw_config)
 
     # Initialize hot tables (Phase AD6)
@@ -1505,6 +1522,38 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             for name, sql in state.view_sql_map.items()
         }
 
+    # Create or replace Trino views for registered __provisa__ view tables
+    if state.pg_pool and state.trino_conn:
+        import logging as _logging
+        _vlog = _logging.getLogger(__name__)
+        view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
+        try:
+            async with state.pg_pool.acquire() as _vc:
+                _view_rows = await _vc.fetch(
+                    "SELECT schema_name, table_name, view_sql FROM registered_tables"
+                    " WHERE source_id = '__provisa__' AND view_sql IS NOT NULL"
+                )
+            for _vr in _view_rows:
+                _schema = _vr["schema_name"]
+                _name = _vr["table_name"]
+                _sql = _vr["view_sql"].rstrip().rstrip(";")
+                _fqn = f"{view_catalog}.{_schema}.{_name}"
+                try:
+                    _cur = state.trino_conn.cursor()
+                    _cur.execute(f"CREATE SCHEMA IF NOT EXISTS {view_catalog}.{_schema}")
+                    _cur.fetchall()
+                    _cur = state.trino_conn.cursor()
+                    _cur.execute(f"DROP VIEW IF EXISTS {_fqn}")
+                    _cur.fetchall()
+                    _cur = state.trino_conn.cursor()
+                    _cur.execute(f"CREATE VIEW {_fqn} AS {_sql}")
+                    _cur.fetchall()
+                    _vlog.info("provisa view created: %s", _fqn)
+                except Exception:
+                    _vlog.warning("provisa view create failed: %s", _fqn, exc_info=True)
+        except Exception:
+            _vlog.warning("provisa view lifecycle failed", exc_info=True)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -1737,9 +1786,9 @@ async def lifespan(app: FastAPI):
                         # Ensure source row exists before registering tables (FK constraint)
                         await _conn.execute(
                             """
-                            INSERT INTO sources (id, type, host, port, database, username, dialect, path)
-                            VALUES ('graphql-demo', 'graphql_remote', '', 0, '', '', '', $1)
-                            ON CONFLICT (id) DO UPDATE SET path = EXCLUDED.path
+                            INSERT INTO sources (id, type, host, port, database, username, dialect, path, description)
+                            VALUES ('graphql-demo', 'graphql_remote', '', 0, '', '', '', $1, 'Animal shelter GraphQL API — staff schedules, breed catalogue, and animal assignment records managed by shelter operations')
+                            ON CONFLICT (id) DO UPDATE SET path = EXCLUDED.path, description = EXCLUDED.description
                             """,
                             _graphql_demo_url,
                         )
@@ -1940,7 +1989,10 @@ def create_app() -> FastAPI:
         pass
 
     # Admin GraphQL API (Strawberry) at /admin/graphql
-    admin_router = GraphQLRouter(admin_schema)
+    async def _admin_graphql_context(request: Request):
+        return {"request": request}
+
+    admin_router = GraphQLRouter(admin_schema, context_getter=_admin_graphql_context)
     app.include_router(admin_router, prefix="/admin/graphql")
 
     from provisa.api.admin.discovery import router as discovery_router
@@ -1976,8 +2028,11 @@ def create_app() -> FastAPI:
     from provisa.api.admin.settings_router import router as settings_router
     app.include_router(settings_router)
 
-    from provisa.api.admin.views import router as views_router
-    app.include_router(views_router)
+    from provisa.api.admin.source_meta_router import router as source_meta_router
+    app.include_router(source_meta_router)
+
+    from provisa.api.admin.table_profile_router import router as table_profile_router
+    app.include_router(table_profile_router)
 
     from provisa.api.admin.local_users_router import router as local_users_router
     app.include_router(local_users_router)

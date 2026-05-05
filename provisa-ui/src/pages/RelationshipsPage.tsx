@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import React, { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Trash2, Pencil, Sparkles, Save, X, ArrowLeftRight, Code2 } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import { useDomainFilter } from "../context/DomainFilterContext";
@@ -63,6 +64,7 @@ const EMPTY_FORM = {
 };
 
 export function RelationshipsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rels, setRels] = useState<Relationship[]>([]);
   const [tables, setTables] = useState<RegisteredTable[]>([]);
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
@@ -78,13 +80,18 @@ export function RelationshipsPage() {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editingRel, setEditingRel] = useState<typeof EMPTY_FORM | null>(null);
   const [reverseForm, setReverseForm] = useState<typeof EMPTY_FORM | null>(null);
-  const [relSearch, setRelSearch] = useState("");
+  const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [showModelingModal, setShowModelingModal] = useState(false);
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
 
-  const { selectedDomain, setDomains } = useDomainFilter();
+  const { selectedDomain } = useDomainFilter();
   const { capabilities } = useAuth();
   const canManage = capabilities.includes("create_relationship");
+
+  const updateSearch = (v: string) => {
+    setRelSearch(v);
+    setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("search", v) : n.delete("search"); return n; }, { replace: true });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,9 +107,8 @@ export function RelationshipsPage() {
     setFunctions(actions.functions);
     setCandidates(c);
     setRejectedCount(rc);
-    setDomains([...new Set(t.map((tbl) => tbl.domainId ? tbl.domainId.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "") : "").filter(Boolean))]);
     setLoading(false);
-  }, [setDomains]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -113,6 +119,7 @@ export function RelationshipsPage() {
   const tableDomainById = Object.fromEntries(
     tables.map((t) => [t.id, normalizeDomain(t.domainId)]),
   );
+  const tableSourceById = Object.fromEntries(tables.map((t) => [t.id, t.sourceId]));
   const remoteTableIds = new Set(
     tables
       .filter((t) => t.schemaName === "graphql_remote" || t.schemaName === "grpc_remote")
@@ -313,7 +320,7 @@ export function RelationshipsPage() {
     <div className="page">
       <div className="page-header">
         <h2>Relationships</h2>
-        <FilterInput value={relSearch} onChange={setRelSearch} placeholder="Filter by source or target…" />
+        <FilterInput value={relSearch} onChange={updateSearch} placeholder="Filter by source or target…" />
         <div className="page-actions">
           {canManage && (
             <button className="btn-primary" onClick={() => setShowForm(!showForm)}>
@@ -461,6 +468,7 @@ export function RelationshipsPage() {
               {rels.length} relationships — use the filter above to browse
             </td></tr>
           ) : rels.filter((r) => {
+            if (tableSourceById[r.sourceTableId] === "provisa-admin") return false;
             if (remoteTableIds.has(r.sourceTableId)) return false;
             if (selectedDomain !== "all") {
               const srcDomain = tableDomainById[r.sourceTableId];

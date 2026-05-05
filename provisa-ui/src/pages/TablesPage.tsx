@@ -8,15 +8,17 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect, useRef, useLayoutEffect, Fragment, useCallback } from "react";
+import { useState, useEffect, useRef, Fragment, useCallback } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Trash2, Pencil, Sparkles, Save, X } from "lucide-react";
 import { CopyButton } from "../components/CopyButton";
-import { createPortal } from "react-dom";
+import { MultiSelect } from "../components/MultiSelect";
 import {
   fetchTables, fetchSources, fetchDomains, fetchRoles,
   fetchAvailableSchemas, fetchAvailableTables, fetchAvailableColumnsMetadata,
   registerTable, deleteTable, updateTable, updateTableCache, updateTableNaming,
   purgeCacheByTable, invalidateFileSource, fetchSettings, generateTableDescription, generateColumnDescription,
+  profileTable,
 } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import type { TableMetadata } from "../api/admin";
@@ -25,6 +27,7 @@ import type { Role } from "../types/auth";
 import { ColumnPresetsEditor } from "../components/admin/ColumnPresetsEditor";
 import { FilterInput } from "../components/admin/FilterInput";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { useAuth } from "../context/AuthContext";
 
 function DescriptionField({ value, onChange, placeholder, rows = 2, onGenerate, generating }: {
   value: string;
@@ -57,82 +60,6 @@ function DescriptionField({ value, onChange, placeholder, rows = 2, onGenerate, 
   );
 }
 
-function MultiSelect({ options, value, onChange, className }: {
-  options: { id: string; label: string }[];
-  value: string[];
-  onChange: (selected: string[]) => void;
-  className?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
-  const triggerRef = useRef<HTMLDivElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  const updatePos = () => {
-    if (triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      setPos({ top: rect.bottom + 2, left: rect.left, width: rect.width });
-    }
-  };
-
-  useLayoutEffect(() => {
-    if (open) updatePos();
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (
-        triggerRef.current && !triggerRef.current.contains(target) &&
-        dropdownRef.current && !dropdownRef.current.contains(target)
-      ) setOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    window.addEventListener("scroll", updatePos, true);
-    window.addEventListener("resize", updatePos);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      window.removeEventListener("scroll", updatePos, true);
-      window.removeEventListener("resize", updatePos);
-    };
-  }, [open]);
-
-  const display = value.length > 0 ? value.join(", ") : "all";
-
-  return (
-    <div className={`multiselect${className ? ` ${className}` : ""}`} ref={triggerRef}>
-      <div className="multiselect-trigger" onClick={() => setOpen(!open)}>
-        <span className="multiselect-text">{display}</span>
-        <span className="multiselect-arrow">{open ? "\u25B4" : "\u25BE"}</span>
-      </div>
-      {open && pos && createPortal(
-        <div
-          className="multiselect-dropdown"
-          ref={dropdownRef}
-          style={{ top: pos.top, left: pos.left, width: pos.width }}
-        >
-          {options.map((opt) => (
-            <label key={opt.id} className="multiselect-option">
-              <input
-                type="checkbox"
-                checked={value.includes(opt.id)}
-                onChange={(e) => {
-                  const next = e.target.checked
-                    ? [...value, opt.id]
-                    : value.filter((v) => v !== opt.id);
-                  onChange(next);
-                }}
-              />
-              {opt.label}
-            </label>
-          ))}
-        </div>,
-        document.body
-      )}
-    </div>
-  );
-}
 
 function toSnakeCase(name: string): string {
   let s = name.replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2");
@@ -169,6 +96,16 @@ const NAMING_CONVENTIONS = [
 ];
 
 const CDC_TYPES = new Set(["postgresql", "mongodb", "kafka", "debezium"]);
+// Source types where the "table" is user-defined (no stable catalog identifier to dedup against)
+// Source types with no available_tables catalog path — dedup only enforced on commit
+const UNSTABLE_TABLE_SOURCES = new Set(["neo4j", "sparql", "graphql", "graphql_remote", "grpc", "grpc_remote"]);
+// Source types that always return a single fixed schema — schema field should be auto-selected and disabled
+const FIXED_SCHEMA_SOURCES: Record<string, string> = {
+  graphql: "default", graphql_remote: "default",
+  grpc: "default", grpc_remote: "default",
+  kafka: "default",
+  openapi: "openapi",
+};
 
 function isWatermarkEligible(dataType: string): boolean {
   const t = dataType.toLowerCase();
@@ -197,6 +134,8 @@ interface ColumnForm {
 }
 
 export function TablesPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [tables, setTables] = useState<RegisteredTable[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [domainHints, setDomainHints] = useState<string[]>([]);
@@ -205,8 +144,9 @@ export function TablesPage() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tableSearch, setTableSearch] = useState("");
-  const { checkedDomains, setDomains } = useDomainFilter();
+  const [tableSearch, setTableSearch] = useState(() => searchParams.get("source") ?? "");
+  const { checkedDomains } = useDomainFilter();
+  const { domainAccess } = useAuth();
 
   // Form state
   const [sourceId, setSourceId] = useState("");
@@ -218,6 +158,10 @@ export function TablesPage() {
   const [governance, setGovernance] = useState("pre-approved");
   const [columns, setColumns] = useState<ColumnForm[]>([]);
   const [watermarkColumn, setWatermarkColumn] = useState<string>("");
+  const [dataProduct, setDataProduct] = useState(false);
+
+  // Per-table profile state: tableId → profile result or "loading"
+  const [tableProfiles, setTableProfiles] = useState<Record<number, { columns: string[]; rows: Record<string, unknown>[]; rowCount: number } | "loading" | string>>({});
 
   // Discovery state
   const [availableSchemas, setAvailableSchemas] = useState<string[]>([]);
@@ -245,7 +189,6 @@ export function TablesPage() {
       .then(([t, s, doms, r, st]) => {
         const domIds = doms.map((d) => d.id);
         setTables(t); setSources(s); setDomainHints(domIds); setRoles(r); setSettings(st);
-        setDomains(domIds);
         const edits: Record<number, { value: string; dirty: boolean; saving: boolean }> = {};
         for (const tbl of t) {
           edits[tbl.id] = { value: tbl.cacheTtl != null ? String(tbl.cacheTtl) : "", dirty: false, saving: false };
@@ -253,7 +196,7 @@ export function TablesPage() {
         setCacheTtlEdits(edits);
       })
       .finally(() => setLoading(false));
-  }, [setDomains]);
+  }, []);
 
   const getEffectiveTableTtl = (t: RegisteredTable): string => {
     if (t.cacheTtl != null) return `${t.cacheTtl}s (custom)`;
@@ -323,6 +266,13 @@ export function TablesPage() {
     setSchemaName(""); setTableName(""); setTableDescription(""); setColumns([]);
     setAvailableSchemas([]); setAvailableTables([]);
     if (!sourceId) return;
+    const srcType = sources.find((s) => s.id === sourceId)?.type ?? "";
+    const fixedSchema = FIXED_SCHEMA_SOURCES[srcType];
+    if (fixedSchema !== undefined) {
+      setAvailableSchemas([fixedSchema]);
+      setSchemaName(fixedSchema);
+      return;
+    }
     setLoadingSchemas(true);
     fetchAvailableSchemas(sourceId)
       .then(setAvailableSchemas)
@@ -430,13 +380,14 @@ export function TablesPage() {
         alias: tableAlias || undefined,
         description: tableDescription || undefined,
         watermarkColumn: watermarkColumn || null,
+        dataProduct,
         columns: selectedCols,
       });
       if (!result.success) { setError(result.message); return; }
       setShowForm(false);
       setSourceId(""); setDomainId(""); setSchemaName(""); setTableName("");
       setTableAlias(""); setTableDescription("");
-      setGovernance("pre-approved"); setColumns([]); setWatermarkColumn("");
+      setGovernance("pre-approved"); setColumns([]); setWatermarkColumn(""); setDataProduct(false);
       reload();
     } catch (e: any) { setError(e.message); }
   };
@@ -445,6 +396,39 @@ export function TablesPage() {
     if (!confirm("Delete this table registration?")) return;
     try { await deleteTable(id); reload(); } catch (e: any) { setError(e.message); }
   };
+
+  const handleProfile = async (tableId: number) => {
+    setTableProfiles((prev) => ({ ...prev, [tableId]: "loading" }));
+    try {
+      const result = await profileTable(tableId);
+      setTableProfiles((prev) => ({ ...prev, [tableId]: result }));
+    } catch (e: any) {
+      setTableProfiles((prev) => ({ ...prev, [tableId]: e.message }));
+    }
+  };
+
+  function computeProfile(columns: string[], rows: Record<string, unknown>[]) {
+    return columns.map((col) => {
+      const vals = rows.map((r) => r[col]);
+      const nullCount = vals.filter((v) => v === null || v === undefined).length;
+      const blankCount = vals.filter((v) => typeof v === "string" && v.trim() === "").length;
+      const nonNull = vals.filter((v) => v !== null && v !== undefined);
+      const freq = new Map<string, number>();
+      for (const v of vals) {
+        const k = v === null || v === undefined ? "NULL" : String(v);
+        freq.set(k, (freq.get(k) ?? 0) + 1);
+      }
+      const distinctCount = freq.size;
+      const constantValue = distinctCount === 1 ? vals[0] : undefined;
+      const numbers = nonNull.filter((v) => typeof v === "number") as number[];
+      const mean = numbers.length > 0 ? numbers.reduce((a, b) => a + b, 0) / numbers.length : null;
+      const sorted = [...nonNull].sort((a, b) => (a! < b! ? -1 : a! > b! ? 1 : 0));
+      const min = sorted.length > 0 ? sorted[0] as string | number : null;
+      const max = sorted.length > 0 ? sorted[sorted.length - 1] as string | number : null;
+      const topValues = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([value, count]) => ({ value, count }));
+      return { col, nullCount, blankCount, distinctCount, constantValue, min, max, mean, topValues };
+    });
+  }
 
   const updateCol = (i: number, key: keyof ColumnForm, value: string | boolean | string[]) => {
     const next = [...columns];
@@ -490,6 +474,7 @@ export function TablesPage() {
         alias: editingTable.alias || undefined,
         description: editingTable.description || undefined,
         watermarkColumn: editingTable.watermarkColumn || null,
+        dataProduct: editingTable.dataProduct,
         columnPresets: editingTable.columnPresets,
         columns: editingTable.columns.map((c) => ({
           name: c.columnName,
@@ -530,6 +515,13 @@ export function TablesPage() {
         <button onClick={() => setShowForm(!showForm)}>
           {showForm ? "Cancel" : "+ Table"}
         </button>
+        <button
+          onClick={() => navigate("/sql")}
+          title="Views are created from the SQL Explorer"
+          style={{ opacity: 0.85 }}
+        >
+          + View
+        </button>
       </div>
 
       {error && <div className="error">{error}</div>}
@@ -549,21 +541,41 @@ export function TablesPage() {
             Domain
             <select value={domainId} onChange={(e) => setDomainId(e.target.value)}>
               <option value="">Select domain...</option>
-              {domainHints.filter((d) => d !== "" && d !== "meta" && d !== "ops").map((d) => <option key={d} value={d}>{d}</option>)}
+              {domainHints
+                .filter((d) => d !== "" && d !== "meta" && d !== "ops")
+                .filter((d) => domainAccess.includes("*") || domainAccess.includes(d))
+                .map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
           </label>
           <label>
             Schema
-            <select value={schemaName} onChange={(e) => setSchemaName(e.target.value)} disabled={!sourceId || loadingSchemas}>
-              <option value="">{loadingSchemas ? "Loading..." : "Select schema..."}</option>
-              {availableSchemas.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
+            {(() => {
+              const srcType = sources.find((s) => s.id === sourceId)?.type ?? "";
+              const isFixed = srcType in FIXED_SCHEMA_SOURCES;
+              return (
+                <select
+                  value={schemaName}
+                  onChange={(e) => setSchemaName(e.target.value)}
+                  disabled={!sourceId || loadingSchemas || isFixed}
+                  style={isFixed ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+                >
+                  <option value="">{loadingSchemas ? "Loading..." : "Select schema..."}</option>
+                  {availableSchemas.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              );
+            })()}
           </label>
           <label>
             Table
             <select value={tableName} onChange={(e) => setTableName(e.target.value)} disabled={!schemaName || loadingTables}>
               <option value="">{loadingTables ? "Loading..." : "Select table..."}</option>
-              {availableTables.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+              {(() => {
+                const srcType = sources.find((s) => s.id === sourceId)?.type ?? "";
+                const filtered = UNSTABLE_TABLE_SOURCES.has(srcType)
+                  ? availableTables
+                  : availableTables.filter((t) => !tables.some((rt) => rt.sourceId === sourceId && rt.schemaName === schemaName && rt.tableName === t.name));
+                return filtered.map((t) => <option key={t.name} value={t.name}>{t.name}</option>);
+              })()}
             </select>
           </label>
           <label>
@@ -573,6 +585,11 @@ export function TablesPage() {
           <label>
             Description <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(optional)</span>
             <input value={tableDescription} onChange={(e) => setTableDescription(e.target.value)} placeholder="Appears in SDL docs" />
+          </label>
+          <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
+            <input type="checkbox" checked={dataProduct} onChange={(e) => setDataProduct(e.target.checked)} style={{ width: "auto" }} />
+            Data Product
+            <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(publish to catalog / export to Atlas, Atlan, etc.)</span>
           </label>
           {sourceId && (
             <label>
@@ -858,7 +875,36 @@ export function TablesPage() {
                               Watermark column: <code>{t.watermarkColumn}</code>
                             </div>
                           )}
-                          <div style={{ display: "flex", justifyContent: "flex-start", padding: "0.5rem", gap: "0.5rem" }}>
+                          {t.viewSql && (
+                            <div style={{ padding: "0.5rem 0.75rem", fontSize: "0.85rem" }}>
+                              <span style={{ color: "var(--text-muted)", marginRight: "0.5rem" }}>View SQL:</span>
+                              <code style={{ fontSize: "0.78rem", wordBreak: "break-all" }}>{t.viewSql.length > 120 ? t.viewSql.slice(0, 120) + "…" : t.viewSql}</code>
+                            </div>
+                          )}
+                          <div style={{ padding: "0.5rem 0.75rem", fontSize: "0.85rem", display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                            <span style={{ color: "var(--text-muted)" }}>Data Product:</span>
+                            {t.dataProduct
+                              ? <span style={{ color: "var(--color-success, #22c55e)", fontWeight: 600 }}>Yes</span>
+                              : <span style={{ color: "var(--text-muted)" }}>No</span>}
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "flex-start", padding: "0.5rem", gap: "0.5rem", flexWrap: "wrap" }}>
+                            {t.viewSql && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); navigate("/sql", { state: { sql: t.viewSql } }); }}
+                                style={{ padding: "0.25rem 0.6rem", fontSize: "0.78rem" }}
+                                title="Open this view SQL in the Explorer"
+                              >
+                                Open in Explorer
+                              </button>
+                            )}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleProfile(t.id); }}
+                              style={{ padding: "0.25rem 0.6rem", fontSize: "0.78rem" }}
+                              title="Sample and profile this table's columns"
+                              disabled={tableProfiles[t.id] === "loading"}
+                            >
+                              {tableProfiles[t.id] === "loading" ? "Profiling…" : "Profile"}
+                            </button>
                             <button
                               className="btn-icon"
                               title="Edit"
@@ -870,6 +916,65 @@ export function TablesPage() {
                               onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
                             ><Trash2 size={14} /></button>
                           </div>
+                          {(() => {
+                            const p = tableProfiles[t.id];
+                            if (!p || p === "loading") return null;
+                            if (typeof p === "string") return (
+                              <div style={{ padding: "0.5rem 0.75rem", color: "var(--destructive)", fontSize: "0.8rem" }}>{p}</div>
+                            );
+                            const prof = computeProfile(p.columns, p.rows);
+                            return (
+                              <div style={{ borderTop: "1px solid var(--border)", padding: "0.5rem 0.75rem" }}>
+                                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.4rem" }}>
+                                  Profile — {p.rowCount} sampled rows
+                                </div>
+                                <div style={{ overflowX: "auto" }}>
+                                  <table className="data-table" style={{ fontSize: "0.72rem" }}>
+                                    <thead>
+                                      <tr>
+                                        <th>Column</th>
+                                        <th title="Null values">Nulls</th>
+                                        <th title="Empty strings">Blanks</th>
+                                        <th title="Unique values">Distinct</th>
+                                        <th>Min</th>
+                                        <th>Max</th>
+                                        <th>Mean</th>
+                                        <th>Top values</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {prof.map((c) => {
+                                        const nullPct = p.rowCount > 0 ? Math.round(c.nullCount / p.rowCount * 100) : 0;
+                                        const isHighNull = nullPct >= 50;
+                                        return (
+                                          <tr key={c.col}>
+                                            <td style={{ fontFamily: "monospace", fontWeight: 600 }}>{c.col}</td>
+                                            <td style={{ color: isHighNull ? "var(--destructive)" : c.nullCount > 0 ? "var(--text)" : "var(--text-muted)" }}>
+                                              {c.nullCount > 0 ? `${c.nullCount} (${nullPct}%)` : "—"}
+                                            </td>
+                                            <td style={{ color: c.blankCount > 0 ? "var(--text)" : "var(--text-muted)" }}>{c.blankCount > 0 ? c.blankCount : "—"}</td>
+                                            <td>{c.distinctCount}</td>
+                                            <td style={{ fontFamily: "monospace" }}>{c.min !== null ? String(c.min).slice(0, 16) : "—"}</td>
+                                            <td style={{ fontFamily: "monospace" }}>{c.max !== null ? String(c.max).slice(0, 16) : "—"}</td>
+                                            <td style={{ fontFamily: "monospace" }}>{c.mean !== null ? c.mean.toFixed(2) : "—"}</td>
+                                            <td>
+                                              <div style={{ display: "flex", flexWrap: "wrap", gap: "0.2rem" }}>
+                                                {c.topValues.map(({ value, count }) => (
+                                                  <span key={value} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "3px", padding: "0 0.3rem", fontSize: "0.68rem", fontFamily: "monospace", whiteSpace: "nowrap" }}>
+                                                    {value.slice(0, 20)}<span style={{ color: "var(--text-muted)" }}>×{count}</span>
+                                                  </span>
+                                                ))}
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </>
                       ) : (
                         <>
@@ -921,6 +1026,16 @@ export function TablesPage() {
                                   }
                                 }}
                               />
+                            </label>
+                            <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem", gridColumn: "1 / -1" }}>
+                              <input
+                                type="checkbox"
+                                checked={editingTable.dataProduct}
+                                onChange={(e) => setEditingTable({ ...editingTable, dataProduct: e.target.checked })}
+                                style={{ width: "auto" }}
+                              />
+                              Data Product
+                              <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(publish to catalog / export to Atlas, Atlan, etc.)</span>
                             </label>
                             {editingTable.apiEndpoint && (
                               <label style={{ gridColumn: "1 / -1" }}>

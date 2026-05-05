@@ -105,6 +105,7 @@ def _source_from_row(row) -> SourceType:
         naming_convention=row.get("naming_convention"),
         path=row.get("path"),
         allowed_domains=list(row.get("allowed_domains") or []),
+        description=row.get("description") or "",
     )
 
 
@@ -226,6 +227,8 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         columns=columns,
         column_presets=presets,
         api_endpoint=api_endpoint,
+        view_sql=row.get("view_sql"),
+        data_product=bool(row.get("data_product", False)),
     )
 
 
@@ -376,12 +379,22 @@ class Query:
 
     @strawberry.field
     async def available_schemas(self, source_id: str) -> list[str]:
-        """List schemas available in a source's Trino catalog."""
+        """List schemas available in a source, using native introspection first."""
         from provisa.api.app import state
-        if await _ensure_openapi_spec(source_id):
-            return ["openapi"]
+        from provisa.api.admin.introspect import native_schemas
+        source_type = state.source_types.get(source_id, "")
+        if source_type == "openapi":
+            await _ensure_openapi_spec(source_id)
+        pool = await _get_pool()
+        async with pool.acquire() as config_conn:
+            try:
+                result = await native_schemas(source_id, source_type, state.source_pools, config_conn)
+            except Exception:
+                result = None
+        if result is not None:
+            return result
+        # Trino fallback
         catalog = source_to_catalog(source_id)
-        # Admin/platform schemas to hide from data UI
         _HIDDEN_SCHEMAS = {"information_schema", "pg_catalog", "mv_cache"}
         try:
             cursor = state.trino_conn.cursor()
@@ -398,20 +411,32 @@ class Query:
 
     @strawberry.field
     async def available_tables(self, source_id: str, schema_name: str = "public") -> list[AvailableTableType]:
-        """List tables available in a source's Trino catalog (for registration UI).
+        """List tables available in a source, using native introspection first.
 
         Returns table names with comments from the physical database.
         Filters out Provisa admin/platform tables.
-        For OpenAPI sources, returns GET operations as virtual tables.
+        For OpenAPI sources, returns GET operations whose response is array or pagination wrapper.
+        For GraphQL sources, returns query fields returning a list type.
+        For gRPC sources, returns server-streaming RPCs or RPCs with repeated response fields.
         """
         from provisa.api.app import state
-        if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
-            from provisa.openapi.mapper import parse_spec
-            spec = state.openapi_specs[source_id]["spec"]
-            queries, _ = parse_spec(spec)
-            return [AvailableTableType(name=q.operation_id, comment=q.summary) for q in queries]
+        from provisa.api.admin.introspect import native_tables
+        source_type = state.source_types.get(source_id, "")
+        if source_type == "openapi":
+            await _ensure_openapi_spec(source_id)
+        pool = await _get_pool()
+        async with pool.acquire() as config_conn:
+            try:
+                result = await native_tables(
+                    source_id, source_type, schema_name,
+                    state.source_pools, config_conn, state,
+                )
+            except Exception:
+                result = None
+        if result is not None:
+            return result
+        # Trino fallback
         catalog = source_to_catalog(source_id)
-        # Admin tables managed by Provisa — hide from data registration
         _ADMIN_TABLES = {
             "sources", "domains", "naming_rules", "registered_tables",
             "table_columns", "relationships", "roles", "rls_rules",
@@ -421,18 +446,21 @@ class Query:
             "api_sources", "api_endpoints", "api_endpoint_candidates",
             "tracked_webhooks",
         }
-        cursor = state.trino_conn.cursor()
-        cursor.execute(
-            f"SELECT table_name FROM \"{catalog}\".information_schema.tables "
-            f"WHERE table_schema = '{schema_name}' "
-            f"AND table_type = 'BASE TABLE' "
-            f"ORDER BY table_name"
-        )
-        return [
-            AvailableTableType(name=row[0], comment=None)
-            for row in cursor.fetchall()
-            if row[0] not in _ADMIN_TABLES
-        ]
+        try:
+            cursor = state.trino_conn.cursor()
+            cursor.execute(
+                f"SELECT table_name FROM \"{catalog}\".information_schema.tables "
+                f"WHERE table_schema = '{schema_name}' "
+                f"AND table_type = 'BASE TABLE' "
+                f"ORDER BY table_name"
+            )
+            return [
+                AvailableTableType(name=row[0], comment=None)
+                for row in cursor.fetchall()
+                if row[0] not in _ADMIN_TABLES
+            ]
+        except Exception:
+            return []
 
     @strawberry.field
     async def available_functions(
@@ -726,7 +754,9 @@ class Query:
 @strawberry.type
 class Mutation:
     @strawberry.mutation
-    async def create_source(self, input: SourceInput) -> MutationResult:
+    async def create_source(self, info: strawberry.types.Info, input: SourceInput) -> MutationResult:
+        from provisa.api.admin.capabilities import require_capability
+        require_capability(info, "source_registration")
         from provisa.core.models import Source as SourceModel
         from provisa.core.repositories import source as source_repo
 
@@ -735,7 +765,7 @@ class Mutation:
             id=input.id, type=input.type, host=input.host,
             port=input.port, database=input.database,
             username=input.username, password=input.password,
-            path=input.path,
+            path=input.path, description=input.description,
         )
         async with pool.acquire() as conn:
             await source_repo.upsert(conn, model)
@@ -801,7 +831,9 @@ class Mutation:
         return MutationResult(success=True, message=f"Source {input.id!r} created")
 
     @strawberry.mutation
-    async def update_source(self, input: SourceInput) -> MutationResult:
+    async def update_source(self, info: strawberry.types.Info, input: SourceInput) -> MutationResult:
+        from provisa.api.admin.capabilities import require_capability
+        require_capability(info, "source_registration")
         from provisa.core.models import Source as SourceModel
         from provisa.core.repositories import source as source_repo
 
@@ -814,7 +846,7 @@ class Mutation:
                 id=input.id, type=input.type, host=input.host,
                 port=input.port, database=input.database,
                 username=input.username, password=input.password,
-                path=input.path,
+                path=input.path, description=input.description,
             )
             await source_repo.upsert(conn, model)
 
@@ -904,7 +936,19 @@ class Mutation:
         return MutationResult(success=True, message=f"Role {input.id!r} created")
 
     @strawberry.mutation
-    async def register_table(self, input: TableInput) -> MutationResult:
+    async def register_table(self, info: strawberry.types.Info, input: TableInput) -> MutationResult:
+        from provisa.api.admin.capabilities import require_capability
+        if input.view_sql:
+            # view registration: create_view or query_development suffice
+            from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
+            from provisa.api.app import state as _cap_state
+            identity = _identity_from_info(info)
+            if identity is not None and getattr(identity, "user_id", "anonymous") != "anonymous":
+                caps = _resolved_capabilities(identity, _cap_state)
+                if not (caps & {"create_view", "query_development", "admin", "superadmin"}):
+                    raise PermissionError("Missing capability: 'create_view' or 'query_development'")
+        else:
+            require_capability(info, "table_registration", domain_id=input.domain_id)
         from provisa.core.models import (
             GovernanceLevel,
             Table as TableModel,
@@ -944,6 +988,8 @@ class Mutation:
             columns=columns,
             watermark_column=input.watermark_column,
             column_presets=presets,
+            view_sql=input.view_sql or None,
+            data_product=input.data_product,
         )
         async with pool.acquire() as conn:
             table_id = await table_repo.upsert(conn, model)
@@ -982,8 +1028,10 @@ class Mutation:
         )
 
     @strawberry.mutation
-    async def update_table(self, input: TableInput) -> MutationResult:
+    async def update_table(self, info: strawberry.types.Info, input: TableInput) -> MutationResult:
         """Update an existing table's alias, description, and column metadata."""
+        from provisa.api.admin.capabilities import require_capability
+        require_capability(info, "table_registration", domain_id=input.domain_id)
         from provisa.core.models import (
             GovernanceLevel,
             Table as TableModel,
@@ -1015,6 +1063,8 @@ class Mutation:
             columns=columns,
             watermark_column=input.watermark_column,
             column_presets=presets,
+            view_sql=input.view_sql or None,
+            data_product=input.data_product,
         )
         async with pool.acquire() as conn:
             table_id = await table_repo.upsert(conn, model)
@@ -1089,7 +1139,9 @@ class Mutation:
         return MutationResult(success=False, message="RLS rule not found")
 
     @strawberry.mutation
-    async def upsert_relationship(self, input: RelationshipInput) -> MutationResult:
+    async def upsert_relationship(self, info: strawberry.types.Info, input: RelationshipInput) -> MutationResult:
+        from provisa.api.admin.capabilities import require_capability
+        require_capability(info, "create_relationship")
         from provisa.core.models import Relationship as RelModel, Cardinality
         from provisa.core.repositories import relationship as rel_repo
 

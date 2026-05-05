@@ -9,6 +9,7 @@ sources:
     database: provisa
     username: provisa
     password: ${env:PG_PASSWORD:-provisa}
+    description: Internal pet store inventory — tracks animals available for sale, pricing, species, and breed assignments managed by the inventory department
 
 domains:
   - id: pet-store

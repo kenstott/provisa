@@ -17,9 +17,8 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { createPortal } from "react-dom";
 import { useOperationsEditorState } from "@graphiql/react";
-import { compileQuery, submitQuery } from "../api/admin";
+import { compileQuery } from "../api/admin";
 import type { CompileResult } from "../api/admin";
 import { format as formatSql } from "sql-formatter";
 import type { GraphiQLPlugin } from "@graphiql/react";
@@ -231,51 +230,17 @@ function CombinedSqlPanel({ compiledList }: { compiledList: CompileResult[] }) {
 function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const [query] = useOperationsEditorState();
   const [compiled, setCompiled] = useState<CompileResult[] | null>(null);
-  const [submitMsg, setSubmitMsg] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const [cypherQuery, setCypherQuery] = useState("");
   const [cypherError, setCypherError] = useState<string | null>(null);
   const [cypherCopied, setCypherCopied] = useState(false);
+  const [cypherExpanded, setCypherExpanded] = useState(false);
   const navigate = useNavigate();
-
-  // Submission metadata
-  const [showSubmitForm, setShowSubmitForm] = useState(false);
-  const [businessPurpose, setBusinessPurpose] = useState("");
-  const [useCases, setUseCases] = useState("");
-  const [deliveryMethods, setDeliveryMethods] = useState<Set<string>>(new Set());
-  const [dataSensitivity, setDataSensitivity] = useState("internal");
-  const [refreshFrequency, setRefreshFrequency] = useState("ad-hoc");
-  const [expectedRowCount, setExpectedRowCount] = useState("<1K");
-  const [ownerTeam, setOwnerTeam] = useState("");
-
-  // Sink options
-  const [showSink, setShowSink] = useState(false);
-  const [sinkTopic, setSinkTopic] = useState("");
-  const [sinkTrigger, setSinkTrigger] = useState("change_event");
-  const [sinkKeyColumn, setSinkKeyColumn] = useState("");
-
-  // Schedule options
-  const [showSchedule, setShowSchedule] = useState(false);
-  const [scheduleCron, setScheduleCron] = useState("0 8 * * 1-5");
-  const [scheduleOutputType, setScheduleOutputType] = useState("redirect");
-  const [scheduleOutputFormat, setScheduleOutputFormat] = useState("parquet");
-  const [scheduleDestination, setScheduleDestination] = useState("");
 
   const cypherExtensions = useMemo(
     () => [cypherLanguage(), EditorView.lineWrapping],
     []
   );
-  const [cypherExpanded, setCypherExpanded] = useState(false);
 
-  // Last submission result (persists after modal closes)
-  const [lastSubmission, setLastSubmission] = useState<{
-    queryId: number;
-    operationName: string;
-    message: string;
-  } | null>(null);
-
-  // Auto-compile on query change (debounced)
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
     if (!query.trim()) {
@@ -297,7 +262,6 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
         setCypherQuery(cypher ?? "");
         const cerr = results.map(r => r.cypher_error).find(e => e) ?? null;
         setCypherError(cypher ? null : cerr);
-        setError("");
       } catch {
         setCompiled(null);
       }
@@ -305,306 +269,8 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
     return () => clearTimeout(debounceRef.current);
   }, [roleId, query]);
 
-  const handleSubmit = useCallback(async () => {
-    if (!query.trim()) return;
-    setError("");
-    setSubmitMsg("");
-    setLoading(true);
-    try {
-      const sink =
-        showSink && sinkTopic.trim()
-          ? {
-              topic: sinkTopic.trim(),
-              trigger: sinkTrigger,
-              key_column: sinkKeyColumn.trim() || undefined,
-            }
-          : undefined;
-      const schedule =
-        showSchedule && scheduleCron.trim()
-          ? {
-              cron: scheduleCron.trim(),
-              output_type: scheduleOutputType,
-              output_format: scheduleOutputType === "redirect" ? scheduleOutputFormat : undefined,
-              destination: scheduleDestination.trim() || undefined,
-            }
-          : undefined;
-      const metadata = {
-        business_purpose: businessPurpose.trim() || undefined,
-        use_cases: useCases.trim() || undefined,
-        data_sensitivity: dataSensitivity,
-        refresh_frequency: refreshFrequency,
-        expected_row_count: expectedRowCount,
-        owner_team: ownerTeam.trim() || undefined,
-      };
-      const result = await submitQuery(roleId, query, undefined, sink, metadata, schedule, cypherQuery.trim() || undefined);
-      const fullMsg =
-        result.message +
-        (sink ? ` (sink → ${sink.topic}, trigger: ${sink.trigger})` : "") +
-        (schedule ? ` (scheduled: ${schedule.cron} → ${schedule.output_type})` : "");
-      setSubmitMsg(fullMsg);
-      setLastSubmission({
-        queryId: result.query_id,
-        operationName: result.operation_name,
-        message: fullMsg,
-      });
-      setTimeout(closeModal, 1500);
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [roleId, query, showSink, sinkTopic, sinkTrigger, sinkKeyColumn,
-      showSchedule, scheduleCron, scheduleOutputType, scheduleOutputFormat, scheduleDestination,
-      businessPurpose, useCases, deliveryMethods, dataSensitivity, refreshFrequency, expectedRowCount, ownerTeam, cypherQuery]);
-
-  const closeModal = useCallback(() => {
-    setShowSubmitForm(false);
-    setBusinessPurpose("");
-    setUseCases("");
-    setDeliveryMethods(new Set());
-    setDataSensitivity("internal");
-    setRefreshFrequency("ad-hoc");
-    setExpectedRowCount("<1K");
-    setOwnerTeam("");
-    setShowSink(false);
-    setSinkTopic("");
-    setSinkTrigger("change_event");
-    setSinkKeyColumn("");
-    setShowSchedule(false);
-    setScheduleCron("0 8 * * 1-5");
-    setScheduleOutputType("redirect");
-    setScheduleOutputFormat("parquet");
-    setScheduleDestination("");
-  }, []);
-
-  const modal = showSubmitForm ? createPortal(
-    <div className="modal-overlay" onClick={closeModal}>
-      <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>Submit for Approval</h3>
-          <button className="modal-close" onClick={closeModal} title="Close">×</button>
-        </div>
-        <div className="modal-body provisa-tools-metadata">
-          {cypherQuery && (
-            <div className="provisa-tools-cypher" style={{ marginBottom: "0.75rem" }}>
-              <span className="provisa-tools-label" style={{ display: "block", marginBottom: 4 }}>CQL</span>
-              <CodeMirror
-                value={cypherQuery}
-                extensions={cypherExtensions}
-                theme={oneDark}
-                readOnly
-                basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
-                className="provisa-tools-cypher-editor"
-              />
-            </div>
-          )}
-          <label>
-            <span>Business Purpose <span className="required">*</span></span>
-            <textarea
-              value={businessPurpose}
-              onChange={(e) => setBusinessPurpose(e.target.value)}
-              placeholder="Why is this query needed? What decision does it support?"
-              rows={2}
-            />
-          </label>
-          <label>
-            Expected Use Cases
-            <textarea
-              value={useCases}
-              onChange={(e) => setUseCases(e.target.value)}
-              placeholder="Dashboards, reports, APIs, or teams that will consume this"
-              rows={2}
-            />
-          </label>
-          <div className="provisa-tools-meta-row">
-            <label>
-              Data Sensitivity
-              <select value={dataSensitivity} onChange={(e) => setDataSensitivity(e.target.value)}>
-                <option value="public">Public</option>
-                <option value="internal">Internal</option>
-                <option value="confidential">Confidential</option>
-                <option value="restricted">Restricted</option>
-              </select>
-            </label>
-            <label>
-              Refresh Frequency
-              <select value={refreshFrequency} onChange={(e) => setRefreshFrequency(e.target.value)}>
-                <option value="real-time">Real-time</option>
-                <option value="hourly">Hourly</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="ad-hoc">Ad-hoc</option>
-              </select>
-            </label>
-            <label>
-              Expected Size
-              <select value={expectedRowCount} onChange={(e) => setExpectedRowCount(e.target.value)}>
-                <option value="<1K">&lt;1K rows</option>
-                <option value="1K-100K">1K-100K</option>
-                <option value="100K+">100K+</option>
-              </select>
-            </label>
-          </div>
-          <label>
-            Owner Team
-            <input
-              value={ownerTeam}
-              onChange={(e) => setOwnerTeam(e.target.value)}
-              placeholder="Team responsible for this query"
-            />
-          </label>
-
-          <div className="provisa-tools-delivery">
-            <span className="provisa-tools-delivery-label">Expected Delivery</span>
-            <div className="provisa-tools-delivery-grid">
-              {[
-                { id: "json", label: "JSON (REST)" },
-                { id: "arrow", label: "Arrow Flight" },
-                { id: "grpc", label: "Protobuf gRPC" },
-                { id: "jdbc", label: "JDBC" },
-                { id: "parquet", label: "Parquet (S3)" },
-                { id: "kafka", label: "Kafka Sink" },
-              ].map((d) => (
-                <label key={d.id} className="provisa-tools-delivery-item">
-                  <input
-                    type="checkbox"
-                    checked={d.id === "kafka" ? showSink : deliveryMethods.has(d.id)}
-                    onChange={(e) => {
-                      if (d.id === "kafka") {
-                        setShowSink(e.target.checked);
-                      } else {
-                        setDeliveryMethods((prev) => {
-                          const next = new Set(prev);
-                          e.target.checked ? next.add(d.id) : next.delete(d.id);
-                          return next;
-                        });
-                      }
-                    }}
-                  />
-                  {d.label}
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {showSink && (
-            <div className="provisa-tools-sink">
-              <label>
-                Topic
-                <input value={sinkTopic} onChange={(e) => setSinkTopic(e.target.value)} placeholder="e.g., order-report-updates" />
-              </label>
-              <label>
-                Trigger
-                <select value={sinkTrigger} onChange={(e) => setSinkTrigger(e.target.value)}>
-                  <option value="change_event">On data change</option>
-                  <option value="schedule">On schedule</option>
-                  <option value="manual">Manual</option>
-                </select>
-              </label>
-              <label>
-                Key Column <span style={{ fontWeight: "normal" }}>(optional)</span>
-                <input value={sinkKeyColumn} onChange={(e) => setSinkKeyColumn(e.target.value)} placeholder="e.g., region" />
-              </label>
-            </div>
-          )}
-
-          <div className="provisa-tools-schedule-toggle">
-            <label className="provisa-tools-delivery-item">
-              <input type="checkbox" checked={showSchedule} onChange={(e) => setShowSchedule(e.target.checked)} />
-              Schedule Delivery
-            </label>
-          </div>
-
-          {showSchedule && (
-            <div className="provisa-tools-sink">
-              <label>
-                Cron Expression
-                <input value={scheduleCron} onChange={(e) => setScheduleCron(e.target.value)} placeholder="e.g., 0 8 * * 1-5 (8AM Mon–Fri)" />
-              </label>
-              <label>
-                Output Type
-                <select value={scheduleOutputType} onChange={(e) => setScheduleOutputType(e.target.value)}>
-                  <option value="redirect">File (S3/redirect)</option>
-                  <option value="webhook">Endpoint (webhook)</option>
-                  <option value="kafka">Kafka topic</option>
-                </select>
-              </label>
-              {scheduleOutputType === "redirect" && (
-                <label>
-                  Format
-                  <select value={scheduleOutputFormat} onChange={(e) => setScheduleOutputFormat(e.target.value)}>
-                    <option value="parquet">Parquet</option>
-                    <option value="csv">CSV</option>
-                    <option value="json">JSON</option>
-                    <option value="ndjson">NDJSON</option>
-                    <option value="arrow">Arrow</option>
-                  </select>
-                </label>
-              )}
-              <label>
-                Destination <span style={{ fontWeight: "normal" }}>
-                  {scheduleOutputType === "redirect" ? "(S3 key prefix, optional)" :
-                   scheduleOutputType === "webhook" ? "(URL)" : "(Kafka topic)"}
-                </span>
-                <input
-                  value={scheduleDestination}
-                  onChange={(e) => setScheduleDestination(e.target.value)}
-                  placeholder={
-                    scheduleOutputType === "redirect" ? "e.g., reports/daily" :
-                    scheduleOutputType === "webhook" ? "https://..." : "e.g., my-topic"
-                  }
-                />
-              </label>
-            </div>
-          )}
-
-          {error && <div className="provisa-tools-error">{error}</div>}
-          {submitMsg && <div className="provisa-tools-success">{submitMsg}</div>}
-        </div>
-        <div className="modal-actions" style={{ marginTop: "1rem", paddingTop: "0.75rem", borderTop: "1px solid var(--border)" }}>
-          <button onClick={closeModal}>Cancel</button>
-          <button
-            className="submit-btn"
-            onClick={handleSubmit}
-            disabled={loading || !query.trim() || !businessPurpose.trim()}
-          >
-            {loading ? "Submitting..." : "Submit"}
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  ) : null;
-
   return (
     <div className="provisa-tools">
-      <div className="provisa-tools-actions">
-        <button
-          onClick={() => setShowSubmitForm(true)}
-          disabled={!query.trim()}
-          className="submit-btn"
-        >
-          Submit for Approval
-        </button>
-      </div>
-      {modal}
-      {lastSubmission && (
-        <div className="provisa-tools-last-submission">
-          <div className="provisa-tools-last-submission-header">
-            <span className="provisa-tools-label">Last Submission</span>
-            <button
-              className="provisa-tools-dismiss"
-              onClick={() => setLastSubmission(null)}
-              title="Dismiss"
-            >×</button>
-          </div>
-          <div className="provisa-tools-last-submission-body">
-            <div><strong>Query:</strong> {lastSubmission.operationName}</div>
-            <div><strong>ID:</strong> {lastSubmission.queryId}</div>
-            <div className="provisa-tools-last-submission-msg">{lastSubmission.message}</div>
-          </div>
-        </div>
-      )}
       {compiled && compiled.length === 1 && (
         <SqlPanel compiled={compiled[0]} />
       )}

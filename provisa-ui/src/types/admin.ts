@@ -23,6 +23,7 @@ export interface Source {
   namingConvention: string | null;
   path: string | null;
   allowedDomains: string[];
+  description: string;
 }
 
 export interface Domain {
@@ -83,6 +84,8 @@ export interface RegisteredTable {
   columns: TableColumn[];
   columnPresets: ColumnPreset[];
   apiEndpoint: string | null;
+  viewSql: string | null;
+  dataProduct: boolean;
 }
 
 export interface Relationship {

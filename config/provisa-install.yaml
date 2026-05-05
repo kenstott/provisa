@@ -6,6 +6,7 @@ sources:
   database: provisa
   username: provisa
   password: ${env:PG_PASSWORD:-provisa}
+  description: Internal pet store inventory — tracks animals available for sale, pricing, species, and breed assignments managed by the inventory department
 - id: petstore-api
   type: openapi
   path: ${env:PETSTORE_BASE_URL:-http://petstore-mock:8080/api/v3}/openapi.json
@@ -13,9 +14,11 @@ sources:
   cache_ttl: 300
   auth_config:
     type: none
+  description: Petstore e-commerce API — browse available animals, check inventory levels, retrieve purchase orders, and manage customer accounts through the public storefront
 - id: inquiries-sqlite
   type: sqlite
   path: ./demo/files/inquiries.sqlite
+  description: Customer adoption inquiry records — prospective pet owner interest submissions tracked by the front-desk team, including inquiry type, message, and resolution status
 domains:
 - id: pet-store
   description: "Pet store \u2014 Petstore public API (OpenAPI), internal inventory\

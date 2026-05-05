@@ -18,8 +18,8 @@ from provisa.core.models import Source
 async def upsert(conn: asyncpg.Connection, source: Source) -> None:
     await conn.execute(
         """
-        INSERT INTO sources (id, type, host, port, database, username, dialect, path)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO sources (id, type, host, port, database, username, dialect, path, description)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (id) DO UPDATE SET
             type = EXCLUDED.type,
             host = EXCLUDED.host,
@@ -27,7 +27,8 @@ async def upsert(conn: asyncpg.Connection, source: Source) -> None:
             database = EXCLUDED.database,
             username = EXCLUDED.username,
             dialect = EXCLUDED.dialect,
-            path = EXCLUDED.path
+            path = EXCLUDED.path,
+            description = EXCLUDED.description
         """,
         source.id,
         source.type.value,
@@ -37,6 +38,7 @@ async def upsert(conn: asyncpg.Connection, source: Source) -> None:
         source.username,
         source.dialect or "",
         source.path,
+        source.description,
     )
 
 
@@ -63,12 +65,13 @@ async def rename(conn: asyncpg.Connection, old_id: str, new_id: str) -> bool:
             return False
         await conn.execute(
             """
-            INSERT INTO sources (id, type, host, port, database, username, dialect, path)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            INSERT INTO sources (id, type, host, port, database, username, dialect, path, description)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ON CONFLICT (id) DO NOTHING
             """,
             new_id, row["type"], row["host"], row["port"],
             row["database"], row["username"], row["dialect"], row["path"],
+            row.get("description", ""),
         )
         await conn.execute(
             "UPDATE registered_tables SET source_id = $1 WHERE source_id = $2",

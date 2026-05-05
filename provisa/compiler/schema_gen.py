@@ -356,9 +356,10 @@ def _build_object_type(
     object_fields: list[dict],
     convention: str,
     registry: dict[str, GraphQLObjectType],
+    type_prefix: str = "",
 ) -> GraphQLObjectType:
     """Build a GraphQLObjectType for an object column, reusing from registry by name."""
-    type_name = to_type_name(col_name) + "Object"
+    type_name = type_prefix + to_type_name(col_name) + "Object"
     if type_name in registry:
         return registry[type_name]
     sub_fields: dict[str, GraphQLField] = {}
@@ -402,7 +403,10 @@ def _build_column_fields(
             continue
         object_fields = col.get("object_fields")
         if object_fields and meta.data_type in ("json", "jsonb"):
-            gql_type: object = _build_object_type(col_name, object_fields, convention, _obj_registry)
+            _type_prefix = ""
+            if "__" in table.type_name:
+                _type_prefix = table.type_name.split("__", 1)[0] + "__"
+            gql_type: object = _build_object_type(col_name, object_fields, convention, _obj_registry, _type_prefix)
         else:
             enum_gql = resolve_column_type(meta.data_type, _enums)
             if enum_gql is not None:

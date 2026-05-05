@@ -8,16 +8,19 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useRef, useEffect, Fragment } from "react";
+import { useLocation } from "react-router-dom";
 import { get as idbGet, set as idbSet } from "idb-keyval";
-import { Play, ChevronRight, ChevronDown, Table2, Columns3, History, Copy, Check, BarChart2, Network } from "lucide-react";
+import { Play, ChevronRight, ChevronDown, Table2, Columns3, History, Copy, Check, BarChart2, Network, X } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
-import type { EditorView } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { useDomainFilter } from "../context/DomainFilterContext";
-import { runSql, fetchRoles, fetchDomains, fetchTables, fetchRelationships } from "../api/admin";
+import { runSql, fetchRoles, fetchDomains, fetchTables, fetchRelationships, registerTable } from "../api/admin";
 import type { Domain, Relationship, RegisteredTable } from "../types/admin";
+import { useCapability } from "../hooks/useCapability";
+import { MultiSelect } from "../components/MultiSelect";
 
 type ResultTab = "results" | "profile" | "errors" | "history";
 type TopTab = "sql" | "canvas";
@@ -50,6 +53,20 @@ interface SqlResults {
   columns: string[];
   rows: Record<string, unknown>[];
   error: string;
+}
+
+interface ViewColumnConfig {
+  name: string;
+  alias: string;
+  description: string;
+  scope: "domain" | "public" | "restricted";
+  visibleTo: string[];
+  maskType: "" | "regex" | "constant" | "truncate";
+  maskPattern: string;
+  maskReplace: string;
+  maskValue: string;
+  maskPrecision: string;
+  unmaskedTo: string;
 }
 
 function loadHistory(): HistoryEntry[] {
@@ -496,10 +513,23 @@ function JoinCanvas({ tables, existingRels: _existingRels, onGenerateSql }: Join
 
 export function SqlPage() {
   const { checkedDomains } = useDomainFilter();
+  const location = useLocation();
+  const canCreateView = useCapability("create_view");
+  const canRequestView = useCapability("query_development");
+  const [viewModal, setViewModal] = useState(false);
+  const [viewId, setViewId] = useState("");
+  const [viewDescription, setViewDescription] = useState("");
+  const [viewDomainId, setViewDomainId] = useState("");
+  const [viewSaving, setViewSaving] = useState(false);
+  const [viewMsg, setViewMsg] = useState("");
+  const [viewColumns, setViewColumns] = useState<ViewColumnConfig[]>([]);
   const [tables, setTables] = useState<RegisteredTable[]>([]);
   const [existingRels, setExistingRels] = useState<Relationship[]>([]);
   const [topTab, setTopTab] = useState<TopTab>("sql");
-  const [sqlText, setSqlText] = useState(() => loadSqlQuery());
+  const [sqlText, setSqlText] = useState(() => {
+    const locSql = (location.state as { sql?: string } | null)?.sql;
+    return locSql ?? loadSqlQuery();
+  });
   const [role, setRole] = useState("admin");
   const [roles, setRoles] = useState<string[]>(["admin"]);
   const [domainMap, setDomainMap] = useState<Record<string, Domain>>({});
@@ -578,6 +608,35 @@ export function SqlPage() {
     () => [sql({ dialect: PostgreSQL, schema: sqlSchema })],
     [sqlSchema],
   );
+
+  const viewSqlExtensions = useMemo(
+    () => [sql({ dialect: PostgreSQL }), EditorView.lineWrapping],
+    [],
+  );
+
+  const viewSqlNormalized = useMemo(() => {
+    const COMMENT_PREFIX = "-- provisa-params:";
+    const PARAM_RE = /\$(\d+)=(NULL|TRUE|FALSE|-?\d+(?:\.\d+)?|'(?:[^']|'')*')/g;
+
+    const lines = sqlText.trim().replace(/;+$/, "").split("\n");
+    const params: Record<number, string> = {};
+    let filtered = lines;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].trim().startsWith(COMMENT_PREFIX)) {
+        for (const m of lines[i].matchAll(PARAM_RE)) params[parseInt(m[1])] = m[2];
+        filtered = [...lines.slice(0, i), ...lines.slice(i + 1)];
+        break;
+      }
+    }
+    let sql = filtered.join("\n");
+    if (Object.keys(params).length > 0) {
+      sql = sql.replace(/\$(\d+)/g, (_, n) => params[parseInt(n)] ?? `$${n}`);
+    }
+    // Strip trailing LIMIT (and optional OFFSET) — views must not have a fixed limit
+    return sql.replace(/\s+LIMIT\s+\d+(\s+OFFSET\s+\d+)?$/i, "").replace(/\s+OFFSET\s+\d+\s+LIMIT\s+\d+$/i, "").trim();
+  }, [sqlText]);
+
+  const viewHasParams = useMemo(() => /\$\d+/.test(viewSqlNormalized), [viewSqlNormalized]);
 
   const domainGroups = useMemo(() => {
     const groups: Record<string, RegisteredTable[]> = {};
@@ -775,6 +834,54 @@ export function SqlPage() {
     a.href = url; a.download = "profile.json"; a.click();
     URL.revokeObjectURL(url);
   }, [profile]);
+
+  const updateViewCol = useCallback(<K extends keyof ViewColumnConfig>(index: number, key: K, value: ViewColumnConfig[K]) => {
+    setViewColumns((prev) => prev.map((c, i) => i === index ? { ...c, [key]: value } : c));
+  }, []);
+
+  const handleSaveView = useCallback(async () => {
+    if (!viewId.trim() || !viewDomainId.trim()) return;
+    setViewSaving(true);
+    setViewMsg("");
+    try {
+      const governance = canCreateView ? "pre-approved" : "suggested";
+      const sql = viewSqlNormalized;
+      const columns = viewColumns.map((c) => ({
+        name: c.name,
+        alias: c.alias || undefined,
+        description: c.description || undefined,
+        scope: c.scope,
+        visibleTo: c.visibleTo,
+        unmaskedTo: c.unmaskedTo ? c.unmaskedTo.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
+        maskType: c.maskType || undefined,
+        maskPattern: c.maskPattern || undefined,
+        maskReplace: c.maskReplace || undefined,
+        maskValue: c.maskValue || undefined,
+        maskPrecision: c.maskPrecision || undefined,
+      }));
+      await registerTable({
+        sourceId: "__provisa__",
+        domainId: viewDomainId.trim(),
+        schemaName: "views",
+        tableName: viewId.trim(),
+        governance,
+        alias: viewId.trim(),
+        description: viewDescription.trim() || undefined,
+        viewSql: sql,
+        columns,
+      });
+      setViewMsg(canCreateView ? "View created." : "View request submitted.");
+      fetchTables().catch(() => []).then(setTables);
+      fetchRelationships().catch(() => []).then(setExistingRels);
+      localStorage.setItem("provisa.schema.version", String(Date.now()));
+      window.dispatchEvent(new StorageEvent("storage", { key: "provisa.schema.version" }));
+      setTimeout(() => { setViewModal(false); setViewMsg(""); setViewId(""); setViewDescription(""); setViewDomainId(""); setViewColumns([]); }, 1500);
+    } catch (e: any) {
+      setViewMsg(`Error: ${e.message}`);
+    } finally {
+      setViewSaving(false);
+    }
+  }, [viewId, viewDescription, viewDomainId, viewSqlNormalized, canCreateView, viewColumns, setTables, setExistingRels]);
 
   const handleRun = useCallback(async () => {
     if (!sqlText.trim()) return;
@@ -1042,6 +1149,34 @@ export function SqlPage() {
                   {roles.map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
                 <div style={{ flex: 1 }} />
+                {(canCreateView || canRequestView) && sqlText.trim() && (
+                  <button
+                    className="btn-secondary"
+                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
+                    onClick={() => {
+                      setViewId("");
+                      setViewDescription("");
+                      setViewDomainId("");
+                      setViewMsg("");
+                      setViewColumns(resultColumns.map((name) => ({
+                        name,
+                        alias: "",
+                        description: "",
+                        scope: "domain" as const,
+                        visibleTo: roles,
+                        maskType: "" as const,
+                        maskPattern: "",
+                        maskReplace: "",
+                        maskValue: "",
+                        maskPrecision: "",
+                        unmaskedTo: "",
+                      })));
+                      setViewModal(true);
+                    }}
+                  >
+                    {canCreateView ? "Create View" : "Request View"}
+                  </button>
+                )}
               </div>
 
               {/* Results tabs + content */}
@@ -1303,6 +1438,192 @@ export function SqlPage() {
           </div>
         </div>
       </div>
+
+      {viewModal && (
+        <div className="modal-overlay" onClick={() => setViewModal(false)}>
+          <div className="modal" style={{ width: "90vw", maxWidth: "90vw", maxHeight: "90vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem", flexShrink: 0 }}>
+              <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>
+                {canCreateView ? "Create View" : "Request View"}
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                {viewMsg && (
+                  <span style={{ fontSize: "0.78rem", color: viewMsg.startsWith("Error") ? "var(--destructive)" : "var(--approve)" }}>{viewMsg}</span>
+                )}
+                <button
+                  className="btn-primary"
+                  onClick={handleSaveView}
+                  disabled={viewSaving || !viewId.trim() || !viewDomainId.trim() || viewHasParams}
+                  style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}
+                >
+                  {viewSaving ? "Saving…" : canCreateView ? "Create" : "Submit Request"}
+                </button>
+                <button className="modal-close" onClick={() => setViewModal(false)}><X size={14} /></button>
+              </div>
+            </div>
+            {!canCreateView && (
+              <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "0.75rem", flexShrink: 0 }}>
+                You do not have <code>create_view</code>. This will be submitted as a suggested view pending approval.
+              </p>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", overflow: "auto", flex: 1, paddingRight: "1rem" }}>
+              <div style={{ display: "flex", gap: "0.75rem", flexShrink: 0 }}>
+                <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.875rem", color: "var(--text-muted)", flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>View ID <span style={{ color: "var(--destructive)" }}>*</span></span>
+                  <input
+                    value={viewId}
+                    onChange={(e) => setViewId(e.target.value)}
+                    placeholder="e.g. my_view"
+                    style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: 4, fontSize: "0.875rem", width: "100%", boxSizing: "border-box" }}
+                  />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.875rem", color: "var(--text-muted)", flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Domain <span style={{ color: "var(--destructive)" }}>*</span></span>
+                  <select
+                    value={viewDomainId}
+                    onChange={(e) => setViewDomainId(e.target.value)}
+                    style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: 4, fontSize: "0.875rem", width: "100%", boxSizing: "border-box" }}
+                  >
+                    <option value="">— select domain —</option>
+                    {Object.values(domainMap).filter((d) => d.id && d.id !== "meta" && d.id !== "ops").map((d) => (
+                      <option key={d.id} value={d.id}>{d.id}{d.description ? ` — ${d.description}` : ""}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.875rem", color: "var(--text-muted)", flexShrink: 0 }}>
+                Description
+                <textarea
+                  value={viewDescription}
+                  onChange={(e) => setViewDescription(e.target.value)}
+                  placeholder="Optional"
+                  rows={2}
+                  style={{ resize: "vertical", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: 4, fontSize: "0.875rem", width: "100%", boxSizing: "border-box" }}
+                />
+              </label>
+              {viewHasParams && (
+                <p style={{ fontSize: "0.78rem", color: "var(--destructive)", margin: 0, flexShrink: 0 }}>
+                  SQL contains unresolved parameter placeholders ($1, $2, …). Edit the SQL to replace them with literal values.
+                </p>
+              )}
+              <div style={{ resize: "vertical", overflow: "auto", minHeight: 80, height: 120, flexShrink: 0 }}>
+                <CodeMirror
+                  value={viewSqlNormalized}
+                  extensions={viewSqlExtensions}
+                  theme={oneDark}
+                  editable={false}
+                  height="100%"
+                  basicSetup={{ lineNumbers: false, foldGutter: false }}
+                />
+              </div>
+              {viewColumns.length > 0 && (
+                <div className="column-editor">
+                    <div className="column-editor-header">
+                      <span className="col-name-header">Column</span>
+                      <span className="col-flex-header">Alias</span>
+                      <span className="col-flex-header">Description</span>
+                      <span className="col-flex-header">Visible To</span>
+                      <span className="col-flex-header">Masking</span>
+                      <span className="col-flex-header">Scope</span>
+                    </div>
+                    {viewColumns.map((col, i) => (
+                      <Fragment key={col.name}>
+                        <div className="column-editor-row">
+                          <span className="col-name">{col.name}</span>
+                          <input
+                            value={col.alias}
+                            onChange={(e) => updateViewCol(i, "alias", e.target.value)}
+                            placeholder={col.name}
+                            className="col-flex-input"
+                          />
+                          <input
+                            value={col.description}
+                            onChange={(e) => updateViewCol(i, "description", e.target.value)}
+                            placeholder="description"
+                            className="col-flex-input"
+                          />
+                          <MultiSelect
+                            options={roles.map((r) => ({ id: r, label: r }))}
+                            value={col.visibleTo}
+                            onChange={(selected) => updateViewCol(i, "visibleTo", selected)}
+                            className="col-flex-input"
+                          />
+                          <select
+                            value={col.maskType}
+                            onChange={(e) => updateViewCol(i, "maskType", e.target.value as ViewColumnConfig["maskType"])}
+                            className="col-flex-input"
+                          >
+                            <option value="">None</option>
+                            <option value="regex">Regex</option>
+                            <option value="constant">Constant</option>
+                            <option value="truncate">Truncate</option>
+                          </select>
+                          <select
+                            value={col.scope}
+                            onChange={(e) => updateViewCol(i, "scope", e.target.value as ViewColumnConfig["scope"])}
+                            className="col-flex-input"
+                          >
+                            <option value="domain">domain</option>
+                            <option value="public">public</option>
+                            <option value="restricted">restricted</option>
+                          </select>
+                        </div>
+                        {col.maskType && (
+                          <div className="column-editor-row column-mask-row">
+                            <span className="col-name" style={{ color: "var(--text-muted)", fontSize: "0.75rem", marginLeft: "0.25rem" }}>↳ masking</span>
+                            {col.maskType === "regex" && (
+                              <>
+                                <input
+                                  value={col.maskPattern}
+                                  onChange={(e) => updateViewCol(i, "maskPattern", e.target.value)}
+                                  placeholder="regex pattern"
+                                  className="col-flex-input"
+                                />
+                                <input
+                                  value={col.maskReplace}
+                                  onChange={(e) => updateViewCol(i, "maskReplace", e.target.value)}
+                                  placeholder="replacement"
+                                  className="col-flex-input"
+                                />
+                              </>
+                            )}
+                            {col.maskType === "constant" && (
+                              <input
+                                value={col.maskValue}
+                                onChange={(e) => updateViewCol(i, "maskValue", e.target.value)}
+                                placeholder="constant value (NULL, 0, ***)"
+                                className="col-flex-input"
+                              />
+                            )}
+                            {col.maskType === "truncate" && (
+                              <select
+                                value={col.maskPrecision}
+                                onChange={(e) => updateViewCol(i, "maskPrecision", e.target.value)}
+                                className="col-flex-input"
+                              >
+                                <option value="">Select precision...</option>
+                                <option value="year">Year</option>
+                                <option value="month">Month</option>
+                                <option value="day">Day</option>
+                                <option value="hour">Hour</option>
+                              </select>
+                            )}
+                            <input
+                              value={col.unmaskedTo}
+                              onChange={(e) => updateViewCol(i, "unmaskedTo", e.target.value)}
+                              placeholder="unmasked roles (csv)"
+                              className="col-flex-input"
+                            />
+                          </div>
+                        )}
+                      </Fragment>
+                    ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

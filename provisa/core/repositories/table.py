@@ -22,15 +22,17 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
     table_id = await conn.fetchval(
         """
         INSERT INTO registered_tables
-            (source_id, domain_id, schema_name, table_name, governance, alias, description, watermark_column, column_presets)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            (source_id, domain_id, schema_name, table_name, governance, alias, description, watermark_column, column_presets, view_sql, data_product)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (source_id, schema_name, table_name) DO UPDATE SET
             domain_id = EXCLUDED.domain_id,
             governance = EXCLUDED.governance,
             alias = EXCLUDED.alias,
             description = EXCLUDED.description,
             watermark_column = EXCLUDED.watermark_column,
-            column_presets = EXCLUDED.column_presets
+            column_presets = EXCLUDED.column_presets,
+            view_sql = EXCLUDED.view_sql,
+            data_product = EXCLUDED.data_product
         RETURNING id
         """,
         table.source_id,
@@ -42,6 +44,8 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int:
         getattr(table, "description", None),
         getattr(table, "watermark_column", None),
         json.dumps([p.model_dump() for p in getattr(table, "column_presets", [])]),
+        getattr(table, "view_sql", None),
+        getattr(table, "data_product", False),
     )
 
     # Replace columns: delete existing, insert new

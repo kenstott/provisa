@@ -558,3 +558,5 @@ These must never be conflated. `alias` must not appear as a GraphQL field name f
 - **REQ-450** (2026-05-04): Every GraphQL one-to-many nested path must expose the same query arguments as the related target table's root query field.
 
 - **REQ-451** (2026-05-04): GraphQL object relationship paths (`many-to-one` and `one-to-one`) must not expose collection query arguments such as `limit`, `offset`, `where`, `order_by`, or `distinct_on`; this follows Hasura v2 object relationship behavior.
+
+- **REQ-452** (2026-05-05): A top-level Data Quality page (peer to Tables, Sources, etc.) OR a tab within registered tables—user preference TBD. Enables stewards to configure periodic data quality checks per table (configurable schedule, check types), stores and displays most recent check results. Builds on existing per-table Profile button (TABLESAMPLE-based column profiling). Aggregate DQ dashboard view by domain is a follow-on feature. Status: deferred.

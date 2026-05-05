@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 import React, { useState, useEffect } from "react";
-import { Trash2, Pencil, Save, X } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Trash2, Pencil, Save, X, ArrowRight } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import { fetchSources, deleteSource, createSource, updateSource, renameSource, updateSourceCache, updateSourceNaming, updateSourceAllowedDomains, fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
@@ -131,19 +132,22 @@ function AuthUserPass({ authFields, setAuthFields }: {
 }
 
 export function SourcesPage() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(() => searchParams.get("expanded"));
   const [error, setError] = useState<string | null>(null);
-  const [sourceSearch, setSourceSearch] = useState("");
+  const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
   const [form, setForm] = useState({
     id: "", type: "postgresql", host: "", port: 5432,
     database: "", username: "", password: "",
     namingConvention: "", cacheTtl: "", cacheEnabled: true,
     path: "" as string,
     allowedDomains: "" as string,
+    description: "" as string,
   });
   const [authType, setAuthType] = useState("none");
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
@@ -152,6 +156,44 @@ export function SourcesPage() {
   const [discoverSourceType, setDiscoverSourceType] = useState<string | null>(null);
   const [mappingSourceId, setMappingSourceId] = useState<string | null>(null);
   const [mappingSourceType, setMappingSourceType] = useState<string | null>(null);
+
+  const updateSearch = (v: string) => {
+    setSourceSearch(v);
+    setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("search", v) : n.delete("search"); return n; }, { replace: true });
+  };
+  const updateExpanded = (v: string | null) => {
+    setExpanded(v);
+    setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("expanded", v) : n.delete("expanded"); return n; }, { replace: true });
+  };
+
+  useEffect(() => {
+    if (editingSourceId) return;
+    setForm((prev) => {
+      if (prev.description) return prev;
+      const typeLabel = SOURCE_TYPES.find((s) => s.value === prev.type)?.label ?? prev.type;
+      const parts = [typeLabel];
+      if (prev.host) parts.push(`on ${prev.host}`);
+      if (prev.database) parts.push(`/ ${prev.database}`);
+      return { ...prev, description: parts.join(" ") };
+    });
+  }, [form.type, form.host, form.database, editingSourceId]);
+
+  const DB_DESCRIPTION_TYPES = new Set(["postgresql", "mysql", "mariadb", "sqlserver"]);
+  useEffect(() => {
+    if (editingSourceId) return;
+    if (!DB_DESCRIPTION_TYPES.has(form.type)) return;
+    if (!form.host || !form.database || !form.username || !form.password) return;
+    fetch("/admin/source-meta/db-description", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: form.type, host: form.host, port: form.port, database: form.database, username: form.username, password: form.password }),
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.description) setForm((prev) => ({ ...prev, description: data.description }));
+      })
+      .catch(() => {});
+  }, [form.type, form.host, form.port, form.database, form.username, form.password, editingSourceId]);
 
   const load = () => {
     setLoading(true);
@@ -189,18 +231,19 @@ export function SourcesPage() {
       cacheEnabled: s.cacheEnabled,
       path: s.path ?? "",
       allowedDomains: (s.allowedDomains ?? []).join(", "),
+      description: s.description ?? "",
     });
     setAuthType("none");
     setAuthFields({});
     setEditingSourceId(s.id);
-    setExpanded(s.id);
+    updateExpanded(s.id);
     setShowForm(false);
   };
 
   const handleCancelForm = () => {
     setShowForm(false);
     setEditingSourceId(null);
-    setForm({ id: "", type: "postgresql", host: "", port: 5432, database: "", username: "", password: "", namingConvention: "", cacheTtl: "", cacheEnabled: true, path: "", allowedDomains: "" });
+    setForm({ id: "", type: "postgresql", host: "", port: 5432, database: "", username: "", password: "", namingConvention: "", cacheTtl: "", cacheEnabled: true, path: "", allowedDomains: "", description: "" });
     setAuthType("none");
     setAuthFields({});
   };
@@ -252,7 +295,7 @@ export function SourcesPage() {
   const [openapiSpecMode, setOpenapiSpecMode] = useState<"path" | "inline">("path");
   const [openapiBaseUrl, setOpenapiBaseUrl] = useState("");
   const [openapiCacheTtl, setOpenapiCacheTtl] = useState("300");
-  const [openapiPreview, setOpenapiPreview] = useState<{ queries: any[]; mutations: any[] } | null>(null);
+  const [openapiPreview, setOpenapiPreview] = useState<{ queries: any[]; mutations: any[]; spec_description?: string } | null>(null);
   const [openapiPreviewing, setOpenapiPreviewing] = useState(false);
   const [openapiPreviewError, setOpenapiPreviewError] = useState<string | null>(null);
 
@@ -303,7 +346,11 @@ export function SourcesPage() {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
         throw new Error(body.detail ?? resp.statusText);
       }
-      setOpenapiPreview(await resp.json());
+      const data = await resp.json();
+      setOpenapiPreview(data);
+      if (data.spec_description) {
+        setForm((prev) => ({ ...prev, description: prev.description || data.spec_description }));
+      }
     } catch (err: any) {
       setOpenapiPreviewError(err.message);
     } finally {
@@ -379,6 +426,9 @@ export function SourcesPage() {
 
   const renderFormFields = () => (
     <>
+      <label style={{ gridColumn: "1 / -1" }}>Description
+        <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Brief description of this data source" />
+      </label>
       {isSimpleRdbms && (
         <>
           <label>Host <input required value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="localhost" /></label>
@@ -753,7 +803,7 @@ export function SourcesPage() {
     <div className="page">
       <div className="page-header">
         <h2>Data Sources</h2>
-        <FilterInput value={sourceSearch} onChange={setSourceSearch} placeholder="Filter by source ID or type…" />
+        <FilterInput value={sourceSearch} onChange={updateSearch} placeholder="Filter by source ID or type…" />
         {!editingSourceId && (
           <button onClick={() => { if (showForm) { handleCancelForm(); } else { setShowForm(true); } }}>
             {showForm ? "Cancel" : "+ Source"}
@@ -791,7 +841,7 @@ export function SourcesPage() {
           {sources.filter((s) => {
             if (!sourceSearch.trim()) return true;
             const q = sourceSearch.toLowerCase();
-            return s.id.toLowerCase().includes(q) || s.type.toLowerCase().includes(q);
+            return s.id.toLowerCase().includes(q) || s.type.toLowerCase().includes(q) || (s.description ?? "").toLowerCase().includes(q);
           }).map((s) => {
             const isExpanded = expanded === s.id;
             const isEditing = editingSourceId === s.id;
@@ -799,7 +849,7 @@ export function SourcesPage() {
               <React.Fragment key={s.id}>
                 <tr
                   onClick={() => {
-                    setExpanded(isExpanded ? null : s.id);
+                    updateExpanded(isExpanded ? null : s.id);
                     if (isEditing && isExpanded) { setEditingSourceId(null); handleCancelForm(); }
                   }}
                   style={{ cursor: "pointer", background: isExpanded ? "var(--surface)" : undefined }}
@@ -857,6 +907,7 @@ export function SourcesPage() {
                         <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                           <dl style={{ display: "grid", gridTemplateColumns: "max-content 1fr", gap: "0.25rem 1rem", margin: 0, color: "var(--text)" }}>
                             {([
+                              ["Description", s.description || "—"],
                               ["Type", SOURCE_TYPES.find((t) => t.value === s.type)?.label ?? s.type],
                               ["Host", s.host || "—"],
                               ["Port", s.port || "—"],
@@ -876,10 +927,11 @@ export function SourcesPage() {
                           </dl>
                           <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
                             <button className="btn-icon" title="Edit" onClick={(e) => { e.stopPropagation(); handleEdit(s); }}><Pencil size={14} /></button>
+                            {s.id !== "provisa-otel" && <button className="btn-icon" title="View registered tables" onClick={(e) => { e.stopPropagation(); navigate(`/tables?source=${encodeURIComponent(s.id)}`); }}><ArrowRight size={14} /></button>}
                             <ConfirmDialog
                               title={`Delete source "${s.id}"?`}
                               consequence={`This will remove the data source "${s.id}" and may break tables that reference it.`}
-                              onConfirm={async () => { await deleteSource(s.id); if (expanded === s.id) setExpanded(null); load(); }}
+                              onConfirm={async () => { await deleteSource(s.id); if (expanded === s.id) updateExpanded(null); load(); }}
                             >
                               {(open) => <button className="btn-icon-danger" title="Delete" onClick={(e) => { e.stopPropagation(); open(); }}><Trash2 size={14} /></button>}
                             </ConfirmDialog>

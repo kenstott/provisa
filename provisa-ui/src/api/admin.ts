@@ -176,7 +176,7 @@ export async function fetchRoles(): Promise<Role[]> {
 
 export async function fetchSources(): Promise<Source[]> {
   const data = await gql<{ sources: Source[] }>(
-    `{ sources { id type host port database username dialect cacheEnabled cacheTtl namingConvention allowedDomains } }`
+    `{ sources { id type host port database username dialect cacheEnabled cacheTtl namingConvention allowedDomains description } }`
   );
   return data.sources;
 }
@@ -198,7 +198,7 @@ export async function deleteDomain(id: string): Promise<void> {
 
 export async function fetchTables(): Promise<RegisteredTable[]> {
   const data = await gql<{ tables: RegisteredTable[] }>(
-    `{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey scope } columnPresets { column source name value dataType } } }`
+    `{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint viewSql dataProduct columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey scope } columnPresets { column source name value dataType } } }`
   );
   return data.tables;
 }
@@ -302,6 +302,7 @@ export async function createSource(input: {
   username: string;
   password: string;
   path?: string | null;
+  description?: string;
 }): Promise<MutationResult> {
   const data = await gql<{ createSource: MutationResult }>(
     `mutation($input: SourceInput!) { createSource(input: $input) { success message } }`,
@@ -319,6 +320,8 @@ export async function registerTable(input: {
   alias?: string;
   description?: string;
   watermarkColumn?: string | null;
+  viewSql?: string;
+  dataProduct?: boolean;
   columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null; isPrimaryKey?: boolean; isForeignKey?: boolean; isAlternateKey?: boolean; scope?: string }[];
   columnPresets?: { column: string; source: string; name?: string | null; value?: string | null; dataType?: string | null }[];
 }): Promise<MutationResult> {
@@ -340,6 +343,7 @@ export async function updateTable(input: {
   watermarkColumn?: string | null;
   columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null; isPrimaryKey?: boolean; isForeignKey?: boolean; isAlternateKey?: boolean; scope?: string }[];
   columnPresets?: { column: string; source: string; name?: string | null; value?: string | null; dataType?: string | null }[];
+  dataProduct?: boolean;
 }): Promise<MutationResult> {
   const data = await gql<{ updateTable: MutationResult }>(
     `mutation($input: TableInput!) { updateTable(input: $input) { success message } }`,
@@ -354,6 +358,15 @@ export async function deleteTable(id: number): Promise<MutationResult> {
     { id }
   );
   return data.deleteTable;
+}
+
+export async function profileTable(tableId: number): Promise<{ columns: string[]; rows: Record<string, unknown>[]; rowCount: number }> {
+  const resp = await fetch(`${API_BASE}/admin/tables/${tableId}/profile`, { method: "POST" });
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(body.detail || resp.statusText);
+  }
+  return resp.json();
 }
 
 export async function generateColumnDescription(tableId: number, columnName: string): Promise<string> {
@@ -446,6 +459,7 @@ export async function updateSource(input: {
   username: string;
   password: string;
   path?: string | null;
+  description?: string;
 }): Promise<MutationResult> {
   const data = await gql<{ updateSource: MutationResult }>(
     `mutation($input: SourceInput!) { updateSource(input: $input) { success message } }`,
@@ -642,49 +656,6 @@ export async function updateSettings(
 }
 
 // --- Views ---
-
-export interface ViewConfig {
-  id: string;
-  sql: string;
-  description?: string;
-  domain_id: string;
-  governance: string;
-  materialize: boolean;
-  refresh_interval?: number;
-  alias?: string;
-  columns: { name: string; visible_to: string[]; description?: string }[];
-}
-
-export async function fetchViews(): Promise<ViewConfig[]> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/views`);
-  if (!resp.ok) throw new Error(`Fetch views failed: ${resp.status}`);
-  return resp.json();
-}
-
-export async function saveView(view: ViewConfig): Promise<{ success: boolean; message: string }> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/views`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(view),
-  });
-  if (!resp.ok) throw new Error(`Save view failed: ${resp.status}`);
-  return resp.json();
-}
-
-export async function deleteView(id: string): Promise<{ success: boolean; message: string }> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/views/${id}`, { method: "DELETE" });
-  if (!resp.ok) throw new Error(`Delete view failed: ${resp.status}`);
-  return resp.json();
-}
-
-export async function sampleView(id: string): Promise<{ columns: string[]; rows: Record<string, unknown>[]; count: number }> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/views/${id}/sample`, { method: "POST" });
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(body.detail || resp.statusText);
-  }
-  return resp.json();
-}
 
 // --- Query compilation and submission ---
 

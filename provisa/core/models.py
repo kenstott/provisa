@@ -71,6 +71,7 @@ class SourceType(str, Enum):
 class GovernanceLevel(str, Enum):
     pre_approved = "pre-approved"
     registry_required = "registry-required"
+    suggested = "suggested"
 
 
 class Cardinality(str, Enum):
@@ -164,6 +165,7 @@ class Source(BaseModel):
     naming_convention: str | None = None  # overrides global; None = inherit
     federation_hints: dict[str, str] = Field(default_factory=dict)  # Trino session props
     allowed_domains: list[str] = Field(default_factory=list)  # restrict this source to specific domains; empty = unrestricted
+    description: str = ""
 
     @property
     def connector(self) -> str:
@@ -302,6 +304,8 @@ class Table(BaseModel):
     relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
     live: LiveDeliveryConfig | None = None  # live query delivery config (Phase AM)
     watermark_column: str | None = None  # column used by polling subscription provider
+    view_sql: str | None = None  # when set, table is a Provisa-managed view
+    data_product: bool = False  # publish as a Data Product (catalog export)
 
 
 class HotTablesConfig(BaseModel):

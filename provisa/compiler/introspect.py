@@ -87,7 +87,24 @@ def introspect_tables(
     result: dict[int, list[ColumnMetadata]] = {}
     for table in registered_tables:
         if table.get("schema_name") == "graphql_remote":
-            continue  # columns synthesized from registration metadata, not Trino
+            # Synthesize ColumnMetadata from registered columns (no Trino catalog for remote GQL)
+            gql_type_map = {
+                "text": "varchar", "string": "varchar", "varchar": "varchar",
+                "integer": "integer", "int": "integer",
+                "float": "double", "number": "double", "double": "double",
+                "boolean": "boolean",
+                "json": "json", "jsonb": "json",
+            }
+            result[table["id"]] = [
+                ColumnMetadata(
+                    column_name=c["column_name"],
+                    data_type=gql_type_map.get((c.get("data_type") or "text").lower(), "varchar"),
+                    is_nullable=True,
+                )
+                for c in table.get("columns", [])
+                if not c.get("native_filter_type")
+            ]
+            continue
         source = sources[table["source_id"]]
         catalog_name = source.get("database") or source_to_catalog(source["id"])
         # Use physical table name if mapped (e.g., Kafka discriminated tables)
