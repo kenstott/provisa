@@ -362,7 +362,7 @@ def build_context(si: object) -> CompilationContext:
                 target_column_type="integer",
                 target=meta_tgt,
                 cardinality="many-to-one",
-                cypher_alias="REGISTERED_TABLE",
+                cypher_alias="HAS_TABLE",
                 source_constant=t.table_id,
             )
 
@@ -397,7 +397,7 @@ def build_context(si: object) -> CompilationContext:
                 target_column_type="text",
                 target=ops_tgt,
                 cardinality="one-to-many",
-                cypher_alias=ops_t.field_name.upper(),
+                cypher_alias=f"HAS_{_base.upper()}",
                 default_limit=10,
             )
 
