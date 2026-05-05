@@ -257,7 +257,8 @@ class CypherLabelMap:
                 continue
             # Cypher rel type: use explicit alias (e.g. OPENED_BY) else derive from GraphQL field name
             cypher_alias = getattr(join_meta, "cypher_alias", None)
-            rel_type = cypher_alias if cypher_alias else _to_rel_type(gql_field_name)
+            cardinality = getattr(join_meta, "cardinality", None)
+            rel_type = cypher_alias if cypher_alias else _to_rel_type(gql_field_name, cardinality)
             rm = RelationshipMapping(
                 rel_type=rel_type,
                 source_label=source_type_name,
@@ -363,7 +364,8 @@ class CypherLabelMap:
                     table_id_to_type[tgt_id] = tgt_type_name
 
                 cypher_alias = rel.get("alias") or rel.get("computed_cypher_alias")
-                rel_type = cypher_alias if cypher_alias else _to_rel_type(rel.get("graphql_alias") or tgt_raw_name)
+                rel_cardinality = rel.get("cardinality")
+                rel_type = cypher_alias if cypher_alias else _to_rel_type(rel.get("graphql_alias") or tgt_raw_name, rel_cardinality)
                 rel_key = f"{rel_type}::{src_type}→{tgt_type_name}"
                 if rel_key not in relationships:
                     xrel = RelationshipMapping(
@@ -436,11 +438,15 @@ def _resolve_id_column(
     return "id"
 
 
-def _to_rel_type(field_name: str) -> str:
-    """Convert a camelCase or snake_case GraphQL field name to UPPER_SNAKE relationship type."""
-    # Insert underscore before uppercase letters (camelCase → CAMEL_CASE)
-    s = re.sub(r'([a-z])([A-Z])', r'\1_\2', field_name)
-    return s.upper()
+def _to_rel_type(field_name: str, cardinality: str | None = None) -> str:
+    """Convert a camelCase or snake_case GraphQL field name to a verb-prefixed UPPER_SNAKE relationship type.
+
+    many-to-one → IS_ prefix (e.g. animalBreed → IS_ANIMAL_BREED)
+    one-to-many / unknown → HAS_ prefix (e.g. tableColumns → HAS_TABLE_COLUMNS)
+    """
+    s = re.sub(r'([a-z])([A-Z])', r'\1_\2', field_name).upper()
+    prefix = "IS_" if cardinality == "many-to-one" else "HAS_"
+    return f"{prefix}{s}"
 
 
 def _pascal(s: str) -> str:

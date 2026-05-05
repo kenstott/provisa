@@ -351,6 +351,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             text = "ARRAY" + text
         text = self._rewrite_params_in_expr(text)
         text = self._rewrite_cte_vars(text)
+        text = self._rewrite_cypher_props(text)
         text = _rewrite_property_access(text)
         try:
             # No dialect: $N executor placeholders must survive as identifiers.
@@ -784,6 +785,18 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         return from_expr, joins
 
 
+    def _rewrite_cypher_props(self, text: str) -> str:
+        """Rewrite var.camelProp → var.sql_col using NodeMapping.properties."""
+        def _replace(m: re.Match) -> str:
+            var, prop = m.group(1), m.group(2)
+            info = self._var_table.get(var)
+            if info and info[1]:
+                sql_col = info[1].properties.get(prop)
+                if sql_col:
+                    return f"{var}.{sql_col}"
+            return m.group(0)
+        return re.sub(r'\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b', _replace, text)
+
     def _rewrite_nf_props(self, text: str) -> str:
         """Rewrite var.col or var."col" → var."_nf_col" for native filter columns."""
         def _replace(m: re.Match) -> str:
@@ -805,6 +818,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         expr_text = self._rewrite_path_comprehensions(expr_text)
         expr_text = rewrite_list_comprehensions(expr_text)
         expr_text = _rewrite_in_list(expr_text)
+        expr_text = self._rewrite_cypher_props(expr_text)
         expr_text = _rewrite_property_access(expr_text)
         expr_text = self._rewrite_nf_props(expr_text)
         expr_text = _rewrite_string_predicates(expr_text)
@@ -891,6 +905,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         text = self._rewrite_path_comprehensions(text)
         text = rewrite_list_comprehensions(text)
         text = _rewrite_in_list(text)
+        text = self._rewrite_cypher_props(text)
         text = _rewrite_property_access(text)
         text = _rewrite_string_predicates(text)
         text = self._rewrite_subquery_exprs(text)
