@@ -76,6 +76,14 @@ def semantic_sql_to_cypher(
         domain_to_label[(sql_domain, field_key)] = lbl
         domain_to_label[("", field_key)] = lbl
 
+    # Also cover traversal-only nodes (in label_map.nodes but not in ctx.tables)
+    for _tn, nm in label_map.nodes.items():
+        lbl = label_map.display_label(nm)
+        _sql_dom = domain_to_sql_name(nm.domain_id) if nm.domain_id else ""
+        _tbl = nm.sql_table_name
+        domain_to_label.setdefault((_sql_dom, _tbl), lbl)
+        domain_to_label.setdefault(("", _tbl), lbl)
+
     # Build reverse lookup for relationships: (src_col, tgt_col) → RelationshipMapping
     join_to_rel: dict[tuple[str, str], RelationshipMapping] = {}
     for rel in label_map.relationships.values():
@@ -118,19 +126,47 @@ def semantic_sql_to_cypher(
     # Each entry: (is_optional, rel_type | None, src_sql_alias, tgt_sql_alias, tgt_label)
     join_segments: list[tuple[bool, str | None, str, str, str]] = []
 
+    # Build label → rel_type lookup for use with LATERAL joins (no ON condition to parse)
+    label_to_rel: dict[str, str | None] = {}
+    for rel in label_map.relationships.values():
+        label_to_rel[rel.target_label] = rel.rel_type
+
+    skipped_aliases: set[str] = set()
     for join in joins:
         join_tbl = join.this
         if not isinstance(join_tbl, exp.Table):
-            continue  # LATERAL or subquery join — skip, no Cypher equivalent
+            # Try to unwrap LATERAL (SELECT * FROM actual_tbl WHERE ...) subquery
+            lateral_alias = join_tbl.alias if hasattr(join_tbl, "alias") else None
+            inner_tbl = None
+            # Unwrap Lateral(Subquery(Select(...))) or bare Subquery(Select(...))
+            subquery_node = (
+                join_tbl.this if isinstance(join_tbl, exp.Lateral) else join_tbl
+            )
+            if isinstance(subquery_node, exp.Subquery):
+                inner_select = subquery_node.this
+                if isinstance(inner_select, exp.Select):
+                    inner_from = inner_select.args.get("from_")
+                    if inner_from and isinstance(inner_from.this, exp.Table):
+                        inner_tbl = inner_from.this
+            if inner_tbl is not None and lateral_alias:
+                tgt_label = _resolve_label(inner_tbl, domain_to_label)
+                if tgt_label is not None:
+                    rel_type = label_to_rel.get(tgt_label)
+                    join_segments.append((True, rel_type, sql_base_alias, lateral_alias, tgt_label))
+                    continue
+            if lateral_alias:
+                skipped_aliases.add(lateral_alias)
+            continue  # non-unwrappable or non-graph LATERAL — skip
 
         tgt_label = _resolve_label(join_tbl, domain_to_label)
         if tgt_label is None:
+            skipped_aliases.add(join_tbl.alias or join_tbl.name)
             continue  # meta/ops table not in graph schema — skip
 
         tgt_sql_alias = join_tbl.alias or join_tbl.name
 
         on_expr = join.args.get("on")
-        rel_type = _rel_type_from_on(on_expr, join_to_rel)
+        rel_type = _rel_type_from_on(on_expr, join_to_rel) or label_to_rel.get(tgt_label)
         # Determine source alias from ON condition table references
         src_sql_alias = _src_alias_from_on(on_expr, tgt_sql_alias, sql_base_alias)
         is_optional = (join.side or "").upper() == "LEFT"
@@ -209,6 +245,10 @@ def semantic_sql_to_cypher(
     # --- RETURN ---
     select_exprs = tree.args.get("expressions") or []
     default_sql_alias = sql_base_alias if not join_segments else None
+    # If any SELECT column references a skipped (non-graph) alias, Cypher can't express it
+    for _expr in select_exprs:
+        if isinstance(_expr, exp.Column) and _expr.table in skipped_aliases:
+            return None
     return_items = _build_return(select_exprs, default_sql_alias, alias_map, alias_prop_map)
     cypher_lines.append(f"RETURN {', '.join(return_items)}" if return_items else "RETURN *")
 

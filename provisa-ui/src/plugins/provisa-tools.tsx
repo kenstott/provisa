@@ -233,7 +233,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const [cypherQuery, setCypherQuery] = useState("");
   const [cypherError, setCypherError] = useState<string | null>(null);
   const [cypherCopied, setCypherCopied] = useState(false);
-  const [cypherExpanded, setCypherExpanded] = useState(false);
+  const [cypherExpanded, setCypherExpanded] = useState(true);
   const navigate = useNavigate();
 
   const cypherExtensions = useMemo(

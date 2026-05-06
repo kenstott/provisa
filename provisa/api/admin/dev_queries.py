@@ -315,7 +315,15 @@ async def compile_query(role_id: str, query: str, variables: dict | None) -> lis
         try:
             from provisa.cypher.label_map import CypherLabelMap
             from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
-            _label_map = CypherLabelMap.from_schema(ctx)
+            _cache = getattr(state, "schema_build_cache", {})
+            _label_map = CypherLabelMap.from_schema(
+                ctx,
+                domain_access=role.get("domain_access") if role else None,
+                all_tables=_cache.get("tables"),
+                all_relationships=_cache.get("relationships"),
+                all_column_types=_cache.get("column_types"),
+                source_catalogs=getattr(state, "source_catalogs", None),
+            )
             compiled_cypher = semantic_sql_to_cypher(raw_semantic_sql, _label_map, ctx)
             if compiled_cypher is None:
                 cypher_error = "Query structure cannot be represented as a Cypher pattern"

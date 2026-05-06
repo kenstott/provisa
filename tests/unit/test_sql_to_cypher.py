@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping
+from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
 
 
@@ -168,3 +168,81 @@ class TestDomainPrefixedFieldName:
         assert result is not None
         assert "MATCH" in result
         assert "RETURN" in result
+
+
+class TestTraversalOnlyNode:
+    """Regression: traversal-only nodes (in label_map.nodes but NOT in ctx.tables) must resolve."""
+
+    def _make_ctx_and_label_map(self):
+        # ctx only contains the 'pets' table — user has access to it
+        pets_meta = _TableMeta(
+            table_id=1, field_name="pets", type_name="Pets",
+            source_id="pg-main", catalog_name="postgresql",
+            schema_name="public", table_name="pets",
+            domain_id="public",
+        )
+        ctx = _Ctx(
+            tables={"pets": pets_meta},
+            aggregate_columns={1: [("id", "integer"), ("name", "varchar")]},
+        )
+        pets_node = NodeMapping(
+            label="Pets", type_name="Pets", domain_label=None,
+            table_label="Pets", table_id=1, source_id="pg-main",
+            id_column="id", pk_columns=[],
+            catalog_name="postgresql", schema_name="public", table_name="pets",
+            properties={"id": "id", "name": "name"},
+        )
+        # Traversal-only node for ops.spans — not in ctx.tables
+        spans_node = NodeMapping(
+            label="Ops:Traces", type_name="Ops_Traces", domain_label="Ops",
+            table_label="Traces", table_id=99, source_id="ops",
+            id_column="span_id", pk_columns=[],
+            catalog_name="ops", schema_name="ops", table_name="spans",
+            properties={"serviceName": "service_name", "spanId": "span_id"},
+            traversal_only=True,
+            domain_id="ops",
+        )
+        rel = RelationshipMapping(
+            rel_type="HAS_TRACES",
+            source_label="Pets",
+            target_label="Ops_Traces",
+            join_source_column="id",
+            join_target_column="pet_id",
+            field_name="_traces",
+        )
+        lm = CypherLabelMap(
+            nodes={"Pets": pets_node, "Ops_Traces": spans_node},
+            relationships={"HAS_TRACES::Pets→Ops_Traces": rel},
+            nodes_by_table={"Pets": ["Pets"], "Traces": ["Ops_Traces"]},
+        )
+        return ctx, lm
+
+    def test_lateral_join_to_traversal_node_does_not_return_none(self):
+        """LATERAL join to a traversal-only node must not produce None (no crash)."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT "pets"."name", "t3"."service_name", "t3"."span_id" '
+            'FROM "public"."pets" '
+            'LEFT JOIN LATERAL (SELECT * FROM "ops"."spans" WHERE "ops"."spans"."pet_id" = "pets"."id" LIMIT 10) "t3" ON TRUE'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None, (
+            "semantic_sql_to_cypher returned None for LATERAL join to traversal-only node — "
+            "traversal-only nodes must be added to domain_to_label even if not in ctx.tables"
+        )
+        assert "MATCH" in result
+        assert "OPTIONAL MATCH" in result
+        assert "RETURN" in result
+
+    def test_lateral_join_return_uses_camel_case(self):
+        """Properties from traversal-only nodes must use camelCase in RETURN."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT "pets"."name", "t3"."service_name" '
+            'FROM "public"."pets" '
+            'LEFT JOIN LATERAL (SELECT * FROM "ops"."spans" WHERE "ops"."spans"."pet_id" = "pets"."id" LIMIT 10) "t3" ON TRUE'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert "serviceName" in result
+        assert "service_name" not in result
