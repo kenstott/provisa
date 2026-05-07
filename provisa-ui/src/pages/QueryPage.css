@@ -258,6 +258,21 @@ body.graphiql-dark .graphiql-dialog {
   border-radius: 4px;
 }
 
+.provisa-tools-option {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: hsl(224, 10%, 60%);
+  cursor: pointer;
+  user-select: none;
+}
+
+.provisa-tools-option input[type="checkbox"] {
+  accent-color: hsl(224, 80%, 60%);
+  cursor: pointer;
+}
+
 .provisa-tools-metadata {
   display: flex;
   flex-direction: column;

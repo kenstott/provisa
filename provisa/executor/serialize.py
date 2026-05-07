@@ -141,7 +141,16 @@ def serialize_rows(
                 if skip:
                     continue
                 arr = target.get(parts[-1])
-                if isinstance(arr, list) and child not in arr:
+                if not isinstance(arr, list):
+                    continue
+                # ARRAY_AGG case: column values are already arrays — zip into per-element objects
+                if any(isinstance(v, list) for v in child.values()):
+                    n = next((len(v) for v in child.values() if isinstance(v, list)), 0)
+                    for j in range(n):
+                        elem = {k: (v[j] if isinstance(v, list) and j < len(v) else v) for k, v in child.items()}
+                        if elem not in arr:
+                            arr.append(elem)
+                elif child not in arr:
                     arr.append(child)
 
         if result_limit is not None:

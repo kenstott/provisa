@@ -139,6 +139,16 @@ class TestSimpleTable:
         assert "LIMIT 50" in result
         assert "SKIP 10" in result
 
+    def test_override_limit_replaces_sql_cap(self):
+        """Regression #42: override_limit must replace the SQL safety-cap LIMIT."""
+        ctx, lm = _make_simple_ctx_and_label_map()
+        # SQL has the default safety cap (10000), but user supplied limit=1
+        sql = 'SELECT "id", "name" FROM "public"."persons" LIMIT 10000'
+        result = semantic_sql_to_cypher(sql, lm, ctx, override_limit=1)
+        assert result is not None
+        assert "LIMIT 1" in result
+        assert "LIMIT 10000" not in result
+
 
 class TestDomainPrefixedFieldName:
     """Regression: field_name with __ prefix must still resolve in domain_to_label."""
@@ -246,3 +256,207 @@ class TestTraversalOnlyNode:
         assert result is not None
         assert "serviceName" in result
         assert "service_name" not in result
+
+    def test_lateral_join_emits_typed_relationship(self):
+        """Regression #41: OPTIONAL MATCH must emit [:HAS_TRACES], not anonymous []."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT "pets"."name", "t3"."service_name", "t3"."span_id" '
+            'FROM "public"."pets" '
+            'LEFT JOIN LATERAL (SELECT * FROM "ops"."spans" WHERE "ops"."spans"."pet_id" = "pets"."id" LIMIT 10) "t3" ON TRUE'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert "[:HAS_TRACES]" in result, (
+            f"Expected [:HAS_TRACES] in Cypher but got anonymous []: {result}"
+        )
+        assert "-[]->" not in result, f"Anonymous relationship emitted: {result}"
+
+    def test_lateral_join_with_limit_emits_call_subquery(self):
+        """Regression #43: LATERAL join with LIMIT N must emit CALL {} with inner LIMIT N."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT "pets"."name", "t3"."service_name" '
+            'FROM "public"."pets" '
+            'LEFT JOIN LATERAL (SELECT * FROM "ops"."spans" WHERE "ops"."spans"."pet_id" = "pets"."id" LIMIT 2) "t3" ON TRUE'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None, f"Got None: {result}"
+        assert "CALL {" in result, f"Expected CALL subquery for per-relationship LIMIT: {result}"
+        assert "[..2]" in result, f"Per-relationship LIMIT 2 (as slice) missing: {result}"
+        assert "WITH " in result, f"CALL subquery must include WITH clause: {result}"
+
+    def test_lateral_join_parameterized_limit_resolves_call_subquery(self):
+        """Regression: LATERAL LIMIT emitted as $N placeholder must resolve via params list."""
+        ctx, lm = self._make_ctx_and_label_map()
+        # sql_gen emits LIMIT $N (parameterized), not LIMIT 3 (literal)
+        sql = (
+            'SELECT "pets"."name", "t3"."service_name" '
+            'FROM "public"."pets" '
+            'LEFT JOIN LATERAL (SELECT * FROM "ops"."spans" WHERE "ops"."spans"."pet_id" = "pets"."id" LIMIT $1) "t3" ON TRUE'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx, params=[3])
+        assert result is not None, f"Got None: {result}"
+        assert "CALL {" in result, f"Expected CALL subquery: {result}"
+        assert "[..3]" in result, f"Expected resolved limit [..3]: {result}"
+
+    def test_lateral_join_collect_avoids_cartesian_product(self):
+        """Regression #44: multiple LATERAL joins must use collect() + list comprehension, not flat OPTIONAL MATCH."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT "pets"."name", "t3"."service_name" '
+            'FROM "public"."pets" '
+            'LEFT JOIN LATERAL (SELECT * FROM "ops"."spans" WHERE "ops"."spans"."pet_id" = "pets"."id" LIMIT 5) "t3" ON TRUE'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert "collect(" in result, f"Expected collect() in CALL subquery to avoid cartesian product: {result}"
+        # Per-property collect: list comprehensions replaced by direct list var references (issue #49)
+        assert "_list AS " in result, f"Expected per-property list var in RETURN: {result}"
+        assert "OPTIONAL MATCH" not in result.split("CALL")[0].lstrip("MATCH"), (
+            f"OPTIONAL MATCH outside CALL block would cause cartesian product: {result}"
+        )
+
+    def test_collect_uses_property_not_node_alias(self):
+        """Regression #49: collect() must target a property (e.g. b.serviceName), never a bare
+        node alias (e.g. collect(b)), which Trino rejects as ARRAY_AGG(table_alias)."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT "pets"."name", "t3"."service_name" '
+            'FROM "public"."pets" '
+            'LEFT JOIN LATERAL (SELECT * FROM "ops"."spans" WHERE "ops"."spans"."pet_id" = "pets"."id" LIMIT 2) "t3" ON TRUE'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        # collect(b) would be ARRAY_AGG(table_alias) — invalid in Trino
+        import re
+        bare_collect = re.search(r'\bcollect\s*\(\s*[a-z]\s*\)', result)
+        assert bare_collect is None, (
+            f"Regression #49: collect() must not use bare node alias: {result}"
+        )
+        # collect(b.prop) is the correct form
+        assert re.search(r'\bcollect\s*\(\s*[a-z]\s*\.\s*\w+\s*\)', result), (
+            f"Regression #49: collect() must reference a property: {result}"
+        )
+
+
+class TestOneManyNonLateralJoin:
+    """Regression #50: non-LATERAL one-to-many optional JOIN must use CALL+collect, not flat OPTIONAL MATCH."""
+
+    def _make_ctx_and_label_map(self):
+        pets_meta = _TableMeta(
+            table_id=1, field_name="pets", type_name="Pets",
+            source_id="pg-main", catalog_name="postgresql",
+            schema_name="public", table_name="pets",
+            domain_id="public",
+        )
+        reg_tables_meta = _TableMeta(
+            table_id=2, field_name="registered_tables", type_name="RegisteredTables",
+            source_id="pg-main", catalog_name="postgresql",
+            schema_name="public", table_name="registered_tables",
+            domain_id="public",
+        )
+        table_cols_meta = _TableMeta(
+            table_id=3, field_name="table_columns", type_name="TableColumns",
+            source_id="pg-main", catalog_name="postgresql",
+            schema_name="public", table_name="table_columns",
+            domain_id="public",
+        )
+        ctx = _Ctx(
+            tables={"pets": pets_meta, "registered_tables": reg_tables_meta, "table_columns": table_cols_meta},
+            aggregate_columns={
+                1: [("id", "integer"), ("name", "varchar")],
+                2: [("id", "integer"), ("alias", "varchar"), ("schema_name", "varchar")],
+                3: [("id", "integer"), ("column_name", "varchar"), ("is_foreign_key", "boolean")],
+            },
+        )
+        pets_node = NodeMapping(
+            label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
+            table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
+            catalog_name="postgresql", schema_name="public", table_name="pets",
+            properties={"id": "id", "name": "name"},
+        )
+        reg_node = NodeMapping(
+            label="RegisteredTables", type_name="RegisteredTables", domain_label=None,
+            table_label="RegisteredTables", table_id=2, source_id="pg-main",
+            id_column="id", pk_columns=[],
+            catalog_name="postgresql", schema_name="public", table_name="registered_tables",
+            properties={"id": "id", "alias": "alias", "schemaName": "schema_name"},
+        )
+        col_node = NodeMapping(
+            label="TableColumns", type_name="TableColumns", domain_label=None,
+            table_label="TableColumns", table_id=3, source_id="pg-main",
+            id_column="id", pk_columns=[],
+            catalog_name="postgresql", schema_name="public", table_name="table_columns",
+            properties={"id": "id", "columnName": "column_name", "isForeignKey": "is_foreign_key"},
+        )
+        has_table_rel = RelationshipMapping(
+            rel_type="HAS_TABLE",
+            source_label="Pets",
+            target_label="RegisteredTables",
+            join_source_column="id",
+            join_target_column="table_id",
+            field_name="_table",
+            many=False,
+        )
+        has_cols_rel = RelationshipMapping(
+            rel_type="HAS_TABLE_COLUMNS",
+            source_label="RegisteredTables",
+            target_label="TableColumns",
+            join_source_column="id",
+            join_target_column="table_id",
+            field_name="tableColumns",
+            many=True,
+        )
+        lm = CypherLabelMap(
+            nodes={"Pets": pets_node, "RegisteredTables": reg_node, "TableColumns": col_node},
+            relationships={
+                "HAS_TABLE::Pets→RegisteredTables": has_table_rel,
+                "HAS_TABLE_COLUMNS::RegisteredTables→TableColumns": has_cols_rel,
+            },
+        )
+        return ctx, lm
+
+    def test_one_to_many_join_emits_call_subquery(self):
+        """Regression #50: one-to-many non-LATERAL JOIN must use CALL+collect, not flat OPTIONAL MATCH."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT "pets"."name", "registered_tables"."alias", "table_columns"."column_name" '
+            'FROM "public"."pets" '
+            'LEFT JOIN "public"."registered_tables" ON "registered_tables"."table_id" = "pets"."id" '
+            'LEFT JOIN "public"."table_columns" ON "table_columns"."table_id" = "registered_tables"."id" '
+            'LIMIT 1'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert "CALL {" in result, f"Expected CALL subquery for one-to-many join: {result}"
+        assert "collect(" in result, f"Expected collect() for TableColumns: {result}"
+        assert "HAS_TABLE_COLUMNS" in result
+
+    def test_many_to_one_join_stays_flat(self):
+        """Regression #50: many-to-one JOIN (HAS_TABLE) must NOT use CALL+collect."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT "pets"."name", "registered_tables"."alias" '
+            'FROM "public"."pets" '
+            'LEFT JOIN "public"."registered_tables" ON "registered_tables"."table_id" = "pets"."id" '
+            'LIMIT 1'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert "OPTIONAL MATCH" in result, f"Expected flat OPTIONAL MATCH for many-to-one: {result}"
+        assert "collect(" not in result, f"Unexpected collect() for many-to-one join: {result}"
+
+    def test_one_to_many_return_uses_list_var(self):
+        """Regression #50: RETURN for one-to-many must reference per-property list var, not scalar."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT "pets"."name", "table_columns"."column_name" '
+            'FROM "public"."pets" '
+            'LEFT JOIN "public"."registered_tables" ON "registered_tables"."table_id" = "pets"."id" '
+            'LEFT JOIN "public"."table_columns" ON "table_columns"."table_id" = "registered_tables"."id" '
+            'LIMIT 1'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert "_list AS " in result, f"Expected list var in RETURN: {result}"

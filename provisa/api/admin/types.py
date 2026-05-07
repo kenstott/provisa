@@ -365,6 +365,9 @@ class CompileQueryInput:
     query: str
     role: str
     variables: strawberry.scalars.JSON | None = None
+    flat_sql: bool = False
+    flat_cypher: bool = False
+    node_only_cypher: bool = False
 
 
 @strawberry.type

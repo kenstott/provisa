@@ -1162,3 +1162,253 @@ def test_camel_prop_in_return_after_with_uses_cte_alias():
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "breedName" in sql or "breedname" in sql.lower()
+
+
+def _make_source_constant_label_map() -> CypherLabelMap:
+    """Label map where the source join column is a constant (e.g. __table_id__)."""
+    parent = NodeMapping(
+        label="RegisteredTables",
+        type_name="RegisteredTables",
+        domain_label=None,
+        table_label="RegisteredTables",
+        table_id=42,
+        source_id="meta",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="meta",
+        schema_name="meta",
+        table_name="registered_tables",
+        properties={"id": "id", "name": "name"},
+    )
+    child = NodeMapping(
+        label="TableColumns",
+        type_name="TableColumns",
+        domain_label=None,
+        table_label="TableColumns",
+        table_id=43,
+        source_id="meta",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="meta",
+        schema_name="meta",
+        table_name="table_columns",
+        properties={"id": "id", "columnName": "column_name"},
+    )
+    rel = RelationshipMapping(
+        rel_type="HAS_TABLE_COLUMNS",
+        source_label="RegisteredTables",
+        target_label="TableColumns",
+        join_source_column="__table_id__",
+        join_target_column="table_id",
+        field_name="tableColumns",
+        source_constant=42,
+    )
+    return CypherLabelMap(
+        nodes={"RegisteredTables": parent, "TableColumns": child},
+        relationships={"HAS_TABLE_COLUMNS::RegisteredTables→TableColumns": rel},
+        nodes_by_table={"RegisteredTables": ["RegisteredTables"], "TableColumns": ["TableColumns"]},
+        aliases={"HAS_TABLE_COLUMNS": [rel]},
+    )
+
+
+def test_source_constant_emits_literal_not_column():
+    """Regression #46: source_constant on RelationshipMapping must emit a literal, not b."__table_id__"."""
+    lm = _make_source_constant_label_map()
+    ast = parse_cypher(
+        "MATCH (b:RegisteredTables)-[:HAS_TABLE_COLUMNS]->(c:TableColumns) RETURN b.name, c.columnName"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "__table_id__" not in sql, (
+        f"source_constant join emitted physical column __table_id__ instead of literal: {sql}"
+    )
+    assert "42" in sql, f"source_constant value 42 missing from SQL: {sql}"
+
+
+def _make_multi_source_has_table_label_map() -> CypherLabelMap:
+    """Regression #46: aliases['HAS_TABLE'] with multiple source tables.
+
+    Simulates production: every data table gets a HAS_TABLE entry in aliases.
+    When translating (a:Pets)-[:HAS_TABLE]->(b:RegisteredTables), the translator
+    must pick the Pets-sourced mapping, not the Breeds-sourced one (which would
+    be is_bwd=True and emit b."__table_id__" as a physical column).
+    """
+    pets = NodeMapping(
+        label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
+        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
+        catalog_name="postgresql", schema_name="public", table_name="pets",
+        properties={"id": "id", "name": "name"},
+    )
+    breeds = NodeMapping(
+        label="Breeds", type_name="Breeds", domain_label=None, table_label="Breeds",
+        table_id=2, source_id="pg-main", id_column="id", pk_columns=[],
+        catalog_name="postgresql", schema_name="public", table_name="breeds",
+        properties={"id": "id", "name": "name"},
+    )
+    rt = NodeMapping(
+        label="RegisteredTables", type_name="RegisteredTables", domain_label=None,
+        table_label="RegisteredTables", table_id=42, source_id="meta", id_column="id",
+        pk_columns=[], catalog_name="meta", schema_name="meta",
+        table_name="registered_tables", properties={"id": "id", "alias": "alias"},
+    )
+    has_table_pets = RelationshipMapping(
+        rel_type="HAS_TABLE", source_label="Pets", target_label="RegisteredTables",
+        join_source_column="__table_id__", join_target_column="id",
+        field_name="_meta", source_constant=1,
+    )
+    has_table_breeds = RelationshipMapping(
+        rel_type="HAS_TABLE", source_label="Breeds", target_label="RegisteredTables",
+        join_source_column="__table_id__", join_target_column="id",
+        field_name="_meta", source_constant=2,
+    )
+    # Breeds entry is FIRST in aliases — this is what triggers the bug in production
+    return CypherLabelMap(
+        nodes={"Pets": pets, "Breeds": breeds, "RegisteredTables": rt},
+        relationships={
+            "HAS_TABLE::Pets→RegisteredTables": has_table_pets,
+            "HAS_TABLE::Breeds→RegisteredTables": has_table_breeds,
+        },
+        nodes_by_table={
+            "Pets": ["Pets"], "Breeds": ["Breeds"], "RegisteredTables": ["RegisteredTables"],
+        },
+        aliases={"HAS_TABLE": [has_table_breeds, has_table_pets]},  # Breeds first!
+    )
+
+
+def test_multi_source_has_table_picks_correct_mapping():
+    """Regression #46: when aliases has multiple HAS_TABLE entries (one per data table),
+    translating (a:Pets)-[:HAS_TABLE]->(b:RegisteredTables) must use the Pets mapping
+    (source_constant=1), not the Breeds mapping (source_constant=2), even if Breeds is
+    first in aliases['HAS_TABLE']. b."__table_id__" must never appear in the SQL.
+    """
+    lm = _make_multi_source_has_table_label_map()
+    ast = parse_cypher(
+        "MATCH (a:Pets) "
+        "OPTIONAL MATCH (a:Pets)-[:HAS_TABLE]->(b:RegisteredTables) "
+        "RETURN a.name, b.alias"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "__table_id__" not in sql, (
+        f"Regression #46: wrong alias selected, virtual column emitted as physical: {sql}"
+    )
+    assert "1" in sql, f"Expected Pets source_constant (1) in SQL: {sql}"
+    assert "2" not in sql, f"Breeds source_constant (2) leaked into Pets query: {sql}"
+
+
+# ---------------------------------------------------------------------------
+# Regression #47: CALL subquery lateral variables must be qualified in outer RETURN
+# ---------------------------------------------------------------------------
+
+def test_call_subquery_return_var_qualified_with_lateral_alias():
+    """Regression #47: CALL { WITH n ... RETURN ... AS c_list } must render outer SELECT's
+    bare `c_list` reference as `_call0."c_list"` so Trino can resolve the scoped column.
+    """
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) "
+        "CALL { WITH n MATCH (n)-[:WORKS_AT]->(c:Company) RETURN collect(c.name) AS c_list } "
+        "RETURN n.name, c_list"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    # The outer SELECT must reference c_list via the lateral alias
+    assert '_call0."c_list"' in sql, (
+        f"Regression #47: outer SELECT must use _call0.\"c_list\", not bare c_list: {sql}"
+    )
+
+
+def test_call_subquery_list_comprehension_qualified():
+    """Regression #47: [x IN c_list | x] in outer RETURN must reference _call0."c_list"."""
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) "
+        "CALL { WITH n MATCH (n)-[:WORKS_AT]->(c:Company) RETURN collect(c.name) AS c_list } "
+        "RETURN n.name, [x IN c_list | x] AS c_names"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    # The transform() first arg must be _call0."c_list"
+    assert '_call0."c_list"' in sql, (
+        f"Regression #47: list comprehension must use _call0.\"c_list\": {sql}"
+    )
+
+
+def test_call_subquery_collect_slice_translates_correctly():
+    """Regression: collect(d)[..2] in CALL RETURN must translate to slice(ARRAY_AGG(d), 1, 2).
+
+    sql_to_cypher generates collect(var)[..N] to limit traversal results; the translator
+    must convert this Cypher slice notation to the Trino-legal slice() function before
+    passing to sqlglot, which cannot parse [..N] syntax.
+    """
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) "
+        "CALL { WITH n MATCH (n)-[:WORKS_AT]->(c:Company) RETURN collect(c)[..2] AS c_list } "
+        "RETURN n.name, [x IN c_list | x.name] AS c_names"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "slice(" in sql.lower(), f"Expected slice() in translated SQL: {sql}"
+    assert "array_agg" in sql.lower(), f"Expected ARRAY_AGG in translated SQL: {sql}"
+    assert "[].0" not in sql, f"Malformed bracket expression in SQL: {sql}"
+
+
+def test_call_subquery_multiple_calls_distinct_lateral_aliases():
+    """Regression #47: two CALL subqueries must use _call0 and _call1 respectively."""
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) "
+        "CALL { WITH n MATCH (n)-[:WORKS_AT]->(c:Company) RETURN collect(c.name) AS c_list } "
+        "CALL { WITH n MATCH (n)-[:KNOWS]->(f:Person) RETURN collect(f.name) AS f_list } "
+        "RETURN n.name, c_list, f_list"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert '_call0."c_list"' in sql, f"Expected _call0.\"c_list\": {sql}"
+    assert '_call1."f_list"' in sql, f"Expected _call1.\"f_list\": {sql}"
+
+
+def _make_label_map_with_traversal_only() -> CypherLabelMap:
+    """Label map with a traversal-only node for regression #47 production path."""
+    pets_meta = NodeMapping(
+        label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
+        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
+        catalog_name="postgresql", schema_name="public", table_name="pets",
+        properties={"name": "name", "id": "id"},
+    )
+    traces_meta = NodeMapping(
+        label="Ops_Traces", type_name="Ops_Traces", domain_label="Ops",
+        table_label="Traces", table_id=99, source_id="ops",
+        id_column="span_id", pk_columns=[],
+        catalog_name="ops", schema_name="ops", table_name="spans",
+        properties={"serviceName": "service_name", "spanId": "span_id"},
+        traversal_only=True,
+    )
+    has_traces_rel = RelationshipMapping(
+        rel_type="HAS_TRACES", source_label="Pets", target_label="Ops_Traces",
+        join_source_column="id", join_target_column="pet_id", field_name="_traces",
+    )
+    return CypherLabelMap(
+        nodes={"Pets": pets_meta, "Ops_Traces": traces_meta},
+        relationships={"HAS_TRACES": has_traces_rel},
+    )
+
+
+def test_call_subquery_traversal_only_node_collect_slice_qualified():
+    """Regression #47 (production): CALL { WITH a ... RETURN collect(d)[..N] AS d_list }
+    — production path uses whole-node collect with slice, traversal-only target.
+    The outer RETURN's bare `d_list` must be qualified as `_call0."d_list"`.
+    """
+    lm = _make_label_map_with_traversal_only()
+    ast = parse_cypher(
+        "MATCH (a:Pets) "
+        "CALL { WITH a OPTIONAL MATCH (a:Pets)-[:HAS_TRACES]->(d:Ops_Traces) "
+        "RETURN collect(d)[..2] AS d_list } "
+        "RETURN a.name, [x IN d_list | x.serviceName]"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert '_call0."d_list"' in sql, (
+        f"Regression #47 production: outer SELECT must use _call0.\"d_list\", not bare d_list: {sql}"
+    )

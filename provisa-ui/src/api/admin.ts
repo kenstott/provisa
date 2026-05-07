@@ -681,6 +681,9 @@ export async function compileQuery(
   roleId: string,
   query: string,
   variables?: Record<string, unknown>,
+  flatSql?: boolean,
+  flatCypher?: boolean,
+  nodeOnlyCypher?: boolean,
 ): Promise<CompileResult | { queries: CompileResult[] }> {
   const data = await gql<{ compileQuery: CompileResult[] }>(
     `mutation CompileQuery($input: CompileQueryInput!) {
@@ -691,7 +694,7 @@ export async function compileQuery(
         enforcement { rlsFiltersApplied columnsExcluded schemaScope maskingApplied ceilingApplied route }
       }
     }`,
-    { input: { query, role: roleId, variables: variables ?? null } },
+    { input: { query, role: roleId, variables: variables ?? null, flatSql: flatSql ?? false, flatCypher: flatCypher ?? false, nodeOnlyCypher: nodeOnlyCypher ?? false } },
   );
   const results = data.compileQuery.map((r: any) => ({
     ...r,

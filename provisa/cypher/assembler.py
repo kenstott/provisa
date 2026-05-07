@@ -231,6 +231,8 @@ def _assemble_with_paths(
 
 def to_serializable(obj: Any) -> Any:
     """Recursively convert Node/Edge/Path to JSON-serializable dicts."""
+    import datetime
+    from decimal import Decimal
     if isinstance(obj, Node):
         return {"id": obj.id, "label": obj.label, "properties": obj.properties}
     if isinstance(obj, Edge):
@@ -252,4 +254,10 @@ def to_serializable(obj: Any) -> Any:
         return {k: to_serializable(v) for k, v in obj.items()}
     if isinstance(obj, list):
         return [to_serializable(i) for i in obj]
+    if isinstance(obj, datetime.datetime):
+        return obj.isoformat()
+    if isinstance(obj, datetime.date):
+        return obj.isoformat()
+    if isinstance(obj, Decimal):
+        return float(obj)
     return obj

@@ -54,13 +54,20 @@ class CorrelatedCallMixin:
         for i, call in enumerate(call_subqueries):
             if not call.imported_vars:
                 continue  # non-correlated: handled by cypher_calls_to_sql_list
-            lateral_expr = self._build_lateral(call, f"_call{i}")
+            lateral_alias = f"_call{i}"
+            lateral_expr = self._build_lateral(call, lateral_alias)
             if lateral_expr is not None:
                 lateral_joins.append({
                     "table": lateral_expr,
                     "on": None,
                     "join_type": "CROSS",
                 })
+                # Register return variables so the outer RETURN can qualify them
+                if call.body.return_clause:
+                    for item in call.body.return_clause.items:
+                        var_name = item.alias or item.expression.strip()
+                        if var_name:
+                            self._call_var_to_lateral[var_name] = lateral_alias
         return lateral_joins
 
     def _build_lateral(

@@ -366,9 +366,8 @@ def build_context(si: object) -> CompilationContext:
                 source_constant=t.table_id,
             )
 
-    # Inject synthetic traversal joins: every data table → implicit-domain tables
+    # Inject synthetic traversal joins: registered_tables → ops tables
     # that carry a `table_name` FK column (e.g. traces, queries).
-    # Join key: data._name_ (virtual → literal table name) = ops_table.table_name
     _IMPLICIT_DOMAINS = {"meta", "ops"}
     for ops_t in tables:
         if ops_t.domain_id not in _IMPLICIT_DOMAINS or ops_t.domain_id == "meta":
@@ -387,11 +386,9 @@ def build_context(si: object) -> CompilationContext:
         )
         _base = ops_t.field_name.split("__", 1)[1] if "__" in ops_t.field_name else ops_t.field_name
         join_field = f"_{_base}"
-        for t in tables:
-            if t.domain_id in _IMPLICIT_DOMAINS:
-                continue
-            ctx.joins[(t.type_name, join_field)] = JoinMeta(
-                source_column="_name_",
+        if meta_rt:
+            ctx.joins[(meta_rt.type_name, join_field)] = JoinMeta(
+                source_column="table_name",
                 target_column="table_name",
                 source_column_type="text",
                 target_column_type="text",
@@ -908,6 +905,7 @@ def _collect_nested_columns(
     collector: ParamCollector,
     variables: dict | None,
     cardinality: str | None = None,
+    flat: bool = False,
 ) -> int:
     """Recursively collect columns and JOINs from nested selections."""
     for nested_sel in selections:
@@ -943,6 +941,7 @@ def _collect_nested_columns(
                     nested_alias, nested_join_meta.target_column,
                     nested_join_meta.target_column_type, nested_join_meta.source_column_type,
                 )
+            nested_key = nested_sel.alias.value if nested_sel.alias else nested_name
             if nested_join_meta.default_limit is not None or _has_nested_db_args(nested_sel):
                 join_clauses.append(
                     _lateral_join(
@@ -955,6 +954,29 @@ def _collect_nested_columns(
                         use_catalog,
                     )
                 )
+            elif not flat and nested_join_meta.cardinality == "one-to-many" and nested_sel.selection_set:
+                for _leaf_sel in nested_sel.selection_set.selections:
+                    if not isinstance(_leaf_sel, FieldNode):
+                        continue
+                    _leaf_name = _leaf_sel.name.value
+                    if (nested_join_meta.target.type_name, _leaf_name) in ctx.joins:
+                        continue
+                    _leaf_key = _leaf_sel.alias.value if _leaf_sel.alias else _leaf_name
+                    _phys_col = ctx.gql_to_physical.get((nested_join_meta.target.table_id, _leaf_name), _leaf_name)
+                    _col_alias = f"{nesting_path}__{nested_key}__{_leaf_key}"
+                    select_parts.append(
+                        f'(SELECT ARRAY_AGG({_q(nested_alias)}.{_q(_phys_col)})'
+                        f' FROM {_table_ref(nested_join_meta.target, use_catalog)} {_q(nested_alias)}'
+                        f' WHERE {tgt_expr} = {src_expr})'
+                        f' AS {_q(_col_alias)}'
+                    )
+                    columns.append(ColumnRef(
+                        alias=nested_alias,
+                        column=_leaf_key,
+                        field_name=_leaf_key,
+                        nested_in=f"{nesting_path}.{nested_key}",
+                        cardinality=nested_join_meta.cardinality,
+                    ))
             else:
                 join_clauses.append(
                     f'LEFT JOIN {_table_ref(nested_join_meta.target, use_catalog)}'
@@ -963,7 +985,7 @@ def _collect_nested_columns(
                 )
 
             sub_path = f"{nesting_path}.{nested_name}"
-            if nested_sel.selection_set:
+            if nested_sel.selection_set and not (not flat and nested_join_meta.cardinality == "one-to-many" and nested_join_meta.default_limit is None and not _has_nested_db_args(nested_sel)):
                 alias_counter = _collect_nested_columns(
                     nested_sel.selection_set.selections,
                     nested_alias,
@@ -980,6 +1002,7 @@ def _collect_nested_columns(
                     collector,
                     variables,
                     cardinality=nested_join_meta.cardinality,
+                    flat=flat,
                 )
         else:
             # GQL OBJECT column stored as JSON — expand sub-selections recursively via -> / ->>
@@ -1047,6 +1070,7 @@ def _compile_root_field(
     ctx: CompilationContext,
     variables: dict | None,
     use_catalog: bool = False,
+    flat: bool = False,
 ) -> CompiledQuery:
     """Compile a single root query field to SQL."""
     root_name = field_node.alias.value if field_node.alias else field_node.name.value
@@ -1112,32 +1136,74 @@ def _compile_root_field(
                         use_catalog,
                     )
                 )
+                if sel.selection_set:
+                    alias_counter = _collect_nested_columns(
+                        sel.selection_set.selections,
+                        join_alias,
+                        join_meta.target.type_name,
+                        join_meta.target,
+                        sel_name,
+                        ctx,
+                        select_parts,
+                        columns,
+                        join_clauses,
+                        sources,
+                        alias_counter,
+                        use_catalog,
+                        collector,
+                        variables,
+                        cardinality=join_meta.cardinality,
+                        flat=flat,
+                    )
+            elif not flat and join_meta.cardinality == "one-to-many" and sel.selection_set:
+                # Non-flat one-to-many: correlated ARRAY_AGG subquery per scalar column.
+                for _nested_sel in sel.selection_set.selections:
+                    if not isinstance(_nested_sel, FieldNode):
+                        continue
+                    _nested_name = _nested_sel.name.value
+                    if (join_meta.target.type_name, _nested_name) in ctx.joins:
+                        continue
+                    _nested_key = _nested_sel.alias.value if _nested_sel.alias else _nested_name
+                    _phys_col = ctx.gql_to_physical.get((join_meta.target.table_id, _nested_name), _nested_name)
+                    _col_alias = f"{sel_name}__{_nested_key}"
+                    select_parts.append(
+                        f'(SELECT ARRAY_AGG({_q(join_alias)}.{_q(_phys_col)})'
+                        f' FROM {_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}'
+                        f' WHERE {tgt_expr} = {src_expr})'
+                        f' AS {_q(_col_alias)}'
+                    )
+                    columns.append(ColumnRef(
+                        alias=join_alias,
+                        column=_nested_key,
+                        field_name=_nested_key,
+                        nested_in=sel_name,
+                        cardinality=join_meta.cardinality,
+                    ))
             else:
                 join_clauses.append(
                     f'LEFT JOIN {_table_ref(join_meta.target, use_catalog)}'
                     f' {_q(join_alias)}'
                     f' ON {src_expr} = {tgt_expr}'
                 )
-
-            # Add nested columns (recursively handle sub-relationships)
-            if sel.selection_set:
-                alias_counter = _collect_nested_columns(
-                    sel.selection_set.selections,
-                    join_alias,
-                    join_meta.target.type_name,
-                    join_meta.target,
-                    sel_name,
-                    ctx,
-                    select_parts,
-                    columns,
-                    join_clauses,
-                    sources,
-                    alias_counter,
-                    use_catalog,
-                    collector,
-                    variables,
-                    cardinality=join_meta.cardinality,
-                )
+                if sel.selection_set:
+                    alias_counter = _collect_nested_columns(
+                        sel.selection_set.selections,
+                        join_alias,
+                        join_meta.target.type_name,
+                        join_meta.target,
+                        sel_name,
+                        ctx,
+                        select_parts,
+                        columns,
+                        join_clauses,
+                        sources,
+                        alias_counter,
+                        use_catalog,
+                        collector,
+                        variables,
+                        cardinality=join_meta.cardinality,
+                        flat=flat,
+                    )
         else:
             # GQL OBJECT column stored as JSON — expand sub-selections recursively via -> / ->>
             if sel.selection_set and (table.table_id, sel_name) in ctx.gql_json_columns:
@@ -1739,6 +1805,7 @@ def compile_query(
     ctx: CompilationContext,
     variables: dict | None = None,
     use_catalog: bool = False,
+    flat: bool = False,
 ) -> list[CompiledQuery]:
     """Compile a validated GraphQL document to SQL queries.
 
@@ -1774,7 +1841,7 @@ def compile_query(
                         )
                     else:
                         compiled = _compile_root_field(
-                            sel, ctx, variables, use_catalog,
+                            sel, ctx, variables, use_catalog, flat=flat,
                         )
                     span.set_attribute("db.statement", compiled.sql[:1000])
                 # Track source tables for warm-table promotion (REQ-AD5)

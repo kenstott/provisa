@@ -377,6 +377,7 @@ async def graphql_endpoint(
             query_session_props=directives.to_session_props(),
             cache_ttl=directives.cache_ttl,
             no_cache=directives.no_cache,
+            query_text=request.query,
         )
 
     if stats_enabled:
@@ -1177,6 +1178,7 @@ async def _execute_one_field(
     query_session_props: dict | None = None,
     response_cache_ttl: int | None = None,
     no_cache: bool = False,
+    query_text: str | None = None,
 ):
     """Execute a single compiled query field through the full pipeline.
 
@@ -1448,6 +1450,8 @@ async def _execute_one_field(
                 "provisa.domain": _root_domain,
                 "provisa.role": role_id or "",
             }
+            if query_text is not None:
+                _span_attrs["provisa.query_text"] = query_text
             _extra_table_attrs: list[dict[str, str]] = []
 
             result = await _loop.run_in_executor(
@@ -1639,7 +1643,7 @@ async def _execute_one_field(
 
 
 
-async def _handle_query(document, ctx, rls, state, variables, role, output_format="json", role_id="admin", *, force_redirect=False, redirect_threshold=None, redirect_format=None, steward_hint: str | None = None, query_session_props: dict | None = None, cache_ttl: int | None = None, no_cache: bool = False):
+async def _handle_query(document, ctx, rls, state, variables, role, output_format="json", role_id="admin", *, force_redirect=False, redirect_threshold=None, redirect_format=None, steward_hint: str | None = None, query_session_props: dict | None = None, cache_ttl: int | None = None, no_cache: bool = False, query_text: str | None = None):
     """Handle a GraphQL query operation with content negotiation.
 
     Pipeline per root field: compile → RLS → masking → MV rewrite → sampling
@@ -1706,6 +1710,7 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
                     query_session_props=query_session_props,
                     response_cache_ttl=cache_ttl,
                     no_cache=no_cache,
+                    query_text=query_text,
                 ),
                 timeout=_request_timeout(),
             )
@@ -1746,6 +1751,7 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
                     query_session_props=query_session_props,
                     response_cache_ttl=cache_ttl,
                     no_cache=no_cache,
+                    query_text=query_text,
                 )
                 for compiled in prepared
             ]),

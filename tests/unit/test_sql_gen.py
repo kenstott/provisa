@@ -512,6 +512,192 @@ class TestNestedRelationship:
         assert 'ORDER BY "amount" DESC LIMIT $2 OFFSET $3) "t1" ON TRUE' in sql
         assert results[0].params == [100, 2, 1]
 
+    def test_one_to_many_flat_false_uses_array_agg(self):
+        """flat=False on a one-to-many join (no args, no default_limit) → ARRAY_AGG subquery."""
+        tables = [
+            {
+                "id": 1,
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "customers",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "name", "visible_to": ["admin"]},
+                ],
+            },
+            {
+                "id": 2,
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "customer_id", "visible_to": ["admin"]},
+                    {"column_name": "amount", "visible_to": ["admin"]},
+                ],
+            },
+        ]
+        relationships = [
+            {
+                "id": "cust-orders",
+                "source_table_id": 1,
+                "target_table_id": 2,
+                "source_column": "id",
+                "target_column": "customer_id",
+                "cardinality": "one-to-many",
+            },
+        ]
+        column_types = {
+            1: [_col("id", "integer"), _col("name")],
+            2: [_col("id", "integer"), _col("customer_id", "integer"), _col("amount", "integer")],
+        }
+        schema, ctx = _build_schema_and_ctx(
+            tables=tables,
+            relationships=relationships,
+            column_types=column_types,
+        )
+        doc = parse("{ customers { id orders { amount } } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx, flat=False)
+        sql = results[0].sql
+        assert "ARRAY_AGG" in sql, f"Expected ARRAY_AGG in non-flat SQL: {sql}"
+        assert "LEFT JOIN" not in sql, f"Expected no LEFT JOIN in non-flat SQL: {sql}"
+
+    def test_one_to_many_flat_true_uses_left_join(self):
+        """flat=True on a one-to-many join (no args) → LEFT JOIN."""
+        tables = [
+            {
+                "id": 1,
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "customers",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "name", "visible_to": ["admin"]},
+                ],
+            },
+            {
+                "id": 2,
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "customer_id", "visible_to": ["admin"]},
+                    {"column_name": "amount", "visible_to": ["admin"]},
+                ],
+            },
+        ]
+        relationships = [
+            {
+                "id": "cust-orders",
+                "source_table_id": 1,
+                "target_table_id": 2,
+                "source_column": "id",
+                "target_column": "customer_id",
+                "cardinality": "one-to-many",
+            },
+        ]
+        column_types = {
+            1: [_col("id", "integer"), _col("name")],
+            2: [_col("id", "integer"), _col("customer_id", "integer"), _col("amount", "integer")],
+        }
+        schema, ctx = _build_schema_and_ctx(
+            tables=tables,
+            relationships=relationships,
+            column_types=column_types,
+        )
+        doc = parse("{ customers { id orders { amount } } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx, flat=True)
+        sql = results[0].sql
+        assert "LEFT JOIN" in sql, f"Expected LEFT JOIN in flat SQL: {sql}"
+        assert "ARRAY_AGG" not in sql, f"Expected no ARRAY_AGG in flat SQL: {sql}"
+
+    def test_deeply_nested_one_to_many_flat_false_uses_array_agg(self):
+        """flat=False on a one-to-many join nested inside another join → ARRAY_AGG in nested position."""
+        tables = [
+            {
+                "id": 1,
+                "source_id": "pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "departments",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "name", "visible_to": ["admin"]},
+                ],
+            },
+            {
+                "id": 2,
+                "source_id": "pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "employees",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "dept_id", "visible_to": ["admin"]},
+                    {"column_name": "name", "visible_to": ["admin"]},
+                ],
+            },
+            {
+                "id": 3,
+                "source_id": "pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "emp_id", "visible_to": ["admin"]},
+                    {"column_name": "amount", "visible_to": ["admin"]},
+                ],
+            },
+        ]
+        relationships = [
+            {
+                "id": "dept-emps",
+                "source_table_id": 1,
+                "target_table_id": 2,
+                "source_column": "id",
+                "target_column": "dept_id",
+                "cardinality": "one-to-many",
+            },
+            {
+                "id": "emp-orders",
+                "source_table_id": 2,
+                "target_table_id": 3,
+                "source_column": "id",
+                "target_column": "emp_id",
+                "cardinality": "one-to-many",
+            },
+        ]
+        column_types = {
+            1: [_col("id", "integer"), _col("name")],
+            2: [_col("id", "integer"), _col("dept_id", "integer"), _col("name")],
+            3: [_col("id", "integer"), _col("emp_id", "integer"), _col("amount", "integer")],
+        }
+        schema, ctx = _build_schema_and_ctx(
+            tables=tables,
+            relationships=relationships,
+            column_types=column_types,
+        )
+        doc = parse("{ departments { id employees { id orders { amount } } } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx, flat=False)
+        sql = results[0].sql
+        assert "ARRAY_AGG" in sql, f"Expected ARRAY_AGG in non-flat deeply nested SQL: {sql}"
+
     def test_join_tracks_multiple_sources(self):
         """When join crosses sources, both source_ids are tracked."""
         tables = [

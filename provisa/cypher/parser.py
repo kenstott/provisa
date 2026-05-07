@@ -726,8 +726,9 @@ class _Parser:
                     i += 1
                 else:
                     break
-            # Only treat as correlated if followed immediately by MATCH
-            if imported_vars and i < len(inner_tokens) and inner_tokens[i].value.upper() == "MATCH":
+            # Only treat as correlated if followed by a statement-starting keyword
+            _BODY_START = {"MATCH", "OPTIONAL", "UNWIND", "WITH", "CALL"}
+            if imported_vars and i < len(inner_tokens) and inner_tokens[i].value.upper() in _BODY_START:
                 body_tokens = inner_tokens[i:]  # strip the leading WITH <vars>
             else:
                 imported_vars = []  # not correlated — reset

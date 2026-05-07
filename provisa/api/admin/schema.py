@@ -1551,7 +1551,7 @@ class Mutation:
     async def compile_query(self, input: CompileQueryInput) -> list[CompileQueryResult]:
         from provisa.api.admin import dev_queries
         variables = dict(input.variables) if input.variables else None
-        results = await dev_queries.compile_query(input.role, input.query, variables)
+        results = await dev_queries.compile_query(input.role, input.query, variables, flat_sql=input.flat_sql, flat_cypher=input.flat_cypher, node_only_cypher=input.node_only_cypher)
         out = []
         for r in results:
             enf = r["enforcement"]

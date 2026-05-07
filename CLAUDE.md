@@ -1,4 +1,4 @@
-CRITICAL: Never add fallback values or silent error handling. Caused repeated production issues.
+CRITICAL: Never add fallback values or silent error handling. Caused repeated production issues. When a value might be missing, find the design guarantee or fix the upstream source — never patch around it.
 CRITICAL: V1 development. Never add migrations.
 CRITICAL: Maximum brevity. No pleasantries. No explanations unless asked. Code and facts only.
 CRITICAL: All Playwright tests must import `test` from `./coverage`, never directly from `@playwright/test`. The base fixture in `provisa-ui/e2e/coverage.ts` catches uncaught browser exceptions automatically.

@@ -28,7 +28,17 @@ import { cypherLanguage } from "@neo4j-cypher/codemirror";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 
-function SqlPanel({ compiled, hideSql }: { compiled: CompileResult; hideSql?: boolean }) {
+function SqlPanel({
+  compiled,
+  hideSql,
+  aggregated,
+  onFlatSqlChange,
+}: {
+  compiled: CompileResult;
+  hideSql?: boolean;
+  aggregated?: boolean;
+  onFlatSqlChange?: (v: boolean) => void;
+}) {
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
   const sqlExtensions = useMemo(
@@ -121,7 +131,15 @@ function SqlPanel({ compiled, hideSql }: { compiled: CompileResult; hideSql?: bo
       {!hideSql && (
         <>
           <div className="provisa-tools-code-header">
-            <span className="provisa-tools-label">{sqlLabel}</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span className="provisa-tools-label">{sqlLabel}</span>
+              {onFlatSqlChange && (
+                <label className="provisa-tools-option" onClick={e => e.stopPropagation()}>
+                  <input type="checkbox" checked={aggregated ?? false} onChange={e => onFlatSqlChange(e.target.checked)} />
+                  GraphQL-Shape (Aggregated)
+                </label>
+              )}
+            </span>
             <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <button
                 className="provisa-tools-copy"
@@ -173,7 +191,15 @@ function SqlPanel({ compiled, hideSql }: { compiled: CompileResult; hideSql?: bo
   );
 }
 
-function CombinedSqlPanel({ compiledList }: { compiledList: CompileResult[] }) {
+function CombinedSqlPanel({
+  compiledList,
+  aggregated,
+  onFlatSqlChange,
+}: {
+  compiledList: CompileResult[];
+  aggregated?: boolean;
+  onFlatSqlChange?: (v: boolean) => void;
+}) {
   const [copied, setCopied] = useState(false);
   const sqlExtensions = useMemo(
     () => [sql({ dialect: PostgreSQL }), EditorView.lineWrapping],
@@ -200,7 +226,15 @@ function CombinedSqlPanel({ compiledList }: { compiledList: CompileResult[] }) {
   return (
     <div className="provisa-tools-sql">
       <div className="provisa-tools-code-header">
-        <span className="provisa-tools-label">Semantic SQL</span>
+        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span className="provisa-tools-label">Semantic SQL</span>
+          {onFlatSqlChange && (
+            <label className="provisa-tools-option" onClick={e => e.stopPropagation()}>
+              <input type="checkbox" checked={aggregated ?? false} onChange={e => onFlatSqlChange(e.target.checked)} />
+              GraphQL-Shape (Aggregated)
+            </label>
+          )}
+        </span>
         <button className="provisa-tools-copy" onClick={handleCopy} title="Copy SQL">
           {copied ? (
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
@@ -227,6 +261,7 @@ function CombinedSqlPanel({ compiledList }: { compiledList: CompileResult[] }) {
 }
 
 
+
 function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const [query] = useOperationsEditorState();
   const [compiled, setCompiled] = useState<CompileResult[] | null>(null);
@@ -234,6 +269,9 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const [cypherError, setCypherError] = useState<string | null>(null);
   const [cypherCopied, setCypherCopied] = useState(false);
   const [cypherExpanded, setCypherExpanded] = useState(true);
+  const [aggregatedSql, setAggregatedSql] = useState(true);
+  const [aggregatedCypher, setAggregatedCypher] = useState(true);
+  const [includeFields, setIncludeFields] = useState(false);
   const navigate = useNavigate();
 
   const cypherExtensions = useMemo(
@@ -250,7 +288,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       try {
-        const raw = await compileQuery(roleId, query);
+        const raw = await compileQuery(roleId, query, undefined, !aggregatedSql, includeFields ? !aggregatedCypher : false, !includeFields);
         // Normalize: single result or multi-root { queries: [...] }
         const results: CompileResult[] = Array.isArray(raw)
           ? raw
@@ -267,87 +305,102 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
       }
     }, 600);
     return () => clearTimeout(debounceRef.current);
-  }, [roleId, query]);
+  }, [roleId, query, aggregatedSql, aggregatedCypher, includeFields]);
 
   return (
     <div className="provisa-tools">
       {compiled && compiled.length === 1 && (
-        <SqlPanel compiled={compiled[0]} />
+        <SqlPanel compiled={compiled[0]} aggregated={aggregatedSql} onFlatSqlChange={setAggregatedSql} />
       )}
       {compiled && compiled.length > 1 && (
         <>
           {compiled.map((c, i) => (
             <SqlPanel key={c.root_field ?? i} compiled={c} hideSql />
           ))}
-          <CombinedSqlPanel compiledList={compiled} />
+          <CombinedSqlPanel compiledList={compiled} aggregated={aggregatedSql} onFlatSqlChange={setAggregatedSql} />
         </>
       )}
-      {(cypherQuery || cypherError) && (
-        <div className="provisa-tools-cypher">
-          <div
-            className="provisa-tools-code-header provisa-tools-expandable"
-            onClick={() => setCypherExpanded(v => !v)}
-          >
-            <span className="provisa-tools-label">Cypher</span>
-            <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              {cypherQuery && (
-                <>
-                  <button
-                    className="provisa-tools-copy"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigator.clipboard.writeText(cypherQuery).then(() => {
-                        setCypherCopied(true);
-                        setTimeout(() => setCypherCopied(false), 2000);
-                      });
-                    }}
-                    title="Copy Cypher"
-                  >
-                    {cypherCopied ? (
+      {(cypherQuery || cypherError) && (() => {
+        const displayedCypher = cypherQuery;
+        return (
+          <div className="provisa-tools-cypher">
+            <div
+              className="provisa-tools-code-header provisa-tools-expandable"
+              onClick={() => setCypherExpanded(v => !v)}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span className="provisa-tools-label">Cypher</span>
+                <label className="provisa-tools-option" onClick={e => e.stopPropagation()}>
+                  <input type="checkbox" checked={includeFields} onChange={e => setIncludeFields(e.target.checked)} />
+                  Include fields
+                </label>
+                {includeFields && (
+                  <label className="provisa-tools-option" onClick={e => e.stopPropagation()}>
+                    <input type="checkbox" checked={aggregatedCypher} onChange={e => setAggregatedCypher(e.target.checked)} />
+                    GraphQL-Shape (Aggregated)
+                  </label>
+                )}
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                {cypherQuery && (
+                  <>
+                    <button
+                      className="provisa-tools-copy"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(displayedCypher).then(() => {
+                          setCypherCopied(true);
+                          setTimeout(() => setCypherCopied(false), 2000);
+                        });
+                      }}
+                      title="Copy Cypher"
+                    >
+                      {cypherCopied ? (
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                          <rect x="9" y="9" width="13" height="13" rx="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      )}
+                    </button>
+                    <button
+                      className="provisa-tools-copy"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        localStorage.setItem("provisa.graph.pending_query", displayedCypher);
+                        navigate("/graph");
+                      }}
+                      title="Open in Graph"
+                    >
                       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-                        <polyline points="20 6 9 17 4 12" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                        <polyline points="12 5 19 12 12 19" />
                       </svg>
-                    ) : (
-                      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-                        <rect x="9" y="9" width="13" height="13" rx="2" />
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                      </svg>
-                    )}
-                  </button>
-                  <button
-                    className="provisa-tools-copy"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      localStorage.setItem("provisa.graph.pending_query", cypherQuery);
-                      navigate("/graph");
-                    }}
-                    title="Open in Graph"
-                  >
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                      <polyline points="12 5 19 12 12 19" />
-                    </svg>
-                  </button>
-                </>
-              )}
-              <span className="provisa-tools-chevron">{cypherExpanded ? "▾" : "▸"}</span>
-            </span>
+                    </button>
+                  </>
+                )}
+                <span className="provisa-tools-chevron">{cypherExpanded ? "▾" : "▸"}</span>
+              </span>
+            </div>
+            {cypherExpanded && cypherQuery && (
+              <CodeMirror
+                value={displayedCypher}
+                extensions={cypherExtensions}
+                theme={oneDark}
+                editable={false}
+                basicSetup={{ lineNumbers: false, foldGutter: true }}
+                className="provisa-tools-cypher-editor"
+              />
+            )}
+            {cypherExpanded && cypherError && !cypherQuery && (
+              <div className="provisa-tools-cypher-error">{cypherError}</div>
+            )}
           </div>
-          {cypherExpanded && cypherQuery && (
-            <CodeMirror
-              value={cypherQuery}
-              extensions={cypherExtensions}
-              theme={oneDark}
-              onChange={(val) => setCypherQuery(val)}
-              basicSetup={{ lineNumbers: false, foldGutter: true }}
-              className="provisa-tools-cypher-editor"
-            />
-          )}
-          {cypherExpanded && cypherError && !cypherQuery && (
-            <div className="provisa-tools-cypher-error">{cypherError}</div>
-          )}
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

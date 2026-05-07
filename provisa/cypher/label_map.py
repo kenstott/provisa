@@ -53,6 +53,7 @@ class RelationshipMapping:
     field_name: str        # GraphQL field name that defines this join
     alias: str | None = None  # relationship alias from config (e.g. WORKS_FOR)
     source_constant: int | None = None  # when set, use as literal join value instead of source column
+    many: bool = False  # True when cardinality is one-to-many (source is parent, target is array)
 
 
 class CypherLabelMap:
@@ -267,30 +268,12 @@ class CypherLabelMap:
                 join_target_column=join_meta.target_column,
                 field_name=gql_field_name,
                 alias=cypher_alias,
+                source_constant=getattr(join_meta, "source_constant", None),
+                many=(cardinality == "one-to-many"),
             )
-            relationships[rel_type] = rm
+            rel_key = f"{rel_type}::{source_type_name}→{join_meta.target.type_name}"
+            relationships[rel_key] = rm
             aliases.setdefault(rel_type, []).append(rm)
-
-        # Add HAS_TABLE edges: every non-meta user node → Meta:RegisteredTables
-        meta_rt = next(
-            (nm for nm in nodes.values() if nm.domain_label == "Meta" and nm.table_name == "registered_tables"),
-            None,
-        )
-        if meta_rt:
-            for type_name, nm in list(nodes.items()):
-                if nm.domain_label == "Meta":
-                    continue
-                rm = RelationshipMapping(
-                    rel_type="HAS_TABLE",
-                    source_label=type_name,
-                    target_label=meta_rt.type_name,
-                    join_source_column="__table_id__",
-                    join_target_column="id",
-                    field_name="_meta",
-                    source_constant=nm.table_id,
-                )
-                relationships[f"HAS_TABLE::{type_name}"] = rm
-                aliases.setdefault("HAS_TABLE", []).append(rm)
 
         # Cross-domain traversal nodes: reachable via registered relationships but not
         # directly accessible. Marked traversal_only=True — cannot be MATCH start nodes.
@@ -376,6 +359,7 @@ class CypherLabelMap:
                         join_target_column=rel["target_column"],
                         field_name=rel.get("graphql_alias") or "",
                         alias=cypher_alias,
+                        many=(rel_cardinality == "one-to-many"),
                     )
                     relationships[rel_key] = xrel
                     aliases.setdefault(rel_type, []).append(xrel)

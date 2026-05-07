@@ -208,7 +208,7 @@ def _compile_sql_submit(query: str, ctx) -> tuple[str, str, list[int], str | Non
 # Public API
 # ---------------------------------------------------------------------------
 
-async def compile_query(role_id: str, query: str, variables: dict | None) -> list[dict[str, Any]]:
+async def compile_query(role_id: str, query: str, variables: dict | None, flat_sql: bool = False, flat_cypher: bool = False, node_only_cypher: bool = False) -> list[dict[str, Any]]:
     """Compile a GraphQL query → SQL. Returns list of compile result dicts."""
     from provisa.api.app import state
     from provisa.compiler.directives import extract_directives, extract_directives_from_sql_comments, merge_directives
@@ -247,7 +247,7 @@ async def compile_query(role_id: str, query: str, variables: dict | None) -> lis
         raise ValueError(str(e))
 
     effective_variables = coerce_variable_defaults(document, variables)
-    compiled_queries = _compile_query(document, ctx, effective_variables)
+    compiled_queries = _compile_query(document, ctx, effective_variables, flat=flat_sql)
     if not compiled_queries:
         raise ValueError("No query fields found")
 
@@ -324,7 +324,7 @@ async def compile_query(role_id: str, query: str, variables: dict | None) -> lis
                 all_column_types=_cache.get("column_types"),
                 source_catalogs=getattr(state, "source_catalogs", None),
             )
-            compiled_cypher = semantic_sql_to_cypher(raw_semantic_sql, _label_map, ctx)
+            compiled_cypher = semantic_sql_to_cypher(raw_semantic_sql, _label_map, ctx, override_limit=compiled.result_limit, params=compiled.params, flat=flat_cypher, node_only=node_only_cypher)
             if compiled_cypher is None:
                 cypher_error = "Query structure cannot be represented as a Cypher pattern"
         except Exception as e:

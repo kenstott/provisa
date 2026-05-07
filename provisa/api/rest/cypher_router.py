@@ -54,14 +54,20 @@ def _span_attrs_from_semantic_sql(
     tables: set[str] = set()
     domains: set[str] = set()
     try:
-        for tbl in sqlglot.parse_one(semantic_sql, dialect="postgres").find_all(sqlglot.exp.Table):
-            db = tbl.db
-            name = tbl.name
-            if db:
-                tables.add(f"{db}.{name}")
-                domains.add(db)
-            elif name:
-                tables.add(name)
+        parsed = sqlglot.parse_one(semantic_sql, dialect="postgres")
+        # Walk only the primary FROM clause — LATERAL joins (ops/meta traversal) live in
+        # parsed.args["joins"] and must be excluded so provisa.table is a single root
+        # table name rather than a comma list that never matches the exact-match join condition.
+        from_node = parsed.args.get("from")
+        if from_node:
+            for tbl in from_node.find_all(sqlglot.exp.Table):
+                db = tbl.db
+                name = tbl.name
+                if db:
+                    tables.add(f"{db}.{name}")
+                    domains.add(db)
+                elif name:
+                    tables.add(name)
     except Exception:
         pass
     attrs: dict[str, str] = {

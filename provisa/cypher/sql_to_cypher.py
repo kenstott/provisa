@@ -32,6 +32,10 @@ def semantic_sql_to_cypher(
     semantic_sql: str,
     label_map: CypherLabelMap,
     ctx: object,
+    override_limit: int | None = None,
+    params: list | None = None,
+    flat: bool = False,
+    node_only: bool = False,
 ) -> str | None:
     """Convert semantic SQL to an equivalent Cypher query.
 
@@ -40,9 +44,12 @@ def semantic_sql_to_cypher(
     MATCH (n:SalesData).
 
     Args:
-        semantic_sql: Semantic SQL using domain.field_name table references.
-        label_map:    CypherLabelMap built from the same CompilationContext.
-        ctx:          CompilationContext (used to map domain.field_name → label).
+        semantic_sql:   Semantic SQL using domain.field_name table references.
+        label_map:      CypherLabelMap built from the same CompilationContext.
+        ctx:            CompilationContext (used to map domain.field_name → label).
+        override_limit: When set, replaces the SQL LIMIT (used when sql_gen emits a
+                        safety-cap LIMIT instead of the user-supplied value, e.g. when
+                        lateral ops joins are present).
 
     Returns:
         Cypher string, or None if the SQL cannot be translated.
@@ -123,13 +130,19 @@ def semantic_sql_to_cypher(
 
     # --- Resolve JOINs → relationship segments ---
     joins = tree.args.get("joins") or []
-    # Each entry: (is_optional, rel_type | None, src_sql_alias, tgt_sql_alias, tgt_label)
-    join_segments: list[tuple[bool, str | None, str, str, str]] = []
+    # Each entry: (is_optional, rel_type | None, src_sql_alias, tgt_sql_alias, tgt_label, inner_limit | None, many)
+    join_segments: list[tuple[bool, str | None, str, str, str, int | None, bool]] = []
 
-    # Build label → rel_type lookup for use with LATERAL joins (no ON condition to parse)
+    # Build label → rel_type lookup for use with LATERAL joins (no ON condition to parse).
+    # Key by display_label (e.g. "RegisteredTables"), not type_name (e.g. "Meta_RegisteredTables"),
+    # because _resolve_label returns display_label and must match here.
     label_to_rel: dict[str, str | None] = {}
+    label_to_many: dict[str, bool] = {}
     for rel in label_map.relationships.values():
-        label_to_rel[rel.target_label] = rel.rel_type
+        tgt_nm = label_map.nodes.get(rel.target_label)
+        tgt_display = label_map.display_label(tgt_nm) if tgt_nm is not None else rel.target_label
+        label_to_rel[tgt_display] = rel.rel_type
+        label_to_many[tgt_display] = rel.many
 
     skipped_aliases: set[str] = set()
     for join in joins:
@@ -152,7 +165,17 @@ def semantic_sql_to_cypher(
                 tgt_label = _resolve_label(inner_tbl, domain_to_label)
                 if tgt_label is not None:
                     rel_type = label_to_rel.get(tgt_label)
-                    join_segments.append((True, rel_type, sql_base_alias, lateral_alias, tgt_label))
+                    inner_lim_node = inner_select.args.get("limit") if isinstance(inner_select, exp.Select) else None
+                    inner_lim: int | None = None
+                    if inner_lim_node is not None:
+                        _lim_expr = getattr(inner_lim_node, "expression", None)
+                        if isinstance(_lim_expr, exp.Literal):
+                            inner_lim = int(_lim_expr.sql())
+                        elif isinstance(_lim_expr, exp.Parameter) and params:
+                            # sql_gen emits LIMIT $N (parameterized); Parameter.name is "1", "2", ...
+                            _idx = int(_lim_expr.name) - 1
+                            inner_lim = int(params[_idx])
+                    join_segments.append((True, rel_type, sql_base_alias, lateral_alias, tgt_label, inner_lim, label_to_many.get(tgt_label, False)))
                     continue
             if lateral_alias:
                 skipped_aliases.add(lateral_alias)
@@ -170,7 +193,7 @@ def semantic_sql_to_cypher(
         # Determine source alias from ON condition table references
         src_sql_alias = _src_alias_from_on(on_expr, tgt_sql_alias, sql_base_alias)
         is_optional = (join.side or "").upper() == "LEFT"
-        join_segments.append((is_optional, rel_type, src_sql_alias, tgt_sql_alias, tgt_label))
+        join_segments.append((is_optional, rel_type, src_sql_alias, tgt_sql_alias, tgt_label, None, label_to_many.get(tgt_label, False)))
 
     # Build short alias map: verbose SQL alias → a, b, c, …
     _letters = list(string.ascii_lowercase)
@@ -183,7 +206,7 @@ def semantic_sql_to_cypher(
 
     # Build label lookup: sql_alias → display label (needed for src node in OPTIONAL MATCH)
     alias_label: dict[str, str] = {sql_base_alias: base_label}
-    for _is_opt, _rt, _src, tgt_a, tgt_lbl in join_segments:
+    for _is_opt, _rt, _src, tgt_a, tgt_lbl, _il, _many in join_segments:
         alias_label[tgt_a] = tgt_lbl
 
     # Build sql_alias → {sql_col: cypher_prop} from NodeMapping.properties (inverted)
@@ -219,22 +242,124 @@ def semantic_sql_to_cypher(
 
     # --- Build MATCH pattern ---
     required_path = _node(base_alias, base_label)
-    for is_optional, rel_type, src_sql_a, tgt_sql_a, label in join_segments:
+    for is_optional, rel_type, src_sql_a, tgt_sql_a, label, _il, _many in join_segments:
         if not is_optional:
             rel_str = f"[:{rel_type}]" if rel_type else "[]"
             required_path += f"-{rel_str}->{_node(alias_map[tgt_sql_a], label)}"
 
     cypher_lines = [f"MATCH {required_path}"]
 
-    for is_optional, rel_type, src_sql_a, tgt_sql_a, label in join_segments:
+    # --- Pre-scan SELECT to know which properties are needed per alias ---
+    select_exprs = tree.args.get("expressions") or []
+    # short_alias → [(sql_col, cypher_prop), ...]
+    alias_needed_props: dict[str, list[tuple[str, str]]] = {}
+    for _expr in select_exprs:
+        if isinstance(_expr, exp.Column) and _expr.table:
+            _tbl_short = alias_map.get(_expr.table, _expr.table)
+            _sql_col = _expr.name
+            _cypher_prop = alias_prop_map.get(_expr.table, {}).get(_sql_col, _sql_col)
+            alias_needed_props.setdefault(_tbl_short, []).append((_sql_col, _cypher_prop))
+
+    # short_alias → {cypher_prop → per-property list var name}
+    # Used by _build_return to emit direct list references instead of list comprehensions.
+    collected_aliases: dict[str, dict[str, str]] = {}
+
+    for is_optional, rel_type, src_sql_a, tgt_sql_a, label, inner_lim, is_many in join_segments:
         if is_optional:
             rel_str = f"[:{rel_type}]" if rel_type else "[]"
             src_short = alias_map.get(src_sql_a, base_alias)
             src_lbl = alias_label.get(src_sql_a, base_label)
-            cypher_lines.append(
+            tgt_short = alias_map[tgt_sql_a]
+            match_line = (
                 f"OPTIONAL MATCH {_node(src_short, src_lbl)}"
-                f"-{rel_str}->{_node(alias_map[tgt_sql_a], label)}"
+                f"-{rel_str}->{_node(tgt_short, label)}"
             )
+            if not flat and not node_only and (inner_lim is not None or is_many):
+                props = alias_needed_props.get(tgt_short, [])
+                if props:
+                    # Collect individual properties to avoid ARRAY_AGG(table_alias) (issue #49).
+                    prop_map: dict[str, str] = {}
+                    return_parts = []
+                    for _sql_col, _cypher_prop in props:
+                        prop_list_var = f"{tgt_short}_{_cypher_prop}_list"
+                        prop_map[_cypher_prop] = prop_list_var
+                        slice_suffix = f"[..{inner_lim}]" if inner_lim is not None else ""
+                        return_parts.append(
+                            f"collect({tgt_short}.{_cypher_prop}){slice_suffix} AS {prop_list_var}"
+                        )
+                    collected_aliases[tgt_short] = prop_map
+                    cypher_lines.append(
+                        f"CALL {{\n"
+                        f"  WITH {src_short}\n"
+                        f"  {match_line}\n"
+                        f"  RETURN {', '.join(return_parts)}\n"
+                        f"}}"
+                    )
+                # If no properties selected from this alias, fall through to flat OPTIONAL MATCH.
+                else:
+                    cypher_lines.append(match_line)
+            else:
+                cypher_lines.append(match_line)
+
+    # --- ARRAY_AGG subqueries → OPTIONAL MATCH + collect() ---
+    # Non-flat one-to-many joins emit correlated ARRAY_AGG subqueries in the SQL SELECT list.
+    # Translate each to an OPTIONAL MATCH on the inner table + collect() in RETURN.
+    array_agg_return: dict[str, str] = {}  # output SQL alias → collect(short.prop) expr
+    _agg_alias_counter = len(alias_map)
+    _agg_seen: dict[str, str] = {}  # inner_sql_alias → assigned short alias
+
+    for _expr in select_exprs:
+        if not (isinstance(_expr, exp.Alias) and isinstance(_expr.this, exp.Subquery)):
+            continue
+        _inner = _expr.this.this
+        if not isinstance(_inner, exp.Select):
+            continue
+        _agg_exprs = _inner.args.get("expressions") or []
+        if len(_agg_exprs) != 1:
+            continue
+        _agg_node = _agg_exprs[0]
+        if isinstance(_agg_node, exp.ArrayAgg):
+            _agg_col_node = _agg_node.this
+        elif isinstance(_agg_node, exp.Anonymous) and _agg_node.name.upper() == "ARRAY_AGG":
+            _agg_cols = getattr(_agg_node, "expressions", [])
+            _agg_col_node = _agg_cols[0] if _agg_cols else None
+        else:
+            continue
+        if not isinstance(_agg_col_node, exp.Column):
+            continue
+        _inner_from = _inner.args.get("from_")
+        if not (_inner_from and isinstance(_inner_from.this, exp.Table)):
+            continue
+        _inner_tbl = _inner_from.this
+        _tgt_lbl = _resolve_label(_inner_tbl, domain_to_label)
+        if _tgt_lbl is None:
+            continue
+        _inner_sql_alias = _inner_tbl.alias or _inner_tbl.name
+        # Source side of join condition (WHERE inner_alias.col = src_alias.col)
+        _where_node = _inner.args.get("where")
+        _src_sql = sql_base_alias
+        if _where_node:
+            for _eq in _where_node.find_all(exp.EQ):
+                for _wc in (_eq.this, _eq.expression):
+                    if isinstance(_wc, exp.Column) and _wc.table and _wc.table != _inner_sql_alias:
+                        _src_sql = _wc.table
+                        break
+        _agg_sql_col = _agg_col_node.name
+        _cypher_prop = _prop_map_for_label(_tgt_lbl).get(_agg_sql_col, _agg_sql_col)
+
+        if _inner_sql_alias not in _agg_seen:
+            _arr_short = _letters[_agg_alias_counter] if _agg_alias_counter < len(_letters) else f"n{_agg_alias_counter}"
+            _agg_alias_counter += 1
+            _agg_seen[_inner_sql_alias] = _arr_short
+            _src_short = alias_map.get(_src_sql, base_alias)
+            _src_lbl = alias_label.get(_src_sql, base_label)
+            _agg_rel_type = label_to_rel.get(_tgt_lbl)
+            _agg_rel_str = f"[:{_agg_rel_type}]" if _agg_rel_type else "[]"
+            cypher_lines.append(
+                f"OPTIONAL MATCH {_node(_src_short, _src_lbl)}-{_agg_rel_str}->{_node(_arr_short, _tgt_lbl)}"
+            )
+
+        array_agg_return[_expr.alias] = f"collect({_agg_seen[_inner_sql_alias]}.{_cypher_prop})"
 
     # --- WHERE ---
     where_expr = tree.args.get("where")
@@ -243,36 +368,59 @@ def semantic_sql_to_cypher(
         cypher_lines.append(f"WHERE {where_sql}")
 
     # --- RETURN ---
-    select_exprs = tree.args.get("expressions") or []
     default_sql_alias = sql_base_alias if not join_segments else None
     # If any SELECT column references a skipped (non-graph) alias, Cypher can't express it
     for _expr in select_exprs:
         if isinstance(_expr, exp.Column) and _expr.table in skipped_aliases:
             return None
-    return_items = _build_return(select_exprs, default_sql_alias, alias_map, alias_prop_map)
-    cypher_lines.append(f"RETURN {', '.join(return_items)}" if return_items else "RETURN *")
 
-    # --- ORDER BY ---
-    order = tree.args.get("order")
-    if order:
-        order_items = []
-        for o in order.expressions:
-            col_expr = o.this
-            if isinstance(col_expr, exp.Column) and not col_expr.table and default_sql_alias:
-                prop = alias_prop_map.get(default_sql_alias, {}).get(col_expr.name, col_expr.name)
-                col_sql = f"{alias_map[default_sql_alias]}.{prop}"
-            else:
-                col_sql = _remap(_sql_to_cypher_expr(col_expr.sql(dialect="postgres")))
-            direction = " DESC" if o.args.get("desc") else ""
-            order_items.append(f"{col_sql}{direction}")
-        cypher_lines.append(f"ORDER BY {', '.join(order_items)}")
+    if node_only:
+        # Emit unique node aliases only (a, b, c …) — no property dotted paths.
+        # Preserve insertion order: base alias first, then each join target in order.
+        node_aliases: list[str] = [base_alias]
+        for _, _, _, tgt_sql_a, _, _, _ in join_segments:
+            short = alias_map.get(tgt_sql_a)
+            if short and short not in node_aliases:
+                node_aliases.append(short)
+        # Also include any aliases added by ARRAY_AGG subquery processing.
+        for short in _agg_seen.values():
+            if short not in node_aliases:
+                node_aliases.append(short)
+        cypher_lines.append(f"RETURN {', '.join(node_aliases)}")
+    else:
+        return_items = _build_return(select_exprs, default_sql_alias, alias_map, alias_prop_map, collected_aliases, array_agg_return)
+        cypher_lines.append(f"RETURN {', '.join(return_items)}" if return_items else "RETURN *")
+
+    # --- ORDER BY (skipped in node_only mode — node variables have no stable sort key) ---
+    if not node_only:
+        order = tree.args.get("order")
+        if order:
+            order_items = []
+            for o in order.expressions:
+                col_expr = o.this
+                if isinstance(col_expr, exp.Column) and not col_expr.table and default_sql_alias:
+                    prop = alias_prop_map.get(default_sql_alias, {}).get(col_expr.name, col_expr.name)
+                    col_sql = f"{alias_map[default_sql_alias]}.{prop}"
+                else:
+                    col_sql = _remap(_sql_to_cypher_expr(col_expr.sql(dialect="postgres")))
+                direction = " DESC" if o.args.get("desc") else ""
+                order_items.append(f"{col_sql}{direction}")
+            cypher_lines.append(f"ORDER BY {', '.join(order_items)}")
 
     # --- SKIP / LIMIT ---
     offset = tree.args.get("offset")
     limit = tree.args.get("limit")
     if offset:
         cypher_lines.append(f"SKIP {offset.expression.sql()}")
-    if limit:
+    if node_only:
+        # Use Neo4j browser default when multiple nodes; original limit for single-node.
+        cypher_lines.append("LIMIT 25" if len(node_aliases) > 1 else (
+            f"LIMIT {override_limit}" if override_limit is not None else
+            (f"LIMIT {limit.expression.sql()}" if limit else "LIMIT 25")
+        ))
+    elif override_limit is not None:
+        cypher_lines.append(f"LIMIT {override_limit}")
+    elif limit:
         cypher_lines.append(f"LIMIT {limit.expression.sql()}")
 
     return "\n".join(cypher_lines)
@@ -332,10 +480,22 @@ def _build_return(
     default_sql_alias: str | None = None,
     alias_map: dict[str, str] | None = None,
     alias_prop_map: dict[str, dict[str, str]] | None = None,
+    collected_aliases: dict[str, dict[str, str]] | None = None,
+    array_agg_return: dict[str, str] | None = None,
 ) -> list[str]:
-    """Convert SELECT expressions to RETURN items."""
+    """Convert SELECT expressions to RETURN items.
+
+    For aliases in collected_aliases (short_alias → {cypher_prop → prop_list_var}),
+    each property column is returned as a direct list reference:
+      prop_list_var AS short_alias_cypher_prop
+    This avoids cartesian products when multiple multi-valued traversals are present.
+    For aliases in array_agg_return (output_alias → collect(short.prop)), emit the
+    collect() form instead of the raw SQL ARRAY_AGG subquery.
+    """
     am = alias_map or {}
     apm = alias_prop_map or {}
+    ca = collected_aliases or {}
+    aar = array_agg_return or {}
 
     def _short(sql_tbl: str) -> str:
         return am.get(sql_tbl, sql_tbl)
@@ -353,14 +513,22 @@ def _build_return(
             col = expr.name or "*"
             if col == "*":
                 items.append(tbl if tbl else "*")
+            elif tbl in ca:
+                cypher_prop = _prop(raw_tbl, col)
+                prop_list_var = ca[tbl].get(cypher_prop)
+                if prop_list_var:
+                    items.append(f"{prop_list_var} AS {tbl}_{cypher_prop}")
             else:
                 cypher_prop = _prop(raw_tbl, col)
                 items.append(f"{tbl}.{cypher_prop}" if tbl else cypher_prop)
         elif isinstance(expr, exp.Alias):
-            raw = _sql_to_cypher_expr(expr.this.sql(dialect="postgres"))
-            for sql_a in sorted(am, key=len, reverse=True):
-                raw = re.sub(rf'\b{re.escape(sql_a)}\b', am[sql_a], raw)
-            items.append(f"{raw} AS {expr.alias}")
+            if expr.alias in aar:
+                items.append(f"{aar[expr.alias]} AS {expr.alias}")
+            else:
+                raw = _sql_to_cypher_expr(expr.this.sql(dialect="postgres"))
+                for sql_a in sorted(am, key=len, reverse=True):
+                    raw = re.sub(rf'\b{re.escape(sql_a)}\b', am[sql_a], raw)
+                items.append(f"{raw} AS {expr.alias}")
         else:
             raw = _sql_to_cypher_expr(expr.sql(dialect="postgres"))
             for sql_a in sorted(am, key=len, reverse=True):

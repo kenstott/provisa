@@ -143,6 +143,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         self._lateral_bound: set[str] = set()
         # ON conditions from lateral-bound first-node relationships → added as WHERE
         self._lateral_conditions: list[exp.Expression] = []
+        # CALL subquery return variable → lateral alias (e.g. "d_list" → "_call0")
+        self._call_var_to_lateral: dict[str, str] = {}
         # relationship variable → resolved rel_type string (for type(r) resolution)
         self._rel_var_types: dict[str, str] = {}
         # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm)
@@ -652,6 +654,29 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     # join columns must be treated as backward (swapped relative to the traversal).
                     # When src_nm is known, compare canonical source_label directly.
                     # Fall back to arrow-based `backward` for anonymous/unresolved nodes.
+                    #
+                    # When aliases["HAS_TABLE"] contains one entry per data table, filter to the
+                    # exact source/target match before building candidates. Otherwise the primary
+                    # candidate may be a wrong-table mapping with is_bwd=True, which emits virtual
+                    # column names (e.g. __table_id__) as physical column references.
+                    if src_nm is not None and len(alias_matches) > 1:
+                        fwd_exact = [
+                            m for m in alias_matches
+                            if m.source_label == src_nm.type_name
+                            and (tgt_nm is None or m.target_label == tgt_nm.type_name)
+                        ]
+                        bwd_exact = [
+                            m for m in alias_matches
+                            if m.target_label == src_nm.type_name
+                            and (tgt_nm is None or m.source_label == tgt_nm.type_name)
+                        ]
+                        if not backward and fwd_exact:
+                            alias_matches = fwd_exact
+                        elif bwd_exact:
+                            alias_matches = bwd_exact
+                        elif fwd_exact:
+                            alias_matches = fwd_exact
+
                     def _is_bwd(m: "RelationshipMapping") -> bool:  # type: ignore[name-defined]
                         if bidir:
                             return False
@@ -675,6 +700,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     # No relationship between these two resolved node types.
                     # Add an impossible predicate so the query returns empty results
                     # rather than generating unjoined table references.
+                    # For OPTIONAL MATCH, use LEFT JOIN so rows from the base table survive.
                     if src_nm is not None and tgt_nm is not None and tgt_var:
                         tgt_alias = tgt_var or tgt_nm.table_name
                         jt = exp.alias_(
@@ -685,7 +711,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                             ),
                             alias=tgt_alias,
                         )
-                        joins.append({"table": jt, "on": exp.false(), "join_type": "INNER"})
+                        no_rel_join_type = "LEFT" if clause.optional else "INNER"
+                        joins.append({"table": jt, "on": exp.false(), "join_type": no_rel_join_type})
                     continue
 
                 join_type = "LEFT" if clause.optional else "INNER"
@@ -705,25 +732,40 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         alias=tgt_alias,
                     )
                     if is_bwd:
-                        cond = exp.EQ(
-                            this=exp.Column(
-                                this=exp.Identifier(this=rm.join_source_column, quoted=True),
-                                table=exp.Identifier(this=tgt_alias),
-                            ),
-                            expression=exp.Column(
-                                this=exp.Identifier(this=rm.join_target_column, quoted=True),
-                                table=exp.Identifier(this=src_table_ref),
-                            ),
-                        )
+                        if rm.source_constant is not None:
+                            # source_constant: join condition is always <literal> = src.target_col
+                            # whether forward or backward, the physical condition is the same.
+                            cond = exp.EQ(
+                                this=exp.Literal.number(rm.source_constant),
+                                expression=exp.Column(
+                                    this=exp.Identifier(this=rm.join_target_column, quoted=True),
+                                    table=exp.Identifier(this=src_table_ref),
+                                ),
+                            )
+                        else:
+                            cond = exp.EQ(
+                                this=exp.Column(
+                                    this=exp.Identifier(this=rm.join_source_column, quoted=True),
+                                    table=exp.Identifier(this=tgt_alias),
+                                ),
+                                expression=exp.Column(
+                                    this=exp.Identifier(this=rm.join_target_column, quoted=True),
+                                    table=exp.Identifier(this=src_table_ref),
+                                ),
+                            )
                     else:
-                        src_col_expr = (
-                            exp.Literal.number(rm.source_constant)
-                            if rm.source_constant is not None
-                            else exp.Column(
+                        if rm.source_constant is not None:
+                            src_col_expr = exp.Literal.number(rm.source_constant)
+                        elif rm.join_source_column == "_name_" and src_nm is not None:
+                            # _name_ is a virtual column — resolve to literal "domain_sql.table_name"
+                            from provisa.compiler.naming import domain_to_sql_name as _d2s
+                            _name_val = f"{_d2s(src_nm.domain_id or src_nm.schema_name or '')}.{src_nm.table_name}"
+                            src_col_expr = exp.Literal.string(_name_val)
+                        else:
+                            src_col_expr = exp.Column(
                                 this=exp.Identifier(this=rm.join_source_column, quoted=True),
                                 table=exp.Identifier(this=src_table_ref),
                             )
-                        )
                         cond = exp.EQ(
                             this=src_col_expr,
                             expression=exp.Column(
@@ -813,6 +855,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             return None
         expr_text = _rewrite_cypher_dquote_strings(self._rewrite_params_in_expr(where.expression))
         expr_text = self._rewrite_cte_vars(expr_text)
+        expr_text = self._rewrite_call_bound_vars(expr_text)
         expr_text = self._rewrite_map_projections(expr_text)
         expr_text = self._rewrite_graph_fns(expr_text)
         expr_text = self._rewrite_path_comprehensions(expr_text)
@@ -900,12 +943,14 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         """Parse a Cypher expression fragment into a SQLGlot expression."""
         text = self._rewrite_params_in_expr(text)
         text = self._rewrite_cte_vars(text)
+        text = self._rewrite_call_bound_vars(text)
         text = self._rewrite_cypher_props(text)
         text = self._rewrite_map_projections(text)
         text = self._rewrite_graph_fns(text)
         text = self._rewrite_path_comprehensions(text)
         text = rewrite_list_comprehensions(text)
         text = _rewrite_in_list(text)
+        text = _rewrite_list_slices(text)
         text = _rewrite_string_predicates(text)
         text = _rewrite_property_access(text)
         text = self._rewrite_subquery_exprs(text)
@@ -927,6 +972,20 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             sql_alias = self._var_table.get(var, (var, None))[0]
             if sql_alias != var:
                 text = re.sub(rf'\b{re.escape(var)}\.', f'{sql_alias}.', text)
+        return text
+
+    def _rewrite_call_bound_vars(self, text: str) -> str:
+        """Qualify CALL-subquery return vars with their CROSS JOIN LATERAL alias.
+
+        e.g. d_list → _call0."d_list" so Trino can resolve the scoped column.
+        """
+        for var, lateral_alias in self._call_var_to_lateral.items():
+            # Match bare var not already table-qualified (not preceded by . or word char)
+            text = re.sub(
+                rf'(?<![.\w]){re.escape(var)}\b',
+                f'{lateral_alias}."{var}"',
+                text,
+            )
         return text
 
     def _build_with_select_items(self, items: list[ReturnItem]) -> list[exp.Expression]:
@@ -1389,6 +1448,20 @@ _IN_LIST_RE = re.compile(r'\bIN\s*\[([^\[\]]*)\]', re.IGNORECASE)
 def _rewrite_in_list(text: str) -> str:
     """Rewrite Cypher IN [...] literal list to SQL IN (...)."""
     return _IN_LIST_RE.sub(r'IN (\1)', text)
+
+
+_LIST_SLICE_RE = re.compile(
+    r'(\w+\s*\(\s*[^)]*\s*\)|[A-Za-z_]\w*)\s*\[\s*\.\.\s*(\d+)\s*\]'
+)
+
+
+def _rewrite_list_slices(text: str) -> str:
+    """Rewrite Cypher list-slice expr[..n] → slice(expr, 1, n) for Trino.
+
+    Cypher's [..n] returns the first n elements (0-indexed, exclusive end).
+    Trino's slice(arr, start, length) is 1-indexed with a length argument.
+    """
+    return _LIST_SLICE_RE.sub(r'slice(\1, 1, \2)', text)
 
 
 def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:
