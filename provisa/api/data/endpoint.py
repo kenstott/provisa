@@ -1435,13 +1435,11 @@ async def _execute_one_field(
             _t_trino = _time.perf_counter()
             _loop = asyncio.get_running_loop()
             _trino_ck = getattr(state, "trino_conn_kwargs", None)
-            # Use the root table's virtual _name_ (e.g. "ps.pets") so the ops-traversal
-            # join (data._name_ = traces.table_name) matches exactly. Parsing compiled.sql
-            # would include LATERAL-joined OTel/meta tables and produce a multi-table
-            # comma string that never matches the exact-match join condition.
+            # Use the registered table_name (matches registered_tables.table_name) so the
+            # ops-traversal join (registered_tables.table_name = traces.table_name) matches.
             _root_meta = ctx.tables.get(root_field)
             _root_name = (
-                (ctx.virtual_columns.get(_root_meta.table_id) or {}).get("_name_", "")
+                (_root_meta.original_table_name or _root_meta.table_name)
                 if _root_meta else ""
             ) or root_field
             _root_domain = _root_meta.domain_id if _root_meta else ""
