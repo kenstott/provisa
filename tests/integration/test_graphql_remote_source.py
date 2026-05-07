@@ -92,6 +92,11 @@ async def client():
 
 
 class TestGraphQLRemoteSourceRegistration:
+    # integration: mock-justified — respx intercepts outbound HTTP to
+    # REMOTE_URL ("https://remote-graphql.example.com/graphql"), a 3rd-party
+    # external GraphQL server that is not part of the docker-compose stack.
+    # Tests exercise the real FastAPI ASGI transport and real app lifespan.
+
     @respx.mock
     async def test_register_source(self, client):
         respx.post(REMOTE_URL).mock(

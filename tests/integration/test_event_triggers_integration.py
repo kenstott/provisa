@@ -129,6 +129,10 @@ class TestTriggerInstallation:
 
 
 class TestNotifyDispatch:
+    # integration: mock-justified — AsyncMock intercepts outbound HTTP POST to
+    # "https://example.com/hook", a 3rd-party webhook URL not in docker-compose.
+    # Tests exercise the real PG path (pg_pool fixture) and real trigger logic.
+
     async def test_notify_triggers_webhook_dispatch(self, pg_pool, test_table):
         """INSERT into table sends NOTIFY which dispatches to the webhook."""
         received: list[dict] = []
@@ -198,6 +202,10 @@ class TestNotifyDispatch:
 
 
 class TestRetryPolicy:
+    # integration: mock-justified — AsyncMock intercepts outbound HTTP POST to
+    # "https://example.com/hook" for retry policy testing. Error injection (503/500
+    # responses) cannot be reproduced with a real docker-compose service.
+
     async def test_webhook_retried_on_failure_then_success(self, pg_pool):
         """Webhook is retried up to retry_max times on failure."""
         trigger = EventTrigger(
@@ -245,6 +253,9 @@ class TestRetryPolicy:
 
 
 class TestInvalidPayload:
+    # integration: mock-justified — AsyncMock intercepts outbound HTTP POST to
+    # "https://example.com/hook" to verify the client is never called on bad payload.
+
     async def test_invalid_json_payload_is_ignored(self):
         """Malformed JSON notification payload is silently discarded without crashing."""
         trigger = EventTrigger(

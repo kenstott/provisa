@@ -10,9 +10,10 @@
 
 """Integration tests for gRPC query execution (not just reflection).
 
+Pure-logic tests (_pascal_to_snake, ProvisaServicer.__getattr__, _get_role)
+have been moved to tests/unit/test_grpc_server.py.
+
 Tests cover:
-  - Server-side utilities: _pascal_to_snake, _load_module
-  - ProvisaServicer attribute resolution (__getattr__)
   - Server startup and port binding (skipped when grpcio unavailable)
   - Live query execution, streaming, role enforcement, error handling
     (skipped when grpcio or a live gRPC server are unavailable)
@@ -37,7 +38,6 @@ grpc = pytest.importorskip("grpc")
 grpc_aio = pytest.importorskip("grpc.aio")
 
 from provisa.grpc.server import (
-    _pascal_to_snake,
     ProvisaServicer,
     start_grpc_server,
 )
@@ -80,98 +80,6 @@ service ProvisaService {
   rpc QueryOrder (OrderRequest) returns (stream Order);
 }
 """
-
-
-# ---------------------------------------------------------------------------
-# Pure-logic tests (no server, no PG required)
-# ---------------------------------------------------------------------------
-
-
-class TestPascalToSnake:
-    """Unit tests for _pascal_to_snake helper."""
-
-    async def test_simple_pascal(self):
-        assert _pascal_to_snake("Orders") == "orders"
-
-    async def test_compound_pascal(self):
-        assert _pascal_to_snake("CustomerSegments") == "customer_segments"
-
-    async def test_already_snake(self):
-        assert _pascal_to_snake("orders") == "orders"
-
-    async def test_single_word(self):
-        assert _pascal_to_snake("Customer") == "customer"
-
-    async def test_acronym_preserved(self):
-        # e.g. "OrderID" → "order_i_d" is the regex behaviour; just check it's lowercase
-        result = _pascal_to_snake("OrderID")
-        assert result == result.lower()
-
-    async def test_multi_word(self):
-        assert _pascal_to_snake("SalesOrderDetail") == "sales_order_detail"
-
-
-class TestProvisaServicerGetattr:
-    """Unit tests for ProvisaServicer.__getattr__ dynamic dispatch."""
-
-    def _make_servicer(self):
-        state = MagicMock()
-        pb2 = MagicMock()
-        pb2_grpc = MagicMock()
-        return ProvisaServicer(state, pb2, pb2_grpc)
-
-    async def test_query_handler_returned_for_query_prefix(self):
-        svc = self._make_servicer()
-        handler = svc.QueryOrders
-        # Handler should be callable (async generator)
-        assert callable(handler)
-
-    async def test_insert_handler_returned_for_insert_prefix(self):
-        svc = self._make_servicer()
-        handler = svc.InsertOrders
-        assert callable(handler)
-
-    async def test_unknown_attribute_raises(self):
-        svc = self._make_servicer()
-        with pytest.raises(AttributeError):
-            _ = svc.UnknownMethod
-
-    async def test_query_handler_is_async(self):
-        import inspect
-        svc = self._make_servicer()
-        handler = svc.QueryOrders
-        # The outer wrapper is a sync function returning an async generator
-        assert callable(handler)
-
-    async def test_pascal_to_snake_applied_to_type_name(self):
-        """QueryCustomerSegments should resolve to field_name customer_segments."""
-        svc = self._make_servicer()
-        # Accessing the handler should not raise even for compound names
-        handler = svc.QueryCustomerSegments
-        assert callable(handler)
-
-
-class TestGetRoleMetadata:
-    """Unit tests for the role extraction helper via context mock."""
-
-    async def test_role_extracted_from_metadata(self):
-        """_get_role returns the role from invocation metadata."""
-        from provisa.grpc.server import _get_role
-
-        ctx = MagicMock()
-        ctx.invocation_metadata.return_value = [("x-provisa-role", "analyst")]
-        role = _get_role(ctx)
-        assert role == "analyst"
-
-    async def test_missing_role_raises_abort_error(self):
-        """_get_role raises grpc.aio.AbortError when header missing."""
-        from provisa.grpc.server import _get_role
-        import grpc.aio
-
-        ctx = MagicMock()
-        ctx.invocation_metadata.return_value = []
-        with pytest.raises(grpc.aio.AbortError):
-            _get_role(ctx)
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +127,8 @@ class TestGrpcServerStarts:
 
     async def test_grpc_server_starts(self, compiled_proto_paths):
         """gRPC server binds to port and starts without error."""
+        # integration: mock-justified — AppState is not a docker-compose service.
+        # MagicMock scaffolds the struct fields needed for server startup.
         pb2_path, pb2_grpc_path = compiled_proto_paths
 
         state = MagicMock()
@@ -245,6 +155,8 @@ class TestGrpcServerStarts:
 
     async def test_grpc_server_binds_expected_port(self, compiled_proto_paths):
         """Server binds to the port specified in the call."""
+        # integration: mock-justified — AppState is not a docker-compose service.
+        # MagicMock scaffolds the struct fields needed for server startup.
         import socket
 
         pb2_path, pb2_grpc_path = compiled_proto_paths
@@ -362,6 +274,8 @@ class TestGrpcQueryExecution:
             password=os.environ.get("PG_PASSWORD", "provisa"),
         )
 
+        # integration: mock-justified — AppState is not a docker-compose service.
+        # MagicMock scaffolds the struct fields; the real data path (source_pool + PG) is live.
         state = MagicMock()
         state.schemas = {"admin": schema}
         state.contexts = {"admin": ctx}
@@ -451,7 +365,9 @@ class TestGrpcQueryExecution:
 
     async def test_grpc_invalid_query_returns_error(self, grpc_server_and_stub):
         """An RPC for an unregistered type resolves via schema and may abort."""
-        # We test via the servicer's _handle_query path with a mocked context
+        # integration: mock-justified — error injection test; MagicMock scaffolds
+        # a minimal servicer with an empty state to trigger the NOT_FOUND abort path.
+        # No docker-compose service can inject this specific error condition.
         pb2_mock = MagicMock()
         pb2_mock.UnknownType.DESCRIPTOR.fields = []
         pb2_grpc_mock = MagicMock()
