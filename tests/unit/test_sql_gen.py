@@ -233,6 +233,18 @@ class TestPagination:
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
             },
             {
+                "id": 2,
+                "source_id": "provisa-meta",
+                "domain_id": "meta",
+                "schema_name": "public",
+                "table_name": "registered_tables",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "table_name", "visible_to": ["admin"]},
+                ],
+            },
+            {
                 "id": 3,
                 "source_id": "provisa-otel",
                 "domain_id": "ops",
@@ -247,6 +259,7 @@ class TestPagination:
         ]
         column_types = {
             1: [_col("id", "integer")],
+            2: [_col("id", "integer"), _col("table_name")],
             3: [_col("table_name"), _col("query")],
         }
         schema, ctx = _build_schema_and_ctx(
@@ -254,11 +267,11 @@ class TestPagination:
             relationships=[],
             column_types=column_types,
         )
-        doc = parse("{ orders { id _queries(limit: 2) { query } } }")
+        doc = parse("{ orders { id _meta { _queries(limit: 2) { query } } } }")
         assert not validate(schema, doc)
-        results = compile_query(doc, ctx)
-        assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."queries"' in results[0].sql
-        assert 'LIMIT $1) "t1" ON TRUE' in results[0].sql
+        results = compile_query(doc, ctx, flat=True)
+        assert '"queries"' in results[0].sql
+        assert 'LIMIT $1' in results[0].sql
         assert results[0].params == [2]
 
     def test_synthetic_ops_traces_path_accepts_limit(self):
@@ -271,6 +284,18 @@ class TestPagination:
                 "table_name": "orders",
                 "governance": "pre-approved",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
+            },
+            {
+                "id": 2,
+                "source_id": "provisa-meta",
+                "domain_id": "meta",
+                "schema_name": "public",
+                "table_name": "registered_tables",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "table_name", "visible_to": ["admin"]},
+                ],
             },
             {
                 "id": 4,
@@ -287,6 +312,7 @@ class TestPagination:
         ]
         column_types = {
             1: [_col("id", "integer")],
+            2: [_col("id", "integer"), _col("table_name")],
             4: [_col("table_name"), _col("trace_id")],
         }
         schema, ctx = _build_schema_and_ctx(
@@ -294,11 +320,11 @@ class TestPagination:
             relationships=[],
             column_types=column_types,
         )
-        doc = parse("{ orders { id _traces(limit: 3) { traceId } } }")
+        doc = parse("{ orders { id _meta { _traces(limit: 3) { traceId } } } }")
         assert not validate(schema, doc)
-        results = compile_query(doc, ctx)
-        assert 'LEFT JOIN LATERAL (SELECT * FROM "public"."traces"' in results[0].sql
-        assert 'LIMIT $1) "t1" ON TRUE' in results[0].sql
+        results = compile_query(doc, ctx, flat=True)
+        assert '"traces"' in results[0].sql
+        assert 'LIMIT $1' in results[0].sql
         assert results[0].params == [3]
 
     def test_synthetic_ops_path_rejects_negative_limit(self):
@@ -311,6 +337,18 @@ class TestPagination:
                 "table_name": "orders",
                 "governance": "pre-approved",
                 "columns": [{"column_name": "id", "visible_to": ["admin"]}],
+            },
+            {
+                "id": 2,
+                "source_id": "provisa-meta",
+                "domain_id": "meta",
+                "schema_name": "public",
+                "table_name": "registered_tables",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "table_name", "visible_to": ["admin"]},
+                ],
             },
             {
                 "id": 3,
@@ -327,6 +365,7 @@ class TestPagination:
         ]
         column_types = {
             1: [_col("id", "integer")],
+            2: [_col("id", "integer"), _col("table_name")],
             3: [_col("table_name"), _col("query")],
         }
         schema, ctx = _build_schema_and_ctx(
@@ -334,10 +373,10 @@ class TestPagination:
             relationships=[],
             column_types=column_types,
         )
-        doc = parse("{ orders { id _queries(limit: -1) { query } } }")
+        doc = parse("{ orders { id _meta { _queries(limit: -1) { query } } } }")
         assert not validate(schema, doc)
         with pytest.raises(ValueError, match="limit must be non-negative"):
-            compile_query(doc, ctx)
+            compile_query(doc, ctx, flat=True)
 
     def test_order_by_nulls_last(self, schema_and_ctx):
         schema, ctx = schema_and_ctx

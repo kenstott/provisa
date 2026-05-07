@@ -942,7 +942,12 @@ def _collect_nested_columns(
                     nested_join_meta.target_column_type, nested_join_meta.source_column_type,
                 )
             nested_key = nested_sel.alias.value if nested_sel.alias else nested_name
-            if nested_join_meta.default_limit is not None or _has_nested_db_args(nested_sel):
+            _is_one_to_many_agg = (
+                not flat
+                and nested_join_meta.cardinality == "one-to-many"
+                and not _has_nested_db_args(nested_sel)
+            )
+            if (nested_join_meta.default_limit is not None or _has_nested_db_args(nested_sel)) and not _is_one_to_many_agg:
                 join_clauses.append(
                     _lateral_join(
                         nested_sel,
@@ -954,7 +959,7 @@ def _collect_nested_columns(
                         use_catalog,
                     )
                 )
-            elif not flat and nested_join_meta.cardinality == "one-to-many" and nested_sel.selection_set:
+            elif _is_one_to_many_agg and nested_sel.selection_set:
                 for _leaf_sel in nested_sel.selection_set.selections:
                     if not isinstance(_leaf_sel, FieldNode):
                         continue
@@ -985,7 +990,7 @@ def _collect_nested_columns(
                 )
 
             sub_path = f"{nesting_path}.{nested_name}"
-            if nested_sel.selection_set and not (not flat and nested_join_meta.cardinality == "one-to-many" and nested_join_meta.default_limit is None and not _has_nested_db_args(nested_sel)):
+            if nested_sel.selection_set and not _is_one_to_many_agg:
                 alias_counter = _collect_nested_columns(
                     nested_sel.selection_set.selections,
                     nested_alias,
@@ -1122,7 +1127,12 @@ def _compile_root_field(
                     join_alias, join_meta.target_column,
                     join_meta.target_column_type, join_meta.source_column_type,
                 )
-            if join_meta.default_limit is not None or _has_nested_db_args(sel):
+            _is_root_one_to_many_agg = (
+                not flat
+                and join_meta.cardinality == "one-to-many"
+                and not _has_nested_db_args(sel)
+            )
+            if (join_meta.default_limit is not None or _has_nested_db_args(sel)) and not _is_root_one_to_many_agg:
                 if join_meta.default_limit is not None:
                     has_lateral_ops_joins = True
                 join_clauses.append(
@@ -1155,7 +1165,7 @@ def _compile_root_field(
                         cardinality=join_meta.cardinality,
                         flat=flat,
                     )
-            elif not flat and join_meta.cardinality == "one-to-many" and sel.selection_set:
+            elif _is_root_one_to_many_agg and sel.selection_set:
                 # Non-flat one-to-many: correlated ARRAY_AGG subquery per scalar column.
                 for _nested_sel in sel.selection_set.selections:
                     if not isinstance(_nested_sel, FieldNode):
