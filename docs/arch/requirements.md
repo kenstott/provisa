@@ -2,25 +2,85 @@
 
 | # | Category | Description | Use Case | Code | Test |
 |---|---|---|---|---|---|
+
+## REQ-001
+
 | REQ-001 | Pre-Approval & Query Governance | Production read queries against non-pre-approved tables MUST be members of the GPQ registry — unregistered queries rejected with no fallback. | Registry enforcement ensures only vetted queries reach production data, preventing ad-hoc data exfiltration. | provisa/registry/ | tests/unit/test_governance.py, tests/integration/test_registry.py |
+
+## REQ-002
+
 | REQ-002 | Pre-Approval & Query Governance | Pre-approval is platform-level enforcement — no level of user privilege overrides it, including superuser. | Platform-level pre-approval prevents privilege escalation from bypassing query governance controls. | provisa/registry/ | tests/unit/test_governance.py, tests/integration/test_registry.py |
+
+## REQ-003
+
 | REQ-003 | Pre-Approval & Query Governance | Mutations and queries against pre-approved tables governed by user rights alone, no registry membership required. | Pre-approved table queries let trusted consumers run flexible ad-hoc queries without registry overhead. | provisa/registry/ | tests/unit/test_governance.py, tests/integration/test_registry.py |
+
+## REQ-004
+
 | REQ-004 | Pre-Approval & Query Governance | Test endpoint accepts arbitrary queries against registered schema with full guards; MUST NOT be exposed in production. | Isolated test endpoint lets developers validate queries safely without risking production exposure. | provisa/registry/ | tests/unit/test_governance.py, tests/integration/test_registry.py |
+
+## REQ-005
+
 | REQ-005 | Pre-Approval & Query Governance | Approved query defines a permitted ceiling — clients may restrict within it (fewer columns, additional filters) but cannot exceed it. | Approved ceiling model lets clients narrow queries freely while preventing scope creep beyond what was reviewed. | provisa/registry/ | tests/unit/test_governance.py, tests/integration/test_registry.py |
+
+## REQ-006
+
 | REQ-006 | Pre-Approval & Query Governance | Pre-approved table queries do not support large result redirect or Arrow output — those require registry approval. | Restricting large-result and Arrow output to registry-approved queries ensures bulk exports are always governed. | provisa/registry/ | tests/unit/test_governance.py, tests/integration/test_registry.py |
+
+## REQ-007
+
 | REQ-007 | Compiler & Schema | Compiler is purpose-built with no dependency on PostGraphile, DuckDB, or any third-party GraphQL server framework. | Purpose-built compiler eliminates third-party framework constraints and reduces attack surface. | provisa/compiler/sql_gen.py | tests/unit/test_sql_gen.py, tests/integration/test_schema_gen.py |
+
+## REQ-008
+
 | REQ-008 | Compiler & Schema | Schema generation pass runs at registration time; queries Trino INFORMATION_SCHEMA, applies per-role column visibility, incorporates relationships, produces GraphQL SDL. | Schema generation at registration time means the GraphQL schema always reflects current data and role visibility. | provisa/compiler/sql_gen.py | tests/unit/test_sql_gen.py, tests/integration/test_schema_gen.py |
+
+## REQ-009
+
 | REQ-009 | Compiler & Schema | Query compilation produces PG-style SQL from validated GraphQL AST — single SQL statement, no resolver chain, no N+1. | Single-statement SQL compilation eliminates N+1 query patterns and improves query execution performance. | provisa/compiler/sql_gen.py | tests/unit/test_sql_gen.py, tests/integration/test_schema_gen.py |
+
+## REQ-010
+
 | REQ-010 | Compiler & Schema | Trino type mapping: VARCHAR→String, INTEGER→Int, BOOLEAN→Boolean, TIMESTAMP→DateTime, JSONB→JSON. Nullability preserved. | Consistent Trino type mapping ensures GraphQL consumers receive predictable, well-typed field values. | provisa/compiler/sql_gen.py | tests/unit/test_sql_gen.py, tests/integration/test_schema_gen.py |
+
+## REQ-011
+
 | REQ-011 | Compiler & Schema | References to unregistered tables, excluded columns, undefined relationships, or type mismatches rejected at compile time with precise errors. | Compile-time rejection of invalid references catches developer errors early before they reach the data layer. | provisa/compiler/sql_gen.py | tests/unit/test_sql_gen.py, tests/integration/test_schema_gen.py |
+
+## REQ-012
+
 | REQ-012 | Registration & Governance | Source registration is privileged; validates connection, calls Trino dynamic catalog API, no restart required, available within seconds. | Privileged, live source registration lets stewards connect new data sources in seconds without downtime. | provisa/core/, provisa/registry/ | tests/integration/test_schema_gen.py, tests/integration/test_introspect.py |
+
+## REQ-013
+
 | REQ-013 | Registration & Governance | Source registration does not expose data — no table queryable until explicitly registered by a steward. | Data is invisible until explicitly registered, ensuring no accidental exposure of raw database tables. | provisa/core/, provisa/registry/ | tests/integration/test_schema_gen.py, tests/integration/test_introspect.py |
+
+## REQ-014
+
 | REQ-014 | Registration & Governance | Unregistered tables do not exist — cannot be referenced in queries, do not appear in schema browser, cannot be mutation targets. | Unregistered tables are completely absent from schema and runtime, eliminating enumeration attacks. | provisa/core/, provisa/registry/ | tests/integration/test_schema_gen.py, tests/integration/test_introspect.py |
+
+## REQ-015
+
 | REQ-015 | Registration & Governance | Each table has configurable governance mode: pre-approved (direct query with user rights) or registry-required (GPQ registry). | Per-table governance mode lets stewards apply strict registry control selectively without blocking all tables. | provisa/core/, provisa/registry/ | tests/integration/test_schema_gen.py, tests/integration/test_introspect.py |
+
+## REQ-016
+
 | REQ-016 | Registration & Governance | Table publication triggers schema generation pass; table immediately available in query builder. | Immediate schema availability after table publication removes friction for query developers. | provisa/core/, provisa/registry/ | tests/integration/test_schema_gen.py, tests/integration/test_introspect.py |
+
+## REQ-017
+
 | REQ-017 | Registration & Governance | NoSQL sources handled through automatic Parquet materialization; read-only, no mutations. | Automatic Parquet materialization makes NoSQL sources queryable without manual ETL pipelines. | provisa/core/, provisa/registry/ | tests/integration/test_schema_gen.py, tests/integration/test_introspect.py |
+
+## REQ-018
+
 | REQ-018 | Registration & Governance | Trino FK metadata used to infer candidate intra-source relationships for steward confirmation/rejection. | FK-inferred relationship suggestions reduce manual steward work when registering related tables. | provisa/core/, provisa/registry/ | tests/integration/test_schema_gen.py, tests/integration/test_introspect.py |
+
+## REQ-019
+
 | REQ-019 | Registration & Governance | Cross-source relationships defined manually by steward with cardinality (one-to-one, many-to-one, one-to-many). | Manual cross-source relationship definitions let stewards federate data across different databases with full control. | provisa/core/, provisa/registry/ | tests/integration/test_schema_gen.py, tests/integration/test_introspect.py |
+
+## REQ-020
+
 | REQ-020 | Registration & Governance | Relationships owned by defining steward, versioned, flagged for re-review on schema changes affecting join fields. | Versioned, owner-tracked relationships flag stale joins when schema changes, preventing silent data errors. | provisa/core/, provisa/registry/ | tests/integration/test_schema_gen.py, tests/integration/test_introspect.py |
 | REQ-021 | Registration & Governance | GraphQL schema reflects registration model (business intent), not raw database structure. | Business-intent schema means the GraphQL API reflects concepts consumers understand, not raw table structures. | provisa/core/, provisa/registry/ | tests/integration/test_schema_gen.py, tests/integration/test_introspect.py |
 | REQ-022 | GPQ Registry | Submission captures: full query text, compiled SQL, target tables, parameter schema, permitted output types, developer identity, and optional live delivery config (watermark_column, poll_interval, outputs list — see REQ-284). | Rich submission capture ensures every approved query has full provenance for audit and replay. | provisa/registry/ | tests/integration/test_registry.py, tests/integration/test_submit_endpoint.py |

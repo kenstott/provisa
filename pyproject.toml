@@ -54,9 +54,15 @@ firebase = ["firebase-admin"]
 dev = [
     "pytest",
     "pytest-asyncio",
+    "pytest-cov",
     "ruff",
     "black",
     "pyright",
+    "pre-commit",
+    "bandit",
+    "pip-audit",
+    "import-linter",
+    "syrupy",
 ]
 
 [build-system]
@@ -67,7 +73,10 @@ build-backend = "setuptools.build_meta"
 include = ["provisa*"]
 
 [tool.pytest.ini_options]
+addopts = "--cov=provisa --cov-report=term-missing --cov-report=xml --no-cov-on-fail"
 asyncio_mode = "auto"
+log_level = "DEBUG"
+log_cli = false
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 markers = [
@@ -87,6 +96,40 @@ filterwarnings = [
     "ignore::DeprecationWarning:pytest_asyncio",
     "ignore:The HMAC key is:UserWarning",
 ]
+
+[tool.coverage.run]
+source = ["provisa"]
+omit = ["provisa/proto/*", "provisa/migrations/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+include = ["provisa"]
+exclude = ["provisa/proto", "**/__pycache__"]
+reportMissingImports = "warning"
+reportMissingModuleSource = "none"
+
+[tool.importlinter]
+root_package = "provisa"
+
+[[tool.importlinter.contracts]]
+name = "compiler must not import executor"
+type = "forbidden"
+source_modules = ["provisa.compiler"]
+forbidden_modules = ["provisa.executor", "provisa.api"]
+
+[[tool.importlinter.contracts]]
+name = "cypher must not import compiler"
+type = "forbidden"
+source_modules = ["provisa.cypher"]
+forbidden_modules = ["provisa.compiler", "provisa.executor", "provisa.api"]
 
 [tool.ruff]
 target-version = "py312"

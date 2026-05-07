@@ -10,6 +10,8 @@
 
 import os
 import socket
+import subprocess
+import time
 
 import asyncpg
 import pytest
@@ -181,6 +183,87 @@ def trino_conn():
     )
     yield conn
     conn.close()
+
+
+@pytest.fixture(scope="session")
+def docker_postgres():
+    """Ensure the postgres container is running; start it if not.
+
+    Uses `docker compose -f docker-compose.core.yml up postgres -d` which is
+    safe on this machine (single named service — never `compose up` with no
+    service name, which crashes Docker Engine).
+    """
+    pg_host = os.environ.get("PG_HOST", "localhost")
+    pg_port = int(os.environ.get("PG_PORT", "5432"))
+
+    if not _tcp_reachable(pg_host, pg_port):
+        compose_file = os.path.join(os.path.dirname(__file__), "..", "docker-compose.core.yml")
+        subprocess.run(
+            ["docker", "compose", "-f", compose_file, "up", "postgres", "-d"],
+            check=True,
+        )
+        # Wait up to 30 s for postgres to be ready
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if _tcp_reachable(pg_host, pg_port):
+                break
+            time.sleep(1)
+        else:
+            raise RuntimeError(f"Postgres did not become reachable at {pg_host}:{pg_port} within 30 s")
+
+    yield {"host": pg_host, "port": pg_port}
+
+
+@pytest_asyncio.fixture(scope="session")
+async def graphql_client(docker_postgres):
+    """ASGI test client backed by a real Postgres pool.
+
+    Starts an in-process Provisa app via create_app() with a real asyncpg pool
+    so GraphQL queries exercise the full compiler + executor path without
+    requiring a separate server process.
+    """
+    from unittest.mock import MagicMock
+
+    import provisa.api.app as app_mod
+    from provisa.api.app import create_app
+    from httpx import ASGITransport, AsyncClient
+
+    the_app = create_app()
+
+    dsn = (
+        f"postgresql://{os.environ.get('PG_USER', 'provisa')}"
+        f":{os.environ.get('PG_PASSWORD', 'provisa')}"
+        f"@{docker_postgres['host']}"
+        f":{docker_postgres['port']}"
+        f"/{os.environ.get('PG_DATABASE', 'provisa')}"
+    )
+    pool = await asyncpg.create_pool(dsn, min_size=1, max_size=3, command_timeout=30)
+    app_mod.state.pg_pool = pool
+    app_mod.state.source_pools = MagicMock()
+
+    transport = ASGITransport(app=the_app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+    await pool.close()
+    app_mod.state.pg_pool = None
+
+
+@pytest.fixture
+def otel_spans():
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry import trace
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    old = trace.get_tracer_provider()
+    trace.set_tracer_provider(provider)
+    yield exporter
+    exporter.shutdown()
+    trace.set_tracer_provider(old)
 
 
 @pytest.fixture

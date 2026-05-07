@@ -205,6 +205,9 @@ async def test_openapi_config_load_prepopulates_table_with_enum_defaults(pg_conn
 
     config = parse_config_dict(config_data)
 
+    # integration: mock-justified — respx intercepts outbound HTTP to a 3rd-party
+    # OpenAPI endpoint (MOCK_BASE_URL). This is not a docker-compose service; the
+    # test exercises the real PG path (pg_conn fixture) and real config loader logic.
     with respx.mock(assert_all_called=False) as rx:
         # Mock the API call with enum status values
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
@@ -228,6 +231,8 @@ async def test_openapi_config_load_registers_api_endpoint(pg_conn):
 
     config = parse_config_dict(_make_config(spec_path))
 
+    # integration: mock-justified — respx intercepts outbound HTTP to a 3rd-party
+    # OpenAPI endpoint (MOCK_BASE_URL), not a docker-compose service.
     with respx.mock(assert_all_called=False) as rx:
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
@@ -253,6 +258,8 @@ async def test_openapi_config_load_registers_api_source(pg_conn):
 
     config = parse_config_dict(_make_config(spec_path))
 
+    # integration: mock-justified — respx intercepts outbound HTTP to a 3rd-party
+    # OpenAPI endpoint (MOCK_BASE_URL), not a docker-compose service.
     with respx.mock(assert_all_called=False) as rx:
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=MOCK_PETS)
@@ -277,6 +284,8 @@ async def test_openapi_config_load_empty_table_when_api_returns_no_rows(pg_conn)
 
     config = parse_config_dict(_make_config(spec_path))
 
+    # integration: mock-justified — respx intercepts outbound HTTP to a 3rd-party
+    # OpenAPI endpoint (MOCK_BASE_URL), not a docker-compose service.
     with respx.mock(assert_all_called=False) as rx:
         rx.get(f"{MOCK_BASE_URL}/pet/findByStatus").mock(
             return_value=httpx.Response(200, json=[])
