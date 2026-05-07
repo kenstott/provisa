@@ -909,8 +909,8 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
                     description="Registration metadata for this table",
                 )
 
-            # Synthetic traversal fields: every data table → ops tables with table_name FK
-            if info.domain_id not in _IMPLICIT_TRAVERSAL_DOMAINS:
+            # Synthetic traversal fields: registered_tables → ops tables with table_name FK
+            if _meta_rt is not None and tid == _meta_rt.table_id:
                 for ops_t in _ops_traversal_targets:
                     if ops_t.table_id in gql_types:
                         _ops_base = ops_t.field_name.split("__", 1)[1] if "__" in ops_t.field_name else ops_t.field_name
