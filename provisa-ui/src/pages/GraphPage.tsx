@@ -12,8 +12,9 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import CodeMirror from "@uiw/react-codemirror";
 import * as _neo4jCypherMod from "@neo4j-cypher/codemirror";
+import "@neo4j-cypher/codemirror/css/cypher-codemirror.css";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const { getCypherLanguageExtensions, useAutocompleteExtensions } = _neo4jCypherMod as any;
+const { getCypherLanguageExtensions, useAutocompleteExtensions, cypherLinter } = _neo4jCypherMod as any;
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
@@ -409,7 +410,7 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
                 <div className="graph-schema-empty">No relationship types found</div>
               ) : (
                 <div className="graph-rel-list">
-                  {schemaRels.map(({ type }) => {
+                  {[...new Map(schemaRels.map(r => [r.type, r])).values()].map(({ type }) => {
                     const ov = relLineOverrides[type];
                     return (
                       <div
@@ -545,12 +546,14 @@ interface QueryBarProps {
   initialQuery?: string;
   onQueryChange: (q: string) => void;
   cypherSchema?: CypherSchema;
+  autoImpute: boolean;
+  onToggleAutoImpute: () => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _cypherLangExts = getCypherLanguageExtensions({ cypherLanguage: true } as any);
 
-function QueryBar({ onRun, initialQuery, onQueryChange, cypherSchema }: QueryBarProps) {
+function QueryBar({ onRun, initialQuery, onQueryChange, cypherSchema, autoImpute, onToggleAutoImpute }: QueryBarProps) {
   const [query, setQuery] = useState(initialQuery ?? "MATCH (n) RETURN n LIMIT 25");
   const viewRef = useRef<EditorView | null>(null);
 
@@ -581,6 +584,7 @@ function QueryBar({ onRun, initialQuery, onQueryChange, cypherSchema }: QueryBar
           theme={oneDark}
           extensions={[
             ..._cypherLangExts,
+            cypherLinter({ showErrors: false }),
             useAutocompleteExtensions,
             EditorView.lineWrapping,
             Prec.highest(keymap.of([{
@@ -598,6 +602,12 @@ function QueryBar({ onRun, initialQuery, onQueryChange, cypherSchema }: QueryBar
         />
         <CopySymbolButton text={query} className="gf-copy-query-btn" title="Copy query" />
       </div>
+      <button
+        className={`gf-icon-btn${autoImpute ? " gf-icon-btn--on" : ""}`}
+        onClick={onToggleAutoImpute}
+        title={autoImpute ? "Auto-impute relationships ON — click to disable" : "Auto-impute relationships between visible nodes"}
+        style={{ marginRight: 4 }}
+      >⊕</button>
       <button
         className="graph-run-btn"
         onClick={() => onRun(query.trim())}
@@ -623,10 +633,11 @@ export function GraphPage() {
   const [colorOverrides, setColorOverrides] = useLocalStorage<Record<string, string>>("provisa.graph.colorOverrides", {});
   const [sizeOverrides, setSizeOverrides] = useLocalStorage<Record<string, number>>("provisa.graph.sizeOverrides", {});
   const [labelProperty, setLabelProperty] = useLocalStorage<Record<string, string>>("provisa.graph.labelProperty", {});
+  const [autoImpute, setAutoImpute] = useLocalStorage<boolean>("provisa.graph.autoImpute", false);
   const [relLineOverrides, setRelLineOverrides] = useLocalStorage<Record<string, RelLineOverride>>("provisa.graph.relLineOverrides", {});
   const [adminRels, setAdminRels] = useState<Relationship[]>([]);
   const [nfModal, setNfModal] = useState<{ label: string; compoundLabel: string; filterColumns: string[] } | null>(null);
-  const frameIdRef = useRef(0);
+  const frameIdRef = useRef(_graphState.frames.reduce((max, f) => Math.max(max, parseInt(f.id) || 0), 0));
 
   // Fetch admin relationships for edge alias editing
   useEffect(() => {
@@ -654,9 +665,10 @@ export function GraphPage() {
         );
         const seenRel = new Set<string>();
         const rels: SchemaRel[] = (data.relationship_types ?? [])
-          .filter((r: { type: string }) => {
-            if (seenRel.has(r.type)) return false;
-            seenRel.add(r.type);
+          .filter((r: { type: string; source: string; target: string }) => {
+            const key = `${r.type}::${r.source ?? ""}→${r.target ?? ""}`;
+            if (seenRel.has(key)) return false;
+            seenRel.add(key);
             return true;
           })
           .map((r: { type: string; source: string; target: string }) => ({
@@ -892,6 +904,8 @@ export function GraphPage() {
           initialQuery={historyQuery ?? _graphState.currentQuery}
           onQueryChange={(q) => { _graphState.currentQuery = q; _saveGraphState(_graphState); }}
           cypherSchema={schemaLoading ? undefined : cypherSchema}
+          autoImpute={autoImpute}
+          onToggleAutoImpute={() => setAutoImpute(v => !v)}
           key={historyQuery ?? "initial"}
         />
 
@@ -916,6 +930,8 @@ export function GraphPage() {
               onColorChange={handleColorChange}
               pkMap={pkMap}
               relationships={adminRels}
+              schemaRels={schemaRels}
+              autoImpute={autoImpute}
               onSaveEdgeAlias={handleSaveEdgeAlias}
             />
           ))}

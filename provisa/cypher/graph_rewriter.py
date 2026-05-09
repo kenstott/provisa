@@ -84,11 +84,19 @@ def apply_graph_rewrites(
 
 
 def _build_row_cast(tbl: str, node_meta: object) -> exp.Expression:
-    """Build JSON_OBJECT('id', ..., 'label', ..., props...) for a graph variable."""
+    """Build CASE WHEN id IS NULL THEN NULL ELSE JSON_OBJECT(...) END for a graph variable.
+
+    The CASE guard ensures OPTIONAL JOINs with no match produce NULL rather than
+    a JSON object whose 'id' is null but 'label' is a non-null constant.
+    """
     from provisa.cypher.label_map import NodeMapping
     nm: NodeMapping = node_meta  # type: ignore[assignment]
 
     id_col = exp.Column(
+        this=exp.Identifier(this=nm.id_column, quoted=True),
+        table=exp.Identifier(this=tbl),
+    )
+    id_col_check = exp.Column(
         this=exp.Identifier(this=nm.id_column, quoted=True),
         table=exp.Identifier(this=tbl),
     )
@@ -107,7 +115,11 @@ def _build_row_cast(tbl: str, node_meta: object) -> exp.Expression:
         kv.append(exp.JSONKeyValue(
             this=exp.Literal.string(prop_key), expression=col_expr
         ))
-    return exp.JSONObject(expressions=kv)
+    json_obj = exp.JSONObject(expressions=kv)
+    return exp.Case(
+        ifs=[exp.If(this=exp.Is(this=id_col_check, expression=exp.null()), true=exp.null())],
+        default=json_obj,
+    )
 
 
 def _build_domain_json(var: str, props: list[str] | None = None) -> exp.Expression:

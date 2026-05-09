@@ -324,7 +324,15 @@ async def compile_query(role_id: str, query: str, variables: dict | None, flat_s
                 all_column_types=_cache.get("column_types"),
                 source_catalogs=getattr(state, "source_catalogs", None),
             )
-            compiled_cypher = semantic_sql_to_cypher(raw_semantic_sql, _label_map, ctx, override_limit=compiled.result_limit, params=compiled.params, flat=flat_cypher, node_only=node_only_cypher)
+            # Cypher translator requires ARRAY_AGG (flat=False) SQL as input — it maps ARRAY_AGG→collect().
+            # flat_sql only controls the SQL tab display; Cypher aggregation is controlled by flat_cypher.
+            if flat_sql:
+                _cypher_compiled = _compile_query(document, ctx, effective_variables, flat=False)[0]
+                _cypher_sql = make_semantic_sql(embed_params_comment(_cypher_compiled.sql, _cypher_compiled.params), ctx)
+            else:
+                _cypher_compiled = compiled
+                _cypher_sql = raw_semantic_sql
+            compiled_cypher = semantic_sql_to_cypher(_cypher_sql, _label_map, ctx, override_limit=_cypher_compiled.result_limit, params=_cypher_compiled.params, flat=flat_cypher, node_only=node_only_cypher)
             if compiled_cypher is None:
                 cypher_error = "Query structure cannot be represented as a Cypher pattern"
         except Exception as e:

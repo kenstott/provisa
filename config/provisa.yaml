@@ -177,4 +177,4 @@ observability:
   sample_rate: 1.0
   log_level: WARNING
   compact_cron: "* * * * *"
-  compact_batch_size: 10
+  compact_batch_size: 1000

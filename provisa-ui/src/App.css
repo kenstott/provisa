@@ -1073,3 +1073,7 @@ main {
   max-height: 150px;
   overflow-y: auto;
 }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

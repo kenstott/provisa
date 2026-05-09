@@ -175,7 +175,13 @@ def semantic_sql_to_cypher(
                             # sql_gen emits LIMIT $N (parameterized); Parameter.name is "1", "2", ...
                             _idx = int(_lim_expr.name) - 1
                             inner_lim = int(params[_idx])
-                    join_segments.append((True, rel_type, sql_base_alias, lateral_alias, tgt_label, inner_lim, label_to_many.get(tgt_label, False)))
+                    # Determine source alias from the lateral subquery's WHERE clause.
+                    # The WHERE condition ties the lateral to its source via a column equality
+                    # (e.g. _meta_alias.table_name = lateral_alias.table_name).  The table
+                    # qualifier that is NOT the lateral alias is the actual source.
+                    inner_where = inner_select.args.get("where") if isinstance(inner_select, exp.Select) else None
+                    lateral_src_alias = _src_alias_from_on(inner_where, lateral_alias, sql_base_alias)
+                    join_segments.append((True, rel_type, lateral_src_alias, lateral_alias, tgt_label, inner_lim, label_to_many.get(tgt_label, False)))
                     continue
             if lateral_alias:
                 skipped_aliases.add(lateral_alias)
@@ -328,15 +334,30 @@ def semantic_sql_to_cypher(
         if not isinstance(_agg_col_node, exp.Column):
             continue
         _inner_from = _inner.args.get("from_")
-        if not (_inner_from and isinstance(_inner_from.this, exp.Table)):
+        if not _inner_from:
             continue
-        _inner_tbl = _inner_from.this
+        # Handle both direct table and LIMIT-wrapped subquery:
+        # ARRAY_AGG(col) FROM table WHERE ...
+        # ARRAY_AGG(col) FROM (SELECT col FROM table WHERE ... LIMIT N)
+        if isinstance(_inner_from.this, exp.Table):
+            _inner_tbl = _inner_from.this
+            _where_node = _inner.args.get("where")
+        elif isinstance(_inner_from.this, exp.Subquery):
+            _limit_select = _inner_from.this.this
+            if not isinstance(_limit_select, exp.Select):
+                continue
+            _lf = _limit_select.args.get("from_")
+            if not (_lf and isinstance(_lf.this, exp.Table)):
+                continue
+            _inner_tbl = _lf.this
+            _where_node = _limit_select.args.get("where")
+        else:
+            continue
         _tgt_lbl = _resolve_label(_inner_tbl, domain_to_label)
         if _tgt_lbl is None:
             continue
         _inner_sql_alias = _inner_tbl.alias or _inner_tbl.name
         # Source side of join condition (WHERE inner_alias.col = src_alias.col)
-        _where_node = _inner.args.get("where")
         _src_sql = sql_base_alias
         if _where_node:
             for _eq in _where_node.find_all(exp.EQ):
@@ -359,7 +380,8 @@ def semantic_sql_to_cypher(
                 f"OPTIONAL MATCH {_node(_src_short, _src_lbl)}-{_agg_rel_str}->{_node(_arr_short, _tgt_lbl)}"
             )
 
-        array_agg_return[_expr.alias] = f"collect({_agg_seen[_inner_sql_alias]}.{_cypher_prop})"
+        _prop_ref = f"{_agg_seen[_inner_sql_alias]}.{_cypher_prop}"
+        array_agg_return[_expr.alias] = _prop_ref if flat else f"collect({_prop_ref})"
 
     # --- WHERE ---
     where_expr = tree.args.get("where")
@@ -412,16 +434,23 @@ def semantic_sql_to_cypher(
     limit = tree.args.get("limit")
     if offset:
         cypher_lines.append(f"SKIP {offset.expression.sql()}")
+
+    def _resolve_limit_expr(lim_node: exp.Expression) -> str:
+        lim_expr = getattr(lim_node, "expression", None)
+        if isinstance(lim_expr, exp.Parameter):
+            return "25"
+        return lim_expr.sql() if lim_expr is not None else "25"
+
     if node_only:
         # Use Neo4j browser default when multiple nodes; original limit for single-node.
         cypher_lines.append("LIMIT 25" if len(node_aliases) > 1 else (
             f"LIMIT {override_limit}" if override_limit is not None else
-            (f"LIMIT {limit.expression.sql()}" if limit else "LIMIT 25")
+            (f"LIMIT {_resolve_limit_expr(limit)}" if limit else "LIMIT 25")
         ))
     elif override_limit is not None:
         cypher_lines.append(f"LIMIT {override_limit}")
     elif limit:
-        cypher_lines.append(f"LIMIT {limit.expression.sql()}")
+        cypher_lines.append(f"LIMIT {_resolve_limit_expr(limit)}")
 
     return "\n".join(cypher_lines)
 

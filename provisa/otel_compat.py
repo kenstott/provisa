@@ -18,8 +18,7 @@ Unit tests run without opentelemetry installed; production uses the real SDK.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from typing import Generator
+from typing import Protocol
 
 
 class _NoopSpan:
@@ -39,15 +38,20 @@ class _NoopSpan:
         pass
 
 
+class TracerProtocol(Protocol):
+    def start_as_current_span(self, name: str, **kwargs) -> _NoopSpan: ...
+    def start_span(self, name: str, **kwargs) -> _NoopSpan: ...
+
+
 class _NoopTracer:
-    def start_as_current_span(self, name: str, **kwargs):  # noqa: ARG002
+    def start_as_current_span(self, name: str, **kwargs) -> _NoopSpan:  # noqa: ARG002
         return _NoopSpan()
 
-    def start_span(self, name: str, **kwargs):  # noqa: ARG002
+    def start_span(self, name: str, **kwargs) -> _NoopSpan:  # noqa: ARG002
         return _NoopSpan()
 
 
-def get_tracer(name: str) -> object:
+def get_tracer(name: str) -> TracerProtocol:
     """Return the OTel tracer for *name*, or a no-op tracer if OTel is absent."""
     try:
         from opentelemetry import trace as _trace

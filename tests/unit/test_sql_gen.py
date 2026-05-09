@@ -20,7 +20,6 @@ from graphql import parse, validate
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import (
-    CompilationContext,
     build_context,
     compile_query,
 )
@@ -129,13 +128,13 @@ class TestSimpleSelect:
         assert q.params == []
 
     def test_single_field(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders { id } }")
         results = compile_query(doc, ctx)
         assert results[0].sql == 'SELECT "id" FROM "public"."orders" LIMIT 10000'
 
     def test_sources_tracked(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders { id } }")
         results = compile_query(doc, ctx)
         assert results[0].sources == {"sales-pg"}
@@ -143,7 +142,7 @@ class TestSimpleSelect:
 
 class TestWhereClause:
     def test_eq_filter(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse('{ orders(where: { region: { eq: "us-east" } }) { id amount } }')
         results = compile_query(doc, ctx)
         q = results[0]
@@ -151,7 +150,7 @@ class TestWhereClause:
         assert q.params == ["us-east"]
 
     def test_multiple_filters(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse('{ orders(where: { region: { eq: "us" }, status: { eq: "done" } }) { id } }')
         results = compile_query(doc, ctx)
         q = results[0]
@@ -160,7 +159,7 @@ class TestWhereClause:
         assert len(q.params) == 2
 
     def test_in_filter(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse('{ orders(where: { region: { in: ["us", "eu"] } }) { id } }')
         results = compile_query(doc, ctx)
         q = results[0]
@@ -168,19 +167,19 @@ class TestWhereClause:
         assert q.params == ["us", "eu"]
 
     def test_is_null_filter(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders(where: { region: { is_null: true } }) { id } }")
         results = compile_query(doc, ctx)
         assert "IS NULL" in results[0].sql
 
     def test_neq_filter(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse('{ orders(where: { status: { neq: "cancelled" } }) { id } }')
         results = compile_query(doc, ctx)
         assert '!= $1' in results[0].sql
 
     def test_like_filter(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse('{ orders(where: { region: { like: "%east%" } }) { id } }')
         results = compile_query(doc, ctx)
         assert "LIKE $1" in results[0].sql
@@ -188,21 +187,21 @@ class TestWhereClause:
 
 class TestPagination:
     def test_limit(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders(limit: 10) { id } }")
         results = compile_query(doc, ctx)
         assert results[0].sql.endswith("LIMIT $1")
         assert results[0].params == [10]
 
     def test_offset(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders(limit: 10, offset: 20) { id } }")
         results = compile_query(doc, ctx)
         assert "LIMIT $1 OFFSET $2" in results[0].sql
         assert results[0].params == [10, 20]
 
     def test_order_by(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders(order_by: [{ created_at: desc }]) { id } }")
         results = compile_query(doc, ctx)
         sql = results[0].sql
@@ -210,13 +209,13 @@ class TestPagination:
         assert '"created_at" DESC' in sql
 
     def test_order_by_asc(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders(order_by: [{ id: asc }]) { id } }")
         results = compile_query(doc, ctx)
         assert '"id" ASC' in results[0].sql
 
     def test_order_by_nulls_first(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders(order_by: [{ amount: asc_nulls_first }]) { id } }")
         results = compile_query(doc, ctx)
         assert '"amount" ASC NULLS FIRST' in results[0].sql
@@ -379,25 +378,25 @@ class TestPagination:
             compile_query(doc, ctx, flat=True)
 
     def test_order_by_nulls_last(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders(order_by: [{ amount: desc_nulls_last }]) { id } }")
         results = compile_query(doc, ctx)
         assert '"amount" DESC NULLS LAST' in results[0].sql
 
     def test_order_by_desc_nulls_first(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders(order_by: [{ region: desc_nulls_first }]) { id } }")
         results = compile_query(doc, ctx)
         assert '"region" DESC NULLS FIRST' in results[0].sql
 
     def test_order_by_asc_nulls_last(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders(order_by: [{ status: asc_nulls_last }]) { id } }")
         results = compile_query(doc, ctx)
         assert '"status" ASC NULLS LAST' in results[0].sql
 
     def test_order_by_multiple_columns(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders(order_by: [{ region: asc }, { amount: desc }]) { id } }")
         results = compile_query(doc, ctx)
         sql = results[0].sql
@@ -405,7 +404,7 @@ class TestPagination:
         assert '"amount" DESC' in sql
 
     def test_full_pagination(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse(
             "{ orders(order_by: [{ id: asc }], limit: 5, offset: 10) { id amount } }"
         )
@@ -430,14 +429,14 @@ class TestDistinctOn:
         assert '"amount"' in sql
 
     def test_distinct_on_multiple_columns(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders(distinct_on: [customer_id, region]) { id customerId region } }")
         results = compile_query(doc, ctx)
         sql = results[0].sql
         assert 'DISTINCT ON ("customer_id", "region")' in sql
 
     def test_distinct_on_with_order_by(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("""
             { orders(
                 distinct_on: [customer_id]
@@ -452,7 +451,7 @@ class TestDistinctOn:
 
 class TestNestedRelationship:
     def test_many_to_one_join(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders { id amount customer { name email } } }")
         results = compile_query(doc, ctx)
         q = results[0]
@@ -464,7 +463,7 @@ class TestNestedRelationship:
         assert '"t0"."customer_id" = "t1"."id"' in q.sql
 
     def test_many_to_one_path_rejects_args(self, schema_and_ctx):
-        schema, _ctx = schema_and_ctx
+        schema, _ = schema_and_ctx
         doc = parse("""
             {
                 orders {
@@ -788,14 +787,13 @@ class TestNestedRelationship:
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
         )
-        schema = generate_schema(si)
         ctx = build_context(si)
         doc = parse("{ orders { id customer { name } } }")
         results = compile_query(doc, ctx)
         assert results[0].sources == {"src-a", "src-b"}
 
     def test_columns_metadata_for_nested(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders { id customer { name } } }")
         results = compile_query(doc, ctx)
         cols = results[0].columns
@@ -812,7 +810,7 @@ class TestJoinTypeCast:
 
     def test_no_cast_for_same_types(self, schema_and_ctx):
         """integer = integer → no CAST."""
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders { id customer { name } } }")
         results = compile_query(doc, ctx)
         sql = results[0].sql
@@ -857,7 +855,6 @@ class TestJoinTypeCast:
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
         )
-        schema = generate_schema(si)
         ctx = build_context(si)
         doc = parse("{ orders { id review { rating } } }")
         results = compile_query(doc, ctx)
@@ -900,7 +897,6 @@ class TestJoinTypeCast:
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
         )
-        schema = generate_schema(si)
         ctx = build_context(si)
         doc = parse("{ orders { id external { label } } }")
         results = compile_query(doc, ctx)
@@ -912,7 +908,7 @@ class TestJoinTypeCast:
 
 class TestVariables:
     def test_variable_in_where(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse(
             "query Q($r: String) { orders(where: { region: { eq: $r } }) { id } }"
         )
@@ -920,7 +916,7 @@ class TestVariables:
         assert results[0].params == ["us-west"]
 
     def test_missing_variable_raises(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse(
             "query Q($r: String) { orders(where: { region: { eq: $r } }) { id } }"
         )
@@ -930,7 +926,7 @@ class TestVariables:
 
 class TestUnknownField:
     def test_unknown_root_field(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        schema, _ = schema_and_ctx
         # Parse against a schema that doesn't have "bogus" — validation catches it
         doc = parse("{ bogus { id } }")
         errors = validate(schema, doc)
@@ -939,7 +935,7 @@ class TestUnknownField:
 
 class TestMultipleRootFields:
     def test_two_root_fields(self, schema_and_ctx):
-        schema, ctx = schema_and_ctx
+        _, ctx = schema_and_ctx
         doc = parse("{ orders { id } customers { id name } }")
         results = compile_query(doc, ctx)
         assert len(results) == 2
@@ -1045,5 +1041,90 @@ class TestColumnAlias:
         results = compile_query(doc, ctx)
         q = results[0]
         assert '"amount" AS "q"' in q.sql
+
+
+class TestOpsDefaultLimit:
+    """Verify that joins with default_limit use ARRAY_AGG with an inner LIMIT subquery (flat=False)
+    and LATERAL JOIN with LIMIT (flat=True)."""
+
+    def _build_ops_schema_and_ctx(self):
+        tables = [
+            {
+                "id": 1,
+                "source_id": "sales-pg",
+                "domain_id": "sales",
+                "schema_name": "public",
+                "table_name": "orders",
+                "governance": "pre-approved",
+                "columns": [{"column_name": "id", "visible_to": ["admin"]}],
+            },
+            {
+                "id": 2,
+                "source_id": "provisa-meta",
+                "domain_id": "meta",
+                "schema_name": "public",
+                "table_name": "registered_tables",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "table_name", "visible_to": ["admin"]},
+                ],
+            },
+            {
+                "id": 3,
+                "source_id": "provisa-otel",
+                "domain_id": "ops",
+                "schema_name": "public",
+                "table_name": "queries",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "table_name", "visible_to": ["admin"]},
+                    {"column_name": "query", "visible_to": ["admin"]},
+                ],
+            },
+        ]
+        column_types = {
+            1: [_col("id", "integer")],
+            2: [_col("id", "integer"), _col("table_name")],
+            3: [_col("table_name"), _col("query")],
+        }
+        return _build_schema_and_ctx(
+            tables=tables,
+            relationships=[],
+            column_types=column_types,
+        )
+
+    def test_ops_queries_flat_false_uses_array_agg_with_limit(self):
+        """flat=False with default_limit=10 must use ARRAY_AGG(SELECT ... LIMIT 10),
+        not a bare LATERAL JOIN — to avoid fan-out rows."""
+        schema, ctx = self._build_ops_schema_and_ctx()
+        doc = parse("{ orders { id _meta { _queries { query } } } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx, flat=False)
+        sql = results[0].sql
+        assert "ARRAY_AGG" in sql, "Expected ARRAY_AGG in non-flat SQL: " + sql
+        assert "LIMIT" in sql, "Expected LIMIT inside ARRAY_AGG subquery: " + sql
+
+    def test_ops_queries_flat_true_uses_lateral_join(self):
+        """flat=True with default_limit=10 must use LATERAL JOIN with LIMIT."""
+        schema, ctx = self._build_ops_schema_and_ctx()
+        doc = parse("{ orders { id _meta { _queries { query } } } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx, flat=True)
+        sql = results[0].sql
+        assert "ARRAY_AGG" not in sql, "Expected no ARRAY_AGG in flat SQL: " + sql
+        assert "LIMIT" in sql, "Expected LIMIT in flat SQL from default_limit=10: " + sql
+
+    def test_ops_queries_explicit_limit_flat_false_uses_array_agg(self):
+        """_queries(limit: 2) with flat=False must use ARRAY_AGG with LIMIT 2,
+        not LATERAL JOIN — explicit limit arg must not force LATERAL."""
+        schema, ctx = self._build_ops_schema_and_ctx()
+        doc = parse("{ orders { id _meta { _queries(limit: 2) { query } } } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx, flat=False)
+        sql = results[0].sql
+        assert "ARRAY_AGG" in sql, "Expected ARRAY_AGG with explicit limit: " + sql
+        assert "LIMIT 2" in sql, "Expected LIMIT 2 from explicit arg: " + sql
+        assert "LATERAL" not in sql, "Expected no LATERAL with flat=False: " + sql
 
 # Aggregate and alias tests moved to test_sql_gen_aggregate.py

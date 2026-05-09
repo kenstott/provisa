@@ -85,7 +85,8 @@ def serialize_rows(
         for row in rows:
             root_key = tuple(_convert_value(row[idx]) for idx, _ in root_cols)
 
-            if root_key not in seen:
+            is_first_visit = root_key not in seen
+            if is_first_visit:
                 obj: dict = {}
                 for idx, col in root_cols:
                     obj[col.field_name] = _convert_value(row[idx])
@@ -143,13 +144,16 @@ def serialize_rows(
                 arr = target.get(parts[-1])
                 if not isinstance(arr, list):
                     continue
-                # ARRAY_AGG case: column values are already arrays — zip into per-element objects
+                # ARRAY_AGG case: column values are already arrays — zip into per-element objects.
+                # The correlated subquery is deterministic: same arrays on every SQL row for this
+                # parent. Only populate on first visit to avoid adding duplicates; no dedup needed.
                 if any(isinstance(v, list) for v in child.values()):
+                    if not is_first_visit:
+                        continue
                     n = next((len(v) for v in child.values() if isinstance(v, list)), 0)
                     for j in range(n):
                         elem = {k: (v[j] if isinstance(v, list) and j < len(v) else v) for k, v in child.items()}
-                        if elem not in arr:
-                            arr.append(elem)
+                        arr.append(elem)
                 elif child not in arr:
                     arr.append(child)
 

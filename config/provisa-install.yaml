@@ -424,6 +424,18 @@ relationships:
   target_column: breed_name
   cardinality: one-to-many
   alias: PETS_OF_BREED
+- id: pets-to-shelter-assignments
+  source_table_id: pets
+  target_table_id: shelter__assignments
+  source_column: breed_name
+  target_column: breed_name
+  cardinality: many-to-one
+- id: shelter-assignments-to-pets
+  source_table_id: shelter__assignments
+  target_table_id: pets
+  source_column: breed_name
+  target_column: breed_name
+  cardinality: one-to-many
 roles:
 - id: admin
   capabilities:

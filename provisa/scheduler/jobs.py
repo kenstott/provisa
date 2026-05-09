@@ -222,28 +222,46 @@ async def compact_otel_signals() -> None:
         try:
             import pyarrow as pa
             import pyarrow.parquet as pq
-
-            parts = []
-            for key in keys:
-                obj = s3.get_object(Bucket=otel_bucket, Key=key)
-                parts.append(pq.read_table(io.BytesIO(obj["Body"].read())))
-            combined = pa.concat_tables(parts, promote_options="default")
-        except Exception:
-            logger.exception("compact_otel: failed reading %s parquet files", signal)
+        except ImportError:
+            logger.exception("compact_otel: pyarrow not available")
             continue
 
-        try:
-            await asyncio.to_thread(
-                _insert_otel_iceberg, state.trino_conn, signal, combined, target
-            )
-            logger.info(
-                "compact_otel: inserted %d %s rows for %s", len(combined), signal, date_glob
-            )
-        except Exception:
-            logger.exception("compact_otel: failed inserting %s into Iceberg", signal)
+        file_chunk = getattr(state, "otel_compact_file_chunk", 50)
+        total_rows = 0
+        failed = False
+        for chunk_start in range(0, len(keys), file_chunk):
+            chunk_keys = keys[chunk_start : chunk_start + file_chunk]
+            try:
+                parts = []
+                for key in chunk_keys:
+                    obj = s3.get_object(Bucket=otel_bucket, Key=key)
+                    parts.append(pq.read_table(io.BytesIO(obj["Body"].read())))
+                combined = pa.concat_tables(parts, promote_options="default")
+            except Exception:
+                logger.exception("compact_otel: failed reading %s parquet files (chunk %d)", signal, chunk_start)
+                failed = True
+                break
+
+            try:
+                await asyncio.to_thread(
+                    _insert_otel_iceberg, state.trino_conn, signal, combined, target,
+                    delete_first=(chunk_start == 0),
+                )
+                total_rows += len(combined)
+                s3.delete_objects(
+                    Bucket=otel_bucket,
+                    Delete={"Objects": [{"Key": k} for k in chunk_keys]},
+                )
+            except Exception:
+                logger.exception("compact_otel: failed inserting %s into Iceberg (chunk %d)", signal, chunk_start)
+                failed = True
+                break
+
+        if not failed:
+            logger.info("compact_otel: inserted %d %s rows for %s", total_rows, signal, date_glob)
 
 
-def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -> None:
+def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object, *, delete_first: bool = True) -> None:
     """Create Iceberg table from schema and INSERT the rows (runs in thread)."""
     import pyarrow as pa
 
@@ -309,13 +327,13 @@ def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -
 
     date_val = dt.strftime("%Y-%m-%d")
 
-    # Delete existing rows for this date partition before reinserting (idempotent).
-    try:
-        cursor.execute(
-            f"DELETE FROM otel.signals.{signal} WHERE _date = DATE '{date_val}'"
-        )
-    except Exception:
-        pass
+    if delete_first:
+        try:
+            cursor.execute(
+                f"DELETE FROM otel.signals.{signal} WHERE _date = DATE '{date_val}'"
+            )
+        except Exception:
+            pass
 
     # For traces: extract provisa-specific span attributes into dedicated columns.
     # otlp2parquet stores attributes as JSON in span_attributes (not "attributes").
@@ -382,13 +400,76 @@ def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -
         flat = [v for row in batch for v in row]
         cursor.execute(multi_sql, flat)
 
-    # Expire all but the current snapshot to prevent metadata bloat causing Trino OOM.
+    # Expire all but the current snapshot to prevent metadata bloat → Trino OOM.
+    # retention_threshold must be a TIMESTAMP; CURRENT_TIMESTAMP expires everything
+    # older than "now", leaving only the snapshot just written.
     try:
         cursor.execute(
-            f"ALTER TABLE otel.signals.{signal} EXECUTE expire_snapshots(retention_threshold => '0s')"
+            f"ALTER TABLE otel.signals.{signal} EXECUTE expire_snapshots"
+            f"(retention_threshold => CURRENT_TIMESTAMP)"
         )
     except Exception:
-        logger.debug("compact_otel: expire_snapshots for %s failed (non-fatal)", signal)
+        logger.warning("compact_otel: expire_snapshots for %s failed", signal, exc_info=True)
+
+
+async def watch_trino() -> None:
+    """Restart the Trino Docker container if it is not responding."""
+    import asyncio
+    import trino
+    from provisa.api.app import state
+
+    if state.trino_conn is None:
+        return
+
+    try:
+        await asyncio.to_thread(_trino_ping, state.trino_conn)
+        return
+    except Exception:
+        pass
+
+    logger.warning("watch_trino: Trino unresponsive — attempting restart")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "docker", "start", "provisa-trino-1",
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            logger.error("watch_trino: docker start failed: %s", stderr.decode().strip())
+            return
+        logger.info("watch_trino: provisa-trino-1 started, waiting for healthy state")
+    except Exception:
+        logger.exception("watch_trino: docker start provisa-trino-1 failed")
+        return
+
+    # Wait up to 120 s for Trino to accept connections, then replace the dead conn.
+    deadline = asyncio.get_event_loop().time() + 120
+    while asyncio.get_event_loop().time() < deadline:
+        await asyncio.sleep(5)
+        try:
+            new_conn = await asyncio.to_thread(
+                lambda: trino.dbapi.connect(**state.trino_conn_kwargs)
+            )
+            await asyncio.to_thread(_trino_ping, new_conn)
+            old_conn = state.trino_conn
+            state.trino_conn = new_conn
+            try:
+                old_conn.close()
+            except Exception:
+                pass
+            logger.info("watch_trino: Trino reconnected successfully")
+            return
+        except Exception:
+            pass
+
+    logger.error("watch_trino: Trino did not become healthy within 120 s")
+
+
+def _trino_ping(conn: object) -> None:
+    cur = conn.cursor()  # type: ignore[union-attr]
+    cur.execute("SELECT 1")
+    cur.fetchone()
 
 
 def build_scheduler(triggers: list[ScheduledTrigger]) -> AsyncIOScheduler | None:

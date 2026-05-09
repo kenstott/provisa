@@ -51,6 +51,7 @@ class AppState:
 
     pg_pool: asyncpg.Pool | None = None
     trino_conn: trino.dbapi.Connection | None = None
+    trino_conn_kwargs: dict = {}  # kwargs used to create trino_conn (for reconnect)
     flight_client: object | None = None  # pyarrow.flight.FlightClient
     schemas: dict[str, object] = {}  # role_id → GraphQLSchema
     schema_build_cache: dict = {}  # raw data for on-demand domain-filtered schema building
@@ -107,7 +108,8 @@ class AppState:
     _scheduler: object | None = None  # APScheduler instance for scheduled queries
     global_naming_convention: str = "apollo_graphql"  # runtime override; set via updateNamingConvention
     otel_compact_cron: str = "* * * * *"  # cron for Parquet→Iceberg compaction
-    otel_compact_batch_size: int = 10  # rows per INSERT batch during compaction
+    otel_compact_batch_size: int = 1000  # rows per INSERT batch during compaction
+    otel_compact_file_chunk: int = 50  # Parquet files processed per compaction chunk
 
 
 state = AppState()
@@ -705,6 +707,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
     if config.observability:
         state.otel_compact_cron = config.observability.compact_cron
         state.otel_compact_batch_size = config.observability.compact_batch_size
+        state.otel_compact_file_chunk = config.observability.compact_file_chunk
         state.otel_snapshot_retention_hours = config.observability.ops_snapshot_retention_hours
 
     # Initialize cache store — REDIS_URL env var overrides config
@@ -849,7 +852,6 @@ async def _load_and_build(config_path: str | None = None) -> None:
             "SELECT id, path FROM sources WHERE type = 'openapi' AND path IS NOT NULL AND path != ''"
         )
     from provisa.openapi.loader import load_spec
-    from provisa.openapi.mapper import parse_spec as _parse_spec
     from provisa.core.secrets import resolve_secrets as _resolve_secrets
     state.openapi_specs = {}
     for _row in openapi_rows:
@@ -1575,7 +1577,6 @@ async def lifespan(app: FastAPI):
 
     # Start warm-table background task (REQ-AD5)
     if state.trino_conn:
-        from provisa.cache.warm_tables import QueryCounter as _QC
         from provisa.compiler.sql_gen import query_counter as _qc
 
         async def _warm_loop() -> None:
@@ -1738,12 +1739,21 @@ async def lifespan(app: FastAPI):
                     replace_existing=True,
                 )
         # OTEL compaction: Parquet → Iceberg on configured schedule
-        from provisa.scheduler.jobs import compact_otel_signals
+        from provisa.scheduler.jobs import compact_otel_signals, watch_trino
         scheduler.add_job(
             compact_otel_signals,
             trigger=CronTrigger.from_crontab(state.otel_compact_cron),
             id="otel_compact",
             name="otel:compact_signals",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        scheduler.add_job(
+            watch_trino,
+            trigger=CronTrigger.from_crontab("* * * * *"),
+            id="trino_watch",
+            name="trino:watcher",
             replace_existing=True,
         )
 
@@ -1839,6 +1849,28 @@ async def lifespan(app: FastAPI):
                             ))
                         except Exception:
                             _log.warning("Failed to upsert shelter-breed-to-pets", exc_info=True)
+                        try:
+                            await rel_repo.upsert(_rel_conn, Relationship(
+                                id="pets-to-shelter-assignments",
+                                source_table_id="pets",
+                                target_table_id="shelter__assignments",
+                                source_column="breed_name",
+                                target_column="breed_name",
+                                cardinality=Cardinality("many-to-one"),
+                            ))
+                        except Exception:
+                            _log.warning("Failed to upsert pets-to-shelter-assignments", exc_info=True)
+                        try:
+                            await rel_repo.upsert(_rel_conn, Relationship(
+                                id="shelter-assignments-to-pets",
+                                source_table_id="shelter__assignments",
+                                target_table_id="pets",
+                                source_column="breed_name",
+                                target_column="breed_name",
+                                cardinality=Cardinality("one-to-many"),
+                            ))
+                        except Exception:
+                            _log.warning("Failed to upsert shelter-assignments-to-pets", exc_info=True)
                 _log.info(
                     "Auto-registered graphql-demo source (%d tables, %d functions)",
                     len(tables), len(functions),
@@ -1934,10 +1966,8 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    import traceback as _tb
     from fastapi import Request as _Request
     from fastapi.responses import JSONResponse as _JSONResponse
-    from fastapi.exception_handlers import http_exception_handler as _http_exc_handler
 
     @app.exception_handler(Exception)
     async def _global_exception_handler(_req: _Request, exc: Exception):

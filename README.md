@@ -8,6 +8,7 @@ Single-source queries execute directly against the source driver (target: sub-10
 
 ### Query & API
 - **GraphQL, Cypher and SQL** — First-class query languages; governance, RLS, and column masking apply to all; auto-detected by all client interfaces
+- **Query Language Explorer** — write a GraphQL query in the Explore page and see the equivalent **Semantic SQL** and **Cypher** translations live in collapsible side panels; copy either or jump directly into the SQL or Graph editor. The three languages offer different trade-offs: GraphQL is schema-constrained to approved relationships so every query is structurally valid — the fastest path to a correct simple query; SQL and Cypher are unconstrained and will surface governance violations only at execution time, but are far more expressive for complex joins and aggregations. A practical workflow: sketch query fragments in GraphQL to get valid, governance-safe SQL snippets, then stitch those snippets together in the SQL editor for views or reports that GraphQL cannot express.
 - **Natural language query** — NL→SQL/Cypher/GraphQL pipeline powered by Claude with an interactive validation loop
 - **GraphQL API** — Per-role schemas with field-level visibility, filtering, cursor-based pagination, and aggregate queries (`count`, `sum`, `avg`, `min`, `max`)
 - **Apollo APQ** — Automatic Persisted Queries; Redis-backed hash→query cache; zero client changes required

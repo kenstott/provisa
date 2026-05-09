@@ -1435,8 +1435,6 @@ async def _execute_one_field(
             _t_trino = _time.perf_counter()
             _loop = asyncio.get_running_loop()
             _trino_ck = getattr(state, "trino_conn_kwargs", None)
-            # Use the registered table_name (matches registered_tables.table_name) so the
-            # ops-traversal join (registered_tables.table_name = traces.table_name) matches.
             _root_meta = ctx.tables.get(root_field)
             _root_name = (
                 (_root_meta.original_table_name or _root_meta.table_name)

@@ -11,7 +11,11 @@
 import { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from "react";
 import type { Relationship } from "../types/admin";
 import CodeMirror from "@uiw/react-codemirror";
-import { cypherLanguage } from "@neo4j-cypher/codemirror";
+import * as _neo4jCypherMod from "@neo4j-cypher/codemirror";
+import "@neo4j-cypher/codemirror/css/cypher-codemirror.css";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const { getCypherLanguageExtensions: _getGFCypherExts, cypherLinter: _gfCypherLinter } = _neo4jCypherMod as any;
+const _gfCypherLangExts = _getGFCypherExts({ cypherLanguage: true } as any);
 import { json as jsonLang } from "@codemirror/lang-json";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap } from "@codemirror/view";
@@ -254,6 +258,7 @@ function _formatId(id: unknown): string {
 export function buildRemainingRelsQueries(
   nodes: Map<string, GNode>,
   pkMap: Record<string, string[]>,
+  schemaRels?: Array<{ type: string; source: string; target: string }>,
 ): Array<string> {
   const byLabel = new Map<string, GNode[]>();
   nodes.forEach((n) => {
@@ -262,6 +267,7 @@ export function buildRemainingRelsQueries(
     byLabel.set(n.label, arr);
   });
   const labels = [...byLabel.keys()];
+  const visibleTableLabels = new Set(labels.map(l => l.includes(":") ? l.split(":").pop()! : l));
   const queries: string[] = [];
   for (const srcLabel of labels) {
     const srcNodes = byLabel.get(srcLabel) ?? [];
@@ -278,6 +284,18 @@ export function buildRemainingRelsQueries(
       queries.push(
         `MATCH (a:${tableLabel})-[r]->(b:${tgtTableLabel}) WHERE a.${pkCol} IN [${srcIds}] AND b.${tgtPkCol} IN [${tgtIds}] RETURN a, r, b`
       );
+    }
+    // For non-visible targets: generate discovery queries using schema relationships
+    if (schemaRels) {
+      for (const rel of schemaRels) {
+        const rSrcLabel = rel.source.includes(":") ? rel.source.split(":").pop()! : rel.source;
+        if (rSrcLabel !== tableLabel) continue;
+        const tgtTableLabel = rel.target.includes(":") ? rel.target.split(":").pop()! : rel.target;
+        if (visibleTableLabels.has(tgtTableLabel)) continue;
+        queries.push(
+          `MATCH (a:${tableLabel})-[:${rel.type}]->(b:${tgtTableLabel}) WHERE a.${pkCol} IN [${srcIds}] RETURN a, b`
+        );
+      }
     }
   }
   return queries;
@@ -1600,10 +1618,12 @@ interface GraphFrameProps {
   onColorChange: (label: string, color: string) => void;
   pkMap: Record<string, string[]>;
   relationships?: Relationship[];
+  schemaRels?: Array<{ type: string; source: string; target: string }>;
+  autoImpute?: boolean;
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<void>;
 }
 
-export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onColorChange, pkMap, relationships, onSaveEdgeAlias }: GraphFrameProps) {
+export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onColorChange, pkMap, relationships, schemaRels, autoImpute: autoImputeProp = false, onSaveEdgeAlias }: GraphFrameProps) {
   const [view, setView] = useState<"graph" | "table" | "json">("graph");
   const [selected, setSelected] = useState<{ kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -1614,7 +1634,7 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
   const editQueryRef = useRef(editQuery);
   editQueryRef.current = editQuery;
   const [overlayData, setOverlayData] = useState<Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>>(new Map);
-  const [autoImpute, setAutoImpute] = useState(false);
+  const [autoImpute, setAutoImpute] = useState(autoImputeProp);
   const handleRerun = useCallback((id: string, query: string) => {
     setOverlayData(new Map());
     onRerun(id, query);
@@ -1986,35 +2006,18 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
     Array.from(overlayData.keys()).filter(k => k.endsWith(":parents:circular")).map(k => k.slice(0, -":parents:circular".length))
   ), [overlayData]);
 
-  const remainingRelsActive = autoImpute;
-
-  const handleToggleRemainingRels = useCallback(async () => {
-    if (autoImpute) {
-      setAutoImpute(false);
+  // When autoImpute is turned off, clear its overlay
+  useEffect(() => {
+    if (!autoImpute) {
       setOverlayData((prev) => { const next = new Map(prev); next.delete("__remaining_rels"); return next; });
-      return;
     }
-    setAutoImpute(true);
-    const queries = buildRemainingRelsQueries(mergedNodes, pkMap);
-    if (queries.length === 0) return;
-    const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = { nodes: new Map(), edges: new Map() };
-    await Promise.all(queries.map(async (q) => {
-      const result = await _fetchNeighbors(q);
-      if (result) {
-        result.nodes.forEach((n, k) => merged.nodes.set(k, n));
-        result.edges.forEach((e, k) => merged.edges.set(k, e));
-      }
-    }));
-    if (merged.nodes.size > 0 || merged.edges.size > 0) {
-      setOverlayData((prev) => new Map(prev).set("__remaining_rels", merged));
-    }
-  }, [autoImpute, mergedNodes, pkMap, _fetchNeighbors]);
+  }, [autoImpute]);
 
-  // Auto-run imputation whenever a new query result arrives while toggle is on
+  // Run imputation whenever the frame result changes or autoImpute toggles on
   useEffect(() => {
     if (!autoImpute || frame.status !== "done" || frame.nodes.size === 0) return;
     let cancelled = false;
-    const queries = buildRemainingRelsQueries(frame.nodes, pkMap);
+    const queries = buildRemainingRelsQueries(frame.nodes, pkMap, schemaRels);
     if (queries.length === 0) return;
     const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = { nodes: new Map(), edges: new Map() };
     Promise.all(queries.map(async (q) => {
@@ -2029,7 +2032,7 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
       }
     });
     return () => { cancelled = true; };
-  }, [autoImpute, frame.status, frame.nodes, pkMap, _fetchNeighbors]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoImpute, frame.status, frame.nodes, pkMap, schemaRels, _fetchNeighbors]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
   const activeView: "graph" | "table" | "json" = hasGraph ? view : (view === "json" ? "json" : "table");
@@ -2042,7 +2045,8 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
           value={editQuery}
           theme={oneDark}
           extensions={[
-            cypherLanguage(),
+            ..._gfCypherLangExts,
+            _gfCypherLinter({ showErrors: false }),
             EditorView.lineWrapping,
             Prec.highest(keymap.of([{
               key: "Enter",
@@ -2068,9 +2072,9 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
         <button className="gf-run-inline-btn" onClick={() => handleRerun(frame.id, editQuery.trim())} title="Run">▶</button>
         {hasGraph && frame.status === "done" && (
           <button
-            className={`gf-icon-btn${remainingRelsActive ? " gf-icon-btn--on" : ""}`}
-            onClick={handleToggleRemainingRels}
-            title={remainingRelsActive ? "Auto-impute relationships ON — click to disable" : "Auto-impute relationships between visible nodes (persists across reruns)"}
+            className={`gf-icon-btn${autoImpute ? " gf-icon-btn--on" : ""}`}
+            onClick={() => setAutoImpute(v => !v)}
+            title={autoImpute ? "Auto-impute relationships ON — click to disable" : "Auto-impute relationships between visible nodes"}
           >⊕</button>
         )}
         {hasGraph && (

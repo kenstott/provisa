@@ -98,19 +98,18 @@ def extract_graphql_comments(query: str) -> list[str]:
 
 
 def graphql_comments_to_sql(query: str) -> str:
-    """Convert GraphQL ``#`` comment lines to SQL ``--`` comment lines.
+    """Convert GraphQL ``# @provisa`` directive lines to SQL ``--`` comment lines.
 
-    Returns a block of ``-- comment`` lines (terminated with a newline) that
-    can be prepended to a SQL string, or an empty string when there are no
-    comments.
+    Only emits lines that start with ``@provisa`` — commented-out field names
+    and other editing noise are excluded.
 
     Args:
         query: Raw GraphQL query string.
 
     Returns:
-        SQL comment block, e.g. ``"-- @provisa route=trino\\n-- My report\\n"``.
+        SQL comment block, e.g. ``"-- @provisa route=trino\\n"``, or ``""``.
     """
-    lines = extract_graphql_comments(query)
+    lines = [line for line in extract_graphql_comments(query) if line.startswith("@provisa")]
     if not lines:
         return ""
     return "".join(f"-- {line}\n" for line in lines)

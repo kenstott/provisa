@@ -13,7 +13,11 @@ import { FilterInput } from "../components/admin/FilterInput";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { graphql } from "cm6-graphql";
-import { cypherLanguage } from "@neo4j-cypher/codemirror";
+import * as _neo4jCypherMod from "@neo4j-cypher/codemirror";
+import "@neo4j-cypher/codemirror/css/cypher-codemirror.css";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const { getCypherLanguageExtensions: _getApprovalCypherExts, cypherLinter: _approvalCypherLinter } = _neo4jCypherMod as any;
+const _approvalCypherLangExts = _getApprovalCypherExts({ cypherLanguage: true } as any);
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -323,7 +327,7 @@ function QueryRow({ query, expanded, roleIds, onToggle, onDone }: QueryRowProps)
                 <h4>Semantic Cypher</h4>
                 <CodeMirror
                   value={query.compiledCypher}
-                  extensions={[cypherLanguage(), EditorView.lineWrapping]}
+                  extensions={[..._approvalCypherLangExts, _approvalCypherLinter({ showErrors: false }), EditorView.lineWrapping]}
                   theme={oneDark}
                   editable={false}
                   basicSetup={{ lineNumbers: false, foldGutter: true }}

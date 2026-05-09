@@ -18,7 +18,6 @@ Table aliases (t0, t1, ...) used when JOINs are present.
 from __future__ import annotations
 
 import fnmatch as _fnmatch
-import json as _json
 import os as _os
 import re as _re
 
@@ -45,11 +44,11 @@ from graphql import (
     IntValueNode,
     ListValueNode,
     ObjectValueNode,
+    OperationDefinitionNode,
     StringValueNode,
     VariableNode,
 )
 
-from provisa.compiler.aggregate_gen import _is_comparable, _is_numeric
 from provisa.compiler.naming import rel_field_name as _rel_field_name, source_to_catalog
 from provisa.compiler.params import ParamCollector
 from provisa.cache.warm_tables import QueryCounter
@@ -93,7 +92,7 @@ class JoinMeta:
     cardinality: str  # "many-to-one" or "one-to-many"
     cypher_alias: str | None = None  # Cypher rel type override (e.g. OPENED_BY)
     disable_cypher: bool = False  # when True, suppress this edge in the Cypher graph
-    source_constant: int | None = None  # when set, use as literal join value instead of source column
+    source_constant: int | str | None = None  # when set, use as literal join value instead of source column
     source_json_key: str | None = None  # when set, extract key from JSON object column via ->>'key'
     default_limit: int | None = None  # when set, wrap join target in a LIMIT subquery
 
@@ -180,6 +179,8 @@ def _lookup_column_type(
     Checks compile-time column_types first; falls back to schema_service
     live Trino query when catalog/schema/table are provided.
     """
+    from provisa.compiler.schema_gen import SchemaInput
+    assert isinstance(si, SchemaInput)
     col_metas = si.column_types.get(table_id, [])
     for meta in col_metas:
         if meta.column_name == column_name:
@@ -196,7 +197,7 @@ def build_context(si: object) -> CompilationContext:
     This mirrors the logic in schema_gen._build_visible_tables and _assign_names
     to produce the same field_name/type_name mapping.
     """
-    from provisa.compiler.naming import generate_name, to_type_name, domain_gql_alias, apply_convention
+    from provisa.compiler.naming import domain_gql_alias, apply_convention
     from provisa.compiler.schema_gen import SchemaInput, _build_visible_tables, _assign_names
 
     assert isinstance(si, SchemaInput)
@@ -369,6 +370,7 @@ def build_context(si: object) -> CompilationContext:
     # Inject synthetic traversal joins: registered_tables → ops tables
     # that carry a `table_name` FK column (e.g. traces, queries).
     _IMPLICIT_DOMAINS = {"meta", "ops"}
+    _ops_targets: list[tuple[TableMeta, str]] = []  # (ops_tgt, _base)
     for ops_t in tables:
         if ops_t.domain_id not in _IMPLICIT_DOMAINS or ops_t.domain_id == "meta":
             continue
@@ -385,6 +387,7 @@ def build_context(si: object) -> CompilationContext:
             domain_id=ops_t.domain_id,
         )
         _base = ops_t.field_name.split("__", 1)[1] if "__" in ops_t.field_name else ops_t.field_name
+        _ops_targets.append((ops_tgt, _base))
         join_field = f"_{_base}"
         if meta_rt:
             ctx.joins[(meta_rt.type_name, join_field)] = JoinMeta(
@@ -715,7 +718,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:
     except Exception:
         return sql
 
-    def _rewrite(node: exp.Expression) -> exp.Expression:
+    def _rewrite(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
         if not isinstance(node, exp.Table):
             return node
         name = node.name
@@ -817,10 +820,25 @@ def _has_joins(field_node: FieldNode, ctx: CompilationContext, type_name: str) -
 
 
 _NESTED_DB_ARGS = frozenset({"where", "order_by", "limit", "offset", "distinct_on"})
+# Args that require LATERAL JOIN — limit is handled inside ARRAY_AGG subquery
+_LATERAL_FORCE_ARGS = frozenset({"where", "order_by", "offset", "distinct_on"})
 
 
 def _has_nested_db_args(field_node: FieldNode) -> bool:
     return any(arg.name.value in _NESTED_DB_ARGS for arg in field_node.arguments)
+
+
+def _has_lateral_force_args(field_node: FieldNode) -> bool:
+    return any(arg.name.value in _LATERAL_FORCE_ARGS for arg in field_node.arguments)
+
+
+def _explicit_limit(field_node: FieldNode, variables: dict | None) -> int | None:
+    for arg in field_node.arguments:
+        if arg.name.value == "limit":
+            val = _extract_value(arg.value, variables)
+            if isinstance(val, int) and not isinstance(val, bool) and val > 0:
+                return val
+    return None
 
 
 def _extract_non_negative_int(value: object, name: str) -> int:
@@ -922,7 +940,7 @@ def _collect_nested_columns(
             sources.add(nested_join_meta.target.source_id)
 
             if nested_join_meta.source_constant is not None:
-                src_expr = str(nested_join_meta.source_constant)
+                src_expr = _sql_str_literal(nested_join_meta.source_constant) if isinstance(nested_join_meta.source_constant, str) else str(nested_join_meta.source_constant)
             elif nested_join_meta.source_column in _VIRTUAL_COLS:
                 _svc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(nested_join_meta.source_column, "")
                 src_expr = _sql_str_literal(_svc)
@@ -945,9 +963,9 @@ def _collect_nested_columns(
             _is_one_to_many_agg = (
                 not flat
                 and nested_join_meta.cardinality == "one-to-many"
-                and not _has_nested_db_args(nested_sel)
+                and not _has_lateral_force_args(nested_sel)
             )
-            if (nested_join_meta.default_limit is not None or _has_nested_db_args(nested_sel)) and not _is_one_to_many_agg:
+            if (nested_join_meta.default_limit is not None or _has_lateral_force_args(nested_sel)) and not _is_one_to_many_agg:
                 join_clauses.append(
                     _lateral_join(
                         nested_sel,
@@ -960,6 +978,7 @@ def _collect_nested_columns(
                     )
                 )
             elif _is_one_to_many_agg and nested_sel.selection_set:
+                _agg_limit = _explicit_limit(nested_sel, variables) or nested_join_meta.default_limit
                 for _leaf_sel in nested_sel.selection_set.selections:
                     if not isinstance(_leaf_sel, FieldNode):
                         continue
@@ -969,12 +988,22 @@ def _collect_nested_columns(
                     _leaf_key = _leaf_sel.alias.value if _leaf_sel.alias else _leaf_name
                     _phys_col = ctx.gql_to_physical.get((nested_join_meta.target.table_id, _leaf_name), _leaf_name)
                     _col_alias = f"{nesting_path}__{nested_key}__{_leaf_key}"
-                    select_parts.append(
-                        f'(SELECT ARRAY_AGG({_q(nested_alias)}.{_q(_phys_col)})'
-                        f' FROM {_table_ref(nested_join_meta.target, use_catalog)} {_q(nested_alias)}'
-                        f' WHERE {tgt_expr} = {src_expr})'
-                        f' AS {_q(_col_alias)}'
-                    )
+                    if _agg_limit is not None:
+                        select_parts.append(
+                            f'(SELECT ARRAY_AGG({_q(_phys_col)})'
+                            f' FROM (SELECT {_q(_phys_col)}'
+                            f' FROM {_table_ref(nested_join_meta.target, use_catalog)} {_q(nested_alias)}'
+                            f' WHERE {tgt_expr} = {src_expr}'
+                            f' LIMIT {_agg_limit}))'
+                            f' AS {_q(_col_alias)}'
+                        )
+                    else:
+                        select_parts.append(
+                            f'(SELECT ARRAY_AGG({_q(nested_alias)}.{_q(_phys_col)})'
+                            f' FROM {_table_ref(nested_join_meta.target, use_catalog)} {_q(nested_alias)}'
+                            f' WHERE {tgt_expr} = {src_expr})'
+                            f' AS {_q(_col_alias)}'
+                        )
                     columns.append(ColumnRef(
                         alias=nested_alias,
                         column=_leaf_key,
@@ -1084,7 +1113,7 @@ def _compile_root_field(
     sources: set[str] = {table.source_id}
 
     use_aliases = _has_joins(field_node, ctx, table.type_name)
-    root_alias = "t0" if use_aliases else None
+    root_alias: str | None = "t0" if use_aliases else None
     alias_counter = 1
     has_lateral_ops_joins = False
 
@@ -1093,6 +1122,7 @@ def _compile_root_field(
     columns: list[ColumnRef] = []
     join_clauses: list[str] = []
 
+    assert field_node.selection_set is not None
     for sel in field_node.selection_set.selections:
         if not isinstance(sel, FieldNode):
             continue
@@ -1102,13 +1132,14 @@ def _compile_root_field(
 
         if join_key in ctx.joins:
             # Relationship field → JOIN
+            assert root_alias is not None  # joins only exist when use_aliases=True
             join_meta = ctx.joins[join_key]
             join_alias = f"t{alias_counter}"
             alias_counter += 1
             sources.add(join_meta.target.source_id)
 
             if join_meta.source_constant is not None:
-                src_expr = str(join_meta.source_constant)
+                src_expr = _sql_str_literal(join_meta.source_constant) if isinstance(join_meta.source_constant, str) else str(join_meta.source_constant)
             elif join_meta.source_column in _VIRTUAL_COLS:
                 _svc = (ctx.virtual_columns.get(table.table_id) or {}).get(join_meta.source_column, "")
                 src_expr = _sql_str_literal(_svc)
@@ -1130,9 +1161,9 @@ def _compile_root_field(
             _is_root_one_to_many_agg = (
                 not flat
                 and join_meta.cardinality == "one-to-many"
-                and not _has_nested_db_args(sel)
+                and not _has_lateral_force_args(sel)
             )
-            if (join_meta.default_limit is not None or _has_nested_db_args(sel)) and not _is_root_one_to_many_agg:
+            if (join_meta.default_limit is not None or _has_lateral_force_args(sel)) and not _is_root_one_to_many_agg:
                 if join_meta.default_limit is not None:
                     has_lateral_ops_joins = True
                 join_clauses.append(
@@ -1167,6 +1198,8 @@ def _compile_root_field(
                     )
             elif _is_root_one_to_many_agg and sel.selection_set:
                 # Non-flat one-to-many: correlated ARRAY_AGG subquery per scalar column.
+                # Explicit limit arg takes priority over default_limit from join metadata.
+                _agg_limit = _explicit_limit(sel, variables) or join_meta.default_limit
                 for _nested_sel in sel.selection_set.selections:
                     if not isinstance(_nested_sel, FieldNode):
                         continue
@@ -1176,12 +1209,22 @@ def _compile_root_field(
                     _nested_key = _nested_sel.alias.value if _nested_sel.alias else _nested_name
                     _phys_col = ctx.gql_to_physical.get((join_meta.target.table_id, _nested_name), _nested_name)
                     _col_alias = f"{sel_name}__{_nested_key}"
-                    select_parts.append(
-                        f'(SELECT ARRAY_AGG({_q(join_alias)}.{_q(_phys_col)})'
-                        f' FROM {_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}'
-                        f' WHERE {tgt_expr} = {src_expr})'
-                        f' AS {_q(_col_alias)}'
-                    )
+                    if _agg_limit is not None:
+                        select_parts.append(
+                            f'(SELECT ARRAY_AGG({_q(_phys_col)})'
+                            f' FROM (SELECT {_q(_phys_col)}'
+                            f' FROM {_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}'
+                            f' WHERE {tgt_expr} = {src_expr}'
+                            f' LIMIT {_agg_limit}))'
+                            f' AS {_q(_col_alias)}'
+                        )
+                    else:
+                        select_parts.append(
+                            f'(SELECT ARRAY_AGG({_q(join_alias)}.{_q(_phys_col)})'
+                            f' FROM {_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}'
+                            f' WHERE {tgt_expr} = {src_expr})'
+                            f' AS {_q(_col_alias)}'
+                        )
                     columns.append(ColumnRef(
                         alias=join_alias,
                         column=_nested_key,
@@ -1246,7 +1289,11 @@ def _compile_root_field(
                                 nested_in=nesting,
                                 cardinality=None,
                             ))
-                base = f'{_q(root_alias)}.{_q(sel_name)}' if use_aliases else _q(sel_name)
+                if use_aliases:
+                    assert root_alias is not None
+                    base = f'{_q(root_alias)}.{_q(sel_name)}'
+                else:
+                    base = _q(sel_name)
                 _emit_root_json_cols(sel.selection_set.selections, base, sel_name, sel_name)
                 continue
             # Scalar field — check for JSON path extraction
@@ -1261,6 +1308,7 @@ def _compile_root_field(
                 source_col = path_parts[0]
                 keys = path_parts[1:]
                 if use_aliases:
+                    assert root_alias is not None
                     expr = f'{_q(root_alias)}.{_q(source_col)}'
                 else:
                     expr = _q(source_col)
@@ -1276,6 +1324,7 @@ def _compile_root_field(
                 expr = _sql_str_literal(vval)
                 select_parts.append(f'{expr} AS {_q(response_key)}')
             elif use_aliases:
+                assert root_alias is not None
                 col_expr = f'{_q(root_alias)}.{_q(phys_name)}'
                 if sel.alias:
                     select_parts.append(f'{col_expr} AS {_q(response_key)}')
@@ -1287,7 +1336,7 @@ def _compile_root_field(
                 else:
                     select_parts.append(_q(phys_name))
             columns.append(ColumnRef(
-                alias=root_alias,
+                alias=root_alias if use_aliases else None,
                 column=phys_name,
                 field_name=gql_field_name,
                 nested_in=None,
@@ -1296,6 +1345,7 @@ def _compile_root_field(
     # FROM clause
     ref = _table_ref(table, use_catalog)
     if use_aliases:
+        assert root_alias is not None
         from_clause = f'{ref} {_q(root_alias)}'
     else:
         from_clause = ref
@@ -1321,6 +1371,7 @@ def _compile_root_field(
         except (TypeError, ValueError):
             time_travel_clause = f" FOR TIMESTAMP AS OF TIMESTAMP '{as_of_val}'"
         if use_aliases:
+            assert root_alias is not None
             from_clause = f'{ref}{time_travel_clause} {_q(root_alias)}'
         else:
             from_clause = f'{ref}{time_travel_clause}'
@@ -1332,6 +1383,7 @@ def _compile_root_field(
         user_limit = int(args["limit"])
         result_limit = user_limit
         if use_aliases:
+            assert root_alias is not None
             from_clause = f'(SELECT * FROM {ref} LIMIT {user_limit}) {_q(root_alias)}'
         else:
             from_clause = f'(SELECT * FROM {ref} LIMIT {user_limit})'
@@ -1570,8 +1622,8 @@ def _compile_aggregate_field(
         for arg in field_node.arguments:
             args[arg.name.value] = _extract_value(arg.value, variables)
 
+    _agg_vvals = ctx.virtual_columns.get(table.table_id)
     if "where" in args:
-        _agg_vvals = ctx.virtual_columns.get(table.table_id)
         where_sql = _compile_where(args["where"], collector, None, _agg_vvals)
         sql += f" WHERE {where_sql}"
 
@@ -1582,6 +1634,7 @@ def _compile_aggregate_field(
     if has_nodes:
         nodes_select_parts: list[str] = []
         nodes_cols: list[ColumnRef] = []
+        assert field_node.selection_set is not None
         for sel in field_node.selection_set.selections:
             if not isinstance(sel, FieldNode) or sel.name.value != "nodes":
                 continue
@@ -1830,7 +1883,7 @@ def compile_query(
     results: list[CompiledQuery] = []
 
     for definition in document.definitions:
-        if not hasattr(definition, "selection_set"):
+        if not isinstance(definition, OperationDefinitionNode):
             continue
         for sel in definition.selection_set.selections:
             if isinstance(sel, FieldNode):

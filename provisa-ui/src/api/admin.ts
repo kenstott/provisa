@@ -785,6 +785,26 @@ export async function runSql(
   }
 }
 
+export async function nlToSql(
+  question: string,
+  role: string = "admin",
+): Promise<{ sql: string; attempts: number; error?: string }> {
+  try {
+    const resp = await fetch(`${API_BASE_RAW}/data/nl-to-sql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, role }),
+    });
+    if (!resp.ok) {
+      const text = await resp.text();
+      return { sql: "", attempts: 0, error: text };
+    }
+    return await resp.json();
+  } catch (e: any) {
+    return { sql: "", attempts: 0, error: e.message };
+  }
+}
+
 export async function executeQuery(
   roleId: string,
   query: string,

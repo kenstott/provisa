@@ -36,6 +36,10 @@ def _safe_alias(expr: str) -> str:
 import sqlglot.expressions as exp
 import sqlglot
 
+
+def _const_literal(v: int | str) -> exp.Expression:
+    return exp.Literal.string(v) if isinstance(v, str) else exp.Literal.number(v)
+
 from provisa.cypher.parser import (
     CypherAST,
     CallSubquery,
@@ -600,7 +604,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         join_table = self._build_domain_union(tgt_var, self._domain_nodes[tgt_var])
                         src_table_ref = self._var_table.get(src_var, (src_var, None))[0] if src_var else src_nm.table_name
                         src_col_expr = (
-                            exp.Literal.number(rel_mapping.source_constant)
+                            _const_literal(rel_mapping.source_constant)
                             if rel_mapping.source_constant is not None
                             else exp.Column(
                                 this=exp.Identifier(this=rel_mapping.join_source_column, quoted=True),
@@ -736,7 +740,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                             # source_constant: join condition is always <literal> = src.target_col
                             # whether forward or backward, the physical condition is the same.
                             cond = exp.EQ(
-                                this=exp.Literal.number(rm.source_constant),
+                                this=_const_literal(rm.source_constant),
                                 expression=exp.Column(
                                     this=exp.Identifier(this=rm.join_target_column, quoted=True),
                                     table=exp.Identifier(this=src_table_ref),
@@ -755,7 +759,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                             )
                     else:
                         if rm.source_constant is not None:
-                            src_col_expr = exp.Literal.number(rm.source_constant)
+                            src_col_expr = _const_literal(rm.source_constant)
                         elif rm.join_source_column == "_name_" and src_nm is not None:
                             # _name_ is a virtual column — resolve to literal "domain_sql.table_name"
                             from provisa.compiler.naming import domain_to_sql_name as _d2s
@@ -1214,7 +1218,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 ),
                 on=exp.EQ(
                     this=(
-                        exp.Literal.number(rm.source_constant)
+                        _const_literal(rm.source_constant)
                         if rm.source_constant is not None
                         else exp.Column(
                             this=exp.Identifier(this=rm.join_source_column, quoted=True),

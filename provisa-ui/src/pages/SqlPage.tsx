@@ -17,7 +17,7 @@ import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { useDomainFilter } from "../context/DomainFilterContext";
-import { runSql, fetchRoles, fetchDomains, fetchTables, fetchRelationships, registerTable } from "../api/admin";
+import { runSql, fetchRoles, fetchDomains, fetchTables, fetchRelationships, registerTable, nlToSql } from "../api/admin";
 import type { Domain, Relationship, RegisteredTable } from "../types/admin";
 import { useCapability } from "../hooks/useCapability";
 import { MultiSelect } from "../components/MultiSelect";
@@ -552,6 +552,9 @@ export function SqlPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
+  const [nlText, setNlText] = useState("");
+  const [nlLoading, setNlLoading] = useState(false);
+  const [nlError, setNlError] = useState("");
 
   useEffect(() => {
     idbGet<SqlResults>(SQL_RESULTS_KEY).then((saved) => {
@@ -1087,11 +1090,66 @@ export function SqlPage() {
 
           <div style={{ display: topTab === "sql" ? "flex" : "none", flex: 1, overflow: "hidden", flexDirection: "column" }}>
             <>
+              {/* NL-to-SQL strip */}
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.35rem 0.75rem", borderBottom: "1px solid var(--border)", background: "var(--surface)", flexShrink: 0 }}>
+                <div className="nl-input-wrap" style={{ flex: 1, position: "relative", display: "flex", alignItems: "center" }}>
+                  <input
+                    type="text"
+                    placeholder="Ask in plain English — generates SQL…"
+                    value={nlText}
+                    onChange={(e) => { setNlText(e.target.value); setNlError(""); }}
+                    onKeyDown={async (e) => {
+                      if (e.key === "Enter" && nlText.trim() && !nlLoading) {
+                        setNlLoading(true);
+                        setNlError("");
+                        const result = await nlToSql(nlText.trim(), role);
+                        setNlLoading(false);
+                        if (result.error) { setNlError(result.error); }
+                        else { setSqlText(result.sql); }
+                      }
+                    }}
+                    style={{ width: "100%", fontSize: "0.8rem", padding: "0.25rem 1.6rem 0.25rem 0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", outline: "none" }}
+                  />
+                  {nlText && (
+                    <button
+                      onClick={() => { setNlText(""); setNlError(""); }}
+                      title="Clear"
+                      className="nl-clear-btn"
+                      style={{ position: "absolute", right: "0.3rem", background: "none", border: "none", padding: "0.1rem", cursor: "pointer", color: "var(--text-muted)", display: "flex", alignItems: "center", lineHeight: 1 }}
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+                <button
+                  className="btn-primary"
+                  disabled={nlLoading || !nlText.trim()}
+                  onClick={async () => {
+                    setNlLoading(true);
+                    setNlError("");
+                    const result = await nlToSql(nlText.trim(), role);
+                    setNlLoading(false);
+                    if (result.error) { setNlError(result.error); }
+                    else { setSqlText(result.sql); }
+                  }}
+                  style={{ fontSize: "0.8rem", padding: "0.25rem 0.6rem", whiteSpace: "nowrap" }}
+                >
+                  {nlLoading ? "Generating…" : "Generate SQL"}
+                </button>
+                {nlError && <span style={{ fontSize: "0.75rem", color: "var(--error)", maxWidth: "300px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={nlError}>{nlError}</span>}
+              </div>
+
               {/* Editor */}
               <div style={{ flex: "0 0 220px", overflow: "hidden", borderBottom: "1px solid var(--border)", position: "relative" }}
                 onMouseEnter={(e) => { const btn = e.currentTarget.querySelector<HTMLElement>('.copy-sql-btn'); if (btn) btn.style.opacity = '1'; }}
                 onMouseLeave={(e) => { const btn = e.currentTarget.querySelector<HTMLElement>('.copy-sql-btn'); if (btn) btn.style.opacity = '0'; }}
               >
+                {nlLoading && (
+                  <div style={{ position: "absolute", inset: 0, zIndex: 10, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", color: "var(--text-muted)", fontSize: "0.8rem", pointerEvents: "none" }}>
+                    <span style={{ display: "inline-block", width: "14px", height: "14px", border: "2px solid var(--text-muted)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                    Generating SQL…
+                  </div>
+                )}
                 <CodeMirror
                   value={sqlText}
                   height="220px"

@@ -52,7 +52,7 @@ class RelationshipMapping:
     join_target_column: str
     field_name: str        # GraphQL field name that defines this join
     alias: str | None = None  # relationship alias from config (e.g. WORKS_FOR)
-    source_constant: int | None = None  # when set, use as literal join value instead of source column
+    source_constant: int | str | None = None  # when set, use as literal join value instead of source column
     many: bool = False  # True when cardinality is one-to-many (source is parent, target is array)
 
 

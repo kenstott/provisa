@@ -1225,6 +1225,51 @@ def test_source_constant_emits_literal_not_column():
     assert "42" in sql, f"source_constant value 42 missing from SQL: {sql}"
 
 
+def _make_string_source_constant_label_map() -> CypherLabelMap:
+    """Label map simulating (Pets)-[:HAS_QUERIES]->(Queries) with source_constant='pets'."""
+    pets = NodeMapping(
+        label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
+        table_id=10, source_id="ps", id_column="id", pk_columns=[],
+        catalog_name="ps", schema_name="pet_store", table_name="pets",
+        properties={"id": "id", "name": "name"},
+    )
+    queries = NodeMapping(
+        label="Queries", type_name="Queries", domain_label=None, table_label="Queries",
+        table_id=99, source_id="ops", id_column="span_id", pk_columns=[],
+        catalog_name="otel", schema_name="signals", table_name="queries",
+        properties={"spanId": "span_id", "tableName": "table_name"},
+    )
+    rel = RelationshipMapping(
+        rel_type="HAS_QUERIES",
+        source_label="Pets",
+        target_label="Queries",
+        join_source_column="table_name",
+        join_target_column="table_name",
+        field_name="_queries",
+        source_constant="pets",
+    )
+    return CypherLabelMap(
+        nodes={"Pets": pets, "Queries": queries},
+        relationships={"HAS_QUERIES::Pets→Queries": rel},
+        nodes_by_table={"Pets": ["Pets"], "Queries": ["Queries"]},
+        aliases={"HAS_QUERIES": [rel]},
+    )
+
+
+def test_string_source_constant_emits_string_literal():
+    """source_constant as str must emit a quoted string literal, not a number or column reference."""
+    lm = _make_string_source_constant_label_map()
+    ast = parse_cypher(
+        "MATCH (a:Pets)-[:HAS_QUERIES]->(c:Queries) RETURN a.name, c.spanId"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "table_name" not in sql or "'pets'" in sql, (
+        f"source_constant 'pets' must prevent column reference: {sql}"
+    )
+    assert "'pets'" in sql, f"Expected string literal 'pets' in SQL: {sql}"
+
+
 def _make_multi_source_has_table_label_map() -> CypherLabelMap:
     """Regression #46: aliases['HAS_TABLE'] with multiple source tables.
 

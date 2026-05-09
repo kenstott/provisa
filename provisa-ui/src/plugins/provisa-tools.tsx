@@ -24,7 +24,11 @@ import { format as formatSql } from "sql-formatter";
 import type { GraphiQLPlugin } from "@graphiql/react";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
-import { cypherLanguage } from "@neo4j-cypher/codemirror";
+import * as _neo4jCypherMod from "@neo4j-cypher/codemirror";
+import "@neo4j-cypher/codemirror/css/cypher-codemirror.css";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const { getCypherLanguageExtensions: _getToolsCypherExts, cypherLinter: _toolsCypherLinter } = _neo4jCypherMod as any;
+const _toolsCypherLangExts = _getToolsCypherExts({ cypherLanguage: true } as any);
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 
@@ -40,6 +44,8 @@ function SqlPanel({
   onFlatSqlChange?: (v: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [sqlExpanded, setSqlExpanded] = useState(true);
+  const [aliasesExpanded, setAliasesExpanded] = useState(false);
   const navigate = useNavigate();
   const sqlExtensions = useMemo(
     () => [sql({ dialect: PostgreSQL }), EditorView.lineWrapping],
@@ -95,7 +101,21 @@ function SqlPanel({
         )}
         {hasColumnAliases && (
           <div className="provisa-tools-column-aliases">
-            Column aliases: {compiled.column_aliases.map(a => `${a.column} → ${a.field_name}`).join(", ")}
+            <div
+              className="provisa-tools-expandable"
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+              onClick={() => setAliasesExpanded(v => !v)}
+            >
+              <strong>Column Aliases</strong>
+              <span className="provisa-tools-chevron">{aliasesExpanded ? "▾" : "▸"}</span>
+            </div>
+            {aliasesExpanded && (
+              <ul style={{ margin: "4px 0 0 0", paddingLeft: 16, listStyle: "none" }}>
+                {compiled.column_aliases.map((a: { column: string; field_name: string }) => (
+                  <li key={a.column}>{a.column} → {a.field_name}</li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
         <div>
@@ -130,7 +150,10 @@ function SqlPanel({
       )}
       {!hideSql && (
         <>
-          <div className="provisa-tools-code-header">
+          <div
+            className="provisa-tools-code-header provisa-tools-expandable"
+            onClick={() => setSqlExpanded(v => !v)}
+          >
             <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span className="provisa-tools-label">{sqlLabel}</span>
               {onFlatSqlChange && (
@@ -143,7 +166,7 @@ function SqlPanel({
             <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <button
                 className="provisa-tools-copy"
-                onClick={handleCopy}
+                onClick={(e) => { e.stopPropagation(); handleCopy(); }}
                 title="Copy SQL"
               >
                 {copied ? (
@@ -159,7 +182,8 @@ function SqlPanel({
               </button>
               <button
                 className="provisa-tools-copy"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   localStorage.setItem("provisa.sql.pending_query", formatted);
                   navigate("/sql");
                 }}
@@ -170,20 +194,25 @@ function SqlPanel({
                   <polyline points="12 5 19 12 12 19" />
                 </svg>
               </button>
+              <span className="provisa-tools-chevron">{sqlExpanded ? "▾" : "▸"}</span>
             </span>
           </div>
-          <CodeMirror
-            value={formatted}
-            extensions={sqlExtensions}
-            theme={oneDark}
-            editable={false}
-            basicSetup={{ lineNumbers: false, foldGutter: true }}
-            className="provisa-tools-code"
-          />
-          {(compiled.params?.length ?? 0) > 0 && (
-            <div className="provisa-tools-params">
-              <strong>Params:</strong> {JSON.stringify(compiled.params)}
-            </div>
+          {sqlExpanded && (
+            <>
+              <CodeMirror
+                value={formatted}
+                extensions={sqlExtensions}
+                theme={oneDark}
+                editable={false}
+                basicSetup={{ lineNumbers: false, foldGutter: true }}
+                className="provisa-tools-code"
+              />
+              {(compiled.params?.length ?? 0) > 0 && (
+                <div className="provisa-tools-params">
+                  <strong>Params:</strong> {JSON.stringify(compiled.params)}
+                </div>
+              )}
+            </>
           )}
         </>
       )}
@@ -201,6 +230,7 @@ function CombinedSqlPanel({
   onFlatSqlChange?: (v: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [sqlExpanded, setSqlExpanded] = useState(true);
   const sqlExtensions = useMemo(
     () => [sql({ dialect: PostgreSQL }), EditorView.lineWrapping],
     []
@@ -225,7 +255,10 @@ function CombinedSqlPanel({
 
   return (
     <div className="provisa-tools-sql">
-      <div className="provisa-tools-code-header">
+      <div
+        className="provisa-tools-code-header provisa-tools-expandable"
+        onClick={() => setSqlExpanded(v => !v)}
+      >
         <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span className="provisa-tools-label">Semantic SQL</span>
           {onFlatSqlChange && (
@@ -235,27 +268,32 @@ function CombinedSqlPanel({
             </label>
           )}
         </span>
-        <button className="provisa-tools-copy" onClick={handleCopy} title="Copy SQL">
-          {copied ? (
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
-          )}
-        </button>
+        <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <button className="provisa-tools-copy" onClick={(e) => { e.stopPropagation(); handleCopy(); }} title="Copy SQL">
+            {copied ? (
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            )}
+          </button>
+          <span className="provisa-tools-chevron">{sqlExpanded ? "▾" : "▸"}</span>
+        </span>
       </div>
-      <CodeMirror
-        value={combined}
-        extensions={sqlExtensions}
-        theme={oneDark}
-        editable={false}
-        basicSetup={{ lineNumbers: false, foldGutter: true }}
-        className="provisa-tools-code"
-      />
+      {sqlExpanded && (
+        <CodeMirror
+          value={combined}
+          extensions={sqlExtensions}
+          theme={oneDark}
+          editable={false}
+          basicSetup={{ lineNumbers: false, foldGutter: true }}
+          className="provisa-tools-code"
+        />
+      )}
     </div>
   );
 }
@@ -275,7 +313,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const navigate = useNavigate();
 
   const cypherExtensions = useMemo(
-    () => [cypherLanguage(), EditorView.lineWrapping],
+    () => [..._toolsCypherLangExts, _toolsCypherLinter({ showErrors: false }), EditorView.lineWrapping],
     []
   );
 
