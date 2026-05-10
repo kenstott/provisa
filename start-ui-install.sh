@@ -51,7 +51,8 @@ if [ "$DEMO" = true ]; then
   COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.observability.yml -f docker-compose.demo.yml"
   # Clear MinIO data so the demo starts with a fresh empty bucket (no stale OTel data).
   echo "Clearing MinIO volume (demo reset)..."
-  docker volume rm provisa_minio_data 2>/dev/null || true
+  timeout 5 docker stop --timeout 2 provisa-minio-1 2>/dev/null || true
+  timeout 5 docker volume rm provisa_minio_data 2>/dev/null || true
   # Ensure demo files exist (SQLite inquiries DB, etc.)
   if [ -f "$SCRIPT_DIR/demo/files/create_demo_files.py" ]; then
     echo "Generating demo files..."
@@ -60,7 +61,9 @@ if [ "$DEMO" = true ]; then
 fi
 
 # Remove macOS AppleDouble metadata files that break Docker builds on exFAT volumes
-find "$SCRIPT_DIR" -name "._*" -not -path "*/.git/*" -delete 2>/dev/null || true
+for _build_ctx in "$SCRIPT_DIR" "$SCRIPT_DIR/zaychik" "$SCRIPT_DIR/demo/graphql_server"; do
+  [ -d "$_build_ctx" ] && find "$_build_ctx" -name "._*" -not -path "*/.git/*" -not -path "*/.claude/*" -not -path "*/node_modules/*" -maxdepth 5 -delete 2>/dev/null || true
+done
 
 if [ "$DEMO" = true ]; then
   echo "Starting Docker Compose services (core + observability + demo)..."
@@ -69,7 +72,7 @@ else
 fi
 cd "$SCRIPT_DIR"
 # shellcheck disable=SC2086
-docker compose $COMPOSE_FILES up -d 2>&1 || true
+docker compose $COMPOSE_FILES up -d || true
 
 CREATED=$(docker ps -a --filter "label=com.docker.compose.project=provisa" \
   --filter "status=created" \
@@ -77,7 +80,7 @@ CREATED=$(docker ps -a --filter "label=com.docker.compose.project=provisa" \
 if [ -n "$CREATED" ]; then
   echo "Starting remaining services: $CREATED"
   # shellcheck disable=SC2086
-  docker compose $COMPOSE_FILES up -d --no-deps $CREATED 2>&1 || true
+  docker compose $COMPOSE_FILES up -d --no-deps $CREATED || true
 fi
 
 echo -n "Waiting for infrastructure services"
@@ -202,8 +205,15 @@ if [ "$DEMO" = true ]; then
   fi
 fi
 
+# Kill any existing UI and backend processes, including the uvicorn reloader parent
+# (killing only the port-8000 worker leaves the reloader alive to respawn it immediately)
 lsof -i :3000 -P -t 2>/dev/null | xargs kill -9 2>/dev/null || true
-lsof -i :8000 -P -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+pkill -9 -f "uvicorn main:app.*--port 8000" 2>/dev/null || true
+# Wait until port 8000 is free before starting a new backend
+for _i in $(seq 1 15); do
+  lsof -i :8000 -P -t 2>/dev/null || break
+  sleep 1
+done
 
 BACKEND_PID=""
 

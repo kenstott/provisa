@@ -41,6 +41,7 @@ from provisa.compiler.mask_inject import MaskingRules
 from provisa.cache.store import CacheStore, NoopCacheStore, RedisCacheStore
 from provisa.api.admin.db_queries import fetch_tables as _fetch_tables, fetch_relationships as _fetch_relationships, parse_mask_value as _parse_mask_value
 from provisa.api.otel_setup import setup_otel as _setup_otel
+from provisa.api.trino_setup import write_trino_config as _write_trino_config
 from provisa.mv.registry import MVRegistry
 from provisa.cache.warm_tables import WarmTableManager
 from provisa.apq.cache import APQCache, NoopAPQCache
@@ -62,6 +63,7 @@ class AppState:
     source_types: dict[str, str] = {}  # source_id → source_type
     source_catalogs: dict[str, str] = {}  # source_id → Trino catalog name
     source_dialects: dict[str, str] = {}  # source_id → sqlglot dialect
+    source_dsns: dict[str, str] = {}  # source_id → "host:port/database" (physical colocation key)
     masking_rules: MaskingRules = {}  # (table_id, role_id) → {col: (rule, dtype)}
     response_cache_store: CacheStore = NoopCacheStore()
     response_cache_default_ttl: int = 300
@@ -422,7 +424,7 @@ def _seed_ops_trino(trino_conn: object, snapshot_retention_hours: int | None = N
             _exec(
                 f"CREATE TABLE IF NOT EXISTS otel.signals.{tbl_name} "
                 f"({', '.join(col_defs)}) "
-                f"WITH (partitioning = ARRAY['_date'], format = 'PARQUET')"
+                f"WITH (partitioning = ARRAY['table_name', '_date'], format = 'PARQUET')"
             )
     except Exception:
         _log.warning("ops Iceberg DDL failed — will retry before next schema introspection", exc_info=True)
@@ -444,6 +446,21 @@ def _seed_ops_trino(trino_conn: object, snapshot_retention_hours: int | None = N
                         _log.warning("ops Iceberg: could not add column %s.%s", tbl_name, col_name, exc_info=True)
         except Exception:
             _log.warning("ops Iceberg: could not inspect columns for %s", tbl_name, exc_info=True)
+
+    # Evolve partition spec on existing tables to include table_name (non-destructive).
+    for tbl_name in _OPS_TABLES:
+        try:
+            _exec(f'ALTER TABLE otel.signals.{tbl_name} ADD PARTITION FIELD "table_name"')
+        except Exception:
+            pass  # already present or not supported — not fatal
+
+    # Warm up Iceberg metadata: first query on a cold Iceberg table can take >60s;
+    # running a zero-row scan here ensures metadata is loaded before user requests arrive.
+    for tbl_name in _OPS_TABLES:
+        try:
+            _exec(f"SELECT 1 FROM otel.signals.{tbl_name} LIMIT 0")
+        except Exception:
+            _log.warning("ops Iceberg: warm-up scan on %s failed (non-fatal)", tbl_name, exc_info=True)
 
     # Views — always attempted; independent of column-addition failures.
     # Use DROP IF EXISTS + CREATE VIEW for broad Trino version compatibility
@@ -727,6 +744,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
     # Seed system source catalogs (not in config.sources, so must be explicit).
     state.source_catalogs["provisa-admin"] = source_to_catalog("provisa-admin")  # provisa_admin
     state.source_catalogs["provisa-otel"] = "otel"
+    state.source_dsns["provisa-admin"] = f"{pg_host}:{pg_port}/{pg_database}"
 
     # Build source metadata and direct connection pools
     from provisa.executor.drivers.registry import has_driver
@@ -747,6 +765,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
         if has_driver(src.type.value):
             resolved_pw = resolve_secrets(src.password)
             resolved_host = resolve_secrets(src.host) if src.host else "localhost"
+            state.source_dsns[src.id] = f"{resolved_host}:{src.port}/{src.database}"
             try:
                 await state.source_pools.add(
                     source_id=src.id,
@@ -1956,6 +1975,7 @@ def create_app() -> FastAPI:
     from provisa.api.admin.schema import admin_schema
 
     app = FastAPI(title="Provisa", lifespan=lifespan)
+    _write_trino_config(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml"))
     _setup_otel(app)
 
     app.add_middleware(

@@ -924,8 +924,9 @@ def _collect_nested_columns(
     variables: dict | None,
     cardinality: str | None = None,
     flat: bool = False,
-) -> int:
+) -> tuple[int, bool]:
     """Recursively collect columns and JOINs from nested selections."""
+    has_lateral = False
     for nested_sel in selections:
         if not isinstance(nested_sel, FieldNode):
             continue
@@ -966,6 +967,8 @@ def _collect_nested_columns(
                 and not _has_lateral_force_args(nested_sel)
             )
             if (nested_join_meta.default_limit is not None or _has_lateral_force_args(nested_sel)) and not _is_one_to_many_agg:
+                if nested_join_meta.default_limit is not None:
+                    has_lateral = True
                 join_clauses.append(
                     _lateral_join(
                         nested_sel,
@@ -1020,7 +1023,7 @@ def _collect_nested_columns(
 
             sub_path = f"{nesting_path}.{nested_name}"
             if nested_sel.selection_set and not _is_one_to_many_agg:
-                alias_counter = _collect_nested_columns(
+                alias_counter, _child_lateral = _collect_nested_columns(
                     nested_sel.selection_set.selections,
                     nested_alias,
                     nested_join_meta.target.type_name,
@@ -1038,6 +1041,7 @@ def _collect_nested_columns(
                     cardinality=nested_join_meta.cardinality,
                     flat=flat,
                 )
+                has_lateral |= _child_lateral
         else:
             # GQL OBJECT column stored as JSON — expand sub-selections recursively via -> / ->>
             if nested_sel.selection_set and (parent_table.table_id, nested_name) in ctx.gql_json_columns:
@@ -1096,7 +1100,7 @@ def _collect_nested_columns(
                 nested_in=nesting_path,
                 cardinality=cardinality,
             ))
-    return alias_counter
+    return alias_counter, has_lateral
 
 
 def _compile_root_field(
@@ -1178,7 +1182,7 @@ def _compile_root_field(
                     )
                 )
                 if sel.selection_set:
-                    alias_counter = _collect_nested_columns(
+                    alias_counter, _child_lateral = _collect_nested_columns(
                         sel.selection_set.selections,
                         join_alias,
                         join_meta.target.type_name,
@@ -1196,6 +1200,7 @@ def _compile_root_field(
                         cardinality=join_meta.cardinality,
                         flat=flat,
                     )
+                    has_lateral_ops_joins |= _child_lateral
             elif _is_root_one_to_many_agg and sel.selection_set:
                 # Non-flat one-to-many: correlated ARRAY_AGG subquery per scalar column.
                 # Explicit limit arg takes priority over default_limit from join metadata.
@@ -1239,7 +1244,7 @@ def _compile_root_field(
                     f' ON {src_expr} = {tgt_expr}'
                 )
                 if sel.selection_set:
-                    alias_counter = _collect_nested_columns(
+                    alias_counter, _child_lateral = _collect_nested_columns(
                         sel.selection_set.selections,
                         join_alias,
                         join_meta.target.type_name,
@@ -1257,6 +1262,7 @@ def _compile_root_field(
                         cardinality=join_meta.cardinality,
                         flat=flat,
                     )
+                    has_lateral_ops_joins |= _child_lateral
         else:
             # GQL OBJECT column stored as JSON — expand sub-selections recursively via -> / ->>
             if sel.selection_set and (table.table_id, sel_name) in ctx.gql_json_columns:
@@ -1427,8 +1433,8 @@ def _compile_root_field(
     if has_lateral_ops_joins:
         if result_limit is None and "limit" in args:
             result_limit = int(args["limit"])
-        # Apply a safety cap to prevent unbounded Trino scans
-        sql += f" LIMIT {_get_default_row_limit()}"
+        # Outer LIMIT is meaningless after lateral expansion; use a fixed cap
+        sql += " LIMIT 25"
         if "offset" in args:
             sql += f" OFFSET {collector.add(int(args['offset']))}"
     else:

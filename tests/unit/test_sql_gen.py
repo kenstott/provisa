@@ -176,7 +176,7 @@ class TestWhereClause:
         _, ctx = schema_and_ctx
         doc = parse('{ orders(where: { status: { neq: "cancelled" } }) { id } }')
         results = compile_query(doc, ctx)
-        assert '!= $1' in results[0].sql
+        assert "!= $1" in results[0].sql
 
     def test_like_filter(self, schema_and_ctx):
         _, ctx = schema_and_ctx
@@ -270,7 +270,7 @@ class TestPagination:
         assert not validate(schema, doc)
         results = compile_query(doc, ctx, flat=True)
         assert '"queries"' in results[0].sql
-        assert 'LIMIT $1' in results[0].sql
+        assert "LIMIT $1" in results[0].sql
         assert results[0].params == [2]
 
     def test_synthetic_ops_traces_path_accepts_limit(self):
@@ -323,7 +323,7 @@ class TestPagination:
         assert not validate(schema, doc)
         results = compile_query(doc, ctx, flat=True)
         assert '"traces"' in results[0].sql
-        assert 'LIMIT $1' in results[0].sql
+        assert "LIMIT $1" in results[0].sql
         assert results[0].params == [3]
 
     def test_synthetic_ops_path_rejects_negative_limit(self):
@@ -405,9 +405,7 @@ class TestPagination:
 
     def test_full_pagination(self, schema_and_ctx):
         _, ctx = schema_and_ctx
-        doc = parse(
-            "{ orders(order_by: [{ id: asc }], limit: 5, offset: 10) { id amount } }"
-        )
+        doc = parse("{ orders(order_by: [{ id: asc }], limit: 5, offset: 10) { id amount } }")
         results = compile_query(doc, ctx)
         sql = results[0].sql
         assert "ORDER BY" in sql
@@ -822,8 +820,11 @@ class TestJoinTypeCast:
         """integer JOIN bigint → no CAST (same numeric group)."""
         tables = [
             {
-                "id": 1, "source_id": "s1", "domain_id": "d",
-                "schema_name": "public", "table_name": "orders",
+                "id": 1,
+                "source_id": "s1",
+                "domain_id": "d",
+                "schema_name": "public",
+                "table_name": "orders",
                 "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
@@ -831,8 +832,11 @@ class TestJoinTypeCast:
                 ],
             },
             {
-                "id": 2, "source_id": "s2", "domain_id": "d",
-                "schema_name": "public", "table_name": "reviews",
+                "id": 2,
+                "source_id": "s2",
+                "domain_id": "d",
+                "schema_name": "public",
+                "table_name": "reviews",
                 "governance": "pre-approved",
                 "columns": [
                     {"column_name": "product_id", "visible_to": ["admin"]},
@@ -840,17 +844,24 @@ class TestJoinTypeCast:
                 ],
             },
         ]
-        rels = [{
-            "id": "r1", "source_table_id": 1, "target_table_id": 2,
-            "source_column": "product_id", "target_column": "product_id",
-            "cardinality": "many-to-one",
-        }]
+        rels = [
+            {
+                "id": "r1",
+                "source_table_id": 1,
+                "target_table_id": 2,
+                "source_column": "product_id",
+                "target_column": "product_id",
+                "cardinality": "many-to-one",
+            }
+        ]
         col_types = {
             1: [_col("id", "integer"), _col("product_id", "integer")],
             2: [_col("product_id", "bigint"), _col("rating", "integer")],
         }
         si = SchemaInput(
-            tables=tables, relationships=rels, column_types=col_types,
+            tables=tables,
+            relationships=rels,
+            column_types=col_types,
             naming_rules=[],
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
@@ -864,8 +875,11 @@ class TestJoinTypeCast:
         """varchar JOIN integer → CAST both to VARCHAR."""
         tables = [
             {
-                "id": 1, "source_id": "s1", "domain_id": "d",
-                "schema_name": "public", "table_name": "orders",
+                "id": 1,
+                "source_id": "s1",
+                "domain_id": "d",
+                "schema_name": "public",
+                "table_name": "orders",
                 "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
@@ -873,8 +887,11 @@ class TestJoinTypeCast:
                 ],
             },
             {
-                "id": 2, "source_id": "s2", "domain_id": "d",
-                "schema_name": "public", "table_name": "externals",
+                "id": 2,
+                "source_id": "s2",
+                "domain_id": "d",
+                "schema_name": "public",
+                "table_name": "externals",
                 "governance": "pre-approved",
                 "columns": [
                     {"column_name": "ref_id", "visible_to": ["admin"]},
@@ -882,17 +899,24 @@ class TestJoinTypeCast:
                 ],
             },
         ]
-        rels = [{
-            "id": "r1", "source_table_id": 1, "target_table_id": 2,
-            "source_column": "ext_ref", "target_column": "ref_id",
-            "cardinality": "many-to-one",
-        }]
+        rels = [
+            {
+                "id": "r1",
+                "source_table_id": 1,
+                "target_table_id": 2,
+                "source_column": "ext_ref",
+                "target_column": "ref_id",
+                "cardinality": "many-to-one",
+            }
+        ]
         col_types = {
             1: [_col("id", "integer"), _col("ext_ref", "varchar(50)")],
             2: [_col("ref_id", "integer"), _col("label", "varchar")],
         }
         si = SchemaInput(
-            tables=tables, relationships=rels, column_types=col_types,
+            tables=tables,
+            relationships=rels,
+            column_types=col_types,
             naming_rules=[],
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
@@ -909,17 +933,13 @@ class TestJoinTypeCast:
 class TestVariables:
     def test_variable_in_where(self, schema_and_ctx):
         _, ctx = schema_and_ctx
-        doc = parse(
-            "query Q($r: String) { orders(where: { region: { eq: $r } }) { id } }"
-        )
+        doc = parse("query Q($r: String) { orders(where: { region: { eq: $r } }) { id } }")
         results = compile_query(doc, ctx, variables={"r": "us-west"})
         assert results[0].params == ["us-west"]
 
     def test_missing_variable_raises(self, schema_and_ctx):
         _, ctx = schema_and_ctx
-        doc = parse(
-            "query Q($r: String) { orders(where: { region: { eq: $r } }) { id } }"
-        )
+        doc = parse("query Q($r: String) { orders(where: { region: { eq: $r } }) { id } }")
         with pytest.raises(ValueError, match="Variable"):
             compile_query(doc, ctx, variables={})
 
@@ -949,18 +969,27 @@ class TestRelationshipVisibility:
         the relationship should not appear in the schema."""
         tables = [
             {
-                "id": 1, "source_id": "pg", "domain_id": "d",
-                "schema_name": "public", "table_name": "orders",
+                "id": 1,
+                "source_id": "pg",
+                "domain_id": "d",
+                "schema_name": "public",
+                "table_name": "orders",
                 "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "limited"]},
-                    {"column_name": "customer_id", "visible_to": ["admin"]},  # NOT visible to 'limited'
+                    {
+                        "column_name": "customer_id",
+                        "visible_to": ["admin"],
+                    },  # NOT visible to 'limited'
                     {"column_name": "amount", "visible_to": ["admin", "limited"]},
                 ],
             },
             {
-                "id": 2, "source_id": "pg", "domain_id": "d",
-                "schema_name": "public", "table_name": "customers",
+                "id": 2,
+                "source_id": "pg",
+                "domain_id": "d",
+                "schema_name": "public",
+                "table_name": "customers",
                 "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "limited"]},
@@ -968,11 +997,16 @@ class TestRelationshipVisibility:
                 ],
             },
         ]
-        rels = [{
-            "id": "r1", "source_table_id": 1, "target_table_id": 2,
-            "source_column": "customer_id", "target_column": "id",
-            "cardinality": "many-to-one",
-        }]
+        rels = [
+            {
+                "id": "r1",
+                "source_table_id": 1,
+                "target_table_id": 2,
+                "source_column": "customer_id",
+                "target_column": "id",
+                "cardinality": "many-to-one",
+            }
+        ]
         col_types = {
             1: [_col("id", "integer"), _col("customer_id", "integer"), _col("amount", "decimal")],
             2: [_col("id", "integer"), _col("name", "varchar")],
@@ -980,7 +1014,9 @@ class TestRelationshipVisibility:
 
         # Admin can see customer_id → relationship visible
         si_admin = SchemaInput(
-            tables=tables, relationships=rels, column_types=col_types,
+            tables=tables,
+            relationships=rels,
+            column_types=col_types,
             naming_rules=[],
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
@@ -992,7 +1028,9 @@ class TestRelationshipVisibility:
 
         # Limited cannot see customer_id → relationship hidden
         si_limited = SchemaInput(
-            tables=tables, relationships=rels, column_types=col_types,
+            tables=tables,
+            relationships=rels,
+            column_types=col_types,
             naming_rules=[],
             role={"id": "limited", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
@@ -1001,6 +1039,7 @@ class TestRelationshipVisibility:
         doc2 = parse("{ orders { id customer { name } } }")
         errors2 = validate(schema_limited, doc2)
         assert errors2  # 'customer' field should not exist on Orders for limited role
+
 
 class TestColumnAlias:
     """GraphQL field aliases on scalar columns → SQL AS + response key."""
@@ -1126,5 +1165,6 @@ class TestOpsDefaultLimit:
         assert "ARRAY_AGG" in sql, "Expected ARRAY_AGG with explicit limit: " + sql
         assert "LIMIT 2" in sql, "Expected LIMIT 2 from explicit arg: " + sql
         assert "LATERAL" not in sql, "Expected no LATERAL with flat=False: " + sql
+
 
 # Aggregate and alias tests moved to test_sql_gen_aggregate.py
