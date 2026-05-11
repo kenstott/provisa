@@ -778,11 +778,19 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
     return normalize_table_refs(sql, ctx)
 
 
+def _all_table_metas(ctx: CompilationContext) -> list[TableMeta]:
+    """Return all TableMeta instances from ctx: root tables plus all join targets."""
+    metas: list[TableMeta] = list(ctx.tables.values())
+    for jm in ctx.joins.values():
+        metas.append(jm.target)
+    return metas
+
+
 def rewrite_semantic_to_trino_physical(sql: str, ctx: CompilationContext) -> str:
     """Replace semantic (domain.field_name) refs with Trino catalog-qualified refs."""
     replacements: dict[str, str] = {}
     seen: set[tuple[str, str, str]] = set()
-    for meta in ctx.tables.values():
+    for meta in _all_table_metas(ctx):
         key = (meta.catalog_name, meta.schema_name, meta.table_name)
         if key in seen:
             continue
@@ -796,7 +804,7 @@ def qualify_with_catalogs(sql: str, ctx: CompilationContext) -> str:
     """Add catalog prefix to physical table refs: "schema"."table" → "catalog"."schema"."table"."""
     replacements: dict[str, str] = {}
     seen: set[tuple[str, str]] = set()
-    for meta in ctx.tables.values():
+    for meta in _all_table_metas(ctx):
         key = (meta.schema_name, meta.table_name)
         if key in seen:
             continue
