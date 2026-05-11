@@ -167,12 +167,8 @@ async def compact_otel_signals() -> None:
     to backfill a specific date.
     """
     import asyncio
-    import io
     import os
     from datetime import datetime
-
-    import boto3
-    from botocore.config import Config as BotoConfig
 
     from provisa.api.app import state
 
@@ -181,16 +177,43 @@ async def compact_otel_signals() -> None:
         target = datetime.strptime(override, "%Y-%m-%d")
     else:
         target = datetime.utcnow()
-    year = target.strftime("%Y")
-    month = target.strftime("%m")
-    day = target.strftime("%d")
-    # otlp2parquet writes: {signal}/{service}/year={Y}/month={M}/day={D}/hour={H}/
-    date_glob = f"year={year}/month={month}/day={day}/"
 
     s3_endpoint = os.environ.get("PROVISA_OTEL_S3_ENDPOINT", "http://minio:9000")
     access_key = os.environ.get("PROVISA_OTEL_S3_ACCESS_KEY", "minioadmin")
     secret_key = os.environ.get("PROVISA_OTEL_S3_SECRET_KEY", "minioadmin")
     otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
+    file_chunk = getattr(state, "otel_compact_file_chunk", 50)
+    trino_conn = state.trino_conn
+
+    for signal in ("logs", "metrics", "traces"):
+        await asyncio.to_thread(
+            _compact_signal, signal, target, s3_endpoint, access_key, secret_key,
+            otel_bucket, file_chunk, trino_conn,
+        )
+
+
+def _compact_signal(
+    signal: str,
+    target: object,
+    s3_endpoint: str,
+    access_key: str,
+    secret_key: str,
+    otel_bucket: str,
+    file_chunk: int,
+    trino_conn: object,
+) -> None:
+    """Compact one OTel signal type. Runs entirely in a thread — no event loop blocking."""
+    import io
+    from datetime import datetime
+
+    import boto3
+    from botocore.config import Config as BotoConfig
+
+    assert isinstance(target, datetime)
+    year = target.strftime("%Y")
+    month = target.strftime("%m")
+    day = target.strftime("%d")
+    date_glob = f"year={year}/month={month}/day={day}/"
 
     s3 = boto3.client(
         "s3",
@@ -201,64 +224,59 @@ async def compact_otel_signals() -> None:
         config=BotoConfig(signature_version="s3v4"),
     )
 
-    for signal in ("logs", "metrics", "traces"):
-        # List all objects under signal/ and filter to today's date partition
-        prefix = f"{signal}/"
+    prefix = f"{signal}/"
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        keys = []
+        for page in paginator.paginate(Bucket=otel_bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                if obj["Key"].endswith(".parquet") and date_glob in obj["Key"]:
+                    keys.append(obj["Key"])
+    except Exception:
+        logger.warning("compact_otel: cannot list s3://%s/%s", otel_bucket, prefix)
+        return
+
+    if not keys:
+        logger.debug("compact_otel: no %s files for %s", signal, date_glob)
+        return
+
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError:
+        logger.exception("compact_otel: pyarrow not available")
+        return
+
+    total_rows = 0
+    for chunk_start in range(0, len(keys), file_chunk):
+        chunk_keys = keys[chunk_start : chunk_start + file_chunk]
         try:
-            paginator = s3.get_paginator("list_objects_v2")
-            keys = []
-            for page in paginator.paginate(Bucket=otel_bucket, Prefix=prefix):
-                for obj in page.get("Contents", []):
-                    if obj["Key"].endswith(".parquet") and date_glob in obj["Key"]:
-                        keys.append(obj["Key"])
+            parts = []
+            for key in chunk_keys:
+                obj = s3.get_object(Bucket=otel_bucket, Key=key)
+                parts.append(pq.read_table(io.BytesIO(obj["Body"].read())))
+            combined = pa.concat_tables(parts, promote_options="default")
         except Exception:
-            logger.warning("compact_otel: cannot list s3://%s/%s", otel_bucket, prefix)
-            continue
-
-        if not keys:
-            logger.debug("compact_otel: no %s files for %s", signal, date_glob)
-            continue
+            logger.exception("compact_otel: failed reading %s parquet files (chunk %d)", signal, chunk_start)
+            return
 
         try:
-            import pyarrow as pa
-            import pyarrow.parquet as pq
-        except ImportError:
-            logger.exception("compact_otel: pyarrow not available")
-            continue
-
-        file_chunk = getattr(state, "otel_compact_file_chunk", 50)
-        total_rows = 0
-        failed = False
-        for chunk_start in range(0, len(keys), file_chunk):
-            chunk_keys = keys[chunk_start : chunk_start + file_chunk]
-            try:
-                parts = []
-                for key in chunk_keys:
-                    obj = s3.get_object(Bucket=otel_bucket, Key=key)
-                    parts.append(pq.read_table(io.BytesIO(obj["Body"].read())))
-                combined = pa.concat_tables(parts, promote_options="default")
-            except Exception:
-                logger.exception("compact_otel: failed reading %s parquet files (chunk %d)", signal, chunk_start)
-                failed = True
-                break
-
-            try:
-                await asyncio.to_thread(
-                    _insert_otel_iceberg, state.trino_conn, signal, combined, target,
-                    delete_first=(chunk_start == 0),
+            _insert_otel_iceberg(trino_conn, signal, combined, target, delete_first=(chunk_start == 0))
+            total_rows += len(combined)
+            del_resp = s3.delete_objects(
+                Bucket=otel_bucket,
+                Delete={"Objects": [{"Key": k} for k in chunk_keys]},
+            )
+            for err in del_resp.get("Errors", []):
+                logger.warning(
+                    "compact_otel: s3 delete failed key=%s code=%s msg=%s",
+                    err.get("Key"), err.get("Code"), err.get("Message"),
                 )
-                total_rows += len(combined)
-                s3.delete_objects(
-                    Bucket=otel_bucket,
-                    Delete={"Objects": [{"Key": k} for k in chunk_keys]},
-                )
-            except Exception:
-                logger.exception("compact_otel: failed inserting %s into Iceberg (chunk %d)", signal, chunk_start)
-                failed = True
-                break
+        except Exception:
+            logger.exception("compact_otel: failed inserting %s into Iceberg (chunk %d)", signal, chunk_start)
+            return
 
-        if not failed:
-            logger.info("compact_otel: inserted %d %s rows for %s", total_rows, signal, date_glob)
+    logger.info("compact_otel: inserted %d %s rows for %s", total_rows, signal, date_glob)
 
 
 def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object, *, delete_first: bool = True) -> None:
@@ -304,12 +322,21 @@ def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object, *
                 col_defs.append(f'"{ec}" VARCHAR')
     col_defs.append('"_date" DATE')
 
+    partition_cols = ["'_date'", "'table_name'"] if signal == "traces" else ["'_date'"]
     create_ddl = (
         f"CREATE TABLE IF NOT EXISTS otel.signals.{signal} "
         f"({', '.join(col_defs)}) "
-        f"WITH (partitioning = ARRAY['_date'], format = 'PARQUET')"
+        f"WITH (partitioning = ARRAY[{', '.join(partition_cols)}], format = 'PARQUET')"
     )
     cursor.execute(create_ddl)
+    if signal == "traces":
+        try:
+            cursor.execute(
+                f"ALTER TABLE otel.signals.{signal} "
+                f"SET PROPERTIES partitioning = ARRAY[{', '.join(partition_cols)}]"
+            )
+        except Exception as exc:
+            logger.warning("compact_otel: could not evolve partition spec for %s: %s", signal, exc)
 
     # Read back actual Trino column types and cast PyArrow table to match exactly.
     # This guarantees to_pylist() returns Python types that the trino client maps correctly.
