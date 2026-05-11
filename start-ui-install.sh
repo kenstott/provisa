@@ -275,8 +275,15 @@ start_backend() {
 restart_backend() {
   echo ""
   echo "Restarting backend (Ctrl-R)..."
-  kill "$BACKEND_PID" 2>/dev/null || true
+  pkill -9 -P "$BACKEND_PID" 2>/dev/null || true
+  kill -9 "$BACKEND_PID" 2>/dev/null || true
   wait "$BACKEND_PID" 2>/dev/null || true
+  # Kill orphaned workers re-parented to PID 1 that still hold port 8000
+  lsof -i :8000 -P -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+  for _i in $(seq 1 10); do
+    lsof -i :8000 -P -t 2>/dev/null | grep -q . || break
+    sleep 1
+  done
   start_backend
   echo "Backend restarted (PID $BACKEND_PID)."
 }
@@ -354,13 +361,13 @@ else
   echo "No demo services started. Use --demo to include petstore-mock, graphql-demo, and SQLite ETL."
 fi
 echo ""
-echo "Press Ctrl+C to stop. Press Ctrl+R to restart backend."
+echo "Press Ctrl+C to stop. Press Ctrl+R to restart backend. Run 'touch ~/.provisa-server-version' to restart after Python edits."
 
 cleanup() {
   trap - EXIT INT TERM
   echo ""
   echo "Shutting down..."
-  kill $UI_PID "${KEY_READER_PID:-}" "$BACKEND_PID" 2>/dev/null || true
+  kill $UI_PID "${KEY_READER_PID:-}" "${VERSION_WATCHER_PID:-}" "$BACKEND_PID" 2>/dev/null || true
   wait $UI_PID "$BACKEND_PID" 2>/dev/null || true
   if [ "$KEEP_DOCKER" = true ]; then
     echo "Leaving Docker Compose services running (--keep-docker)."
@@ -384,6 +391,23 @@ _key_reader() {
 }
 _key_reader &
 KEY_READER_PID=$!
+
+# Watch ~/.provisa-server-version for mtime changes and send USR1 to restart backend.
+# Developer workflow: `touch ~/.provisa-server-version` after editing Python files on T9.
+_VERSION_FILE="${HOME}/.provisa-server-version"
+touch "$_VERSION_FILE" 2>/dev/null || true
+(
+  _LAST_MTIME=$(stat -f "%m" "$_VERSION_FILE" 2>/dev/null || echo 0)
+  while sleep 2; do
+    _CURR_MTIME=$(stat -f "%m" "$_VERSION_FILE" 2>/dev/null || echo 0)
+    if [ "$_CURR_MTIME" != "$_LAST_MTIME" ]; then
+      _LAST_MTIME="$_CURR_MTIME"
+      echo "~/.provisa-server-version changed — restarting backend..."
+      kill -USR1 $$ 2>/dev/null || true
+    fi
+  done
+) &
+VERSION_WATCHER_PID=$!
 
 while true; do
   wait || true

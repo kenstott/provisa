@@ -787,7 +787,12 @@ def _all_table_metas(ctx: CompilationContext) -> list[TableMeta]:
 
 
 def rewrite_semantic_to_trino_physical(sql: str, ctx: CompilationContext) -> str:
-    """Replace semantic (domain.field_name) refs with Trino catalog-qualified refs."""
+    """Replace semantic and physical table refs with Trino catalog-qualified refs.
+
+    Handles both semantic refs (domain.field_name, produced by make_semantic_sql for root
+    tables) and physical refs without catalog (schema.table, left by make_semantic_sql for
+    join targets that are not in ctx.tables).
+    """
     replacements: dict[str, str] = {}
     seen: set[tuple[str, str, str]] = set()
     for meta in _all_table_metas(ctx):
@@ -796,7 +801,13 @@ def rewrite_semantic_to_trino_physical(sql: str, ctx: CompilationContext) -> str
             continue
         seen.add(key)
         semantic = _semantic_table_ref(meta)
-        replacements[semantic] = _table_ref(meta, use_catalog=True)
+        physical_no_catalog = _table_ref(meta, use_catalog=False)
+        physical_with_catalog = _table_ref(meta, use_catalog=True)
+        replacements[semantic] = physical_with_catalog
+        # Also replace bare physical refs (e.g. "signals"."queries") that make_semantic_sql
+        # did not convert because join targets are not in ctx.tables.
+        if physical_no_catalog not in replacements:
+            replacements[physical_no_catalog] = physical_with_catalog
     return _apply_replacements(sql, replacements)
 
 
