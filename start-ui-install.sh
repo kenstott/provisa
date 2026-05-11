@@ -209,9 +209,9 @@ fi
 # (killing only the port-8000 worker leaves the reloader alive to respawn it immediately)
 lsof -i :3000 -P -t 2>/dev/null | xargs kill -9 2>/dev/null || true
 pkill -9 -f "uvicorn main:app.*--port 8000" 2>/dev/null || true
-# Wait until port 8000 is free before starting a new backend
+# Wait for uvicorn to exit (don't wait for the port to clear — other services may hold it)
 for _i in $(seq 1 15); do
-  lsof -i :8000 -P -t 2>/dev/null || break
+  pgrep -f "uvicorn main:app.*--port 8000" > /dev/null 2>&1 || break
   sleep 1
 done
 
