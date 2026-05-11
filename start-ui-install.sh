@@ -207,19 +207,24 @@ fi
 
 # Kill any existing UI and backend processes.
 # uvicorn --reload spawns a reloader parent + a multiprocessing-forked worker child.
-# The worker has a different cmdline so pattern-kill on "uvicorn main:app" misses it;
-# kill the reloader by PID then kill all its children explicitly.
+# The worker has a different cmdline so pattern-kill on "uvicorn main:app" misses it.
+# If the reloader is already dead the worker is re-parented to PID 1 — must kill by port.
 lsof -i :3000 -P -t 2>/dev/null | xargs kill -9 2>/dev/null || true
 _UVICORN_PID=$(pgrep -f "uvicorn main:app.*--port 8000" 2>/dev/null || true)
 if [ -n "$_UVICORN_PID" ]; then
   pkill -9 -P "$_UVICORN_PID" 2>/dev/null || true
   kill -9 "$_UVICORN_PID" 2>/dev/null || true
-  # Wait for the reloader to exit (kill -9 is immediate but the kernel needs a tick)
   for _i in $(seq 1 10); do
     kill -0 "$_UVICORN_PID" 2>/dev/null || break
     sleep 1
   done
 fi
+# Kill any orphaned worker still holding port 8000 (re-parented to PID 1 after reloader dies)
+lsof -i :8000 -P -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+for _i in $(seq 1 10); do
+  lsof -i :8000 -P -t 2>/dev/null | grep -q . || break
+  sleep 1
+done
 
 BACKEND_PID=""
 
