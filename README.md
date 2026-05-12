@@ -41,6 +41,9 @@ Single-source queries execute directly against the source driver (target: sub-10
 ### Delivery & Performance
 - **Output formats** — JSON, NDJSON, CSV, Parquet, Apache Arrow
 - **Arrow Flight** — High-throughput columnar streaming over gRPC; unbounded, no server-side materialization
+- **Correlated subquery rewrite** — Correlated subqueries are automatically rewritten to CTEs and set-based patterns; federated query engines do not support correlated subqueries, so this rewrite is required for correctness
+- **Materialized view transparent rewriting** — Structural join-pattern matching rewrites queries (or subexpressions) to use a fresh MV automatically; partial matches are supported so an MV covering a subset of joins still applies, with remaining joins preserved
+- **Hot table inlining** — Small frequently-joined lookup tables are inlined as VALUES CTEs directly in the query plan, eliminating cross-source round trips for dimension data
 - **Query caching** — Role+RLS-partitioned Redis result cache; APQ hash cache included
 - **Materialized views** — Transparent SQL rewriting for JOIN optimization; FRESH/STALE/REFRESHING lifecycle with scheduled refresh
 - **Large result redirect** — Threshold-based S3 redirect for oversized result sets
