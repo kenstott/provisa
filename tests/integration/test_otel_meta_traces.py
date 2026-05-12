@@ -98,13 +98,13 @@ class TestOtelMetaTraces:
             f"trace_id {trace_id!r} not found in otel.signals.queries after insert"
         )
 
-    async def test_meta_traces_returns_rows_for_table(self, graphql_client, trino_conn):
+    async def test_meta_traces_returns_rows_for_table(self, live_client, trino_conn):
         """_meta._traces returns at least one row after a trace is inserted for the table."""
         trace_id = uuid.uuid4().hex
         span_id = uuid.uuid4().hex[:16]
         _insert_test_trace(trino_conn, TABLE_NAME, trace_id, span_id)
 
-        resp = await graphql_client.post(
+        resp = await live_client.post(
             "/data/graphql",
             json={
                 "query": """
@@ -125,7 +125,7 @@ class TestOtelMetaTraces:
                 """
             },
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text[:500]}"
         body = resp.json()
         assert "errors" not in body, f"GraphQL errors: {body.get('errors')}"
 
@@ -143,13 +143,13 @@ class TestOtelMetaTraces:
             f"Expected a provisa.query* span. Got: {span_names}"
         )
 
-    async def test_meta_queries_returns_rows_for_table(self, graphql_client, trino_conn):
+    async def test_meta_queries_returns_rows_for_table(self, live_client, trino_conn):
         """_meta._queries returns at least one row via the queries view."""
         trace_id = uuid.uuid4().hex
         span_id = uuid.uuid4().hex[:16]
         _insert_test_trace(trino_conn, TABLE_NAME, trace_id, span_id)
 
-        resp = await graphql_client.post(
+        resp = await live_client.post(
             "/data/graphql",
             json={
                 "query": """
@@ -170,7 +170,7 @@ class TestOtelMetaTraces:
                 """
             },
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 200, f"HTTP {resp.status_code}: {resp.text[:500]}"
         body = resp.json()
         assert "errors" not in body, f"GraphQL errors: {body.get('errors')}"
 

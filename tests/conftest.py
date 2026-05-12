@@ -21,6 +21,7 @@ import trino
 
 def _server_reachable(url: str) -> bool:
     import urllib.request
+
     try:
         urllib.request.urlopen(f"{url}/health", timeout=3)
         return True
@@ -30,6 +31,7 @@ def _server_reachable(url: str) -> bool:
 
 def _tcp_reachable(host: str, port: int) -> bool:
     import socket
+
     try:
         with socket.create_connection((host, port), timeout=3):
             return True
@@ -60,6 +62,7 @@ def _pgbouncer_auth_ok(host: str, port: int) -> bool:
 
 def _trino_catalog_exists(catalog: str) -> bool:
     import trino
+
     try:
         conn = trino.dbapi.connect(
             host=os.environ.get("TRINO_HOST", "localhost"),
@@ -101,28 +104,50 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if item.get_closest_marker("requires_provisa_server"):
             if not _check(server_url, lambda: _server_reachable(server_url)):
-                item.add_marker(pytest.mark.skip(reason=f"Provisa server not reachable at {server_url}"))
+                item.add_marker(
+                    pytest.mark.skip(reason=f"Provisa server not reachable at {server_url}")
+                )
         if item.get_closest_marker("requires_kafka"):
             if not _check("kafka", lambda: _tcp_reachable(kafka_host, kafka_port)):
-                item.add_marker(pytest.mark.skip(reason=f"Kafka not reachable at {kafka_host}:{kafka_port}"))
+                item.add_marker(
+                    pytest.mark.skip(reason=f"Kafka not reachable at {kafka_host}:{kafka_port}")
+                )
         if item.get_closest_marker("requires_debezium"):
             if not _check("debezium", lambda: _tcp_reachable(debezium_host, debezium_port)):
-                item.add_marker(pytest.mark.skip(reason=f"Debezium not reachable at {debezium_host}:{debezium_port}"))
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason=f"Debezium not reachable at {debezium_host}:{debezium_port}"
+                    )
+                )
         if item.get_closest_marker("requires_mongodb"):
             if not _check("mongodb", lambda: _tcp_reachable(mongo_host, mongo_port)):
-                item.add_marker(pytest.mark.skip(reason=f"MongoDB not reachable at {mongo_host}:{mongo_port}"))
+                item.add_marker(
+                    pytest.mark.skip(reason=f"MongoDB not reachable at {mongo_host}:{mongo_port}")
+                )
         if item.get_closest_marker("requires_elasticsearch"):
             if not _check("elasticsearch", lambda: _tcp_reachable(es_host, es_port)):
-                item.add_marker(pytest.mark.skip(reason=f"Elasticsearch not reachable at {es_host}:{es_port}"))
+                item.add_marker(
+                    pytest.mark.skip(reason=f"Elasticsearch not reachable at {es_host}:{es_port}")
+                )
         if item.get_closest_marker("requires_neo4j"):
             if not _check("neo4j", lambda: _tcp_reachable(neo4j_host, neo4j_port)):
-                item.add_marker(pytest.mark.skip(reason=f"Neo4j not reachable at {neo4j_host}:{neo4j_port}"))
+                item.add_marker(
+                    pytest.mark.skip(reason=f"Neo4j not reachable at {neo4j_host}:{neo4j_port}")
+                )
         if item.get_closest_marker("requires_sparql"):
             if not _check("sparql", lambda: _tcp_reachable(sparql_host, sparql_port)):
-                item.add_marker(pytest.mark.skip(reason=f"SPARQL endpoint not reachable at {sparql_host}:{sparql_port}"))
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason=f"SPARQL endpoint not reachable at {sparql_host}:{sparql_port}"
+                    )
+                )
         if item.get_closest_marker("requires_pgbouncer"):
             if not _check("pgbouncer", lambda: _pgbouncer_auth_ok(pgbouncer_host, pgbouncer_port)):
-                item.add_marker(pytest.mark.skip(reason=f"PgBouncer auth failed at {pgbouncer_host}:{pgbouncer_port}"))
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason=f"PgBouncer auth failed at {pgbouncer_host}:{pgbouncer_port}"
+                    )
+                )
 
 
 def _free_port() -> int:
@@ -165,7 +190,9 @@ def pg_dsn() -> str:
 @pytest_asyncio.fixture(scope="session")
 async def pg_pool(pg_dsn):
     pool = await asyncpg.create_pool(
-        pg_dsn, min_size=1, max_size=5,
+        pg_dsn,
+        min_size=1,
+        max_size=5,
         command_timeout=30,
     )
     yield pool
@@ -209,7 +236,9 @@ def docker_postgres():
                 break
             time.sleep(1)
         else:
-            raise RuntimeError(f"Postgres did not become reachable at {pg_host}:{pg_port} within 30 s")
+            raise RuntimeError(
+                f"Postgres did not become reachable at {pg_host}:{pg_port} within 30 s"
+            )
 
     yield {"host": pg_host, "port": pg_port}
 
@@ -247,6 +276,21 @@ async def graphql_client(docker_postgres):
 
     await pool.close()
     app_mod.state.pg_pool = None
+
+
+@pytest_asyncio.fixture(scope="session")
+async def live_client():
+    """AsyncClient that hits the running Provisa server (PROVISA_URL or localhost:8000).
+
+    Skips if the server is not reachable.
+    """
+    import httpx
+
+    server_url = os.environ.get("PROVISA_URL", "http://localhost:8000")
+    if not _server_reachable(server_url):
+        pytest.skip(f"Provisa server not reachable at {server_url}")
+    async with httpx.AsyncClient(base_url=server_url, timeout=120.0) as client:
+        yield client
 
 
 @pytest.fixture
