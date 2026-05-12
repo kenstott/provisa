@@ -56,6 +56,7 @@ class AppState:
     flight_client: object | None = None  # pyarrow.flight.FlightClient
     schemas: dict[str, object] = {}  # role_id → GraphQLSchema
     schema_build_cache: dict = {}  # raw data for on-demand domain-filtered schema building
+    schema_version: int = 0  # bumped on every _rebuild_schemas; used by clients for cache invalidation
     contexts: dict[str, CompilationContext] = {}  # role_id → CompilationContext
     rls_contexts: dict[str, RLSContext] = {}  # role_id → RLSContext
     roles: dict[str, dict] = {}  # role_id → role dict
@@ -414,6 +415,7 @@ def _seed_ops_trino(trino_conn: object, snapshot_retention_hours: int | None = N
         cur.fetchall()
 
     # Schema + physical tables — one exception aborts table creation (catalog not ready).
+    _tables_ready = True
     try:
         _exec("CREATE SCHEMA IF NOT EXISTS otel.signals")
         for tbl_name, cols in _OPS_TABLES.items():
@@ -428,41 +430,44 @@ def _seed_ops_trino(trino_conn: object, snapshot_retention_hours: int | None = N
             )
     except Exception:
         _log.warning("ops Iceberg DDL failed — will retry before next schema introspection", exc_info=True)
-        return
+        _tables_ready = False
 
-    # Column additions are non-fatal and isolated per table.
-    for tbl_name, cols in _OPS_TABLES.items():
-        try:
-            cur = trino_conn.cursor()  # type: ignore[union-attr]
-            cur.execute(f"SHOW COLUMNS FROM otel.signals.{tbl_name}")
-            existing_cols = {row[0].lower() for row in cur.fetchall()}
-            for col_name, pg_type, _ in cols:
-                if col_name.lower() not in existing_cols:
-                    trino_type = _OPS_PG_TO_TRINO.get(pg_type, "VARCHAR")
-                    try:
-                        _exec(f'ALTER TABLE otel.signals.{tbl_name} ADD COLUMN "{col_name}" {trino_type}')
-                        _log.info("ops Iceberg: added column %s.%s", tbl_name, col_name)
-                    except Exception:
-                        _log.warning("ops Iceberg: could not add column %s.%s", tbl_name, col_name, exc_info=True)
-        except Exception:
-            _log.warning("ops Iceberg: could not inspect columns for %s", tbl_name, exc_info=True)
+    if _tables_ready:
+        # Column additions are non-fatal and isolated per table.
+        for tbl_name, cols in _OPS_TABLES.items():
+            try:
+                cur = trino_conn.cursor()  # type: ignore[union-attr]
+                cur.execute(f"SHOW COLUMNS FROM otel.signals.{tbl_name}")
+                existing_cols = {row[0].lower() for row in cur.fetchall()}
+                for col_name, pg_type, _ in cols:
+                    if col_name.lower() not in existing_cols:
+                        trino_type = _OPS_PG_TO_TRINO.get(pg_type, "VARCHAR")
+                        try:
+                            _exec(f'ALTER TABLE otel.signals.{tbl_name} ADD COLUMN "{col_name}" {trino_type}')
+                            _log.info("ops Iceberg: added column %s.%s", tbl_name, col_name)
+                        except Exception:
+                            _log.warning("ops Iceberg: could not add column %s.%s", tbl_name, col_name, exc_info=True)
+            except Exception:
+                _log.warning("ops Iceberg: could not inspect columns for %s", tbl_name, exc_info=True)
 
-    # Evolve partition spec on existing tables to include table_name (non-destructive).
-    for tbl_name in _OPS_TABLES:
-        try:
-            _exec(f'ALTER TABLE otel.signals.{tbl_name} ADD PARTITION FIELD "table_name"')
-        except Exception:
-            pass  # already present or not supported — not fatal
+        # Evolve partition spec on existing tables to include table_name (non-destructive).
+        for tbl_name in _OPS_TABLES:
+            try:
+                _exec(f'ALTER TABLE otel.signals.{tbl_name} ADD PARTITION FIELD "table_name"')
+            except Exception:
+                pass  # already present or not supported — not fatal
 
-    # Warm up Iceberg metadata: first query on a cold Iceberg table can take >60s;
-    # running a zero-row scan here ensures metadata is loaded before user requests arrive.
-    for tbl_name in _OPS_TABLES:
-        try:
-            _exec(f"SELECT 1 FROM otel.signals.{tbl_name} LIMIT 0")
-        except Exception:
-            _log.warning("ops Iceberg: warm-up scan on %s failed (non-fatal)", tbl_name, exc_info=True)
+        # Warm up Iceberg metadata: first query on a cold Iceberg table can take >60s;
+        # running a zero-row scan here ensures metadata is loaded before user requests arrive.
+        for tbl_name in _OPS_TABLES:
+            try:
+                _exec(f"SELECT 1 FROM otel.signals.{tbl_name} LIMIT 0")
+            except Exception:
+                _log.warning("ops Iceberg: warm-up scan on %s failed (non-fatal)", tbl_name, exc_info=True)
 
-    # Views — always attempted; independent of column-addition failures.
+    # Views — always attempted; independent of column-addition and table-creation failures.
+    # If the initial DDL block failed because Trino wasn't ready, these will also fail (caught
+    # individually). If tables already exist from a prior run, views are created/refreshed here.
     # Use DROP IF EXISTS + CREATE VIEW for broad Trino version compatibility
     # (CREATE OR REPLACE VIEW for Iceberg requires Trino 418+).
     for view_name, _, view_ddl in _OPS_VIEWS:
@@ -472,6 +477,9 @@ def _seed_ops_trino(trino_conn: object, snapshot_retention_hours: int | None = N
             _exec(clean_ddl)
         except Exception:
             _log.warning("ops view %s: create failed", view_name, exc_info=True)
+
+    if not _tables_ready:
+        return
 
     # Expire old Iceberg snapshots and orphan files when retention is configured.
     if snapshot_retention_hours is not None:
@@ -1533,6 +1541,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         "approved_queries": approved_queries,
         "physical_table_map": {**_META_TABLE_ALIAS, **(kafka_physical or {})},
     }
+    state.schema_version += 1
 
     # Compile inline view SQLs now that a context is available
     if state.view_sql_map and state.contexts:
