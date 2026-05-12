@@ -13,8 +13,8 @@ import type { Page } from "@playwright/test";
 // ── Mock Data ──
 
 export const MOCK_SOURCES = [
-  { id: "sales-pg", type: "postgresql", host: "localhost", port: 5432, database: "sales", username: "admin", dialect: "postgresql", cacheEnabled: true, cacheTtl: 600 },
-  { id: "analytics-sf", type: "snowflake", host: "org.snowflakecomputing.com", port: 443, database: "ANALYTICS", username: "svc", dialect: "snowflake", cacheEnabled: true, cacheTtl: null },
+  { id: "sales-pg", type: "postgresql", host: "localhost", port: 5432, database: "sales", username: "admin", dialect: "postgresql", cacheEnabled: true, cacheTtl: 600, allowedDomains: [], namingConvention: null },
+  { id: "analytics-sf", type: "snowflake", host: "org.snowflakecomputing.com", port: 443, database: "ANALYTICS", username: "svc", dialect: "snowflake", cacheEnabled: true, cacheTtl: null, allowedDomains: [], namingConvention: null },
 ];
 
 export const MOCK_DOMAINS = [
@@ -25,19 +25,19 @@ export const MOCK_DOMAINS = [
 export const MOCK_TABLES = [
   {
     id: 1, sourceId: "sales-pg", domainId: "sales", schemaName: "public", tableName: "orders",
-    governance: "open", alias: null, description: "Customer orders", cacheTtl: 60,
+    governance: "open", alias: null, description: "Customer orders", cacheTtl: 60, columnPresets: [], dataProduct: false, namingConvention: null, watermarkColumn: null,
     columns: [
-      { id: 1, columnName: "id", visibleTo: [], writableBy: [], unmaskedTo: [], maskType: null, maskPattern: null, maskReplace: null, maskValue: null, maskPrecision: null, alias: null, description: "Primary key" },
-      { id: 2, columnName: "customer_id", visibleTo: [], writableBy: [], unmaskedTo: [], maskType: null, maskPattern: null, maskReplace: null, maskValue: null, maskPrecision: null, alias: null, description: "FK to customers" },
-      { id: 3, columnName: "total", visibleTo: ["admin"], writableBy: ["admin"], unmaskedTo: ["admin"], maskType: "constant", maskPattern: null, maskReplace: null, maskValue: "0", maskPrecision: null, alias: "order_total", description: "Order total" },
+      { id: 1, columnName: "id", visibleTo: [], writableBy: [], unmaskedTo: [], maskType: null, maskPattern: null, maskReplace: null, maskValue: null, maskPrecision: null, alias: null, description: "Primary key", isPrimaryKey: true, scope: null, nativeFilterType: null },
+      { id: 2, columnName: "customer_id", visibleTo: [], writableBy: [], unmaskedTo: [], maskType: null, maskPattern: null, maskReplace: null, maskValue: null, maskPrecision: null, alias: null, description: "FK to customers", isPrimaryKey: false, scope: null, nativeFilterType: null },
+      { id: 3, columnName: "total", visibleTo: ["admin"], writableBy: ["admin"], unmaskedTo: ["admin"], maskType: "constant", maskPattern: null, maskReplace: null, maskValue: "0", maskPrecision: null, alias: "order_total", description: "Order total", isPrimaryKey: false, scope: null, nativeFilterType: null },
     ],
   },
   {
     id: 2, sourceId: "sales-pg", domainId: "sales", schemaName: "public", tableName: "customers",
-    governance: "restricted", alias: "clients", description: null, cacheTtl: null,
+    governance: "restricted", alias: "clients", description: null, cacheTtl: null, columnPresets: [], dataProduct: false, namingConvention: null, watermarkColumn: null,
     columns: [
-      { id: 4, columnName: "id", visibleTo: [], writableBy: [], unmaskedTo: [], maskType: null, maskPattern: null, maskReplace: null, maskValue: null, maskPrecision: null, alias: null, description: null },
-      { id: 5, columnName: "name", visibleTo: [], writableBy: [], unmaskedTo: [], maskType: null, maskPattern: null, maskReplace: null, maskValue: null, maskPrecision: null, alias: null, description: null },
+      { id: 4, columnName: "id", visibleTo: [], writableBy: [], unmaskedTo: [], maskType: null, maskPattern: null, maskReplace: null, maskValue: null, maskPrecision: null, alias: null, description: null, isPrimaryKey: true, scope: null, nativeFilterType: null },
+      { id: 5, columnName: "name", visibleTo: [], writableBy: [], unmaskedTo: [], maskType: null, maskPattern: null, maskReplace: null, maskValue: null, maskPrecision: null, alias: null, description: null, isPrimaryKey: false, scope: null, nativeFilterType: null },
     ],
   },
 ];
@@ -251,7 +251,55 @@ export async function setupMocks(page: Page, overrides?: Partial<{
     await route.fulfill({ body: "type Query { orders: [Order] }\ntype Order { id: Int total: Float }", contentType: "text/plain" });
   });
 
+  await page.route("**/data/domains", async (route) => {
+    await route.fulfill({ json: domains.map((d: any) => d.id) });
+  });
+
+  await page.route("**/data/schema-version", async (route) => {
+    await route.fulfill({ json: { version: 1 } });
+  });
+
+  await page.route("**/data/introspection*", async (route) => {
+    await route.fulfill({
+      json: {
+        data: {
+          __schema: {
+            queryType: { name: "Query" },
+            mutationType: null,
+            subscriptionType: null,
+            types: [
+              {
+                kind: "OBJECT",
+                name: "Query",
+                description: null,
+                fields: [
+                  { name: "customer_insights__orders", description: null, args: [], type: { kind: "SCALAR", name: "String", ofType: null }, isDeprecated: false, deprecationReason: null },
+                  { name: "customer_insights__customers", description: null, args: [], type: { kind: "SCALAR", name: "String", ofType: null }, isDeprecated: false, deprecationReason: null },
+                  { name: "product_catalog__products", description: null, args: [], type: { kind: "SCALAR", name: "String", ofType: null }, isDeprecated: false, deprecationReason: null },
+                  { name: "product_catalog__categories", description: null, args: [], type: { kind: "SCALAR", name: "String", ofType: null }, isDeprecated: false, deprecationReason: null },
+                  { name: "sales_analytics__revenue", description: null, args: [], type: { kind: "SCALAR", name: "String", ofType: null }, isDeprecated: false, deprecationReason: null },
+                  { name: "support__tickets", description: null, args: [], type: { kind: "SCALAR", name: "String", ofType: null }, isDeprecated: false, deprecationReason: null },
+                ],
+                inputFields: null,
+                interfaces: [],
+                enumValues: null,
+                possibleTypes: null,
+              },
+              { kind: "SCALAR", name: "String", description: null, fields: null, inputFields: null, interfaces: null, enumValues: null, possibleTypes: null },
+              { kind: "SCALAR", name: "Boolean", description: null, fields: null, inputFields: null, interfaces: null, enumValues: null, possibleTypes: null },
+            ],
+            directives: [],
+          },
+        },
+      },
+    });
+  });
+
   await page.route("**/health", async (route) => {
     await route.fulfill({ json: { status: "ok" } });
+  });
+
+  await page.route("**/setup/status", async (route) => {
+    await route.fulfill({ json: { needs_setup: false, demo_mode: false } });
   });
 }

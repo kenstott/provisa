@@ -748,7 +748,7 @@ export function TablesPage() {
         <thead>
           <tr>
             <th>ID</th><th>Source</th><th>Domain</th><th>Table</th>
-            <th>Naming</th><th>Cache TTL</th><th>Effective TTL</th><th>Cols</th><th></th>
+            <th>Governance</th><th>Naming</th><th>Cache TTL</th><th>Effective TTL</th><th>Cols</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -778,6 +778,7 @@ export function TablesPage() {
                       </div>
                     )}
                   </td>
+                  <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{t.governance}</td>
                   <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                     {NAMING_CONVENTIONS.find((nc) => nc.value === (t.namingConvention ?? ""))?.label ?? t.namingConvention ?? "Inherit (source)"}
                   </td>

@@ -62,6 +62,7 @@ test.describe("TablesPage — additional coverage", () => {
   test("expanding a restricted table shows alias in detail view", async ({ page }) => {
     // The second mock table (customers) has alias="clients"
     const rows = page.locator("tr.clickable");
+    await expect(rows.nth(1)).toBeVisible({ timeout: 5000 });
     await rows.nth(1).click();
     await expect(page.locator("code", { hasText: "clients" }).or(
       page.locator("span", { hasText: "clients" }).or(
@@ -72,11 +73,9 @@ test.describe("TablesPage — additional coverage", () => {
 
   test("expanding orders table shows description text", async ({ page }) => {
     const rows = page.locator("tr.clickable");
-    await rows.first().click();
-    // orders has description="Customer orders"
-    await expect(
-      page.locator("td, span, div", { hasText: "Customer orders" })
-    ).toBeVisible({ timeout: 5000 });
+    await expect(rows.first()).toBeVisible({ timeout: 5000 });
+    // orders has description="Customer orders" — visible in the table row before and after expand
+    await expect(page.getByText("Customer orders", { exact: true })).toBeVisible({ timeout: 5000 });
   });
 
   // ── Column masking fields ─────────────────────────────────────────────────
@@ -100,14 +99,14 @@ test.describe("TablesPage — additional coverage", () => {
   // ── Register table: domain field ──────────────────────────────────────────
 
   test("register form includes a domain selector", async ({ page }) => {
-    await page.getByRole("button", { name: "Register Table" }).click();
+    await page.getByRole("button", { name: "+ Table" }).click();
     // Domain selector is nth(1) in the cascade
     const domainSelect = page.locator(".form-card select").nth(1);
     await expect(domainSelect).toBeVisible();
   });
 
   test("domain selector lists mock domains", async ({ page }) => {
-    await page.getByRole("button", { name: "Register Table" }).click();
+    await page.getByRole("button", { name: "+ Table" }).click();
     const domainSelect = page.locator(".form-card select").nth(1);
     await expect(domainSelect.locator("option[value='sales']")).toBeAttached({ timeout: 5000 });
     await expect(domainSelect.locator("option[value='analytics']")).toBeAttached();
@@ -127,6 +126,9 @@ test.describe("TablesPage — additional coverage", () => {
       }
     });
 
+    await expect(page.locator("tr.clickable").first()).toBeVisible({ timeout: 5000 });
+    await page.locator("tr.clickable").first().click();
+    await expect(page.locator("code", { hasText: "customer_id" })).toBeVisible({ timeout: 5000 });
     page.on("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Delete" }).first().click();
 
