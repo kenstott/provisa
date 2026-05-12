@@ -25,12 +25,13 @@ from unittest.mock import MagicMock
 import pyarrow as pa
 import pytest
 
-pytestmark = [pytest.mark.asyncio]
+pytestmark = []
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_flight_client(table: pa.Table | None = None) -> MagicMock:
     """Build a mock FlightClient that returns a table from do_get."""
@@ -61,6 +62,7 @@ def _make_connection(table: pa.Table | None = None):
 # ---------------------------------------------------------------------------
 # AdbcConnection — structural tests
 # ---------------------------------------------------------------------------
+
 
 class TestAdbcConnectionContract:
     def test_cursor_returns_adbc_cursor(self):
@@ -96,6 +98,7 @@ class TestAdbcConnectionContract:
 # ---------------------------------------------------------------------------
 # AdbcCursor — ticket building and execute
 # ---------------------------------------------------------------------------
+
 
 class TestAdbcCursorTicket:
     def test_ticket_contains_query(self):
@@ -143,6 +146,7 @@ class TestAdbcCursorExecute:
         conn = _make_connection()
         conn.close()
         from provisa_client.adbc import AdbcCursor
+
         cursor = AdbcCursor(connection=conn)
         with pytest.raises(RuntimeError, match="closed"):
             cursor.execute("SELECT 1")
