@@ -75,6 +75,7 @@ node_modules/
 
 # Claude Code / Codex — local only
 /.claude/
+!/.claude/settings.local.json
 /.codex/
 /jdbc-driver/target/
 /.wrangler/cache/pages.json
