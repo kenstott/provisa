@@ -19,10 +19,19 @@ export default defineConfig({
     baseURL: "http://localhost:3000",
     headless: true,
   },
-  webServer: {
-    command: "npm run dev",
-    port: 3000,
-    reuseExistingServer: true,
-    timeout: 15000,
-  },
+  webServer: [
+    {
+      command: "npm run dev",
+      port: 3000,
+      reuseExistingServer: !process.env.CI,
+      timeout: 15000,
+    },
+    {
+      command: "bash -c 'cd .. && .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000'",
+      port: 8000,
+      url: "http://localhost:8000/health",
+      reuseExistingServer: !process.env.CI,
+      timeout: 30000,
+    },
+  ],
 });

@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -57,6 +58,7 @@ class AppState:
     schemas: dict[str, object] = {}  # role_id → GraphQLSchema
     schema_build_cache: dict = {}  # raw data for on-demand domain-filtered schema building
     schema_version: int = 0  # bumped on every _rebuild_schemas; used by clients for cache invalidation
+    schema_boot_id: str = ""  # random UUID set at startup; combined with schema_version for cache keys
     contexts: dict[str, CompilationContext] = {}  # role_id → CompilationContext
     rls_contexts: dict[str, RLSContext] = {}  # role_id → RLSContext
     roles: dict[str, dict] = {}  # role_id → role dict
@@ -1590,6 +1592,7 @@ async def lifespan(app: FastAPI):
     """App lifespan: load config and build schemas at startup."""
     import logging
     _log = logging.getLogger(__name__)
+    state.schema_boot_id = uuid.uuid4().hex
     try:
         await _load_and_build()
     except Exception:
@@ -1883,7 +1886,7 @@ async def lifespan(app: FastAPI):
                                 source_table_id="pets",
                                 target_table_id="shelter__assignments",
                                 source_column="breed_name",
-                                target_column="breed_name",
+                                target_column="breedName",
                                 cardinality=Cardinality("many-to-one"),
                             ))
                         except Exception:
@@ -1893,7 +1896,7 @@ async def lifespan(app: FastAPI):
                                 id="shelter-assignments-to-pets",
                                 source_table_id="shelter__assignments",
                                 target_table_id="pets",
-                                source_column="breed_name",
+                                source_column="breedName",
                                 target_column="breed_name",
                                 cardinality=Cardinality("one-to-many"),
                             ))

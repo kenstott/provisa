@@ -101,10 +101,16 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
 
 @router.get("/data/schema-version")
 async def get_schema_version():
-    """Return the current schema version counter. Lightweight — used by clients for cache invalidation."""
+    """Return the current schema version. Combines a per-boot nonce with the rebuild counter so
+    sessionStorage cache entries are always invalidated after a server restart."""
     from provisa.api.app import state
 
-    return JSONResponse({"version": state.schema_version})
+    version = (
+        f"{state.schema_boot_id}-{state.schema_version}"
+        if state.schema_boot_id
+        else str(state.schema_version)
+    )
+    return JSONResponse({"version": version})
 
 
 @router.get("/data/domains")
