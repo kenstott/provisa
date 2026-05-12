@@ -33,6 +33,7 @@ async def download_config():
 async def upload_config(request: Request):
     """Upload a revised config YAML and reload."""
     from provisa.api.app import _load_and_build  # lazy to avoid circular import
+
     body = await request.body()
     path = config_path()
     if path.exists():
@@ -52,6 +53,7 @@ async def get_settings():
     from provisa.executor.redirect import RedirectConfig
     from provisa.compiler.sampling import get_sample_size
     from provisa.api.app import state
+
     rc = RedirectConfig.from_env()
     cfg = read_config()
     naming_cfg = cfg.get("naming", {})
@@ -74,11 +76,14 @@ async def get_settings():
             "convention": naming_cfg.get("convention", "apollo_graphql"),
         },
         "relationships": {
-            "auto_track_fk": os.environ.get("PROVISA_AUTO_TRACK_FK", "true").lower() not in ("0", "false", "no"),
+            "auto_track_fk": os.environ.get("PROVISA_AUTO_TRACK_FK", "true").lower()
+            not in ("0", "false", "no"),
         },
         "otel": {
-            "endpoint": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT") or otel_cfg.get("endpoint", ""),
-            "service_name": os.environ.get("OTEL_SERVICE_NAME") or otel_cfg.get("service_name", "provisa"),
+            "endpoint": os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+            or otel_cfg.get("endpoint", ""),
+            "service_name": os.environ.get("OTEL_SERVICE_NAME")
+            or otel_cfg.get("service_name", "provisa"),
             "sample_rate": float(otel_cfg.get("sample_rate", 1.0)),
         },
     }
@@ -88,6 +93,7 @@ async def get_settings():
 async def update_settings(request: Request):
     """Update platform settings at runtime."""
     from provisa.api.app import state, _load_and_build
+
     body = await request.json()
     updated = []
 
@@ -129,6 +135,7 @@ async def update_settings(request: Request):
             needs_reload = True
         if "convention" in n:
             from provisa.compiler.naming import VALID_CONVENTIONS
+
             if n["convention"] not in VALID_CONVENTIONS:
                 return {"success": False, "message": f"Invalid convention: {n['convention']!r}"}
             cfg.setdefault("naming", {})["convention"] = n["convention"]
@@ -167,6 +174,7 @@ async def update_settings(request: Request):
             write_config(path, cfg)
             if "endpoint" in o and o["endpoint"]:
                 from provisa.api.otel_setup import attach_otlp_exporters
+
                 service = cfg["observability"].get("service_name", "provisa")
                 attach_otlp_exporters(o["endpoint"], service)
         except Exception:
@@ -175,13 +183,120 @@ async def update_settings(request: Request):
     return {"success": True, "updated": updated}
 
 
+@router.post("/admin/query-engine/reload-catalog")
+async def reload_query_engine_catalog(catalog: str = "otel"):
+    """Reload a catalog via the query engine coordinator REST API, then reconnect and re-run DDL.
+
+    Uses DELETE + POST on the coordinator's /v1/catalog endpoint so all workers pick up the
+    change automatically via the discovery service — no container restart required.
+    """
+    import httpx
+    import trino as _trino
+    from provisa.api.app import state, _seed_ops_trino
+
+    if not state.trino_conn_kwargs:
+        raise HTTPException(status_code=503, detail="Query engine connection not configured")
+
+    host = state.trino_conn_kwargs.get("host", "localhost")
+    port = state.trino_conn_kwargs.get("port", 8080)
+    base_url = f"http://{host}:{port}"
+
+    # Read catalog properties file from disk
+    catalog_dir = os.path.join(
+        os.environ.get("PROVISA_CATALOG_DIR", "trino/catalog"), f"{catalog}.properties"
+    )
+    if not os.path.isabs(catalog_dir):
+        script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+        catalog_path = os.path.join(script_dir, catalog_dir)
+    else:
+        catalog_path = catalog_dir
+
+    if not os.path.exists(catalog_path):
+        raise HTTPException(status_code=404, detail=f"Catalog properties not found: {catalog_path}")
+
+    props: dict[str, str] = {}
+    with open(catalog_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                props[k.strip()] = v.strip()
+
+    connector_name = props.pop("connector.name", None)
+    if not connector_name:
+        raise HTTPException(status_code=500, detail=f"connector.name missing in {catalog_path}")
+
+    errors: list[str] = []
+    async with httpx.AsyncClient(timeout=30) as client:
+        # Drop the catalog (ignore 404 — may not be registered yet)
+        del_resp = await client.delete(f"{base_url}/v1/catalog/{catalog}")
+        if del_resp.status_code not in (200, 204, 404):
+            errors.append(f"DELETE /v1/catalog/{catalog} → {del_resp.status_code}: {del_resp.text}")
+
+        # Re-register the catalog
+        post_resp = await client.post(
+            f"{base_url}/v1/catalog",
+            json={"catalogName": catalog, "connectorName": connector_name, "properties": props},
+        )
+        if post_resp.status_code not in (200, 201):
+            errors.append(f"POST /v1/catalog → {post_resp.status_code}: {post_resp.text}")
+
+    if errors:
+        return {"success": False, "errors": errors}
+
+    # Reconnect Provisa's internal connection and re-run OTel DDL
+    try:
+        new_conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
+        cur = new_conn.cursor()
+        cur.execute("SELECT 1")
+        cur.fetchone()
+        state.trino_conn = new_conn
+    except Exception as exc:
+        return {"success": False, "errors": [f"Reconnect failed: {exc}"]}
+
+    try:
+        _seed_ops_trino(state.trino_conn, getattr(state, "otel_snapshot_retention_hours", None))
+    except Exception as exc:
+        errors.append(str(exc))
+
+    return {"success": not errors, "errors": errors}
+
+
+@router.post("/admin/query-engine/restart")
+async def restart_query_engine(container: str | None = None):
+    """Restart the query engine container (single-node dev only). Falls back to QUERY_ENGINE_CONTAINER env var."""
+    import asyncio
+
+    container = container or os.environ.get("QUERY_ENGINE_CONTAINER", "trino")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "docker",
+            "restart",
+            container,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="docker restart timed out")
+    except FileNotFoundError:
+        raise HTTPException(status_code=503, detail="docker not found on PATH")
+
+    if proc.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=stderr.decode().strip() or f"docker restart exited {proc.returncode}",
+        )
+
+    return {"success": True, "container": container, "output": stdout.decode().strip()}
+
+
 @router.get("/admin/traces/recent")
 async def get_recent_traces(limit: int = 50):
     """Return the last N completed spans from the in-memory buffer."""
     try:
         from provisa.api.otel_setup import span_buffer
+
         return {"traces": span_buffer.recent(min(limit, 200))}
     except Exception:
         return {"traces": []}
-
-

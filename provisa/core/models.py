@@ -50,7 +50,7 @@ class SourceType(str, Enum):
     # Streaming
     kafka = "kafka"
     websocket = "websocket"  # External WebSocket feed — connect, subscribe, receive events
-    rss = "rss"             # RSS 2.0 / Atom feed — poll, watermark by pubDate/updated
+    rss = "rss"  # RSS 2.0 / Atom feed — poll, watermark by pubDate/updated
     # Graph / Semantic
     neo4j = "neo4j"
     sparql = "sparql"
@@ -142,10 +142,9 @@ class Source(BaseModel):
     @classmethod
     def validate_id(cls, v: str) -> str:
         if not _SAFE_ID_PATTERN.match(v):
-            raise ValueError(
-                f"Source id must be alphanumeric with hyphens/underscores, got: {v!r}"
-            )
+            raise ValueError(f"Source id must be alphanumeric with hyphens/underscores, got: {v!r}")
         return v
+
     type: SourceType
     host: str = ""
     port: int = 0
@@ -161,10 +160,12 @@ class Source(BaseModel):
     cache_enabled: bool = True
     cache_ttl: int | None = None  # overrides global default; None = inherit
     cache_catalog: str | None = None  # Trino catalog for API cache; None = source's own catalog
-    cache_schema: str = "api_cache"   # schema within that catalog
+    cache_schema: str = "api_cache"  # schema within that catalog
     naming_convention: str | None = None  # overrides global; None = inherit
     federation_hints: dict[str, str] = Field(default_factory=dict)  # Trino session props
-    allowed_domains: list[str] = Field(default_factory=list)  # restrict this source to specific domains; empty = unrestricted
+    allowed_domains: list[str] = Field(
+        default_factory=list
+    )  # restrict this source to specific domains; empty = unrestricted
     description: str = ""
 
     @property
@@ -221,10 +222,10 @@ class NamingConfig(BaseModel):
     @classmethod
     def _validate_convention(cls, v: str) -> str:
         from provisa.compiler.naming import VALID_CONVENTIONS
+
         if v not in VALID_CONVENTIONS:
             raise ValueError(
-                f"Invalid naming convention {v!r}. "
-                f"Valid options: {sorted(VALID_CONVENTIONS)}"
+                f"Invalid naming convention {v!r}. Valid options: {sorted(VALID_CONVENTIONS)}"
             )
         return v
 
@@ -254,7 +255,9 @@ class Column(BaseModel):
     native_filter_type: str | None = None  # "path_param" | "query_param" for OpenAPI sources
     is_primary_key: bool = False  # user-designated PK (informational, not enforced)
     is_foreign_key: bool = False  # derived from relationships (source_column side)
-    is_alternate_key: bool = False  # derived from relationships (target_column when PK already exists)
+    is_alternate_key: bool = (
+        False  # derived from relationships (target_column when PK already exists)
+    )
     object_fields: list[ObjectField] = []  # sub-fields for object/jsonb columns
     scope: str = "domain"  # "domain" | "public" | "restricted"
 
@@ -324,10 +327,16 @@ class Relationship(BaseModel):
     refresh_interval: int = 300  # MV refresh interval in seconds
     target_function_name: str | None = None  # computed relationship: DB function name
     function_arg: str | None = None  # which function arg receives source_column value
-    alias: str | None = None  # human-readable relationship type (e.g. WORKS_FOR); unique per source table
-    graphql_alias: str | None = None  # persisted GraphQL field name override (computed from target+cardinality when absent)
+    alias: str | None = (
+        None  # human-readable relationship type (e.g. WORKS_FOR); unique per source table
+    )
+    graphql_alias: str | None = (
+        None  # persisted GraphQL field name override (computed from target+cardinality when absent)
+    )
     disable_cypher: bool = False  # when True, exclude this relationship from Cypher graph edges
-    source_json_key: str | None = None  # when set, JOIN extracts this key from source column as JSON object
+    source_json_key: str | None = (
+        None  # when set, JOIN extracts this key from source column as JSON object
+    )
 
 
 class Role(BaseModel):
@@ -361,12 +370,14 @@ def flatten_roles(roles: list[Role]) -> list[Role]:
     result: list[Role] = []
     for r in roles:
         caps, domains = _resolve(r.id)
-        result.append(Role(
-            id=r.id,
-            capabilities=sorted(caps),
-            domain_access=["*"] if "*" in domains else sorted(domains),
-            parent_role_id=r.parent_role_id,
-        ))
+        result.append(
+            Role(
+                id=r.id,
+                capabilities=sorted(caps),
+                domain_access=["*"] if "*" in domains else sorted(domains),
+                parent_role_id=r.parent_role_id,
+            )
+        )
     return result
 
 
@@ -455,7 +466,7 @@ class AuthConfig(BaseModel):
     superuser: dict | None = None
     role_mapping: list[dict] = Field(default_factory=list)
     default_role: str = "analyst"
-    assignments_source: str = "claims"   # claims | provisa
+    assignments_source: str = "claims"  # claims | provisa
     default_assignments: list[dict] = Field(default_factory=list)
     trust_upstream: bool = False
 
@@ -519,6 +530,12 @@ class ServerConfig(BaseModel):
 class ProvisaConfig(BaseModel):
     server: ServerConfig = Field(default_factory=ServerConfig)
     multitenancy: bool = False
+    jvm_heap_gb: int = 8
+    spill_enabled: bool = True
+    spill_path: str = "/tmp/provisa-spill"
+    query_max_memory: str = "4GB"
+    query_max_memory_per_node: str = "2GB"
+    query_max_total_memory: str = "8GB"
     default_org_id: str = "root"
     sources: list[Source]
     domains: list[Domain]

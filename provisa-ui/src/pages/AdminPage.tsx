@@ -22,6 +22,8 @@ import {
   uploadConfig,
   fetchSettings,
   updateSettings,
+  reloadQueryEngineCatalog,
+  restartQueryEngine,
   createDomain,
   deleteDomain,
   fetchLocalUsers,
@@ -989,7 +991,59 @@ function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
           Note: endpoint and service_name changes take effect on next restart. Sample rate is applied immediately.
         </p>
       </div>
-      <TraceFeed />
+      <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <TraceFeed />
+        <QueryEngineActions />
+      </div>
+    </div>
+  );
+}
+
+function QueryEngineActions() {
+  const [reloadStatus, setReloadStatus] = useState<string>("");
+  const [restartStatus, setRestartStatus] = useState<string>("");
+  const [reloading, setReloading] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+
+  const handleReload = async () => {
+    setReloading(true);
+    setReloadStatus("");
+    try {
+      const result = await reloadQueryEngineCatalog();
+      setReloadStatus(result.success ? "Catalog reloaded." : `Errors: ${result.errors.join("; ")}`);
+    } catch (e: unknown) {
+      setReloadStatus(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setReloading(false);
+    }
+  };
+
+  const handleRestart = async () => {
+    setRestarting(true);
+    setRestartStatus("");
+    try {
+      const result = await restartQueryEngine();
+      setRestartStatus(`Restarted: ${result.container}`);
+    } catch (e: unknown) {
+      setRestartStatus(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setRestarting(false);
+    }
+  };
+
+  return (
+    <div className="settings-section">
+      <h4>Query Engine</h4>
+      <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+        <button className="btn-primary" onClick={handleReload} disabled={reloading}>
+          {reloading ? "Reloading..." : "Reload Catalog"}
+        </button>
+        <button className="btn-warning" onClick={handleRestart} disabled={restarting}>
+          {restarting ? "Restarting..." : "Restart Engine"}
+        </button>
+      </div>
+      {reloadStatus && <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>{reloadStatus}</span>}
+      {restartStatus && <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>{restartStatus}</span>}
     </div>
   );
 }

@@ -19,13 +19,14 @@ test.describe("ApprovalsPage", () => {
   });
 
   test("shows pending queries", async ({ page }) => {
-    await expect(page.locator("h3", { hasText: "GetOrders" })).toBeVisible();
-    await expect(page.locator("h3", { hasText: "GetCustomers" })).toBeVisible();
-    await expect(page.locator(".submitted-by", { hasText: "dev@co.com" }).first()).toBeVisible();
-    await expect(page.locator("pre.approval-query", { hasText: "orders" })).toBeVisible();
+    await expect(page.locator(".approval-row-name", { hasText: "GetOrders" })).toBeVisible();
+    await expect(page.locator(".approval-row-name", { hasText: "GetCustomers" })).toBeVisible();
+    await expect(page.locator(".approval-row-submitter", { hasText: "dev@co.com" }).first()).toBeVisible();
   });
 
   test("approves a query via confirm dialog", async ({ page }) => {
+    await page.locator(".approval-row-summary").first().click();
+    await expect(page.getByRole("button", { name: "Approve" })).toBeVisible({ timeout: 3000 });
     await page.getByRole("button", { name: "Approve" }).first().click();
     await expect(page.locator(".modal")).toBeVisible();
     await expect(page.locator(".consequence")).toContainText("production use");
@@ -34,12 +35,16 @@ test.describe("ApprovalsPage", () => {
   });
 
   test("opens rejection form", async ({ page }) => {
+    await page.locator(".approval-row-summary").first().click();
+    await expect(page.getByRole("button", { name: "Reject" })).toBeVisible({ timeout: 3000 });
     await page.getByRole("button", { name: "Reject" }).first().click();
     await expect(page.locator(".reject-form")).toBeVisible();
     await expect(page.locator("textarea")).toBeVisible();
   });
 
   test("submits rejection with reason", async ({ page }) => {
+    await page.locator(".approval-row-summary").first().click();
+    await expect(page.getByRole("button", { name: "Reject" })).toBeVisible({ timeout: 3000 });
     await page.getByRole("button", { name: "Reject" }).first().click();
     await page.locator("textarea").fill("Missing WHERE clause for RLS compliance");
     await page.getByRole("button", { name: "Submit Rejection" }).click();
@@ -48,11 +53,15 @@ test.describe("ApprovalsPage", () => {
   });
 
   test("submit rejection disabled when reason empty", async ({ page }) => {
+    await page.locator(".approval-row-summary").first().click();
+    await expect(page.getByRole("button", { name: "Reject" })).toBeVisible({ timeout: 3000 });
     await page.getByRole("button", { name: "Reject" }).first().click();
     await expect(page.getByRole("button", { name: "Submit Rejection" })).toBeDisabled();
   });
 
   test("cancel rejection hides form", async ({ page }) => {
+    await page.locator(".approval-row-summary").first().click();
+    await expect(page.getByRole("button", { name: "Reject" })).toBeVisible({ timeout: 3000 });
     await page.getByRole("button", { name: "Reject" }).first().click();
     await expect(page.locator(".reject-form")).toBeVisible();
     await page.locator(".reject-form").getByRole("button", { name: "Cancel" }).click();
@@ -62,6 +71,6 @@ test.describe("ApprovalsPage", () => {
   test("empty state shows no queries message", async ({ page }) => {
     await setupMocks(page, { pendingQueries: [] });
     await page.goto("/approvals");
-    await expect(page.locator("p", { hasText: "No queries pending" })).toBeVisible({ timeout: 10000 });
+    await expect(page.locator("p", { hasText: "No governed queries" })).toBeVisible({ timeout: 10000 });
   });
 });

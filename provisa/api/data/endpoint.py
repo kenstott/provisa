@@ -33,7 +33,7 @@ from pydantic import BaseModel
 
 from provisa.cache.key import cache_key
 from provisa.cache.middleware import build_cache_headers, check_cache, store_result
-from provisa.compiler.hints import extract_graphql_hints, graphql_hints_to_session_props
+from provisa.compiler.hints import extract_graphql_hints
 from provisa.compiler.directives import extract_directives, extract_directives_from_sql_comments, merge_directives
 from provisa.compiler.mutation_gen import (
     compile_mutation,
@@ -1024,7 +1024,7 @@ def _build_mermaid(
                 lines.append(f'    {jnid} -->|"federated {trino_label}"| trino')
 
     if not single:
-        lines.append(f'    trino{{"Virtual\\nJoin"}}')
+        lines.append('    trino{"Virtual\\nJoin"}')
         lines.append(f'    result(["{root_field}\\n{result_rows} rows"])')
         lines.append('    trino --> result')
 
@@ -1084,7 +1084,6 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, ck, o
     if hot_mgr is not None and hot_mgr.is_hot(table_name):
         from provisa.cache.hot_tables import build_values_cte_sql
         from provisa.compiler.nf_extractor import extract_nf_args
-        from provisa.compiler.sql_gen import ColumnRef
         from provisa.transpiler.transpile import transpile_to_trino
         from provisa.executor.trino import execute_trino
         entry = hot_mgr.get_entry(table_name)
@@ -1104,7 +1103,6 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, ck, o
 
     # --- Phase 1: materialize if cache miss ---
     from provisa.api_source.trino_cache import cache_table_name as _cache_table_name, table_known_live
-    from provisa.api_source.cache import resolve_ttl as _resolve_ttl
 
     _loop = asyncio.get_running_loop()
     _api_conn_kwargs = getattr(state, "trino_conn_kwargs", None)
@@ -1260,6 +1258,7 @@ async def _execute_one_field(
         source_dialects=state.source_dialects,
         steward_hint=steward_hint,
         has_json_extract=has_json_extract,
+        source_dsns=state.source_dsns,
     )
     log.warning(
         "[QUERY %s] Route: %s | source=%s | reason: %s",
@@ -1579,7 +1578,7 @@ async def _execute_one_field(
             if meta.field_name == root_field
         }
         # Resolve per-source/per-table cache policy
-        from provisa.cache.policy import resolve_policy, CachePolicy
+        from provisa.cache.policy import resolve_policy
         source_id = next(iter(compiled.sources), None)
         src_cache = state.source_cache.get(source_id, {}) if source_id else {}
         table_id = next(iter(table_ids), None)
@@ -1671,7 +1670,6 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
 
     # Determine redirect config
     from provisa.executor.redirect import RedirectConfig
-    from provisa.executor.trino_write import is_trino_native_format
     redirect_config = RedirectConfig.from_env()
     if redirect_threshold is not None:
         redirect_config = RedirectConfig(

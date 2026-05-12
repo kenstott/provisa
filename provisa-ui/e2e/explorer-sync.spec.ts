@@ -183,8 +183,9 @@ test.describe("GraphiQL Explorer sync (issue #10)", () => {
       }
     }
 
-    // Explorer plugin panel should be visible
+    // Explorer plugin panel should be visible and have content
     await expect(page.locator(".graphiql-plugin")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(".graphiql-plugin")).not.toHaveText("", { timeout: 10000 });
 
     // No Monaco TypeError about 'toUrl' (the original bug)
     const monacoErrors = consoleErrors.filter(
@@ -204,8 +205,9 @@ test.describe("GraphiQL Explorer sync (issue #10)", () => {
       await overlay.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
     }
 
-    // Wait for Monaco to initialize (query editor container present)
+    // Wait for Monaco to initialize and contain content
     await expect(page.locator(".graphiql-query-editor")).toBeVisible({ timeout: 10000 });
+    await expect(page.locator(".graphiql-query-editor")).not.toHaveText("", { timeout: 10000 });
 
     // The query editor should contain the restored query text
     const editorText = await page.locator(".graphiql-query-editor").textContent({ timeout: 5000 });

@@ -16,12 +16,26 @@ from provisa.executor.drivers.registry import has_driver
 from provisa.transpiler.router import Route, decide_route
 
 
-TYPES = {"pg1": "postgresql", "pg2": "postgresql", "mongo1": "mongodb",
-         "sf1": "snowflake", "mysql1": "mysql", "ora1": "oracle",
-         "duck1": "duckdb", "cass1": "cassandra"}
-DIALECTS = {"pg1": "postgres", "pg2": "postgres", "mongo1": "mongodb",
-            "sf1": "snowflake", "mysql1": "mysql", "ora1": "oracle",
-            "duck1": "duckdb", "cass1": "cassandra"}
+TYPES = {
+    "pg1": "postgresql",
+    "pg2": "postgresql",
+    "mongo1": "mongodb",
+    "sf1": "snowflake",
+    "mysql1": "mysql",
+    "ora1": "oracle",
+    "duck1": "duckdb",
+    "cass1": "cassandra",
+}
+DIALECTS = {
+    "pg1": "postgres",
+    "pg2": "postgres",
+    "mongo1": "mongodb",
+    "sf1": "snowflake",
+    "mysql1": "mysql",
+    "ora1": "oracle",
+    "duck1": "duckdb",
+    "cass1": "cassandra",
+}
 
 
 class TestSingleSourceDirect:
@@ -117,3 +131,27 @@ class TestReasonProvided:
         d = decide_route({"pg1"}, TYPES, DIALECTS)
         assert d.reason
         assert isinstance(d.reason, str)
+
+
+class TestColocation:
+    def test_colocated_pg_sources_route_direct(self):
+        """Two PG sources on the same DSN are colocated → DIRECT."""
+        dsns = {"pg1": "host:5432/db", "pg2": "host:5432/db"}
+        d = decide_route({"pg1", "pg2"}, TYPES, DIALECTS, source_dsns=dsns)
+        assert d.route == Route.DIRECT
+
+    def test_colocated_with_dsnless_source_routes_trino(self):
+        """If any source has no DSN (e.g. iceberg), query must go through Trino."""
+        dsns = {"pg1": "host:5432/db", "pg2": "host:5432/db"}
+        types = {**TYPES, "otel1": "iceberg"}
+        dialects = {**DIALECTS, "otel1": ""}
+        d = decide_route({"pg1", "otel1"}, types, dialects, source_dsns=dsns)
+        assert d.route == Route.TRINO
+
+    def test_colocated_with_provisa_admin_and_dsnless_routes_trino(self):
+        """pg + provisa-admin + iceberg (no DSN) must not route DIRECT."""
+        dsns = {"pg1": "host:5432/db", "provisa-admin": "host:5432/db"}
+        types = {**TYPES, "provisa-admin": "postgresql", "otel1": "iceberg"}
+        dialects = {**DIALECTS, "provisa-admin": "postgres", "otel1": ""}
+        d = decide_route({"pg1", "provisa-admin", "otel1"}, types, dialects, source_dsns=dsns)
+        assert d.route == Route.TRINO

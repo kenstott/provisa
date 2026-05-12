@@ -15,8 +15,7 @@ test.describe("AdminPage", () => {
   test.beforeEach(async ({ page }) => {
     await setupMocks(page);
     // /admin is proxied to backend by Vite, navigate via SPA
-    await page.goto("/");
-    await page.getByRole("link", { name: "Admin" }).click();
+    await page.goto("/admin/overview");
     await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 15000 });
   });
 
@@ -74,17 +73,18 @@ test.describe("AdminPage", () => {
     await expect(page.locator(".upload-msg", { hasText: "Config uploaded" })).toBeVisible({ timeout: 5000 });
   });
 
-  // ── Phase Y: Admin tabs ──
+  // ── Phase Y: Admin subnav navigation ──
 
-  test("shows admin tabs", async ({ page }) => {
-    await expect(page.locator(".admin-tab", { hasText: "Overview" })).toBeVisible();
-    await expect(page.locator(".admin-tab", { hasText: "Materialized Views" })).toBeVisible();
-    await expect(page.locator(".admin-tab", { hasText: "Cache" })).toBeVisible();
-    await expect(page.locator(".admin-tab", { hasText: "System Health" })).toBeVisible();
+  test("shows admin subnav links in navbar", async ({ page }) => {
+    await expect(page.locator("nav.navbar").getByRole("link", { name: "Overview" })).toBeVisible();
+    await expect(page.locator("nav.navbar").getByRole("link", { name: "Materialized Views" })).toBeVisible();
+    await expect(page.locator("nav.navbar").getByRole("link", { name: "Cache" })).toBeVisible();
+    await expect(page.locator("nav.navbar").getByRole("link", { name: "System Health" })).toBeVisible();
   });
 
   test("MV tab shows materialized views", async ({ page }) => {
-    await page.locator(".admin-tab", { hasText: "Materialized Views" }).click();
+    await page.goto("/admin/materialized-views");
+    await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 15000 });
     await expect(page.locator("code", { hasText: "mv-orders-customers" })).toBeVisible({ timeout: 5000 });
     await expect(page.locator(".status-badge", { hasText: "fresh" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Refresh" })).toBeVisible();
@@ -92,14 +92,16 @@ test.describe("AdminPage", () => {
   });
 
   test("Cache tab shows stats and purge controls", async ({ page }) => {
-    await page.locator(".admin-tab", { hasText: "Cache" }).click();
+    await page.goto("/admin/cache");
+    await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 15000 });
     await expect(page.locator(".stat-label", { hasText: "Cached Keys" })).toBeVisible({ timeout: 5000 });
     await expect(page.locator(".stat-label", { hasText: "Hit Rate" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Purge All Cache" })).toBeVisible();
   });
 
   test("System Health tab shows component statuses", async ({ page }) => {
-    await page.locator(".admin-tab", { hasText: "System Health" }).click();
+    await page.goto("/admin/system-health");
+    await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 15000 });
     await expect(page.locator("td", { hasText: "Trino" })).toBeVisible({ timeout: 5000 });
     await expect(page.locator("td", { hasText: "PostgreSQL Pool" })).toBeVisible();
     await expect(page.locator("td", { hasText: "Cache (Redis)" })).toBeVisible();

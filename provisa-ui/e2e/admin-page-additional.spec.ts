@@ -42,15 +42,15 @@ import { setupMocks } from "./mocks";
 test.describe("AdminPage — additional coverage", () => {
   test.beforeEach(async ({ page }) => {
     await setupMocks(page);
-    await page.goto("/");
-    await page.getByRole("link", { name: "Admin" }).click();
+    await page.goto("/admin/overview");
     await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 15000 });
   });
 
   // ── MV mutations ──────────────────────────────────────────────────────────
 
   test("MV Refresh button triggers refreshMv mutation and shows success", async ({ page }) => {
-    await page.locator(".admin-tab", { hasText: "Materialized Views" }).click();
+    await page.goto("/admin/materialized-views");
+    await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 15000 });
     await expect(page.locator("code", { hasText: "mv-orders-customers" })).toBeVisible({ timeout: 5000 });
 
     await page.getByRole("button", { name: "Refresh" }).first().click();
@@ -64,7 +64,8 @@ test.describe("AdminPage — additional coverage", () => {
   });
 
   test("MV Disable button triggers toggleMv mutation", async ({ page }) => {
-    await page.locator(".admin-tab", { hasText: "Materialized Views" }).click();
+    await page.goto("/admin/materialized-views");
+    await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 15000 });
     await expect(page.locator("code", { hasText: "mv-orders-customers" })).toBeVisible({ timeout: 5000 });
 
     // The button text is "Disable" when MV is enabled (status=fresh)
@@ -80,7 +81,8 @@ test.describe("AdminPage — additional coverage", () => {
   // ── Cache mutations ───────────────────────────────────────────────────────
 
   test("Purge All Cache button calls purgeCache and shows confirmation", async ({ page }) => {
-    await page.locator(".admin-tab", { hasText: "Cache" }).click();
+    await page.goto("/admin/cache");
+    await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole("button", { name: "Purge All Cache" })).toBeVisible({ timeout: 5000 });
 
     await page.getByRole("button", { name: "Purge All Cache" }).click();
@@ -97,11 +99,11 @@ test.describe("AdminPage — additional coverage", () => {
   test("System Health shows Disconnected when flight server is not running", async ({ page }) => {
     // Override systemHealth to have flightServerRunning=false
     await setupMocks(page); // re-apply (overrides previous route)
-    await page.goto("/");
-    await page.getByRole("link", { name: "Admin" }).click();
+    await page.goto("/admin/overview");
     await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 15000 });
 
-    await page.locator(".admin-tab", { hasText: "System Health" }).click();
+    await page.goto("/admin/system-health");
+    await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 15000 });
     await expect(page.locator("td", { hasText: "Arrow Flight" }).or(
       page.locator("td", { hasText: "Flight" })
     )).toBeVisible({ timeout: 10000 });
@@ -171,10 +173,12 @@ test.describe("AdminPage — additional coverage", () => {
   // ── Tab switching preserves overview heading ───────────────────────────────
 
   test("switching back to Overview tab from MV tab shows stats again", async ({ page }) => {
-    await page.locator(".admin-tab", { hasText: "Materialized Views" }).click();
+    await page.goto("/admin/materialized-views");
+    await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 15000 });
     await expect(page.locator("code", { hasText: "mv-orders-customers" })).toBeVisible({ timeout: 5000 });
 
-    await page.locator(".admin-tab", { hasText: "Overview" }).click();
+    await page.goto("/admin/overview");
+    await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({ timeout: 15000 });
     await expect(page.locator(".stat-card")).toHaveCount(6, { timeout: 5000 });
   });
 });

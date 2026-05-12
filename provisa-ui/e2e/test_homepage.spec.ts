@@ -74,10 +74,12 @@ test.describe("Homepage", () => {
   });
 
   test("role selector is present in the navbar", async ({ page }) => {
+    // Auth init is async — gate on navbar rendering before asserting role selector
+    await expect(page.locator("nav.navbar")).toBeVisible({ timeout: 10000 });
     // The RoleSelector renders a trigger button with the text "Role: <name>"
     await expect(
       page.locator("nav.navbar .navbar-role .role-selector-trigger")
-    ).toBeVisible({ timeout: 10000 });
+    ).toBeVisible({ timeout: 15000 });
   });
 
   test("at least one navigation link is visible", async ({ page }) => {

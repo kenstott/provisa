@@ -48,6 +48,7 @@ export PROVISA_REDIRECT_SECRET_KEY="${PROVISA_REDIRECT_SECRET_KEY:-minioadmin}"
 export PROVISA_REDIRECT_BUCKET="${PROVISA_REDIRECT_BUCKET:-provisa-results}"
 export PROVISA_CHANGE_EVENT_BOOTSTRAP="${PROVISA_CHANGE_EVENT_BOOTSTRAP:-localhost:9092}"
 export KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
+export QUERY_ENGINE_CONTAINER="${QUERY_ENGINE_CONTAINER:-provisa-trino-1}"
 
 # Compose files for dev: core services + dev overlay (ports, kafka, mongo, elasticsearch, observability)
 COMPOSE_FILES="-f docker-compose.core.yml -f docker-compose.dev.yml"

@@ -72,7 +72,7 @@ def build_graphql_query(
             for op, val in ops.items():
                 if isinstance(val, list):
                     formatted = "[" + ", ".join(f'"{v}"' for v in val) + "]"
-                    where_parts.append(f'{col}: {{{op}: {formatted}}}')
+                    where_parts.append(f"{col}: {{{op}: {formatted}}}")
                 elif isinstance(val, str):
                     try:
                         numeric = int(val)
@@ -89,7 +89,7 @@ def build_graphql_query(
             args_parts.append("where: {" + ", ".join(where_parts) + "}")
 
     if order_by:
-        ob_parts = [f'{o["field"]}: {o["dir"]}' for o in order_by]
+        ob_parts = [f"{o['field']}: {o['dir']}" for o in order_by]
         args_parts.append("order_by: {" + ", ".join(ob_parts) + "}")
 
     args_str = f"({', '.join(args_parts)})" if args_parts else ""
@@ -119,18 +119,23 @@ async def route_and_execute(compiled, state) -> Any:
         source_types=state.source_types,
         source_dialects=state.source_dialects,
         has_json_extract=has_json_extract,
+        source_dsns=getattr(state, "source_dsns", None),
     )
 
     if decision.route == Route.DIRECT and decision.source_id:
         from provisa.executor.direct import execute_direct
+
         target_sql = transpile(compiled.sql, decision.dialect or "postgres")
         return await execute_direct(
-            state.source_pools, decision.source_id,
-            target_sql, compiled.params,
+            state.source_pools,
+            decision.source_id,
+            target_sql,
+            compiled.params,
         )
 
     from provisa.executor.trino import execute_trino
     from provisa.transpiler.transpile import transpile_to_trino
+
     if state.trino_conn is None:
         raise HTTPException(status_code=503, detail="Trino not connected")
     trino_sql = transpile_to_trino(compiled.sql)

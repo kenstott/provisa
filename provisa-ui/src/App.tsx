@@ -22,6 +22,7 @@ import { QueryPage } from "./pages/QueryPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { AdminPage } from "./pages/AdminPage";
 import { CommandsPage } from "./pages/CommandsPage";
+import { ViewsPage } from "./pages/ViewsPage";
 import { LoginPage } from "./pages/LoginPage";
 import { GraphPage } from "./pages/GraphPage";
 import { SqlPage } from "./pages/SqlPage";
@@ -173,6 +174,14 @@ function App() {
                     element={
                       <CapabilityGate capability="approve_view" fallback={<NotAuthorized />}>
                         <ApprovalsPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/views"
+                    element={
+                      <CapabilityGate capability="table_registration" fallback={<NotAuthorized />}>
+                        <ViewsPage />
                       </CapabilityGate>
                     }
                   />

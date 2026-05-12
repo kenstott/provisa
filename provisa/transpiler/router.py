@@ -36,11 +36,19 @@ API_SOURCES: set[str] = {"openapi", "graphql_api", "grpc_api"}
 # Virtual sources — always route through Trino (no direct SQL driver)
 VIRTUAL_SOURCES: set[str] = {
     # NoSQL
-    "mongodb", "cassandra", "redis", "kudu", "accumulo",
+    "mongodb",
+    "cassandra",
+    "redis",
+    "kudu",
+    "accumulo",
     # Data Lake
-    "delta_lake", "iceberg", "hive", "hive_s3",
+    "delta_lake",
+    "iceberg",
+    "hive",
+    "hive_s3",
     # Specialized
-    "google_sheets", "prometheus",
+    "google_sheets",
+    "prometheus",
     # Streaming
     "kafka",
 }
@@ -62,6 +70,7 @@ def decide_route(
     *,
     has_json_extract: bool = False,
     is_mutation: bool = False,
+    source_dsns: dict[str, str] | None = None,
 ) -> RouteDecision:
     """Decide whether to route a query direct or through Trino.
 
@@ -80,7 +89,8 @@ def decide_route(
     if is_mutation and len(sources) >= 1:
         sid = next(iter(sources))
         return RouteDecision(
-            route=Route.DIRECT, source_id=sid,
+            route=Route.DIRECT,
+            source_id=sid,
             dialect=source_dialects.get(sid),
             reason="mutation (always direct)",
         )
@@ -88,7 +98,9 @@ def decide_route(
     # Steward override
     if steward_hint in ("trino", "federated"):
         return RouteDecision(
-            route=Route.TRINO, source_id=None, dialect=None,
+            route=Route.TRINO,
+            source_id=None,
+            dialect=None,
             reason="steward override: federated",
         )
     if steward_hint == "direct" and len(sources) == 1:
@@ -96,15 +108,33 @@ def decide_route(
         stype = source_types.get(sid, "")
         if has_driver(stype):
             return RouteDecision(
-                route=Route.DIRECT, source_id=sid,
+                route=Route.DIRECT,
+                source_id=sid,
                 dialect=source_dialects.get(sid),
                 reason="steward override: direct",
             )
 
+    # Colocated sources: same physical DB → treat as single source, route DIRECT
+    # Any source missing a DSN (e.g. iceberg/Trino-only) means the query cannot be direct.
+    if len(sources) > 1 and source_dsns:
+        unique_dsns = {source_dsns.get(s) for s in sources}
+        if None not in unique_dsns and len(unique_dsns) == 1:
+            primary = next((s for s in sources if s != "provisa-admin"), next(iter(sources)))
+            stype = source_types.get(primary, "")
+            if has_driver(stype):
+                return RouteDecision(
+                    route=Route.DIRECT,
+                    source_id=primary,
+                    dialect=source_dialects.get(primary),
+                    reason="colocated sources on same physical DB (direct)",
+                )
+
     # Multi-source → Trino
     if len(sources) > 1:
         return RouteDecision(
-            route=Route.TRINO, source_id=None, dialect=None,
+            route=Route.TRINO,
+            source_id=None,
+            dialect=None,
             reason="multi-source query",
         )
 
@@ -114,14 +144,18 @@ def decide_route(
     # API sources — route through API caller, not Trino
     if stype in API_SOURCES:
         return RouteDecision(
-            route=Route.API, source_id=sid, dialect=None,
+            route=Route.API,
+            source_id=sid,
+            dialect=None,
             reason=f"api source ({stype})",
         )
 
     # Trino-only sources (NoSQL, data lake, non-SQL)
     if stype in VIRTUAL_SOURCES:
         return RouteDecision(
-            route=Route.TRINO, source_id=None, dialect=None,
+            route=Route.TRINO,
+            source_id=None,
+            dialect=None,
             reason=f"virtual source ({stype})",
         )
 
@@ -131,20 +165,25 @@ def decide_route(
         dialect = source_dialects.get(sid, "")
         if dialect not in _JSON_SAFE_DIALECTS:
             return RouteDecision(
-                route=Route.TRINO, source_id=None, dialect=None,
+                route=Route.TRINO,
+                source_id=None,
+                dialect=None,
                 reason=f"query uses JSON path extraction, unsupported for direct {stype}",
             )
 
     # RDBMS with direct driver → direct
     if has_driver(stype):
         return RouteDecision(
-            route=Route.DIRECT, source_id=sid,
+            route=Route.DIRECT,
+            source_id=sid,
             dialect=source_dialects.get(sid),
             reason=f"single rdbms source with direct driver ({stype})",
         )
 
     # RDBMS without direct driver → Trino
     return RouteDecision(
-        route=Route.TRINO, source_id=None, dialect=None,
+        route=Route.TRINO,
+        source_id=None,
+        dialect=None,
         reason=f"no direct driver for source type ({stype})",
     )

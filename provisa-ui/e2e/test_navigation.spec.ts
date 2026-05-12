@@ -18,6 +18,15 @@ import { setupMocks } from "./mocks";
  *
  * All API endpoints are mocked so the tests do not depend on a running backend.
  * Auth is disabled in the default dev build, so RequireAuth passes through.
+ *
+ * NavBar structure:
+ *   Top-level NavLinks: Sources, Tables, Relationships
+ *   Group buttons (navigate to first item + expand subnav): Explore, Model, Security, Admin
+ *   Subnav items (NavLinks, visible when group is active):
+ *     Explore → Schema, GraphQL (/query), Cypher (/graph), SQL (/sql)
+ *     Model   → Views, Commands
+ *     Security → Policies (/security), Approvals
+ *     Admin   → Overview (/admin/overview), Domains, Materialized Views, …
  */
 test.describe("Navigation", () => {
   test.beforeEach(async ({ page }) => {
@@ -29,7 +38,7 @@ test.describe("Navigation", () => {
     await page.locator("nav.navbar").waitFor({ timeout: 10000 });
   });
 
-  // ── Link-click navigation ──────────────────────────────────────────────────
+  // ── Top-level link navigation ──────────────────────────────────────────────
 
   test("clicking Sources link navigates to /sources", async ({ page }) => {
     await page.getByRole("link", { name: "Sources" }).click();
@@ -53,13 +62,15 @@ test.describe("Navigation", () => {
     await page.getByRole("link", { name: "Relationships" }).click();
     await page.waitForURL("**/relationships", { timeout: 10000 });
     expect(page.url()).toContain("/relationships");
-    await expect(page.getByRole("heading", { name: "Relationships" })).toBeVisible({
+    await expect(page.getByRole("heading", { name: "Relationships", exact: true })).toBeVisible({
       timeout: 10000,
     });
   });
 
-  test("clicking Views link navigates to /views", async ({ page }) => {
-    await page.getByRole("link", { name: "Views" }).click();
+  // ── Group button navigation (navigates to first item in group) ─────────────
+
+  test("clicking Model group button navigates to /views", async ({ page }) => {
+    await page.getByRole("button", { name: "Model" }).click();
     await page.waitForURL("**/views", { timeout: 10000 });
     expect(page.url()).toContain("/views");
     await expect(page.getByRole("heading", { name: "Views" })).toBeVisible({
@@ -67,8 +78,8 @@ test.describe("Navigation", () => {
     });
   });
 
-  test("clicking Security link navigates to /security", async ({ page }) => {
-    await page.getByRole("link", { name: "Security" }).click();
+  test("clicking Security group button navigates to /security", async ({ page }) => {
+    await page.getByRole("button", { name: "Security" }).click();
     await page.waitForURL("**/security", { timeout: 10000 });
     expect(page.url()).toContain("/security");
     await expect(page.getByRole("heading", { name: "Roles" })).toBeVisible({
@@ -76,18 +87,23 @@ test.describe("Navigation", () => {
     });
   });
 
-  test("clicking Query link navigates to /query", async ({ page }) => {
-    // First go elsewhere so the click is meaningful
-    await page.goto("/sources");
-    await page.locator("nav.navbar").waitFor({ timeout: 10000 });
-
-    await page.getByRole("link", { name: "Query" }).click();
-    await page.waitForURL("**/query", { timeout: 10000 });
-    expect(page.url()).toContain("/query");
-    await expect(page.locator(".graphiql-container")).toBeVisible({ timeout: 15000 });
+  test("clicking Admin group button navigates to /admin/overview", async ({ page }) => {
+    await expect(page.locator("nav.navbar").getByRole("button", { name: "Admin", exact: true })).toBeVisible({ timeout: 10000 });
+    await page.getByRole("button", { name: "Admin" }).click();
+    await page.waitForURL("**/admin/**", { timeout: 10000 });
+    expect(page.url()).toContain("/admin");
+    await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({
+      timeout: 15000,
+    });
   });
 
-  test("clicking Approvals link navigates to /approvals", async ({ page }) => {
+  // ── Subnav item navigation (expand group, then click item) ─────────────────
+
+  test("clicking Approvals subnav navigates to /approvals", async ({ page }) => {
+    // Expand Security group
+    await page.getByRole("button", { name: "Security" }).click();
+    await page.waitForURL("**/security", { timeout: 10000 });
+    // Approvals subnav link is now visible
     await page.getByRole("link", { name: "Approvals" }).click();
     await page.waitForURL("**/approvals", { timeout: 10000 });
     expect(page.url()).toContain("/approvals");
@@ -96,13 +112,20 @@ test.describe("Navigation", () => {
     });
   });
 
-  test("clicking Admin link navigates to /admin", async ({ page }) => {
-    await page.getByRole("link", { name: "Admin" }).click();
-    await page.waitForURL("**/admin", { timeout: 10000 });
-    expect(page.url()).toContain("/admin");
-    await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({
-      timeout: 15000,
-    });
+  test("clicking GraphQL subnav navigates to /query", async ({ page }) => {
+    // Navigate away first so the click is meaningful
+    await page.goto("/sources");
+    await page.locator("nav.navbar").waitFor({ timeout: 10000 });
+
+    // Expand Explore group
+    await expect(page.locator("nav.navbar").getByRole("button", { name: "Explore", exact: true })).toBeVisible({ timeout: 10000 });
+    await page.getByRole("button", { name: "Explore" }).click();
+    await page.waitForURL(/\/(schema|query|graph|sql)/, { timeout: 10000 });
+    // Click GraphQL subnav
+    await page.getByRole("link", { name: "GraphQL" }).click();
+    await page.waitForURL("**/query", { timeout: 10000 });
+    expect(page.url()).toContain("/query");
+    await expect(page.locator(".graphiql-container")).toBeVisible({ timeout: 15000 });
   });
 
   // ── Back navigation ────────────────────────────────────────────────────────
@@ -129,25 +152,23 @@ test.describe("Navigation", () => {
     expect(page.url()).toContain("/query");
   });
 
-  // ── NavBar link count ──────────────────────────────────────────────────────
+  // ── NavBar element presence ────────────────────────────────────────────────
 
-  test("all expected nav links are present in the navbar", async ({ page }) => {
-    const expectedLinks = [
-      "Sources",
-      "Tables",
-      "Relationships",
-      "Views",
-      "Security",
-      "Query",
-      "Approvals",
-      "Actions",
-      "Admin",
-    ];
+  test("all expected top-level nav elements are present in the navbar", async ({ page }) => {
+    const expectedLinks = ["Sources", "Tables", "Relationships"];
+    const expectedButtons = ["Explore", "Model", "Security", "Admin"];
 
     for (const name of expectedLinks) {
       await expect(
         page.getByRole("link", { name }),
         `NavBar should contain a "${name}" link`
+      ).toBeVisible({ timeout: 5000 });
+    }
+
+    for (const name of expectedButtons) {
+      await expect(
+        page.locator("nav.navbar").getByRole("button", { name, exact: true }),
+        `NavBar should contain a "${name}" group button`
       ).toBeVisible({ timeout: 5000 });
     }
   });

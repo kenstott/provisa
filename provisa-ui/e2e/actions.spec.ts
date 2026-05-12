@@ -116,7 +116,7 @@ test.describe("CommandsPage", () => {
 
   test("lists existing functions in the functions table", async ({ page }) => {
     await expect(page.locator("td", { hasText: "process_order" }).first()).toBeVisible({ timeout: 10000 });
-    await expect(page.locator("td", { hasText: "sales-pg" })).toBeVisible();
+    await expect(page.locator("td", { hasText: "sales-pg" }).first()).toBeVisible();
   });
 
   test("lists existing webhooks in the webhooks table", async ({ page }) => {

@@ -164,7 +164,8 @@ async def sql_endpoint(
         normalized_sql, ctx, gov_ctx, role or {}, raw_tables, discovery_mode=request.discovery_mode
     )
 
-    if not request.discovery_mode:
+    _role_domain_access = (role or {}).get("domain_access") or []
+    if not request.discovery_mode and "*" not in _role_domain_access:
         # Reject any table not in the role's schema scope (fast path for unknown tables)
         for tbl in parsed_tree.find_all(exp.Table):
             tbl_name = tbl.name
@@ -205,6 +206,7 @@ async def sql_endpoint(
         source_types=state.source_types,
         source_dialects=state.source_dialects,
         has_json_extract="->>" in governed_semantic,
+        source_dsns=getattr(state, "source_dsns", None),
     )
 
     # --- Step 6: governed_semantic is already physical after Step 1b normalization ---

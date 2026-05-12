@@ -47,7 +47,7 @@ services:
 
   trino:
     image: trinodb/trino:480
-    mem_limit: 4g
+    mem_limit: 10g
     volumes:
       - ./trino/etc/config.properties:/etc/trino/config.properties:ro
       - ./trino/etc/jvm.config:/etc/trino/jvm.config:ro
@@ -56,6 +56,7 @@ services:
       - ./trino/kafka:/etc/trino/kafka:ro
       - trino_cache:/data/trino/cache
       - ./observability/trino-otel:/etc/trino/otel:ro
+      - trino_logs:/var/log/trino
     environment:
       JAVA_TOOL_OPTIONS: "-Dotel.javaagent.enabled=false"
     depends_on:
@@ -79,6 +80,7 @@ services:
       - ./trino/kafka:/etc/trino/kafka:ro
       - trino_worker_cache:/data/trino/cache
       - ./observability/trino-otel:/etc/trino/otel:ro
+      - trino_worker_logs:/var/log/trino
     environment:
       JAVA_TOOL_OPTIONS: "-Dotel.javaagent.enabled=false"
     depends_on:
@@ -113,3 +115,5 @@ volumes:
   redis_data:
   trino_cache:
   trino_worker_cache:
+  trino_logs:
+  trino_worker_logs:

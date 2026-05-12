@@ -9,9 +9,11 @@
 // permission from the copyright holder.
 
 import { test, expect } from "./coverage";
+import { setupMocks } from "./mocks";
 
 test.describe("Domain Explorer", () => {
   test.beforeEach(async ({ page }) => {
+    await setupMocks(page);
     await page.goto("/query");
     await page.waitForSelector(".graphiql-container", { timeout: 10000 });
 

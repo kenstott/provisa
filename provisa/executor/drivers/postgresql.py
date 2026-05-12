@@ -29,21 +29,33 @@ class PostgreSQLDriver(DirectDriver):
         self._use_pgbouncer = use_pgbouncer
 
     async def connect(
-        self, host: str, port: int, database: str,
-        user: str, password: str, min_pool: int = 1, max_pool: int = 5,
+        self,
+        host: str,
+        port: int,
+        database: str,
+        user: str,
+        password: str,
+        min_pool: int = 1,
+        max_pool: int = 5,
     ) -> None:
         kwargs = dict(
-            host=host, port=port, database=database,
-            user=user, password=password,
-            min_size=min_pool, max_size=max_pool,
+            host=host,
+            port=port,
+            database=database,
+            user=user,
+            password=password,
+            min_size=min_pool,
+            max_size=max_pool,
         )
         if self._use_pgbouncer:
             # PgBouncer transaction mode: no prepared statements
             kwargs["statement_cache_size"] = 0
         self._pool = await asyncpg.create_pool(**kwargs)
 
+    _ACQUIRE_TIMEOUT = 10.0
+
     async def execute(self, sql: str, params: list | None = None) -> QueryResult:
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
             if self._use_pgbouncer:
                 # PgBouncer: use conn.fetch directly (no prepared statements)
                 if params:
@@ -64,7 +76,8 @@ class PostgreSQLDriver(DirectDriver):
         """Fallback column extraction from SQL for empty results via PgBouncer."""
         # Parse SELECT ... FROM to get column names
         import re
-        m = re.match(r'SELECT\s+(.+?)\s+FROM', sql, re.IGNORECASE | re.DOTALL)
+
+        m = re.match(r"SELECT\s+(.+?)\s+FROM", sql, re.IGNORECASE | re.DOTALL)
         if not m:
             return []
         select_part = m.group(1)
@@ -78,7 +91,8 @@ class PostgreSQLDriver(DirectDriver):
 
     async def fetch_enums(self) -> dict[str, list[str]]:
         from provisa.compiler.enum_detect import fetch_enum_registry
-        async with self._pool.acquire() as conn:
+
+        async with self._pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
             return await fetch_enum_registry(conn)
 
     async def close(self) -> None:

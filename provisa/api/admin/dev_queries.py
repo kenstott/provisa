@@ -32,14 +32,17 @@ class EnforcementMetadata:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _extract_cypher_name(query: str) -> str:
     import re
+
     m = re.search(r"\([\w]*:(\w+)", query)
     return m.group(1) if m else "CypherQuery"
 
 
 def _extract_sql_name(query: str) -> str:
     import re
+
     m = re.search(r'FROM\s+"?(\w+)"?\."?(\w+)"?', query, re.IGNORECASE)
     if m:
         return m.group(2)
@@ -47,7 +50,9 @@ def _extract_sql_name(query: str) -> str:
     return m.group(1) if m else "SqlQuery"
 
 
-def _build_enforcement_metadata(compiled, ctx, rls, masking_rules: dict, role_id: str, route_value: str) -> EnforcementMetadata:
+def _build_enforcement_metadata(
+    compiled, ctx, rls, masking_rules: dict, role_id: str, route_value: str
+) -> EnforcementMetadata:
     rls_filters: list[str] = []
     root_table = ctx.tables.get(compiled.root_field)
     if root_table and root_table.table_id in rls.rules:
@@ -87,12 +92,16 @@ def _build_enforcement_metadata(compiled, ctx, rls, masking_rules: dict, role_id
     )
 
 
-async def _compile_graphql(query: str, variables: dict | None, role_id: str, ctx, rls, state) -> tuple[str, str, list[int], str | None]:
+async def _compile_graphql(
+    query: str, variables: dict | None, role_id: str, ctx, rls, state
+) -> tuple[str, str, list[int], str | None]:
     from graphql import GraphQLSyntaxError
-    from provisa.compiler.directives import extract_directives, extract_directives_from_sql_comments, merge_directives
-    from provisa.compiler.hints import graphql_comments_to_sql
     from provisa.compiler.mask_inject import inject_masking
-    from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
+    from provisa.compiler.parser import (
+        GraphQLValidationError,
+        coerce_variable_defaults,
+        parse_query,
+    )
     from provisa.compiler.rls import inject_rls
     from provisa.compiler.sql_gen import compile_query, make_semantic_sql
     from provisa.cypher.label_map import CypherLabelMap
@@ -100,7 +109,9 @@ async def _compile_graphql(query: str, variables: dict | None, role_id: str, ctx
 
     op_name = extract_operation_name(query)
     if not op_name:
-        raise ValueError("GraphQL query must have a named operation (e.g., 'query MyReport { ... }').")
+        raise ValueError(
+            "GraphQL query must have a named operation (e.g., 'query MyReport { ... }')."
+        )
     schema = state.schemas[role_id]
     try:
         document = parse_query(schema, query, variables)
@@ -122,6 +133,7 @@ async def _compile_graphql(query: str, variables: dict | None, role_id: str, ctx
         if root_table:
             target_tables.append(root_table.table_id)
         from provisa.compiler.params import embed_params_comment
+
         display_sql = embed_params_comment(governed.sql, governed.params)
         sql_parts.append(make_semantic_sql(display_sql, ctx))
 
@@ -156,6 +168,7 @@ def _compile_cypher_submit(query: str, role_id: str, ctx) -> tuple[str, str, lis
 
     if ast.call_subqueries:
         from provisa.cypher.translator import cypher_calls_to_sql_list
+
         try:
             call_results = cypher_calls_to_sql_list(ast, label_map, {})
         except CypherTranslateError as e:
@@ -208,13 +221,29 @@ def _compile_sql_submit(query: str, ctx) -> tuple[str, str, list[int], str | Non
 # Public API
 # ---------------------------------------------------------------------------
 
-async def compile_query(role_id: str, query: str, variables: dict | None, flat_sql: bool = False, flat_cypher: bool = False, node_only_cypher: bool = False) -> list[dict[str, Any]]:
+
+async def compile_query(
+    role_id: str,
+    query: str,
+    variables: dict | None,
+    flat_sql: bool = False,
+    flat_cypher: bool = False,
+    node_only_cypher: bool = False,
+) -> list[dict[str, Any]]:
     """Compile a GraphQL query → SQL. Returns list of compile result dicts."""
     from provisa.api.app import state
-    from provisa.compiler.directives import extract_directives, extract_directives_from_sql_comments, merge_directives
+    from provisa.compiler.directives import (
+        extract_directives,
+        extract_directives_from_sql_comments,
+        merge_directives,
+    )
     from provisa.compiler.hints import graphql_comments_to_sql
     from provisa.compiler.mask_inject import inject_masking
-    from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
+    from provisa.compiler.parser import (
+        GraphQLValidationError,
+        coerce_variable_defaults,
+        parse_query,
+    )
     from provisa.compiler.rls import RLSContext, inject_rls
     from provisa.compiler.sampling import apply_sampling, get_sample_size
     from provisa.compiler.sql_gen import compile_query as _compile_query, make_semantic_sql
@@ -264,7 +293,10 @@ async def compile_query(role_id: str, query: str, variables: dict | None, flat_s
 
         if hasattr(state, "kafka_table_configs") and state.kafka_table_configs:
             from provisa.kafka.window import inject_kafka_filters
-            compiled = inject_kafka_filters(compiled, ctx, state.source_types, state.kafka_table_configs)
+
+            compiled = inject_kafka_filters(
+                compiled, ctx, state.source_types, state.kafka_table_configs
+            )
 
         sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
         if sampling:
@@ -277,28 +309,41 @@ async def compile_query(role_id: str, query: str, variables: dict | None, flat_s
             source_dialects=state.source_dialects,
             steward_hint=steward_hint,
             has_json_extract=has_json_extract,
+            source_dsns=getattr(state, "source_dsns", None),
         )
 
         trino_sql = transpile_to_trino(compiled.sql) if decision.route == Route.TRINO else None
-        direct_sql = transpile(compiled.sql, decision.dialect) if decision.route == Route.DIRECT and decision.dialect else None
+        direct_sql = (
+            transpile(compiled.sql, decision.dialect)
+            if decision.route == Route.DIRECT and decision.dialect
+            else None
+        )
 
         route_str = decision.route.value
         if decision.route == Route.DIRECT and decision.dialect:
             route_str = f"direct:{decision.dialect}"
 
         enforcement = _build_enforcement_metadata(
-            compiled=compiled, ctx=ctx, rls=rls,
-            masking_rules=state.masking_rules, role_id=role_id, route_value=route_str,
+            compiled=compiled,
+            ctx=ctx,
+            rls=rls,
+            masking_rules=state.masking_rules,
+            role_id=role_id,
+            route_value=route_str,
         )
 
         optimizations: list[str] = []
         warnings: list[str] = []
         if mv_applied:
             new_sources = compiled.sources - pre_mv_sources
-            optimizations.append(f"Materialized view rewrite: sources → {', '.join(sorted(new_sources))}")
+            optimizations.append(
+                f"Materialized view rewrite: sources → {', '.join(sorted(new_sources))}"
+            )
         if directives.route == "DIRECT":
             if len(compiled.sources) > 1:
-                warnings.append("route=direct ignored: query spans multiple sources and requires federation")
+                warnings.append(
+                    "route=direct ignored: query spans multiple sources and requires federation"
+                )
             elif decision.route != Route.DIRECT:
                 warnings.append("route=direct ignored: source has no direct driver")
         for k, v in directives.to_session_props().items():
@@ -307,7 +352,10 @@ async def compile_query(role_id: str, query: str, variables: dict | None, flat_s
             optimizations.append("Sampling applied (role lacks FULL_RESULTS capability)")
 
         from provisa.compiler.params import embed_params_comment
-        raw_semantic_sql = make_semantic_sql(embed_params_comment(compiled.sql, compiled.params), ctx)
+
+        raw_semantic_sql = make_semantic_sql(
+            embed_params_comment(compiled.sql, compiled.params), ctx
+        )
         semantic_sql_str = sql_comment_prefix + raw_semantic_sql
 
         compiled_cypher = None
@@ -315,6 +363,7 @@ async def compile_query(role_id: str, query: str, variables: dict | None, flat_s
         try:
             from provisa.cypher.label_map import CypherLabelMap
             from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
+
             _cache = getattr(state, "schema_build_cache", {})
             _label_map = CypherLabelMap.from_schema(
                 ctx,
@@ -328,41 +377,55 @@ async def compile_query(role_id: str, query: str, variables: dict | None, flat_s
             # flat_sql only controls the SQL tab display; Cypher aggregation is controlled by flat_cypher.
             if flat_sql:
                 _cypher_compiled = _compile_query(document, ctx, effective_variables, flat=False)[0]
-                _cypher_sql = make_semantic_sql(embed_params_comment(_cypher_compiled.sql, _cypher_compiled.params), ctx)
+                _cypher_sql = make_semantic_sql(
+                    embed_params_comment(_cypher_compiled.sql, _cypher_compiled.params), ctx
+                )
             else:
                 _cypher_compiled = compiled
                 _cypher_sql = raw_semantic_sql
-            compiled_cypher = semantic_sql_to_cypher(_cypher_sql, _label_map, ctx, override_limit=_cypher_compiled.result_limit, params=_cypher_compiled.params, flat=flat_cypher, node_only=node_only_cypher)
+            compiled_cypher = semantic_sql_to_cypher(
+                _cypher_sql,
+                _label_map,
+                ctx,
+                override_limit=_cypher_compiled.result_limit,
+                params=_cypher_compiled.params,
+                flat=flat_cypher,
+                node_only=node_only_cypher,
+            )
             if compiled_cypher is None:
                 cypher_error = "Query structure cannot be represented as a Cypher pattern"
         except Exception as e:
             cypher_error = str(e)
 
-        results.append({
-            "sql": compiled.sql,
-            "semantic_sql": semantic_sql_str,
-            "trino_sql": trino_sql,
-            "direct_sql": direct_sql,
-            "route": decision.route.value,
-            "route_reason": decision.reason,
-            "sources": list(compiled.sources),
-            "root_field": compiled.root_field,
-            "canonical_field": compiled.canonical_field or compiled.root_field,
-            "column_aliases": [
-                {"field_name": c.field_name, "column": c.column}
-                for c in compiled.columns if c.field_name != c.column
-            ],
-            "enforcement": enforcement,
-            "optimizations": optimizations,
-            "warnings": warnings,
-            "compiled_cypher": compiled_cypher,
-            "cypher_error": cypher_error,
-        })
+        results.append(
+            {
+                "sql": compiled.sql,
+                "semantic_sql": semantic_sql_str,
+                "trino_sql": trino_sql,
+                "direct_sql": direct_sql,
+                "route": decision.route.value,
+                "route_reason": decision.reason,
+                "sources": list(compiled.sources),
+                "root_field": compiled.root_field,
+                "canonical_field": compiled.canonical_field or compiled.root_field,
+                "column_aliases": [
+                    {"field_name": c.field_name, "column": c.column}
+                    for c in compiled.columns
+                    if c.field_name != c.column
+                ],
+                "enforcement": enforcement,
+                "optimizations": optimizations,
+                "warnings": warnings,
+                "compiled_cypher": compiled_cypher,
+                "cypher_error": cypher_error,
+            }
+        )
 
     cypher_parts = [r["compiled_cypher"] for r in results if r.get("compiled_cypher")]
     if len(cypher_parts) > 1:
         try:
             from provisa.cypher.sql_to_cypher import combine_cypher_queries
+
             combined = combine_cypher_queries(cypher_parts)
             for r in results:
                 r["compiled_cypher"] = combined
@@ -408,7 +471,9 @@ async def submit_query(
     target = detect_target(query)
 
     if target == "graphql":
-        op_name, compiled_sql, target_tables, _cypher = await _compile_graphql(query, variables, role_id, ctx, rls, state)
+        op_name, compiled_sql, target_tables, _cypher = await _compile_graphql(
+            query, variables, role_id, ctx, rls, state
+        )
         compiled_cypher = compiled_cypher or _cypher
     elif target == "cypher":
         op_name, compiled_sql, target_tables, _cypher = _compile_cypher_submit(query, role_id, ctx)
@@ -439,7 +504,10 @@ async def submit_query(
             ("refresh_frequency", refresh_frequency),
             ("expected_row_count", expected_row_count),
             ("owner_team", owner_team),
-            ("expiry_date", __import__("datetime").date.fromisoformat(expiry_date) if expiry_date else None),
+            (
+                "expiry_date",
+                __import__("datetime").date.fromisoformat(expiry_date) if expiry_date else None,
+            ),
             ("schedule_cron", schedule_cron),
             ("schedule_output_type", schedule_output_type),
             ("schedule_output_format", schedule_output_format),

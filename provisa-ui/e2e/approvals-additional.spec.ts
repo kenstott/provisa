@@ -39,33 +39,30 @@ test.describe("ApprovalsPage — additional coverage", () => {
   // ── Card count ────────────────────────────────────────────────────────────
 
   test("shows two approval cards for two pending queries", async ({ page }) => {
-    // Two mock pending queries → two cards (or two h3 headings)
-    const cards = page.locator(".approval-card");
-    if (await cards.first().isVisible({ timeout: 3000 }).catch(() => false)) {
-      await expect(cards).toHaveCount(2);
-    } else {
-      // Alternative rendering without .approval-card class
-      await expect(page.locator("h3", { hasText: "GetOrders" })).toBeVisible();
-      await expect(page.locator("h3", { hasText: "GetCustomers" })).toBeVisible();
-    }
+    const rows = page.locator(".approval-row");
+    await expect(rows).toHaveCount(2);
   });
 
   // ── Approve cancel ────────────────────────────────────────────────────────
 
   test("cancelling the approve confirmation dialog keeps card visible", async ({ page }) => {
+    await page.locator(".approval-row-summary").first().click();
+    await expect(page.getByRole("button", { name: "Approve" })).toBeVisible({ timeout: 3000 });
     await page.getByRole("button", { name: "Approve" }).first().click();
     await expect(page.locator(".modal")).toBeVisible({ timeout: 5000 });
 
     await page.locator(".modal").getByRole("button", { name: "Cancel" }).click();
     await expect(page.locator(".modal")).not.toBeVisible({ timeout: 5000 });
 
-    // Query card should still be there
-    await expect(page.locator("h3", { hasText: "GetOrders" })).toBeVisible();
+    // Row should still be there
+    await expect(page.locator(".approval-row-name", { hasText: "GetOrders" })).toBeVisible();
   });
 
   // ── Rejection textarea ────────────────────────────────────────────────────
 
   test("rejection textarea accepts multi-line text", async ({ page }) => {
+    await page.locator(".approval-row-summary").first().click();
+    await expect(page.getByRole("button", { name: "Reject" })).toBeVisible({ timeout: 3000 });
     await page.getByRole("button", { name: "Reject" }).first().click();
     await expect(page.locator("textarea")).toBeVisible();
 
@@ -77,18 +74,20 @@ test.describe("ApprovalsPage — additional coverage", () => {
   // ── Pre query text ────────────────────────────────────────────────────────
 
   test("query text block contains the GraphQL operation keyword", async ({ page }) => {
-    await expect(page.locator("pre.approval-query").first()).toContainText("query");
+    await page.locator(".approval-row-summary").first().click();
+    await expect(page.locator(".approval-query-editor").first()).toContainText("query", { timeout: 5000 });
   });
 
   test("second query card shows GetCustomers operation", async ({ page }) => {
-    await expect(page.locator("h3", { hasText: "GetCustomers" })).toBeVisible({ timeout: 5000 });
-    await expect(page.locator("pre.approval-query", { hasText: "customers" })).toBeVisible({ timeout: 5000 });
+    await expect(page.locator(".approval-row-name", { hasText: "GetCustomers" })).toBeVisible({ timeout: 5000 });
+    await page.locator(".approval-row-summary").nth(1).click();
+    await expect(page.locator(".approval-query-editor").first()).toContainText("customers", { timeout: 5000 });
   });
 
   // ── Developer id ─────────────────────────────────────────────────────────
 
   test("all cards show the developer id", async ({ page }) => {
-    const devLabels = page.locator(".submitted-by", { hasText: "dev@co.com" });
+    const devLabels = page.locator(".approval-row-submitter", { hasText: "dev@co.com" });
     await expect(devLabels.first()).toBeVisible();
     await expect(devLabels).toHaveCount(2);
   });

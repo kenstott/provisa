@@ -45,6 +45,7 @@ test.describe("Redirect dropdown does not blank explorer", () => {
 
   test("explorer panel stays visible after changing redirect format", async ({ page }) => {
     const explorerRoot = page.locator(".graphiql-explorer-root");
+    await expect(explorerRoot).not.toHaveText("", { timeout: 5000 });
     const explorerContentBefore = await explorerRoot.textContent();
     expect(explorerContentBefore).toBeTruthy();
 

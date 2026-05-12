@@ -1101,3 +1101,21 @@ export async function fetchInviteInfo(token: string): Promise<InviteInfo> {
   }
   return res.json();
 }
+
+export async function reloadQueryEngineCatalog(catalog = "otel"): Promise<{ success: boolean; errors: string[] }> {
+  const res = await fetch(`${API_BASE}/admin/query-engine/reload-catalog?catalog=${encodeURIComponent(catalog)}`, { method: "POST" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `reload-catalog failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function restartQueryEngine(): Promise<{ success: boolean; container: string; output: string }> {
+  const res = await fetch(`${API_BASE}/admin/query-engine/restart`, { method: "POST" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `restart failed: ${res.status}`);
+  }
+  return res.json();
+}

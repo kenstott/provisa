@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
-from graphql import build_client_schema, graphql_sync, introspection_from_schema, print_schema
+from graphql import graphql_sync, print_schema
 
 router = APIRouter()
 
@@ -59,6 +59,7 @@ _ALWAYS_VISIBLE_DOMAINS = {"meta", "ops"}
 def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
     from provisa.api.app import state
     from provisa.compiler.schema_gen import SchemaInput, generate_schema
+
     tables = cache["tables"]
     relationships = cache["relationships"]
     always_ids = {t["id"] for t in tables if t["domain_id"] in _ALWAYS_VISIBLE_DOMAINS}
@@ -74,7 +75,10 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
     # domain_access check in _build_visible_tables (which skips inaccessible domains).
     existing = role.get("domain_access") or []
     if "*" not in existing:
-        role = {**role, "domain_access": list(set(existing) | _ALWAYS_VISIBLE_DOMAINS | set(domain_ids))}
+        role = {
+            **role,
+            "domain_access": list(set(existing) | _ALWAYS_VISIBLE_DOMAINS | set(domain_ids)),
+        }
     si = SchemaInput(
         tables=filtered_tables,
         root_table_ids=root_ids,
@@ -95,6 +99,14 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
     return generate_schema(si)
 
 
+@router.get("/data/schema-version")
+async def get_schema_version():
+    """Return the current schema version counter. Lightweight — used by clients for cache invalidation."""
+    from provisa.api.app import state
+
+    return JSONResponse({"version": state.schema_version})
+
+
 @router.get("/data/domains")
 async def get_domains(request: Request, x_role: str = Header(None, alias="X-Role")):
     """Return domain IDs accessible to the requesting role."""
@@ -107,7 +119,9 @@ async def get_domains(request: Request, x_role: str = Header(None, alias="X-Role
     role = state.roles.get(role_id)
     if role is None:
         raise HTTPException(status_code=404, detail=f"No role {role_id!r}")
-    all_domains = [d["id"] for d in (state.schema_build_cache.get("domains") or []) if d["id"] != ""]
+    all_domains = [
+        d["id"] for d in (state.schema_build_cache.get("domains") or []) if d["id"] != ""
+    ]
     access = role.get("domain_access") or []
     if "*" in access:
         return JSONResponse(all_domains)

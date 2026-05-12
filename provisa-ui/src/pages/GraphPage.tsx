@@ -550,6 +550,12 @@ interface QueryBarProps {
   onToggleAutoImpute: () => void;
 }
 
+// Polyfill: @neo4j-cypher/codemirror 1.x calls view.newContentVersion() which doesn't exist on current @codemirror/view
+if (!(EditorView.prototype as any).newContentVersion) {
+  let _ver = 0;
+  (EditorView.prototype as any).newContentVersion = function () { return ++_ver; };
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _cypherLangExts = getCypherLanguageExtensions({ cypherLanguage: true } as any);
 

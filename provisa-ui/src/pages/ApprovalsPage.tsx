@@ -404,11 +404,11 @@ export function ApprovalsPage() {
 
   const load = useCallback(() => {
     setLoading(true);
-    fetchAll().then(setQueries).finally(() => setLoading(false));
+    fetchAll().then(setQueries).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   useEffect(load, [load]);
-  useEffect(() => { fetchRoleIds().then(setRoleIds); }, []);
+  useEffect(() => { fetchRoleIds().then(setRoleIds).catch(() => {}); }, []);
 
   const toggleStatus = (s: StatusFilter) => {
     setActiveStatuses((prev) => {

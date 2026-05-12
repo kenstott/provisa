@@ -444,29 +444,65 @@ export function QueryPage() {
   const [queryElapsedMs, setQueryElapsedMs] = useState<number | null>(null);
   useEffect(() => subscribeQueryTiming(setQueryElapsedMs), []);
 
-  const [schemaVersion, setSchemaVersion] = useState(0);
+  const [serverSchemaVersion, setServerSchemaVersion] = useState<number | null>(null);
+  const [schemaError, setSchemaError] = useState<string | null>(null);
 
+  // Poll /data/schema-version every 30s and on page focus.
+  // The version counter is bumped server-side on every schema rebuild.
   useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === "provisa.schema.version") setSchemaVersion((v) => v + 1);
+    let cancelled = false;
+    const check = () => {
+      fetch("/data/schema-version")
+        .then((r) => r.json())
+        .then((j) => { if (!cancelled) setServerSchemaVersion(j.version); })
+        .catch(() => {});
     };
+    check();
+    const timer = setInterval(check, 30_000);
+    window.addEventListener("focus", check);
+    // Cross-tab: SqlPage writes provisa.schema.version to localStorage on rebuild
+    const onStorage = (e: StorageEvent) => { if (e.key === "provisa.schema.version") check(); };
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", check);
+      window.removeEventListener("storage", onStorage);
+    };
   }, []);
 
   useEffect(() => {
-    if (!role || checkedDomains.size === 0) { setDomainSchema(null); return; }
+    if (!role || checkedDomains.size === 0 || serverSchemaVersion === null) { setDomainSchema(null); return; }
+    const domain = [...checkedDomains].sort().join(",");
+    const cacheKey = `introspection:${role.id}:${domain}:${serverSchemaVersion}`;
+    const cached = sessionStorage.getItem(cacheKey);
+    if (cached) {
+      try { setDomainSchema(buildClientSchema(JSON.parse(cached))); setSchemaError(null); return; } catch { sessionStorage.removeItem(cacheKey); }
+    }
     const controller = new AbortController();
-    const domain = [...checkedDomains].join(",");
+    setSchemaError(null);
     fetch(`/data/introspection?domain=${encodeURIComponent(domain)}`, {
       headers: { "X-Provisa-Role": role.id },
       signal: controller.signal,
     })
       .then((r) => r.json())
-      .then((json) => { if (json.data) setDomainSchema(buildClientSchema(json.data)); })
-      .catch((err) => { if (err.name !== "AbortError") setDomainSchema(null); });
+      .then((json) => {
+        if (json.data) {
+          sessionStorage.setItem(cacheKey, JSON.stringify(json.data));
+          // Prune stale entries from prior schema versions
+          for (let i = sessionStorage.length - 1; i >= 0; i--) {
+            const k = sessionStorage.key(i);
+            if (k && k.startsWith("introspection:") && k !== cacheKey) sessionStorage.removeItem(k);
+          }
+          setDomainSchema(buildClientSchema(json.data));
+          setSchemaError(null);
+        } else {
+          setSchemaError(json.detail ?? "Schema unavailable");
+        }
+      })
+      .catch((err) => { if (err.name !== "AbortError") setSchemaError(err.message ?? "Schema fetch failed"); });
     return () => controller.abort();
-  }, [role?.id, checkedDomains, schemaVersion]);
+  }, [role?.id, checkedDomains, serverSchemaVersion]);
 
   const settingsRef = useRef<RedirectSettings>({
     format: redirectFormat,
@@ -630,6 +666,11 @@ export function QueryPage() {
           Query Stats
         </label>
       </div>
+      {schemaError && (
+        <div style={{ padding: "6px 12px", background: "#3b1a1a", color: "#f87171", fontSize: 12, borderBottom: "1px solid #5a2020" }}>
+          Schema error: {schemaError}
+        </div>
+      )}
       <GraphiQL
         fetcher={fetcher}
         plugins={plugins}

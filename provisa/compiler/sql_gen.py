@@ -1402,16 +1402,17 @@ def _compile_root_field(
             from_clause = f'{ref}{time_travel_clause}'
 
     # When ops LATERAL joins are present, wrap the base table in a subquery so that
-    # the user's limit applies to base rows before the lateral Cartesian expansion.
+    # the base row count is capped before the lateral Cartesian expansion.
+    # Without this cap, Trino runs one full Iceberg scan per base row (no secondary index).
     result_limit: int | None = None
-    if has_lateral_ops_joins and "limit" in args:
-        user_limit = int(args["limit"])
-        result_limit = user_limit
+    if has_lateral_ops_joins:
+        base_limit = int(args["limit"]) if "limit" in args else _get_default_row_limit()
+        result_limit = base_limit if "limit" in args else None
         if use_aliases:
             assert root_alias is not None
-            from_clause = f'(SELECT * FROM {ref} LIMIT {user_limit}) {_q(root_alias)}'
+            from_clause = f'(SELECT * FROM {ref} LIMIT {base_limit}) {_q(root_alias)}'
         else:
-            from_clause = f'(SELECT * FROM {ref} LIMIT {user_limit})'
+            from_clause = f'(SELECT * FROM {ref} LIMIT {base_limit})'
 
     sql = f'SELECT {", ".join(select_parts)} FROM {from_clause}'
 

@@ -18,7 +18,6 @@ from __future__ import annotations
 import importlib.util
 import logging
 import sys
-from pathlib import Path
 
 import re
 
@@ -60,7 +59,9 @@ def _get_role(context: grpc.aio.ServicerContext) -> str:
     metadata = dict(context.invocation_metadata())
     role = metadata.get("x-provisa-role")
     if not role:
-        raise grpc.aio.AbortError(grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata")
+        raise grpc.aio.AbortError(
+            grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata"
+        )
     return role
 
 
@@ -75,7 +76,7 @@ class ProvisaServicer:
     def __getattr__(self, name: str):
         """Dynamically resolve RPC handler methods like QueryOrders, InsertOrders."""
         if name.startswith("Query"):
-            type_name = name[len("Query"):]
+            type_name = name[len("Query") :]
             # Convert PascalCase type name to snake_case field name
             field_name = _pascal_to_snake(type_name)
 
@@ -85,7 +86,7 @@ class ProvisaServicer:
 
             return handler
         if name.startswith("Insert"):
-            type_name = name[len("Insert"):]
+            type_name = name[len("Insert") :]
 
             async def handler(request, context):
                 return await self._handle_insert(request, context, type_name)
@@ -99,7 +100,6 @@ class ProvisaServicer:
 
     async def _handle_query(self, request, context, type_name: str, field_name: str):
         """Generic query handler for any table RPC."""
-        from graphql import parse as gql_parse
 
         from provisa.compiler.parser import parse_query
         from provisa.compiler.sql_gen import compile_query
@@ -162,6 +162,7 @@ class ProvisaServicer:
             sources=compiled.sources,
             source_types=state.source_types,
             source_dialects=state.source_dialects,
+            source_dsns=getattr(state, "source_dsns", None),
         )
 
         # Sampling
@@ -170,10 +171,17 @@ class ProvisaServicer:
             compiled = apply_sampling(compiled, get_sample_size())
 
         # Execute
-        if decision.route == Route.DIRECT and decision.source_id and state.source_pools.has(decision.source_id):
+        if (
+            decision.route == Route.DIRECT
+            and decision.source_id
+            and state.source_pools.has(decision.source_id)
+        ):
             target_sql = transpile(compiled.sql, decision.dialect or "postgres")
             result = await execute_direct(
-                state.source_pools, decision.source_id, target_sql, compiled.params,
+                state.source_pools,
+                decision.source_id,
+                target_sql,
+                compiled.params,
             )
         else:
             compiled = compile_query(document, ctx, use_catalog=True)[0]
@@ -209,6 +217,7 @@ async def start_grpc_server(port: int, state, pb2_path: str, pb2_grpc_path: str)
         The started grpc.aio.Server.
     """
     import os
+
     # Derive module names from the file stems so that _pb2_grpc.py can
     # successfully import its sibling _pb2 module by the expected name.
     pb2_name = os.path.splitext(os.path.basename(pb2_path))[0]
@@ -236,7 +245,10 @@ async def start_grpc_server(port: int, state, pb2_path: str, pb2_grpc_path: str)
 
     # Enable reflection
     from provisa.grpc.reflection import enable_reflection
-    service_names = [pb2.DESCRIPTOR.services_by_name[s].full_name for s in pb2.DESCRIPTOR.services_by_name]
+
+    service_names = [
+        pb2.DESCRIPTOR.services_by_name[s].full_name for s in pb2.DESCRIPTOR.services_by_name
+    ]
     enable_reflection(server, service_names)
 
     server.add_insecure_port(f"[::]:{port}")

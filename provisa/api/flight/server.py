@@ -435,6 +435,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
             sources=compiled.sources,
             source_types=self._state.source_types,
             source_dialects=self._state.source_dialects,
+            source_dsns=getattr(self._state, "source_dsns", None),
         )
 
         return document, ctx, rls, role, compiled, decision, variables
@@ -501,6 +502,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
             sources=compiled.sources,
             source_types=self._state.source_types,
             source_dialects=self._state.source_dialects,
+            source_dsns=getattr(self._state, "source_dsns", None),
         )
 
         compiled_for_exec = inject_rls(compiled, ctx, rls)
@@ -523,7 +525,6 @@ class ProvisaFlightServer(flight.FlightServerBase):
 
     def _do_get_cypher(self, request: dict) -> flight.RecordBatchStream:
         """Execute a Cypher query ticket and return Arrow record batches."""
-        import json as _json
         import sqlglot
         from provisa.cypher.parser import parse_cypher, CypherParseError
         from provisa.cypher.label_map import CypherLabelMap
@@ -705,6 +706,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
             sources=sources or {_default_source},
             source_types=self._state.source_types,
             source_dialects=self._state.source_dialects,
+            source_dsns=getattr(self._state, "source_dsns", None),
         )
         physical = rewrite_semantic_to_physical(governed, ctx)
 

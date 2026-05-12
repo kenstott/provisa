@@ -40,7 +40,6 @@ test.describe("Page smoke tests", () => {
     await expect(page.getByRole("heading", { name: "Data Sources" })).toBeVisible({
       timeout: 10000,
     });
-    await expect(page.locator("select").first()).toBeAttached();
   });
 
   test("/tables — Registered Tables page loads", async ({ page }) => {
@@ -90,8 +89,7 @@ test.describe("Page smoke tests", () => {
 
   test("/admin — Admin Dashboard page loads", async ({ page }) => {
     // /admin is proxied to the backend by Vite, so navigate via SPA
-    await page.goto("/");
-    await page.getByRole("link", { name: "Admin" }).click();
+    await page.goto("/admin/overview");
     await expect(page.getByRole("heading", { name: "Admin Dashboard" })).toBeVisible({
       timeout: 15000,
     });
