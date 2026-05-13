@@ -353,6 +353,40 @@ class TestManyToOneDeduplication:
         assert len(data) == 1
         assert "extensions" not in result
 
+    def test_is_agg_root_column_excluded_from_dedup_key(self):
+        """is_agg=True root columns must not contribute to the dedup key.
+
+        Scenario: pets JOIN assignments (many-to-one, is_agg=True at root level).
+        After CTE rewrite, the LEFT JOIN on breed_name expands rows — each pet
+        appears once per matching employee. The assignment JSON differs per row,
+        so including it in root_key makes every row unique → no dedup → 18 rows
+        instead of 7.  Excluding is_agg columns from root_key fixes this.
+        """
+        columns = [
+            ColumnRef(alias="t0", column="name", field_name="name", nested_in=None),
+            ColumnRef(alias="t0", column="breed_name", field_name="breedName", nested_in=None),
+            ColumnRef(
+                alias="t1",
+                column="assignment",
+                field_name="assignment",
+                nested_in=None,
+                cardinality="many-to-one",
+                is_agg=True,
+            ),
+        ]
+        # SQL expanded: Cat 1 appears twice (two employees manage Siamese breed)
+        rows = [
+            ("Cat 1", "Siamese", '{"breedName":"Siamese","employee":{"lastName":"Chen"}}'),
+            ("Cat 1", "Siamese", '{"breedName":"Siamese","employee":{"lastName":"Okonkwo"}}'),
+            ("Cat 2", "Maine Coon", '{"breedName":"Maine Coon","employee":{"lastName":"Nguyen"}}'),
+            ("Cat 2", "Maine Coon", '{"breedName":"Maine Coon","employee":{"lastName":"Smith"}}'),
+        ]
+        result = serialize_rows(rows, columns, "ps__pets")
+        data = result["data"]["ps__pets"]
+        assert len(data) == 2
+        cat1 = next(r for r in data if r["name"] == "Cat 1")
+        assert cat1["assignment"] == {"breedName": "Siamese", "employee": {"lastName": "Chen"}}
+
 
 class TestDeepManyToMany:
     """Deep one-to-many → one-to-many nesting (many-to-many via intermediate table).

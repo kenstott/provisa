@@ -253,7 +253,12 @@ def serialize_rows(
     truncated_paths: set[str] = set()
 
     for row in rows:
-        root_key = tuple(_to_hashable(_convert_value(row[idx])) for idx, _ in root_cols)
+        # Exclude is_agg=True columns: their JSON value varies per expanded JOIN row
+        # (the CTE rewriter strips LIMIT 1 from many-to-one subqueries), so including
+        # them in the key makes every row unique and breaks dedup.
+        root_key = tuple(
+            _to_hashable(_convert_value(row[idx])) for idx, col in root_cols if not col.is_agg
+        )
 
         if root_key in seen_root_keys:
             # Identify which nested paths produced a different value on this
