@@ -316,12 +316,26 @@ async def cypher_query(
 
     log.info("Cypher final SQL: %s", trino_sql)
     try:
+        import asyncio as _asyncio
+        from provisa.api.data.endpoint import _request_timeout
+        _timeout = _request_timeout()
         if _has_gql_remote:
-            rows = await _execute_with_gql_remote(clean_exec_sql, clean_params, nf_args, state, _cypher_span_attrs)
+            rows = await _asyncio.wait_for(
+                _execute_with_gql_remote(clean_exec_sql, clean_params, nf_args, state, _cypher_span_attrs),
+                timeout=_timeout,
+            )
         elif nf_args or _has_api_tables:
-            rows = await _execute_with_api(clean_exec_sql, clean_params, nf_args, state, _cypher_span_attrs)
+            rows = await _asyncio.wait_for(
+                _execute_with_api(clean_exec_sql, clean_params, nf_args, state, _cypher_span_attrs),
+                timeout=_timeout,
+            )
         else:
-            rows = await _execute(trino_sql, resolved_params, state, _cypher_span_attrs)
+            rows = await _asyncio.wait_for(
+                _execute(trino_sql, resolved_params, state, _cypher_span_attrs),
+                timeout=_timeout,
+            )
+    except _asyncio.TimeoutError:
+        return JSONResponse(status_code=504, content={"error": f"Query timed out after {_timeout:.0f}s", "sql": trino_sql})
     except Exception as exc:
         log.exception("Cypher execution failed: %s", trino_sql)
         return JSONResponse(status_code=500, content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql})
@@ -471,7 +485,7 @@ async def _execute_with_api(
     from provisa.api_source.router_integration import handle_api_query
     from provisa.api_source.trino_cache import (
         cache_table_name, cache_location, ensure_cache_schema, table_exists,
-        create_and_insert, rewrite_all_from_cache, schedule_drop,
+        rewrite_all_from_cache, schedule_drop,
     )
     from provisa.executor.trino import execute_trino
     from provisa.transpiler.transpile import transpile_to_trino
@@ -527,8 +541,19 @@ async def _execute_with_api(
         cache_tbl = cache_table_name(source_id, table_name, url_params)
         cache_rewrites[table_name] = (_cache_loc, cache_tbl)
 
-        ensure_cache_schema(state.trino_conn, _cache_loc)
-        if not table_exists(state.trino_conn, _cache_loc, cache_tbl):
+        loop = asyncio.get_event_loop()
+
+        def _check_schema_and_exists() -> bool:
+            import trino as _trino
+            conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
+            try:
+                ensure_cache_schema(conn, _cache_loc)
+                return table_exists(conn, _cache_loc, cache_tbl)
+            finally:
+                conn.close()
+
+        hit = await loop.run_in_executor(None, _check_schema_and_exists)
+        if not hit:
             result = await handle_api_query(
                 endpoint=endpoint,
                 params=url_params,
@@ -552,9 +577,17 @@ async def _execute_with_api(
 
     rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites)
     trino_sql = transpile_to_trino(rewritten_sql)
-    trino_result = execute_trino(state.trino_conn, trino_sql, params, span_attrs=span_attrs)
 
-    return [dict(zip(trino_result.column_names, row)) for row in trino_result.rows]
+    def _run_query() -> list[dict]:
+        import trino as _trino
+        conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
+        try:
+            result = execute_trino(conn, trino_sql, params, span_attrs=span_attrs)
+            return [dict(zip(result.column_names, row)) for row in result.rows]
+        finally:
+            conn.close()
+
+    return await asyncio.get_event_loop().run_in_executor(None, _run_query)
 
 
 async def _execute_with_gql_remote(
@@ -608,10 +641,29 @@ async def _execute_with_gql_remote(
         cache_tbl = cache_table_name(info["source_id"], tn, gql_vars)
         cache_rewrites[tn] = (cache_loc, cache_tbl)
 
-        ensure_cache_schema(state.trino_conn, cache_loc)
-        if not table_exists(state.trino_conn, cache_loc, cache_tbl):
+        loop = asyncio.get_event_loop()
+
+        def _check_or_create_cache(fetch_rows: list | None) -> bool:
+            import trino as _trino
+            conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
+            try:
+                ensure_cache_schema(conn, cache_loc)
+                if table_exists(conn, cache_loc, cache_tbl):
+                    return True
+                if fetch_rows is not None:
+                    col_objs = [
+                        _Col(name=c["name"], type=_GQL_TO_CACHE_TYPE.get(c.get("type", "text"), "string"))
+                        for c in info["columns"]
+                    ]
+                    create_and_insert(conn, cache_loc, cache_tbl, fetch_rows, col_objs)
+                return False
+            finally:
+                conn.close()
+
+        hit = await loop.run_in_executor(None, _check_or_create_cache, None)
+        if not hit:
             col_names = [c["name"] for c in info["columns"]]
-            rows = await execute_remote(
+            fetched_rows = await execute_remote(
                 url=info["url"],
                 auth=info["auth"],
                 field_name=info["field_name"],
@@ -619,11 +671,7 @@ async def _execute_with_gql_remote(
                 variables=gql_vars or None,
                 required_args=required_args or None,
             )
-            col_objs = [
-                _Col(name=c["name"], type=_GQL_TO_CACHE_TYPE.get(c.get("type", "text"), "string"))
-                for c in info["columns"]
-            ]
-            create_and_insert(state.trino_conn, cache_loc, cache_tbl, rows, col_objs)
+            await loop.run_in_executor(None, _check_or_create_cache, fetched_rows)
             asyncio.create_task(
                 schedule_drop(state.trino_conn, cache_loc, cache_tbl, info["cache_ttl"])
             )
@@ -635,8 +683,17 @@ async def _execute_with_gql_remote(
 
     rewritten_sql = rewrite_all_from_cache(exec_sql, cache_rewrites)
     trino_sql = transpile_to_trino(rewritten_sql)
-    trino_result = execute_trino(state.trino_conn, trino_sql, params, span_attrs=span_attrs)
-    return [dict(zip(trino_result.column_names, row)) for row in trino_result.rows]
+
+    def _run_query() -> list[dict]:
+        import trino as _trino
+        conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
+        try:
+            result = execute_trino(conn, trino_sql, params, span_attrs=span_attrs)
+            return [dict(zip(result.column_names, row)) for row in result.rows]
+        finally:
+            conn.close()
+
+    return await asyncio.get_event_loop().run_in_executor(None, _run_query)
 
 
 async def _execute(sql: str, params: list, state: object, span_attrs: dict[str, str] | None = None) -> list[dict]:

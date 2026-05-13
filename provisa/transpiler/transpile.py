@@ -32,7 +32,51 @@ SUPPORTED_DIALECTS: set[str] = {
 def transpile_to_trino(pg_sql: str) -> str:
     """Transpile PostgreSQL-dialect SQL to Trino SQL."""
     pg_sql = rewrite_correlated_subqueries_for_trino(pg_sql)
-    return transpile(pg_sql, "trino")
+    result = transpile(pg_sql, "trino")
+    return _rewrite_json_arrayagg_for_trino(result)
+
+
+def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
+    """Replace JSON_ARRAYAGG(x) with json_format(CAST(ARRAY_AGG(JSON_PARSE(x)) AS JSON)).
+
+    Trino 480 does not register json_arrayagg. The json_format wrapper produces
+    VARCHAR so the result is safe to embed as a VALUE in JSON_OBJECT (Trino cannot
+    coerce a JSON-typed array to varchar, which causes INVALID_CAST_ARGUMENT when
+    the aggregate result is used inside an outer json_object(...) call).
+    The Python _convert_value layer parses the VARCHAR back to a Python list/dict.
+    """
+    try:
+        tree = sqlglot.parse_one(sql, read="trino")
+    except Exception:
+        return sql
+
+    json_type = exp.DataType(this=exp.DataType.Type.JSON)
+
+    def _transform(node: exp.Expression) -> exp.Expression:
+        inner = None
+        if (
+            isinstance(node, exp.Anonymous)
+            and node.name.upper() == "JSON_ARRAYAGG"
+            and node.expressions
+        ):
+            inner = node.expressions[0]
+        elif isinstance(node, exp.JSONArrayAgg):
+            inner = node.this
+        if inner is not None:
+            return exp.Anonymous(
+                this="json_format",
+                expressions=[
+                    exp.Cast(
+                        this=exp.ArrayAgg(
+                            this=exp.Anonymous(this="JSON_PARSE", expressions=[inner.copy()])
+                        ),
+                        to=json_type.copy(),
+                    )
+                ],
+            )
+        return node
+
+    return tree.transform(_transform).sql(dialect="trino")
 
 
 def transpile(pg_sql: str, target_dialect: str) -> str:

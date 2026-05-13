@@ -24,6 +24,20 @@ from provisa.compiler.cursor import encode_cursor
 from provisa.compiler.sql_gen import ColumnRef, CompiledQuery
 
 
+def _recursive_json_convert(val: object) -> object:
+    """Recursively apply _convert_value to nested dicts/lists.
+
+    Needed because json_format(...) embeds JSON arrays as VARCHAR strings inside
+    outer JSON_OBJECT results — the top-level parse yields a dict whose values
+    may themselves be JSON strings that need unpacking.
+    """
+    if isinstance(val, dict):
+        return {k: _convert_value(v) for k, v in val.items()}
+    if isinstance(val, list):
+        return [_convert_value(v) for v in val]
+    return val
+
+
 def _convert_value(val: object) -> object:
     """Convert database types to JSON-safe Python types."""
     if isinstance(val, Decimal):
@@ -34,9 +48,11 @@ def _convert_value(val: object) -> object:
     if hasattr(val, "isoformat"):
         return val.isoformat()
     # Trino returns JSON columns as strings; parse so object sub-fields resolve correctly.
+    # Recursively convert nested values so json_format(...)-wrapped arrays unpack correctly.
     if isinstance(val, str) and len(val) > 1 and val[0] in ("{", "["):
         try:
-            return json.loads(val)
+            parsed = json.loads(val)
+            return _recursive_json_convert(parsed)
         except (json.JSONDecodeError, ValueError):
             pass
     return val

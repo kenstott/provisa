@@ -688,6 +688,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
   });
   const edgeDistanceRef = useRef(edgeDistance);
   const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nudgeHeldRef = useRef(false);
   const circularChildParentsRef = useRef(showingChildrenCircular);
   circularChildParentsRef.current = showingChildrenCircular;
   const circularParentNodesRef = useRef(showingParentsCircular);
@@ -787,7 +788,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     layout.run();
   }, []);
 
-  const nudgeLayout = useCallback((freeNodes?: Set<string>) => {
+  const nudgeLayout = useCallback((freeNodes?: Set<string>, aggressive = false) => {
     const cy = cyRef.current;
     if (!cy) return;
     if (layoutRunningRef.current) return;
@@ -813,9 +814,9 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         idealEdgeLength: () => edgeDistanceRef.current,
         randomize: false,
         animate: true,
-        animationDuration: 600,
+        animationDuration: aggressive ? 2000 : 600,
         animationEasing: "ease-out" as const,
-        numIter: 300,
+        numIter: aggressive ? 2000 : 300,
         fit: false,
       } as CyLayoutOptions;
       const layout = cy.layout(opts);
@@ -848,8 +849,9 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           cy.nodes().forEach((n) => { if (anchored.has(n.id())) n.unlock(); });
         } catch { /* cy may have been destroyed */ }
         layoutRunningRef.current = false;
+        if (nudgeHeldRef.current) nudgeLayoutRef.current(undefined, true);
       };
-      const safetyTimerNudge = setTimeout(() => { applyStylesNudge(); releaseNudge(); }, 1000);
+      const safetyTimerNudge = setTimeout(() => { applyStylesNudge(); releaseNudge(); }, aggressive ? 3000 : 1000);
       layout.one("layoutstop", () => {
         clearTimeout(safetyTimerNudge);
         applyStylesNudge();
@@ -1118,6 +1120,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     });
 
     const hadNewNodes = [...overlayNodes.keys()].some((k) => !prevNodes.has(k));
+    const hadNewEdges = [...overlayEdges.keys()].some((k) => !prevOverlayEdgesRef.current.has(k));
     const allNewAreCircular = hadNewNodes && [...overlayNodes.keys()]
       .filter((k) => !prevNodes.has(k))
       .every((k) => { const n = overlayNodes.get(k)!; return cy.$id(`${n.label}:${n.id}`).locked(); });
@@ -1144,7 +1147,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
 
     prevOverlayNodesRef.current = new Map(overlayNodes);
     prevOverlayEdgesRef.current = new Map(overlayEdges);
-    if (hadNewNodes && !allNewAreCircular) nudgeLayout(newCyIdsForNudge.size > 0 ? newCyIdsForNudge : undefined);
+    if ((hadNewNodes && !allNewAreCircular) || hadNewEdges) nudgeLayout(newCyIdsForNudge.size > 0 ? newCyIdsForNudge : undefined, true);
   }, [overlayNodes, overlayEdges]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update node colors when colorOverrides changes without rebuilding the graph
@@ -1214,7 +1217,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           cyRef.current?.nodes().select();
         } else if ((e.metaKey || e.ctrlKey) && e.key === "r") {
           e.preventDefault();
-          nudgeLayout();
+          nudgeLayout(undefined, true);
         }
       }}
     >
@@ -1233,8 +1236,10 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         </button>
         <button
           className="gf-ctrl-btn"
-          onClick={() => nudgeLayout()}
-          title="Nudge layout (refine from current positions)"
+          onMouseDown={() => { nudgeHeldRef.current = true; nudgeLayout(undefined, true); }}
+          onMouseUp={() => { nudgeHeldRef.current = false; }}
+          onMouseLeave={() => { nudgeHeldRef.current = false; }}
+          title="Nudge layout — hold to keep iterating"
         >
           ⟳
         </button>

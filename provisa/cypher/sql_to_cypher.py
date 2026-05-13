@@ -527,15 +527,6 @@ def semantic_sql_to_cypher(
                     f"OPTIONAL MATCH {_node(_src_short, _src_lbl)}-{_rel_str}->{_node(_arr_short, _tgt_lbl)}"
                 )
 
-            # Emit return for the top-level alias if not already present
-            if _top_alias not in array_agg_return:
-                _node_short = _agg_seen[_inner_sql_alias]
-                if isinstance(_outer_agg, (exp.JSONArrayAgg,)):
-                    array_agg_return[_top_alias] = f"collect({_node_short})" if not flat else _node_short
-                else:
-                    # many-to-one
-                    array_agg_return[_top_alias] = _node_short
-
             # Find nested subqueries inside json_object args (JSONKeyValue children)
             _sel_exprs = _sel.args.get("expressions") or []
             for _se in _sel_exprs:
@@ -573,6 +564,30 @@ def semantic_sql_to_cypher(
                                     _queue.append((_inner_sql_alias, _sub_limited))
                     elif isinstance(_sub_agg, exp.JSONObject):
                         _queue.append((_inner_sql_alias, _sub_sel))
+
+        # Build RETURN expression after queue is fully processed (all aliases populated).
+        if _top_alias not in array_agg_return:
+            # Extract the top-level JSONObject from _jbo_sel to build the map literal.
+            _jbo_node_for_ret: exp.JSONObject | None = None
+            for _se in (_jbo_sel.args.get("expressions") or []):
+                if isinstance(_se, exp.JSONObject):
+                    _jbo_node_for_ret = _se
+                    break
+                if isinstance(_se, exp.Alias) and isinstance(_se.this, exp.JSONObject):
+                    _jbo_node_for_ret = _se.this
+                    break
+            # First table alias from _jbo_sel (fallback for flat mode)
+            _jbo_from = _jbo_sel.args.get("from_")
+            _jbo_tbl = _jbo_from.this if _jbo_from and isinstance(_jbo_from.this, exp.Table) else None
+            _first_sql_alias = (_jbo_tbl.alias or _jbo_tbl.name) if _jbo_tbl else None
+
+            if not flat and _jbo_node_for_ret is not None:
+                _map_expr = _cypher_map_from_jbo(
+                    _jbo_node_for_ret, _agg_seen, _agg_seen_label, _prop_map_for_label, flat
+                )
+                array_agg_return[_top_alias] = f"collect({_map_expr})"
+            else:
+                array_agg_return[_top_alias] = _agg_seen.get(_first_sql_alias or "", base_alias)
 
     # --- WHERE ---
     where_expr = tree.args.get("where")
@@ -693,6 +708,53 @@ def _src_alias_from_on(
             if isinstance(col, exp.Column) and col.table and col.table != tgt_sql_alias:
                 return col.table
     return default_alias
+
+
+def _cypher_map_from_jbo(
+    jbo_node: exp.JSONObject,
+    agg_seen: dict[str, str],
+    agg_seen_label: dict[str, str],
+    prop_map_for_label,
+    flat: bool,
+) -> str:
+    pairs = []
+    for kv in jbo_node.expressions:
+        if not isinstance(kv, exp.JSONKeyValue):
+            continue
+        key_raw = kv.this.sql()
+        key = key_raw.strip("'\"")
+        val = kv.expression
+        if isinstance(val, exp.Column):
+            tbl = val.table or ""
+            col = val.name
+            short = agg_seen.get(tbl, tbl)
+            lbl = agg_seen_label.get(tbl)
+            pmap = prop_map_for_label(lbl) if lbl else {}
+            cypher_prop = pmap.get(col, col)
+            pairs.append(f"{key}: {short}.{cypher_prop}")
+        elif isinstance(val, exp.Subquery) and isinstance(val.this, exp.Select):
+            nested_sel = val.this
+            nested_exprs = nested_sel.args.get("expressions") or []
+            if not nested_exprs:
+                continue
+            nested_agg = nested_exprs[0]
+            nested_jbo = None
+            is_array = False
+            if isinstance(nested_agg, exp.JSONObject):
+                nested_jbo = nested_agg
+            elif isinstance(nested_agg, exp.Alias) and isinstance(nested_agg.this, exp.JSONObject):
+                nested_jbo = nested_agg.this
+            elif isinstance(nested_agg, exp.JSONArrayAgg):
+                is_array = True
+                if isinstance(nested_agg.this, exp.JSONObject):
+                    nested_jbo = nested_agg.this
+            if nested_jbo is not None:
+                nested_map = _cypher_map_from_jbo(nested_jbo, agg_seen, agg_seen_label, prop_map_for_label, flat)
+                if is_array and not flat:
+                    pairs.append(f"{key}: collect({nested_map})")
+                else:
+                    pairs.append(f"{key}: {nested_map}")
+    return "{" + ", ".join(pairs) + "}"
 
 
 def _build_return(

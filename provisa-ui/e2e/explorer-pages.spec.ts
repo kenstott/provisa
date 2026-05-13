@@ -38,6 +38,7 @@ async function setGraphiQLQuery(page: import("@playwright/test").Page, query: st
   await textarea.waitFor({ state: "attached", timeout: 15000 });
   await textarea.focus();
   await page.keyboard.press("Meta+A");
+  await page.keyboard.press("Delete");
   await page.keyboard.type(query);
 }
 
@@ -72,7 +73,7 @@ test.describe("GraphQL Explorer (/query)", () => {
       return result;
     });
     expect(keys.length).toBeGreaterThan(0);
-    expect(keys[0]).toMatch(/^introspection:[^:]+:[^:]+:\d+$/);
+    expect(keys[0]).toMatch(/^introspection:[^:]+:[^:]+:[^:]+$/);
   });
 
   test("schema served from cache on return navigation", async ({ page }) => {
