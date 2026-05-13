@@ -133,6 +133,7 @@ class ColumnRef:
     field_name: str  # GraphQL field name
     nested_in: str | None  # relationship field name, or None for root
     cardinality: str | None = None  # "many-to-one", "one-to-many", or None for root
+    is_agg: bool = False  # True when emitted as ARRAY_AGG correlated subquery
 
 
 @dataclass
@@ -926,6 +927,263 @@ def _lateral_join(
     )
 
 
+def _emit_agg_subqueries(
+    selections,
+    ctx: CompilationContext,
+    type_name: str,
+    table_meta: TableMeta,
+    from_clause: str,
+    where_expr: str,
+    extra_joins: str,
+    current_alias: str,
+    nesting_path: str,
+    cardinality: str | None,
+    agg_limit: int | None,
+    use_catalog: bool,
+    alias_counter: int,
+    select_parts: list[str],
+    columns: list[ColumnRef],
+    sources: set[str],
+    variables: dict | None = None,
+) -> int:
+    """Emit correlated ARRAY_AGG subqueries for all scalars at any depth.
+
+    For scalars: emits one ARRAY_AGG correlated subquery per leaf field.
+    For sub-relationships: extends the JOIN chain and recurses.
+    """
+    for sel in selections:
+        if not isinstance(sel, FieldNode):
+            continue
+        name = sel.name.value
+        key = sel.alias.value if sel.alias else name
+        join_key = (type_name, name)
+
+        if join_key in ctx.joins:
+            if not sel.selection_set:
+                continue
+            sub_join_meta = ctx.joins[join_key]
+            sub_alias = f"t{alias_counter}"
+            alias_counter += 1
+            sources.add(sub_join_meta.target.source_id)
+
+            if sub_join_meta.source_constant is not None:
+                sub_src = (
+                    _sql_str_literal(sub_join_meta.source_constant)
+                    if isinstance(sub_join_meta.source_constant, str)
+                    else str(sub_join_meta.source_constant)
+                )
+            elif sub_join_meta.source_json_key:
+                sub_src = (
+                    f'CAST({_q(current_alias)}.{_q(sub_join_meta.source_column)} AS JSON)'
+                    f'>>\'{sub_join_meta.source_json_key}\''
+                )
+            else:
+                sub_src = _join_column_expr(
+                    current_alias, sub_join_meta.source_column,
+                    sub_join_meta.source_column_type, sub_join_meta.target_column_type,
+                )
+            if sub_join_meta.target_column in _VIRTUAL_COLS:
+                _tvc = (ctx.virtual_columns.get(sub_join_meta.target.table_id) or {}).get(
+                    sub_join_meta.target_column, ""
+                )
+                sub_tgt = _sql_str_literal(_tvc)
+            else:
+                sub_tgt = _join_column_expr(
+                    sub_alias, sub_join_meta.target_column,
+                    sub_join_meta.target_column_type, sub_join_meta.source_column_type,
+                )
+            new_join = (
+                f'JOIN {_table_ref(sub_join_meta.target, use_catalog)} {_q(sub_alias)}'
+                f' ON {sub_tgt} = {sub_src}'
+            )
+            new_extra = f"{extra_joins} {new_join}".strip() if extra_joins else new_join
+            sub_limit = _explicit_limit(sel, variables) or sub_join_meta.default_limit
+            alias_counter = _emit_agg_subqueries(
+                sel.selection_set.selections, ctx,
+                sub_join_meta.target.type_name, sub_join_meta.target,
+                from_clause, where_expr, new_extra, sub_alias,
+                f"{nesting_path}.{key}", sub_join_meta.cardinality,
+                sub_limit, use_catalog, alias_counter,
+                select_parts, columns, sources, variables,
+            )
+        else:
+            phys_col = ctx.gql_to_physical.get((table_meta.table_id, name), name)
+            col_alias = nesting_path.replace(".", "__") + "__" + key
+            if extra_joins and agg_limit is not None:
+                select_parts.append(
+                    f'(SELECT ARRAY_AGG({_q(current_alias)}.{_q(phys_col)})'
+                    f' FROM (SELECT {_q(current_alias)}.{_q(phys_col)}'
+                    f' FROM {from_clause} {extra_joins}'
+                    f' WHERE {where_expr}'
+                    f' LIMIT {agg_limit}))'
+                    f' AS {_q(col_alias)}'
+                )
+            elif extra_joins:
+                select_parts.append(
+                    f'(SELECT ARRAY_AGG({_q(current_alias)}.{_q(phys_col)})'
+                    f' FROM {from_clause} {extra_joins}'
+                    f' WHERE {where_expr})'
+                    f' AS {_q(col_alias)}'
+                )
+            elif agg_limit is not None:
+                select_parts.append(
+                    f'(SELECT ARRAY_AGG({_q(phys_col)})'
+                    f' FROM (SELECT {_q(phys_col)}'
+                    f' FROM {from_clause}'
+                    f' WHERE {where_expr}'
+                    f' LIMIT {agg_limit}))'
+                    f' AS {_q(col_alias)}'
+                )
+            else:
+                select_parts.append(
+                    f'(SELECT ARRAY_AGG({_q(current_alias)}.{_q(phys_col)})'
+                    f' FROM {from_clause}'
+                    f' WHERE {where_expr})'
+                    f' AS {_q(col_alias)}'
+                )
+            columns.append(ColumnRef(
+                alias=current_alias,
+                column=phys_col,
+                field_name=key,
+                nested_in=nesting_path,
+                cardinality=cardinality,
+                is_agg=True,
+            ))
+    return alias_counter
+
+
+def _build_rel_json_kv(
+    selections,
+    ctx: CompilationContext,
+    type_name: str,
+    table_meta: TableMeta,
+    table_alias: str,
+    use_catalog: bool,
+    alias_counter: int,
+    sources: set[str],
+    variables: dict | None,
+) -> tuple[list[str], int]:
+    """Build KEY/VALUE pairs for json_object(KEY k VALUE v, ...) for a relationship.
+
+    Returns (kv_pairs_list, alias_counter) where each element is
+    "KEY 'key' VALUE expr" — suitable for joining with commas inside json_object.
+    Nested relationships produce correlated subqueries at value positions.
+    Uses SQL-standard json_object syntax so sqlglot transpiles correctly to Trino.
+    """
+    kv_pairs: list[str] = []
+    for sel in selections:
+        if not isinstance(sel, FieldNode):
+            continue
+        name = sel.name.value
+        key = sel.alias.value if sel.alias else name
+        join_key = (type_name, name)
+
+        if join_key in ctx.joins:
+            if not sel.selection_set:
+                continue
+            sub_join_meta = ctx.joins[join_key]
+            sub_alias = f"t{alias_counter}"
+            alias_counter += 1
+            sources.add(sub_join_meta.target.source_id)
+
+            if sub_join_meta.source_constant is not None:
+                sub_src = (
+                    _sql_str_literal(sub_join_meta.source_constant)
+                    if isinstance(sub_join_meta.source_constant, str)
+                    else str(sub_join_meta.source_constant)
+                )
+            elif sub_join_meta.source_json_key:
+                sub_src = (
+                    f'CAST({_q(table_alias)}.{_q(sub_join_meta.source_column)} AS JSON)'
+                    f'>>\'{sub_join_meta.source_json_key}\''
+                )
+            else:
+                sub_src = _join_column_expr(
+                    table_alias, sub_join_meta.source_column,
+                    sub_join_meta.source_column_type, sub_join_meta.target_column_type,
+                )
+            if sub_join_meta.target_column in _VIRTUAL_COLS:
+                _tvc = (ctx.virtual_columns.get(sub_join_meta.target.table_id) or {}).get(
+                    sub_join_meta.target_column, ""
+                )
+                sub_tgt = _sql_str_literal(_tvc)
+            else:
+                sub_tgt = _join_column_expr(
+                    sub_alias, sub_join_meta.target_column,
+                    sub_join_meta.target_column_type, sub_join_meta.source_column_type,
+                )
+            sub_from = f"{_table_ref(sub_join_meta.target, use_catalog)} {_q(sub_alias)}"
+            sub_where = f"{sub_tgt} = {sub_src}"
+            sub_limit = _explicit_limit(sel, variables) or sub_join_meta.default_limit
+            sub_expr, alias_counter = _build_rel_json_expr(
+                sel.selection_set.selections, ctx,
+                sub_join_meta.target.type_name, sub_join_meta.target,
+                sub_alias, sub_from, sub_where,
+                sub_join_meta.cardinality, sub_limit,
+                use_catalog, alias_counter, sources, variables,
+            )
+            kv_pairs.append(f"KEY '{key}' VALUE {sub_expr}")
+        else:
+            phys_col = ctx.gql_to_physical.get((table_meta.table_id, name), name)
+            kv_pairs.append(f"KEY '{key}' VALUE {_q(table_alias)}.{_q(phys_col)}")
+
+    return kv_pairs, alias_counter
+
+
+def _build_rel_json_expr(
+    selections,
+    ctx: CompilationContext,
+    type_name: str,
+    table_meta: TableMeta,
+    table_alias: str,
+    from_clause: str,
+    where_expr: str,
+    cardinality: str | None,
+    agg_limit: int | None,
+    use_catalog: bool,
+    alias_counter: int,
+    sources: set[str],
+    variables: dict | None = None,
+) -> tuple[str, int]:
+    """Build one correlated JSON subquery for a relationship.
+
+    many-to-one  → (SELECT json_object(...) FROM ... WHERE ... LIMIT 1)
+    one-to-many  → (SELECT json_agg(json_object(...)) FROM ... WHERE ...)
+    one-to-many with agg_limit →
+        (SELECT json_agg(_t) FROM (SELECT json_object(...) AS _t FROM ... WHERE ... LIMIT n) _sub)
+    Returns (sql_expr, alias_counter).
+    """
+    kv_pairs, alias_counter = _build_rel_json_kv(
+        selections, ctx, type_name, table_meta, table_alias,
+        use_catalog, alias_counter, sources, variables,
+    )
+    jbo = f"json_object({', '.join(kv_pairs)})"
+
+    if cardinality == "many-to-one":
+        expr = (
+            f"(SELECT {jbo}"
+            f" FROM {from_clause}"
+            f" WHERE {where_expr}"
+            f" LIMIT 1)"
+        )
+    elif agg_limit is not None:
+        expr = (
+            f"(SELECT json_agg(_t)"
+            f" FROM (SELECT {jbo} AS _t"
+            f" FROM {from_clause}"
+            f" WHERE {where_expr}"
+            f" LIMIT {agg_limit}) _sub)"
+        )
+    else:
+        expr = (
+            f"(SELECT json_agg({jbo})"
+            f" FROM {from_clause}"
+            f" WHERE {where_expr})"
+        )
+
+    return expr, alias_counter
+
+
 def _collect_nested_columns(
     selections,
     parent_alias: str,
@@ -980,12 +1238,8 @@ def _collect_nested_columns(
                     nested_join_meta.target_column_type, nested_join_meta.source_column_type,
                 )
             nested_key = nested_sel.alias.value if nested_sel.alias else nested_name
-            _is_one_to_many_agg = (
-                not flat
-                and nested_join_meta.cardinality == "one-to-many"
-                and not _has_lateral_force_args(nested_sel)
-            )
-            if (nested_join_meta.default_limit is not None or _has_lateral_force_args(nested_sel)) and not _is_one_to_many_agg:
+            _use_agg = not flat and not _has_lateral_force_args(nested_sel)
+            if (nested_join_meta.default_limit is not None or _has_lateral_force_args(nested_sel)) and not _use_agg:
                 if nested_join_meta.default_limit is not None:
                     has_lateral = True
                 join_clauses.append(
@@ -999,40 +1253,18 @@ def _collect_nested_columns(
                         use_catalog,
                     )
                 )
-            elif _is_one_to_many_agg and nested_sel.selection_set:
+            elif _use_agg and nested_sel.selection_set:
                 _agg_limit = _explicit_limit(nested_sel, variables) or nested_join_meta.default_limit
-                for _leaf_sel in nested_sel.selection_set.selections:
-                    if not isinstance(_leaf_sel, FieldNode):
-                        continue
-                    _leaf_name = _leaf_sel.name.value
-                    if (nested_join_meta.target.type_name, _leaf_name) in ctx.joins:
-                        continue
-                    _leaf_key = _leaf_sel.alias.value if _leaf_sel.alias else _leaf_name
-                    _phys_col = ctx.gql_to_physical.get((nested_join_meta.target.table_id, _leaf_name), _leaf_name)
-                    _col_alias = f"{nesting_path}__{nested_key}__{_leaf_key}"
-                    if _agg_limit is not None:
-                        select_parts.append(
-                            f'(SELECT ARRAY_AGG({_q(_phys_col)})'
-                            f' FROM (SELECT {_q(_phys_col)}'
-                            f' FROM {_table_ref(nested_join_meta.target, use_catalog)} {_q(nested_alias)}'
-                            f' WHERE {tgt_expr} = {src_expr}'
-                            f' LIMIT {_agg_limit}))'
-                            f' AS {_q(_col_alias)}'
-                        )
-                    else:
-                        select_parts.append(
-                            f'(SELECT ARRAY_AGG({_q(nested_alias)}.{_q(_phys_col)})'
-                            f' FROM {_table_ref(nested_join_meta.target, use_catalog)} {_q(nested_alias)}'
-                            f' WHERE {tgt_expr} = {src_expr})'
-                            f' AS {_q(_col_alias)}'
-                        )
-                    columns.append(ColumnRef(
-                        alias=nested_alias,
-                        column=_leaf_key,
-                        field_name=_leaf_key,
-                        nested_in=f"{nesting_path}.{nested_key}",
-                        cardinality=nested_join_meta.cardinality,
-                    ))
+                _from_clause = f"{_table_ref(nested_join_meta.target, use_catalog)} {_q(nested_alias)}"
+                _where_expr = f"{tgt_expr} = {src_expr}"
+                alias_counter = _emit_agg_subqueries(
+                    nested_sel.selection_set.selections, ctx,
+                    nested_join_meta.target.type_name, nested_join_meta.target,
+                    _from_clause, _where_expr, "", nested_alias,
+                    f"{nesting_path}.{nested_key}", nested_join_meta.cardinality,
+                    _agg_limit, use_catalog, alias_counter,
+                    select_parts, columns, sources, variables,
+                )
             else:
                 join_clauses.append(
                     f'LEFT JOIN {_table_ref(nested_join_meta.target, use_catalog)}'
@@ -1041,7 +1273,7 @@ def _collect_nested_columns(
                 )
 
             sub_path = f"{nesting_path}.{nested_name}"
-            if nested_sel.selection_set and not _is_one_to_many_agg:
+            if nested_sel.selection_set and not _use_agg:
                 alias_counter, _child_lateral = _collect_nested_columns(
                     nested_sel.selection_set.selections,
                     nested_alias,
@@ -1181,12 +1413,8 @@ def _compile_root_field(
                     join_alias, join_meta.target_column,
                     join_meta.target_column_type, join_meta.source_column_type,
                 )
-            _is_root_one_to_many_agg = (
-                not flat
-                and join_meta.cardinality == "one-to-many"
-                and not _has_lateral_force_args(sel)
-            )
-            if (join_meta.default_limit is not None or _has_lateral_force_args(sel)) and not _is_root_one_to_many_agg:
+            _use_agg = not flat and not _has_lateral_force_args(sel)
+            if (join_meta.default_limit is not None or _has_lateral_force_args(sel)) and not _use_agg:
                 if join_meta.default_limit is not None:
                     has_lateral_ops_joins = True
                 join_clauses.append(
@@ -1220,42 +1448,23 @@ def _compile_root_field(
                         flat=flat,
                     )
                     has_lateral_ops_joins |= _child_lateral
-            elif _is_root_one_to_many_agg and sel.selection_set:
-                # Non-flat one-to-many: correlated ARRAY_AGG subquery per scalar column.
-                # Explicit limit arg takes priority over default_limit from join metadata.
+            elif _use_agg and sel.selection_set:
                 _agg_limit = _explicit_limit(sel, variables) or join_meta.default_limit
-                for _nested_sel in sel.selection_set.selections:
-                    if not isinstance(_nested_sel, FieldNode):
-                        continue
-                    _nested_name = _nested_sel.name.value
-                    if (join_meta.target.type_name, _nested_name) in ctx.joins:
-                        continue
-                    _nested_key = _nested_sel.alias.value if _nested_sel.alias else _nested_name
-                    _phys_col = ctx.gql_to_physical.get((join_meta.target.table_id, _nested_name), _nested_name)
-                    _col_alias = f"{sel_name}__{_nested_key}"
-                    if _agg_limit is not None:
-                        select_parts.append(
-                            f'(SELECT ARRAY_AGG({_q(_phys_col)})'
-                            f' FROM (SELECT {_q(_phys_col)}'
-                            f' FROM {_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}'
-                            f' WHERE {tgt_expr} = {src_expr}'
-                            f' LIMIT {_agg_limit}))'
-                            f' AS {_q(_col_alias)}'
-                        )
-                    else:
-                        select_parts.append(
-                            f'(SELECT ARRAY_AGG({_q(join_alias)}.{_q(_phys_col)})'
-                            f' FROM {_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}'
-                            f' WHERE {tgt_expr} = {src_expr})'
-                            f' AS {_q(_col_alias)}'
-                        )
-                    columns.append(ColumnRef(
-                        alias=join_alias,
-                        column=_nested_key,
-                        field_name=_nested_key,
-                        nested_in=sel_name,
-                        cardinality=join_meta.cardinality,
-                    ))
+                _from_clause = f"{_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}"
+                _where_expr = f"{tgt_expr} = {src_expr}"
+                _rel_key = sel.alias.value if sel.alias else sel_name
+                json_expr, alias_counter = _build_rel_json_expr(
+                    sel.selection_set.selections, ctx,
+                    join_meta.target.type_name, join_meta.target,
+                    join_alias, _from_clause, _where_expr,
+                    join_meta.cardinality, _agg_limit,
+                    use_catalog, alias_counter, sources, variables,
+                )
+                select_parts.append(f"{json_expr} AS {_q(_rel_key)}")
+                columns.append(ColumnRef(
+                    alias=join_alias, column=_rel_key, field_name=_rel_key,
+                    nested_in=None, cardinality=join_meta.cardinality, is_agg=True,
+                ))
             else:
                 join_clauses.append(
                     f'LEFT JOIN {_table_ref(join_meta.target, use_catalog)}'

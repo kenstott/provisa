@@ -13,7 +13,6 @@
 
 from dataclasses import dataclass, field
 
-import pytest
 
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
 from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
@@ -460,3 +459,306 @@ class TestOneManyNonLateralJoin:
         result = semantic_sql_to_cypher(sql, lm, ctx)
         assert result is not None
         assert "_list AS " in result, f"Expected list var in RETURN: {result}"
+
+
+class TestArrayAggChainedJoin:
+    """Regression: ARRAY_AGG subquery with inner JOIN (col from JOIN target, not FROM table).
+
+    Query shape:
+      ps__pets { assignment { breedName employee { lastName } } name }
+    Generates SQL like:
+      (SELECT ARRAY_AGG(t1.breedName) FROM shelter__assignments AS t1 WHERE t1.petId = t0.id)
+      (SELECT ARRAY_AGG(t2.lastName) FROM shelter__assignments AS t1
+         JOIN shelter__employees AS t2 ON t2.id = t1.employeeId WHERE t1.petId = t0.id)
+
+    Expected Cypher must include OPTIONAL MATCHes for both assignments and employees.
+    """
+
+    def _make_ctx_and_label_map(self):
+        pets_meta = _TableMeta(
+            table_id=1, field_name="shelter__pets", type_name="Pets",
+            source_id="shelter-db", catalog_name="shelter",
+            schema_name="shelter", table_name="pets",
+            domain_id="shelter",
+        )
+        assignments_meta = _TableMeta(
+            table_id=2, field_name="shelter__assignments", type_name="Assignments",
+            source_id="shelter-db", catalog_name="shelter",
+            schema_name="shelter", table_name="assignments",
+            domain_id="shelter",
+        )
+        employees_meta = _TableMeta(
+            table_id=3, field_name="shelter__employees", type_name="Employees",
+            source_id="shelter-db", catalog_name="shelter",
+            schema_name="shelter", table_name="employees",
+            domain_id="shelter",
+        )
+        ctx = _Ctx(
+            tables={
+                "shelter__pets": pets_meta,
+                "shelter__assignments": assignments_meta,
+                "shelter__employees": employees_meta,
+            },
+            aggregate_columns={
+                1: [("id", "integer"), ("name", "varchar"), ("breed_name", "varchar")],
+                2: [("id", "integer"), ("pet_id", "integer"), ("employee_id", "integer"), ("breed_name", "varchar")],
+                3: [("id", "integer"), ("last_name", "varchar")],
+            },
+        )
+        pets_node = NodeMapping(
+            label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
+            table_id=1, source_id="shelter-db", id_column="id", pk_columns=[],
+            catalog_name="shelter", schema_name="shelter", table_name="pets",
+            properties={"id": "id", "name": "name", "breedName": "breed_name"},
+        )
+        assignments_node = NodeMapping(
+            label="Assignments", type_name="Assignments", domain_label=None,
+            table_label="Assignments", table_id=2, source_id="shelter-db",
+            id_column="id", pk_columns=[],
+            catalog_name="shelter", schema_name="shelter", table_name="assignments",
+            properties={"id": "id", "breedName": "breed_name"},
+        )
+        employees_node = NodeMapping(
+            label="Employees", type_name="Employees", domain_label=None,
+            table_label="Employees", table_id=3, source_id="shelter-db",
+            id_column="id", pk_columns=[],
+            catalog_name="shelter", schema_name="shelter", table_name="employees",
+            properties={"id": "id", "lastName": "last_name"},
+        )
+        is_assignment_rel = RelationshipMapping(
+            rel_type="IS_ASSIGNMENT",
+            source_label="Pets",
+            target_label="Assignments",
+            join_source_column="id",
+            join_target_column="pet_id",
+            field_name="assignment",
+            many=True,
+        )
+        has_employee_rel = RelationshipMapping(
+            rel_type="HAS_EMPLOYEE",
+            source_label="Assignments",
+            target_label="Employees",
+            join_source_column="employee_id",
+            join_target_column="id",
+            field_name="employee",
+            many=False,
+        )
+        lm = CypherLabelMap(
+            nodes={"Pets": pets_node, "Assignments": assignments_node, "Employees": employees_node},
+            relationships={
+                "IS_ASSIGNMENT::Pets→Assignments": is_assignment_rel,
+                "HAS_EMPLOYEE::Assignments→Employees": has_employee_rel,
+            },
+        )
+        return ctx, lm
+
+    def test_chained_array_agg_emits_two_optional_matches(self):
+        """ARRAY_AGG(t2.col) FROM t1 JOIN t2 must emit OPTIONAL MATCH for t1 and t2."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT t0.name, '
+            '(SELECT ARRAY_AGG(t1.breed_name) FROM "shelter"."assignments" AS t1 WHERE t1.pet_id = t0.id) AS "assignment__breedName", '
+            '(SELECT ARRAY_AGG(t2.last_name) FROM "shelter"."assignments" AS t1 JOIN "shelter"."employees" AS t2 ON t2.id = t1.employee_id WHERE t1.pet_id = t0.id) AS "assignment__employee__lastName" '
+            'FROM "shelter"."pets" AS t0 LIMIT 100'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None, f"Got None — chained ARRAY_AGG subquery not handled: {result}"
+        assert result.count("OPTIONAL MATCH") == 2, (
+            f"Expected 2 OPTIONAL MATCHes (Assignments, Employees), got:\n{result}"
+        )
+        assert "Assignments" in result
+        assert "Employees" in result
+
+    def test_chained_array_agg_emits_relationship_types(self):
+        """Both [:IS_ASSIGNMENT] and [:HAS_EMPLOYEE] must appear in the Cypher."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT t0.name, '
+            '(SELECT ARRAY_AGG(t2.last_name) FROM "shelter"."assignments" AS t1 JOIN "shelter"."employees" AS t2 ON t2.id = t1.employee_id WHERE t1.pet_id = t0.id) AS "assignment__employee__lastName" '
+            'FROM "shelter"."pets" AS t0 LIMIT 100'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None, f"Got None: {result}"
+        assert "[:IS_ASSIGNMENT]" in result, f"Missing [:IS_ASSIGNMENT]: {result}"
+        assert "[:HAS_EMPLOYEE]" in result, f"Missing [:HAS_EMPLOYEE]: {result}"
+
+    def test_assignments_optional_match_emitted_once(self):
+        """When both breedName and employee.lastName appear, Assignments OPTIONAL MATCH must appear once only."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT t0.name, '
+            '(SELECT ARRAY_AGG(t1.breed_name) FROM "shelter"."assignments" AS t1 WHERE t1.pet_id = t0.id) AS "assignment__breedName", '
+            '(SELECT ARRAY_AGG(t2.last_name) FROM "shelter"."assignments" AS t1 JOIN "shelter"."employees" AS t2 ON t2.id = t1.employee_id WHERE t1.pet_id = t0.id) AS "assignment__employee__lastName" '
+            'FROM "shelter"."pets" AS t0 LIMIT 100'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx)
+        assert result is not None
+        assert result.count("Assignments") == 2, (
+            f"Assignments must appear in exactly 2 OPTIONAL MATCHes, got:\n{result}"
+        )
+
+    def test_node_only_mode_includes_chained_aliases(self):
+        """node_only=True must include the chained JOIN alias in RETURN."""
+        ctx, lm = self._make_ctx_and_label_map()
+        sql = (
+            'SELECT t0.name, '
+            '(SELECT ARRAY_AGG(t2.last_name) FROM "shelter"."assignments" AS t1 JOIN "shelter"."employees" AS t2 ON t2.id = t1.employee_id WHERE t1.pet_id = t0.id) AS "assignment__employee__lastName" '
+            'FROM "shelter"."pets" AS t0 LIMIT 100'
+        )
+        result = semantic_sql_to_cypher(sql, lm, ctx, node_only=True)
+        assert result is not None
+        # node_only RETURN must include the employees alias (c or similar)
+        lines = result.splitlines()
+        return_line = next((l for l in lines if l.startswith("RETURN")), "")
+        # Should have at least 3 aliases: base (a), assignments (b), employees (c)
+        aliases_in_return = [p.strip() for p in return_line.replace("RETURN", "").split(",")]
+        assert len(aliases_in_return) >= 3, (
+            f"Expected 3 aliases in RETURN for pets+assignments+employees: {return_line}"
+        )
+
+
+class TestJsonAggChainedSubquery:
+    """Regression: json_agg(json_object(...)) with nested json_object subquery.
+
+    Query shape:
+      ps__pets { assignment { breedName employee { lastName } } name }
+    _build_rel_json_expr generates:
+      (SELECT json_agg(_t) FROM
+        (SELECT json_object(KEY 'breedName' VALUE t1."breed_name",
+                            KEY 'employee' VALUE
+                              (SELECT json_object(KEY 'lastName' VALUE t2."last_name")
+                               FROM "shelter"."employees" AS t2
+                               WHERE t2."id" = t1."employee_id" LIMIT 1))
+         AS _t FROM "shelter"."assignments" AS t1
+         WHERE t1."pet_id" = t0."id" LIMIT 10000) _sub)
+    Expected: OPTIONAL MATCH (a:Pets)->[...]->(b:Assignments)
+              OPTIONAL MATCH (b:Assignments)->[...]->(c:Employees)
+    Bug (before fix): source node for Employees was (a:Pets) because t1 was not in alias_map.
+    """
+
+    def _make_ctx_and_label_map(self):
+        pets_meta = _TableMeta(
+            table_id=1, field_name="shelter__pets", type_name="Pets",
+            source_id="shelter-db", catalog_name="shelter",
+            schema_name="shelter", table_name="pets",
+            domain_id="shelter",
+        )
+        assignments_meta = _TableMeta(
+            table_id=2, field_name="shelter__assignments", type_name="Assignments",
+            source_id="shelter-db", catalog_name="shelter",
+            schema_name="shelter", table_name="assignments",
+            domain_id="shelter",
+        )
+        employees_meta = _TableMeta(
+            table_id=3, field_name="shelter__employees", type_name="Employees",
+            source_id="shelter-db", catalog_name="shelter",
+            schema_name="shelter", table_name="employees",
+            domain_id="shelter",
+        )
+        ctx = _Ctx(
+            tables={
+                "shelter__pets": pets_meta,
+                "shelter__assignments": assignments_meta,
+                "shelter__employees": employees_meta,
+            },
+            aggregate_columns={
+                1: [("id", "integer"), ("name", "varchar")],
+                2: [("id", "integer"), ("pet_id", "integer"), ("employee_id", "integer"), ("breed_name", "varchar")],
+                3: [("id", "integer"), ("last_name", "varchar")],
+            },
+        )
+        pets_node = NodeMapping(
+            label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
+            table_id=1, source_id="shelter-db", id_column="id", pk_columns=[],
+            catalog_name="shelter", schema_name="shelter", table_name="pets",
+            properties={"id": "id", "name": "name"},
+        )
+        assignments_node = NodeMapping(
+            label="Assignments", type_name="Assignments", domain_label=None,
+            table_label="Assignments", table_id=2, source_id="shelter-db",
+            id_column="id", pk_columns=[],
+            catalog_name="shelter", schema_name="shelter", table_name="assignments",
+            properties={"id": "id", "breedName": "breed_name"},
+        )
+        employees_node = NodeMapping(
+            label="Employees", type_name="Employees", domain_label=None,
+            table_label="Employees", table_id=3, source_id="shelter-db",
+            id_column="id", pk_columns=[],
+            catalog_name="shelter", schema_name="shelter", table_name="employees",
+            properties={"id": "id", "lastName": "last_name"},
+        )
+        is_assignment_rel = RelationshipMapping(
+            rel_type="IS_ASSIGNMENT",
+            source_label="Pets",
+            target_label="Assignments",
+            join_source_column="id",
+            join_target_column="pet_id",
+            field_name="assignment",
+            many=True,
+        )
+        has_employee_rel = RelationshipMapping(
+            rel_type="HAS_EMPLOYEE",
+            source_label="Assignments",
+            target_label="Employees",
+            join_source_column="employee_id",
+            join_target_column="id",
+            field_name="employee",
+            many=False,
+        )
+        lm = CypherLabelMap(
+            nodes={"Pets": pets_node, "Assignments": assignments_node, "Employees": employees_node},
+            relationships={
+                "IS_ASSIGNMENT::Pets→Assignments": is_assignment_rel,
+                "HAS_EMPLOYEE::Assignments→Employees": has_employee_rel,
+            },
+        )
+        return ctx, lm
+
+    def _sql(self) -> str:
+        return (
+            'SELECT t0."name",'
+            ' (SELECT json_agg(_t) FROM'
+            '  (SELECT json_object(KEY \'breedName\' VALUE t1."breed_name",'
+            '                      KEY \'employee\' VALUE'
+            '                        (SELECT json_object(KEY \'lastName\' VALUE t2."last_name")'
+            '                         FROM "shelter"."employees" AS t2'
+            '                         WHERE t2."id" = t1."employee_id" LIMIT 1))'
+            '   AS _t FROM "shelter"."assignments" AS t1'
+            '   WHERE t1."pet_id" = t0."id" LIMIT 10000) _sub) AS assignment'
+            ' FROM "shelter"."pets" AS t0 LIMIT 10000'
+        )
+
+    def test_emits_two_optional_matches(self):
+        """json_agg(json_object) with nested json_object must emit OPTIONAL MATCH for assignments and employees."""
+        ctx, lm = self._make_ctx_and_label_map()
+        result = semantic_sql_to_cypher(self._sql(), lm, ctx)
+        assert result is not None, "semantic_sql_to_cypher returned None"
+        assert result.count("OPTIONAL MATCH") == 2, (
+            f"Expected 2 OPTIONAL MATCHes (Assignments, Employees), got:\n{result}"
+        )
+        assert "Assignments" in result
+        assert "Employees" in result
+
+    def test_employees_source_is_assignments_not_pets(self):
+        """Bug: OPTIONAL MATCH for Employees must chain from Assignments, not Pets."""
+        ctx, lm = self._make_ctx_and_label_map()
+        result = semantic_sql_to_cypher(self._sql(), lm, ctx)
+        assert result is not None, "semantic_sql_to_cypher returned None"
+        lines = [l.strip() for l in result.splitlines() if "Employees" in l]
+        assert lines, f"No line with Employees in:\n{result}"
+        employees_line = lines[0]
+        # The source node for Employees must be Assignments, not Pets
+        assert "Assignments" in employees_line, (
+            f"Employees OPTIONAL MATCH must chain from Assignments, not Pets. Got:\n{employees_line}"
+        )
+        assert employees_line.index("Assignments") < employees_line.index("Employees"), (
+            f"Assignments must appear before Employees as source: {employees_line}"
+        )
+
+    def test_relationship_types_present(self):
+        """Both IS_ASSIGNMENT and HAS_EMPLOYEE must appear in the generated Cypher."""
+        ctx, lm = self._make_ctx_and_label_map()
+        result = semantic_sql_to_cypher(self._sql(), lm, ctx)
+        assert result is not None
+        assert "IS_ASSIGNMENT" in result, f"Missing IS_ASSIGNMENT:\n{result}"
+        assert "HAS_EMPLOYEE" in result, f"Missing HAS_EMPLOYEE:\n{result}"

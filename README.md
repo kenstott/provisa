@@ -1,14 +1,14 @@
 # Provisa
 
-Config-driven data virtualization platform. A single governed API over heterogeneous data sources — query it with **GraphQL, Cypher, Proto or SQL**, consume it over **gRPC, REST, Arrow Flight, or JDBC**. Row-level security, column masking, and query approval apply regardless of query language or transport.
+Config-driven data virtualization platform. A single governed API over 30+ heterogeneous data sources — query it with **GraphQL, Cypher, or SQL**, consume it over **gRPC, REST, Arrow Flight, or JDBC**. RLS, column masking, and query approval apply uniformly across every query language and transport.
 
-Single-source queries execute directly against the source driver (target: sub-100ms). Multi-source queries federate transparently. Result caching, materialized view rewriting, and Arrow Flight columnar streaming scale with your workload.
+GraphQL, Cypher, and SQL are all first-class over federated data — something no federated engine offers natively. Arrow Flight columnar streaming is built in, not bolted on. Distributed traces, metrics, and logs are automatically registered as queryable tables in the same schema as your business data, so observability is just another join.
 
 ## Features
 
 ### Query & API
-- **GraphQL, Cypher and SQL** — First-class query languages; governance, RLS, and column masking apply to all; auto-detected by all client interfaces
-- **Query Language Explorer** — write a GraphQL query in the Explore page and see the equivalent **Semantic SQL** and **Cypher** translations live in collapsible side panels; copy either or jump directly into the SQL or Graph editor. The three languages offer different trade-offs: GraphQL is schema-constrained to approved relationships so every query is structurally valid — the fastest path to a correct simple query; SQL and Cypher are unconstrained and will surface governance violations only at execution time, but are far more expressive for complex joins and aggregations. A practical workflow: sketch query fragments in GraphQL to get valid, governance-safe SQL snippets, then stitch those snippets together in the SQL editor for views or reports that GraphQL cannot express.
+- **GraphQL, Cypher and SQL over federated data** — All three are first-class query languages across every registered source; governance, RLS, and column masking apply uniformly; auto-detected by all client interfaces. Federated query engines expose SQL only — Provisa adds GraphQL and Cypher on top of the same federation layer.
+- **Query Language Explorer** — Write a GraphQL query and see live **Semantic SQL** and **Cypher** translations in side panels; copy either or jump directly into the SQL or Graph editor. GraphQL is schema-constrained to approved relationships — structurally valid by construction, the fastest path to a correct simple query. SQL and Cypher are unconstrained and more expressive; a practical workflow is to sketch query fragments in GraphQL, then stitch the resulting SQL into complex views or reports.
 - **Natural language query** — NL→SQL/Cypher/GraphQL pipeline powered by Claude with an interactive validation loop
 - **GraphQL API** — Per-role schemas with field-level visibility, filtering, cursor-based pagination, and aggregate queries (`count`, `sum`, `avg`, `min`, `max`)
 - **Apollo APQ** — Automatic Persisted Queries; Redis-backed hash→query cache; zero client changes required
@@ -18,10 +18,10 @@ Single-source queries execute directly against the source driver (target: sub-10
 - **Subscriptions** — Near-real-time change events over WebSocket, SSE, or Kafka; backends: PG native, MongoDB native, Debezium CDC, polling
 
 ### Data Sources
-- **30+ source types** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, and more through a single API
+- **30+ source types** — PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL triplestores, Kafka, Google Sheets, and more through a single API; graph and RDF sources are first-class, not adapters
 - **Smart routing** — Single-source queries bypass federation (sub-100ms); multi-source queries route through Trino-compatible federation — bring your own cluster or use the embedded workers
-- **API sources** — Register REST, GraphQL, gRPC, WebSocket, or RSS endpoints as queryable tables; SPARQL helpers included
-- **Remote schema introspection** — Point at any GraphQL/OpenAPI/gRPC endpoint; Provisa introspects, registers, and caches results in Parquet with full governance applied on top
+- **API sources** — Register REST, GraphQL, gRPC, WebSocket, or RSS endpoints as queryable tables; SPARQL helpers included; federated joins across API sources and relational sources work transparently
+- **Remote schema introspection** — Point at any GraphQL, OpenAPI, or gRPC endpoint; documented operations are automatically surfaced as queryable tables, graph nodes, and edges with full governance applied on top
 - **File sources** — CSV, Parquet, and SQLite files as queryable tables; supports local paths and remote object storage (`s3://`, `ftp://`, `sftp://`)
 - **Kafka integration** — Topics as read-only tables; query results as Kafka sinks
 - **Scheduled triggers** — Cron and interval triggers (APScheduler) that fire webhooks, mutations, or Kafka sink publishes
@@ -40,14 +40,13 @@ Single-source queries execute directly against the source driver (target: sub-10
 
 ### Delivery & Performance
 - **Output formats** — JSON, NDJSON, CSV, Parquet, Apache Arrow
-- **Arrow Flight** — High-throughput columnar streaming over gRPC; unbounded, no server-side materialization
+- **Arrow Flight built-in** — High-throughput columnar streaming over gRPC, included out of the box; unbounded result sets, no server-side materialization, no separate infrastructure required
 - **Correlated subquery rewrite** — Correlated subqueries are automatically rewritten to CTEs and set-based patterns; federated query engines do not support correlated subqueries, so this rewrite is required for correctness
 - **Materialized view transparent rewriting** — Structural join-pattern matching rewrites queries (or subexpressions) to use a fresh MV automatically; partial matches are supported so an MV covering a subset of joins still applies, with remaining joins preserved
 - **Hot table inlining** — Small frequently-joined lookup tables are inlined as VALUES CTEs directly in the query plan, eliminating cross-source round trips for dimension data
 - **Query caching** — Role+RLS-partitioned Redis result cache; APQ hash cache included
-- **Materialized views** — Transparent SQL rewriting for JOIN optimization; FRESH/STALE/REFRESHING lifecycle with scheduled refresh
+- **Observability as data** — Distributed traces, metrics, and logs are collected via OpenTelemetry, compacted into Iceberg on S3, and automatically registered as queryable tables (`traces`, `metrics`, `logs`, `queries`) in the federated schema; query them with SQL, GraphQL, or Cypher alongside your business data — join a `customers` table to the `queries` table to see who ran what and how long it took
 - **Large result redirect** — Threshold-based S3 redirect for oversized result sets
-- **OpenTelemetry** — Distributed tracing and metrics across all components; FastAPI, Redis, AsyncPG, gRPC auto-instrumented
 
 ### Administration & Integration
 - **Admin API** — Strawberry GraphQL at `/admin/graphql`; config upload/download, relationship editing, query approval

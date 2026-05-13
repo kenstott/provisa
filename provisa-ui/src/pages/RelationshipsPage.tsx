@@ -424,6 +424,11 @@ export function RelationshipsPage() {
                   <option value="many-to-one">many-to-one</option>
                   <option value="one-to-many">one-to-many</option>
                 </select>
+                {form.cardinality === "many-to-one" && (
+                  <span style={{ color: "var(--warning, #b45309)", fontSize: "0.78rem", marginTop: "0.25rem", display: "block" }}>
+                    Warning: if this join returns more than one row per parent, only the first value will be used.
+                  </span>
+                )}
               </label>
             )}
           </div>
@@ -631,6 +636,11 @@ export function RelationshipsPage() {
                                 <option value="many-to-one">many-to-one</option>
                                 <option value="one-to-many">one-to-many</option>
                               </select>
+                              {editingRel.cardinality === "many-to-one" && (
+                                <span style={{ color: "var(--warning, #b45309)", fontSize: "0.78rem", marginTop: "0.25rem", display: "block" }}>
+                                  Warning: if this join returns more than one row per parent, only the first value will be used.
+                                </span>
+                              )}
                             </label>
                             )}
                             <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem", whiteSpace: "nowrap", flex: "0 0 auto" }}>

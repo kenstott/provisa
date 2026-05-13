@@ -218,7 +218,17 @@ async def sql_endpoint(
     try:
         exec_params = embedded_params or None
         if decision.route == Route.TRINO:
-            sql_to_run = transpile_to_trino(qualify_with_catalogs(governed_physical, ctx))
+            from provisa.api.data.endpoint import _materialize_api_to_trino_cache
+            from provisa.cache.hot_tables import build_values_cte_sql
+            from provisa.api_source.trino_cache import rewrite_all_from_cache
+
+            _qualified = qualify_with_catalogs(governed_physical, ctx)
+            _rewrites, _values_ctes = await _materialize_api_to_trino_cache(_qualified, None, state)
+            for _tn, _entry in _values_ctes.items():
+                _qualified = build_values_cte_sql(_qualified, _tn, _entry)
+            if _rewrites:
+                _qualified = rewrite_all_from_cache(_qualified, _rewrites)
+            sql_to_run = transpile_to_trino(_qualified)
             _loop = asyncio.get_event_loop()
             if state.trino_conn is None:
                 raise HTTPException(status_code=503, detail="Trino connection not available")

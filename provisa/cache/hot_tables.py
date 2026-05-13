@@ -39,6 +39,7 @@ class _HotEncoder(json.JSONEncoder):
 def _dumps(obj):
     return json.dumps(obj, cls=_HotEncoder)
 
+
 HOT_PREFIX = "provisa:hot:"
 
 
@@ -92,7 +93,6 @@ def build_values_cte_sql(sql: str, table_name: str, entry: "HotTableEntry") -> s
                 tbl.set("catalog", None)
                 tbl.set("db", None)
                 tbl.set("this", exp.to_identifier(cte_name))
-                break
         rewritten = tree.sql(dialect="postgres")
     except Exception:
         rewritten = re.sub(
@@ -147,8 +147,10 @@ class HotTableManager:
     async def _connect(self):
         if self._redis is None:
             import redis.asyncio as aioredis
+
             self._redis = aioredis.from_url(
-                self._redis_url, decode_responses=True,
+                self._redis_url,
+                decode_responses=True,
             )
 
     async def _store_rows(
@@ -198,7 +200,9 @@ class HotTableManager:
 
         row_count = len(rows_raw)
         if row_count > self._max_rows:
-            log.warning("Hot table %s has %d rows (max %d), skipping", table_name, row_count, self._max_rows)
+            log.warning(
+                "Hot table %s has %d rows (max %d), skipping", table_name, row_count, self._max_rows
+            )
             return row_count
 
         rows = [dict(zip(columns, row)) for row in rows_raw]
@@ -215,10 +219,15 @@ class HotTableManager:
 
         path = source_cfg.get("path", "")
         cfg = FileSourceConfig(id=source_cfg["id"], source_type="sqlite", path=path)
-        rows = execute_query(cfg, f"SELECT * FROM \"{table_name}\" LIMIT {self._max_rows + 1}")  # noqa: S608
+        rows = execute_query(cfg, f'SELECT * FROM "{table_name}" LIMIT {self._max_rows + 1}')  # noqa: S608
 
         if len(rows) > self._max_rows:
-            log.info("Skipping hot table %s: %d rows > threshold %d", table_name, len(rows), self._max_rows)
+            log.info(
+                "Skipping hot table %s: %d rows > threshold %d",
+                table_name,
+                len(rows),
+                self._max_rows,
+            )
             return len(rows)
 
         return await self._store_rows(table_name, rows, pk_column, source_cfg["id"], "default")
@@ -247,11 +256,18 @@ class HotTableManager:
 
         rows = await _openapi_list_rows(spec, base_url, table_name, auth_config, self._max_rows)
         if rows is None:
-            log.info("No list operation found for %s in OpenAPI spec — skipping hot cache", table_name)
+            log.info(
+                "No list operation found for %s in OpenAPI spec — skipping hot cache", table_name
+            )
             return 0
 
         if len(rows) > self._max_rows:
-            log.info("Skipping hot table %s: %d rows > threshold %d", table_name, len(rows), self._max_rows)
+            log.info(
+                "Skipping hot table %s: %d rows > threshold %d",
+                table_name,
+                len(rows),
+                self._max_rows,
+            )
             return len(rows)
 
         return await self._store_rows(table_name, rows, pk_column, source_cfg["id"], "default")
@@ -304,10 +320,17 @@ class HotTableManager:
         if candidate is None:
             return
         if len(rows) > self._auto_threshold:
-            log.debug("Hot table candidate %s: %d rows > threshold %d, skipping", table_name, len(rows), self._auto_threshold)
+            log.debug(
+                "Hot table candidate %s: %d rows > threshold %d, skipping",
+                table_name,
+                len(rows),
+                self._auto_threshold,
+            )
             return
         row_dicts = [dict(zip(column_names, row)) for row in rows]
-        await self._store_rows(table_name, row_dicts, candidate.pk_column, candidate.catalog, candidate.schema)
+        await self._store_rows(
+            table_name, row_dicts, candidate.pk_column, candidate.catalog, candidate.schema
+        )
         log.info("Auto-promoted %s to hot cache after query (%d rows)", table_name, len(rows))
 
     async def maybe_promote_dicts(self, table_name: str, rows: list[dict]) -> None:
@@ -318,9 +341,16 @@ class HotTableManager:
         if candidate is None:
             return
         if len(rows) > self._auto_threshold:
-            log.debug("Hot table candidate %s: %d rows > threshold %d, skipping", table_name, len(rows), self._auto_threshold)
+            log.debug(
+                "Hot table candidate %s: %d rows > threshold %d, skipping",
+                table_name,
+                len(rows),
+                self._auto_threshold,
+            )
             return
-        await self._store_rows(table_name, rows, candidate.pk_column, candidate.catalog, candidate.schema)
+        await self._store_rows(
+            table_name, rows, candidate.pk_column, candidate.catalog, candidate.schema
+        )
         log.info("Auto-promoted %s to hot cache after API query (%d rows)", table_name, len(rows))
 
     @property
@@ -458,7 +488,7 @@ async def _openapi_list_rows(
         return None
 
     rows = data if isinstance(data, list) else [data]
-    return rows[:max_rows + 1]
+    return rows[: max_rows + 1]
 
 
 async def count_table_rows(trino_conn, table_name: str, schema: str, catalog: str) -> int:
@@ -475,13 +505,13 @@ async def init_hot_tables(
     trino_conn,
 ) -> HotTableManager | None:
     """Initialize hot table manager from raw config. Returns manager or None."""
-    import os
 
     hot_config = raw_config.get("hot_tables", {})
     cache_config = raw_config.get("cache", {})
     redis_url = cache_config.get("redis_url", "")
     if redis_url:
         from provisa.core.secrets import resolve_secrets
+
         redis_url = resolve_secrets(redis_url)
     if not redis_url or not cache_config.get("enabled"):
         return None
@@ -516,7 +546,9 @@ async def init_hot_tables(
         source_id = tbl_cfg.get("source_id", "")
         source_cfg = source_cfgs.get(source_id, {})
         source_type = source_cfg.get("type", "")
-        pk_col = tbl_cfg.get("columns", [{}])[0].get("name", "id") if tbl_cfg.get("columns") else "id"
+        pk_col = (
+            tbl_cfg.get("columns", [{}])[0].get("name", "id") if tbl_cfg.get("columns") else "id"
+        )
         schema_name = tbl_cfg.get("schema", "public")
         return tbl_cfg, source_id, source_cfg, source_type, pk_col, schema_name
 
@@ -536,7 +568,11 @@ async def init_hot_tables(
         elif source_type in _TRINO_BACKED:
             await hot_mgr.load_table(trino_conn, tbl_name, schema_name, catalog, pk_col)
         else:
-            log.debug("hot: true table %s: source type %r not supported for caching", tbl_name, source_type)
+            log.debug(
+                "hot: true table %s: source type %r not supported for caching",
+                tbl_name,
+                source_type,
+            )
 
     # Register auto-detected candidates for lazy promotion after first query
     auto_candidates = detect_hot_tables(tables_list, rels_list, hot_overrides)
@@ -548,12 +584,14 @@ async def init_hot_tables(
             continue
         _, source_id, source_cfg, source_type, pk_col, schema_name = result
         catalog = source_to_catalog(source_id)
-        hot_mgr.register_candidate(HotTableCandidate(
-            table_name=tbl_name,
-            pk_column=pk_col,
-            catalog=catalog,
-            schema=schema_name,
-        ))
+        hot_mgr.register_candidate(
+            HotTableCandidate(
+                table_name=tbl_name,
+                pk_column=pk_col,
+                catalog=catalog,
+                schema=schema_name,
+            )
+        )
         log.debug("Registered hot table candidate %s (lazy promotion on first query)", tbl_name)
 
     return hot_mgr

@@ -552,6 +552,7 @@ export function SqlPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
+  const pendingAutoRunRef = useRef((location.state as any)?.autoRun === true);
   const [nlText, setNlText] = useState("");
   const [nlLoading, setNlLoading] = useState(false);
   const [nlError, setNlError] = useState("");
@@ -567,12 +568,7 @@ export function SqlPage() {
   }, []);
 
   useEffect(() => {
-    const pending = localStorage.getItem("provisa.sql.pending_query");
-    if (pending) {
-      setSqlText(pending);
-      saveSqlQuery(pending);
-      localStorage.removeItem("provisa.sql.pending_query");
-    }
+    localStorage.removeItem("provisa.sql.pending_query");
     fetchRoles().catch(() => []).then((r) => {
       const ids = r.map((x: any) => x.id);
       if (ids.length) setRoles(ids);
@@ -932,6 +928,12 @@ export function SqlPage() {
     });
   }, [sqlText, role, sampleMode, sampleSize]);
 
+  useEffect(() => {
+    if (pendingAutoRunRef.current && sqlText.trim()) {
+      pendingAutoRunRef.current = false;
+      handleRun();
+    }
+  }, [sqlText, handleRun]);
 
   return (
     <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg)" }}>

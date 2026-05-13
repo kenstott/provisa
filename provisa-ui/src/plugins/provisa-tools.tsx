@@ -184,8 +184,7 @@ function SqlPanel({
                 className="provisa-tools-copy"
                 onClick={(e) => {
                   e.stopPropagation();
-                  localStorage.setItem("provisa.sql.pending_query", formatted);
-                  navigate("/sql");
+                  navigate("/sql", { state: { sql: formatted, autoRun: true } });
                 }}
                 title="Open in SQL"
               >

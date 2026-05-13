@@ -33,6 +33,9 @@ SERVICE_NAME = "provisa"
 SPAN_NAME = "provisa.query.trino"
 
 
+QUERY_TEXT = "{ ps__pets(limit: 1) { id } }"
+
+
 def _insert_test_trace(trino_conn, table_name: str, trace_id: str, span_id: str) -> None:
     """Insert one synthetic span row into otel.signals.traces."""
     cur = trino_conn.cursor()
@@ -42,10 +45,20 @@ def _insert_test_trace(trino_conn, table_name: str, trace_id: str, span_id: str)
         """
         INSERT INTO otel.signals.traces (
             trace_id, span_id, span_name, service_name,
-            "timestamp", table_name, domain_id, role_id, _date
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_DATE)
+            "timestamp", table_name, domain_id, role_id, query_text, _date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_DATE)
         """,
-        [trace_id, span_id, SPAN_NAME, SERVICE_NAME, ts_us, table_name, "pet-store", "admin"],
+        [
+            trace_id,
+            span_id,
+            SPAN_NAME,
+            SERVICE_NAME,
+            ts_us,
+            table_name,
+            "pet-store",
+            "admin",
+            QUERY_TEXT,
+        ],
     )
 
 
@@ -163,6 +176,7 @@ class TestOtelMetaTraces:
                         serviceName
                         tableName
                         timestamp
+                        queryText
                       }
                     }
                   }
@@ -184,4 +198,7 @@ class TestOtelMetaTraces:
         )
         assert all(q["tableName"] == TABLE_NAME for q in queries), (
             f"Expected all _queries rows to have tableName={TABLE_NAME!r}. Got: {queries}"
+        )
+        assert any(q.get("queryText") for q in queries), (
+            f"Expected at least one _queries row with non-blank queryText. Got: {queries}"
         )

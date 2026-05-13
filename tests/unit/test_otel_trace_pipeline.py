@@ -176,6 +176,40 @@ class TestInsertOtelIceberg:
         cur = conn.cursor.return_value
         all_args = " ".join(str(c) for c in cur.execute.call_args_list)
         assert "pets" in all_args, f"'pets' not found in INSERT args. Calls: {all_args}"
+        assert "{ ps__pets { id } }" in all_args, (
+            f"query_text not found in INSERT args. Calls: {all_args}"
+        )
+
+    def test_extracts_query_text_from_span_attributes(self):
+        pytest.importorskip("pyarrow")
+        import pyarrow as pa
+        from provisa.scheduler.jobs import _insert_otel_iceberg
+
+        trino_cols = {
+            "trace_id": "varchar",
+            "span_name": "varchar",
+            "span_attributes": "varchar",
+            "query_text": "varchar",
+            "_date": "date",
+        }
+        conn = self._make_conn(trino_cols)
+
+        attrs_json = json.dumps({"provisa.query_text": "{ ps__pets { id name } }"})
+        table = pa.table(
+            {
+                "trace_id": pa.array(["abc"], type=pa.string()),
+                "span_name": pa.array(["provisa.query.trino"], type=pa.string()),
+                "span_attributes": pa.array([attrs_json], type=pa.string()),
+            }
+        )
+
+        _insert_otel_iceberg(conn, "traces", table, datetime(2026, 5, 11), delete_first=False)
+
+        cur = conn.cursor.return_value
+        all_args = " ".join(str(c) for c in cur.execute.call_args_list)
+        assert "{ ps__pets { id name } }" in all_args, (
+            f"query_text value not found in INSERT args. Calls: {all_args}"
+        )
 
     def test_table_name_absent_when_not_in_trino_schema(self):
         """If table_name column doesn't exist in Trino, no error raised."""

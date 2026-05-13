@@ -47,7 +47,7 @@ from provisa.compiler.sql_gen import (
     rewrite_semantic_to_physical, rewrite_semantic_to_trino_physical,
 )
 from provisa.executor.direct import execute_direct
-from provisa.executor.serialize import serialize_aggregate, serialize_rows
+from provisa.executor.serialize import serialize_aggregate, serialize_rows, shape_transform
 from provisa.executor.trino import execute_trino
 from provisa.executor import stats as _qs_mod
 from provisa.mv.rewriter import rewrite_if_mv_match
@@ -103,7 +103,8 @@ def _parse_accept(accept: str | None) -> str:
 def _format_response(rows, columns, root_field, output_format, result_limit: int | None = None):
     """Serialize query results in the requested output format."""
     if output_format == "json":
-        return serialize_rows(rows, columns, root_field, result_limit=result_limit)
+        result = serialize_rows(rows, columns, root_field, result_limit=result_limit)
+        return shape_transform(result, columns)
 
     if output_format == "ndjson":
         from provisa.executor.formats.ndjson import rows_to_ndjson

@@ -8,11 +8,13 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Integration tests for SQLGlot PG SQL → target dialect transpilation."""
+"""Unit tests for SQLGlot PG SQL → target dialect transpilation."""
 
-import pytest
-
-from provisa.transpiler.transpile import transpile, transpile_to_trino
+from provisa.transpiler.transpile import (
+    transpile,
+    transpile_to_trino,
+    rewrite_correlated_subqueries_for_trino,
+)
 
 
 class TestTranspileToTrino:
@@ -72,7 +74,7 @@ class TestTranspileToTrino:
             'ON "t0"."customer_id" = "t1"."id" '
             'WHERE "t0"."region" = $1 '
             'ORDER BY "t0"."amount" DESC '
-            'LIMIT 10 OFFSET 5'
+            "LIMIT 10 OFFSET 5"
         )
         trino_sql = transpile_to_trino(pg)
         lower = trino_sql.lower()
@@ -113,3 +115,160 @@ class TestMultiDialect:
     def test_to_bigquery(self):
         result = transpile(self.PG_SQL, "bigquery")
         assert "orders" in result.lower()
+
+
+class TestRewriteCorrelatedSubqueries:
+    """Unit tests for rewrite_correlated_subqueries_for_trino (REQ-066 general path)."""
+
+    # ── passthrough ──────────────────────────────────────────────────────────
+
+    def test_no_correlated_subquery_unchanged(self):
+        sql = "SELECT p.name FROM pets p"
+        assert rewrite_correlated_subqueries_for_trino(sql) == sql
+
+    def test_non_select_unchanged(self):
+        sql = "INSERT INTO foo VALUES (1)"
+        assert rewrite_correlated_subqueries_for_trino(sql) == sql
+
+    def test_invalid_sql_unchanged(self):
+        sql = "NOT VALID SQL %%% ###"
+        assert rewrite_correlated_subqueries_for_trino(sql) == sql
+
+    def test_uncorrelated_subquery_unchanged(self):
+        # Subquery has no WHERE correlation to outer table
+        sql = "SELECT p.name, (SELECT MAX(e.salary) FROM employees e) AS max_sal FROM pets p"
+        result = rewrite_correlated_subqueries_for_trino(sql)
+        assert result == sql
+
+    # ── scalar correlated subquery ────────────────────────────────────────────
+
+    def test_scalar_correlated_produces_cte(self):
+        sql = "SELECT p.name, (SELECT e.last_name FROM employees e WHERE e.id = p.employee_id) AS emp FROM pets p"
+        result = rewrite_correlated_subqueries_for_trino(sql)
+        assert "WITH" in result
+        assert "_grel_0" in result
+        assert "LEFT JOIN" in result.upper()
+        assert "ARBITRARY" in result.upper()
+        assert "GROUP BY" in result.upper()
+
+    def test_scalar_correlated_cte_contains_join_key(self):
+        sql = "SELECT p.name, (SELECT e.last_name FROM employees e WHERE e.id = p.employee_id) AS emp FROM pets p"
+        result = rewrite_correlated_subqueries_for_trino(sql)
+        # join key column aliased as _jk0
+        assert "_jk0" in result
+        # ARBITRARY wraps the selected column
+        assert "ARBITRARY" in result.upper()
+
+    def test_scalar_correlated_replacement_references_cte(self):
+        sql = "SELECT p.name, (SELECT e.last_name FROM employees e WHERE e.id = p.employee_id) AS emp FROM pets p"
+        result = rewrite_correlated_subqueries_for_trino(sql)
+        assert "_grel_0._val" in result or ("_grel_0" in result and "_val" in result)
+
+    # ── local filter preserved ────────────────────────────────────────────────
+
+    def test_local_filter_stays_in_cte_where(self):
+        sql = "SELECT p.name, (SELECT e.last_name FROM employees e WHERE e.id = p.employee_id AND e.active = TRUE) AS emp FROM pets p"
+        result = rewrite_correlated_subqueries_for_trino(sql)
+        # local condition ends up inside the CTE, not in the LEFT JOIN ON
+        assert "TRUE" in result.upper()
+        # only one join key (_jk0 for e.id)
+        assert "_jk0" in result
+        assert "_jk1" not in result
+
+    # ── aggregate (json_agg) path ─────────────────────────────────────────────
+
+    def test_json_agg_uses_group_by_no_arbitrary(self):
+        sql = "SELECT p.name, (SELECT JSON_AGG(JSON_OBJECT('n': e.last_name)) FROM employees e WHERE e.dept_id = p.dept_id) AS emps FROM pets p"
+        result = rewrite_correlated_subqueries_for_trino(sql)
+        assert "GROUP BY" in result.upper()
+        assert "ARBITRARY" not in result.upper()
+
+    def test_json_agg_cte_placed_before_join(self):
+        sql = "SELECT p.name, (SELECT JSON_AGG(JSON_OBJECT('n': e.last_name)) FROM employees e WHERE e.dept_id = p.dept_id) AS emps FROM pets p"
+        result = rewrite_correlated_subqueries_for_trino(sql)
+        # CTE must appear before the SELECT
+        with_pos = result.find("WITH")
+        select_pos = result.rfind("SELECT")
+        assert with_pos < select_pos
+
+    # ── json_object (many-to-one) ─────────────────────────────────────────────
+
+    def test_json_object_correlated_rewrites(self):
+        sql = "SELECT p.name, (SELECT JSON_OBJECT('breed': b.name) FROM breeds b WHERE b.id = p.breed_id) AS breed_obj FROM pets p"
+        result = rewrite_correlated_subqueries_for_trino(sql)
+        assert "WITH" in result
+        assert "_grel_0" in result
+        assert "ARBITRARY" in result.upper()
+
+    # ── multiple correlated subqueries ───────────────────────────────────────
+
+    def test_two_correlated_subqueries_produce_two_ctes(self):
+        sql = (
+            "SELECT p.name,"
+            " (SELECT e.last_name FROM employees e WHERE e.id = p.employee_id) AS emp,"
+            " (SELECT b.name FROM breeds b WHERE b.id = p.breed_id) AS breed"
+            " FROM pets p"
+        )
+        result = rewrite_correlated_subqueries_for_trino(sql)
+        assert "_grel_0" in result
+        assert "_grel_1" in result
+
+    # ── hot table CTEs preserved in order ────────────────────────────────────
+
+    def test_existing_hot_ctes_remain_first(self):
+        sql = (
+            "WITH _hot_shelter__employees AS (VALUES (1, 'Smith')) "
+            "SELECT p.name, (SELECT e.last_name FROM employees e WHERE e.id = p.employee_id) AS emp "
+            "FROM pets p"
+        )
+        result = rewrite_correlated_subqueries_for_trino(sql)
+        hot_pos = result.find("_hot_shelter__employees")
+        rel_pos = result.find("_grel_0")
+        assert hot_pos != -1
+        assert rel_pos != -1
+        assert hot_pos < rel_pos
+
+    # ── sampling wrapper ──────────────────────────────────────────────────────
+
+    def test_sampling_wrapper_ctes_hoisted_to_outer(self):
+        sql = (
+            "SELECT * FROM ("
+            "SELECT p.name, (SELECT e.last_name FROM employees e WHERE e.id = p.employee_id) AS emp "
+            "FROM pets p"
+            ") AS _sample LIMIT 100"
+        )
+        result = rewrite_correlated_subqueries_for_trino(sql)
+        # CTE must be at the top-level WITH, before the outer SELECT *
+        assert result.startswith("WITH ")
+        assert "_grel_0" in result
+        assert "LIMIT 100" in result
+
+    def test_sampling_wrapper_inner_still_has_join(self):
+        sql = (
+            "SELECT * FROM ("
+            "SELECT p.name, (SELECT e.last_name FROM employees e WHERE e.id = p.employee_id) AS emp "
+            "FROM pets p"
+            ") AS _sample LIMIT 50"
+        )
+        result = rewrite_correlated_subqueries_for_trino(sql)
+        assert "LEFT JOIN" in result.upper()
+
+    def test_sampling_wrapper_no_correlated_unchanged(self):
+        sql = "SELECT * FROM (SELECT p.name FROM pets p) AS _sample LIMIT 10"
+        assert rewrite_correlated_subqueries_for_trino(sql) == sql
+
+    # ── transpile_to_trino integration (rewired) ──────────────────────────────
+
+    def test_transpile_to_trino_handles_correlated(self):
+        # transpile_to_trino now routes through the general rewriter
+        sql = "SELECT p.name, (SELECT e.last_name FROM employees e WHERE e.id = p.employee_id) AS emp FROM pets p"
+        result = transpile_to_trino(sql)
+        assert "WITH" in result
+        assert "_grel_0" in result
+        assert "LEFT JOIN" in result.upper()
+
+    def test_transpile_to_trino_plain_query_unaffected(self):
+        sql = 'SELECT "id", "name" FROM "public"."orders" LIMIT 10'
+        result = transpile_to_trino(sql)
+        assert "orders" in result.lower()
+        assert "WITH" not in result
