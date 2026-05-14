@@ -52,6 +52,8 @@ _TXN_TAG_RE = re.compile(
     re.IGNORECASE,
 )
 
+_COPY_RE = re.compile(r"^\s*COPY\b", re.IGNORECASE)
+
 
 def _pg_literal(v) -> str:
     """Render a Python value as a safe PG literal string."""
@@ -156,6 +158,8 @@ class ProvisaSession(Session):
         from provisa.pgwire.catalog import answer, classify
 
         stripped = _substitute_params(sql.strip(), params)
+        if _COPY_RE.match(stripped):
+            raise PermissionError("COPY is not supported")
         if classify(stripped) == "INTERCEPT":
             from provisa.api.app import state
 
@@ -232,7 +236,7 @@ class ProvisaHandler(BuenaVistaHandler):
                 self.wfile.flush()
                 self.request = ssl_ctx.wrap_socket(self.request, server_side=True)
                 self.rfile = self.request.makefile("rb")
-                self.wfile = self.request.makefile("wb")
+                self.wfile = self.request.makefile("wb", 0)
                 self.r = BVBuffer(self.rfile)
             else:
                 self.wfile.write(b"N")
@@ -295,6 +299,10 @@ class ProvisaHandler(BuenaVistaHandler):
             return
 
         for stmt in stmts:
+            if _COPY_RE.match(stmt):
+                self._send_pg_error("ERROR", "0A000", "COPY is not supported")
+                ctx.mark_error()
+                break
             try:
                 from buenavista.core import Extension
 

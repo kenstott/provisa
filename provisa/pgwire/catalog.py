@@ -30,7 +30,7 @@ _TXN_RE = re.compile(
 )
 
 _SCALAR_FN_RE = re.compile(
-    r"^\s*SELECT\s+(current_user|session_user|current_database\(\)|current_schema\(\)|version\(\)|pg_backend_pid\(\))\s*$",
+    r"^\s*SELECT\s+(?:pg_catalog\.)?(current_user|session_user|current_database\(\)|current_schema\(\)|version\(\)|pg_backend_pid\(\))\s*$",
     re.IGNORECASE,
 )
 
@@ -58,7 +58,15 @@ _TABLE_MAP: dict[tuple[str, str], str] = {
     ("pg_catalog", "pg_stat_user_tables"): "_pg_stat_user_tables",
     ("pg_catalog", "pg_statio_user_tables"): "_pg_stat_user_tables",
     ("pg_catalog", "pg_am"): "_pg_am",
+    ("pg_catalog", "pg_extension"): "_pg_extension",
+    ("pg_catalog", "pg_enum"): "_pg_enum",
+    ("pg_catalog", "pg_stat_activity"): "_pg_stat_activity",
+    ("information_schema", "key_column_usage"): "_is_key_column_usage",
+    ("information_schema", "table_constraints"): "_is_table_constraints",
+    ("information_schema", "referential_constraints"): "_is_referential_constraints",
 }
+
+_CATALOG_TABLE_NAMES = frozenset(t for _, t in _TABLE_MAP)
 
 _PG_TYPE_ROWS = [
     # (oid, typname, typnamespace, typlen, typtype, typcategory, typnotnull, typbasetype)
@@ -171,7 +179,10 @@ def classify(sql: str) -> str:
         tree = sqlglot.parse_one(stripped, read="postgres")
         for tbl in tree.find_all(exp.Table):
             db = tbl.db.lower() if tbl.db else ""
+            tname = tbl.name.lower() if tbl.name else ""
             if db in _INTERCEPT_SCHEMAS:
+                return "INTERCEPT"
+            if not db and tname in _CATALOG_TABLE_NAMES:
                 return "INTERCEPT"
         for func in tree.find_all(exp.Anonymous):
             fn = func.name.lower()
@@ -186,7 +197,13 @@ def classify(sql: str) -> str:
             if type(node).__name__ in ("CurrentUser", "CurrentDatabase", "CurrentSchema"):
                 return "INTERCEPT"
     except Exception:
-        pass
+        lower = stripped.lower()
+        for name in _CATALOG_TABLE_NAMES:
+            if re.search(r"\b" + re.escape(name) + r"\b", lower):
+                return "INTERCEPT"
+        for schema in _INTERCEPT_SCHEMAS:
+            if schema in lower:
+                return "INTERCEPT"
     return "PASS_THROUGH"
 
 
@@ -204,7 +221,7 @@ def _build_catalog_db(role_id: str, state):
     all_cols: list[tuple] = []
 
     if ctx:
-        for _field, tm in ctx.tables.items():
+        for _, tm in ctx.tables.items():
             cat = tm.catalog_name or "provisa"
             sch = tm.schema_name or "public"
             tname = tm.table_name
@@ -215,7 +232,7 @@ def _build_catalog_db(role_id: str, state):
                 all_cols.append((toid, col.column_name, col.data_type, col.is_nullable, i))
 
     _NS: dict[str, int] = {"pg_catalog": 11, "information_schema": 12, "public": 2200}
-    toid_map: dict[int, tuple] = {oid: (c, s, t) for c, s, t, tid, oid in tables}
+    toid_map: dict[int, tuple] = {row[4]: (row[0], row[1], row[2]) for row in tables}
 
     # information_schema.schemata
     db.execute("""CREATE TABLE _is_schemata (
@@ -239,7 +256,7 @@ def _build_catalog_db(role_id: str, state):
     if tables:
         db.executemany(
             "INSERT INTO _is_tables VALUES (?,?,?,'BASE TABLE',NULL,NULL,NULL,NULL,NULL,'YES','NO',NULL)",
-            [(c, s, t) for c, s, t, tid, oid in tables],
+            [(row[0], row[1], row[2]) for row in tables],
         )
 
     # information_schema.columns
@@ -354,7 +371,7 @@ def _build_catalog_db(role_id: str, state):
         relfrozenxid INTEGER, relminmxid INTEGER, relacl VARCHAR,
         reloptions VARCHAR, relpartbound VARCHAR)""")
     pg_class_rows = []
-    for c, s, t, tid, toid in tables:
+    for c, s, t, _, toid in tables:
         ns_oid = _NS.get(s, 2200)
         natts = sum(1 for col in all_cols if col[0] == toid)
         pg_class_rows.append(
@@ -510,7 +527,7 @@ def _build_catalog_db(role_id: str, state):
         indisreplident BOOLEAN, indkey VARCHAR, indcollation VARCHAR,
         indclass VARCHAR, indoption VARCHAR, indexprs VARCHAR, indpred VARCHAR)""")
 
-    # pg_constraint (empty)
+    # pg_constraint — PK and FK rows derived from CompilationContext
     db.execute("""CREATE TABLE _pg_constraint (
         oid INTEGER, conname VARCHAR, connamespace INTEGER, contype VARCHAR,
         condeferrable BOOLEAN, condeferred BOOLEAN, convalidated BOOLEAN,
@@ -519,6 +536,98 @@ def _build_catalog_db(role_id: str, state):
         conislocal BOOLEAN, coninhcount INTEGER, connoinherit BOOLEAN,
         conkeys VARCHAR, confkey VARCHAR, conpfeqop VARCHAR, conppeqop VARCHAR,
         conffeqop VARCHAR, conexclop VARCHAR, conbin VARCHAR)""")
+    # build column-name → attnum index for each table OID
+    _col_attnum: dict[tuple[int, str], int] = {(col[0], col[1]): col[4] for col in all_cols}
+    _tname_to_oid: dict[str, int] = {row[2]: row[4] for row in tables}
+    _constraint_rows = []
+    _con_oid = 20000
+    if ctx:
+        # PK constraints
+        for _, tm in ctx.tables.items():
+            toid_pk = _tname_to_oid.get(tm.table_name)
+            if toid_pk is None:
+                continue
+            pk_cols = ctx.pk_columns.get(tm.table_id, [])
+            if pk_cols:
+                ns_oid_pk = _NS.get(tm.schema_name or "public", 2200)
+                conkeys = ",".join(str(_col_attnum.get((toid_pk, c), 0)) for c in pk_cols)
+                _constraint_rows.append(
+                    (
+                        _con_oid,
+                        f"pk_{tm.table_name}",
+                        ns_oid_pk,
+                        "p",
+                        False,
+                        False,
+                        True,
+                        toid_pk,
+                        0,
+                        0,
+                        0,
+                        0,
+                        None,
+                        None,
+                        None,
+                        True,
+                        0,
+                        True,
+                        conkeys,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    )
+                )
+                _con_oid += 1
+        # FK constraints from joins
+        for (src_type, _), jm in ctx.joins.items():
+            src_tm = next((tm for tm in ctx.tables.values() if tm.type_name == src_type), None)
+            if src_tm is None:
+                continue
+            src_toid = _tname_to_oid.get(src_tm.table_name)
+            tgt_toid = _tname_to_oid.get(jm.target.table_name)
+            if src_toid is None or tgt_toid is None:
+                continue
+            ns_oid_fk = _NS.get(src_tm.schema_name or "public", 2200)
+            src_attnum = _col_attnum.get((src_toid, jm.source_column), 0)
+            tgt_attnum = _col_attnum.get((tgt_toid, jm.target_column), 0)
+            _constraint_rows.append(
+                (
+                    _con_oid,
+                    f"fk_{src_tm.table_name}_{jm.source_column}",
+                    ns_oid_fk,
+                    "f",
+                    False,
+                    False,
+                    True,
+                    src_toid,
+                    0,
+                    0,
+                    0,
+                    tgt_toid,
+                    "a",
+                    "a",
+                    "s",
+                    True,
+                    0,
+                    True,
+                    str(src_attnum),
+                    str(tgt_attnum),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            )
+            _con_oid += 1
+    if _constraint_rows:
+        db.executemany(
+            f"INSERT INTO _pg_constraint VALUES ({','.join(['?'] * 25)})",
+            _constraint_rows,
+        )
 
     # pg_proc (empty)
     db.execute("""CREATE TABLE _pg_proc (
@@ -769,7 +878,7 @@ def _build_catalog_db(role_id: str, state):
     if tables:
         db.executemany(
             "INSERT INTO _pg_tables VALUES (?,?,'provisa',NULL,FALSE,FALSE,FALSE,FALSE)",
-            [(s, t) for c, s, t, tid, oid in tables],
+            [(row[1], row[2]) for row in tables],
         )
 
     # pg_am (access methods)
@@ -788,6 +897,25 @@ def _build_catalog_db(role_id: str, state):
         ],
     )
 
+    # pg_extension (empty — tools expect the table to exist)
+    db.execute("""CREATE TABLE _pg_extension (
+        oid INTEGER, extname VARCHAR, extowner INTEGER, extnamespace INTEGER,
+        extrelocatable BOOLEAN, extversion VARCHAR, extconfig VARCHAR, extcondition VARCHAR)""")
+
+    # pg_enum (empty — tools expect the table to exist)
+    db.execute("""CREATE TABLE _pg_enum (
+        oid INTEGER, enumtypid INTEGER, enumsortorder REAL, enumlabel VARCHAR)""")
+
+    # pg_stat_activity (empty stub — monitoring tools query this)
+    db.execute("""CREATE TABLE _pg_stat_activity (
+        datid INTEGER, datname VARCHAR, pid INTEGER, usesysid INTEGER,
+        usename VARCHAR, application_name VARCHAR, client_addr VARCHAR,
+        client_hostname VARCHAR, client_port INTEGER, backend_start VARCHAR,
+        xact_start VARCHAR, query_start VARCHAR, state_change VARCHAR,
+        wait_event_type VARCHAR, wait_event VARCHAR, state VARCHAR,
+        backend_xid INTEGER, backend_xmin INTEGER, query VARCHAR,
+        backend_type VARCHAR)""")
+
     # pg_stat_user_tables (empty stub)
     db.execute("""CREATE TABLE _pg_stat_user_tables (
         relid INTEGER, schemaname VARCHAR, relname VARCHAR,
@@ -797,6 +925,84 @@ def _build_catalog_db(role_id: str, state):
         n_ins_since_vacuum BIGINT, last_vacuum VARCHAR, last_autovacuum VARCHAR,
         last_analyze VARCHAR, last_autoanalyze VARCHAR, vacuum_count BIGINT,
         autovacuum_count BIGINT, analyze_count BIGINT, autoanalyze_count BIGINT)""")
+
+    # information_schema.table_constraints
+    db.execute("""CREATE TABLE _is_table_constraints (
+        constraint_catalog VARCHAR, constraint_schema VARCHAR, constraint_name VARCHAR,
+        table_catalog VARCHAR, table_schema VARCHAR, table_name VARCHAR,
+        constraint_type VARCHAR, is_deferrable VARCHAR, initially_deferred VARCHAR,
+        enforced VARCHAR, nulls_distinct VARCHAR)""")
+
+    # information_schema.key_column_usage
+    db.execute("""CREATE TABLE _is_key_column_usage (
+        constraint_catalog VARCHAR, constraint_schema VARCHAR, constraint_name VARCHAR,
+        table_catalog VARCHAR, table_schema VARCHAR, table_name VARCHAR,
+        column_name VARCHAR, ordinal_position INTEGER, position_in_unique_constraint INTEGER)""")
+
+    # information_schema.referential_constraints (empty stub)
+    db.execute("""CREATE TABLE _is_referential_constraints (
+        constraint_catalog VARCHAR, constraint_schema VARCHAR, constraint_name VARCHAR,
+        unique_constraint_catalog VARCHAR, unique_constraint_schema VARCHAR,
+        unique_constraint_name VARCHAR, match_option VARCHAR,
+        update_rule VARCHAR, delete_rule VARCHAR)""")
+
+    if _constraint_rows:
+        _oid_to_ns: dict[int, str] = {v: k for k, v in _NS.items()}
+        _attnum_to_col: dict[tuple[int, int], str] = {(col[0], col[4]): col[1] for col in all_cols}
+        _is_tc_rows = []
+        _is_kcu_rows = []
+        for con_row in _constraint_rows:
+            conname_v: str = con_row[1]
+            conns_oid_v: int = con_row[2]
+            contype_v: str = con_row[3]
+            conrelid_v: int = con_row[7]
+            c_v, c_sch_v, c_tname_v = toid_map.get(conrelid_v, ("provisa", "public", ""))
+            con_schema_v = _oid_to_ns.get(conns_oid_v, "public")
+            ctype_str = "PRIMARY KEY" if contype_v == "p" else "FOREIGN KEY"
+            _is_tc_rows.append(
+                (
+                    "provisa",
+                    con_schema_v,
+                    conname_v,
+                    c_v,
+                    c_sch_v,
+                    c_tname_v,
+                    ctype_str,
+                    "NO",
+                    "NO",
+                    "YES",
+                    "YES",
+                )
+            )
+            conkeys_raw = con_row[18]
+            conkeys_str = str(conkeys_raw) if conkeys_raw is not None else ""
+            for pos, attnum_s in enumerate(conkeys_str.split(",") if conkeys_str else [], 1):
+                attnum_v = int(attnum_s.strip()) if attnum_s.strip().isdigit() else 0
+                col_name_v = _attnum_to_col.get((conrelid_v, attnum_v), "")
+                if col_name_v:
+                    _is_kcu_rows.append(
+                        (
+                            "provisa",
+                            con_schema_v,
+                            conname_v,
+                            c_v,
+                            c_sch_v,
+                            c_tname_v,
+                            col_name_v,
+                            pos,
+                            pos if contype_v == "p" else None,
+                        )
+                    )
+        if _is_tc_rows:
+            db.executemany(
+                f"INSERT INTO _is_table_constraints VALUES ({','.join(['?'] * 11)})",
+                _is_tc_rows,
+            )
+        if _is_kcu_rows:
+            db.executemany(
+                f"INSERT INTO _is_key_column_usage VALUES ({','.join(['?'] * 9)})",
+                _is_kcu_rows,
+            )
 
     return db
 
@@ -825,6 +1031,8 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
             fn = node.name.lower()
             if "pg_get_expr" in fn or "pg_get_constraintdef" in fn or "pg_get_indexdef" in fn:
                 return exp.null()
+            if "pg_table_is_visible" in fn or "pg_has_role" in fn:
+                return exp.true()
             if fn in ("current_user", "session_user"):
                 return exp.Literal.string(role_id)
             if fn in ("current_database",):
@@ -833,9 +1041,22 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
                 return exp.Literal.string("PostgreSQL 14.0 on Provisa")
         if type(node).__name__ == "CurrentUser":
             return exp.Literal.string(role_id)
+        if isinstance(node, exp.Dot):
+            # Strip schema qualifier from schema-qualified expressions: pg_catalog.TRUE → TRUE
+            left = node.this
+            if isinstance(left, exp.Identifier) and left.name.lower() in _INTERCEPT_SCHEMAS:
+                return node.expression
         if isinstance(node, exp.Column):
             if node.name.lower() in ("current_user", "session_user"):
                 return exp.Literal.string(role_id)
+            # Rewrite schema-qualified column refs: pg_catalog.pg_class.col → _pg_class.col
+            db_node = node.args.get("db") or node.args.get("catalog")
+            db = db_node.name.lower() if db_node and hasattr(db_node, "name") else ""
+            tbl = node.args.get("table")
+            tname = tbl.name.lower() if tbl and hasattr(tbl, "name") else ""
+            if db in _INTERCEPT_SCHEMAS and tname:
+                mapped = _TABLE_MAP.get((db, tname)) or tname
+                return exp.column(node.name, table=mapped)
         return node
 
     try:
