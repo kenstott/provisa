@@ -13,12 +13,18 @@ Rules:
   V005 – Masked columns must not appear in WHERE or HAVING clauses (prevents plaintext inference).
 
 Security model / layer responsibilities:
-  V001 and V003+RLS are the hard security primitives. V001 gates domain access; V003 and
-  stage2 RLS control what data is visible in query output regardless of SQL structure.
+  Layer 1 – Public access: all identities see data in domains with no access restriction.
+  Layer 2 – Domain access (V001): gates which tables a role may query.
+  Layer 3 – Row-level security (RLS): injected WHERE predicates (stage2) restrict which
+            rows are visible within an allowed domain, regardless of SQL structure.
+  Layer 4 – Column visibility (V003) and masking: restricts which columns are visible and
+            replaces sensitive values with masked output in query results.
+  Layer 5 – Predicate guard (V005): blocks masked columns from WHERE/HAVING to prevent
+            plaintext inference against masked output.
 
   V002 is governance policy, not a hard security boundary. It marks approved traversal
   paths between tables a role already has access to. A role cannot use an unapproved join
-  to reach data outside its V001 domain grant or past V003/RLS content controls — so
+  to reach data outside its Layer 2 domain grant or past Layers 3–5 content controls — so
   circumventing V002 does not expose data the role couldn't obtain through two separate
   approved queries. V002 exists to enforce approved roads and provide an audit surface for
   deliberate circumvention, not to be the last line of defence.
