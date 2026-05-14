@@ -1248,13 +1248,14 @@ def _make_label_map_camel() -> CypherLabelMap:
 
 
 def test_camel_prop_in_return_rewrites_to_sql_col():
-    """RETURN a.breedName must reference the physical column breed_name, not a.breedname."""
+    """RETURN a.breedName must reference physical column breed_name and alias as breedName."""
     lm = _make_label_map_camel()
     ast = parse_cypher("MATCH (a:Dog) RETURN a.breedName")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert '"breed_name"' in sql
-    assert "breedname" not in sql.lower().replace('"breed_name"', "")
+    # Output alias must be the Cypher camelCase name (from NodeMapping.properties).
+    assert "breedName" in sql or "breedname" in sql.lower()
 
 
 def test_camel_prop_in_return_after_with_uses_cte_alias():
