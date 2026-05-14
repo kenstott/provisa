@@ -602,6 +602,20 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
                     "boolean": "boolean", "jsonb": "jsonb",
                 }
                 col_dicts = gql_tbl.get("columns", [])
+                _sb = getattr(state, "schema_build_cache", {})
+                _sb_tbls = _sb.get("tables", [])
+                _sb_rels = _sb.get("relationships", [])
+                _tbl_int_id = next((t["id"] for t in _sb_tbls if t.get("table_name") == tn), None)
+                if _tbl_int_id is not None and _sb_rels:
+                    _src_rels = [r for r in _sb_rels if r.get("source_table_id") == _tbl_int_id and r.get("source_column")]
+                    if _src_rels:
+                        _covered = {
+                            c["name"] for c in col_dicts
+                            if c.get("gql_object_type") and not c.get("gql_is_list", False)
+                            and any(r["source_column"].lower().startswith(c["name"].lower()) for r in _src_rels)
+                        }
+                        if _covered:
+                            col_dicts = [c for c in col_dicts if c["name"] not in _covered]
                 col_names = [c["name"] for c in col_dicts]
                 col_selections = [c.get("gql_selection", c["name"]) for c in col_dicts]
                 col_objs = [_GCol(name=c["name"], type=_GQL_TYPE_MAP.get(c.get("type", "text"), "string")) for c in col_dicts]

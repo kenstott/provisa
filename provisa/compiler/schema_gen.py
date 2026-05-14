@@ -300,49 +300,6 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
             continue
         col_meta = {m.column_name.lower(): m for m in si.column_types[table_id]}
 
-        # JSON blob columns (object_fields) are suppressed when an explicit relationship
-        # from this table covers the same type: source_column is a prefix of the blob
-        # column name AND the target table's columns overlap ≥50% with the blob's fields.
-        _rels_from = [
-            r
-            for r in si.relationships
-            if r.get("source_table_id") == table_id
-            and r.get("source_column")
-            and r.get("target_table_id")
-        ]
-        _covered_blob_cols: set[str] = set()
-        for _col in table["columns"]:
-            _raw_of = _col.get("object_fields")
-            if not _raw_of:
-                continue
-            _cname = _col["column_name"]
-            if isinstance(_raw_of, str):
-                import json as _jmod
-
-                try:
-                    _raw_of = _jmod.loads(_raw_of)
-                except Exception:
-                    continue
-            if not _raw_of:
-                continue
-            _blob_fields = {
-                (f["name"].lower() if isinstance(f, dict) else str(f).lower())
-                for f in _raw_of
-                if (isinstance(f, dict) and f.get("name")) or isinstance(f, str)
-            }
-            if not _blob_fields:
-                continue
-            for _rel in _rels_from:
-                if not _rel["source_column"].lower().startswith(_cname.lower()):
-                    continue
-                _tgt_cols = {
-                    m.column_name.lower()
-                    for m in (si.column_types.get(_rel["target_table_id"]) or [])
-                }
-                if _tgt_cols and len(_blob_fields & _tgt_cols) / len(_blob_fields) >= 0.5:
-                    _covered_blob_cols.add(_cname)
-                    break
-
         # Filter columns by role visibility; split native filter cols from regular cols
         # visible_to=[] means unrestricted (visible to all roles)
         visible_cols = [
@@ -350,7 +307,6 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
             for c in table["columns"]
             if (not c["visible_to"] or role["id"] in c["visible_to"])
             and not c.get("native_filter_type")
-            and c["column_name"] not in _covered_blob_cols
         ]
         # Native filter cols are API parameters (path/query params), not data columns.
         # They are always exposed as query args regardless of visible_to — the role
