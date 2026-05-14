@@ -42,14 +42,15 @@ dependencies = [
     "opentelemetry-instrumentation-pymongo",
     "opentelemetry-instrumentation-elasticsearch",
     "opentelemetry-instrumentation-grpc",
+    "buenavista>=0.5.0",
+    "duckdb",
 ]
 
 [project.optional-dependencies]
 mysql = ["aiomysql"]
 sqlserver = ["aioodbc"]
 oracle = ["oracledb"]
-duckdb = ["duckdb"]
-all-drivers = ["aiomysql", "aioodbc", "oracledb", "duckdb"]
+all-drivers = ["aiomysql", "aioodbc", "oracledb"]
 firebase = ["firebase-admin"]
 dev = [
     "pytest",

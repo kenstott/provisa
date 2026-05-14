@@ -1722,6 +1722,30 @@ async def lifespan(app: FastAPI):
     except Exception:
         _log.exception("Arrow Flight server startup failed")
 
+    # Start pgwire server
+    pgwire_port = int(os.environ.get("PROVISA_PGWIRE_PORT", "0"))
+    if pgwire_port:
+        try:
+            import ssl as _ssl
+            from provisa.pgwire.server import start_pgwire_server
+
+            _ssl_ctx: _ssl.SSLContext | None = None
+            _cert = os.environ.get("PROVISA_PGWIRE_CERT")
+            _key = os.environ.get("PROVISA_PGWIRE_KEY")
+            if _cert and _key:
+                _ssl_ctx = _ssl.SSLContext(_ssl.PROTOCOL_TLS_SERVER)
+                _ssl_ctx.load_cert_chain(_cert, _key)
+
+            start_pgwire_server(
+                host="0.0.0.0",
+                port=pgwire_port,
+                ssl_ctx=_ssl_ctx,
+                loop=asyncio.get_running_loop(),
+            )
+            _log.info("pgwire server listening on 0.0.0.0:%d (TLS=%s)", pgwire_port, _ssl_ctx is not None)
+        except Exception:
+            _log.exception("pgwire server startup failed")
+
     # Start Live Query Engine (Phase AM)
     try:
         from provisa.live.engine import LiveEngine
