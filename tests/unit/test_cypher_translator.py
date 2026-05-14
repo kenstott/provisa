@@ -20,28 +20,54 @@ from provisa.cypher.translator import cypher_to_sql, cypher_calls_to_sql_list
 def _make_label_map_multi_path() -> CypherLabelMap:
     """Label map with two 1-hop paths from Person to Company: WORKS_AT and MANAGES."""
     person_meta = NodeMapping(
-        label="Person", type_name="Person", domain_label=None, table_label="Person",
-        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="persons",
+        label="Person",
+        type_name="Person",
+        domain_label=None,
+        table_label="Person",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="persons",
         properties={"name": "name", "age": "age"},
     )
     company_meta = NodeMapping(
-        label="Company", type_name="Company", domain_label=None, table_label="Company",
-        table_id=2, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="companies",
+        label="Company",
+        type_name="Company",
+        domain_label=None,
+        table_label="Company",
+        table_id=2,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="companies",
         properties={"name": "name"},
     )
     rels = {
         "WORKS_AT": RelationshipMapping(
-            rel_type="WORKS_AT", source_label="Person", target_label="Company",
-            join_source_column="company_id", join_target_column="id", field_name="works_at",
+            rel_type="WORKS_AT",
+            source_label="Person",
+            target_label="Company",
+            join_source_column="company_id",
+            join_target_column="id",
+            field_name="works_at",
         ),
         "MANAGES": RelationshipMapping(
-            rel_type="MANAGES", source_label="Person", target_label="Company",
-            join_source_column="managed_company_id", join_target_column="id", field_name="manages",
+            rel_type="MANAGES",
+            source_label="Person",
+            target_label="Company",
+            join_source_column="managed_company_id",
+            join_target_column="id",
+            field_name="manages",
         ),
     }
-    return CypherLabelMap(nodes={"Person": person_meta, "Company": company_meta}, relationships=rels)
+    return CypherLabelMap(
+        nodes={"Person": person_meta, "Company": company_meta}, relationships=rels
+    )
 
 
 def _make_label_map(multi_source: bool = False, with_domains: bool = False) -> CypherLabelMap:
@@ -98,6 +124,7 @@ def _make_label_map(multi_source: bool = False, with_domains: bool = False) -> C
 # ---------------------------------------------------------------------------
 # Basic translation
 # ---------------------------------------------------------------------------
+
 
 def test_simple_match_return_name():
     lm = _make_label_map()
@@ -166,6 +193,7 @@ def test_graph_vars_populated_for_node_return():
     ast = parse_cypher("MATCH (n:Person) RETURN n")
     sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
     from provisa.cypher.translator import GraphVarKind
+
     assert "n" in graph_vars
     assert graph_vars["n"] == GraphVarKind.NODE
 
@@ -181,11 +209,7 @@ def test_inner_join_for_required_match():
 
 def test_union_produces_union_sql():
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (n:Person) RETURN n.name "
-        "UNION "
-        "MATCH (n:Person) RETURN n.name"
-    )
+    ast = parse_cypher("MATCH (n:Person) RETURN n.name UNION MATCH (n:Person) RETURN n.name")
     sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "UNION" in sql.upper()
@@ -213,11 +237,7 @@ def test_union_with_order_limit_applies_to_whole_union():
 
 def test_union_all_produces_union_all_sql():
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (n:Person) RETURN n.name "
-        "UNION ALL "
-        "MATCH (n:Person) RETURN n.name"
-    )
+    ast = parse_cypher("MATCH (n:Person) RETURN n.name UNION ALL MATCH (n:Person) RETURN n.name")
     sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "UNION ALL" in sql.upper()
@@ -226,6 +246,7 @@ def test_union_all_produces_union_all_sql():
 # ---------------------------------------------------------------------------
 # String / builtin function rewriting
 # ---------------------------------------------------------------------------
+
 
 def test_tolower_rewritten():
     lm = _make_label_map()
@@ -350,6 +371,7 @@ def test_cypher_calls_to_sql_list():
 # WITH / CTE translation
 # ---------------------------------------------------------------------------
 
+
 def test_with_produces_cte():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) WITH n.name AS nm RETURN nm")
@@ -361,12 +383,7 @@ def test_with_produces_cte():
 
 def test_with_where_filters_result():
     lm = _make_label_map()
-    ast = parse_cypher(
-        "MATCH (n:Person) "
-        "WITH n.name AS nm, n.age AS age "
-        "WHERE age > 30 "
-        "RETURN nm"
-    )
+    ast = parse_cypher("MATCH (n:Person) WITH n.name AS nm, n.age AS age WHERE age > 30 RETURN nm")
     sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "WITH" in sql.upper()
@@ -376,10 +393,7 @@ def test_with_where_filters_result():
 def test_with_pipes_into_second_match():
     lm = _make_label_map()
     ast = parse_cypher(
-        "MATCH (n:Person) "
-        "WITH n "
-        "MATCH (n)-[:WORKS_AT]->(c:Company) "
-        "RETURN n.name, c.name"
+        "MATCH (n:Person) WITH n MATCH (n)-[:WORKS_AT]->(c:Company) RETURN n.name, c.name"
     )
     sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
@@ -391,6 +405,7 @@ def test_with_pipes_into_second_match():
 # ---------------------------------------------------------------------------
 # List comprehension translation
 # ---------------------------------------------------------------------------
+
 
 def test_list_comp_map_only():
     lm = _make_label_map()
@@ -454,6 +469,7 @@ def test_single_comprehension():
 # RETURN DISTINCT
 # ---------------------------------------------------------------------------
 
+
 def test_return_distinct():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) RETURN DISTINCT n.name")
@@ -465,6 +481,7 @@ def test_return_distinct():
 # ---------------------------------------------------------------------------
 # Node metadata functions
 # ---------------------------------------------------------------------------
+
 
 def test_id_function():
     lm = _make_label_map()
@@ -498,6 +515,7 @@ def test_keys_function():
 # exists() / isEmpty()
 # ---------------------------------------------------------------------------
 
+
 def test_exists_function():
     lm = _make_label_map()
     ast = parse_cypher("MATCH (n:Person) WHERE exists(n.name) RETURN n.name")
@@ -519,6 +537,7 @@ def test_isempty_function():
 # ---------------------------------------------------------------------------
 # List scalar functions
 # ---------------------------------------------------------------------------
+
 
 def test_head_function():
     lm = _make_label_map()
@@ -558,6 +577,7 @@ def test_size_becomes_cardinality():
 # Domain label resolution
 # ---------------------------------------------------------------------------
 
+
 def test_domain_only_node_produces_union_all():
     lm = _make_label_map(with_domains=True)
     ast = parse_cypher("MATCH (n:Sales) RETURN n.name")
@@ -582,6 +602,7 @@ def test_type_and_domain_label_uses_type_table():
 # ---------------------------------------------------------------------------
 # shortestPath / allShortestPaths
 # ---------------------------------------------------------------------------
+
 
 def test_shortestpath_finds_direct_relationship():
     lm = _make_label_map()
@@ -636,9 +657,8 @@ def test_allshortestpaths_same_result_as_shortestpath():
 def test_shortestpath_no_path_raises():
     lm = _make_label_map()
     from provisa.cypher.translator import CypherTranslateError
-    ast = parse_cypher(
-        "MATCH p = shortestPath((a:Company)-[*..5]->(b:Company)) RETURN a.name"
-    )
+
+    ast = parse_cypher("MATCH p = shortestPath((a:Company)-[*..5]->(b:Company)) RETURN a.name")
     with pytest.raises(CypherTranslateError, match="No schema path"):
         cypher_to_sql(ast, lm, {})
 
@@ -697,6 +717,7 @@ def test_fully_unlabeled_match_produces_all_rels_union():
     sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     from provisa.cypher.translator import GraphVarKind
+
     assert graph_vars.get("n") == GraphVarKind.PASSTHROUGH
     assert graph_vars.get("r") == GraphVarKind.PASSTHROUGH
     assert graph_vars.get("m") == GraphVarKind.PASSTHROUGH
@@ -714,6 +735,7 @@ def test_anonymous_nodes_relationship_return_r():
     sql_ast, cols, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     from provisa.cypher.translator import GraphVarKind
+
     assert graph_vars.get("r") == GraphVarKind.EDGE
     assert "persons" in sql.lower()
     assert "companies" in sql.lower()
@@ -734,18 +756,35 @@ def test_anonymous_src_named_tgt_relationship():
 # Relationship alias tests (REQ-390, REQ-391)
 # ---------------------------------------------------------------------------
 
+
 def _make_label_map_with_alias() -> CypherLabelMap:
     """Label map where Employee-[WORKS_FOR]->Department uses an alias."""
     employee = NodeMapping(
-        label="Employee", type_name="Hr_Employee", domain_label="Hr", table_label="Employee",
-        table_id=10, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="hr", table_name="employees",
+        label="Employee",
+        type_name="Hr_Employee",
+        domain_label="Hr",
+        table_label="Employee",
+        table_id=10,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="hr",
+        table_name="employees",
         properties={"id": "id", "name": "name", "dept_id": "dept_id"},
     )
     dept = NodeMapping(
-        label="Department", type_name="Hr_Department", domain_label="Hr", table_label="Department",
-        table_id=11, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="hr", table_name="departments",
+        label="Department",
+        type_name="Hr_Department",
+        domain_label="Hr",
+        table_label="Department",
+        table_id=11,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="hr",
+        table_name="departments",
         properties={"id": "id", "name": "name"},
     )
     # WORKS_FOR is the alias; field_name in GraphQL is also "WORKS_FOR" after alias is applied
@@ -760,39 +799,72 @@ def _make_label_map_with_alias() -> CypherLabelMap:
     )
     rels = {"WORKS_FOR": rm}
     aliases = {"WORKS_FOR": [rm]}
-    return CypherLabelMap(nodes={"Employee": employee, "Department": dept},
-                          relationships=rels, aliases=aliases)
+    return CypherLabelMap(
+        nodes={"Employee": employee, "Department": dept}, relationships=rels, aliases=aliases
+    )
 
 
 def _make_label_map_shared_alias() -> CypherLabelMap:
     """Two source/target pairs sharing the same alias REPORTS_TO — triggers UNION ALL."""
     emp = NodeMapping(
-        label="Employee", type_name="Hr_Employee", domain_label="Hr", table_label="Employee",
-        table_id=20, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="hr", table_name="employees",
+        label="Employee",
+        type_name="Hr_Employee",
+        domain_label="Hr",
+        table_label="Employee",
+        table_id=20,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="hr",
+        table_name="employees",
         properties={"id": "id", "manager_id": "manager_id"},
     )
     mgr = NodeMapping(
-        label="Manager", type_name="Hr_Manager", domain_label="Hr", table_label="Manager",
-        table_id=21, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="hr", table_name="managers",
+        label="Manager",
+        type_name="Hr_Manager",
+        domain_label="Hr",
+        table_label="Manager",
+        table_id=21,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="hr",
+        table_name="managers",
         properties={"id": "id", "director_id": "director_id"},
     )
     director = NodeMapping(
-        label="Director", type_name="Hr_Director", domain_label="Hr", table_label="Director",
-        table_id=22, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="hr", table_name="directors",
+        label="Director",
+        type_name="Hr_Director",
+        domain_label="Hr",
+        table_label="Director",
+        table_id=22,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="hr",
+        table_name="directors",
         properties={"id": "id"},
     )
     rm1 = RelationshipMapping(
-        rel_type="REPORTS_TO", source_label="Employee", target_label="Manager",
-        join_source_column="manager_id", join_target_column="id",
-        field_name="REPORTS_TO", alias="REPORTS_TO",
+        rel_type="REPORTS_TO",
+        source_label="Employee",
+        target_label="Manager",
+        join_source_column="manager_id",
+        join_target_column="id",
+        field_name="REPORTS_TO",
+        alias="REPORTS_TO",
     )
     rm2 = RelationshipMapping(
-        rel_type="REPORTS_TO", source_label="Manager", target_label="Director",
-        join_source_column="director_id", join_target_column="id",
-        field_name="REPORTS_TO", alias="REPORTS_TO",
+        rel_type="REPORTS_TO",
+        source_label="Manager",
+        target_label="Director",
+        join_source_column="director_id",
+        join_target_column="id",
+        field_name="REPORTS_TO",
+        alias="REPORTS_TO",
     )
     rels = {"REPORTS_TO": rm2}  # last wins in single dict
     aliases = {"REPORTS_TO": [rm1, rm2]}
@@ -823,6 +895,7 @@ def test_shared_alias_produces_union_all():
 def test_unknown_rel_type_raises_error():
     """REQ-390: unknown relationship type raises CypherTranslateError."""
     from provisa.cypher.translator import CypherTranslateError
+
     lm = _make_label_map_with_alias()
     ast = parse_cypher("MATCH (e:Employee)-[:UNKNOWN_REL]->(d:Department) RETURN e.name")
     with pytest.raises(CypherTranslateError, match="Unknown relationship type or alias"):
@@ -832,17 +905,31 @@ def test_unknown_rel_type_raises_error():
 def _make_label_map_product_reviews() -> CypherLabelMap:
     """Label map for PRODUCT_CATALOG__PRODUCT_REVIEWS relationship."""
     product = NodeMapping(
-        label="PRODUCT_CATALOG__PRODUCTS", type_name="PRODUCT_CATALOG__PRODUCTS",
-        domain_label="PRODUCT_CATALOG", table_label="PRODUCTS",
-        table_id=30, source_id="pg-main", id_column="product_id", pk_columns=[],
-        catalog_name="postgresql", schema_name="product_catalog", table_name="products",
+        label="PRODUCT_CATALOG__PRODUCTS",
+        type_name="PRODUCT_CATALOG__PRODUCTS",
+        domain_label="PRODUCT_CATALOG",
+        table_label="PRODUCTS",
+        table_id=30,
+        source_id="pg-main",
+        id_column="product_id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="product_catalog",
+        table_name="products",
         properties={"product_id": "product_id", "name": "name"},
     )
     review = NodeMapping(
-        label="PRODUCT_CATALOG__PRODUCT_REVIEWS", type_name="PRODUCT_CATALOG__PRODUCT_REVIEWS",
-        domain_label="PRODUCT_CATALOG", table_label="PRODUCT_REVIEWS",
-        table_id=31, source_id="pg-main", id_column="review_id", pk_columns=[],
-        catalog_name="postgresql", schema_name="product_catalog", table_name="product_reviews",
+        label="PRODUCT_CATALOG__PRODUCT_REVIEWS",
+        type_name="PRODUCT_CATALOG__PRODUCT_REVIEWS",
+        domain_label="PRODUCT_CATALOG",
+        table_label="PRODUCT_REVIEWS",
+        table_id=31,
+        source_id="pg-main",
+        id_column="review_id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="product_catalog",
+        table_name="product_reviews",
         properties={"review_id": "review_id", "product_id": "product_id", "rating": "rating"},
     )
     rel = RelationshipMapping(
@@ -867,9 +954,7 @@ def test_path_returns_start_end_and_relationship():
     """MATCH p = ()-[r:PRODUCT_CATALOG__PRODUCT_REVIEWS]->() RETURN p LIMIT 25
     should produce SQL joining source and target tables and include both node columns."""
     lm = _make_label_map_product_reviews()
-    ast = parse_cypher(
-        "MATCH p = ()-[r:PRODUCT_CATALOG__PRODUCT_REVIEWS]->() RETURN p LIMIT 25"
-    )
+    ast = parse_cypher("MATCH p = ()-[r:PRODUCT_CATALOG__PRODUCT_REVIEWS]->() RETURN p LIMIT 25")
     sql_ast, _, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "products" in sql.lower()
@@ -881,6 +966,7 @@ def test_path_returns_start_end_and_relationship():
 # Compound domain:table label (e.g. MATCH (n:Support:SupportTickets) RETURN n)
 # This is the format generated by the sidebar label pill click in the UI.
 # ---------------------------------------------------------------------------
+
 
 def _make_label_map_compound() -> CypherLabelMap:
     """Label map with a domain-scoped node: Support_SupportTickets."""
@@ -1068,18 +1154,35 @@ def test_from_schema_table_label_physical_table_map():
 # Cross-domain traversal_only enforcement (REQ-441)
 # ---------------------------------------------------------------------------
 
+
 def _make_cross_domain_label_map() -> CypherLabelMap:
     """Label map with one owned node (Sales domain) and one traversal_only cross-domain node."""
     orders = NodeMapping(
-        label="Sales:Orders", type_name="Sales_Orders", domain_label="Sales",
-        table_label="Orders", table_id=1, source_id="pg", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="sales", table_name="orders",
+        label="Sales:Orders",
+        type_name="Sales_Orders",
+        domain_label="Sales",
+        table_label="Orders",
+        table_id=1,
+        source_id="pg",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="sales",
+        table_name="orders",
         properties={"id": "id", "amount": "amount"},
     )
     shipments = NodeMapping(
-        label="Logistics:Shipments", type_name="Logistics_Shipments", domain_label="Logistics",
-        table_label="Shipments", table_id=2, source_id="pg2", id_column="shipment_id", pk_columns=[],
-        catalog_name="postgresql", schema_name="logistics", table_name="shipments",
+        label="Logistics:Shipments",
+        type_name="Logistics_Shipments",
+        domain_label="Logistics",
+        table_label="Shipments",
+        table_id=2,
+        source_id="pg2",
+        id_column="shipment_id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="logistics",
+        table_name="shipments",
         properties={"shipmentId": "shipment_id", "status": "status"},
         traversal_only=True,
     )
@@ -1106,6 +1209,7 @@ def _make_cross_domain_label_map() -> CypherLabelMap:
 def test_traversal_only_node_as_start_raises():
     """Starting a MATCH on a traversal_only (cross-domain) node must raise CypherTranslateError."""
     from provisa.cypher.translator import CypherTranslateError
+
     lm = _make_cross_domain_label_map()
     ast = parse_cypher("MATCH (s:Logistics:Shipments) RETURN s.status")
     with pytest.raises(CypherTranslateError, match="domain outside your access"):
@@ -1150,15 +1254,13 @@ def test_camel_prop_in_return_rewrites_to_sql_col():
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert '"breed_name"' in sql
-    assert "breedname" not in sql.lower().replace('"breed_name"', '')
+    assert "breedname" not in sql.lower().replace('"breed_name"', "")
 
 
 def test_camel_prop_in_return_after_with_uses_cte_alias():
     """After a WITH clause, RETURN a.breedName must reference the CTE camelCase alias."""
     lm = _make_label_map_camel()
-    ast = parse_cypher(
-        "MATCH (a:Dog) WITH a.breedName AS breedName RETURN breedName"
-    )
+    ast = parse_cypher("MATCH (a:Dog) WITH a.breedName AS breedName RETURN breedName")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "breedName" in sql or "breedname" in sql.lower()
@@ -1228,15 +1330,31 @@ def test_source_constant_emits_literal_not_column():
 def _make_string_source_constant_label_map() -> CypherLabelMap:
     """Label map simulating (Pets)-[:HAS_QUERIES]->(Queries) with source_constant='pets'."""
     pets = NodeMapping(
-        label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
-        table_id=10, source_id="ps", id_column="id", pk_columns=[],
-        catalog_name="ps", schema_name="pet_store", table_name="pets",
+        label="Pets",
+        type_name="Pets",
+        domain_label=None,
+        table_label="Pets",
+        table_id=10,
+        source_id="ps",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="ps",
+        schema_name="pet_store",
+        table_name="pets",
         properties={"id": "id", "name": "name"},
     )
     queries = NodeMapping(
-        label="Queries", type_name="Queries", domain_label=None, table_label="Queries",
-        table_id=99, source_id="ops", id_column="span_id", pk_columns=[],
-        catalog_name="otel", schema_name="signals", table_name="queries",
+        label="Queries",
+        type_name="Queries",
+        domain_label=None,
+        table_label="Queries",
+        table_id=99,
+        source_id="ops",
+        id_column="span_id",
+        pk_columns=[],
+        catalog_name="otel",
+        schema_name="signals",
+        table_name="queries",
         properties={"spanId": "span_id", "tableName": "table_name"},
     )
     rel = RelationshipMapping(
@@ -1259,9 +1377,7 @@ def _make_string_source_constant_label_map() -> CypherLabelMap:
 def test_string_source_constant_emits_string_literal():
     """source_constant as str must emit a quoted string literal, not a number or column reference."""
     lm = _make_string_source_constant_label_map()
-    ast = parse_cypher(
-        "MATCH (a:Pets)-[:HAS_QUERIES]->(c:Queries) RETURN a.name, c.spanId"
-    )
+    ast = parse_cypher("MATCH (a:Pets)-[:HAS_QUERIES]->(c:Queries) RETURN a.name, c.spanId")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "table_name" not in sql or "'pets'" in sql, (
@@ -1279,32 +1395,64 @@ def _make_multi_source_has_table_label_map() -> CypherLabelMap:
     be is_bwd=True and emit b."__table_id__" as a physical column).
     """
     pets = NodeMapping(
-        label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
-        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="pets",
+        label="Pets",
+        type_name="Pets",
+        domain_label=None,
+        table_label="Pets",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="pets",
         properties={"id": "id", "name": "name"},
     )
     breeds = NodeMapping(
-        label="Breeds", type_name="Breeds", domain_label=None, table_label="Breeds",
-        table_id=2, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="breeds",
+        label="Breeds",
+        type_name="Breeds",
+        domain_label=None,
+        table_label="Breeds",
+        table_id=2,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="breeds",
         properties={"id": "id", "name": "name"},
     )
     rt = NodeMapping(
-        label="RegisteredTables", type_name="RegisteredTables", domain_label=None,
-        table_label="RegisteredTables", table_id=42, source_id="meta", id_column="id",
-        pk_columns=[], catalog_name="meta", schema_name="meta",
-        table_name="registered_tables", properties={"id": "id", "alias": "alias"},
+        label="RegisteredTables",
+        type_name="RegisteredTables",
+        domain_label=None,
+        table_label="RegisteredTables",
+        table_id=42,
+        source_id="meta",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="meta",
+        schema_name="meta",
+        table_name="registered_tables",
+        properties={"id": "id", "alias": "alias"},
     )
     has_table_pets = RelationshipMapping(
-        rel_type="HAS_TABLE", source_label="Pets", target_label="RegisteredTables",
-        join_source_column="__table_id__", join_target_column="id",
-        field_name="_meta", source_constant=1,
+        rel_type="HAS_TABLE",
+        source_label="Pets",
+        target_label="RegisteredTables",
+        join_source_column="__table_id__",
+        join_target_column="id",
+        field_name="_meta",
+        source_constant=1,
     )
     has_table_breeds = RelationshipMapping(
-        rel_type="HAS_TABLE", source_label="Breeds", target_label="RegisteredTables",
-        join_source_column="__table_id__", join_target_column="id",
-        field_name="_meta", source_constant=2,
+        rel_type="HAS_TABLE",
+        source_label="Breeds",
+        target_label="RegisteredTables",
+        join_source_column="__table_id__",
+        join_target_column="id",
+        field_name="_meta",
+        source_constant=2,
     )
     # Breeds entry is FIRST in aliases — this is what triggers the bug in production
     return CypherLabelMap(
@@ -1314,7 +1462,9 @@ def _make_multi_source_has_table_label_map() -> CypherLabelMap:
             "HAS_TABLE::Breeds→RegisteredTables": has_table_breeds,
         },
         nodes_by_table={
-            "Pets": ["Pets"], "Breeds": ["Breeds"], "RegisteredTables": ["RegisteredTables"],
+            "Pets": ["Pets"],
+            "Breeds": ["Breeds"],
+            "RegisteredTables": ["RegisteredTables"],
         },
         aliases={"HAS_TABLE": [has_table_breeds, has_table_pets]},  # Breeds first!
     )
@@ -1345,6 +1495,7 @@ def test_multi_source_has_table_picks_correct_mapping():
 # Regression #47: CALL subquery lateral variables must be qualified in outer RETURN
 # ---------------------------------------------------------------------------
 
+
 def test_call_subquery_return_var_qualified_with_lateral_alias():
     """Regression #47: CALL { WITH n ... RETURN ... AS c_list } must render outer SELECT's
     bare `c_list` reference as `_call0."c_list"` so Trino can resolve the scoped column.
@@ -1359,7 +1510,7 @@ def test_call_subquery_return_var_qualified_with_lateral_alias():
     sql = sql_ast.sql(dialect="trino")
     # The outer SELECT must reference c_list via the lateral alias
     assert '_call0."c_list"' in sql, (
-        f"Regression #47: outer SELECT must use _call0.\"c_list\", not bare c_list: {sql}"
+        f'Regression #47: outer SELECT must use _call0."c_list", not bare c_list: {sql}'
     )
 
 
@@ -1375,7 +1526,7 @@ def test_call_subquery_list_comprehension_qualified():
     sql = sql_ast.sql(dialect="trino")
     # The transform() first arg must be _call0."c_list"
     assert '_call0."c_list"' in sql, (
-        f"Regression #47: list comprehension must use _call0.\"c_list\": {sql}"
+        f'Regression #47: list comprehension must use _call0."c_list": {sql}'
     )
 
 
@@ -1410,34 +1561,87 @@ def test_call_subquery_multiple_calls_distinct_lateral_aliases():
     )
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    assert '_call0."c_list"' in sql, f"Expected _call0.\"c_list\": {sql}"
-    assert '_call1."f_list"' in sql, f"Expected _call1.\"f_list\": {sql}"
+    assert '_call0."c_list"' in sql, f'Expected _call0."c_list": {sql}'
+    assert '_call1."f_list"' in sql, f'Expected _call1."f_list": {sql}'
 
 
 def _make_label_map_with_traversal_only() -> CypherLabelMap:
     """Label map with a traversal-only node for regression #47 production path."""
     pets_meta = NodeMapping(
-        label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
-        table_id=1, source_id="pg-main", id_column="id", pk_columns=[],
-        catalog_name="postgresql", schema_name="public", table_name="pets",
+        label="Pets",
+        type_name="Pets",
+        domain_label=None,
+        table_label="Pets",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="pets",
         properties={"name": "name", "id": "id"},
     )
     traces_meta = NodeMapping(
-        label="Ops_Traces", type_name="Ops_Traces", domain_label="Ops",
-        table_label="Traces", table_id=99, source_id="ops",
-        id_column="span_id", pk_columns=[],
-        catalog_name="ops", schema_name="ops", table_name="spans",
+        label="Ops_Traces",
+        type_name="Ops_Traces",
+        domain_label="Ops",
+        table_label="Traces",
+        table_id=99,
+        source_id="ops",
+        id_column="span_id",
+        pk_columns=[],
+        catalog_name="ops",
+        schema_name="ops",
+        table_name="spans",
         properties={"serviceName": "service_name", "spanId": "span_id"},
         traversal_only=True,
     )
     has_traces_rel = RelationshipMapping(
-        rel_type="HAS_TRACES", source_label="Pets", target_label="Ops_Traces",
-        join_source_column="id", join_target_column="pet_id", field_name="_traces",
+        rel_type="HAS_TRACES",
+        source_label="Pets",
+        target_label="Ops_Traces",
+        join_source_column="id",
+        join_target_column="pet_id",
+        field_name="_traces",
     )
     return CypherLabelMap(
         nodes={"Pets": pets_meta, "Ops_Traces": traces_meta},
         relationships={"HAS_TRACES": has_traces_rel},
     )
+
+
+def _make_label_map_camel_props() -> CypherLabelMap:
+    """Label map where Cypher property names differ from SQL column names (camelCase vs snake_case)."""
+    pet_meta = NodeMapping(
+        label="Pets",
+        type_name="Pets",
+        domain_label=None,
+        table_label="Pets",
+        table_id=1,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="public",
+        table_name="pets",
+        properties={"breedName": "breed_name", "petName": "pet_name"},
+    )
+    return CypherLabelMap(nodes={"Pets": pet_meta}, relationships={})
+
+
+def test_return_prop_without_alias_uses_cypher_name_not_sql_column():
+    """Regression #53: RETURN a.breedName with no alias must produce AS breedName,
+    not the SQL column name breed_name."""
+    lm = _make_label_map_camel_props()
+    ast = parse_cypher("MATCH (a:Pets) RETURN a.breedName LIMIT 10")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "breedName" in sql, f"Expected breedName alias in SQL: {sql}"
+    assert (
+        "breed_name AS breedName" in sql
+        or 'breed_name" AS "breedName"' in sql
+        or "breedName" in sql
+    ), f"Expected breedName (Cypher name) as column alias, got: {sql}"
 
 
 def test_call_subquery_traversal_only_node_collect_slice_qualified():
@@ -1455,5 +1659,5 @@ def test_call_subquery_traversal_only_node_collect_slice_qualified():
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert '_call0."d_list"' in sql, (
-        f"Regression #47 production: outer SELECT must use _call0.\"d_list\", not bare d_list: {sql}"
+        f'Regression #47 production: outer SELECT must use _call0."d_list", not bare d_list: {sql}'
     )

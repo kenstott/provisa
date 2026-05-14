@@ -25,7 +25,8 @@ from provisa.cypher.parser import ReturnClause
 
 def _is_bare_variable(text: str) -> bool:
     import re
-    return bool(re.match(r'^[A-Za-z_]\w*$', text))
+
+    return bool(re.match(r"^[A-Za-z_]\w*$", text))
 
 
 class SelectBuilderMixin:
@@ -92,10 +93,12 @@ class SelectBuilderMixin:
             exprs = []
             for prop_name, col_name in nm.properties.items():
                 exprs.append(exp.Literal.string(prop_name))
-                exprs.append(exp.Column(
-                    this=exp.Identifier(this=col_name, quoted=True),
-                    table=exp.Identifier(this=alias),
-                ))
+                exprs.append(
+                    exp.Column(
+                        this=exp.Identifier(this=col_name, quoted=True),
+                        table=exp.Identifier(this=alias),
+                    )
+                )
             return exp.Anonymous(this="JSON_OBJECT", expressions=exprs)
 
         start_node = exp.Anonymous(
@@ -129,13 +132,20 @@ class SelectBuilderMixin:
         return exp.Anonymous(
             this="JSON_OBJECT",
             expressions=[
-                exp.Literal.string("identity"), identity,
-                exp.Literal.string("start"), src_id_col,
-                exp.Literal.string("end"), tgt_id_col,
-                exp.Literal.string("type"), exp.Literal.string(rel_type),
-                exp.Literal.string("properties"), empty_props,
-                exp.Literal.string("startNode"), start_node,
-                exp.Literal.string("endNode"), end_node,
+                exp.Literal.string("identity"),
+                identity,
+                exp.Literal.string("start"),
+                src_id_col,
+                exp.Literal.string("end"),
+                tgt_id_col,
+                exp.Literal.string("type"),
+                exp.Literal.string(rel_type),
+                exp.Literal.string("properties"),
+                empty_props,
+                exp.Literal.string("startNode"),
+                start_node,
+                exp.Literal.string("endNode"),
+                end_node,
             ],
         )
 
@@ -174,9 +184,12 @@ class SelectBuilderMixin:
         return exp.Anonymous(
             this="JSON_OBJECT",
             expressions=[
-                exp.Literal.string("start"), src_id,
-                exp.Literal.string("end"), tgt_id,
-                exp.Literal.string("length"), length_val,
+                exp.Literal.string("start"),
+                src_id,
+                exp.Literal.string("end"),
+                tgt_id,
+                exp.Literal.string("length"),
+                length_val,
             ],
         )
 
@@ -191,10 +204,12 @@ class SelectBuilderMixin:
             props_exprs: list[exp.Expression] = []
             for prop_name, col_name in nm.properties.items():
                 props_exprs.append(exp.Literal.string(prop_name))
-                props_exprs.append(exp.Column(
-                    this=exp.Identifier(this=col_name, quoted=True),
-                    table=exp.Identifier(this=alias),
-                ))
+                props_exprs.append(
+                    exp.Column(
+                        this=exp.Identifier(this=col_name, quoted=True),
+                        table=exp.Identifier(this=alias),
+                    )
+                )
             props = exp.Anonymous(this="JSON_OBJECT", expressions=props_exprs)
             id_col = exp.Column(
                 this=exp.Identifier(this=nm.id_column, quoted=True),
@@ -212,7 +227,14 @@ class SelectBuilderMixin:
                 ],
             )
 
-        def _edge_obj(rel_type: str, src_alias: str, src_nm: "NodeMapping", tgt_alias: str, tgt_nm: "NodeMapping", is_reversed: bool = False) -> exp.Expression:
+        def _edge_obj(
+            rel_type: str,
+            src_alias: str,
+            src_nm: "NodeMapping",
+            tgt_alias: str,
+            tgt_nm: "NodeMapping",
+            is_reversed: bool = False,
+        ) -> exp.Expression:
             src_id_col = exp.Column(
                 this=exp.Identifier(this=src_nm.id_column, quoted=True),
                 table=exp.Identifier(this=src_alias),
@@ -246,13 +268,20 @@ class SelectBuilderMixin:
             return exp.Anonymous(
                 this="JSON_OBJECT",
                 expressions=[
-                    exp.Literal.string("identity"), identity,
-                    exp.Literal.string("type"), exp.Literal.string(rel_type),
-                    exp.Literal.string("start"), src_id_cast,
-                    exp.Literal.string("end"), tgt_id_cast,
-                    exp.Literal.string("startNode"), _node_obj(src_alias, src_nm),
-                    exp.Literal.string("endNode"), _node_obj(tgt_alias, tgt_nm),
-                    exp.Literal.string("properties"), exp.Anonymous(this="JSON_OBJECT", expressions=[]),
+                    exp.Literal.string("identity"),
+                    identity,
+                    exp.Literal.string("type"),
+                    exp.Literal.string(rel_type),
+                    exp.Literal.string("start"),
+                    src_id_cast,
+                    exp.Literal.string("end"),
+                    tgt_id_cast,
+                    exp.Literal.string("startNode"),
+                    _node_obj(src_alias, src_nm),
+                    exp.Literal.string("endNode"),
+                    _node_obj(tgt_alias, tgt_nm),
+                    exp.Literal.string("properties"),
+                    exp.Anonymous(this="JSON_OBJECT", expressions=[]),
                 ],
             )
 
@@ -262,19 +291,25 @@ class SelectBuilderMixin:
         )
         edges_array = exp.Anonymous(
             this="JSON_ARRAY",
-            expressions=[_edge_obj(rt, sa, snm, ta, tnm, rev) for rt, sa, snm, ta, tnm, rev in step_edges],
+            expressions=[
+                _edge_obj(rt, sa, snm, ta, tnm, rev) for rt, sa, snm, ta, tnm, rev in step_edges
+            ],
         )
         return exp.Anonymous(
             this="JSON_OBJECT",
             expressions=[
-                exp.Literal.string("nodes"), nodes_array,
-                exp.Literal.string("edges"), edges_array,
-                exp.Literal.string("length"), exp.Literal.number(len(step_edges)),
+                exp.Literal.string("nodes"),
+                nodes_array,
+                exp.Literal.string("edges"),
+                edges_array,
+                exp.Literal.string("length"),
+                exp.Literal.number(len(step_edges)),
             ],
         )
 
     def _build_select(self, return_clause: ReturnClause) -> list[exp.Expression]:
         from provisa.cypher.translator import GraphVarKind  # avoid circular at module level
+
         exprs: list[exp.Expression] = []
         for item in return_clause.items:
             expr_text = item.expression.strip()
@@ -309,13 +344,19 @@ class SelectBuilderMixin:
                 continue
 
             # Bare relationship variable: RETURN r
-            if _is_bare_variable(expr_text) and hasattr(self, "_rel_var_types") and expr_text in self._rel_var_types:
+            if (
+                _is_bare_variable(expr_text)
+                and hasattr(self, "_rel_var_types")
+                and expr_text in self._rel_var_types
+            ):
                 self._graph_vars[alias or expr_text] = GraphVarKind.EDGE
                 endpoints = getattr(self, "_rel_var_endpoints", {}).get(expr_text)
                 if endpoints:
                     src_alias, src_nm, tgt_alias, tgt_nm = endpoints
                     rel_type = self._rel_var_types[expr_text]
-                    edge_expr = self._build_edge_object(rel_type, src_alias, src_nm, tgt_alias, tgt_nm)
+                    edge_expr = self._build_edge_object(
+                        rel_type, src_alias, src_nm, tgt_alias, tgt_nm
+                    )
                 else:
                     edge_expr = exp.Null()
                 out = alias or expr_text
@@ -355,6 +396,21 @@ class SelectBuilderMixin:
             if alias:
                 exprs.append(exp.alias_(parsed, alias))
             else:
-                exprs.append(parsed)
+                # For var.prop without an explicit alias, use the canonical Cypher
+                # property name from NodeMapping (the naming authority) so the SQL
+                # column name never leaks into results.
+                import re as _re
+
+                _prop_m = _re.match(r"^([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)$", expr_text.strip())
+                _cypher_alias: str | None = None
+                if _prop_m:
+                    _var, _prop = _prop_m.group(1), _prop_m.group(2)
+                    _info = self._var_table.get(_var)
+                    if _info and _info[1] and _prop in _info[1].properties:
+                        _cypher_alias = _prop
+                if _cypher_alias:
+                    exprs.append(exp.alias_(parsed, _cypher_alias))
+                else:
+                    exprs.append(parsed)
 
         return exprs
