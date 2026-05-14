@@ -7,6 +7,7 @@
 Applies RLS, column visibility, masking, and LIMIT ceiling to raw SQL
 using SQLGlot. Input: plain SQL string. Output: governed SQL string.
 """
+
 from __future__ import annotations
 
 import re
@@ -15,14 +16,16 @@ from dataclasses import dataclass, field
 import sqlglot
 import sqlglot.expressions as exp
 
+from provisa.compiler.cte_utils import physical_tables
 from provisa.compiler.rls import _qualify_filter
 from provisa.compiler.sql_gen import CompilationContext
-from provisa.security.masking import MaskingRule, build_mask_expression
+from provisa.security.masking import build_mask_expression
 
 
 # --------------------------------------------------------------------------- #
 # GovernanceContext                                                            #
 # --------------------------------------------------------------------------- #
+
 
 @dataclass
 class GovernanceContext:
@@ -45,6 +48,7 @@ class GovernanceContext:
 # --------------------------------------------------------------------------- #
 # Builder                                                                     #
 # --------------------------------------------------------------------------- #
+
 
 def build_governance_context(
     role_id: str,
@@ -100,6 +104,7 @@ def build_governance_context(
 
     # table_map from compilation context — physical and semantic refs
     from provisa.compiler.naming import domain_to_sql_name
+
     for meta in ctx.tables.values():
         key_full = f"{meta.schema_name}.{meta.table_name}"
         key_short = meta.table_name
@@ -128,7 +133,7 @@ def build_governance_context(
 # Helpers                                                                     #
 # --------------------------------------------------------------------------- #
 
-_LIMIT_RE = re.compile(r'\bLIMIT\s+(\d+)', re.IGNORECASE)
+_LIMIT_RE = re.compile(r"\bLIMIT\s+(\d+)", re.IGNORECASE)
 
 
 def _table_id_for_node(table_node: exp.Table, gov_ctx: GovernanceContext) -> int | None:
@@ -157,6 +162,7 @@ def _get_tables_from_select(
     Does NOT recurse into subqueries — inner tables inside UNION ALL / derived
     tables are governed when their own SELECT node is visited.
     """
+
     def _is_inside_subquery(node: exp.Expression) -> bool:
         current = node.parent
         while current is not None and current is not select_node:
@@ -186,6 +192,7 @@ def _alias_for(table_node: exp.Table) -> str:
 # --------------------------------------------------------------------------- #
 # Core governance transformer                                                 #
 # --------------------------------------------------------------------------- #
+
 
 def _govern_select(node: exp.Select, gov_ctx: GovernanceContext) -> exp.Select:
     """Apply visibility, masking, and RLS to one SELECT node."""
@@ -347,6 +354,7 @@ def _expand_star(
 # Public API                                                                  #
 # --------------------------------------------------------------------------- #
 
+
 def apply_governance(sql: str, gov_ctx: GovernanceContext) -> str:
     """Apply governance (RLS, masking, visibility, LIMIT) to raw SQL.
 
@@ -378,7 +386,7 @@ def _apply_limit_ceiling(sql: str, ceiling: int) -> str:
     if m:
         existing = int(m.group(1))
         if existing > ceiling:
-            return sql[:m.start()] + f"LIMIT {ceiling}" + sql[m.end():]
+            return sql[: m.start()] + f"LIMIT {ceiling}" + sql[m.end() :]
         return sql
     sql = sql.rstrip().rstrip(";")
     return f"{sql} LIMIT {ceiling}"
@@ -399,7 +407,7 @@ def extract_sources(
         return set()
 
     sources: set[str] = set()
-    for tbl in tree.find_all(exp.Table):
+    for tbl in physical_tables(tree):
         name = tbl.name
         db = tbl.db
         full = f"{db}.{name}" if db else name
@@ -407,7 +415,6 @@ def extract_sources(
         tid = gov_ctx.table_map.get(full) or gov_ctx.table_map.get(name)
         if tid is None:
             continue
-        # Find source_id from ctx
         for meta in ctx.tables.values():
             if meta.table_id == tid:
                 sources.add(meta.source_id)

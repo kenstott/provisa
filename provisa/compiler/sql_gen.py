@@ -717,6 +717,14 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:
             orig_nl = meta.original_table_name.lower()
             by_name.setdefault(orig_nl, []).append((meta.schema_name, meta.table_name))
             by_schema_name[(sl, orig_nl)] = (meta.schema_name, meta.table_name)
+        # Map domain-name schema variant → physical (e.g. "shelter"."shelter__animal_breeds" → "graphql_remote"."shelter__animal_breeds")
+        if meta.domain_id:
+            from provisa.compiler.naming import domain_to_sql_name
+            domain_sl = domain_to_sql_name(meta.domain_id).lower()
+            if domain_sl != sl:
+                by_schema_name[(domain_sl, nl)] = (meta.schema_name, meta.table_name)
+                if meta.original_table_name:
+                    by_schema_name[(domain_sl, orig_nl)] = (meta.schema_name, meta.table_name)
 
     try:
         tree = sqlglot.parse_one(sql, read="postgres")
