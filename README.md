@@ -58,7 +58,43 @@ GraphQL, Cypher, and SQL are all first-class over federated data — something n
 - **Hasura v2 / DDN import** — Convert Hasura v2 metadata or DDN supergraph YAML to Provisa config
 - **Apollo Federation** — Expose Provisa as an Apollo Federation v2 subgraph
 
-## Quick Start
+## Security Model
+
+Provisa enforces a multi-layered security model across every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, WebSocket). Governance is applied uniformly — there is no query path that bypasses it.
+
+The layers apply in order. A request must clear each layer before the next is evaluated.
+
+### Layer 0 — Introspection filtering
+
+The schema and catalog presented to a role contain only the tables in its `domain_access` list and the columns that pass per-column `visible_to` rules. Objects outside a role's access are invisible at discovery time — they cannot be queried, autocompleted, or inferred to exist. This applies to the GraphQL schema, SQL catalog, and the query editor's schema browser.
+
+### Layer 1 — Public access
+
+Tables in domains with no `domain_access` restriction are visible to all authenticated identities with no additional configuration. Zero friction for genuinely public data.
+
+### Layer 2 — Domain access
+
+Each role carries a `domain_access` list of domain IDs. A query that touches a table outside those domains is rejected before execution. This is the coarse ownership boundary — an HR role cannot reach finance tables regardless of how the SQL is written.
+
+### Layer 3 — Row-level security
+
+After domain access is confirmed, per-table, per-role `WHERE` predicates are injected into every `SELECT` at execution time. The predicates evaluate against raw data. A regional manager querying a shared orders table sees only their region's rows even on a `SELECT *`.
+
+### Layer 4 — Column visibility and masking
+
+Columns with a `visible_to` list that excludes the requesting role are stripped from query output. Columns with a masking rule have their values replaced — regex redaction, constant replacement, or truncation — before results leave the server. Masking applies in all query languages and output formats.
+
+### Layer 5 — Predicate guard
+
+Masked columns are rejected from `WHERE` and `HAVING` clauses. Without this, a caller could infer the unmasked value by binary-searching it in a filter even though the output is masked. Rejection is enforced at query parse time, before execution.
+
+### Relationship governance
+
+JOIN conditions in SQL must match a registered, approved relationship between tables. Unapproved joins are rejected. Each relationship carries a human-readable reason and description — guidance for both users and autonomous agents about why a traversal path exists. This is governance policy, not a hard security boundary: Layers 2–5 hold regardless of join structure, so a deliberate circumvention does not expose data the role could not reach through two separate approved queries. Circumvention attempts are logged and auditable.
+
+---
+
+These layers compose. A role with domain access, RLS, and masked columns has all five constraints active simultaneously. Adding a new data source, column, or relationship does not require updating every rule — each layer is configured independently and applies automatically to any query that touches governed objects.
 
 ### macOS
 1. Download the DMG from the [releases page](https://github.com/kenstott/provisa/releases/latest)
