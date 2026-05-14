@@ -11,10 +11,59 @@
 
 """Create demo Parquet and SQLite files for file-based source demo."""
 
+import datetime
+import ipaddress
+import os
 import sqlite3
 from pathlib import Path
 
 HERE = Path(__file__).parent
+CONFIG_DIR = HERE.parent.parent / "config"
+
+
+def create_pgwire_cert() -> None:
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    cert_path = CONFIG_DIR / "pgwire.crt"
+    key_path = CONFIG_DIR / "pgwire.key"
+    if cert_path.exists() and key_path.exists():
+        print(f"pgwire cert already exists at {cert_path}")
+        return
+
+    hostname = os.environ.get("PGWIRE_HOSTNAME", "localhost")
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, hostname)])
+    san = x509.SubjectAlternativeName(
+        [x509.DNSName(hostname), x509.IPAddress(ipaddress.IPv4Address("127.0.0.1"))]
+    )
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(subject)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now)
+        .not_valid_after(now + datetime.timedelta(days=3650))
+        .add_extension(san, critical=False)
+        .sign(key, hashes.SHA256())
+    )
+
+    key_path.write_bytes(
+        key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.TraditionalOpenSSL,
+            serialization.NoEncryption(),
+        )
+    )
+    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    key_path.chmod(0o600)
+    print(f"Created pgwire cert for '{hostname}' at {cert_path}")
 
 
 def create_products_parquet() -> None:
@@ -24,31 +73,90 @@ def create_products_parquet() -> None:
     data = {
         "id": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
         "sku": [
-            "WIDGET-A", "WIDGET-B", "GADGET-X", "GADGET-Y", "TOOL-1",
-            "TOOL-2", "PART-100", "PART-200", "BUNDLE-S", "BUNDLE-M",
-            "BUNDLE-L", "ADDON-A", "ADDON-B", "SERVICE-M", "SERVICE-Y",
+            "WIDGET-A",
+            "WIDGET-B",
+            "GADGET-X",
+            "GADGET-Y",
+            "TOOL-1",
+            "TOOL-2",
+            "PART-100",
+            "PART-200",
+            "BUNDLE-S",
+            "BUNDLE-M",
+            "BUNDLE-L",
+            "ADDON-A",
+            "ADDON-B",
+            "SERVICE-M",
+            "SERVICE-Y",
         ],
         "name": [
-            "Widget Alpha", "Widget Beta", "Gadget X", "Gadget Y", "Power Tool 1",
-            "Power Tool 2", "Spare Part 100", "Spare Part 200", "Starter Bundle",
-            "Medium Bundle", "Large Bundle", "Add-on A", "Add-on B",
-            "Monthly Service", "Yearly Service",
+            "Widget Alpha",
+            "Widget Beta",
+            "Gadget X",
+            "Gadget Y",
+            "Power Tool 1",
+            "Power Tool 2",
+            "Spare Part 100",
+            "Spare Part 200",
+            "Starter Bundle",
+            "Medium Bundle",
+            "Large Bundle",
+            "Add-on A",
+            "Add-on B",
+            "Monthly Service",
+            "Yearly Service",
         ],
         "category": [
-            "Widgets", "Widgets", "Gadgets", "Gadgets", "Tools",
-            "Tools", "Parts", "Parts", "Bundles", "Bundles",
-            "Bundles", "Add-ons", "Add-ons", "Services", "Services",
+            "Widgets",
+            "Widgets",
+            "Gadgets",
+            "Gadgets",
+            "Tools",
+            "Tools",
+            "Parts",
+            "Parts",
+            "Bundles",
+            "Bundles",
+            "Bundles",
+            "Add-ons",
+            "Add-ons",
+            "Services",
+            "Services",
         ],
         "price": [
-            9.99, 14.99, 49.99, 79.99, 199.99,
-            249.99, 4.99, 7.49, 29.99, 59.99,
-            99.99, 19.99, 24.99, 9.99, 89.99,
+            9.99,
+            14.99,
+            49.99,
+            79.99,
+            199.99,
+            249.99,
+            4.99,
+            7.49,
+            29.99,
+            59.99,
+            99.99,
+            19.99,
+            24.99,
+            9.99,
+            89.99,
         ],
         "stock": [500, 350, 120, 80, 45, 30, 1000, 750, 200, 150, 75, 400, 300, 0, 0],
         "active": [
-            True, True, True, True, True,
-            True, True, True, True, True,
-            True, True, True, True, True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
         ],
     }
 
@@ -197,4 +305,5 @@ if __name__ == "__main__":
     create_products_parquet()
     create_orders_sqlite()
     create_inquiries_sqlite()
+    create_pgwire_cert()
     print("Done.")
