@@ -42,13 +42,10 @@ def _const_literal(v: int | str) -> exp.Expression:
 
 from provisa.cypher.parser import (
     CypherAST,
-    CallSubquery,
     MatchClause,
     MatchStep,
-    NodePattern,
     PathPattern,
     PathFunction,
-    ReturnClause,
     ReturnItem,
     UnwindClause,
     WhereClause,
@@ -63,7 +60,7 @@ from provisa.cypher.select_builder import SelectBuilderMixin
 from provisa.cypher.correlated_call import CorrelatedCallMixin
 from provisa.cypher.subquery_exprs import SubqueryExprsMixin
 from provisa.cypher.map_projection import MapProjectionMixin
-from provisa.cypher.group_by import GroupByMixin, _has_aggregate
+from provisa.cypher.group_by import GroupByMixin
 
 
 class GraphVarKind(str, Enum):

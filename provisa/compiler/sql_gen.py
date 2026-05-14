@@ -660,10 +660,14 @@ def _semantic_table_ref(meta: TableMeta) -> str:
 
 
 def _apply_replacements(sql: str, replacements: dict[str, str]) -> str:
-    """Apply replacements to sql, longest match first."""
-    for key in sorted(replacements, key=len, reverse=True):
-        sql = sql.replace(key, replacements[key])
-    return sql
+    """Apply replacements to sql, longest match first (single-pass, no substring clobbering)."""
+    if not replacements:
+        return sql
+    keys_sorted = sorted(replacements, key=len, reverse=True)
+    import re as _re
+
+    pattern = _re.compile("|".join(_re.escape(k) for k in keys_sorted))
+    return pattern.sub(lambda m: replacements[m.group(0)], sql)
 
 
 def make_semantic_sql(sql: str, ctx: CompilationContext) -> str:

@@ -1902,6 +1902,17 @@ async def lifespan(app: FastAPI):
                             ))
                         except Exception:
                             _log.warning("Failed to upsert shelter-assignments-to-pets", exc_info=True)
+                        try:
+                            await rel_repo.upsert(_rel_conn, Relationship(
+                                id="shelter-assignments-to-employees",
+                                source_table_id="shelter__assignments",
+                                target_table_id="shelter__employees",
+                                source_column="employeeId",
+                                target_column="id",
+                                cardinality=Cardinality("many-to-one"),
+                            ))
+                        except Exception:
+                            _log.warning("Failed to upsert shelter-assignments-to-employees", exc_info=True)
                 _log.info(
                     "Auto-registered graphql-demo source (%d tables, %d functions)",
                     len(tables), len(functions),

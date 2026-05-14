@@ -546,6 +546,7 @@ export function SqlPage() {
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
   const [copied, setCopied] = useState(false);
+  const [copiedResults, setCopiedResults] = useState(false);
   const [sorts, setSorts] = useState<{ col: string; dir: "asc" | "desc" }[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
@@ -784,6 +785,16 @@ export function SqlPage() {
     const a = document.createElement("a");
     a.href = url; a.download = "results.csv"; a.click();
     URL.revokeObjectURL(url);
+  }, [displayRows, resultColumns, resultRows]);
+
+  const handleCopyResults = useCallback(() => {
+    const cols = resultColumns.length > 0 ? resultColumns : Object.keys(resultRows[0] ?? {});
+    const lines = [cols.join("\t")];
+    for (const row of displayRows) lines.push(cols.map((c) => (row[c] == null ? "" : String(row[c]))).join("\t"));
+    navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      setCopiedResults(true);
+      setTimeout(() => setCopiedResults(false), 1500);
+    });
   }, [displayRows, resultColumns, resultRows]);
 
   interface ColumnProfile {
@@ -1284,6 +1295,14 @@ export function SqlPage() {
                               style={{ fontSize: "0.72rem", padding: "0.15rem 0.45rem", background: "none", border: "1px solid var(--border)", borderRadius: "3px", color: "var(--text-muted)", cursor: "pointer" }}
                             >
                               ↓ CSV
+                            </button>
+                            <button
+                              onClick={handleCopyResults}
+                              title="Copy results as TSV"
+                              style={{ fontSize: "0.72rem", padding: "0.15rem 0.45rem", background: "none", border: "1px solid var(--border)", borderRadius: "3px", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.25rem" }}
+                            >
+                              {copiedResults ? <Check size={11} style={{ color: "var(--approve)" }} /> : <Copy size={11} />}
+                              {copiedResults ? "Copied" : "Copy"}
                             </button>
                             <span>{displayRows.length} row{displayRows.length !== 1 ? "s" : ""}{displayRows.length < resultRows.length ? ` (filtered from ${resultRows.length})` : ""}</span>
                             <div style={{ flex: 1 }} />
