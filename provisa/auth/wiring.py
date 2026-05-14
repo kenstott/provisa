@@ -25,9 +25,11 @@ def build_auth_provider(auth_config: dict, db_pool=None) -> AuthProvider:
     provider_name = auth_config["provider"]
     if provider_name == "basic":
         from provisa.auth.providers.basic import BasicAuthProvider
+
         return BasicAuthProvider(db_pool=db_pool)
     if provider_name == "simple":
         from provisa.auth.providers.simple import SimpleAuthProvider
+
         simple_cfg = auth_config.get("simple", {})
         jwt_secret = auth_config.get("jwt_secret", "")
         if jwt_secret.startswith("${env:"):
@@ -39,12 +41,15 @@ def build_auth_provider(auth_config: dict, db_pool=None) -> AuthProvider:
         )
     if provider_name == "firebase":
         from provisa.auth.providers.firebase import FirebaseAuthProvider
+
         return FirebaseAuthProvider(auth_config.get("firebase", {}))
     if provider_name == "keycloak":
         from provisa.auth.providers.keycloak import KeycloakAuthProvider
+
         return KeycloakAuthProvider(auth_config.get("keycloak", {}))
     if provider_name == "oauth":
         from provisa.auth.providers.oauth import OAuthProvider
+
         return OAuthProvider(auth_config.get("oauth", {}))
     raise ValueError(f"Unknown auth provider: {provider_name!r}")
 
@@ -59,11 +64,15 @@ def wire_auth(app: FastAPI, auth_config: dict | None, db_pool=None) -> None:
     default_role = auth_config.get("default_role", "analyst")
 
     from provisa.api.app import state as _app_state
+
     cfg = getattr(_app_state, "config", None)
     multitenancy = getattr(cfg, "multitenancy", False) if cfg else False
     default_org_id = getattr(cfg, "default_org_id", "root") if cfg else "root"
 
+    _app_state.auth_middleware_active = True
+
     from provisa.auth.middleware import AuthMiddleware
+
     app.add_middleware(
         AuthMiddleware,
         provider=provider,
@@ -79,5 +88,6 @@ def wire_auth(app: FastAPI, auth_config: dict | None, db_pool=None) -> None:
     # Mount simple auth login route when provider=simple
     if auth_config["provider"] == "simple":
         from provisa.auth.providers import simple as simple_mod
+
         simple_mod._provider_instance = provider
         app.include_router(simple_mod.router)

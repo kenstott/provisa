@@ -221,9 +221,16 @@ def _build_catalog_db(role_id: str, state):
     all_cols: list[tuple] = []
 
     if ctx:
+        seen_table_ids: set[int] = set()
         for _, tm in ctx.tables.items():
-            cat = tm.catalog_name or "provisa"
-            sch = tm.schema_name or "public"
+            if tm.table_id in seen_table_ids:
+                continue
+            seen_table_ids.add(tm.table_id)
+            cat = "provisa"
+            from provisa.compiler.naming import domain_to_sql_name
+
+            raw_schema = tm.domain_id or tm.schema_name or "public"
+            sch = domain_to_sql_name(raw_schema)
             tname = tm.table_name
             toid = _oid
             _oid += 1

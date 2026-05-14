@@ -169,16 +169,21 @@ See [docs/integrations.md](docs/integrations.md) for Tableau and Power BI setup 
 
 Provisa speaks the PostgreSQL wire protocol on port 5439. Any client that can connect to Postgres connects to Provisa — no driver, no adapter, no changes to existing tooling.
 
-```bash
-# psql
-psql -h localhost -p 5439 -U alice
+**The PostgreSQL username selects the Provisa role.** With `provider: none` (trust mode), the password is ignored and any configured role name is accepted as the username — connect as `analyst`, `admin`, or any role to see that role's governed view of the data. With `provider: simple`, the password is bcrypt-validated. Other providers (`firebase`, `keycloak`, `oauth`) are not supported over pgwire.
 
-# asyncpg (Python)
-conn = await asyncpg.connect(host="localhost", port=5439, user="alice", password="secret")
+```bash
+# psql — connect as analyst role
+psql -h localhost -p 5439 -U analyst
+
+# psql — connect as admin role
+psql -h localhost -p 5439 -U admin
+
+# asyncpg (Python) — role = username, password ignored in trust mode
+conn = await asyncpg.connect(host="localhost", port=5439, user="analyst", password="x")
 rows = await conn.fetch("SELECT id, amount FROM orders WHERE region = 'west'")
 
 # SQLAlchemy
-engine = create_engine("postgresql+psycopg2://alice:secret@localhost:5439/provisa")
+engine = create_engine("postgresql+psycopg2://analyst:x@localhost:5439/provisa")
 
 # pandas
 df = pd.read_sql("SELECT * FROM orders", engine)

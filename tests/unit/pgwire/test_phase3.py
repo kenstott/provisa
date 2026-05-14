@@ -72,6 +72,7 @@ def _make_ctx_with_fk():
     dogs_tm.table_name = "dogs"
     dogs_tm.schema_name = "public"
     dogs_tm.catalog_name = "provisa"
+    dogs_tm.domain_id = "public"
     dogs_tm.table_id = 1
     dogs_tm.type_name = "Dog"
 
@@ -79,6 +80,7 @@ def _make_ctx_with_fk():
     breeds_tm.table_name = "breeds"
     breeds_tm.schema_name = "public"
     breeds_tm.catalog_name = "provisa"
+    breeds_tm.domain_id = "public"
     breeds_tm.table_id = 2
     breeds_tm.type_name = "Breed"
 
@@ -123,6 +125,8 @@ def _make_state(ctx=None):
             ],
         }
     }
+    state.auth_config = {"provider": "simple"}
+    state.auth_middleware_active = True
     return state
 
 
@@ -252,6 +256,8 @@ def mock_state_p3():
     state = MagicMock()
     state.contexts = {"alice": ctx}
     state.schema_build_cache = {"column_types": {}}
+    state.auth_config = {"provider": "simple"}
+    state.auth_middleware_active = True
     return state
 
 
@@ -373,6 +379,8 @@ async def test_tls_connection():
     mc.tables = {}
     mock_state.contexts = {"alice": mc}
     mock_state.schema_build_cache = {"column_types": {}}
+    mock_state.auth_config = {"provider": "simple"}
+    mock_state.auth_middleware_active = True
 
     try:
         with (

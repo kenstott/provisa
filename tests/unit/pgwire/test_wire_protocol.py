@@ -82,6 +82,8 @@ def mock_state():
     state = MagicMock()
     state.contexts = {"alice": ctx}
     state.schema_build_cache = {"column_types": {}}
+    state.auth_config = {"provider": "simple"}
+    state.auth_middleware_active = True
     return state
 
 
@@ -126,6 +128,39 @@ async def test_wrong_password_raises(pgwire_server, mock_state):
                 password="wrong",
                 database="provisa",
             )
+
+
+@pytest.mark.asyncio
+async def test_none_provider_trust_mode(pgwire_server):
+    """provider=none: any username accepted, password ignored, username becomes role_id."""
+    port = pgwire_server
+    trust_state = MagicMock()
+    ctx = MagicMock()
+    ctx.tables = {}
+    trust_state.contexts = {"analyst": ctx}
+    trust_state.schema_build_cache = {"column_types": {}}
+    trust_state.auth_config = {"provider": "none"}
+    trust_state.auth_middleware_active = False
+
+    async def _stub_pipeline(sql, role_id):
+        from provisa.executor.trino import QueryResult as TrinoResult
+
+        return TrinoResult(rows=[(role_id,)], column_names=["role"])
+
+    with (
+        patch("provisa.api.app.state", trust_state),
+        patch("provisa.pgwire._pipeline.execute_pgwire_sql", _stub_pipeline),
+    ):
+        conn = await asyncpg.connect(
+            host="127.0.0.1",
+            port=port,
+            user="analyst",
+            password="ignored",
+            database="provisa",
+        )
+        row = await conn.fetchrow("SELECT 1")
+        await conn.close()
+    assert row is not None
 
 
 @pytest.mark.asyncio

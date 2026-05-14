@@ -249,6 +249,7 @@ start_backend() {
     GRAPHQL_DEMO_URL="http://localhost:4000/graphql"
     PROVISA_CONFIG="${PROVISA_CONFIG}"
     PROVISA_CONFIG_REPLACE="true"
+    PROVISA_PGWIRE_PORT=5439
   )
   if [ "$DEMO" = true ]; then
     _BACKEND_ENV+=(
@@ -347,6 +348,7 @@ if [ "$DEMO" = true ]; then
   echo "Provisa running (demo mode):"
   echo "  Backend: http://localhost:8000  (logs: tail -f $LOG_DIR/backend.log)"
   echo "  UI:      http://localhost:3000"
+  echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   echo ""
   echo "Demo sources:"
   echo "  - pet-store-pg       (PostgreSQL, pet_store schema)"
@@ -357,6 +359,7 @@ else
   echo "Provisa running (install mode):"
   echo "  Backend: http://localhost:8000  (logs: tail -f $LOG_DIR/backend.log)"
   echo "  UI:      http://localhost:3000"
+  echo "  pgwire:  postgresql://admin:ignored@localhost:5439/provisa  (username = role)"
   echo ""
   echo "No demo services started. Use --demo to include petstore-mock, graphql-demo, and SQLite ETL."
 fi

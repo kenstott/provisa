@@ -11,8 +11,12 @@ session functions) or forwarded through the Provisa governance pipeline to Trino
 
 - **TLS** — optional; server wraps the TCP socket with an `ssl.SSLContext` when `PROVISA_PGWIRE_CERT` and `PROVISA_PGWIRE_KEY`
   are set; SSL-request handshake (code 80877103) is handled in `ProvisaHandler.handle_startup` [tool-verified]
-- **Auth** — PG cleartext password (auth type 3); password is validated against bcrypt via `SimpleAuthProvider.login`;
-  failed auth sends a FATAL `28P01` error response [tool-verified: `server.py:handle_md5_password`]
+- **Auth** — PG cleartext password (auth type 3); two providers are supported at the pgwire layer:
+  `none` (trust mode) — the PG username is accepted as the Provisa role_id and the password is ignored,
+  allowing role selection by username with no credential setup;
+  `simple` — password validated via bcrypt (`SimpleAuthProvider.login`), failed auth sends FATAL `28P01`.
+  All other providers (`firebase`, `keycloak`, `oauth`, `basic`) are rejected with FATAL `28P01` since
+  they require token-based flows incompatible with the PG cleartext password protocol [tool-verified: `server.py:handle_md5_password`]
 - **Catalog intercept** — `classify()` routes `SET`, `SHOW`, `BEGIN`/`COMMIT`/`ROLLBACK`/`SAVEPOINT`/`RELEASE`,
   `information_schema.*`, `pg_catalog.*`, and scalar session functions to `catalog.answer()` backed by DuckDB [tool-verified: `catalog.py:classify`]
 - **Governance pipeline** — all other queries are forwarded to `execute_pgwire_sql()` which runs the full Provisa

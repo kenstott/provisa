@@ -271,6 +271,25 @@ class ProvisaHandler(BuenaVistaHandler):
         password = payload.decode("utf-8").rstrip("\x00")
         username = ctx.params.get("user", "")
 
+        from provisa.api.app import state
+
+        provider = (state.auth_config or {}).get("provider", "none")
+
+        if provider == "none" or not state.auth_middleware_active:
+            # Trust mode: username maps directly to role_id, password ignored.
+            ctx.session.role_id = username  # type: ignore[attr-defined]
+            self.send_authentication_ok()
+            self.handle_post_auth(ctx)
+            return
+
+        if provider != "simple":
+            self._send_pg_error(
+                "FATAL",
+                "28P01",
+                f"pgwire auth requires provider 'none' or 'simple'; configured: {provider!r}",
+            )
+            return
+
         from provisa.auth.providers.simple import _provider_instance as auth_provider
 
         if auth_provider is None:

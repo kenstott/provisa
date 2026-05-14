@@ -81,6 +81,7 @@ class AppState:
     source_cache: dict[str, dict] = {}  # source_id → {cache_enabled, cache_ttl}
     table_cache: dict[int, int | None] = {}  # table_id → cache_ttl
     auth_config: dict | None = None  # auth section from provisa.yaml
+    auth_middleware_active: bool = False  # True only when wire_auth installed AuthMiddleware
     api_endpoints: dict[str, object] = {}  # table_name → ApiEndpoint
     api_sources: dict[str, object] = {}  # source_id → ApiSource
     hot_manager: object | None = None  # HotTableManager
