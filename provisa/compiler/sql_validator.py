@@ -13,6 +13,10 @@ Rules:
   V005 – Masked columns must not appear in WHERE or HAVING clauses (prevents plaintext inference).
 
 Security model / layer responsibilities:
+  Layer 0 – Introspection filtering (schema_gen): the GraphQL schema, SQL catalog, and
+            column list exposed to a role contain only tables in its domain_access and
+            columns passing visible_to. Inaccessible objects are invisible at discovery
+            time — they cannot be queried, autocompleted, or inferred to exist.
   Layer 1 – Public access: all identities see data in domains with no access restriction.
   Layer 2 – Domain access (V001): gates which tables a role may query.
   Layer 3 – Row-level security (RLS): injected WHERE predicates (stage2) restrict which
