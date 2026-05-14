@@ -13,6 +13,7 @@ GraphQL, Cypher, and SQL are all first-class over federated data — something n
 - **GraphQL API** — Per-role schemas with field-level visibility, filtering, cursor-based pagination, and aggregate queries (`count`, `sum`, `avg`, `min`, `max`)
 - **Apollo APQ** — Automatic Persisted Queries; Redis-backed hash→query cache; zero client changes required
 - **Enum auto-detection** — Lookup tables below a configurable row threshold are exposed as GraphQL enum types
+- **PostgreSQL wire protocol (pgwire)** — Any PostgreSQL client (psql, DBeaver, asyncpg, SQLAlchemy, pandas `read_sql`) connects to Provisa on port 5439 as if it were a Postgres server. Full governance pipeline applies: domain access, RLS, column masking, and predicate guard. `pg_catalog` and `information_schema` queries are answered from an in-memory DuckDB catalog so schema browsers and BI tools work without a Trino round-trip. TLS optional.
 - **gRPC endpoint** — Auto-generated `.proto` from the registration model; streaming responses
 - **REST & JSON:API endpoints** — Auto-generated routes from approved queries; JSON:API includes pagination, relationships, and error objects
 - **Subscriptions** — Near-real-time change events over WebSocket, SSE, or Kafka; backends: PG native, MongoDB native, Debezium CDC, polling
@@ -60,7 +61,7 @@ GraphQL, Cypher, and SQL are all first-class over federated data — something n
 
 ## Security Model
 
-Provisa enforces a multi-layered security model across every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, WebSocket). Governance is applied uniformly — there is no query path that bypasses it.
+Provisa enforces a multi-layered security model across every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, pgwire, WebSocket). Governance is applied uniformly — there is no query path that bypasses it.
 
 The layers apply in order. A request must clear each layer before the next is evaluated.
 
@@ -163,6 +164,29 @@ Authenticate with your Provisa username and password — the server assigns your
 - **`catalog` mode** — full schema visible; use with catalog tools (Collibra, Atlan, DBeaver)
 
 See [docs/integrations.md](docs/integrations.md) for Tableau and Power BI setup steps.
+
+### PostgreSQL Wire Protocol (pgwire)
+
+Provisa speaks the PostgreSQL wire protocol on port 5439. Any client that can connect to Postgres connects to Provisa — no driver, no adapter, no changes to existing tooling.
+
+```bash
+# psql
+psql -h localhost -p 5439 -U alice
+
+# asyncpg (Python)
+conn = await asyncpg.connect(host="localhost", port=5439, user="alice", password="secret")
+rows = await conn.fetch("SELECT id, amount FROM orders WHERE region = 'west'")
+
+# SQLAlchemy
+engine = create_engine("postgresql+psycopg2://alice:secret@localhost:5439/provisa")
+
+# pandas
+df = pd.read_sql("SELECT * FROM orders", engine)
+```
+
+All queries run through the full governance pipeline — domain access, RLS, masking, and predicate guard apply exactly as they do for GraphQL and REST. Schema browsers (DBeaver, DataGrip, pgAdmin) work out of the box: `pg_catalog` and `information_schema` queries are answered from an in-memory catalog scoped to the role's domain access, so users see only the tables and columns they are permitted to query.
+
+TLS is enabled by setting `PROVISA_PGWIRE_CERT` and `PROVISA_PGWIRE_KEY`. The port is configurable via `PROVISA_PGWIRE_PORT` (default `5439`).
 
 ### Python Client
 
