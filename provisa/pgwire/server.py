@@ -29,7 +29,7 @@ import socketserver
 import ssl
 import struct
 import threading
-from typing import Iterator, List, Optional, Tuple
+from typing import Iterator, Optional, Tuple
 
 from buenavista.core import BVType, Connection, QueryResult as BVQueryResult, Session
 from buenavista.postgres import (
@@ -51,6 +51,30 @@ _TXN_TAG_RE = re.compile(
     r"^\s*(SET|BEGIN|START\s+TRANSACTION|COMMIT|ROLLBACK|DISCARD|RESET|DEALLOCATE|SAVEPOINT|RELEASE)\b",
     re.IGNORECASE,
 )
+
+
+def _pg_literal(v) -> str:
+    """Render a Python value as a safe PG literal string."""
+    if v is None:
+        return "NULL"
+    if isinstance(v, bool):
+        return "TRUE" if v else "FALSE"
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, (bytes, bytearray)):
+        return "E'\\\\x" + v.hex() + "'"
+    s = str(v)
+    return "'" + s.replace("'", "''") + "'"
+
+
+def _substitute_params(sql: str, params: list | None) -> str:
+    """Replace $1, $2, ... with literal values (highest index first to avoid $1 matching $10)."""
+    if not params:
+        return sql
+    result = sql
+    for i in range(len(params), 0, -1):
+        result = result.replace(f"${i}", _pg_literal(params[i - 1]))
+    return result
 
 
 def _tag_from_sql(sql: str) -> str:
@@ -104,8 +128,8 @@ class ProvisaQueryResult(BVQueryResult):
     def column(self, index: int) -> Tuple[str, BVType]:
         return (self._cols[index], self._types[index])
 
-    def rows(self) -> Iterator[List]:
-        return iter(self._rows)
+    def rows(self) -> Iterator[list]:
+        return iter(self._rows)  # type: ignore[return-value]
 
     def status(self) -> str:
         return self._status or "OK"
@@ -131,7 +155,7 @@ class ProvisaSession(Session):
     def execute_sql(self, sql: str, params=None) -> ProvisaQueryResult:
         from provisa.pgwire.catalog import answer, classify
 
-        stripped = sql.strip()
+        stripped = _substitute_params(sql.strip(), params)
         if classify(stripped) == "INTERCEPT":
             from provisa.api.app import state
 
@@ -198,7 +222,7 @@ class ProvisaHandler(BuenaVistaHandler):
         self.wfile.write(out)
         self.wfile.flush()
 
-    def handle_startup(self, conn: Connection) -> Optional[BVContext]:
+    def handle_startup(self, conn: Connection) -> Optional[BVContext]:  # type: ignore[override]
         msglen = self.r.read_uint32() - 4
         code = self.r.read_uint32()
         if code == 80877103:  # SSL request
@@ -217,10 +241,10 @@ class ProvisaHandler(BuenaVistaHandler):
         elif code == 80877102:  # Cancel request
             process_id = self.r.read_uint32()
             secret_key = self.r.read_uint32()
-            ctx = self.server.ctxts.get(process_id)
+            ctx = self.server.ctxts.get(process_id)  # type: ignore[attr-defined]
             if ctx and ctx.secret_key == secret_key:
-                self.server.conn.close_session(ctx.session)
-                del self.server.ctxts[ctx.process_id]
+                self.server.conn.close_session(ctx.session)  # type: ignore[attr-defined]
+                del self.server.ctxts[ctx.process_id]  # type: ignore[attr-defined]
             return None
         elif code == 196608:  # Protocol 3.0
             msg = [x.decode("utf-8") for x in self.r.read_bytes(msglen - 4).split(b"\x00")]
@@ -276,7 +300,7 @@ class ProvisaHandler(BuenaVistaHandler):
 
                 if req := Extension.check_json(stmt):
                     method = req.get("method")
-                    extension = self.server.extensions.get(method)
+                    extension = self.server.extensions.get(method)  # type: ignore[attr-defined]
                     if not extension:
                         raise Exception("Unknown method: " + str(method))
                     query_result = extension.apply(req.get("params"), ctx.session)

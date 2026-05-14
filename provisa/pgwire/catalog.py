@@ -24,7 +24,15 @@ log = logging.getLogger(__name__)
 
 _SET_RE = re.compile(r"^\s*SET\b", re.IGNORECASE)
 _SHOW_RE = re.compile(r"^\s*SHOW\b", re.IGNORECASE)
-_TXN_RE = re.compile(r"^\s*(BEGIN|COMMIT|ROLLBACK|DISCARD|RESET|DEALLOCATE)\b", re.IGNORECASE)
+_TXN_RE = re.compile(
+    r"^\s*(BEGIN|START\s+TRANSACTION|START|COMMIT|ROLLBACK|DISCARD|RESET|DEALLOCATE|SAVEPOINT|RELEASE)\b",
+    re.IGNORECASE,
+)
+
+_SCALAR_FN_RE = re.compile(
+    r"^\s*SELECT\s+(current_user|session_user|current_database\(\)|current_schema\(\)|version\(\)|pg_backend_pid\(\))\s*$",
+    re.IGNORECASE,
+)
 
 _INTERCEPT_SCHEMAS = frozenset({"information_schema", "pg_catalog"})
 
@@ -49,27 +57,28 @@ _TABLE_MAP: dict[tuple[str, str], str] = {
     ("pg_catalog", "pg_tables"): "_pg_tables",
     ("pg_catalog", "pg_stat_user_tables"): "_pg_stat_user_tables",
     ("pg_catalog", "pg_statio_user_tables"): "_pg_stat_user_tables",
+    ("pg_catalog", "pg_am"): "_pg_am",
 }
 
 _PG_TYPE_ROWS = [
     # (oid, typname, typnamespace, typlen, typtype, typcategory, typnotnull, typbasetype)
-    (16,   "bool",        11,  1,  "b", "B", False, 0),
-    (17,   "bytea",       11, -1,  "b", "U", False, 0),
-    (20,   "int8",        11,  8,  "b", "N", False, 0),
-    (21,   "int2",        11,  2,  "b", "N", False, 0),
-    (23,   "int4",        11,  4,  "b", "N", False, 0),
-    (25,   "text",        11, -1,  "b", "S", False, 0),
-    (114,  "json",        11, -1,  "b", "U", False, 0),
-    (700,  "float4",      11,  4,  "b", "N", False, 0),
-    (701,  "float8",      11,  8,  "b", "N", False, 0),
-    (1043, "varchar",     11, -1,  "b", "S", False, 0),
-    (1082, "date",        11,  4,  "b", "D", False, 0),
-    (1083, "time",        11,  8,  "b", "D", False, 0),
-    (1114, "timestamp",   11,  8,  "b", "D", False, 0),
-    (1184, "timestamptz", 11,  8,  "b", "D", False, 0),
-    (1700, "numeric",     11, -1,  "b", "N", False, 0),
-    (3802, "jsonb",       11, -1,  "b", "U", False, 0),
-    (2950, "uuid",        11, 16,  "b", "U", False, 0),
+    (16, "bool", 11, 1, "b", "B", False, 0),
+    (17, "bytea", 11, -1, "b", "U", False, 0),
+    (20, "int8", 11, 8, "b", "N", False, 0),
+    (21, "int2", 11, 2, "b", "N", False, 0),
+    (23, "int4", 11, 4, "b", "N", False, 0),
+    (25, "text", 11, -1, "b", "S", False, 0),
+    (114, "json", 11, -1, "b", "U", False, 0),
+    (700, "float4", 11, 4, "b", "N", False, 0),
+    (701, "float8", 11, 8, "b", "N", False, 0),
+    (1043, "varchar", 11, -1, "b", "S", False, 0),
+    (1082, "date", 11, 4, "b", "D", False, 0),
+    (1083, "time", 11, 8, "b", "D", False, 0),
+    (1114, "timestamp", 11, 8, "b", "D", False, 0),
+    (1184, "timestamptz", 11, 8, "b", "D", False, 0),
+    (1700, "numeric", 11, -1, "b", "N", False, 0),
+    (3802, "jsonb", 11, -1, "b", "U", False, 0),
+    (2950, "uuid", 11, 16, "b", "U", False, 0),
 ]
 
 _KNOWN_SETTINGS = {
@@ -136,10 +145,24 @@ def _trino_to_pg_oid(trino_type: str) -> int:
     }.get(t, 25)
 
 
+_SCALAR_NAMES = frozenset(
+    {
+        "current_user",
+        "session_user",
+        "current_database",
+        "current_schema",
+        "version",
+        "pg_backend_pid",
+    }
+)
+
+
 def classify(sql: str) -> str:
     """Return 'INTERCEPT' or 'PASS_THROUGH'."""
     stripped = sql.strip()
     if _SET_RE.match(stripped) or _SHOW_RE.match(stripped) or _TXN_RE.match(stripped):
+        return "INTERCEPT"
+    if _SCALAR_FN_RE.match(stripped):
         return "INTERCEPT"
     try:
         import sqlglot.expressions as exp
@@ -151,14 +174,23 @@ def classify(sql: str) -> str:
             if db in _INTERCEPT_SCHEMAS:
                 return "INTERCEPT"
         for func in tree.find_all(exp.Anonymous):
-            if "current_setting" in func.name.lower():
+            fn = func.name.lower()
+            if "current_setting" in fn:
+                return "INTERCEPT"
+            if fn in _SCALAR_NAMES:
+                return "INTERCEPT"
+        for col in tree.find_all(exp.Column):
+            if col.name.lower() in _SCALAR_NAMES:
+                return "INTERCEPT"
+        for node in tree.walk():
+            if type(node).__name__ in ("CurrentUser", "CurrentDatabase", "CurrentSchema"):
                 return "INTERCEPT"
     except Exception:
         pass
     return "PASS_THROUGH"
 
 
-def _build_catalog_db(role_id: str, state) -> "duckdb.DuckDBPyConnection":
+def _build_catalog_db(role_id: str, state):
     import duckdb
 
     db = duckdb.connect(":memory:")
@@ -233,16 +265,56 @@ def _build_catalog_db(role_id: str, state) -> "duckdb.DuckDBPyConnection":
         c, s, t = toid_map.get(toid, ("provisa", "public", ""))
         pg_type = _trino_to_pg_name(col_type)
         null_str = "YES" if is_nullable else "NO"
-        col_rows.append((
-            c, s, t, col_name, ordinal, None, null_str, pg_type,
-            None, None, None, None, None, None, None, None,
-            None, None, None, None, None, None, None, None, None,
-            None, None, pg_type, None, None, None, None, str(ordinal),
-            "NO", "NO", None, None, None, None, None, "NO",
-            "NEVER", None, "YES",
-        ))
+        col_rows.append(
+            (
+                c,
+                s,
+                t,
+                col_name,
+                ordinal,
+                None,
+                null_str,
+                pg_type,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                pg_type,
+                None,
+                None,
+                None,
+                None,
+                str(ordinal),
+                "NO",
+                "NO",
+                None,
+                None,
+                None,
+                None,
+                None,
+                "NO",
+                "NEVER",
+                None,
+                "YES",
+            )
+        )
     if col_rows:
-        db.executemany(f"INSERT INTO _is_columns VALUES ({','.join(['?']*44)})", col_rows)
+        db.executemany(f"INSERT INTO _is_columns VALUES ({','.join(['?'] * 44)})", col_rows)
 
     # information_schema.views (empty)
     db.execute("""CREATE TABLE _is_views (
@@ -254,7 +326,11 @@ def _build_catalog_db(role_id: str, state) -> "duckdb.DuckDBPyConnection":
     # pg_namespace
     db.execute("""CREATE TABLE _pg_namespace (
         oid INTEGER, nspname VARCHAR, nspowner INTEGER, nspacl VARCHAR)""")
-    ns_rows = [(11, "pg_catalog", 10, None), (12, "information_schema", 10, None), (2200, "public", 10, None)]
+    ns_rows = [
+        (11, "pg_catalog", 10, None),
+        (12, "information_schema", 10, None),
+        (2200, "public", 10, None),
+    ]
     extra_ns_oid = 2201
     seen_ns: set[str] = {"pg_catalog", "information_schema", "public"}
     for c, s, *_ in tables:
@@ -281,13 +357,45 @@ def _build_catalog_db(role_id: str, state) -> "duckdb.DuckDBPyConnection":
     for c, s, t, tid, toid in tables:
         ns_oid = _NS.get(s, 2200)
         natts = sum(1 for col in all_cols if col[0] == toid)
-        pg_class_rows.append((
-            toid, t, ns_oid, toid + 100000, 0, 10, 0, toid, 0, 0, 0.0, 0, 0,
-            False, False, "p", "r", natts, 0, False, False, False,
-            False, False, True, "d", False, 0, 0, 0, None, None, None,
-        ))
+        pg_class_rows.append(
+            (
+                toid,
+                t,
+                ns_oid,
+                toid + 100000,
+                0,
+                10,
+                0,
+                toid,
+                0,
+                0,
+                0.0,
+                0,
+                0,
+                False,
+                False,
+                "p",
+                "r",
+                natts,
+                0,
+                False,
+                False,
+                False,
+                False,
+                False,
+                True,
+                "d",
+                False,
+                0,
+                0,
+                0,
+                None,
+                None,
+                None,
+            )
+        )
     if pg_class_rows:
-        db.executemany(f"INSERT INTO _pg_class VALUES ({','.join(['?']*33)})", pg_class_rows)
+        db.executemany(f"INSERT INTO _pg_class VALUES ({','.join(['?'] * 33)})", pg_class_rows)
 
     # pg_attribute
     db.execute("""CREATE TABLE _pg_attribute (
@@ -301,13 +409,36 @@ def _build_catalog_db(role_id: str, state) -> "duckdb.DuckDBPyConnection":
     attr_rows = []
     for toid, col_name, col_type, is_nullable, ordinal in all_cols:
         pg_oid = _trino_to_pg_oid(col_type)
-        attr_rows.append((
-            toid, col_name, pg_oid, -1, -1, ordinal, 0, -1, -1,
-            False, "i", "x", not is_nullable, False, False,
-            "", "", False, True, 0, 0, None, None, None,
-        ))
+        attr_rows.append(
+            (
+                toid,
+                col_name,
+                pg_oid,
+                -1,
+                -1,
+                ordinal,
+                0,
+                -1,
+                -1,
+                False,
+                "i",
+                "x",
+                not is_nullable,
+                False,
+                False,
+                "",
+                "",
+                False,
+                True,
+                0,
+                0,
+                None,
+                None,
+                None,
+            )
+        )
     if attr_rows:
-        db.executemany(f"INSERT INTO _pg_attribute VALUES ({','.join(['?']*24)})", attr_rows)
+        db.executemany(f"INSERT INTO _pg_attribute VALUES ({','.join(['?'] * 24)})", attr_rows)
 
     # pg_type
     db.execute("""CREATE TABLE _pg_type (
@@ -320,18 +451,55 @@ def _build_catalog_db(role_id: str, state) -> "duckdb.DuckDBPyConnection":
         typalign VARCHAR, typstorage VARCHAR, typnotnull BOOLEAN,
         typbasetype INTEGER, typtypmod INTEGER, typndims INTEGER, typcollation INTEGER,
         typdefaultbin VARCHAR, typdefault VARCHAR, typacl VARCHAR)""")
-    db.executemany(f"INSERT INTO _pg_type VALUES ({','.join(['?']*31)})", [
-        (oid, name, ns, 10, ln, False, tt, cat, False, True, ",",
-         0, 0, 0, "-", "-", "-", "-", "-", "-", "-",
-         "i", "x", nn, base, -1, 0, 0, None, None, None)
-        for oid, name, ns, ln, tt, cat, nn, base in _PG_TYPE_ROWS
-    ])
+    db.executemany(
+        f"INSERT INTO _pg_type VALUES ({','.join(['?'] * 31)})",
+        [
+            (
+                oid,
+                name,
+                ns,
+                10,
+                ln,
+                False,
+                tt,
+                cat,
+                False,
+                True,
+                ",",
+                0,
+                0,
+                0,
+                "-",
+                "-",
+                "-",
+                "-",
+                "-",
+                "-",
+                "-",
+                "i",
+                "x",
+                nn,
+                base,
+                -1,
+                0,
+                0,
+                None,
+                None,
+                None,
+            )
+            for oid, name, ns, ln, tt, cat, nn, base in _PG_TYPE_ROWS
+        ],
+    )
 
     # pg_attrdef (empty)
-    db.execute("CREATE TABLE _pg_attrdef (oid INTEGER, adrelid INTEGER, adnum SMALLINT, adbin VARCHAR)")
+    db.execute(
+        "CREATE TABLE _pg_attrdef (oid INTEGER, adrelid INTEGER, adnum SMALLINT, adbin VARCHAR)"
+    )
 
     # pg_description (empty)
-    db.execute("CREATE TABLE _pg_description (objoid INTEGER, classoid INTEGER, objsubid INTEGER, description VARCHAR)")
+    db.execute(
+        "CREATE TABLE _pg_description (objoid INTEGER, classoid INTEGER, objsubid INTEGER, description VARCHAR)"
+    )
 
     # pg_index (empty)
     db.execute("""CREATE TABLE _pg_index (
@@ -376,7 +544,9 @@ def _build_catalog_db(role_id: str, state) -> "duckdb.DuckDBPyConnection":
     )
 
     # pg_auth_members (empty)
-    db.execute("CREATE TABLE _pg_auth_members (roleid INTEGER, member INTEGER, grantor INTEGER, admin_option BOOLEAN)")
+    db.execute(
+        "CREATE TABLE _pg_auth_members (roleid INTEGER, member INTEGER, grantor INTEGER, admin_option BOOLEAN)"
+    )
 
     # pg_database
     db.execute("""CREATE TABLE _pg_database (
@@ -395,18 +565,201 @@ def _build_catalog_db(role_id: str, state) -> "duckdb.DuckDBPyConnection":
         vartype VARCHAR, source VARCHAR, min_val VARCHAR, max_val VARCHAR,
         enumvals VARCHAR, boot_val VARCHAR, reset_val VARCHAR,
         sourcefile VARCHAR, sourceline INTEGER, pending_restart BOOLEAN)""")
-    db.executemany(f"INSERT INTO _pg_settings VALUES ({','.join(['?']*17)})", [
-        ("server_version", "14.0.provisa", None, "Preset Options", "Shows the server version.", None, "internal", "string", "default", None, None, None, "14.0.provisa", "14.0.provisa", None, None, False),
-        ("server_version_num", "140000", None, "Preset Options", "Shows the server version as an integer.", None, "internal", "integer", "default", None, None, None, "140000", "140000", None, None, False),
-        ("server_encoding", "UTF8", None, "Preset Options", "Sets the server character set encoding.", None, "internal", "string", "default", None, None, None, "UTF8", "UTF8", None, None, False),
-        ("client_encoding", "UTF8", None, "Client Connection Defaults", "Sets the client character set encoding.", None, "user", "string", "default", None, None, None, "SQL_ASCII", "UTF8", None, None, False),
-        ("DateStyle", "ISO, MDY", None, "Client Connection Defaults", "Sets the display format for date and time values.", None, "user", "string", "default", None, None, None, "ISO, MDY", "ISO, MDY", None, None, False),
-        ("TimeZone", "UTC", None, "Client Connection Defaults", "Sets the time zone for displaying and interpreting time stamps.", None, "user", "string", "default", None, None, None, "GMT", "UTC", None, None, False),
-        ("max_connections", "100", None, "Connections and Authentication", "Sets the maximum number of concurrent connections.", None, "postmaster", "integer", "default", "1", "262143", None, "100", "100", None, None, False),
-        ("standard_conforming_strings", "on", None, "Version and Platform Compatibility", "Causes strings to treat backslashes literally.", None, "user", "bool", "default", None, None, None, "on", "on", None, None, False),
-        ("integer_datetimes", "on", None, "Preset Options", "Datetimes are integer based.", None, "internal", "bool", "default", None, None, None, "on", "on", None, None, False),
-        ("IntervalStyle", "postgres", None, "Client Connection Defaults", "Sets the display format for interval values.", None, "user", "string", "default", None, None, None, "postgres", "postgres", None, None, False),
-    ])
+    db.executemany(
+        f"INSERT INTO _pg_settings VALUES ({','.join(['?'] * 17)})",
+        [
+            (
+                "server_version",
+                "14.0.provisa",
+                None,
+                "Preset Options",
+                "Shows the server version.",
+                None,
+                "internal",
+                "string",
+                "default",
+                None,
+                None,
+                None,
+                "14.0.provisa",
+                "14.0.provisa",
+                None,
+                None,
+                False,
+            ),
+            (
+                "server_version_num",
+                "140000",
+                None,
+                "Preset Options",
+                "Shows the server version as an integer.",
+                None,
+                "internal",
+                "integer",
+                "default",
+                None,
+                None,
+                None,
+                "140000",
+                "140000",
+                None,
+                None,
+                False,
+            ),
+            (
+                "server_encoding",
+                "UTF8",
+                None,
+                "Preset Options",
+                "Sets the server character set encoding.",
+                None,
+                "internal",
+                "string",
+                "default",
+                None,
+                None,
+                None,
+                "UTF8",
+                "UTF8",
+                None,
+                None,
+                False,
+            ),
+            (
+                "client_encoding",
+                "UTF8",
+                None,
+                "Client Connection Defaults",
+                "Sets the client character set encoding.",
+                None,
+                "user",
+                "string",
+                "default",
+                None,
+                None,
+                None,
+                "SQL_ASCII",
+                "UTF8",
+                None,
+                None,
+                False,
+            ),
+            (
+                "DateStyle",
+                "ISO, MDY",
+                None,
+                "Client Connection Defaults",
+                "Sets the display format for date and time values.",
+                None,
+                "user",
+                "string",
+                "default",
+                None,
+                None,
+                None,
+                "ISO, MDY",
+                "ISO, MDY",
+                None,
+                None,
+                False,
+            ),
+            (
+                "TimeZone",
+                "UTC",
+                None,
+                "Client Connection Defaults",
+                "Sets the time zone for displaying and interpreting time stamps.",
+                None,
+                "user",
+                "string",
+                "default",
+                None,
+                None,
+                None,
+                "GMT",
+                "UTC",
+                None,
+                None,
+                False,
+            ),
+            (
+                "max_connections",
+                "100",
+                None,
+                "Connections and Authentication",
+                "Sets the maximum number of concurrent connections.",
+                None,
+                "postmaster",
+                "integer",
+                "default",
+                "1",
+                "262143",
+                None,
+                "100",
+                "100",
+                None,
+                None,
+                False,
+            ),
+            (
+                "standard_conforming_strings",
+                "on",
+                None,
+                "Version and Platform Compatibility",
+                "Causes strings to treat backslashes literally.",
+                None,
+                "user",
+                "bool",
+                "default",
+                None,
+                None,
+                None,
+                "on",
+                "on",
+                None,
+                None,
+                False,
+            ),
+            (
+                "integer_datetimes",
+                "on",
+                None,
+                "Preset Options",
+                "Datetimes are integer based.",
+                None,
+                "internal",
+                "bool",
+                "default",
+                None,
+                None,
+                None,
+                "on",
+                "on",
+                None,
+                None,
+                False,
+            ),
+            (
+                "IntervalStyle",
+                "postgres",
+                None,
+                "Client Connection Defaults",
+                "Sets the display format for interval values.",
+                None,
+                "user",
+                "string",
+                "default",
+                None,
+                None,
+                None,
+                "postgres",
+                "postgres",
+                None,
+                None,
+                False,
+            ),
+        ],
+    )
 
     # pg_tables
     db.execute("""CREATE TABLE _pg_tables (
@@ -418,6 +771,22 @@ def _build_catalog_db(role_id: str, state) -> "duckdb.DuckDBPyConnection":
             "INSERT INTO _pg_tables VALUES (?,?,'provisa',NULL,FALSE,FALSE,FALSE,FALSE)",
             [(s, t) for c, s, t, tid, oid in tables],
         )
+
+    # pg_am (access methods)
+    db.execute("""CREATE TABLE _pg_am (
+        oid INTEGER, amname VARCHAR, amhandler VARCHAR, amtype VARCHAR)""")
+    db.executemany(
+        "INSERT INTO _pg_am VALUES (?,?,?,?)",
+        [
+            (2, "heap", "heap_tableam_handler", "t"),
+            (403, "btree", "bthandler", "i"),
+            (405, "hash", "hashhandler", "i"),
+            (783, "gist", "gisthandler", "i"),
+            (2742, "gin", "ginhandler", "i"),
+            (4000, "spgist", "spghandler", "i"),
+            (3580, "brin", "brinhandler", "i"),
+        ],
+    )
 
     # pg_stat_user_tables (empty stub)
     db.execute("""CREATE TABLE _pg_stat_user_tables (
@@ -432,7 +801,7 @@ def _build_catalog_db(role_id: str, state) -> "duckdb.DuckDBPyConnection":
     return db
 
 
-def _rewrite_for_duckdb(sql: str) -> str:
+def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
     """Rewrite catalog table refs for DuckDB and transpile from postgres dialect."""
     import sqlglot
     import sqlglot.expressions as exp
@@ -442,7 +811,7 @@ def _rewrite_for_duckdb(sql: str) -> str:
     except Exception:
         return sql
 
-    def _transform(node: exp.Expression) -> exp.Expression:
+    def _transform(node):
         if isinstance(node, exp.Table):
             db = node.db.lower() if node.db else ""
             name = node.name.lower() if node.name else ""
@@ -452,11 +821,21 @@ def _rewrite_for_duckdb(sql: str) -> str:
                 if node.alias:
                     new_tbl.set("alias", node.args.get("alias"))
                 return new_tbl
-        # Rewrite pg_get_expr → NULL
         if isinstance(node, exp.Anonymous):
             fn = node.name.lower()
             if "pg_get_expr" in fn or "pg_get_constraintdef" in fn or "pg_get_indexdef" in fn:
                 return exp.null()
+            if fn in ("current_user", "session_user"):
+                return exp.Literal.string(role_id)
+            if fn in ("current_database",):
+                return exp.Literal.string("provisa")
+            if fn == "version":
+                return exp.Literal.string("PostgreSQL 14.0 on Provisa")
+        if type(node).__name__ == "CurrentUser":
+            return exp.Literal.string(role_id)
+        if isinstance(node, exp.Column):
+            if node.name.lower() in ("current_user", "session_user"):
+                return exp.Literal.string(role_id)
         return node
 
     try:
@@ -470,7 +849,10 @@ def _handle_show(sql: str):
     """Answer SHOW commands without DuckDB."""
     from provisa.executor.trino import QueryResult
 
-    parts = sql.strip().rstrip(";").split()
+    normalized = sql.strip().rstrip(";")
+    if re.match(r"^\s*SHOW\s+TRANSACTION\s+ISOLATION\s+LEVEL\s*$", normalized, re.IGNORECASE):
+        return QueryResult(rows=[("read committed",)], column_names=["transaction_isolation"])
+    parts = normalized.split()
     if len(parts) < 2:
         return QueryResult(rows=[], column_names=[])
     setting = parts[1].lower()
@@ -479,6 +861,23 @@ def _handle_show(sql: str):
         return QueryResult(rows=rows, column_names=["name", "setting"])
     value = _KNOWN_SETTINGS.get(setting, "")
     return QueryResult(rows=[(value,)], column_names=[setting])
+
+
+def _handle_scalar(sql: str, role_id: str):
+    from provisa.executor.trino import QueryResult
+
+    s = sql.strip().lower()
+    if "current_user" in s or "session_user" in s:
+        return QueryResult(rows=[(role_id,)], column_names=["current_user"])
+    if "current_database" in s:
+        return QueryResult(rows=[("provisa",)], column_names=["current_database"])
+    if "version()" in s:
+        return QueryResult(rows=[("PostgreSQL 14.0 on Provisa",)], column_names=["version"])
+    if "current_schema()" in s:
+        return QueryResult(rows=[("public",)], column_names=["current_schema"])
+    if "pg_backend_pid()" in s:
+        return QueryResult(rows=[(0,)], column_names=["pg_backend_pid"])
+    return None
 
 
 def _handle_current_setting(sql: str):
@@ -493,18 +892,22 @@ def _handle_current_setting(sql: str):
     return QueryResult(rows=[(value,)], column_names=["current_setting"])
 
 
-def answer(sql: str, role_id: str, state) -> "QueryResult":
+def answer(sql: str, role_id: str, state):
     """Return a synthetic QueryResult for intercepted catalog/SET/SHOW queries."""
     from provisa.executor.trino import QueryResult
 
     stripped = sql.strip().rstrip(";")
-    upper = stripped.upper()
 
     if _TXN_RE.match(stripped) or _SET_RE.match(stripped):
         return QueryResult(rows=[], column_names=[])
 
     if _SHOW_RE.match(stripped):
         return _handle_show(stripped)
+
+    if _SCALAR_FN_RE.match(stripped):
+        result = _handle_scalar(stripped, role_id)
+        if result is not None:
+            return result
 
     if "current_setting" in stripped.lower():
         result = _handle_current_setting(stripped)
@@ -513,7 +916,7 @@ def answer(sql: str, role_id: str, state) -> "QueryResult":
 
     db = _build_catalog_db(role_id, state)
     try:
-        rewritten = _rewrite_for_duckdb(stripped)
+        rewritten = _rewrite_for_duckdb(stripped, role_id)
         log.debug("[CATALOG] rewritten: %s", rewritten[:200])
         cur = db.execute(rewritten)
         rows = [tuple(r) for r in cur.fetchall()]
