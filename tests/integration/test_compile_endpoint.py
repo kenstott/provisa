@@ -40,10 +40,15 @@ mutation CompileQuery($input: CompileQueryInput!) {
 """
 
 
-async def _compile(client: AsyncClient, query: str, role: str = "admin", variables: dict | None = None):
+async def _compile(
+    client: AsyncClient, query: str, role: str = "admin", variables: dict | None = None
+):
     resp = await client.post(
         "/admin/graphql",
-        json={"query": _COMPILE_MUTATION, "variables": {"input": {"query": query, "role": role, "variables": variables}}},
+        json={
+            "query": _COMPILE_MUTATION,
+            "variables": {"input": {"query": query, "role": role, "variables": variables}},
+        },
     )
     return resp
 
@@ -210,3 +215,68 @@ class TestCompileErrors:
         assert resp.status_code == 200
         body = resp.json()
         assert "errors" in body
+
+
+_COMPILE_MUTATION_WITH_FLAT = """
+mutation CompileQuery($input: CompileQueryInput!) {
+  compileQuery(input: $input) {
+    compiledCypher
+  }
+}
+"""
+
+
+async def _compile_cypher(client, query: str, flat_cypher: bool, role: str = "admin"):
+    resp = await client.post(
+        "/admin/graphql",
+        json={
+            "query": _COMPILE_MUTATION_WITH_FLAT,
+            "variables": {"input": {"query": query, "role": role, "flatCypher": flat_cypher}},
+        },
+    )
+    return resp
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio(loop_scope="session")
+class TestFlatCypherReturn:
+    """Regression: flat Cypher RETURN must expand fields as label__prop, not bare node alias.
+
+    Uses the live server (live_client) so no fixture config loading is needed —
+    the ps__pets → assignment relationship exists in the dev environment.
+    """
+
+    async def test_flat_cypher_no_bare_node_alias(self, live_client):
+        """flatCypher=True must not emit 'b AS assignment' — each field must be explicit."""
+        resp = await _compile_cypher(
+            live_client,
+            "{ ps__pets { name assignment { breedName } } }",
+            flat_cypher=True,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        cypher = body["data"]["compileQuery"][0]["compiledCypher"]
+        if not cypher:
+            pytest.skip("compiledCypher not produced for this query")
+        import re
+
+        bare = re.search(r"\b[a-z]\s+AS\s+\w+\b", cypher)
+        assert bare is None, f"RETURN must not use bare node alias: {cypher}"
+
+    async def test_flat_cypher_contains_per_field_paths(self, live_client):
+        """flatCypher=True must expand joined fields as node.prop AS label__prop."""
+        resp = await _compile_cypher(
+            live_client,
+            "{ ps__pets { name assignment { breedName } } }",
+            flat_cypher=True,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "errors" not in body, body.get("errors")
+        cypher = body["data"]["compileQuery"][0]["compiledCypher"]
+        if not cypher:
+            pytest.skip("compiledCypher not produced for this query")
+        assert "RETURN" in cypher
+        # Relationship fields must be expanded with per-field dotted paths
+        assert "." in cypher.split("RETURN")[-1], f"RETURN must use dotted paths: {cypher}"

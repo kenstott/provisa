@@ -790,3 +790,133 @@ class TestJsonAggChainedSubquery:
         assert bare is None, f"RETURN must not use bare node alias for assignment: {result}"
         # The map must include the selected fields
         assert "breedName" in result, f"breedName missing from RETURN map: {result}"
+
+
+class TestFlatReturnClause:
+    """Regression: flat=True (Include Fields [X] Aggregated [ ]) must emit per-property RETURN paths.
+
+    Bug: RETURN clause emitted 'b AS assignment' (bare node alias) instead of
+    expanding each field as 'b.breedName AS assignments__breedName'.
+    """
+
+    def _make_ctx_and_label_map(self):
+        pets_meta = _TableMeta(
+            table_id=1, field_name="shelter__pets", type_name="Pets",
+            source_id="shelter-db", catalog_name="shelter",
+            schema_name="shelter", table_name="pets",
+            domain_id="shelter",
+        )
+        assignments_meta = _TableMeta(
+            table_id=2, field_name="shelter__assignments", type_name="Assignments",
+            source_id="shelter-db", catalog_name="shelter",
+            schema_name="shelter", table_name="assignments",
+            domain_id="shelter",
+        )
+        employees_meta = _TableMeta(
+            table_id=3, field_name="shelter__employees", type_name="Employees",
+            source_id="shelter-db", catalog_name="shelter",
+            schema_name="shelter", table_name="employees",
+            domain_id="shelter",
+        )
+        ctx = _Ctx(
+            tables={
+                "shelter__pets": pets_meta,
+                "shelter__assignments": assignments_meta,
+                "shelter__employees": employees_meta,
+            },
+            aggregate_columns={
+                1: [("id", "integer"), ("name", "varchar"), ("breed_name", "varchar")],
+                2: [("id", "integer"), ("pet_id", "integer"), ("employee_id", "integer"), ("breed_name", "varchar")],
+                3: [("id", "integer"), ("last_name", "varchar")],
+            },
+        )
+        pets_node = NodeMapping(
+            label="Pets", type_name="Pets", domain_label=None, table_label="Pets",
+            table_id=1, source_id="shelter-db", id_column="id", pk_columns=[],
+            catalog_name="shelter", schema_name="shelter", table_name="pets",
+            properties={"id": "id", "name": "name", "breedName": "breed_name"},
+        )
+        assignments_node = NodeMapping(
+            label="Assignments", type_name="Assignments", domain_label=None,
+            table_label="Assignments", table_id=2, source_id="shelter-db",
+            id_column="id", pk_columns=[],
+            catalog_name="shelter", schema_name="shelter", table_name="assignments",
+            properties={"id": "id", "breedName": "breed_name"},
+        )
+        employees_node = NodeMapping(
+            label="Employees", type_name="Employees", domain_label=None,
+            table_label="Employees", table_id=3, source_id="shelter-db",
+            id_column="id", pk_columns=[],
+            catalog_name="shelter", schema_name="shelter", table_name="employees",
+            properties={"id": "id", "lastName": "last_name"},
+        )
+        is_assignment_rel = RelationshipMapping(
+            rel_type="IS_ASSIGNMENT",
+            source_label="Pets",
+            target_label="Assignments",
+            join_source_column="id",
+            join_target_column="pet_id",
+            field_name="assignment",
+            many=True,
+        )
+        has_employee_rel = RelationshipMapping(
+            rel_type="HAS_EMPLOYEE",
+            source_label="Assignments",
+            target_label="Employees",
+            join_source_column="employee_id",
+            join_target_column="id",
+            field_name="employee",
+            many=False,
+        )
+        lm = CypherLabelMap(
+            nodes={"Pets": pets_node, "Assignments": assignments_node, "Employees": employees_node},
+            relationships={
+                "IS_ASSIGNMENT::Pets→Assignments": is_assignment_rel,
+                "HAS_EMPLOYEE::Assignments→Employees": has_employee_rel,
+            },
+            nodes_by_table={"Pets": ["Pets"], "Assignments": ["Assignments"], "Employees": ["Employees"]},
+        )
+        return ctx, lm
+
+    def _sql(self) -> str:
+        return (
+            'SELECT t0."name", t0."breed_name",'
+            ' (SELECT json_agg(_t) FROM'
+            '  (SELECT json_object(KEY \'breedName\' VALUE t1."breed_name",'
+            '                      KEY \'employee\' VALUE'
+            '                        (SELECT json_object(KEY \'lastName\' VALUE t2."last_name")'
+            '                         FROM "shelter"."employees" AS t2'
+            '                         WHERE t2."id" = t1."employee_id" LIMIT 1))'
+            '   AS _t FROM "shelter"."assignments" AS t1'
+            '   WHERE t1."pet_id" = t0."id" LIMIT 10000) _sub) AS assignment'
+            ' FROM "shelter"."pets" AS t0 LIMIT 10000'
+        )
+
+    def test_flat_return_expands_assignment_fields(self):
+        """flat=True must expand assignment fields as node.prop AS label__prop, not bare node alias."""
+        import re
+        ctx, lm = self._make_ctx_and_label_map()
+        result = semantic_sql_to_cypher(self._sql(), lm, ctx, flat=True)
+        assert result is not None, "semantic_sql_to_cypher returned None"
+        # Must not have bare 'b AS assignment'
+        bare = re.search(r'\b[a-z]\s+AS\s+assignment\b', result)
+        assert bare is None, f"RETURN must not use bare node alias: {result}"
+        # Must have per-property paths
+        assert "assignments__breedName" in result, f"Missing assignments__breedName in: {result}"
+        assert "employees__lastName" in result, f"Missing employees__lastName in: {result}"
+
+    def test_flat_return_root_fields_labelled(self):
+        """flat=True must alias root-level columns as label__prop (e.g. pets__name)."""
+        ctx, lm = self._make_ctx_and_label_map()
+        result = semantic_sql_to_cypher(self._sql(), lm, ctx, flat=True)
+        assert result is not None, "semantic_sql_to_cypher returned None"
+        assert "pets__name" in result, f"Missing pets__name in: {result}"
+        assert "pets__breedName" in result, f"Missing pets__breedName in: {result}"
+
+    def test_non_flat_return_still_uses_collect_map(self):
+        """flat=False (Aggregated mode) must still emit collect({{...}}) AS assignment."""
+        ctx, lm = self._make_ctx_and_label_map()
+        result = semantic_sql_to_cypher(self._sql(), lm, ctx, flat=False)
+        assert result is not None, "semantic_sql_to_cypher returned None"
+        assert "collect(" in result, f"Expected collect() in non-flat RETURN: {result}"
+        assert "AS assignment" in result, f"Missing AS assignment in: {result}"

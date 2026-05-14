@@ -1052,6 +1052,23 @@ def _emit_agg_subqueries(
     return alias_counter
 
 
+def _extract_json_blob_kv(sels, blob_base: str) -> list[str]:
+    """Recursively build KEY/VALUE pairs by extracting fields from a JSON blob column."""
+    pairs: list[str] = []
+    for ss in sels:
+        if not isinstance(ss, FieldNode):
+            continue
+        sn = ss.name.value
+        sk = ss.alias.value if ss.alias else sn
+        if ss.selection_set:
+            sub_pairs = _extract_json_blob_kv(ss.selection_set.selections, f"{blob_base}->'{sn}'")
+            if sub_pairs:
+                pairs.append(f"KEY '{sk}' VALUE json_object({', '.join(sub_pairs)})")
+        else:
+            pairs.append(f"KEY '{sk}' VALUE {blob_base}->>\'{sn}\'")
+    return pairs
+
+
 def _build_rel_json_kv(
     selections,
     ctx: CompilationContext,
@@ -1124,8 +1141,14 @@ def _build_rel_json_kv(
             )
             kv_pairs.append(f"KEY '{key}' VALUE {sub_expr}")
         else:
-            phys_col = ctx.gql_to_physical.get((table_meta.table_id, name), name)
-            kv_pairs.append(f"KEY '{key}' VALUE {_q(table_alias)}.{_q(phys_col)}")
+            if sel.selection_set and (table_meta.table_id, name) in ctx.gql_json_columns:
+                blob_base = f"{_q(table_alias)}.{_q(name)}"
+                sub_kv = _extract_json_blob_kv(sel.selection_set.selections, blob_base)
+                if sub_kv:
+                    kv_pairs.append(f"KEY '{key}' VALUE json_object({', '.join(sub_kv)})")
+            else:
+                phys_col = ctx.gql_to_physical.get((table_meta.table_id, name), name)
+                kv_pairs.append(f"KEY '{key}' VALUE {_q(table_alias)}.{_q(phys_col)}")
 
     return kv_pairs, alias_counter
 

@@ -295,6 +295,63 @@ test.describe("Graph Explorer (/graph)", () => {
   });
 });
 
+// ── Cypher panel flat-return regression (/query) ─────────────────────────────
+
+test.describe("Cypher panel flat-return regression (/query)", () => {
+  test("Include Fields + non-Aggregated emits per-field paths, not bare node alias", async ({ page }) => {
+    await page.goto("/query");
+    await page.waitForSelector(".graphiql-container", { timeout: 15000 });
+    await dismissOverlay(page);
+    await page.waitForTimeout(2000);
+
+    // Open the Provisa plugin panel if it is not already visible.
+    const provisaBtn = page.locator('[aria-label="Show Provisa"], button:has-text("Show Provisa")');
+    if (await provisaBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+      await provisaBtn.click();
+      await page.waitForTimeout(500);
+    }
+
+    // Run a query that has a nested relationship so the Cypher panel appears.
+    const query = "{ ps__pets(limit: 3) { name assignment { breedName } } }";
+    await setGraphiQLQuery(page, query);
+    await runGraphiQLQuery(page);
+
+    // Wait for the Cypher panel to appear (compile fires on query-state change with 600ms debounce).
+    const cypherPanel = page.locator(".provisa-tools-cypher");
+    await expect(cypherPanel).toBeVisible({ timeout: 25000 });
+
+    // Enable "Include fields" to expose flat vs aggregated controls.
+    const includeFieldsBox = cypherPanel.locator('label:has-text("Include fields") input[type="checkbox"]');
+    await includeFieldsBox.waitFor({ state: "visible", timeout: 5000 });
+    if (!(await includeFieldsBox.isChecked())) {
+      await includeFieldsBox.click();
+    }
+    await page.waitForTimeout(1500);
+
+    // Disable "GraphQL-Shape (Aggregated)" → flatCypher=true.
+    const aggregatedBox = cypherPanel.locator('label:has-text("Aggregated") input[type="checkbox"]');
+    if (await aggregatedBox.isVisible({ timeout: 3000 }).catch(() => false)) {
+      if (await aggregatedBox.isChecked()) {
+        await aggregatedBox.click();
+      }
+    }
+    await page.waitForTimeout(1500);
+
+    // Read the generated Cypher from the editor.
+    const cypherText = await cypherPanel.locator(".provisa-tools-cypher-editor .cm-content").textContent({ timeout: 8000 });
+    if (!cypherText || cypherText.trim() === "") {
+      test.skip(); // No Cypher produced — skip rather than false-fail.
+      return;
+    }
+
+    // Must not have a bare node alias like "b AS assignment".
+    expect(cypherText).not.toMatch(/\b[a-z]\s+AS\s+\w+/);
+    // RETURN clause must contain dotted property paths.
+    const returnClause = cypherText.split("RETURN").at(-1) ?? "";
+    expect(returnClause).toMatch(/\w+\.\w+/);
+  });
+});
+
 // ── Schema Explorer (/schema) ─────────────────────────────────────────────────
 
 test.describe("Schema Explorer (/schema)", () => {

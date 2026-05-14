@@ -1174,4 +1174,113 @@ class TestOpsDefaultLimit:
         assert "LATERAL" not in sql, "Expected no LATERAL with flat=False: " + sql
 
 
+class TestGqlJsonBlobExtraction:
+    """When a field is in ctx.gql_json_columns and has a selection_set but no registered
+    FK join, SQL must extract sub-fields from the JSON blob rather than selecting the
+    raw blob column."""
+
+    def _build_ctx(self):
+        tables = [
+            {
+                "id": 1,
+                "source_id": "pg",
+                "domain_id": "shelter",
+                "schema_name": "public",
+                "table_name": "departments",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "name", "visible_to": ["admin"]},
+                ],
+            },
+            {
+                "id": 2,
+                "source_id": "pg",
+                "domain_id": "shelter",
+                "schema_name": "public",
+                "table_name": "assignments",
+                "governance": "pre-approved",
+                "columns": [
+                    {"column_name": "id", "visible_to": ["admin"]},
+                    {"column_name": "dept_id", "visible_to": ["admin"]},
+                    {
+                        "column_name": "employee",
+                        "visible_to": ["admin"],
+                        "object_fields": [
+                            {"name": "employeeId", "type": "string"},
+                            {"name": "name", "type": "string"},
+                        ],
+                    },
+                ],
+            },
+        ]
+        relationships = [
+            {
+                "id": "dept-assigns",
+                "source_table_id": 1,
+                "target_table_id": 2,
+                "source_column": "id",
+                "target_column": "dept_id",
+                "cardinality": "one-to-many",
+            },
+            # assignments.employee has NO FK — source_column="" → skipped from ctx.joins
+            # so it remains a gql_json_column blob
+        ]
+        column_types = {
+            1: [_col("id", "integer"), _col("name")],
+            2: [_col("id", "integer"), _col("dept_id", "integer"), _col("employee", "jsonb")],
+        }
+        role = {"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]}
+        domains = [{"id": "shelter", "description": "Shelter"}]
+        from provisa.compiler.schema_gen import SchemaInput, generate_schema
+        from provisa.compiler.sql_gen import build_context
+
+        si = SchemaInput(
+            tables=tables,
+            relationships=relationships,
+            column_types=column_types,
+            naming_rules=[],
+            role=role,
+            domains=domains,
+            gql_object_columns={"assignments": {"employee": ["employeeId", "name"]}},
+        )
+        schema = generate_schema(si)
+        ctx = build_context(si)
+        return schema, ctx
+
+    def test_json_blob_field_extracted_in_agg_subquery(self):
+        """In flat=False mode, assignments.employee (gql_json_column, no FK join)
+        must produce JSON extraction (->>) not a raw column reference."""
+        from graphql import parse, validate
+        from provisa.compiler.sql_gen import compile_query
+
+        schema, ctx = self._build_ctx()
+        doc = parse("{ departments { id assignments { id employee { employeeId name } } } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx, flat=False)
+        sql = results[0].sql
+        assert "->>" in sql, f"Expected JSON extraction (->>) for blob field, got: {sql}"
+        # employee blob must be expanded into a json_object with extracted sub-fields
+        assert "KEY 'employee' VALUE json_object" in sql, (
+            f"Expected employee to produce nested json_object, got: {sql}"
+        )
+
+    def test_json_blob_raw_column_not_selected_in_agg(self):
+        """The raw 'employee' blob column must not appear as a bare VALUE in the
+        generated SQL — only JSON-extracted sub-fields should appear."""
+        from graphql import parse, validate
+        from provisa.compiler.sql_gen import compile_query
+
+        schema, ctx = self._build_ctx()
+        doc = parse("{ departments { id assignments { id employee { employeeId name } } } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx, flat=False)
+        sql = results[0].sql
+        # Pattern: KEY 'employee' VALUE "t1"."employee" with no -> following — indicates raw blob
+        import re
+
+        bare_blob = re.search(r"KEY 'employee' VALUE \"[^\"]+\"\.\"employee\"(?!->)", sql)
+        assert bare_blob is None, f"Raw blob column 'employee' selected as bare VALUE: {sql}"
+
+
 # Aggregate and alias tests moved to test_sql_gen_aggregate.py

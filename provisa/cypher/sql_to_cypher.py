@@ -590,6 +590,11 @@ def semantic_sql_to_cypher(
                     _jbo_node_for_ret, _agg_seen, _agg_seen_label, _prop_map_for_label, flat
                 )
                 array_agg_return[_top_alias] = f"collect({_map_expr})"
+            elif flat and _jbo_node_for_ret is not None:
+                _flat_items = _flat_return_items_from_jbo(
+                    _jbo_node_for_ret, _agg_seen, _agg_seen_label, _prop_map_for_label
+                )
+                array_agg_return[_top_alias] = _flat_items or _agg_seen.get(_first_sql_alias or "", base_alias)
             else:
                 array_agg_return[_top_alias] = _agg_seen.get(_first_sql_alias or "", base_alias)
 
@@ -620,7 +625,7 @@ def semantic_sql_to_cypher(
                 node_aliases.append(short)
         cypher_lines.append(f"RETURN {', '.join(node_aliases)}")
     else:
-        return_items = _build_return(select_exprs, default_sql_alias, alias_map, alias_prop_map, collected_aliases, array_agg_return)
+        return_items = _build_return(select_exprs, default_sql_alias, alias_map, alias_prop_map, collected_aliases, array_agg_return, alias_label=alias_label, flat_labels=flat)
         cypher_lines.append(f"RETURN {', '.join(return_items)}" if return_items else "RETURN *")
 
     # --- ORDER BY (skipped in node_only mode — node variables have no stable sort key) ---
@@ -714,6 +719,45 @@ def _src_alias_from_on(
     return default_alias
 
 
+def _flat_return_items_from_jbo(
+    jbo_node: exp.JSONObject,
+    agg_seen: dict[str, str],
+    agg_seen_label: dict[str, str],
+    prop_map_for_label,
+) -> list[str]:
+    """Build 'node.prop AS label__key' items for flat (non-aggregated) RETURN clause."""
+    items: list[str] = []
+    for kv in jbo_node.expressions:
+        if not isinstance(kv, exp.JSONKeyValue):
+            continue
+        key_raw = kv.this.sql()
+        key = key_raw.strip("'\"")
+        val = kv.expression
+        if isinstance(val, exp.Column):
+            tbl = val.table or ""
+            short = agg_seen.get(tbl, tbl)
+            lbl = agg_seen_label.get(tbl)
+            lbl_prefix = lbl.lower() if lbl else short
+            # key is already the GQL/Cypher property name (set by _build_rel_json_kv)
+            items.append(f"{short}.{key} AS {lbl_prefix}__{key}")
+        elif isinstance(val, exp.Subquery) and isinstance(val.this, exp.Select):
+            nested_sel = val.this
+            nested_exprs = nested_sel.args.get("expressions") or []
+            if not nested_exprs:
+                continue
+            nested_agg = nested_exprs[0]
+            nested_jbo: exp.JSONObject | None = None
+            if isinstance(nested_agg, exp.JSONObject):
+                nested_jbo = nested_agg
+            elif isinstance(nested_agg, exp.Alias) and isinstance(nested_agg.this, exp.JSONObject):
+                nested_jbo = nested_agg.this
+            elif isinstance(nested_agg, exp.JSONArrayAgg) and isinstance(nested_agg.this, exp.JSONObject):
+                nested_jbo = nested_agg.this
+            if nested_jbo is not None:
+                items.extend(_flat_return_items_from_jbo(nested_jbo, agg_seen, agg_seen_label, prop_map_for_label))
+    return items
+
+
 def _cypher_map_from_jbo(
     jbo_node: exp.JSONObject,
     agg_seen: dict[str, str],
@@ -767,7 +811,9 @@ def _build_return(
     alias_map: dict[str, str] | None = None,
     alias_prop_map: dict[str, dict[str, str]] | None = None,
     collected_aliases: dict[str, dict[str, str]] | None = None,
-    array_agg_return: dict[str, str] | None = None,
+    array_agg_return: dict[str, str | list[str]] | None = None,
+    alias_label: dict[str, str] | None = None,
+    flat_labels: bool = False,
 ) -> list[str]:
     """Convert SELECT expressions to RETURN items.
 
@@ -775,13 +821,15 @@ def _build_return(
     each property column is returned as a direct list reference:
       prop_list_var AS short_alias_cypher_prop
     This avoids cartesian products when multiple multi-valued traversals are present.
-    For aliases in array_agg_return (output_alias → collect(short.prop)), emit the
-    collect() form instead of the raw SQL ARRAY_AGG subquery.
+    For aliases in array_agg_return (output_alias → collect(short.prop) or list[str]),
+    emit the collect() form or expand the flat list directly.
+    When flat_labels=True, root Column items are aliased as label__prop.
     """
     am = alias_map or {}
     apm = alias_prop_map or {}
     ca = collected_aliases or {}
     aar = array_agg_return or {}
+    al = alias_label or {}
 
     def _short(sql_tbl: str) -> str:
         return am.get(sql_tbl, sql_tbl)
@@ -789,7 +837,7 @@ def _build_return(
     def _prop(sql_tbl: str, sql_col: str) -> str:
         return apm.get(sql_tbl, {}).get(sql_col, sql_col)
 
-    items = []
+    items: list[str] = []
     for expr in select_exprs:
         if isinstance(expr, exp.Star):
             return ["*"]
@@ -806,10 +854,19 @@ def _build_return(
                     items.append(f"{prop_list_var} AS {tbl}_{cypher_prop}")
             else:
                 cypher_prop = _prop(raw_tbl, col)
-                items.append(f"{tbl}.{cypher_prop}" if tbl else cypher_prop)
+                if flat_labels and al:
+                    lbl = al.get(raw_tbl)
+                    lbl_prefix = lbl.lower() if lbl else tbl
+                    items.append(f"{tbl}.{cypher_prop} AS {lbl_prefix}__{cypher_prop}" if tbl else cypher_prop)
+                else:
+                    items.append(f"{tbl}.{cypher_prop}" if tbl else cypher_prop)
         elif isinstance(expr, exp.Alias):
             if expr.alias in aar:
-                items.append(f"{aar[expr.alias]} AS {expr.alias}")
+                val = aar[expr.alias]
+                if isinstance(val, list):
+                    items.extend(val)
+                else:
+                    items.append(f"{val} AS {expr.alias}")
             else:
                 raw = _sql_to_cypher_expr(expr.this.sql(dialect="postgres"))
                 for sql_a in sorted(am, key=len, reverse=True):
