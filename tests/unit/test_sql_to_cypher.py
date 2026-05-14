@@ -762,3 +762,31 @@ class TestJsonAggChainedSubquery:
         assert result is not None
         assert "IS_ASSIGNMENT" in result, f"Missing IS_ASSIGNMENT:\n{result}"
         assert "HAS_EMPLOYEE" in result, f"Missing HAS_EMPLOYEE:\n{result}"
+
+    def _sql_direct(self) -> str:
+        """Direct json_agg(json_object(...)) form — no LIMIT wrapper."""
+        return (
+            'SELECT t0."name",'
+            ' (SELECT json_agg(json_object(KEY \'breedName\' VALUE t1."breed_name",'
+            '                              KEY \'employee\' VALUE'
+            '                                (SELECT json_object(KEY \'lastName\' VALUE t2."last_name")'
+            '                                 FROM "shelter"."employees" AS t2'
+            '                                 WHERE t2."id" = t1."employee_id" LIMIT 1)))'
+            '  FROM "shelter"."assignments" AS t1'
+            '  WHERE t1."pet_id" = t0."id") AS assignment'
+            ' FROM "shelter"."pets" AS t0 LIMIT 10000'
+        )
+
+    def test_direct_form_return_uses_collect_map_not_bare_node(self):
+        """Regression: json_agg(json_object(...)) direct form must RETURN collect({...}) AS assignment,
+        not the bare node alias (b AS assignment) which returns the entire node instead of fields."""
+        ctx, lm = self._make_ctx_and_label_map()
+        result = semantic_sql_to_cypher(self._sql_direct(), lm, ctx)
+        assert result is not None, "semantic_sql_to_cypher returned None"
+        assert "collect(" in result, f"Expected collect() in RETURN for one-to-many: {result}"
+        # Must not return a bare node alias as 'assignment'
+        import re
+        bare = re.search(r'\bRETURN\b.*\b[a-z]\s+AS\s+assignment\b', result)
+        assert bare is None, f"RETURN must not use bare node alias for assignment: {result}"
+        # The map must include the selected fields
+        assert "breedName" in result, f"breedName missing from RETURN map: {result}"

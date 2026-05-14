@@ -576,6 +576,10 @@ def semantic_sql_to_cypher(
                 if isinstance(_se, exp.Alias) and isinstance(_se.this, exp.JSONObject):
                     _jbo_node_for_ret = _se.this
                     break
+                # Direct form: json_agg(json_object(...)) — JSONArrayAgg wraps the JSONObject
+                if isinstance(_se, exp.JSONArrayAgg) and isinstance(_se.this, exp.JSONObject):
+                    _jbo_node_for_ret = _se.this
+                    break
             # First table alias from _jbo_sel (fallback for flat mode)
             _jbo_from = _jbo_sel.args.get("from_")
             _jbo_tbl = _jbo_from.this if _jbo_from and isinstance(_jbo_from.this, exp.Table) else None
