@@ -18,20 +18,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass, field
 
 from provisa.executor.trino import QueryResult
 
 log = logging.getLogger(__name__)
 
 
-async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:
-    """Run *sql* through governance and return rows + column names.
+@dataclass
+class _Plan:
+    route: object  # transpiler.router.Route
+    sql: str
+    source_id: str
+    dialect: str
+    exec_params: list | None = field(default=None)
+    # Trino-specific: fully qualified SQL ready to run
+    trino_sql: str | None = field(default=None)
 
-    Raises:
-        PermissionError  – role not found or access violation
-        ValueError       – SQL parse / validation error
-        RuntimeError     – routing / execution error
-    """
+
+async def _govern_and_route(sql: str, role_id: str) -> _Plan:
     import sqlglot
     import sqlglot.expressions as exp
 
@@ -41,8 +46,6 @@ async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:
     from provisa.compiler.sql_gen import qualify_with_catalogs, rewrite_semantic_to_physical
     from provisa.compiler.stage2 import apply_governance, build_governance_context, extract_sources
     from provisa.compiler.sql_validator import validate_sql
-    from provisa.executor.direct import execute_direct
-    from provisa.executor.trino import execute_trino
     from provisa.transpiler.router import Route, decide_route
     from provisa.transpiler.transpile import transpile, transpile_to_trino
 
@@ -55,14 +58,12 @@ async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:
 
     raw_sql, embedded_params = extract_params_comment(sql)
 
-    # Step 1: normalize table refs
     normalized_sql = rewrite_semantic_to_physical(raw_sql, ctx)
     try:
         sqlglot.parse_one(normalized_sql, read="postgres")
     except Exception:
         normalized_sql = raw_sql
 
-    # Step 2: governance context
     gov_ctx = build_governance_context(
         role_id,
         rls,
@@ -71,7 +72,6 @@ async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:
         getattr(state, "tables", []),
     )
 
-    # Step 3: validate
     violations = validate_sql(
         normalized_sql, ctx, gov_ctx, role or {}, getattr(state, "tables", [])
     )
@@ -99,10 +99,8 @@ async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:
         msgs = "; ".join(f"[{v.code}] {v.message}" for v in violations)
         raise PermissionError(msgs)
 
-    # Step 4: apply governance
     governed_semantic = apply_governance(normalized_sql, gov_ctx)
 
-    # Step 5: route
     sources = extract_sources(governed_semantic, gov_ctx, ctx)
     _default_source = next(
         (sid for sid, t in state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
@@ -116,37 +114,75 @@ async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:
         source_dsns=getattr(state, "source_dsns", None),
     )
 
-    governed_physical = governed_semantic
     exec_params = embedded_params or None
 
-    # Step 6: execute
     if decision.route == Route.TRINO:
         from provisa.api.data.endpoint import _materialize_api_to_trino_cache
         from provisa.cache.hot_tables import build_values_cte_sql
         from provisa.api_source.trino_cache import rewrite_all_from_cache
 
-        _qualified = qualify_with_catalogs(governed_physical, ctx)
+        _qualified = qualify_with_catalogs(governed_semantic, ctx)
         _rewrites, _values_ctes = await _materialize_api_to_trino_cache(_qualified, None, state)
         for _tn, _entry in _values_ctes.items():
             _qualified = build_values_cte_sql(_qualified, _tn, _entry)
         if _rewrites:
             _qualified = rewrite_all_from_cache(_qualified, _rewrites)
-        sql_to_run = transpile_to_trino(_qualified)
-        if state.trino_conn is None:
-            raise RuntimeError("Trino connection not available")
-        _trino_conn = state.trino_conn
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None, lambda: execute_trino(_trino_conn, sql_to_run, params=exec_params)
+        trino_sql = transpile_to_trino(_qualified)
+        return _Plan(
+            route=Route.TRINO,
+            sql=governed_semantic,
+            source_id=_default_source,
+            dialect="trino",
+            exec_params=exec_params,
+            trino_sql=trino_sql,
         )
     else:
         dialect = decision.dialect or "postgres"
-        sql_to_run = transpile(governed_physical, dialect)
-        result = await execute_direct(
-            state.source_pools,
-            decision.source_id or _default_source,
-            sql_to_run,
-            exec_params,
+        sql_to_run = transpile(governed_semantic, dialect)
+        return _Plan(
+            route=decision.route,
+            sql=sql_to_run,
+            source_id=decision.source_id or _default_source,
+            dialect=dialect,
+            exec_params=exec_params,
         )
 
+
+async def _execute_plan(plan: _Plan) -> QueryResult:
+    from provisa.api.app import state
+    from provisa.executor.direct import execute_direct
+    from provisa.executor.trino import execute_trino
+    from provisa.transpiler.router import Route
+
+    if plan.route == Route.TRINO:
+        if state.trino_conn is None:
+            raise RuntimeError("Trino connection not available")
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: execute_trino(state.trino_conn, plan.trino_sql, params=plan.exec_params),
+        )
+    else:
+        result = await execute_direct(
+            state.source_pools,
+            plan.source_id,
+            plan.sql,
+            plan.exec_params,
+        )
     return result
+
+
+async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:
+    return await _govern_and_route(sql, role_id)
+
+
+async def execute_pgwire_sql(sql: str, role_id: str) -> QueryResult:
+    """Run *sql* through governance and return rows + column names.
+
+    Raises:
+        PermissionError  – role not found or access violation
+        ValueError       – SQL parse / validation error
+        RuntimeError     – routing / execution error
+    """
+    plan = await _govern_and_route(sql, role_id)
+    return await _execute_plan(plan)

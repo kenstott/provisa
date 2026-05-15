@@ -158,8 +158,6 @@ class ProvisaSession(Session):
         from provisa.pgwire.catalog import answer, classify
 
         stripped = _substitute_params(sql.strip(), params)
-        if _COPY_RE.match(stripped):
-            raise PermissionError("COPY is not supported")
         if classify(stripped) == "INTERCEPT":
             from provisa.api.app import state
 
@@ -319,8 +317,17 @@ class ProvisaHandler(BuenaVistaHandler):
 
         for stmt in stmts:
             if _COPY_RE.match(stmt):
-                self._send_pg_error("ERROR", "0A000", "COPY is not supported")
-                ctx.mark_error()
+                from provisa.pgwire.copy_handler import CopyHandler
+
+                try:
+                    nrows = CopyHandler(self).handle(ctx, stmt)
+                    self.send_command_complete(f"COPY {nrows}\x00")
+                except PermissionError as exc:
+                    self._send_pg_error("ERROR", "42501", str(exc))
+                    ctx.mark_error()
+                except Exception as exc:
+                    self._send_pg_error("ERROR", "0A000", str(exc))
+                    ctx.mark_error()
                 break
             try:
                 from buenavista.core import Extension
