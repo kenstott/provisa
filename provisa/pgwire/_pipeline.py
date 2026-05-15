@@ -42,7 +42,7 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
 
     from provisa.api.app import state
     from provisa.compiler.rls import RLSContext
-    from provisa.compiler.params import extract_params_comment
+    from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
     from provisa.compiler.sql_gen import qualify_with_catalogs, rewrite_semantic_to_physical
     from provisa.compiler.stage2 import apply_governance, build_governance_context, extract_sources
     from provisa.compiler.sql_validator import validate_sql
@@ -57,6 +57,7 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
     role = state.roles.get(role_id)
 
     raw_sql, embedded_params = extract_params_comment(sql)
+    raw_sql, sql_opts_out = extract_relationship_guard_comment(raw_sql)
 
     normalized_sql = rewrite_semantic_to_physical(raw_sql, ctx)
     try:
@@ -72,8 +73,15 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
         getattr(state, "tables", []),
     )
 
+    _role_guard = (role or {}).get("relationship_guard", True)
+    _bypass_guard = (not _role_guard) and sql_opts_out
     violations = validate_sql(
-        normalized_sql, ctx, gov_ctx, role or {}, getattr(state, "tables", [])
+        normalized_sql,
+        ctx,
+        gov_ctx,
+        role or {},
+        getattr(state, "tables", []),
+        bypass_relationship_guard=_bypass_guard,
     )
 
     _role_domain_access = (role or {}).get("domain_access") or []

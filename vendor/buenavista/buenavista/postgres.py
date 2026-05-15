@@ -46,14 +46,54 @@ class ServerResponse:
     ROW_DESCRIPTION = b"T"
 
 
+def _decode_numeric(v: bytes) -> decimal.Decimal:
+    """Decode PG binary numeric: ndigits/weight/sign/dscale + base-10000 digit array."""
+    if len(v) < 8:
+        return decimal.Decimal(0)
+    ndigits, weight, sign, dscale = struct.unpack("!hhhh", v[:8])
+    if sign == 0xC000:
+        return decimal.Decimal("NaN")
+    digits = [struct.unpack("!H", v[8 + i * 2 : 10 + i * 2])[0] for i in range(ndigits)]
+    value = decimal.Decimal(0)
+    for i, d in enumerate(digits):
+        value += decimal.Decimal(d) * (decimal.Decimal(10000) ** (weight - i))
+    if sign == 0x4000:
+        value = -value
+    return value.quantize(decimal.Decimal(10) ** -dscale) if dscale else value
+
+
+_PG_EPOCH = datetime.datetime(2000, 1, 1)
+_PG_EPOCH_UTC = datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc)
+_PG_DATE_EPOCH = datetime.date(2000, 1, 1)
+
 TYPE_OIDS = {
-    # see Postgres pg_type_d.h
-    0: ("date/time", None, datetime.datetime(1900, 1, 1)),
-    20: ("INT8OID", "!q", 42),
-    21: ("INT2OID", "!h", 42),
-    23: ("INT4OID", "!i", 42),
-    700: ("FLOAT4OID", "!f", 42.0),
-    701: ("FLOAT8OID", "!d", 42.0),
+    # see Postgres pg_type_d.h — values are (name, decoder_callable, example)
+    16: ("BOOLOID", lambda v: v[0] != 0, False),
+    17: ("BYTEAOID", bytes, b""),
+    20: ("INT8OID", lambda v: struct.unpack("!q", v)[0], 42),
+    21: ("INT2OID", lambda v: struct.unpack("!h", v)[0], 42),
+    23: ("INT4OID", lambda v: struct.unpack("!i", v)[0], 42),
+    25: ("TEXTOID", lambda v: v.decode("utf-8"), ""),
+    700: ("FLOAT4OID", lambda v: struct.unpack("!f", v)[0], 42.0),
+    701: ("FLOAT8OID", lambda v: struct.unpack("!d", v)[0], 42.0),
+    1043: ("VARCHAROID", lambda v: v.decode("utf-8"), ""),
+    1082: (
+        "DATEOID",
+        lambda v: _PG_DATE_EPOCH + datetime.timedelta(days=struct.unpack("!i", v)[0]),
+        datetime.date.today(),
+    ),
+    1114: (
+        "TIMESTAMPOID",
+        lambda v: _PG_EPOCH + datetime.timedelta(microseconds=struct.unpack("!q", v)[0]),
+        datetime.datetime.now(),
+    ),
+    1184: (
+        "TIMESTAMPTZOID",
+        lambda v: _PG_EPOCH_UTC + datetime.timedelta(microseconds=struct.unpack("!q", v)[0]),
+        datetime.datetime.now(datetime.timezone.utc),
+    ),
+    1700: ("NUMERICOID", _decode_numeric, decimal.Decimal(0)),
+    2950: ("UUIDOID", lambda v: str(_uuid_mod.UUID(bytes=bytes(v))), ""),
 }
 
 
@@ -534,7 +574,7 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
             else:
                 type = TYPE_OIDS.get(typeoid)
                 if type:
-                    params.append(struct.unpack(type[1], v)[0])
+                    params.append(type[1](v))
                 else:
                     raise Exception(f"Unsupported binary parameter type: {typeoid}")
 

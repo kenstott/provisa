@@ -124,6 +124,9 @@ async def sql_endpoint(
     from provisa.compiler.params import extract_params_comment
 
     raw_sql, embedded_params = extract_params_comment(request.sql)
+    from provisa.compiler.params import extract_relationship_guard_comment
+
+    raw_sql, _sql_opts_out = extract_relationship_guard_comment(raw_sql)
 
     # Clients write semantic SQL (domain.field_name refs). Physical translation
     # happens after routing — governance runs on semantic refs.
@@ -160,8 +163,16 @@ async def sql_endpoint(
                 gov_ctx.table_map.setdefault(meta.table_name, meta.table_id)
                 gov_ctx.table_map.setdefault(f"{meta.schema_name}.{meta.table_name}", meta.table_id)
 
+    _role_guard = (role or {}).get("relationship_guard", True)
+    _bypass_guard = (not _role_guard) and _sql_opts_out
     violations = validate_sql(
-        normalized_sql, ctx, gov_ctx, role or {}, raw_tables, discovery_mode=request.discovery_mode
+        normalized_sql,
+        ctx,
+        gov_ctx,
+        role or {},
+        raw_tables,
+        discovery_mode=request.discovery_mode,
+        bypass_relationship_guard=_bypass_guard,
     )
 
     _role_domain_access = (role or {}).get("domain_access") or []

@@ -257,8 +257,19 @@ async def cypher_query(
 
         # Validate against role-scoped GraphQL-equivalent rules
         from provisa.compiler.sql_validator import validate_sql
+        from provisa.compiler.params import extract_relationship_guard_comment
         _role_dict = (state.roles.get(role_id) or {})
-        _violations = validate_sql(semantic_sql, ctx, gov_ctx, _role_dict, getattr(state, "tables", []))
+        semantic_sql, _sql_opts_out = extract_relationship_guard_comment(semantic_sql)
+        _role_guard = _role_dict.get("relationship_guard", True)
+        _bypass_guard = (not _role_guard) and _sql_opts_out
+        _violations = validate_sql(
+            semantic_sql,
+            ctx,
+            gov_ctx,
+            _role_dict,
+            getattr(state, "tables", []),
+            bypass_relationship_guard=_bypass_guard,
+        )
         if _violations:
             return JSONResponse(
                 status_code=403,

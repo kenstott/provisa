@@ -53,6 +53,12 @@ _TXN_TAG_RE = re.compile(
 )
 
 _COPY_RE = re.compile(r"^\s*COPY\b", re.IGNORECASE)
+_DDL_RE = re.compile(
+    r"^\s*(CREATE\s+(TABLE|VIEW|INDEX|UNIQUE\s+INDEX|SEQUENCE|SCHEMA)"
+    r"|ALTER\s+(TABLE|INDEX|SEQUENCE|VIEW)"
+    r"|DROP\s+(TABLE|VIEW|INDEX|SEQUENCE|SCHEMA))\b",
+    re.IGNORECASE,
+)
 
 
 def _pg_literal(v) -> str:
@@ -322,6 +328,19 @@ class ProvisaHandler(BuenaVistaHandler):
                 try:
                     nrows = CopyHandler(self).handle(ctx, stmt)
                     self.send_command_complete(f"COPY {nrows}\x00")
+                except PermissionError as exc:
+                    self._send_pg_error("ERROR", "42501", str(exc))
+                    ctx.mark_error()
+                except Exception as exc:
+                    self._send_pg_error("ERROR", "0A000", str(exc))
+                    ctx.mark_error()
+                break
+            if _DDL_RE.match(stmt):
+                from provisa.pgwire.ddl_handler import DdlHandler
+
+                try:
+                    tag = DdlHandler(self).handle(ctx, stmt)
+                    self.send_command_complete(f"{tag}\x00")
                 except PermissionError as exc:
                     self._send_pg_error("ERROR", "42501", str(exc))
                     ctx.mark_error()

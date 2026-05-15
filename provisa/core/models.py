@@ -206,6 +206,8 @@ class Domain(BaseModel):
     id: str
     description: str = ""
     graphql_alias: str | None = None
+    ddl_catalog: str | None = None  # Trino catalog for DDL; defaults to system Iceberg catalog
+    ddl_schema: str | None = None  # schema within ddl_catalog; defaults to domain id
 
 
 class NamingRule(BaseModel):
@@ -344,6 +346,9 @@ class Role(BaseModel):
     capabilities: list[str]
     domain_access: list[str]
     parent_role_id: str | None = None  # inherit capabilities + domain_access from parent
+    relationship_guard: bool = (
+        True  # when False (+ SQL opt-out), V002 join approval check is skipped
+    )
 
 
 def flatten_roles(roles: list[Role]) -> list[Role]:

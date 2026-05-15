@@ -116,6 +116,7 @@ class AppState:
     otel_compact_cron: str = "* * * * *"  # cron for Parquet→Iceberg compaction
     otel_compact_batch_size: int = 1000  # rows per INSERT batch during compaction
     otel_compact_file_chunk: int = 50  # Parquet files processed per compaction chunk
+    domain_write_targets: dict[str, tuple[str, str]] = {}  # domain_id → (catalog, domain_id) from Domain.catalog
 
 
 state = AppState()
@@ -797,6 +798,17 @@ async def _load_and_build(config_path: str | None = None) -> None:
                     "Direct pool for %r (%s:%s) failed: %s — Trino-routed queries still work.",
                     src.id, resolved_host, src.port, _pool_err,
                 )
+
+    from provisa.cache.warm_tables import DEFAULT_ICEBERG_CATALOG as _DEFAULT_ICE_CAT
+    _known_trino_catalogs = set(state.source_catalogs.values()) | {_DEFAULT_ICE_CAT, "otel", "results"}
+    for _dom in config.domains:
+        _ddl_cat = _dom.ddl_catalog or _DEFAULT_ICE_CAT
+        if _dom.ddl_catalog and _ddl_cat not in _known_trino_catalogs:
+            raise ValueError(
+                f"Domain {_dom.id!r} ddl_catalog={_dom.ddl_catalog!r} is not a registered source catalog"
+            )
+        _ddl_schema = _dom.ddl_schema or _dom.id
+        state.domain_write_targets[_dom.id] = (_ddl_cat, _ddl_schema)
 
     # Phase AS: Initialize ingest engines and DDL for ingest sources
     try:

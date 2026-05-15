@@ -455,11 +455,17 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
         role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
     )
 
-    # Validate semantic SQL against role-scoped GraphQL-equivalent rules
+    # Validate semantic SQL — V002 (join relationship check) is always skipped for
+    # GraphQL because the SDL defines valid relationships by design.
     from provisa.compiler.sql_validator import validate_sql
     semantic_sql_for_validation = make_semantic_sql(compiled.sql, ctx)
     _violations = validate_sql(
-        semantic_sql_for_validation, ctx, gov_ctx, role or {}, getattr(state, "tables", [])
+        semantic_sql_for_validation,
+        ctx,
+        gov_ctx,
+        role or {},
+        getattr(state, "tables", []),
+        bypass_relationship_guard=True,
     )
     if _violations:
         raise HTTPException(

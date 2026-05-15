@@ -46,18 +46,14 @@ def _parse_sql_literal(s: str) -> object:
 
 _COMMENT_PREFIX = "-- provisa-params:"
 # Matches $N=<value> where value is NULL/TRUE/FALSE, a number, or a single-quoted string
-_PARAM_RE = _re.compile(
-    r"\$(\d+)=(NULL|TRUE|FALSE|-?\d+(?:\.\d+)?|'(?:[^']|'')*')"
-)
+_PARAM_RE = _re.compile(r"\$(\d+)=(NULL|TRUE|FALSE|-?\d+(?:\.\d+)?|'(?:[^']|'')*')")
 
 
 def embed_params_comment(sql: str, params: list) -> str:
     """Prepend a provisa-params comment so the SQL is self-contained and executable."""
     if not params:
         return sql
-    parts = ", ".join(
-        f"${i + 1}={_sql_literal(v)}" for i, v in enumerate(params)
-    )
+    parts = ", ".join(f"${i + 1}={_sql_literal(v)}" for i, v in enumerate(params))
     return f"{_COMMENT_PREFIX} {parts}\n{sql}"
 
 
@@ -73,12 +69,32 @@ def extract_params_comment(sql: str) -> tuple[str, list]:
         if not stripped.startswith(_COMMENT_PREFIX):
             continue
         matches = _PARAM_RE.findall(stripped)
-        remaining = "\n".join(lines[:i] + lines[i + 1:])
+        remaining = "\n".join(lines[:i] + lines[i + 1 :])
         if not matches:
             return remaining, []
         indexed = sorted((int(idx), _parse_sql_literal(val)) for idx, val in matches)
         return remaining, [v for _, v in indexed]
     return sql, []
+
+
+_RELATIONSHIP_GUARD_RE = _re.compile(r"--\s*relationship-guard\s*=\s*false", _re.IGNORECASE)
+
+
+def extract_relationship_guard_comment(sql: str) -> tuple[str, bool]:
+    """Strip --relationship-guard=false comment and return (sql, opted_out).
+
+    opted_out is True only when the comment is present. Both the role flag
+    AND this comment must be present to bypass V002.
+    """
+    lines = sql.split("\n")
+    filtered = []
+    opted_out = False
+    for line in lines:
+        if _RELATIONSHIP_GUARD_RE.search(line):
+            opted_out = True
+        else:
+            filtered.append(line)
+    return "\n".join(filtered), opted_out
 
 
 class ParamCollector:

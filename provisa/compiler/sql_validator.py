@@ -60,6 +60,8 @@ def validate_sql(
     role: dict,
     raw_tables: list[dict],
     discovery_mode: bool = False,
+    *,
+    bypass_relationship_guard: bool = False,
 ) -> list[ValidationViolation]:
     """Validate SQL against role-scoped GraphQL-equivalent access rules."""
     try:
@@ -94,9 +96,10 @@ def validate_sql(
         violations += _check_domain_access(
             tree, gov_ctx, table_id_to_meta, domain_access, cte_names_set
         )
-        violations += _check_join_relationships(
-            tree, gov_ctx, valid_joins, table_id_to_meta, cte_names_set
-        )
+        if not bypass_relationship_guard:
+            violations += _check_join_relationships(
+                tree, gov_ctx, valid_joins, table_id_to_meta, cte_names_set
+            )
     violations += _check_column_visibility(tree, gov_ctx, cte_names_set)
     violations += _check_dag(tree, gov_ctx, valid_joins, cte_names_set)
     violations += _check_masked_in_predicate(tree, gov_ctx, cte_names_set)
