@@ -636,8 +636,10 @@ function buildClusterElements(
   overlayEdges?: Map<string, GEdge>,
   collapsedClusters: Set<string> = new Set(),
 ): CyElementDefinition[] {
-  // For ML cluster levels resolve to the backing property; anything else is used directly.
-  const clusterKey = level === "l1" ? "scl1" : level === "l2" ? "scl2" : level === "l3" ? "scl3" : level;
+  const clusterKey = level === "l1" || level === "schema_L1" ? "scl1"
+    : level === "l2" || level === "schema_L2" ? "scl2"
+    : level === "l3" || level === "schema_L3" ? "scl3"
+    : level;
 
   // 1. Cluster nodes — compound hull (expanded) or collapsed super-node
   const clusterLabels = new Map<string, Set<string>>();
@@ -862,6 +864,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
   const [collapsedClusters, setCollapsedClusters] = useState<Set<string>>(new Set());
   const collapsedClustersRef = useRef<Set<string>>(new Set());
   const clusterLevelRef = useRef(clusterLevel);
+  const hullDragRef = useRef<{ cid: string; lastX: number; lastY: number; startX: number; startY: number } | null>(null);
   clusterLevelRef.current = clusterLevel;
   // Reset collapsed state when cluster level changes
   useEffect(() => {
@@ -899,6 +902,37 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     });
     setHullCircles(hulls);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const drag = hullDragRef.current;
+      if (!drag) return;
+      const cy = cyRef.current;
+      if (!cy) return;
+      const zoom = cy.zoom();
+      const dx = (e.clientX - drag.lastX) / zoom;
+      const dy = (e.clientY - drag.lastY) / zoom;
+      const clusterId = `__cluster_${clusterLevelRef.current}_${_cidToId(drag.cid)}`;
+      cy.getElementById(clusterId).children().forEach((n: CyElement) => {
+        n.position({ x: n.position("x") + dx, y: n.position("y") + dy });
+      });
+      drag.lastX = e.clientX;
+      drag.lastY = e.clientY;
+      computeHulls();
+    };
+    const onUp = (e: MouseEvent) => {
+      const drag = hullDragRef.current;
+      if (!drag) return;
+      hullDragRef.current = null;
+      const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
+      if (dist < 5) toggleCollapse(drag.cid);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+  }, [computeHulls, toggleCollapse]);
   // Node right-click context menu
   const [nodeCtxMenu, setNodeCtxMenu] = useState<{ x: number; y: number; nodeId: string; selectedNodeIds: string[] } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -1245,18 +1279,18 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         {
           selector: "node[?_collapsed]",
           style: {
-            shape: "round-rectangle" as const,
+            shape: "ellipse" as const,
             "background-color": "data(_color)",
             "background-opacity": 0.85,
             "border-width": 2,
             "border-color": "data(_color)",
             "border-opacity": 1,
-            width: 72,
-            height: 46,
+            width: 64,
+            height: 64,
             "color": "#fff",
             "font-size": 9,
             "text-wrap": "wrap" as const,
-            "text-max-width": "66px",
+            "text-max-width": "56px",
             "text-valign": "center" as const,
             "text-halign": "center" as const,
           },
@@ -1268,7 +1302,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any as CyInstance;
 
-    cy.on("dbltap", "node[?_collapsed]", (evt) => {
+    cy.on("tap", "node[?_collapsed]", (evt) => {
       const cid = evt.target.data("_clusterId") as string;
       if (cid) toggleCollapse(cid);
     });
@@ -1278,7 +1312,8 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     });
     cy.on("tap", "edge", (evt) => {
       setNodeCtxMenu(null);
-      onSelect({ kind: "edge", data: evt.target.data("_edge") as GEdge });
+      const edgeData = evt.target.data("_edge") as GEdge | undefined;
+      if (edgeData) onSelect({ kind: "edge", data: edgeData });
     });
     cy.on("tap", (evt) => {
       if (evt.target === cy) { onSelect(null); setNodeCtxMenu(null); }
@@ -1364,7 +1399,9 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         if (!prevEdges.has(k) && cy.$id(e.identity).length === 0) {
           const srcKey = `${e.startNode.label}:${e.startNode.id}`;
           const tgtKey = `${e.endNode.label}:${e.endNode.id}`;
-          if (cy.$id(srcKey).length > 0 && cy.$id(tgtKey).length > 0) {
+          // Guard against duplicate edges with different identities but same endpoints+type
+          const dupExists = cy.edges(`[source="${srcKey}"][target="${tgtKey}"][label="${e.type}"]`).length > 0;
+          if (!dupExists && cy.$id(srcKey).length > 0 && cy.$id(tgtKey).length > 0) {
             cy.add({ group: "edges", data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e } });
           }
         }
@@ -1514,13 +1551,23 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
           {hullCircles.map(({ cid, x, y, r }) => (
             <g key={cid}>
-              <circle cx={x} cy={y} r={r} fill={clusterColor(cid)} fillOpacity={0.1} stroke={clusterColor(cid)} strokeWidth={2} strokeOpacity={0.75} />
+              <circle
+                cx={x} cy={y} r={r}
+                fill={clusterColor(cid)} fillOpacity={0.1}
+                stroke={clusterColor(cid)} strokeWidth={8} strokeOpacity={0}
+                style={{ pointerEvents: "stroke", cursor: "grab" }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  hullDragRef.current = { cid, lastX: e.clientX, lastY: e.clientY, startX: e.clientX, startY: e.clientY };
+                }}
+              />
+              <circle cx={x} cy={y} r={r} fill="none" stroke={clusterColor(cid)} strokeWidth={1.5} strokeOpacity={0.75} style={{ pointerEvents: "none" }} />
               <text
                 x={x} y={y - r - 6}
                 textAnchor="middle" fill={clusterColor(cid)} fontSize={11} fontWeight="bold" fontFamily="sans-serif"
                 style={{ pointerEvents: "all", cursor: "pointer", userSelect: "none" }}
-                onDoubleClick={() => toggleCollapse(cid)}
-                title="Double-click to collapse group"
+                onClick={() => toggleCollapse(cid)}
+                title="Click to collapse group"
               >{cid} ⊟</text>
             </g>
           ))}
@@ -2299,8 +2346,20 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
 
   const overlayEdges = useMemo(() => {
     if (overlayData.size === 0) return new Map<string, GEdge>();
+    // Dedup against frame edges by both identity key and endpoint+type fingerprint
+    const frameFingerprints = new Set<string>();
+    frame.edges.forEach((e) => {
+      frameFingerprints.add(`${e.startNode.label}:${e.startNode.id}→${e.endNode.label}:${e.endNode.id}:${e.type}`);
+    });
     const m = new Map<string, GEdge>();
-    for (const d of overlayData.values()) d.edges.forEach((e, k) => { if (!frame.edges.has(k)) m.set(k, e); });
+    for (const d of overlayData.values()) {
+      d.edges.forEach((e, k) => {
+        if (frame.edges.has(k)) return;
+        const fp = `${e.startNode.label}:${e.startNode.id}→${e.endNode.label}:${e.endNode.id}:${e.type}`;
+        if (frameFingerprints.has(fp)) return;
+        m.set(k, e);
+      });
+    }
     return m;
   }, [frame.edges, overlayData]);
 
@@ -2353,27 +2412,32 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
   }, [autoImpute, frame.status, frame.nodes, pkMap, schemaRels, _fetchNeighbors]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
-  const hasClusters = frame.nodes.size > 0 &&
-    [...frame.nodes.values()].some((n) => n.properties.scl1 !== null && n.properties.scl1 !== undefined);
 
-  // Properties available for attribute-based grouping: any scalar property present on ≥1 node,
-  // excluding internal cluster keys and properties with only one distinct value (no grouping possible).
+  // Properties available for grouping: virtual schema_L1/L2/L3 (mapped to scl1/scl2/scl3)
+  // followed by any scalar property with more than one distinct value.
   const groupableAttrs = useMemo(() => {
     if (frame.nodes.size === 0) return [];
     const SKIP = new Set(["scl1", "scl2", "scl3"]);
+    const schemaVirtuals: string[] = [];
+    for (const [virtName, prop] of [["schema_L1", "scl1"], ["schema_L2", "scl2"], ["schema_L3", "scl3"]] as const) {
+      const vals = new Set<string>();
+      frame.nodes.forEach((n) => { const v = n.properties[prop]; if (v !== null && v !== undefined) vals.add(String(v)); });
+      if (vals.size > 1) schemaVirtuals.push(virtName);
+    }
     const counts = new Map<string, Set<string>>();
     frame.nodes.forEach((n) => {
       Object.entries(n.properties).forEach(([k, v]) => {
         if (SKIP.has(k) || v === null || v === undefined) return;
-        if (typeof v === "object") return; // skip nested objects/arrays
+        if (typeof v === "object") return;
         if (!counts.has(k)) counts.set(k, new Set());
         counts.get(k)!.add(String(v));
       });
     });
-    return [...counts.entries()]
+    const regularAttrs = [...counts.entries()]
       .filter(([, vals]) => vals.size > 1)
-      .sort((a, b) => b[1].size - a[1].size) // most distinct values first
+      .sort((a, b) => b[1].size - a[1].size)
       .map(([k]) => k);
+    return [...schemaVirtuals, ...regularAttrs];
   }, [frame.nodes]);
   const activeView: "graph" | "table" | "json" = hasGraph ? view : (view === "json" ? "json" : "table");
 
@@ -2417,23 +2481,14 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
             title={autoImpute ? "Auto-impute relationships ON — click to disable" : "Auto-impute relationships between visible nodes"}
           >⊕</button>
         )}
-        {hasGraph && frame.status === "done" && hasClusters && (
-          <button
-            className={`gf-icon-btn${["l1","l2","l3"].includes(clusterLevel) ? " gf-icon-btn--on" : ""}`}
-            onClick={() => setClusterLevel((l) => l === "none" || !["l1","l2","l3"].includes(l) ? "l1" : l === "l1" ? "l2" : l === "l2" ? "l3" : "none")}
-            title={clusterLevel === "none" ? "Group by schema clusters (L1)" : clusterLevel === "l1" ? "Group by schema clusters (L2)" : clusterLevel === "l2" ? "Group by schema clusters (L3)" : clusterLevel === "l3" ? "Disable schema clustering" : "Group by schema clusters (L1)"}
-          >
-            {clusterLevel === "l1" ? "⬡₁" : clusterLevel === "l2" ? "⬡₂" : clusterLevel === "l3" ? "⬡₃" : "⬡"}
-          </button>
-        )}
         {hasGraph && frame.status === "done" && groupableAttrs.length > 0 && (
           <select
             className={`gf-attr-select${groupableAttrs.includes(clusterLevel) ? " gf-icon-btn--on" : ""}`}
             value={groupableAttrs.includes(clusterLevel) ? clusterLevel : ""}
             onChange={(e) => setClusterLevel(e.target.value || "none")}
-            title="Group nodes by attribute"
+            title="Group nodes by attribute (double-click a hull to collapse; double-click collapsed node to expand)"
           >
-            <option value="">⬡ attr</option>
+            <option value="">⬡ group</option>
             {groupableAttrs.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         )}
