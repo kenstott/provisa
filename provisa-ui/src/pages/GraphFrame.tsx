@@ -194,6 +194,15 @@ export function darkenColor(hex: string, factor = 0.5): string {
   return `#${d(r)}${d(g)}${d(b)}`;
 }
 
+const CLUSTER_COLORS = [
+  "#6366f1","#8b5cf6","#ec4899","#f97316","#eab308",
+  "#22c55e","#06b6d4","#3b82f6","#ef4444","#14b8a6",
+  "#a855f7","#f43f5e","#84cc16","#0ea5e9","#d946ef",
+];
+function clusterColor(id: number): string {
+  return CLUSTER_COLORS[((id % CLUSTER_COLORS.length) + CLUSTER_COLORS.length) % CLUSTER_COLORS.length];
+}
+
 // ── Relationship line override type ──────────────────────────────────────────
 export interface RelLineOverride {
   width: number;
@@ -611,6 +620,72 @@ function Inspector({ selected, colorOverrides, onColorChange, onClose, width, on
   );
 }
 
+// ── Cluster helpers ───────────────────────────────────────────────────────────
+type ClusterLevel = "none" | "l1" | "l2" | "l3";
+
+function buildClusterElements(
+  nodes: Map<string, GNode>,
+  edges: Map<string, GEdge>,
+  level: "l1" | "l2" | "l3",
+): CyElementDefinition[] {
+  const clusterKey = level === "l1" ? "scl1" : level === "l2" ? "scl2" : "scl3";
+
+  // 1. Compound parent hull nodes (one per cluster)
+  const clusterLabels = new Map<number, Set<string>>();
+  const clusterSizes = new Map<number, number>();
+  nodes.forEach((n) => {
+    const cid = n.properties[clusterKey] as number | null | undefined;
+    if (cid === null || cid === undefined) return;
+    if (!clusterLabels.has(cid)) { clusterLabels.set(cid, new Set()); clusterSizes.set(cid, 0); }
+    clusterLabels.get(cid)!.add(n.label.includes(":") ? n.label.split(":").pop()! : n.label);
+    clusterSizes.set(cid, (clusterSizes.get(cid) ?? 0) + 1);
+  });
+
+  const els: CyElementDefinition[] = [];
+  clusterLabels.forEach((labels, cid) => {
+    els.push({
+      group: "nodes",
+      data: {
+        id: `__cluster_${level}_${cid}`,
+        label: "Cluster",
+        _cluster: true,
+        _clusterId: cid,
+        _clusterLevel: level,
+        _clusterSize: clusterSizes.get(cid) ?? 0,
+        _clusterLabels: [...labels].sort().join(", "),
+      },
+    });
+  });
+
+  // 2. All data nodes, parented into their compound hull
+  nodes.forEach((n, k) => {
+    const cid = n.properties[clusterKey] as number | null | undefined;
+    const parentId = cid !== null && cid !== undefined ? `__cluster_${level}_${cid}` : undefined;
+    els.push({
+      group: "nodes",
+      data: { id: k, label: n.label, _node: n, ...(parentId ? { parent: parentId, _inCluster: true } : {}) },
+    });
+  });
+
+  // 3. Cross-cluster edges only (intra-cluster suppressed)
+  edges.forEach((e) => {
+    const srcKey = `${e.startNode.label}:${e.startNode.id}`;
+    const tgtKey = `${e.endNode.label}:${e.endNode.id}`;
+    const srcNode = nodes.get(srcKey);
+    const tgtNode = nodes.get(tgtKey);
+    if (!srcNode || !tgtNode) return;
+    const srcCid = srcNode.properties[clusterKey] as number | null | undefined;
+    const tgtCid = tgtNode.properties[clusterKey] as number | null | undefined;
+    if (srcCid !== null && srcCid !== undefined && tgtCid !== null && tgtCid !== undefined && srcCid === tgtCid) return;
+    els.push({
+      group: "edges",
+      data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e },
+    });
+  });
+
+  return els;
+}
+
 // ── Graph canvas ──────────────────────────────────────────────────────────────
 interface CanvasProps {
   nodes: Map<string, GNode>;
@@ -635,6 +710,7 @@ interface CanvasProps {
   showingParentsCircular: Set<string>;
   onToggleParentsCircular: (nodeKey: string) => void;
   onCyReady?: (cy: CyInstance | null) => void;
+  clusterLevel: ClusterLevel;
 }
 
 type LayoutMode = "force" | "hierarchy";
@@ -669,7 +745,7 @@ const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
   } as CyLayoutOptions,
 };
 
-function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, labelSiblings: _labelSiblings, showingChildrenNatural, onToggleChildren, showingChildrenCircular, onToggleChildrenCircular, showingParents, onToggleParents, showingParentsCircular, onToggleParentsCircular, onCyReady }: CanvasProps) {
+function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, labelSiblings: _labelSiblings, showingChildrenNatural, onToggleChildren, showingChildrenCircular, onToggleChildrenCircular, showingParents, onToggleParents, showingParentsCircular, onToggleParentsCircular, onCyReady, clusterLevel }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
   const colorOverridesRef = useRef(colorOverrides);
@@ -701,6 +777,31 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
   const activeLayoutRef = useRef<{ stop: () => void } | null>(null);
   // Stable ref to nudgeLayout so event handlers can call it without stale closure
   const nudgeLayoutRef = useRef<() => void>(() => {});
+  // SVG hull circles drawn over the canvas for cluster visualization
+  const [hullCircles, setHullCircles] = useState<Array<{ cid: number; x: number; y: number; r: number }>>([]);
+  const clusterLevelRef = useRef(clusterLevel);
+  clusterLevelRef.current = clusterLevel;
+  const computeHulls = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy || clusterLevelRef.current === "none") { setHullCircles([]); return; }
+    const hulls: Array<{ cid: number; x: number; y: number; r: number }> = [];
+    cy.nodes("[?_cluster]").forEach((cn) => {
+      const cid = cn.data("_clusterId") as number;
+      const children = cn.children();
+      if (children.length === 0) return;
+      let sumX = 0, sumY = 0;
+      children.forEach((c) => { const p = c.renderedPosition(); sumX += p.x; sumY += p.y; });
+      const cx = sumX / children.length;
+      const cyPos = sumY / children.length;
+      let maxR = 30;
+      children.forEach((c) => {
+        const p = c.renderedPosition();
+        maxR = Math.max(maxR, Math.hypot(p.x - cx, p.y - cyPos) + c.renderedWidth() / 2 + 20);
+      });
+      hulls.push({ cid, x: cx, y: cyPos, r: maxR });
+    });
+    setHullCircles(hulls);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Node right-click context menu
   const [nodeCtxMenu, setNodeCtxMenu] = useState<{ x: number; y: number; nodeId: string; selectedNodeIds: string[] } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -756,12 +857,14 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       try {
         cy.batch(() => {
           cy.nodes().forEach((node) => {
+            if (node.data("_cluster")) return;
             const lbl = node.data("label") as string;
             const n = node.data("_node") as GNode | undefined;
             const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
             node.style("background-color", base);
-            const sz = sizeOverridesRef.current[lbl] ?? 44;
-            node.style({ width: sz, height: sz, "text-max-width": `${sz - 8}px` });
+            const base_sz = sizeOverridesRef.current[lbl] ?? 44;
+            const sz = node.data("_inCluster") ? base_sz / 2 : base_sz;
+            node.style({ width: sz, height: sz, "text-max-width": `${sz - 4}px` });
             if (n) {
               const prop = labelPropertyRef.current[n.label];
               node.style("label", prop
@@ -778,6 +881,66 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       try { cy.nodes().forEach((n) => { if (anchored.has(n.id())) n.unlock(); }); } catch { /* cy may have been destroyed */ }
       layoutRunningRef.current = false;
     };
+    // Cluster mode: region-based layout — divide canvas into N cells, one node at center, rest in ring
+    if (clusterLevelRef.current !== "none") {
+      const clusterParents = cy.nodes("[?_cluster]");
+      const N = clusterParents.length;
+      if (N > 0) {
+        const el = containerRef.current;
+        const W = el ? el.clientWidth : 800;
+        const H = el ? el.clientHeight : 600;
+        const cols = Math.ceil(Math.sqrt(N));
+        const rows = Math.ceil(N / cols);
+        const cellW = W / cols;
+        const cellH = H / rows;
+        // Ring radius: largest circle that fits in the cell with padding, capped per child count
+        const maxR = Math.min(cellW, cellH) / 2 - 40;
+        const ringSpacing = 44; // px between concentric rings
+        const minArcGap = 20;  // min arc gap between nodes on a ring
+        let i = 0;
+        clusterParents.forEach((cn) => {
+          const children = cn.children();
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const centerX = (col + 0.5) * cellW - W / 2;
+          const centerY = (row + 0.5) * cellH - H / 2;
+          const queue: typeof children[0][] = [];
+          children.forEach((child) => { queue.push(child); });
+          // Place first node at center
+          const first = queue.shift();
+          if (first && !anchored.has(first.id())) first.position({ x: centerX, y: centerY });
+          let ringNum = 1;
+          while (queue.length > 0) {
+            const ringR = ringNum * ringSpacing;
+            if (ringR > maxR) break; // remaining nodes won't fit; clamp to last valid ring
+            const capacity = Math.max(4, Math.floor(2 * Math.PI * ringR / (minArcGap + 22)));
+            const slice = queue.splice(0, capacity);
+            slice.forEach((child, j) => {
+              if (anchored.has(child.id())) return;
+              const angle = (2 * Math.PI * j / slice.length) - Math.PI / 2;
+              child.position({ x: centerX + ringR * Math.cos(angle), y: centerY + ringR * Math.sin(angle) });
+            });
+            ringNum++;
+          }
+          // Any overflow nodes (beyond maxR): stack at last valid ring
+          if (queue.length > 0) {
+            const ringR = (ringNum - 1) * ringSpacing || ringSpacing;
+            queue.forEach((child, j) => {
+              if (anchored.has(child.id())) return;
+              const angle = (2 * Math.PI * j / Math.max(1, queue.length)) - Math.PI / 2;
+              child.position({ x: centerX + ringR * Math.cos(angle), y: centerY + ringR * Math.sin(angle) });
+            });
+          }
+          i++;
+        });
+      }
+      applyStyles();
+      releaseRun();
+      try { cy.fit(undefined, 40); } catch { /* cy may have been destroyed */ }
+      computeHulls();
+      return;
+    }
+
     const safetyTimer = setTimeout(() => { applyStyles(); releaseRun(); try { cy.fit(undefined, 40); } catch { /* cy may have been destroyed */ } }, 1000);
     layout.one("layoutstop", () => {
       clearTimeout(safetyTimer);
@@ -825,12 +988,14 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         try {
           cy.batch(() => {
             cy.nodes().forEach((node) => {
+              if (node.data("_cluster")) return;
               const lbl = node.data("label") as string;
               const n = node.data("_node") as GNode | undefined;
               const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
               node.style("background-color", base);
-              const sz = sizeOverridesRef.current[lbl] ?? 44;
-              node.style({ width: sz, height: sz, "text-max-width": `${sz - 8}px` });
+              const base_sz2 = sizeOverridesRef.current[lbl] ?? 44;
+              const sz = node.data("_inCluster") ? base_sz2 / 2 : base_sz2;
+              node.style({ width: sz, height: sz, "text-max-width": `${sz - 4}px` });
               if (n) {
                 const prop = labelPropertyRef.current[n.label];
                 node.style("label", prop
@@ -875,23 +1040,25 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     });
   }, [runLayout]);
 
-  // Full rebuild — fires only when the base graph (query result) changes
+  // Full rebuild — fires only when the base graph (query result) or cluster level changes
   useEffect(() => {
     if (!containerRef.current) return;
-    const els: CyElementDefinition[] = [];
-    nodes.forEach((n) => {
-      els.push({ group: "nodes", data: { id: `${n.label}:${n.id}`, label: n.label, _node: n } });
-    });
-    edges.forEach((e) => {
-      const srcKey = `${e.startNode.label}:${e.startNode.id}`;
-      const tgtKey = `${e.endNode.label}:${e.endNode.id}`;
-      if (nodes.has(srcKey) && nodes.has(tgtKey)) {
-        els.push({
-          group: "edges",
-          data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e },
-        });
-      }
-    });
+    const els: CyElementDefinition[] = clusterLevel !== "none"
+      ? buildClusterElements(nodes, edges, clusterLevel)
+      : (() => {
+          const _els: CyElementDefinition[] = [];
+          nodes.forEach((n) => {
+            _els.push({ group: "nodes", data: { id: `${n.label}:${n.id}`, label: n.label, _node: n } });
+          });
+          edges.forEach((e) => {
+            const srcKey = `${e.startNode.label}:${e.startNode.id}`;
+            const tgtKey = `${e.endNode.label}:${e.endNode.id}`;
+            if (nodes.has(srcKey) && nodes.has(tgtKey)) {
+              _els.push({ group: "edges", data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e } });
+            }
+          });
+          return _els;
+        })();
 
     const cy = cytoscape({
       container: containerRef.current,
@@ -982,6 +1149,34 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             "width": 2.5,
           },
         },
+        {
+          selector: "node[?_cluster]",
+          style: {
+            "background-opacity": 0,
+            "border-width": 0,
+            "label": "",
+            "padding": "36px",
+            "events": "no" as const,
+          },
+        },
+        {
+          selector: "node[?_inCluster]",
+          style: {
+            "width": (ele: CyElement) => {
+              const lbl = ele.data("label") as string;
+              return (sizeOverridesRef.current[lbl] ?? 44) / 2;
+            },
+            "height": (ele: CyElement) => {
+              const lbl = ele.data("label") as string;
+              return (sizeOverridesRef.current[lbl] ?? 44) / 2;
+            },
+            "font-size": 7,
+            "text-max-width": (ele: CyElement) => {
+              const lbl = ele.data("label") as string;
+              return `${(sizeOverridesRef.current[lbl] ?? 44) / 2 - 4}px`;
+            },
+          },
+        },
       ],
       layout: { name: "null" } as CyLayoutOptions,
       minZoom: 0.05,
@@ -1010,6 +1205,8 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     cy.on("cxttap", (evt) => {
       if (evt.target === cy) setNodeCtxMenu(null);
     });
+    cy.on("layoutstop", computeHulls);
+    cy.on("viewport", computeHulls);
     // Track manually dragged nodes as anchored, then auto-nudge
     // "free" fires on every click too — only nudge if position actually changed
     const grabPositions = new Map<string, { x: number; y: number }>();
@@ -1039,13 +1236,15 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       activeLayoutRef.current = null;
       onCyReady?.(null);
       cy.destroy();
+      setHullCircles([]);
     };
-  }, [nodes, edges]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nodes, edges, clusterLevel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Incremental overlay update — adds/removes overlay nodes+edges without full re-layout
   const prevOverlayNodesRef = useRef<Map<string, GNode>>(new Map());
   const prevOverlayEdgesRef = useRef<Map<string, GEdge>>(new Map());
   useEffect(() => {
+    if (clusterLevel !== "none") return;
     const cy = cyRef.current;
     if (!cy) return;
     const prevNodes = prevOverlayNodesRef.current;
@@ -1148,7 +1347,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     prevOverlayNodesRef.current = new Map(overlayNodes);
     prevOverlayEdgesRef.current = new Map(overlayEdges);
     if ((hadNewNodes && !allNewAreCircular) || hadNewEdges) nudgeLayout(newCyIdsForNudge.size > 0 ? newCyIdsForNudge : undefined, true);
-  }, [overlayNodes, overlayEdges]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [overlayNodes, overlayEdges, clusterLevel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Update node colors when colorOverrides changes without rebuilding the graph
   useEffect(() => {
@@ -1171,8 +1370,9 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     cy.batch(() => {
       cy.nodes().forEach((node) => {
         const lbl = node.data("label") as string;
-        const sz = sizeOverridesRef.current[lbl] ?? 44;
-        node.style({ width: sz, height: sz, "text-max-width": `${sz - 8}px` });
+        const base_sz3 = sizeOverridesRef.current[lbl] ?? 44;
+        const sz = node.data("_inCluster") ? base_sz3 / 2 : base_sz3;
+        node.style({ width: sz, height: sz, "text-max-width": `${sz - 4}px` });
       });
     });
   }, [sizeOverrides]);
@@ -1222,6 +1422,16 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       }}
     >
       <div ref={containerRef} className="gf-canvas" />
+      {hullCircles.length > 0 && (
+        <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+          {hullCircles.map(({ cid, x, y, r }) => (
+            <g key={cid}>
+              <circle cx={x} cy={y} r={r} fill={clusterColor(cid)} fillOpacity={0.1} stroke={clusterColor(cid)} strokeWidth={2} strokeOpacity={0.75} />
+              <text x={x} y={y - r - 6} textAnchor="middle" fill={clusterColor(cid)} fontSize={11} fontWeight="bold" fontFamily="sans-serif">{`C${cid}`}</text>
+            </g>
+          ))}
+        </svg>
+      )}
       <div className="gf-canvas-controls">
         <button className="gf-ctrl-btn" onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 1.3)} title="Zoom in">+</button>
         <button className="gf-ctrl-btn" onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 0.77)} title="Zoom out">−</button>
@@ -1645,6 +1855,7 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
     onRerun(id, query);
   }, [onRerun]);
   const [showDlMenu, setShowDlMenu] = useState(false);
+  const [clusterLevel, setClusterLevel] = useState<ClusterLevel>("none");
   const [tableWrap, setTableWrap] = useState(false);
   const [tableColWidths, setTableColWidths] = useState<number[]>(() => frame.columns.map(() => 180));
   const prevColumnsKey = useRef(frame.columns.join(","));
@@ -2040,6 +2251,8 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
   }, [autoImpute, frame.status, frame.nodes, pkMap, schemaRels, _fetchNeighbors]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
+  const hasClusters = frame.nodes.size > 0 &&
+    [...frame.nodes.values()].some((n) => n.properties.scl1 !== null && n.properties.scl1 !== undefined);
   const activeView: "graph" | "table" | "json" = hasGraph ? view : (view === "json" ? "json" : "table");
 
   const renderHeader = (isModal: boolean) => (
@@ -2081,6 +2294,15 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
             onClick={() => setAutoImpute(v => !v)}
             title={autoImpute ? "Auto-impute relationships ON — click to disable" : "Auto-impute relationships between visible nodes"}
           >⊕</button>
+        )}
+        {hasGraph && frame.status === "done" && hasClusters && (
+          <button
+            className={`gf-icon-btn${clusterLevel !== "none" ? " gf-icon-btn--on" : ""}`}
+            onClick={() => setClusterLevel((l) => l === "none" ? "l1" : l === "l1" ? "l2" : l === "l2" ? "l3" : "none")}
+            title={clusterLevel === "none" ? "Group by schema clusters (L1)" : clusterLevel === "l1" ? "Group by schema clusters (L2)" : clusterLevel === "l2" ? "Group by schema clusters (L3)" : "Disable clustering"}
+          >
+            {clusterLevel === "l1" ? "⬡₁" : clusterLevel === "l2" ? "⬡₂" : clusterLevel === "l3" ? "⬡₃" : "⬡"}
+          </button>
         )}
         {hasGraph && (
           <button className={`gf-view-btn ${activeView === "graph" ? "active" : ""}`}
@@ -2182,7 +2404,7 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
       )}
       {frame.status !== "error" && hasGraph && (
         <div className="gf-graph-area" style={{ height: graphAreaHeight, display: activeView === "graph" ? undefined : "none" }}>
-          <GraphCanvas nodes={frame.nodes} edges={frame.edges} overlayNodes={overlayNodes} overlayEdges={overlayEdges} onSelect={setSelected} colorOverrides={colorOverrides} sizeOverrides={sizeOverrides} labelProperty={labelProperty} relLineOverrides={relLineOverrides} onExcludeNode={handleExcludeNode} pkMap={pkMap} relationships={relationships ?? []} showingChildrenNatural={showingChildrenNatural} onToggleChildren={handleToggleChildren} showingChildrenCircular={showingChildrenCircular} onToggleChildrenCircular={handleToggleChildrenCircular} showingParents={showingParents} onToggleParents={handleToggleParents} showingParentsCircular={showingParentsCircular} onToggleParentsCircular={handleToggleParentsCircular} onCyReady={(cy) => { canvasCyRef.current = cy; }} />
+          <GraphCanvas nodes={frame.nodes} edges={frame.edges} overlayNodes={overlayNodes} overlayEdges={overlayEdges} onSelect={setSelected} colorOverrides={colorOverrides} sizeOverrides={sizeOverrides} labelProperty={labelProperty} relLineOverrides={relLineOverrides} onExcludeNode={handleExcludeNode} pkMap={pkMap} relationships={relationships ?? []} showingChildrenNatural={showingChildrenNatural} onToggleChildren={handleToggleChildren} showingChildrenCircular={showingChildrenCircular} onToggleChildrenCircular={handleToggleChildrenCircular} showingParents={showingParents} onToggleParents={handleToggleParents} showingParentsCircular={showingParentsCircular} onToggleParentsCircular={handleToggleParentsCircular} onCyReady={(cy) => { canvasCyRef.current = cy; }} clusterLevel={clusterLevel} />
           <Inspector selected={selected} colorOverrides={colorOverrides} onColorChange={onColorChange}
                      onClose={() => setSelected(null)}
                      width={inspectorWidth} onResizeStart={handleResizeStart}

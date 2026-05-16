@@ -25,10 +25,14 @@ from provisa.otel_compat import get_tracer as _get_tracer
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
 
+
 def _trino_query_timeout() -> int:
     try:
         from provisa.api.app import state
-        return state.server_limits.get("trino_query_timeout", int(os.environ.get("PROVISA_TRINO_QUERY_TIMEOUT", "120")))
+
+        return state.server_limits.get(
+            "trino_query_timeout", int(os.environ.get("PROVISA_TRINO_QUERY_TIMEOUT", "120"))
+        )
     except Exception:
         return int(os.environ.get("PROVISA_TRINO_QUERY_TIMEOUT", "120"))
 
@@ -69,12 +73,14 @@ def execute_trino(
             log.warning("[EXEC TRINO] connection stale — reconnecting")
             try:
                 from provisa.api.app import state
+
                 conn = trino.dbapi.connect(**state.trino_conn_kwargs)
                 state.trino_conn = conn
             except Exception as reconnect_exc:
                 raise ConnectionError(f"Trino reconnect failed: {reconnect_exc}") from reconnect_exc
         # Extract embedded provisa-params comment if present; fall back to explicit params.
         from provisa.compiler.params import extract_params_comment
+
         exec_sql, embedded = extract_params_comment(sql)
         effective_params = params if params is not None else embedded
         # Trino Python client uses ? for parameter placeholders.
@@ -98,6 +104,7 @@ def execute_trino(
         effective_hints.setdefault("query_max_execution_time", f"{_trino_query_timeout()}s")
         try:
             from provisa.api.app import state as _app_state
+
             effective_hints = {**_app_state.trino_fte_hints, **effective_hints}
         except Exception:
             pass
@@ -110,7 +117,6 @@ def execute_trino(
             cur.execute(set_sql)
 
         log.info("[EXEC TRINO] sql=%s", exec_sql[:200])
-        cur = conn.cursor()
         try:
             if effective_params:
                 cur.execute(exec_sql, effective_params)
@@ -123,8 +129,17 @@ def execute_trino(
             span.set_attribute("error.message", err_msg[:500])
             # Surface memory-exceeded errors as a clean exception with a helpful message
             # so callers can return a 400/503 instead of crashing.
-            if any(k in err_msg for k in ("EXCEEDED_LOCAL_MEMORY_LIMIT", "EXCEEDED_GLOBAL_MEMORY_LIMIT", "Query exceeded")):
-                raise MemoryError(f"Query exceeded Trino memory limit — add a limit clause or narrow your filter. Detail: {err_msg[:300]}") from exc
+            if any(
+                k in err_msg
+                for k in (
+                    "EXCEEDED_LOCAL_MEMORY_LIMIT",
+                    "EXCEEDED_GLOBAL_MEMORY_LIMIT",
+                    "Query exceeded",
+                )
+            ):
+                raise MemoryError(
+                    f"Query exceeded Trino memory limit — add a limit clause or narrow your filter. Detail: {err_msg[:300]}"
+                ) from exc
             raise
 
         column_names = [desc[0] for desc in cur.description] if cur.description else []

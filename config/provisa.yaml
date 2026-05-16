@@ -190,7 +190,12 @@ server:
   limits:
     default_row_limit: 10000    # rows returned when no LIMIT specified; env PROVISA_DEFAULT_ROW_LIMIT overrides
     trino_query_timeout: 120    # seconds before Trino kills a query; env PROVISA_TRINO_QUERY_TIMEOUT overrides
-    request_timeout: 60         # seconds before the API returns 504; env PROVISA_REQUEST_TIMEOUT overrides
+    request_timeout: 120        # seconds before the API returns 504; env PROVISA_REQUEST_TIMEOUT overrides
+
+graphql_remote:
+  max_object_depth: 5  # max nesting depth for OBJECT column sub-selection at introspection time
+  max_list_depth: 2    # nesting depth at which LIST sub-fields are excluded from selection (prevents explosion)
+  max_list_items: 100  # max items fetched per LIST field; injected as first: N in the GQL selection
 
 observability:
   endpoint: "http://localhost:4319"
@@ -199,3 +204,10 @@ observability:
   log_level: WARNING
   compact_cron: "* * * * *"
   compact_batch_size: 1000
+  telemetry_filter:
+    redact_sql_literals: false       # strip literal values from db.statement before export to internal endpoint
+    redact_attributes: []            # attribute names to drop entirely before export to internal endpoint
+  # support_endpoint: ""            # Provisa support OTLP endpoint — off by default
+  support_telemetry_filter:
+    redact_sql_literals: true        # strip literal values from db.statement (default on for support)
+    redact_attributes: []            # additional attributes to drop before sending to Provisa support
