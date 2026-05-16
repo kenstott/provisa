@@ -1400,7 +1400,9 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           const srcKey = `${e.startNode.label}:${e.startNode.id}`;
           const tgtKey = `${e.endNode.label}:${e.endNode.id}`;
           // Guard against duplicate edges with different identities but same endpoints+type
-          const dupExists = cy.edges(`[source="${srcKey}"][target="${tgtKey}"][label="${e.type}"]`).length > 0;
+          const dupExists =
+            cy.edges(`[source="${srcKey}"][target="${tgtKey}"][label="${e.type}"]`).length > 0 ||
+            cy.edges(`[source="${tgtKey}"][target="${srcKey}"][label="${e.type}"]`).length > 0;
           if (!dupExists && cy.$id(srcKey).length > 0 && cy.$id(tgtKey).length > 0) {
             cy.add({ group: "edges", data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e } });
           }
@@ -2350,6 +2352,8 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
     const frameFingerprints = new Set<string>();
     frame.edges.forEach((e) => {
       frameFingerprints.add(`${e.startNode.label}:${e.startNode.id}→${e.endNode.label}:${e.endNode.id}:${e.type}`);
+      // Also store reversed fingerprint so backward-traversal frame edges match canonical imputed edges
+      frameFingerprints.add(`${e.endNode.label}:${e.endNode.id}→${e.startNode.label}:${e.startNode.id}:${e.type}`);
     });
     const m = new Map<string, GEdge>();
     for (const d of overlayData.values()) {

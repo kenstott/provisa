@@ -742,6 +742,35 @@ def test_anonymous_nodes_relationship_return_r():
     assert "WORKS_AT" in sql or "works_at" in sql.lower()
 
 
+def test_backward_traversal_edge_identity_is_canonical():
+    """MATCH (c:Company)<-[r:WORKS_AT]-(p:Person) RETURN r — identity must use canonical src→tgt order."""
+    lm = _make_label_map()
+    # Forward canonical: persons-[WORKS_AT]->companies  =>  identity = WORKS_AT:person_id-company_id
+    fwd_ast = parse_cypher("MATCH (p:Person)-[r:WORKS_AT]->(c:Company) RETURN r LIMIT 25")
+    fwd_sql_ast, _, _ = cypher_to_sql(fwd_ast, lm, {})
+    fwd_sql = fwd_sql_ast.sql(dialect="trino")
+
+    # Backward traversal: same rel in reverse
+    bwd_ast = parse_cypher("MATCH (c:Company)<-[r:WORKS_AT]-(p:Person) RETURN r LIMIT 25")
+    bwd_sql_ast, _, _ = cypher_to_sql(bwd_ast, lm, {})
+    bwd_sql = bwd_sql_ast.sql(dialect="trino")
+
+    # Extract identity expressions from both — they must be identical so imputed edges de-dup correctly
+    import re
+
+    fwd_ids = re.findall(r"'WORKS_AT'.*?(?=\sAS\s)", fwd_sql)
+    bwd_ids = re.findall(r"'WORKS_AT'.*?(?=\sAS\s)", bwd_sql)
+
+    # Both queries must produce an identity column containing WORKS_AT
+    assert fwd_ids, "forward query missing WORKS_AT identity"
+    assert bwd_ids, "backward query missing WORKS_AT identity"
+    # The identity expression must be the same in both directions
+    assert fwd_ids[0] == bwd_ids[0], (
+        f"edge identity differs between forward and backward traversal: "
+        f"fwd={fwd_ids[0]!r} bwd={bwd_ids[0]!r}"
+    )
+
+
 def test_anonymous_src_named_tgt_relationship():
     """MATCH ()-[r:WORKS_AT]->(c:Company) RETURN r.join_source_column — anonymous src inferred."""
     lm = _make_label_map()

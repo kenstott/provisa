@@ -47,6 +47,7 @@ class SelectBuilderMixin:
         src_nm: NodeMapping,
         tgt_alias: str,
         tgt_nm: NodeMapping,
+        is_reversed: bool = False,
     ) -> exp.Expression:
         """Emit a JSON edge object for RETURN r.
 
@@ -60,6 +61,9 @@ class SelectBuilderMixin:
             'startNode', JSON_OBJECT('id', src.id, 'label', 'SrcLabel', 'properties', JSON_OBJECT()),
             'endNode', JSON_OBJECT('id', tgt.id, 'label', 'TgtLabel', 'properties', JSON_OBJECT()))
         startNode/endNode are Provisa extensions for graph visualization.
+        When is_reversed=True the pattern traverses the canonical edge backward; identity uses
+        canonical (src→tgt) order so it matches imputed-edge identities (always canonical).
+        startNode/endNode remain in pattern order for display.
         """
         src_id_col = exp.Column(
             this=exp.Identifier(this=src_nm.id_column, quoted=True),
@@ -69,8 +73,15 @@ class SelectBuilderMixin:
             this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
             table=exp.Identifier(this=tgt_alias),
         )
-        # identity: rel_type || ':' || CAST(src.id AS VARCHAR) || '-' || CAST(tgt.id AS VARCHAR)
+        # identity: rel_type || ':' || CAST(canonical_src.id AS VARCHAR) || '-' || CAST(canonical_tgt.id AS VARCHAR)
+        # When traversed backward, swap src/tgt so identity matches canonical (imputed) direction.
         # Include rel_type so edges of different types between same node pair get distinct identities.
+        identity_first = exp.Cast(
+            this=tgt_id_col if is_reversed else src_id_col, to=exp.DataType.build("VARCHAR")
+        )
+        identity_second = exp.Cast(
+            this=src_id_col if is_reversed else tgt_id_col, to=exp.DataType.build("VARCHAR")
+        )
         identity = exp.DPipe(
             this=exp.DPipe(
                 this=exp.DPipe(
@@ -78,11 +89,11 @@ class SelectBuilderMixin:
                         this=exp.Literal.string(rel_type),
                         expression=exp.Literal.string(":"),
                     ),
-                    expression=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR")),
+                    expression=identity_first,
                 ),
                 expression=exp.Literal.string("-"),
             ),
-            expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR")),
+            expression=identity_second,
         )
         empty_props = exp.Anonymous(this="JSON_OBJECT", expressions=[])
 
@@ -352,10 +363,10 @@ class SelectBuilderMixin:
                 self._graph_vars[alias or expr_text] = GraphVarKind.EDGE
                 endpoints = getattr(self, "_rel_var_endpoints", {}).get(expr_text)
                 if endpoints:
-                    src_alias, src_nm, tgt_alias, tgt_nm = endpoints
+                    src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
                     rel_type = self._rel_var_types[expr_text]
                     edge_expr = self._build_edge_object(
-                        rel_type, src_alias, src_nm, tgt_alias, tgt_nm
+                        rel_type, src_alias, src_nm, tgt_alias, tgt_nm, is_reversed
                     )
                 else:
                     edge_expr = exp.Null()

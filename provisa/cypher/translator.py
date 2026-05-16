@@ -148,8 +148,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         self._call_var_to_lateral: dict[str, str] = {}
         # relationship variable → resolved rel_type string (for type(r) resolution)
         self._rel_var_types: dict[str, str] = {}
-        # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm)
-        self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping"]] = {}
+        # relationship variable → (src_alias, src_nm, tgt_alias, tgt_nm, is_reversed)
+        self._rel_var_endpoints: dict[str, tuple[str, "NodeMapping", str, "NodeMapping", bool]] = {}
         # vars that are pre-built JSON from an all-rels union subquery
         self._passthrough_vars: set[str] = set()
         # alias of the all-rels union subquery (when built)
@@ -787,7 +787,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     _src_alias = src_var or (src_nm.table_name if src_nm else None)
                     _tgt_alias = tgt_var or (tgt_nm.table_name if tgt_nm else None)
                     if _src_alias and _tgt_alias and src_nm and tgt_nm:
-                        self._rel_var_endpoints[rel.variable] = (_src_alias, src_nm, _tgt_alias, tgt_nm)
+                        self._rel_var_endpoints[rel.variable] = (_src_alias, src_nm, _tgt_alias, tgt_nm, primary_bwd)
 
                 primary_join = _make_rel_join(primary_rm, primary_bwd)
 
