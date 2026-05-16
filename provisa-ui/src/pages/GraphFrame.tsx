@@ -667,16 +667,11 @@ function buildClusterElements(
     });
   });
 
-  // 3. Cross-cluster edges only (intra-cluster suppressed)
+  // 3. All edges (both intra- and cross-cluster)
   edges.forEach((e) => {
     const srcKey = `${e.startNode.label}:${e.startNode.id}`;
     const tgtKey = `${e.endNode.label}:${e.endNode.id}`;
-    const srcNode = nodes.get(srcKey);
-    const tgtNode = nodes.get(tgtKey);
-    if (!srcNode || !tgtNode) return;
-    const srcCid = srcNode.properties[clusterKey] as number | null | undefined;
-    const tgtCid = tgtNode.properties[clusterKey] as number | null | undefined;
-    if (srcCid !== null && srcCid !== undefined && tgtCid !== null && tgtCid !== undefined && srcCid === tgtCid) return;
+    if (!nodes.has(srcKey) || !nodes.has(tgtKey)) return;
     els.push({
       group: "edges",
       data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e },
