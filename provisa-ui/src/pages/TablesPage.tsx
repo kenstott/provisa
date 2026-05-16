@@ -278,7 +278,7 @@ export function TablesPage() {
       .then(setAvailableSchemas)
       .catch(() => setAvailableSchemas([]))
       .finally(() => setLoadingSchemas(false));
-  }, [sourceId]);
+  }, [sourceId, sources]);
 
   useEffect(() => {
     setTableName(""); setTableDescription(""); setColumns([]); setAvailableTables([]);

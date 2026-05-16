@@ -1324,6 +1324,10 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         sources = {
             r["id"]: dict(r) for r in await conn.fetch("SELECT * FROM sources")
         }
+        # Backfill state.source_types from DB for sources registered via UI after server start
+        for _sid, _src_row in sources.items():
+            if _sid not in state.source_types and _src_row.get("type"):
+                state.source_types[_sid] = _src_row["type"]
         # PostgreSQL sources store database=<pg_db_name>, but Trino accesses them via
         # a catalog named source_to_catalog(source_id). Patch all postgresql-type sources
         # so introspect_tables uses the right Trino catalog name.

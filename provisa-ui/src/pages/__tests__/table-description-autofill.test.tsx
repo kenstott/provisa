@@ -11,12 +11,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 
-// Mock the admin API module before importing the component
+vi.mock("../../context/DomainFilterContext", () => ({
+  useDomainFilter: () => ({ checkedDomains: new Set<string>(), domains: [], setDomains: vi.fn(), selectedDomain: null, setSelectedDomain: vi.fn(), toggleDomain: vi.fn() }),
+}));
+
+vi.mock("../../context/AuthContext", () => ({
+  useAuth: () => ({ role: "admin", selectedRoles: ["admin"], capabilities: ["admin"], domainAccess: ["*"] }),
+}));
+
+vi.mock("../../components/admin/FilterInput", () => ({
+  FilterInput: () => null,
+}));
+
 vi.mock("../../api/admin", () => ({
   fetchTables: vi.fn().mockResolvedValue([]),
   fetchSources: vi.fn().mockResolvedValue([
-    { id: "sales-pg", type: "postgresql", host: "localhost", port: 5432, database: "sales", username: "admin", dialect: "postgresql" },
+    { id: "sales-pg", type: "postgresql", host: "localhost", port: 5432, database: "sales", username: "admin", dialect: "postgresql", cacheEnabled: false, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "" },
   ]),
   fetchDomains: vi.fn().mockResolvedValue([{ id: "sales", description: "Sales data" }]),
   fetchRoles: vi.fn().mockResolvedValue([{ id: "admin", capabilities: ["admin"], domainAccess: ["*"] }]),
@@ -33,15 +45,31 @@ vi.mock("../../api/admin", () => ({
     { name: "products", comment: null },
   ]),
   fetchAvailableColumnsMetadata: vi.fn().mockResolvedValue([
-    { name: "id", dataType: "integer", comment: "Primary key" },
-    { name: "name", dataType: "varchar", comment: "Customer name" },
+    { name: "id", dataType: "integer", comment: "Primary key", nativeFilterType: null, isPrimaryKey: true },
+    { name: "name", dataType: "varchar", comment: "Customer name", nativeFilterType: null, isPrimaryKey: false },
   ]),
   registerTable: vi.fn().mockResolvedValue({ success: true, message: "Registered" }),
   deleteTable: vi.fn().mockResolvedValue({ success: true, message: "Deleted" }),
   updateTable: vi.fn().mockResolvedValue({ success: true, message: "Updated" }),
+  updateTableCache: vi.fn().mockResolvedValue({ success: true, message: "Updated" }),
+  purgeCacheByTable: vi.fn().mockResolvedValue({ success: true, message: "Purged" }),
+  invalidateFileSource: vi.fn().mockResolvedValue({ success: true, message: "Invalidated" }),
+  updateTableNaming: vi.fn().mockResolvedValue({ success: true, message: "Updated" }),
+  profileTable: vi.fn().mockResolvedValue({ columns: [], rows: [], rowCount: 0 }),
+  generateTableDescription: vi.fn().mockResolvedValue(""),
+  generateColumnDescription: vi.fn().mockResolvedValue(""),
 }));
 
 import { TablesPage } from "../TablesPage";
+import * as adminApi from "../../api/admin";
+
+function renderPage() {
+  return render(
+    <MemoryRouter>
+      <TablesPage />
+    </MemoryRouter>
+  );
+}
 
 describe("Table description auto-fill from physical database", () => {
   beforeEach(() => {
@@ -49,37 +77,28 @@ describe("Table description auto-fill from physical database", () => {
   });
 
   it("prefills table description from comment when table is selected", async () => {
-    render(<TablesPage />);
+    renderPage();
 
-    // Wait for initial data load
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /registered tables/i })).toBeInTheDocument();
     });
 
-    // Open register form
-    await userEvent.click(screen.getByRole("button", { name: /register table/i }));
+    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
 
-    // Select source
     const selects = screen.getAllByRole("combobox");
     await userEvent.selectOptions(selects[0], "sales-pg");
 
-    // Wait for schemas, select one
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "public" })).toBeInTheDocument();
     });
-    const schemaSelect = selects[2];
-    await userEvent.selectOptions(schemaSelect, "public");
+    await userEvent.selectOptions(selects[2], "public");
 
-    // Wait for tables to load
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "customers" })).toBeInTheDocument();
     });
 
-    // Select "customers" table
-    const tableSelect = selects[3];
-    await userEvent.selectOptions(tableSelect, "customers");
+    await userEvent.selectOptions(selects[3], "customers");
 
-    // Verify description was auto-populated
     await waitFor(() => {
       const descInput = screen.getByPlaceholderText(/appears in sdl docs/i);
       expect(descInput).toHaveValue("Registered customer accounts");
@@ -87,13 +106,13 @@ describe("Table description auto-fill from physical database", () => {
   });
 
   it("leaves description empty when table has no comment", async () => {
-    render(<TablesPage />);
+    renderPage();
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /registered tables/i })).toBeInTheDocument();
     });
 
-    await userEvent.click(screen.getByRole("button", { name: /register table/i }));
+    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
 
     const selects = screen.getAllByRole("combobox");
     await userEvent.selectOptions(selects[0], "sales-pg");
@@ -108,7 +127,6 @@ describe("Table description auto-fill from physical database", () => {
     });
     await userEvent.selectOptions(selects[3], "products");
 
-    // Description should remain empty since products has no comment
     await waitFor(() => {
       const descInput = screen.getByPlaceholderText(/appears in sdl docs/i);
       expect(descInput).toHaveValue("");
@@ -116,13 +134,13 @@ describe("Table description auto-fill from physical database", () => {
   });
 
   it("clears description when schema changes", async () => {
-    render(<TablesPage />);
+    renderPage();
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /registered tables/i })).toBeInTheDocument();
     });
 
-    await userEvent.click(screen.getByRole("button", { name: /register table/i }));
+    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
 
     const selects = screen.getAllByRole("combobox");
     await userEvent.selectOptions(selects[0], "sales-pg");
@@ -137,18 +155,114 @@ describe("Table description auto-fill from physical database", () => {
     });
     await userEvent.selectOptions(selects[3], "customers");
 
-    // Verify description is populated
     await waitFor(() => {
       const descInput = screen.getByPlaceholderText(/appears in sdl docs/i);
       expect(descInput).toHaveValue("Registered customer accounts");
     });
 
-    // Change schema — should clear description
     await userEvent.selectOptions(selects[2], "");
 
     await waitFor(() => {
       const descInput = screen.getByPlaceholderText(/appears in sdl docs/i);
       expect(descInput).toHaveValue("");
+    });
+  });
+});
+
+describe("Schema population — source type routing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("calls fetchAvailableSchemas for RDBMS sources", async () => {
+    renderPage();
+
+    await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
+    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
+
+    const selects = screen.getAllByRole("combobox");
+    await userEvent.selectOptions(selects[0], "sales-pg");
+
+    await waitFor(() => {
+      expect(adminApi.fetchAvailableSchemas).toHaveBeenCalledWith("sales-pg");
+    });
+  });
+
+  it("populates schema dropdown after API response", async () => {
+    renderPage();
+
+    await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
+    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
+
+    const selects = screen.getAllByRole("combobox");
+    await userEvent.selectOptions(selects[0], "sales-pg");
+
+    await waitFor(() => {
+      const schemaOptions = screen.getAllByRole("option", { name: "public" });
+      expect(schemaOptions.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("does NOT call fetchAvailableSchemas for graphql sources (uses fixed schema)", async () => {
+    vi.mocked(adminApi.fetchSources).mockResolvedValueOnce([
+      { id: "my-gql", type: "graphql", host: "", port: 0, database: "", username: "", dialect: "graphql", cacheEnabled: false, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "" },
+    ]);
+
+    renderPage();
+
+    await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
+    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
+
+    const selects = screen.getAllByRole("combobox");
+    await userEvent.selectOptions(selects[0], "my-gql");
+
+    await waitFor(() => {
+      const schemaOpts = screen.getAllByRole("option", { name: "default" });
+      expect(schemaOpts.length).toBeGreaterThan(0);
+    });
+    expect(adminApi.fetchAvailableSchemas).not.toHaveBeenCalled();
+  });
+
+  it("does NOT call fetchAvailableSchemas for kafka sources (uses fixed schema)", async () => {
+    vi.mocked(adminApi.fetchSources).mockResolvedValueOnce([
+      { id: "my-kafka", type: "kafka", host: "", port: 0, database: "", username: "", dialect: "kafka", cacheEnabled: false, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "" },
+    ]);
+
+    renderPage();
+
+    await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
+    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
+
+    const selects = screen.getAllByRole("combobox");
+    await userEvent.selectOptions(selects[0], "my-kafka");
+
+    await waitFor(() => {
+      const schemaOpts = screen.getAllByRole("option", { name: "default" });
+      expect(schemaOpts.length).toBeGreaterThan(0);
+    });
+    expect(adminApi.fetchAvailableSchemas).not.toHaveBeenCalled();
+  });
+
+  it("resets schema and table when source changes", async () => {
+    renderPage();
+
+    await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
+    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
+
+    const selects = screen.getAllByRole("combobox");
+    await userEvent.selectOptions(selects[0], "sales-pg");
+
+    await waitFor(() => screen.getByRole("option", { name: "public" }));
+    await userEvent.selectOptions(selects[2], "public");
+
+    await waitFor(() => screen.getByRole("option", { name: "customers" }));
+    await userEvent.selectOptions(selects[3], "customers");
+
+    // Change source — schema and table should reset
+    await userEvent.selectOptions(selects[0], "");
+
+    await waitFor(() => {
+      expect(selects[2]).toHaveValue("");
     });
   });
 });

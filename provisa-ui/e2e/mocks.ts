@@ -13,8 +13,8 @@ import type { Page } from "@playwright/test";
 // ── Mock Data ──
 
 export const MOCK_SOURCES = [
-  { id: "sales-pg", type: "postgresql", host: "localhost", port: 5432, database: "sales", username: "admin", dialect: "postgresql", cacheEnabled: true, cacheTtl: 600, allowedDomains: [], namingConvention: null },
-  { id: "analytics-sf", type: "snowflake", host: "org.snowflakecomputing.com", port: 443, database: "ANALYTICS", username: "svc", dialect: "snowflake", cacheEnabled: true, cacheTtl: null, allowedDomains: [], namingConvention: null },
+  { id: "sales-pg", type: "postgresql", host: "localhost", port: 5432, database: "sales", username: "admin", dialect: "postgresql", cacheEnabled: true, cacheTtl: 600, allowedDomains: [], namingConvention: null, path: null, description: "" },
+  { id: "analytics-sf", type: "snowflake", host: "org.snowflakecomputing.com", port: 443, database: "ANALYTICS", username: "svc", dialect: "snowflake", cacheEnabled: true, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "" },
 ];
 
 export const MOCK_DOMAINS = [
@@ -96,9 +96,9 @@ export const MOCK_AVAILABLE_TABLES = [
   { name: "products", comment: null },
 ];
 export const MOCK_COLUMNS_META = [
-  { name: "id", dataType: "integer", comment: "Primary key" },
-  { name: "name", dataType: "varchar", comment: null },
-  { name: "created_at", dataType: "timestamp", comment: "Creation date" },
+  { name: "id", dataType: "integer", comment: "Primary key", nativeFilterType: null, isPrimaryKey: true },
+  { name: "name", dataType: "varchar", comment: null, nativeFilterType: null, isPrimaryKey: false },
+  { name: "created_at", dataType: "timestamp", comment: "Creation date", nativeFilterType: null, isPrimaryKey: false },
 ];
 
 // ── Route Setup ──
