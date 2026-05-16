@@ -634,6 +634,9 @@ export interface PlatformSettings {
     endpoint: string;
     service_name: string;
     sample_rate: number;
+    support_endpoint: string;
+    support_redact_sql_literals: boolean;
+    support_redact_attributes: string[];
   };
 }
 
@@ -713,52 +716,6 @@ export async function compileQuery(
   })) as CompileResult[];
   if (results.length === 1) return results[0];
   return { queries: results };
-}
-
-export interface SubmitMetadata {
-  business_purpose?: string;
-  use_cases?: string;
-  data_sensitivity?: string;
-  refresh_frequency?: string;
-  expected_row_count?: string;
-  owner_team?: string;
-  sink?: { topic: string; trigger: string; key_column?: string };
-}
-
-export interface ScheduleDelivery {
-  cron: string;
-  output_type: string;
-  output_format?: string;
-  destination?: string;
-}
-
-export async function submitQuery(
-  roleId: string,
-  query: string,
-  variables?: Record<string, unknown>,
-  sink?: { topic: string; trigger: string; key_column?: string },
-  metadata?: SubmitMetadata,
-  schedule?: ScheduleDelivery,
-  compiledCypher?: string,
-): Promise<{ query_id: number; operation_name: string; message: string }> {
-  const input: Record<string, unknown> = { query, role: roleId, variables: variables ?? null };
-  if (compiledCypher) input.compiledCypher = compiledCypher;
-  if (sink) input.sink = { topic: sink.topic, trigger: sink.trigger, keyColumn: sink.key_column };
-  if (schedule) input.schedule = { cron: schedule.cron, outputType: schedule.output_type, outputFormat: schedule.output_format, destination: schedule.destination };
-  if (metadata?.business_purpose) input.businessPurpose = metadata.business_purpose;
-  if (metadata?.use_cases) input.useCases = metadata.use_cases;
-  if (metadata?.data_sensitivity) input.dataSensitivity = metadata.data_sensitivity;
-  if (metadata?.refresh_frequency) input.refreshFrequency = metadata.refresh_frequency;
-  if (metadata?.expected_row_count) input.expectedRowCount = metadata.expected_row_count;
-  if (metadata?.owner_team) input.ownerTeam = metadata.owner_team;
-  const data = await gql<{ submitQuery: { queryId: number; operationName: string; message: string } }>(
-    `mutation SubmitQuery($input: SubmitQueryInput!) {
-      submitQuery(input: $input) { queryId operationName message }
-    }`,
-    { input },
-  );
-  const r = data.submitQuery;
-  return { query_id: r.queryId, operation_name: r.operationName, message: r.message };
 }
 
 export async function runSql(
@@ -1116,6 +1073,15 @@ export async function restartQueryEngine(): Promise<{ success: boolean; containe
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(data.detail || `restart failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function recomputeSchemaClusters(): Promise<{ success: boolean; tables_clustered: number }> {
+  const res = await fetch(`${API_BASE}/admin/schema-clusters/recompute`, { method: "POST" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(data.detail || `recompute failed: ${res.status}`);
   }
   return res.json();
 }

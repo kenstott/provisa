@@ -133,7 +133,12 @@ class TestLiveEngine:
             mock_sched_cls.return_value = mock_sched
             await engine.start()
 
-        engine.register("q1", watermark_column="updated_at", poll_interval=5)
+        engine.register(
+            "q1",
+            sql="SELECT id, updated_at FROM orders",
+            watermark_column="updated_at",
+            poll_interval=5,
+        )
         assert engine.is_registered("q1")
 
     @pytest.mark.asyncio
@@ -145,7 +150,12 @@ class TestLiveEngine:
             mock_sched_cls.return_value = mock_sched
             await engine.start()
 
-        engine.register("q1", watermark_column="updated_at", poll_interval=5)
+        engine.register(
+            "q1",
+            sql="SELECT id, updated_at FROM orders",
+            watermark_column="updated_at",
+            poll_interval=5,
+        )
         q = engine.subscribe("q1")
         assert isinstance(q, asyncio.Queue)
 
@@ -164,7 +174,12 @@ class TestLiveEngine:
             mock_sched_cls.return_value = mock_sched
             await engine.start()
 
-        engine.register("q1", watermark_column="updated_at", poll_interval=5)
+        engine.register(
+            "q1",
+            sql="SELECT id, updated_at FROM orders",
+            watermark_column="updated_at",
+            poll_interval=5,
+        )
         engine.unregister("q1")
         assert not engine.is_registered("q1")
 
@@ -177,8 +192,18 @@ class TestLiveEngine:
             mock_sched_cls.return_value = mock_sched
             await engine.start()
 
-        engine.register("q1", watermark_column="updated_at", poll_interval=5)
-        engine.register("q1", watermark_column="updated_at", poll_interval=5)
+        engine.register(
+            "q1",
+            sql="SELECT id, updated_at FROM orders",
+            watermark_column="updated_at",
+            poll_interval=5,
+        )
+        engine.register(
+            "q1",
+            sql="SELECT id, updated_at FROM orders",
+            watermark_column="updated_at",
+            poll_interval=5,
+        )
         assert mock_sched.add_job.call_count == 1
 
     @pytest.mark.asyncio
@@ -190,10 +215,12 @@ class TestLiveEngine:
         conn_mock.fetch = AsyncMock(return_value=mock_rows)
 
         pool = MagicMock()
-        pool.acquire = MagicMock(return_value=AsyncMock(
-            __aenter__=AsyncMock(return_value=conn_mock),
-            __aexit__=AsyncMock(return_value=False),
-        ))
+        pool.acquire = MagicMock(
+            return_value=AsyncMock(
+                __aenter__=AsyncMock(return_value=conn_mock),
+                __aexit__=AsyncMock(return_value=False),
+            )
+        )
 
         engine = LiveEngine(pg_pool=pool)
 
@@ -203,15 +230,18 @@ class TestLiveEngine:
             mock_sched_cls.return_value = mock_sched
             await engine.start()
 
-        engine.register("q1", watermark_column="updated_at", poll_interval=5)
+        engine.register(
+            "q1",
+            sql="SELECT id, updated_at FROM orders",
+            watermark_column="updated_at",
+            poll_interval=5,
+        )
         q = engine.subscribe("q1")
 
-        with patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)), \
-             patch("provisa.live.watermark.set_watermark", AsyncMock()), \
-             patch("provisa.registry.store.get_by_stable_id", AsyncMock(return_value={
-                 "query_text": "SELECT id, updated_at FROM orders",
-                 "compiled_sql": "SELECT id, updated_at FROM orders",
-             })):
+        with (
+            patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
+            patch("provisa.live.watermark.set_watermark", AsyncMock()),
+        ):
             await engine._poll("q1")
 
         received = q.get_nowait()

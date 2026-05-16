@@ -31,7 +31,7 @@ class Route(str, Enum):
 
 
 # API sources — route through API caller pipeline
-API_SOURCES: set[str] = {"openapi", "graphql_api", "grpc_api"}
+API_SOURCES: set[str] = {"openapi", "graphql_api", "grpc_api", "grpc_remote"}
 
 # Virtual sources — always route through Trino (no direct SQL driver)
 VIRTUAL_SOURCES: set[str] = {

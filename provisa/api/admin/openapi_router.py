@@ -17,6 +17,7 @@ Endpoints:
   GET  /admin/openapi/spec/{id}        — return stored spec JSON
   PUT  /admin/openapi/spec/{id}        — store spec JSON + run auto-register
 """
+
 from __future__ import annotations
 import logging
 
@@ -30,16 +31,18 @@ router = APIRouter(prefix="/admin/openapi", tags=["admin", "openapi"])
 class OpenAPIRegisterRequest(BaseModel):
     source_id: str
     spec_path: str = ""
-    spec_content: str = ""   # inline YAML or JSON; takes precedence over spec_path
+    spec_content: str = ""  # inline YAML or JSON; takes precedence over spec_path
     domain_id: str = ""
     base_url: str = ""
     auth_config: dict | None = None
     cache_ttl: int = 300
+    operation_overrides: dict[str, str] = {}  # {operationId: "query" | "mutation"}
+    relationships: list[dict] = []
 
 
 class OpenAPIPreviewRequest(BaseModel):
     spec_path: str = ""
-    spec_content: str = ""   # inline YAML or JSON; takes precedence over spec_path
+    spec_content: str = ""  # inline YAML or JSON; takes precedence over spec_path
 
 
 async def _load_and_register(
@@ -50,6 +53,8 @@ async def _load_and_register(
     cache_ttl: int,
     base_url: str = "",
     spec_content: str = "",
+    operation_overrides: dict[str, str] | None = None,
+    relationships: list[dict] | None = None,
 ) -> tuple[dict, int, int]:
     """Load spec, upsert source record, store in state. Returns (spec, n_queries, n_mutations).
 
@@ -81,17 +86,26 @@ async def _load_and_register(
     async with state.pg_pool.acquire() as conn:
         from provisa.core.models import Source, SourceType
         from provisa.core.repositories import source as source_repo
-        await source_repo.upsert(conn, Source(
-            id=source_id,
-            type=SourceType.openapi,
-            host="",
-            port=0,
-            database="",
-            username="",
-            path=spec_path if spec_path else ":inline:",
-        ))
 
-    queries, mutations = parse_spec(spec)
+        await source_repo.upsert(
+            conn,
+            Source(
+                id=source_id,
+                type=SourceType.openapi,
+                host="",
+                port=0,
+                database="",
+                username="",
+                path=spec_path if spec_path else ":inline:",
+            ),
+        )
+
+    queries, mutations = parse_spec(spec, operation_overrides=operation_overrides)
+
+    if relationships:
+        from provisa.api.admin.graphql_remote_router import _upsert_relationships_to_semantic_layer
+
+        await _upsert_relationships_to_semantic_layer(relationships, state.pg_pool, state)
 
     if not hasattr(state, "openapi_specs"):
         state.openapi_specs = {}
@@ -103,6 +117,8 @@ async def _load_and_register(
         "domain_id": domain_id,
         "auth_config": auth_config,
         "cache_ttl": cache_ttl,
+        "operation_overrides": operation_overrides or {},
+        "relationships": relationships or [],
     }
 
     return spec, len(queries), len(mutations)
@@ -113,9 +129,15 @@ async def register_openapi_source(body: OpenAPIRegisterRequest):
     """Load an OpenAPI spec and auto-register tables and tracked functions."""
     try:
         spec, n_tables, n_mutations = await _load_and_register(
-            body.source_id, body.spec_path, body.domain_id,
-            body.auth_config, body.cache_ttl, base_url=body.base_url,
+            body.source_id,
+            body.spec_path,
+            body.domain_id,
+            body.auth_config,
+            body.cache_ttl,
+            base_url=body.base_url,
             spec_content=body.spec_content,
+            operation_overrides=body.operation_overrides or None,
+            relationships=body.relationships or None,
         )
     except HTTPException:
         raise
@@ -126,7 +148,9 @@ async def register_openapi_source(body: OpenAPIRegisterRequest):
 
     log.info(
         "Registered OpenAPI source %s (%d tables, %d mutations)",
-        body.source_id, n_tables, n_mutations,
+        body.source_id,
+        n_tables,
+        n_mutations,
     )
     return {
         "source_id": body.source_id,
@@ -139,6 +163,7 @@ async def register_openapi_source(body: OpenAPIRegisterRequest):
 async def refresh_openapi_source(source_id: str):
     """Re-load spec from stored path and re-run auto-registration."""
     from provisa.api.app import state
+
     specs = getattr(state, "openapi_specs", {})
     if source_id not in specs:
         raise HTTPException(status_code=404, detail=f"OpenAPI source {source_id!r} not registered")
@@ -153,13 +178,17 @@ async def refresh_openapi_source(source_id: str):
             reg.get("cache_ttl", 300),
             base_url=reg.get("base_url", ""),
             spec_content=reg.get("spec_content", ""),
+            operation_overrides=reg.get("operation_overrides") or None,
+            relationships=reg.get("relationships") or None,
         )
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Refresh failed: {exc}") from exc
 
-    log.info("Refreshed OpenAPI source %s (%d tables, %d mutations)", source_id, n_tables, n_mutations)
+    log.info(
+        "Refreshed OpenAPI source %s (%d tables, %d mutations)", source_id, n_tables, n_mutations
+    )
     return {
         "source_id": source_id,
         "tables": n_tables,
@@ -172,6 +201,7 @@ async def preview_openapi_spec(body: OpenAPIPreviewRequest):
     """Parse spec and return discovered queries/mutations without persisting."""
     from provisa.openapi.loader import load_spec, parse_text
     from provisa.openapi.mapper import parse_spec
+
     try:
         if body.spec_content:
             spec = parse_text(body.spec_content)
@@ -214,6 +244,7 @@ async def preview_openapi_spec(body: OpenAPIPreviewRequest):
 async def get_openapi_spec(source_id: str):
     """Return stored spec JSON for a registered OpenAPI source."""
     from provisa.api.app import state
+
     specs = getattr(state, "openapi_specs", {})
     if source_id not in specs:
         raise HTTPException(status_code=404, detail=f"OpenAPI source {source_id!r} not registered")
@@ -224,6 +255,7 @@ async def get_openapi_spec(source_id: str):
 async def put_openapi_spec(source_id: str, request: Request):
     """Store raw spec JSON and run auto-registration."""
     from provisa.api.app import state
+
     try:
         spec = await request.json()
     except Exception as exc:
@@ -250,8 +282,13 @@ async def put_openapi_spec(source_id: str, request: Request):
 
     async with state.pg_pool.acquire() as conn:
         n_tables, n_mutations = await auto_register_openapi_source(
-            source_id, spec, conn, domain_id,
-            base_url=base_url, auth_config=auth_config, cache_ttl=cache_ttl,
+            source_id,
+            spec,
+            conn,
+            domain_id,
+            base_url=base_url,
+            auth_config=auth_config,
+            cache_ttl=cache_ttl,
         )
 
     if not hasattr(state, "openapi_specs"):
@@ -262,7 +299,12 @@ async def put_openapi_spec(source_id: str, request: Request):
         "spec_path": existing.get("spec_path", ""),
     }
 
-    log.info("Stored spec for OpenAPI source %s (%d tables, %d mutations)", source_id, n_tables, n_mutations)
+    log.info(
+        "Stored spec for OpenAPI source %s (%d tables, %d mutations)",
+        source_id,
+        n_tables,
+        n_mutations,
+    )
     return {
         "source_id": source_id,
         "tables": n_tables,

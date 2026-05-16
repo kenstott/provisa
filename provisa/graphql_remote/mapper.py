@@ -9,6 +9,7 @@
 # permission from the copyright holder.
 
 """Map GraphQL introspection to Provisa tables + functions (REQ-308, REQ-312)."""
+
 from __future__ import annotations
 
 _SCALAR_TO_PROVISA = {
@@ -19,6 +20,7 @@ _SCALAR_TO_PROVISA = {
     "Boolean": "boolean",
 }
 
+
 def _unwrap_type(type_ref: dict) -> tuple[str, str]:
     """Unwrap NON_NULL/LIST wrappers; return (kind, name) of the leaf type."""
     while type_ref.get("kind") in ("NON_NULL", "LIST"):
@@ -28,6 +30,7 @@ def _unwrap_type(type_ref: dict) -> tuple[str, str]:
         type_ref = next_ref
     return type_ref.get("kind", "SCALAR"), type_ref.get("name", "")
 
+
 def _gql_to_provisa_type(type_ref: dict) -> str:
     kind, name = _unwrap_type(type_ref)
     if kind == "SCALAR":
@@ -35,20 +38,34 @@ def _gql_to_provisa_type(type_ref: dict) -> str:
     # Non-scalar (OBJECT, ENUM, etc.) → JSON string in V1
     return "jsonb"
 
-def _build_gql_field_selection(fields: list[dict], types: list[dict], depth: int = 0) -> str:
+
+def _build_gql_field_selection(
+    fields: list[dict],
+    types: list[dict],
+    depth: int = 0,
+    max_depth: int = 5,
+    max_list_depth: int = 2,
+    max_list_items: int = 100,
+) -> str:
     """Recursively build a GQL selection string for object type fields."""
-    if depth > 3:
+    if depth > max_depth:
         return "__typename"
     parts = []
-    for f in (fields or []):
+    for f in fields or []:
+        is_list = _is_list_type(f["type"])
+        if is_list and depth >= max_list_depth:
+            continue
         kind, name = _unwrap_type(f["type"])
         if kind in ("SCALAR", "ENUM"):
             parts.append(f["name"])
         elif kind == "OBJECT" and name:
             sub_type = _find_type(types, name)
             if sub_type and sub_type.get("fields"):
-                sub_sel = _build_gql_field_selection(sub_type["fields"], types, depth + 1)
-                parts.append(f"{f['name']} {{ {sub_sel} }}")
+                sub_sel = _build_gql_field_selection(
+                    sub_type["fields"], types, depth + 1, max_depth, max_list_depth, max_list_items
+                )
+                field_ref = f"{f['name']}(first: {max_list_items})" if is_list else f["name"]
+                parts.append(f"{field_ref} {{ {sub_sel} }}")
     return " ".join(parts) if parts else "__typename"
 
 
@@ -59,27 +76,50 @@ def _is_list_type(type_ref: dict) -> bool:
     return type_ref.get("kind") == "LIST"
 
 
-def _build_object_fields_recursive(fields: list[dict], types: list[dict], depth: int = 0) -> list[dict]:
+def _build_object_fields_recursive(
+    fields: list[dict],
+    types: list[dict],
+    depth: int = 0,
+    max_depth: int = 5,
+    max_list_depth: int = 2,
+    max_list_items: int = 100,
+) -> list[dict]:
     """Build structured object field dicts (with nested 'fields') from GQL type fields."""
-    if depth > 3:
+    if depth > max_depth:
         return []
     result = []
-    for f in (fields or []):
+    for f in fields or []:
+        if _is_list_type(f["type"]) and depth >= max_list_depth:
+            continue
         kind, name = _unwrap_type(f["type"])
         if kind in ("SCALAR", "ENUM"):
             result.append({"name": f["name"], "type": _gql_to_provisa_type(f["type"])})
         elif kind == "OBJECT" and name:
             obj_type = _find_type(types, name)
             if obj_type and obj_type.get("fields"):
-                sub_fields = _build_object_fields_recursive(obj_type["fields"], types, depth + 1)
+                sub_fields = _build_object_fields_recursive(
+                    obj_type["fields"], types, depth + 1, max_depth, max_list_depth, max_list_items
+                )
                 if sub_fields:
-                    result.append({"name": f["name"], "type": "object", "fields": sub_fields})
+                    result.append(
+                        {
+                            "name": f["name"],
+                            "type": "jsonb" if _is_list_type(f["type"]) else "object",
+                            "fields": sub_fields,
+                        }
+                    )
     return result
 
 
-def _build_columns(fields: list[dict], types: list[dict] | None = None) -> list[dict]:
+def _build_columns(
+    fields: list[dict],
+    types: list[dict] | None = None,
+    max_object_depth: int = 5,
+    max_list_depth: int = 2,
+    max_list_items: int = 100,
+) -> list[dict]:
     result = []
-    for f in (fields or []):
+    for f in fields or []:
         kind, name = _unwrap_type(f["type"])
         col: dict = {
             "name": f["name"],
@@ -89,13 +129,18 @@ def _build_columns(fields: list[dict], types: list[dict] | None = None) -> list[
         if kind == "OBJECT" and types is not None and name:
             obj_type = _find_type(types, name)
             if obj_type and obj_type.get("fields"):
-                sub_sel = _build_gql_field_selection(obj_type["fields"], types, 0)
+                sub_sel = _build_gql_field_selection(
+                    obj_type["fields"], types, 0, max_object_depth, max_list_depth, max_list_items
+                )
                 col["gql_selection"] = f"{f['name']} {{ {sub_sel} }}"
-                col["gql_object_fields"] = _build_object_fields_recursive(obj_type["fields"], types, 0)
+                col["gql_object_fields"] = _build_object_fields_recursive(
+                    obj_type["fields"], types, 0, max_object_depth, max_list_depth, max_list_items
+                )
                 col["gql_object_type"] = name
                 col["gql_is_list"] = _is_list_type(f["type"])
         result.append(col)
     return result
+
 
 def _gql_type_string(type_ref: dict) -> str:
     """Reconstruct GQL type string for variable declarations (e.g. 'Int!', '[String!]!')."""
@@ -107,30 +152,55 @@ def _gql_type_string(type_ref: dict) -> str:
     return type_ref.get("name", "String")
 
 
+_LIMIT_ARGS = {"first", "limit"}
+_OFFSET_ARGS = {"offset"}
+_CURSOR_ARGS = {"after"}
+
+
+def _detect_pagination_args(args: list[dict]) -> dict:
+    """Return pagination arg names by sniffing field args for common server patterns.
+
+    Priority for limit: "first" (PostGraphile/Relay/pg_graphql) > "limit" (Hasura).
+    Returns {"limit_arg": str|None, "offset_arg": str|None, "cursor_arg": str|None}.
+    """
+    arg_names = {a["name"] for a in (args or [])}
+    if "first" in arg_names:
+        limit_arg = "first"
+    elif "limit" in arg_names:
+        limit_arg = "limit"
+    else:
+        limit_arg = None
+    offset_arg = "offset" if "offset" in arg_names else None
+    cursor_arg = "after" if "after" in arg_names else None
+    return {"limit_arg": limit_arg, "offset_arg": offset_arg, "cursor_arg": cursor_arg}
+
+
 def _build_required_args(field: dict) -> list[dict]:
     """Return required arg metadata for non-null args with no default value."""
     result = []
-    for arg in (field.get("args") or []):
+    for arg in field.get("args") or []:
         if arg.get("type", {}).get("kind") == "NON_NULL" and arg.get("defaultValue") is None:
-            result.append({
-                "name": arg["name"],
-                "gql_type": _gql_type_string(arg["type"]),
-                "provisa_type": _gql_to_provisa_type(arg["type"]),
-            })
+            result.append(
+                {
+                    "name": arg["name"],
+                    "gql_type": _gql_type_string(arg["type"]),
+                    "provisa_type": _gql_to_provisa_type(arg["type"]),
+                }
+            )
     return result
+
 
 def _build_return_schema(fields: list[dict]) -> list[dict]:
     """Build inline_return_type compatible schema from object fields."""
-    return [
-        {"name": f["name"], "type": _gql_to_provisa_type(f["type"])}
-        for f in (fields or [])
-    ]
+    return [{"name": f["name"], "type": _gql_to_provisa_type(f["type"])} for f in (fields or [])]
+
 
 def _find_type(types: list[dict], name: str) -> dict | None:
     for t in types:
         if t.get("name") == name:
             return t
     return None
+
 
 def _infer_fk_columns(
     field_name: str,
@@ -149,7 +219,8 @@ def _infer_fk_columns(
     if not target_type:
         return "", ""
     scalar_fields = [
-        f["name"] for f in (target_type.get("fields") or [])
+        f["name"]
+        for f in (target_type.get("fields") or [])
         if _unwrap_type(f["type"])[0] in ("SCALAR", "ENUM")
     ]
     for sf in scalar_fields:
@@ -173,10 +244,7 @@ def _detect_relationships(
     """
     relationships = []
     for table in tables:
-        src_scalars = {
-            c["name"] for c in (table.get("columns") or [])
-            if c.get("type") != "jsonb"
-        }
+        src_scalars = {c["name"] for c in (table.get("columns") or []) if c.get("type") != "jsonb"}
         for col in table.get("columns") or []:
             gql_type = col.get("gql_object_type")
             if not gql_type or gql_type not in queryable_type_names:
@@ -190,15 +258,17 @@ def _detect_relationships(
                 src_col, tgt_col = _infer_fk_columns(col["name"], gql_type, src_scalars, types)
             else:
                 src_col, tgt_col = "", ""
-            relationships.append({
-                "id": rel_id,
-                "source_table_id": table["name"],
-                "target_table_id": target_table,
-                "source_column": src_col,
-                "target_column": tgt_col,
-                "cardinality": cardinality,
-                "remote_managed": True,
-            })
+            relationships.append(
+                {
+                    "id": rel_id,
+                    "source_table_id": table["name"],
+                    "target_table_id": target_table,
+                    "source_column": src_col,
+                    "target_column": tgt_col,
+                    "cardinality": cardinality,
+                    "remote_managed": True,
+                }
+            )
     return relationships
 
 
@@ -207,6 +277,10 @@ def map_schema(
     namespace: str,
     source_id: str,
     domain_id: str = "",
+    max_object_depth: int = 5,
+    max_list_depth: int = 2,
+    max_list_items: int = 100,
+    field_overrides: dict[str, str] | None = None,
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """Map __schema to (virtual_tables, tracked_functions, relationships).
 
@@ -232,7 +306,7 @@ def map_schema(
         _, ret_name = _unwrap_type(field["type"])
         if ret_name:
             queryable_type_names.add(ret_name)
-            tname = f"{namespace}__{field['name']}" if namespace else field['name']
+            tname = f"{namespace}__{field['name']}" if namespace else field["name"]
             has_required = bool(_build_required_args(field))
             if ret_name not in type_to_table or has_required is False:
                 type_to_table[ret_name] = tname
@@ -240,42 +314,88 @@ def map_schema(
     tables: list[dict] = []
     functions: list[dict] = []
 
+    _overrides = field_overrides or {}
     for field in (query_type or {}).get("fields") or []:
+        override = _overrides.get(field["name"], "").lower()
         ret_kind, ret_name = _unwrap_type(field["type"])
-        if ret_kind != "OBJECT":
-            continue  # skip scalars at the top level
+        if override == "mutation" or (ret_kind != "OBJECT" and override != "query"):
+            args = [
+                {
+                    "name": a["name"],
+                    "type": _gql_to_provisa_type(a["type"]),
+                    "description": a.get("description") or None,
+                }
+                for a in (field.get("args") or [])
+            ]
+            fn_name = f"{namespace}__{field['name']}" if namespace else field["name"]
+            if ret_kind == "OBJECT" and ret_name:
+                obj_type = _find_type(types, ret_name)
+                return_schema = _build_return_schema((obj_type or {}).get("fields") or [])
+            else:
+                return_schema = [{"name": "value", "type": _gql_to_provisa_type(field["type"])}]
+            functions.append(
+                {
+                    "name": fn_name,
+                    "field_name": field["name"],
+                    "source_id": source_id,
+                    "arguments": args,
+                    "return_schema": return_schema,
+                    "domain_id": domain_id,
+                    "description": field.get("description") or None,
+                }
+            )
+            continue
         required_args = _build_required_args(field)
         return_type = _find_type(types, ret_name)
-        columns = _build_columns((return_type or {}).get("fields") or [], types)
-        table_name = f"{namespace}__{field['name']}" if namespace else field['name']
-        tables.append({
-            "name": table_name,
-            "field_name": field["name"],
-            "source_id": source_id,
-            "columns": columns,
-            "domain_id": domain_id,
-            "description": field.get("description") or (return_type or {}).get("description") or None,
-            "required_args": required_args,
-        })
+        columns = _build_columns(
+            (return_type or {}).get("fields") or [],
+            types,
+            max_object_depth,
+            max_list_depth,
+            max_list_items,
+        )
+        table_name = f"{namespace}__{field['name']}" if namespace else field["name"]
+        tables.append(
+            {
+                "name": table_name,
+                "field_name": field["name"],
+                "source_id": source_id,
+                "columns": columns,
+                "domain_id": domain_id,
+                "description": field.get("description")
+                or (return_type or {}).get("description")
+                or None,
+                "required_args": required_args,
+                "pagination": _detect_pagination_args(field.get("args") or []),
+            }
+        )
 
     for field in (mutation_type or {}).get("fields") or []:
         ret_kind, ret_name = _unwrap_type(field["type"])
         return_type = _find_type(types, ret_name) if ret_kind == "OBJECT" else None
-        return_schema = _build_return_schema((return_type or {}).get("fields") or []) if return_type else []
+        return_schema = (
+            _build_return_schema((return_type or {}).get("fields") or []) if return_type else []
+        )
         args = [
-            {"name": a["name"], "type": _gql_to_provisa_type(a["type"]), "description": a.get("description") or None}
+            {
+                "name": a["name"],
+                "type": _gql_to_provisa_type(a["type"]),
+                "description": a.get("description") or None,
+            }
             for a in (field.get("args") or [])
         ]
-        fn_name = f"{namespace}__{field['name']}" if namespace else field['name']
-        functions.append({
-            "name": fn_name,
-            "field_name": field["name"],
-            "source_id": source_id,
-            "arguments": args,
-            "return_schema": return_schema,
-            "domain_id": domain_id,
-            "description": field.get("description") or None,
-        })
+        fn_name = f"{namespace}__{field['name']}" if namespace else field["name"]
+        functions.append(
+            {
+                "name": fn_name,
+                "field_name": field["name"],
+                "source_id": source_id,
+                "arguments": args,
+                "return_schema": return_schema,
+                "domain_id": domain_id,
+                "description": field.get("description") or None,
+            }
+        )
 
     relationships = _detect_relationships(tables, types, queryable_type_names, type_to_table)
     return tables, functions, relationships

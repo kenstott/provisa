@@ -19,7 +19,7 @@ interface SetupPageProps {
 export function SetupPage({ onSetupComplete }: SetupPageProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [mode, setMode] = useState<"single" | "multi">("single");
-  const [provider, setProvider] = useState<"basic" | "firebase">("basic");
+  const [provider, setProvider] = useState<"basic" | "firebase" | "none">("basic");
   const [adminUsername, setAdminUsername] = useState("admin");
   const [adminPassword, setAdminPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -92,7 +92,7 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
               Username and password stored in Provisa. Self-service registration or invite-based.
             </div>
           </label>
-          <label style={{ display: "block", marginBottom: 24, cursor: "pointer" }}>
+          <label style={{ display: "block", marginBottom: 12, cursor: "pointer" }}>
             <input type="radio" name="provider" value="firebase" checked={provider === "firebase"}
               onChange={() => setProvider("firebase")} style={{ marginRight: 8 }} />
             <strong>Firebase (Google)</strong>
@@ -100,9 +100,38 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
               Sign in with Google via Firebase Authentication. Requires Firebase project configuration.
             </div>
           </label>
+          <label style={{ display: "block", marginBottom: 24, cursor: "pointer" }}>
+            <input type="radio" name="provider" value="none" checked={provider === "none"}
+              onChange={() => setProvider("none")} style={{ marginRight: 8 }} />
+            <strong>None (no authentication)</strong>
+            <div style={{ marginLeft: 24, fontSize: 13, color: "var(--muted-foreground)" }}>
+              All users have full access. Suitable for local development only.
+            </div>
+          </label>
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => setStep(1)}>Back</button>
-            <button className="btn-primary" onClick={() => setStep(3)}>Next</button>
+            {provider === "none" ? (
+              <button
+                className="btn-primary"
+                disabled={loading}
+                onClick={async () => {
+                  setError(null);
+                  setLoading(true);
+                  try {
+                    await runSetup({ provider: "none", mode });
+                    onSetupComplete();
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : "Setup failed");
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+              >
+                {loading ? "Setting up..." : "Complete Setup"}
+              </button>
+            ) : (
+              <button className="btn-primary" onClick={() => setStep(3)}>Next</button>
+            )}
           </div>
         </div>
       )}

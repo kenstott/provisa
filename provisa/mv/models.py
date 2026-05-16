@@ -53,6 +53,7 @@ class MVDefinition:
     target_catalog: str
     target_schema: str
     target_table: str | None = None  # auto-generated if not specified
+    tenant_id: str | None = None  # when set, Iceberg schema = f"{tenant_id}_mv"
     refresh_interval: int = 300  # seconds
     enabled: bool = True
 
@@ -81,6 +82,8 @@ class MVDefinition:
     def __post_init__(self):
         if self.target_table is None:
             self.target_table = f"mv_{self.id.replace('-', '_')}"
+        if self.tenant_id is not None:
+            self.target_schema = f"{self.tenant_id}_mv"
 
     @property
     def is_fresh(self) -> bool:

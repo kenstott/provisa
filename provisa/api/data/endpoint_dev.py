@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -46,16 +46,6 @@ def _resolve_role_id(raw_request: Request, x_provisa_role: str | None, request_r
     return auth_role or x_provisa_role or request_role
 
 
-async def _lookup_approved_query(query_id: str, state: object):
-    from provisa.api.flight.catalog import fetch_approved_queries_async
-
-    queries = await fetch_approved_queries_async(state)
-    matched = next((q for q in queries if q.stable_id == query_id), None)
-    if matched is None:
-        raise HTTPException(status_code=404, detail=f"Approved query not found: {query_id!r}")
-    return matched
-
-
 @router.get("/proto/{role_id}")
 async def proto_endpoint(role_id: str):
     """Return the .proto file content for a role as text/plain."""
@@ -75,7 +65,6 @@ async def sql_endpoint(
     request: SQLRequest,
     x_provisa_role: str | None = Header(None),
     accept: str | None = Header(None),
-    query_id: str | None = Query(None),
 ):
     """Execute raw SQL through Stage 2 governance (REQ-264, REQ-266, REQ-267).
 
@@ -101,11 +90,6 @@ async def sql_endpoint(
 
     role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
 
-    if query_id:
-        matched = await _lookup_approved_query(query_id, state)
-        query_req = QueryRequest(query=matched.query_text or "", role=role_id)
-        return await unified_query_endpoint(raw_request, query_req, x_provisa_role=x_provisa_role)
-
     if role_id not in state.schemas:
         raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
 
@@ -113,6 +97,10 @@ async def sql_endpoint(
     if role and not request.discovery_mode:
         try:
             check_capability(role, Capability.QUERY_DEVELOPMENT)
+        except InsufficientRightsError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+        try:
+            check_capability(role, Capability.AD_HOC_QUERY)
         except InsufficientRightsError as e:
             raise HTTPException(status_code=403, detail=str(e))
 
@@ -173,6 +161,7 @@ async def sql_endpoint(
         raw_tables,
         discovery_mode=request.discovery_mode,
         bypass_relationship_guard=_bypass_guard,
+        bypass_uncovered_relationships=True,
     )
 
     _role_domain_access = (role or {}).get("domain_access") or []
@@ -523,28 +512,14 @@ async def unified_query_endpoint(
     raw_request: Request,
     request: QueryRequest,
     x_provisa_role: str | None = Header(None),
-    query_id: str | None = Query(None),
 ):
     """Execute a GraphQL, SQL, or Cypher query; auto-detected from syntax.
 
     Returns { columns, rows } for Cypher/SQL.
     Returns { data } for GraphQL (native format).
     """
-    from provisa.api.app import state
-    from fastapi.responses import JSONResponse as _JSONResponse
 
     role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
-
-    if query_id:
-        from provisa.api.flight.catalog import fetch_approved_queries_async
-
-        queries = await fetch_approved_queries_async(state)
-        matched = next((q for q in queries if q.stable_id == query_id), None)
-        if matched is None:
-            return _JSONResponse(
-                status_code=404, content={"error": f"Approved query not found: {query_id!r}"}
-            )
-        request = QueryRequest(query=matched.query_text or "", role=role_id)
 
     target = detect_target(request.query)
 

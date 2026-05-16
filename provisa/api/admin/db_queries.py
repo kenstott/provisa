@@ -25,7 +25,9 @@ def _to_singular(camel: str) -> str:
     return camel
 
 
-def derive_graphql_alias(target_table_name: str, cardinality: str, convention: str = "apollo_graphql") -> str | None:
+def derive_graphql_alias(
+    target_table_name: str, cardinality: str, convention: str = "apollo_graphql"
+) -> str | None:
     """Derive GraphQL field name from target table name + cardinality.
 
     Always strips verb prefixes (find/get/list/…) via rel_field_name.
@@ -34,6 +36,7 @@ def derive_graphql_alias(target_table_name: str, cardinality: str, convention: s
     if not target_table_name:
         return None
     from provisa.compiler.naming import rel_field_name, to_snake_case
+
     name = rel_field_name(target_table_name, cardinality)
     if convention in ("snake", "hasura_graphql"):
         return to_snake_case(name)
@@ -86,7 +89,7 @@ async def fetch_tables(conn: asyncpg.Connection) -> list[dict]:
     """Fetch registered tables with columns."""
     rows = await conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name, governance, "
-        "alias, description, column_presets "
+        "alias, description, column_presets, l1_cluster, l2_cluster, l3_cluster "
         "FROM registered_tables ORDER BY id"
     )
     tables = []

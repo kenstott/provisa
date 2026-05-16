@@ -12,17 +12,10 @@
 
 Pure logic — no I/O, no grpcio dependency.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-
-# ---------------------------------------------------------------------------
-# Query-method name prefixes (REQ-323)
-# ---------------------------------------------------------------------------
-
-QUERY_PREFIXES: tuple[str, ...] = (
-    "Get", "List", "Find", "Fetch", "Search", "Stream",
-)
 
 # ---------------------------------------------------------------------------
 # Proto → SQL type map (REQ-324)
@@ -51,10 +44,12 @@ _PROTO_TO_SQL: dict[str, str] = {
 # Data classes
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ColumnDef:
     name: str
     type: str  # SQL type
+    object_fields: list["ColumnDef"] = field(default_factory=list)
 
 
 @dataclass
@@ -84,9 +79,20 @@ class GrpcMutation:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def is_query_method(method_name: str) -> bool:
-    """Return True when the method name starts with a query-indicating prefix."""
-    return any(method_name.startswith(p) for p in QUERY_PREFIXES)
+
+def _output_has_repeated_message_field(
+    output_type: str, messages: dict[str, list[dict]], enum_names: set[str]
+) -> bool:
+    """Return True if the output message has at least one repeated non-scalar, non-enum field.
+
+    Repeated scalar fields (e.g. repeated string tags) do NOT qualify — they are array
+    properties of a single entity. Repeated message fields (e.g. repeated Order orders)
+    indicate a list-wrapper response pattern.
+    """
+    for f in messages.get(output_type, []):
+        if f.get("repeated") and f["type"] not in _PROTO_TO_SQL and f["type"] not in enum_names:
+            return True
+    return False
 
 
 def _proto_field_to_sql(field_type: str, repeated: bool, enum_names: set[str]) -> str:
@@ -105,14 +111,21 @@ def _message_columns(
     msg_name: str,
     messages: dict[str, list[dict]],
     enum_names: set[str],
+    depth: int = 0,
 ) -> list[ColumnDef]:
-    return [
-        ColumnDef(
-            name=f["name"],
-            type=_proto_field_to_sql(f["type"], f["repeated"], enum_names),
-        )
-        for f in messages.get(msg_name, [])
-    ]
+    cols = []
+    for f in messages.get(msg_name, []):
+        sql_type = _proto_field_to_sql(f["type"], f["repeated"], enum_names)
+        sub_fields: list[ColumnDef] = []
+        if (
+            not f["repeated"]
+            and f["type"] not in _PROTO_TO_SQL
+            and f["type"] not in enum_names
+            and depth == 0
+        ):
+            sub_fields = _message_columns(f["type"], messages, enum_names, depth=1)
+        cols.append(ColumnDef(name=f["name"], type=sql_type, object_fields=sub_fields))
+    return cols
 
 
 def _full_method_path(package: str, service_name: str, method_name: str) -> str:
@@ -125,18 +138,27 @@ def _full_method_path(package: str, service_name: str, method_name: str) -> str:
 # Main mapper
 # ---------------------------------------------------------------------------
 
+
 def map_proto(
     proto_dict: dict,
     namespace: str,
     source_id: str,
     domain_id: str,
+    method_overrides: dict[str, str] | None = None,
 ) -> tuple[list[GrpcQuery], list[GrpcMutation]]:
     """Map an intermediate proto dict to (queries, mutations).
+
+    Classification priority:
+      1. method_overrides[method_name] == "query" / "mutation" — explicit override
+      2. server_streaming=True — streaming → query
+      3. output message has a repeated message-type field (list-wrapper pattern) → query
+      4. everything else (including scalar output) → mutation
 
     All names are prefixed with ``namespace__`` when namespace is non-empty.
     """
     queries: list[GrpcQuery] = []
     mutations: list[GrpcMutation] = []
+    overrides = method_overrides or {}
 
     package = proto_dict.get("package", "")
     messages: dict[str, list[dict]] = proto_dict.get("messages", {})
@@ -152,9 +174,26 @@ def map_proto(
 
             path = _full_method_path(package, svc_name, method_name)
             input_cols = _message_columns(input_type, messages, enum_names)
-            output_cols = _message_columns(output_type, messages, enum_names)
 
-            if is_query_method(method_name):
+            scalar_sql = _PROTO_TO_SQL.get(output_type)
+            is_scalar_output = scalar_sql is not None or output_type not in messages
+            if is_scalar_output:
+                output_cols = [ColumnDef(name="value", type=scalar_sql or "text")]
+            else:
+                output_cols = _message_columns(output_type, messages, enum_names)
+
+            override = overrides.get(method_name, "").lower()
+            is_query = (
+                not is_scalar_output
+                and override != "mutation"
+                and (
+                    override == "query"
+                    or server_streaming
+                    or _output_has_repeated_message_field(output_type, messages, enum_names)
+                )
+            )
+
+            if is_query:
                 queries.append(
                     GrpcQuery(
                         service=svc_name,

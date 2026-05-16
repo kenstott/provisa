@@ -17,6 +17,7 @@ NoopCacheStore: used when Redis is not configured (caching disabled).
 from __future__ import annotations
 
 import logging
+import os
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -44,19 +45,19 @@ class CacheStore(ABC):
     """Abstract cache store interface."""
 
     @abstractmethod
-    async def get(self, key: str) -> CachedResult | None:
+    async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:
         """Get a cached result by key. Returns None on miss."""
 
     @abstractmethod
-    async def set(self, key: str, data: bytes, ttl: int) -> None:
+    async def set(self, key: str, data: bytes, ttl: int, tenant_id: str | None = None) -> None:
         """Store a result with TTL in seconds."""
 
     @abstractmethod
-    async def invalidate_by_pattern(self, pattern: str) -> int:
+    async def invalidate_by_pattern(self, pattern: str, tenant_id: str | None = None) -> int:
         """Invalidate cache entries matching a key pattern. Returns count deleted."""
 
     @abstractmethod
-    async def invalidate_by_table(self, table_id: int) -> int:
+    async def invalidate_by_table(self, table_id: int, tenant_id: str | None = None) -> int:
         """Invalidate cache entries for queries touching a table. Returns count deleted."""
 
     @abstractmethod
@@ -67,16 +68,16 @@ class CacheStore(ABC):
 class NoopCacheStore(CacheStore):
     """No-op store when caching is disabled. Always misses."""
 
-    async def get(self, key: str) -> CachedResult | None:
+    async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:
         return None
 
-    async def set(self, key: str, data: bytes, ttl: int) -> None:
+    async def set(self, key: str, data: bytes, ttl: int, tenant_id: str | None = None) -> None:
         pass
 
-    async def invalidate_by_pattern(self, pattern: str) -> int:
+    async def invalidate_by_pattern(self, pattern: str, tenant_id: str | None = None) -> int:
         return 0
 
-    async def invalidate_by_table(self, table_id: int) -> int:
+    async def invalidate_by_table(self, table_id: int, tenant_id: str | None = None) -> int:
         return 0
 
     async def close(self) -> None:
@@ -87,16 +88,35 @@ class RedisCacheStore(CacheStore):
     """Redis-backed cache store.
 
     Key format: provisa:cache:<sha256_key>
+    Multi-tenant key format: provisa:cache:<tenant_id>:<sha256_key>
     Table index: provisa:table:<table_id> → set of cache keys
     Each cached entry stores: data (bytes), cached_at (float), ttl (int).
+
+    TLS: pass a ``rediss://`` URL — redis.asyncio handles TLS automatically.
+    Set ``PROVISA_REQUIRE_REDIS_TLS=true`` to reject non-TLS URLs at startup.
     """
 
     PREFIX = "provisa:cache:"
     TABLE_PREFIX = "provisa:table:"
 
     def __init__(self, redis_url: str):
+        if os.environ.get("PROVISA_REQUIRE_REDIS_TLS", "").lower() == "true":
+            if not redis_url.startswith("rediss://"):
+                raise RuntimeError(
+                    "PROVISA_REQUIRE_REDIS_TLS is set but REDIS_URL does not use rediss://"
+                )
         self._redis_url = redis_url
         self._redis = None
+
+    def _prefixed_key(self, key: str, tenant_id: str | None) -> str:
+        if tenant_id is not None:
+            return self.PREFIX + tenant_id + ":" + key
+        return self.PREFIX + key
+
+    def _prefixed_table_key(self, table_id: int, tenant_id: str | None) -> str:
+        if tenant_id is not None:
+            return self.TABLE_PREFIX + tenant_id + ":" + str(table_id)
+        return self.TABLE_PREFIX + str(table_id)
 
     async def _connect(self):
         if self._redis is None:
@@ -105,12 +125,12 @@ class RedisCacheStore(CacheStore):
                 self._redis_url, decode_responses=False,
             )
 
-    async def get(self, key: str) -> CachedResult | None:
+    async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:
         with _tracer.start_as_current_span("cache.get") as span:
             span.set_attribute("cache.key", key)
             try:
                 await self._connect()
-                rkey = self.PREFIX + key
+                rkey = self._prefixed_key(key, tenant_id)
                 pipe = self._redis.pipeline()
                 pipe.get(rkey)
                 pipe.get(rkey + ":meta")
@@ -131,7 +151,7 @@ class RedisCacheStore(CacheStore):
                 span.set_attribute("cache.hit", False)
                 return None
 
-    async def set(self, key: str, data: bytes, ttl: int, table_ids: set[int] | None = None) -> None:
+    async def set(self, key: str, data: bytes, ttl: int, tenant_id: str | None = None, table_ids: set[int] | None = None) -> None:
         with _tracer.start_as_current_span("cache.set") as span:
             span.set_attribute("cache.key", key)
             span.set_attribute("cache.ttl", ttl)
@@ -139,26 +159,26 @@ class RedisCacheStore(CacheStore):
             try:
                 await self._connect()
                 import json
-                rkey = self.PREFIX + key
+                rkey = self._prefixed_key(key, tenant_id)
                 meta = json.dumps({"cached_at": time.time(), "ttl": ttl}).encode()
                 pipe = self._redis.pipeline()
                 pipe.setex(rkey, ttl, data)
                 pipe.setex(rkey + ":meta", ttl, meta)
-                # Track which tables this cache entry covers (for invalidation)
                 if table_ids:
                     for tid in table_ids:
-                        tkey = self.TABLE_PREFIX + str(tid)
+                        tkey = self._prefixed_table_key(tid, tenant_id)
                         pipe.sadd(tkey, key)
                         pipe.expire(tkey, ttl + 60)  # slightly longer than cache TTL
                 await pipe.execute()
             except Exception:
                 log.warning("Redis set failed, query result not cached", exc_info=True)
 
-    async def invalidate_by_pattern(self, pattern: str) -> int:
+    async def invalidate_by_pattern(self, pattern: str, tenant_id: str | None = None) -> int:
         try:
             await self._connect()
+            prefix = self._prefixed_key("", tenant_id)
             keys = []
-            async for key in self._redis.scan_iter(match=self.PREFIX + pattern):
+            async for key in self._redis.scan_iter(match=prefix + pattern):
                 keys.append(key)
             if keys:
                 return await self._redis.delete(*keys)
@@ -167,19 +187,19 @@ class RedisCacheStore(CacheStore):
             log.warning("Redis invalidate_by_pattern failed", exc_info=True)
             return 0
 
-    async def invalidate_by_table(self, table_id: int) -> int:
+    async def invalidate_by_table(self, table_id: int, tenant_id: str | None = None) -> int:
         try:
             await self._connect()
-            tkey = self.TABLE_PREFIX + str(table_id)
+            tkey = self._prefixed_table_key(table_id, tenant_id)
             cache_keys = await self._redis.smembers(tkey)
             if not cache_keys:
                 return 0
-            # Delete each cached result
+            prefix = self._prefixed_key("", tenant_id)
             pipe = self._redis.pipeline()
             for ck in cache_keys:
                 ck_str = ck.decode() if isinstance(ck, bytes) else ck
-                pipe.delete(self.PREFIX + ck_str)
-                pipe.delete(self.PREFIX + ck_str + ":meta")
+                pipe.delete(prefix + ck_str)
+                pipe.delete(prefix + ck_str + ":meta")
             pipe.delete(tkey)
             results = await pipe.execute()
             return len(cache_keys)

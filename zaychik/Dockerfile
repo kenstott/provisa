@@ -1,5 +1,6 @@
 FROM maven:3.9-eclipse-temurin-17 AS build
-RUN git clone https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy.git /src
+RUN git clone https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy.git /src && \
+    cd /src && git checkout 17fce978076c5136b5d3ef1c1291527e8ec5915e
 WORKDIR /src
 
 # Fix: decodePeerIdentity crashes when password is empty (ArrayIndexOutOfBoundsException)
@@ -9,6 +10,8 @@ RUN git apply /tmp/fix-decode-peer-identity.patch || \
     sed -i 's/return new ImmutablePair<>(parts\[0\], parts\[1\]);/String password = parts.length > 1 ? parts[1] : ""; return new ImmutablePair<>(parts[0], password);/' \
     src/main/java/ru/raiffeisen/trino/arrow/flight/sql/producer/FlightSQLProducerHelper.java
 
+# Separate dependency download so it's cached independently of source changes
+RUN mvn dependency:go-offline -q
 RUN mvn clean package -DskipTests && mvn dependency:copy-dependencies
 
 FROM eclipse-temurin:17-jre

@@ -13,8 +13,12 @@
 Stores the mapping: SHA-256 hash → GraphQL query string.
 Redis-backed in production; no-op fallback when Redis is not configured.
 
-Key format: ``provisa:apq:<sha256_hex>``
+Key format (single-tenant): ``provisa:apq:<sha256_hex>``
+Key format (multi-tenant):  ``provisa:apq:<tenant_id>:<sha256_hex>``
 TTL: 24 hours (configurable via ``PROVISA_APQ_TTL`` env var, default 86400s).
+
+TLS: pass a ``rediss://`` URL — redis.asyncio handles TLS automatically.
+Set ``PROVISA_REQUIRE_REDIS_TLS=true`` to reject non-TLS URLs at startup.
 """
 
 from __future__ import annotations
@@ -38,11 +42,11 @@ class APQCache(ABC):
     """Abstract APQ cache interface."""
 
     @abstractmethod
-    async def get(self, sha256_hash: str) -> str | None:
+    async def get(self, sha256_hash: str, tenant_id: str | None = None) -> str | None:
         """Return the cached query string for *sha256_hash*, or None on miss."""
 
     @abstractmethod
-    async def set(self, sha256_hash: str, query: str) -> None:
+    async def set(self, sha256_hash: str, query: str, tenant_id: str | None = None) -> None:
         """Store *query* under *sha256_hash*."""
 
     @abstractmethod
@@ -53,10 +57,10 @@ class APQCache(ABC):
 class NoopAPQCache(APQCache):
     """No-op APQ cache — always misses. Used when Redis is not configured."""
 
-    async def get(self, sha256_hash: str) -> str | None:
+    async def get(self, sha256_hash: str, tenant_id: str | None = None) -> str | None:
         return None
 
-    async def set(self, sha256_hash: str, query: str) -> None:
+    async def set(self, sha256_hash: str, query: str, tenant_id: str | None = None) -> None:
         pass
 
     async def close(self) -> None:
@@ -74,27 +78,38 @@ class RedisAPQCache(APQCache):
     PREFIX = "provisa:apq:"
 
     def __init__(self, redis_url: str, ttl: int = _DEFAULT_TTL) -> None:
+        if os.environ.get("PROVISA_REQUIRE_REDIS_TLS", "").lower() == "true":
+            if not redis_url.startswith("rediss://"):
+                raise RuntimeError(
+                    "PROVISA_REQUIRE_REDIS_TLS is set but REDIS_URL does not use rediss://"
+                )
         self._redis_url = redis_url
         self._ttl = ttl
         self._redis = None
 
+    def _build_key(self, sha256_hash: str, tenant_id: str | None) -> str:
+        if tenant_id is not None:
+            return self.PREFIX + tenant_id + ":" + sha256_hash
+        return self.PREFIX + sha256_hash
+
     async def _connect(self):
         if self._redis is None:
             import redis.asyncio as aioredis
+
             self._redis = aioredis.from_url(self._redis_url, decode_responses=True)
 
-    async def get(self, sha256_hash: str) -> str | None:
+    async def get(self, sha256_hash: str, tenant_id: str | None = None) -> str | None:
         try:
             await self._connect()
-            return await self._redis.get(self.PREFIX + sha256_hash)
+            return await self._redis.get(self._build_key(sha256_hash, tenant_id))
         except Exception:
             log.warning("APQ Redis get failed", exc_info=True)
             return None
 
-    async def set(self, sha256_hash: str, query: str) -> None:
+    async def set(self, sha256_hash: str, query: str, tenant_id: str | None = None) -> None:
         try:
             await self._connect()
-            await self._redis.setex(self.PREFIX + sha256_hash, self._ttl, query)
+            await self._redis.setex(self._build_key(sha256_hash, tenant_id), self._ttl, query)
         except Exception:
             log.warning("APQ Redis set failed", exc_info=True)
 

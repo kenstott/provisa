@@ -19,7 +19,6 @@ import { TablesPage } from "./pages/TablesPage";
 import { RelationshipsPage } from "./pages/RelationshipsPage";
 import { SecurityPage } from "./pages/SecurityPage";
 import { QueryPage } from "./pages/QueryPage";
-import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { AdminPage } from "./pages/AdminPage";
 import { CommandsPage } from "./pages/CommandsPage";
 import { ViewsPage } from "./pages/ViewsPage";
@@ -166,14 +165,6 @@ function App() {
                     element={
                       <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
                         <SqlPage />
-                      </CapabilityGate>
-                    }
-                  />
-                  <Route
-                    path="/approvals"
-                    element={
-                      <CapabilityGate capability="approve_view" fallback={<NotAuthorized />}>
-                        <ApprovalsPage />
                       </CapabilityGate>
                     }
                   />

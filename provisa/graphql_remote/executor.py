@@ -9,6 +9,7 @@
 # permission from the copyright holder.
 
 """Execute queries against a remote GraphQL endpoint (REQ-309)."""
+
 from __future__ import annotations
 import json
 import re
@@ -22,8 +23,9 @@ def _safe_json(resp: httpx.Response) -> dict:
         return resp.json()
     except json.JSONDecodeError:
         # Some servers emit backslash-u not followed by 4 hex digits (e.g. Windows paths).
-        fixed = re.sub(r'(?<!\\)\\u(?![0-9a-fA-F]{4})', r'\\\\u', resp.text)
+        fixed = re.sub(r"(?<!\\)\\u(?![0-9a-fA-F]{4})", r"\\\\u", resp.text)
         return json.loads(fixed)
+
 
 _OBJECT_FIELD_RE = re.compile(r"Field '([^']+)' of type '[^']+' must have a selection of subfields")
 
@@ -45,6 +47,9 @@ async def execute_remote(
     columns: list[str],
     variables: dict | None = None,
     required_args: list[dict] | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+    pagination: dict | None = None,
 ) -> list[dict]:
     """Build a minimal GraphQL query and forward to the remote endpoint.
 
@@ -54,17 +59,41 @@ async def execute_remote(
 
     If the server rejects OBJECT-type fields (no subselection), retries once
     with those fields removed so scalar columns are still returned.
+
+    When pagination is provided and the remote supports limit/offset args,
+    passes them as literal arg values to cap rows at the remote rather than
+    fetching all and truncating locally.
     """
     selected_cols = list(columns)
     headers = {"Content-Type": "application/json", **_build_headers(auth)}
+
+    pagination_arg_strs: list[str] = []
+    if pagination and limit is not None:
+        limit_arg = pagination.get("limit_arg")
+        if limit_arg:
+            pagination_arg_strs.append(f"{limit_arg}: {limit}")
+        offset_arg = pagination.get("offset_arg")
+        if offset is not None and offset_arg:
+            pagination_arg_strs.append(f"{offset_arg}: {offset}")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         for attempt in range(2):
             col_selection = "\n".join(selected_cols) if selected_cols else "__typename"
             if variables and required_args:
-                var_decls = ", ".join(f"${a['name']}: {a['gql_type']}" for a in required_args if a["name"] in variables)
-                arg_pass = ", ".join(f"{a['name']}: ${a['name']}" for a in required_args if a["name"] in variables)
+                var_decls = ", ".join(
+                    f"${a['name']}: {a['gql_type']}"
+                    for a in required_args
+                    if a["name"] in variables
+                )
+                required_arg_strs = [
+                    f"{a['name']}: ${a['name']}" for a in required_args if a["name"] in variables
+                ]
+                all_arg_strs = required_arg_strs + pagination_arg_strs
+                arg_pass = ", ".join(all_arg_strs)
                 query = f"query({var_decls}) {{ {field_name}({arg_pass}) {{ {col_selection} }} }}"
+            elif pagination_arg_strs:
+                arg_pass = ", ".join(pagination_arg_strs)
+                query = f"query {{ {field_name}({arg_pass}) {{ {col_selection} }} }}"
             else:
                 query = f"query {{ {field_name} {{ {col_selection} }} }}"
             payload: dict = {"query": query}
@@ -76,7 +105,7 @@ async def execute_remote(
             if "errors" in data:
                 object_fields = _object_fields_from_errors(data["errors"])
                 if object_fields and attempt == 0:
-                    selected_cols = [c for c in selected_cols if c not in object_fields]
+                    selected_cols = [c for c in selected_cols if c.split()[0] not in object_fields]
                     continue
                 raise ValueError(f"Remote GraphQL errors: {data['errors']}")
             break

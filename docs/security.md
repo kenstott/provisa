@@ -38,9 +38,22 @@ See [Column Permission Model](#column-permission-model) and [Column-Level Maskin
 
 Masked columns are rejected from `WHERE` and `HAVING` clauses. Without this, a caller could infer the unmasked value by binary-searching it in a filter even though the output is masked. Rejection is enforced at query parse time, before execution.
 
-### Relationship governance
+### Relationship governance (V002)
 
 JOIN conditions in SQL must match a registered, approved relationship between tables. Unapproved joins are rejected. Each relationship carries a human-readable reason and description — guidance for both users and autonomous agents about why a traversal path exists. This is governance policy, not a hard security boundary: Layers 2–5 hold regardless of join structure, so a deliberate circumvention does not expose data the role could not reach through two separate approved queries. Circumvention attempts are logged and auditable.
+
+**Bypass mechanisms** — V002 can be bypassed only when two independent conditions are both true:
+
+1. **Role flag** — `relationship_guard: false` on the role definition (default: `true`). [tool-verified: `provisa/core/models.py:349`]
+2. **Per-query opt-out** — the SQL contains the comment `--relationship-guard=false`. [tool-verified: `provisa/compiler/params.py:80`]
+
+Both must be present. The role flag alone does not bypass V002; the comment alone does not bypass V002.
+
+**GraphQL path** — V002 is unconditionally skipped for GraphQL queries. SDL-defined relationships are pre-approved by design; the check is redundant and is not applied. [tool-verified: `provisa/api/data/endpoint.py:468`]
+
+**SQL and Cypher paths** — V002 is active by default. Both `endpoint_dev.py` and `cypher_router.py` apply the two-condition check before calling `validate_sql`. [tool-verified: `provisa/api/data/endpoint_dev.py:127`, `provisa/api/rest/cypher_router.py:260`]
+
+**pgwire path** — same two-condition check as SQL. The `--relationship-guard=false` comment is stripped from the query before execution; it does not reach the database. [tool-verified: `provisa/pgwire/_pipeline.py:60`]
 
 ---
 
@@ -50,7 +63,7 @@ These layers compose. A role with domain access, RLS, and masked columns has all
 
 ## Rights Model
 
-8 capabilities with optional role hierarchy via `parent_role_id`. `admin` grants all.
+7 capabilities with optional role hierarchy via `parent_role_id`. `admin` grants all.
 
 | Capability | Description |
 |-----------|-------------|
@@ -59,7 +72,6 @@ These layers compose. A role with domain access, RLS, and masked columns has all
 | `relationship_registration` | Define FK relationships |
 | `security_config` | Configure RLS, masking |
 | `query_development` | Execute queries |
-| `query_approval` | Approve governed queries |
 | `full_results` | Bypass sampling limits |
 | `admin` | Superuser — grants all |
 

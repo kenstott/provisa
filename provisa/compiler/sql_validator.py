@@ -62,6 +62,7 @@ def validate_sql(
     discovery_mode: bool = False,
     *,
     bypass_relationship_guard: bool = False,
+    bypass_uncovered_relationships: bool = False,
 ) -> list[ValidationViolation]:
     """Validate SQL against role-scoped GraphQL-equivalent access rules."""
     try:
@@ -98,7 +99,12 @@ def validate_sql(
         )
         if not bypass_relationship_guard:
             violations += _check_join_relationships(
-                tree, gov_ctx, valid_joins, table_id_to_meta, cte_names_set
+                tree,
+                gov_ctx,
+                valid_joins,
+                table_id_to_meta,
+                cte_names_set,
+                bypass_uncovered=bypass_uncovered_relationships,
             )
     violations += _check_column_visibility(tree, gov_ctx, cte_names_set)
     violations += _check_dag(tree, gov_ctx, valid_joins, cte_names_set)
@@ -128,7 +134,7 @@ def _from_tables(
 
 def _join_tables(
     select: exp.Select, cte_names_set: frozenset[str] = frozenset()
-) -> list[tuple[exp.Table, exp.Expression | None]]:
+) -> list[tuple[exp.Table, exp.Expr | None]]:
     """Return (table, ON-condition) for each JOIN in a SELECT, skipping CTE aliases."""
     results = []
     for join in select.args.get("joins") or []:
@@ -139,7 +145,7 @@ def _join_tables(
     return results
 
 
-def _inside_subquery(node: exp.Expression, stop: exp.Expression) -> bool:
+def _inside_subquery(node: exp.Expr, stop: exp.Expr) -> bool:
     cur = node.parent
     while cur is not None and cur is not stop:
         if isinstance(cur, exp.Subquery):
@@ -159,7 +165,7 @@ def _resolve_table_id(tbl: exp.Table, gov_ctx: GovernanceContext) -> int | None:
 
 
 def _check_domain_access(
-    tree: exp.Expression,
+    tree: exp.Expr,
     gov_ctx: GovernanceContext,
     table_id_to_meta: dict[int, TableMeta],
     domain_access: list[str],
@@ -193,7 +199,7 @@ def _check_domain_access(
 # --------------------------------------------------------------------------- #
 
 
-def _extract_eq_pairs(on_expr: exp.Expression) -> list[tuple[str, str, str, str]]:
+def _extract_eq_pairs(on_expr: exp.Expr) -> list[tuple[str, str, str, str]]:
     """Extract (left_table, left_col, right_table, right_col) from EQ conditions in ON clause."""
     pairs = []
     for eq in on_expr.find_all(exp.EQ):
@@ -253,13 +259,18 @@ def _alias_to_table_name(
     return f"{alias}({meta.table_name})"
 
 
+_REMOTE_SOURCE_TYPES: frozenset[str] = frozenset({"graphql_remote", "grpc_remote"})
+
+
 def _check_join_relationships(
-    tree: exp.Expression,
+    tree: exp.Expr,
     gov_ctx: GovernanceContext,
     valid_joins: set[tuple[int, int, str, str]],
     table_id_to_meta: dict[int, TableMeta],
     cte_names_set: frozenset[str] = frozenset(),
+    bypass_uncovered: bool = False,
 ) -> list[ValidationViolation]:
+    covered_pairs: set[tuple[int, int]] = {(s, t) for s, t, _, _ in valid_joins}
     violations = []
     for select in tree.find_all(exp.Select):
         am = _alias_map(select, gov_ctx, cte_names_set)
@@ -295,6 +306,19 @@ def _check_join_relationships(
                 src_alias = lt if rt_id == tgt_tid else rt
                 tgt_alias = tbl.alias or tbl.name
                 if (src_id, tgt_tid, src_col, tgt_col) not in valid_joins:
+                    if bypass_uncovered and (src_id, tgt_tid) not in covered_pairs:
+                        src_meta = table_id_to_meta.get(src_id)
+                        # Remote schemas own their relationship model — bypass V002 only when
+                        # both tables belong to the same remote source_id. Cross-source joins
+                        # (local↔remote or remote↔different-remote) require a covered_pair.
+                        if (
+                            src_meta
+                            and src_meta.source_type in _REMOTE_SOURCE_TYPES
+                            and tgt_meta
+                            and tgt_meta.source_type in _REMOTE_SOURCE_TYPES
+                            and src_meta.source_id == tgt_meta.source_id
+                        ):
+                            continue
                     src_label = _alias_to_table_name(src_alias, am, table_id_to_meta)
                     tgt_label = _alias_to_table_name(tgt_alias, am, table_id_to_meta)
                     violations.append(
@@ -313,7 +337,7 @@ def _check_join_relationships(
 
 
 def _check_column_visibility(
-    tree: exp.Expression,
+    tree: exp.Expr,
     gov_ctx: GovernanceContext,
     cte_names_set: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:
@@ -351,7 +375,7 @@ def _check_column_visibility(
     return violations
 
 
-def _collect_columns(expr: exp.Expression) -> list[exp.Column]:
+def _collect_columns(expr: exp.Expr) -> list[exp.Column]:
     if isinstance(expr, exp.Column):
         return [expr]
     if isinstance(expr, exp.Alias):
@@ -367,7 +391,7 @@ def _collect_columns(expr: exp.Expression) -> list[exp.Column]:
 
 
 def _check_dag(
-    tree: exp.Expression,
+    tree: exp.Expr,
     gov_ctx: GovernanceContext,
     valid_joins: set[tuple[int, int, str, str]],
     cte_names_set: frozenset[str] = frozenset(),
@@ -432,7 +456,7 @@ def _has_cycle(edges: list[tuple[int, int]]) -> bool:
 
 
 def _check_masked_in_predicate(
-    tree: exp.Expression,
+    tree: exp.Expr,
     gov_ctx: GovernanceContext,
     cte_names_set: frozenset[str] = frozenset(),
 ) -> list[ValidationViolation]:

@@ -19,7 +19,38 @@ sources:
     pgbouncer_port: 6432
 ```
 
-Supported source types: `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `snowflake`, `bigquery`, `redshift`, `databricks`, `clickhouse`, `druid`, `exasol`, `hive`, `elasticsearch`, `pinot`, `delta_lake`, `iceberg`, `mongodb`, `cassandra`, `redis`, `kudu`, `accumulo`, `kafka`, `google_sheets`, `prometheus`.
+Supported source types: `postgresql`, `mysql`, `mariadb`, `singlestore`, `sqlserver`, `oracle`, `duckdb`, `snowflake`, `bigquery`, `redshift`, `databricks`, `clickhouse`, `druid`, `exasol`, `hive`, `elasticsearch`, `pinot`, `delta_lake`, `iceberg`, `mongodb`, `cassandra`, `redis`, `kudu`, `accumulo`, `kafka`, `google_sheets`, `prometheus`, `govdata`.
+
+## GovData Sources
+
+Sources of type `govdata` expose U.S. government open data. Access is partitioned by subject grouping. [tool-verified: `provisa/core/models.py` lines 543–574]
+
+```yaml
+sources:
+  - id: federal-data
+    type: govdata
+    subject: COMMERCE
+    domain_id: federal-analytics
+```
+
+### Subject Groupings [tool-verified]
+
+Each subject maps to one or more GovData schemas. Configuring a `govdata` source with a subject exposes all schemas for that subject automatically.
+
+| Subject | Schemas |
+|---------|---------|
+| `COMMERCE` | `sec`, `patents` |
+| `ECONOMY` | `econ` |
+| `EDUCATION` | `census`, `edu` |
+| `HEALTH` | `health` |
+| `CYBER` | `cyber_threat`, `cyber_vuln` |
+| `PUBLIC_SAFETY` | `crime` |
+| `ENVIRONMENT` | `lands` |
+| `WEATHER` | `weather` |
+| `GOVERNMENT` | `fedregister`, `fec` |
+
+The `ref` and `geo` schemas are always included as linker schemas — not configurable and not listed above. Use subject `ALL` to grant access to every schema. [tool-verified: `provisa/core/models.py` lines 561–563]
+
 
 ## Domains
 
@@ -210,7 +241,6 @@ roles:
       - relationship_registration
       - security_config
       - query_development
-      - query_approval
       - full_results
       - admin
     domain_access: ["*"]
@@ -234,7 +264,6 @@ Roles with `parent_role_id` inherit capabilities and domain access from the pare
 | `relationship_registration` | Define relationships |
 | `security_config` | Configure RLS, masking |
 | `query_development` | Execute queries |
-| `query_approval` | Approve governed queries |
 | `full_results` | Bypass sampling limits |
 | `admin` | All capabilities |
 
@@ -312,7 +341,7 @@ views:
 - **`materialize: true`**: Provisa creates a table via CTAS and refreshes it on a schedule. Faster queries but data may be stale by up to `refresh_interval` seconds.
 - **`materialize: false`**: Provisa creates a federated view. Queries always return live data but may be slower for complex aggregations.
 
-Views go through the same governance pipeline as tables — RLS, masking, sampling, role-based visibility, approval workflow. This ensures no new semantics can be added to the platform without steward oversight.
+Views go through the same governance pipeline as tables — RLS, masking, sampling, and role-based visibility. This ensures no new semantics can be added to the platform without steward oversight.
 
 ## Kafka Sources
 
@@ -436,7 +465,7 @@ auth:
 | `none` | No auth (default). All requests treated as admin. | N/A |
 | `simple` | Local dev/testing. Users defined in YAML. | JWT signed with `PROVISA_JWT_SECRET` |
 | `firebase` | Firebase Authentication (all methods). | `firebase-admin` SDK `verify_id_token()` |
-| `keycloak` | Keycloak OIDC. Realm/client roles mapped. | JWKS-based JWT validation |
+| `keycloak` | Keycloak OIDC. Tenant + client roles mapped. | JWKS-based JWT validation |
 | `oauth` | Generic OIDC (Okta, Azure AD, Auth0, PingFederate). | JWKS from discovery URL |
 
 Superuser credentials (`superuser` block) work with any provider and always resolve to admin role with all capabilities. Used for initial setup before external auth is configured.
@@ -457,7 +486,7 @@ Superuser credentials (`superuser` block) work with any provider and always reso
 #
 #   # keycloak:
 #   #   server_url: https://keycloak.example.com
-#   #   realm: provisa
+#   #   # kc-tenant: set to your Keycloak tenant name (e.g. provisa)
 #   #   client_id: provisa-app
 #   #   client_secret: ${env:KEYCLOAK_CLIENT_SECRET}
 #
@@ -611,6 +640,62 @@ Relationship ordering is supported via nested objects:
 }
 ```
 
+## Observability
+
+```yaml
+observability:
+  endpoint: "http://localhost:4319"   # OTLP collector; env OTEL_EXPORTER_OTLP_ENDPOINT overrides
+  service_name: provisa               # env OTEL_SERVICE_NAME overrides
+  sample_rate: 1.0                    # 0.0–1.0; TraceIdRatioBased sampler
+  log_level: WARNING                  # env OTEL_LOG_LEVEL overrides
+  compact_batch_size: 1000
+  telemetry_filter:
+    redact_sql_literals: false        # strip literal values from db.statement before export
+    redact_attributes: []             # attribute keys dropped entirely before export
+  # support_endpoint: ""              # env PROVISA_SUPPORT_OTLP_ENDPOINT; off by default
+  support_telemetry_filter:
+    redact_sql_literals: true         # default on — strip literals before sending to support
+    redact_attributes: []             # additional keys dropped before sending to support
+```
+
+### Telemetry Filters [tool-verified]
+
+Provisa runs two independent OTLP export paths: your internal collector and the optional Provisa support endpoint. Each path has its own filter. Filters run inside a wrapping `_FilteringExporter` before spans leave the process — original span objects are never mutated. [tool-verified: `provisa/api/otel_setup.py` lines 156–207]
+
+**`telemetry_filter`** — controls what reaches your internal collector.
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `redact_sql_literals` | bool | `false` | Replaces string and numeric literals in `db.statement` with `?` |
+| `redact_attributes` | list[str] | `[]` | Attribute keys dropped entirely from every span |
+
+**`support_telemetry_filter`** — controls what reaches the Provisa support endpoint. SQL literal redaction defaults to `true` on this path, since query data belongs to you. [tool-verified: `provisa/api/otel_setup.py` line 240]
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `redact_sql_literals` | bool | `true` | Replaces string and numeric literals in `db.statement` with `?` |
+| `redact_attributes` | list[str] | `[]` | Attribute keys dropped entirely from every span |
+
+Redacted `db.statement` example — with `redact_sql_literals: true`, this span attribute:
+
+```
+db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
+```
+
+becomes:
+
+```
+db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
+```
+
+### Support Endpoint [tool-verified]
+
+`support_endpoint` (or env `PROVISA_SUPPORT_OTLP_ENDPOINT`) forwards telemetry to Provisa support for diagnostics. When unset, no data leaves your infrastructure via this path. The support filter applies independently of the internal filter — you can redact SQL literals from both exports while still sharing span timing and error data with support. [tool-verified: `provisa/api/otel_setup.py` lines 238–288]
+
+### Endpoint Protocol Detection [tool-verified]
+
+Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. URLs starting with `http://` or `https://` use OTLP/HTTP, with `/v1/traces`, `/v1/metrics`, and `/v1/logs` appended automatically. Any other scheme uses OTLP/gRPC with `insecure=True`. [tool-verified: `provisa/api/otel_setup.py` lines 60–70]
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -637,3 +722,9 @@ Relationship ordering is supported via nested objects:
 | `PROVISA_REDIRECT_SECRET_KEY` | — | S3 secret key |
 | `PROVISA_REDIRECT_TTL` | `3600` | Presigned URL TTL (seconds) |
 | `ANTHROPIC_API_KEY` | — | Claude API key (discovery) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Overrides `observability.endpoint` |
+| `OTEL_SERVICE_NAME` | `provisa` | Overrides `observability.service_name` |
+| `OTEL_LOG_LEVEL` | `WARNING` | Overrides `observability.log_level` |
+| `OTEL_COMPACT_BATCH_SIZE` | `10` | Overrides `observability.compact_batch_size` |
+| `OTEL_SPAN_EXPORT_DELAY_MILLIS` | `1000` | Batch span processor flush delay |
+| `PROVISA_SUPPORT_OTLP_ENDPOINT` | — | Overrides `observability.support_endpoint` |

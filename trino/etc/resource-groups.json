@@ -1,0 +1,35 @@
+{
+  "rootGroups": [
+    {
+      "name": "global",
+      "softMemoryLimit": "80%",
+      "hardConcurrencyLimit": 100,
+      "maxQueued": 1000,
+      "schedulingPolicy": "fair",
+      "subGroups": [
+        {
+          "name": "tenant-${USER}",
+          "softMemoryLimit": "20%",
+          "hardConcurrencyLimit": 10,
+          "maxQueued": 100,
+          "schedulingPolicy": "fair"
+        },
+        {
+          "name": "system",
+          "softMemoryLimit": "10%",
+          "hardConcurrencyLimit": 5,
+          "maxQueued": 50
+        }
+      ]
+    }
+  ],
+  "selectors": [
+    {
+      "user": "system",
+      "group": "global.system"
+    },
+    {
+      "group": "global.tenant-${USER}"
+    }
+  ]
+}

@@ -64,6 +64,9 @@ interface SchemaNodeLabel {
   pkColumns: string[];
   idColumn: string | null;
   nativeFilterColumns: string[];
+  scl1: number | null;
+  scl2: number | null;
+  scl3: number | null;
 }
 interface SchemaRel {
   type: string;
@@ -644,6 +647,7 @@ export function GraphPage() {
   const [adminRels, setAdminRels] = useState<Relationship[]>([]);
   const [nfModal, setNfModal] = useState<{ label: string; compoundLabel: string; filterColumns: string[] } | null>(null);
   const frameIdRef = useRef(_graphState.frames.reduce((max, f) => Math.max(max, parseInt(f.id) || 0), 0));
+  const clusterMapRef = useRef<Record<string, { scl1: number | null; scl2: number | null; scl3: number | null }>>({});
 
   // Fetch admin relationships for edge alias editing
   useEffect(() => {
@@ -659,7 +663,7 @@ export function GraphPage() {
       .then((r) => r.json())
       .then((data) => {
         const nodeLabels: SchemaNodeLabel[] = (data.node_labels ?? []).map(
-          (n: { label: string; domain_label: string | null; domain_id: string | null; table_label: string; properties: string[]; pk_columns: string[]; id_column?: string; native_filter_columns?: string[] }) => ({
+          (n: { label: string; domain_label: string | null; domain_id: string | null; table_label: string; properties: string[]; pk_columns: string[]; id_column?: string; native_filter_columns?: string[]; scl1?: number | null; scl2?: number | null; scl3?: number | null }) => ({
             domainLabel: n.domain_label ?? null,
             domainId: n.domain_id ?? null,
             tableLabel: n.table_label,
@@ -667,6 +671,9 @@ export function GraphPage() {
             pkColumns: n.pk_columns ?? [],
             idColumn: n.id_column ?? null,
             nativeFilterColumns: n.native_filter_columns ?? [],
+            scl1: n.scl1 ?? null,
+            scl2: n.scl2 ?? null,
+            scl3: n.scl3 ?? null,
           })
         );
         const seenRel = new Set<string>();
@@ -689,6 +696,13 @@ export function GraphPage() {
           seen.add(key);
           return true;
         });
+        const newClusterMap: Record<string, { scl1: number | null; scl2: number | null; scl3: number | null }> = {};
+        for (const node of uniqueNodeLabels) {
+          const entry = { scl1: node.scl1, scl2: node.scl2, scl3: node.scl3 };
+          newClusterMap[node.tableLabel] = entry;
+          if (node.domainLabel) newClusterMap[`${node.domainLabel}:${node.tableLabel}`] = entry;
+        }
+        clusterMapRef.current = newClusterMap;
         setSchemaNodeLabels(uniqueNodeLabels);
         setSchemaRels(rels.sort((a, b) => a.type.localeCompare(b.type)));
       })
@@ -732,6 +746,10 @@ export function GraphPage() {
       const rows: Record<string, unknown>[] = data.rows ?? [];
       const columns: string[] = data.columns ?? [];
       const { nodes, edges } = extractElements(rows);
+      nodes.forEach((node) => {
+        const clusters = clusterMapRef.current[node.label];
+        if (clusters) Object.assign(node.properties, { scl1: clusters.scl1, scl2: clusters.scl2, scl3: clusters.scl3 });
+      });
       setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "done" as const, nodes, edges, rows, columns, elapsed } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });
     } catch (err) {
       setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });
@@ -776,6 +794,10 @@ export function GraphPage() {
       const rows: Record<string, unknown>[] = data.rows ?? [];
       const columns: string[] = data.columns ?? [];
       const { nodes, edges } = extractElements(rows);
+      nodes.forEach((node) => {
+        const clusters = clusterMapRef.current[node.label];
+        if (clusters) Object.assign(node.properties, { scl1: clusters.scl1, scl2: clusters.scl2, scl3: clusters.scl3 });
+      });
       setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "done" as const, nodes, edges, rows, columns, elapsed } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });
     } catch (err) {
       setFrames((f) => { const next = f.map((fr) => fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr); _graphState.frames = next; _saveGraphState(_graphState); return next; });

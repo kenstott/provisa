@@ -28,6 +28,7 @@ class Capability(str, Enum):
     FULL_RESULTS = "full_results"  # bypass sampling mode
     ADMIN = "admin"
     USAGE = "usage"
+    AD_HOC_QUERY = "ad_hoc_query"
     READ_RESTRICTED = "read_restricted"
     APPROVE_RELATIONSHIP = "approve_relationship"
     CREATE_VIEW = "create_view"
@@ -43,9 +44,7 @@ class InsufficientRightsError(Exception):
     def __init__(self, role_id: str, required: Capability):
         self.role_id = role_id
         self.required = required
-        super().__init__(
-            f"Role {role_id!r} lacks required capability: {required.value}"
-        )
+        super().__init__(f"Role {role_id!r} lacks required capability: {required.value}")
 
 
 def check_capability(

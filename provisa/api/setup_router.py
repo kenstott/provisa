@@ -41,7 +41,8 @@ async def _seed_demo_admin(pool) -> None:
             await conn.execute(
                 "INSERT INTO local_users (id, username, password_hash, display_name, is_active) "
                 "VALUES ($1, 'admin', $2, 'Admin', true) ON CONFLICT DO NOTHING",
-                str(uuid.uuid4()), pw_hash,
+                str(uuid.uuid4()),
+                pw_hash,
             )
 
     cfg_path = config_path()
@@ -54,6 +55,7 @@ async def _seed_demo_admin(pool) -> None:
         }
         write_config(cfg_path, cfg)
         from provisa.api.app import _load_and_build
+
         await _load_and_build(str(cfg_path))
 
 
@@ -88,12 +90,14 @@ async def _auto_configure_idp(provider: str, pool) -> None:
                 await conn.execute(
                     "INSERT INTO local_users (id, username, password_hash, display_name, is_active) "
                     "VALUES ($1, 'admin', $2, 'Admin', true) ON CONFLICT DO NOTHING",
-                    str(uuid.uuid4()), pw_hash,
+                    str(uuid.uuid4()),
+                    pw_hash,
                 )
 
     cfg["auth"] = auth_section
     write_config(cfg_path, cfg)
     from provisa.api.app import _load_and_build
+
     await _load_and_build(str(cfg_path))
 
 
@@ -105,11 +109,13 @@ async def setup_status():
     idp = _idp_override()
 
     if _is_demo():
-        if state.pg_pool:
-            if idp and idp != "basic":
-                await _auto_configure_idp(idp, state.pg_pool)
-            else:
-                await _seed_demo_admin(state.pg_pool)
+        if idp and state.pg_pool:
+            await _auto_configure_idp(idp, state.pg_pool)
+            return {"needs_setup": False, "demo_mode": True}
+        cfg = read_config()
+        auth_cfg = cfg.get("auth")
+        if not auth_cfg:
+            return {"needs_setup": True, "demo_mode": True}
         return {"needs_setup": False, "demo_mode": True}
 
     if idp and state.pg_pool:
@@ -145,10 +151,20 @@ async def run_setup(body: SetupRequest):
     from provisa.api.app import state, _load_and_build
     from provisa.api.admin._config_io import config_path, read_config, write_config
 
-    if body.provider not in ("basic", "firebase"):
-        raise HTTPException(status_code=400, detail="provider must be 'basic' or 'firebase'")
+    if body.provider not in ("basic", "firebase", "none"):
+        raise HTTPException(
+            status_code=400, detail="provider must be 'basic', 'firebase', or 'none'"
+        )
     if body.mode not in ("single", "multi"):
         raise HTTPException(status_code=400, detail="mode must be 'single' or 'multi'")
+
+    if body.provider == "none":
+        cfg_path = config_path()
+        cfg = read_config()
+        cfg["auth"] = {"provider": "none"}
+        write_config(cfg_path, cfg)
+        await _load_and_build(str(cfg_path))
+        return {"success": True, "provider": "none"}
 
     auth_section: dict = {
         "provider": body.provider,
@@ -158,16 +174,24 @@ async def run_setup(body: SetupRequest):
 
     if body.provider == "basic":
         if not body.admin_username or not body.admin_password:
-            raise HTTPException(status_code=400, detail="admin_username and admin_password required")
-        pw_hash = bcrypt.hashpw(body.admin_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+            raise HTTPException(
+                status_code=400, detail="admin_username and admin_password required"
+            )
+        pw_hash = bcrypt.hashpw(body.admin_password.encode("utf-8"), bcrypt.gensalt()).decode(
+            "utf-8"
+        )
         async with state.pg_pool.acquire() as conn:
-            existing = await conn.fetchrow("SELECT id FROM local_users WHERE username = $1", body.admin_username)
+            existing = await conn.fetchrow(
+                "SELECT id FROM local_users WHERE username = $1", body.admin_username
+            )
             if existing:
                 raise HTTPException(status_code=409, detail="Username already exists")
             await conn.execute(
                 "INSERT INTO local_users (id, username, password_hash, display_name, is_active) "
                 "VALUES ($1, $2, $3, 'Admin', true)",
-                str(uuid.uuid4()), body.admin_username, pw_hash,
+                str(uuid.uuid4()),
+                body.admin_username,
+                pw_hash,
             )
 
     elif body.provider == "firebase":

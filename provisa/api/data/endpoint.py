@@ -26,7 +26,7 @@ import time as _time
 import httpx
 import trino.dbapi
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from graphql import GraphQLSyntaxError, OperationType
 from pydantic import BaseModel
@@ -78,7 +78,7 @@ class GraphQLRequest(BaseModel):
     variables: dict | None = None
     role: str = "admin"  # test mode: role passed in request
     extensions: dict | None = None  # APQ: {"persistedQuery": {"sha256Hash": "..."}}
-    queryId: str | None = None  # Governed Query stable_id (Phase AN)
+
 
 
 _ACCEPT_MAP = {
@@ -148,34 +148,6 @@ def _inject_probe_limit(sql: str, limit: int) -> str:
     return sql + f" LIMIT {limit}"
 
 
-@router.get("/graphql")
-async def graphql_get_endpoint(
-    raw_request: Request,
-    queryId: str,
-    role: str = "admin",
-    x_provisa_role: str | None = Header(None),
-    accept: str | None = Header(None),
-):
-    """Execute a governed query by stable_id over GET.
-
-    GET /data/graphql?queryId=<stable_id>&role=<role>
-
-    GET is safe and idempotent — responses are CDN/proxy-cacheable.
-    Only approved governed queries are permitted; ad-hoc queries require POST.
-    """
-    request = GraphQLRequest(queryId=queryId, role=role)
-    return await graphql_endpoint(
-        raw_request=raw_request,
-        request=request,
-        x_provisa_role=x_provisa_role,
-        accept=accept,
-        x_provisa_redirect=None,
-        x_provisa_redirect_threshold=None,
-        x_provisa_redirect_format=None,
-        query_id=None,
-    )
-
-
 @router.post("/graphql")
 async def graphql_endpoint(
     raw_request: Request,
@@ -186,7 +158,6 @@ async def graphql_endpoint(
     x_provisa_redirect_threshold: int | None = Header(None),
     x_provisa_redirect_format: str | None = Header(None),
     x_provisa_stats: str | None = Header(None),
-    query_id: str | None = Query(None),
 ):
     """Execute a GraphQL query or mutation. Content negotiation via Accept header.
 
@@ -212,34 +183,13 @@ async def graphql_endpoint(
             detail=f"No schema available for role {role_id!r}",
         )
 
-    # Rights check
+    # Rights check — QUERY_DEVELOPMENT required for all access including introspection
     role = state.roles.get(role_id)
     if role:
         try:
             check_capability(role, Capability.QUERY_DEVELOPMENT)
         except InsufficientRightsError as e:
             raise HTTPException(status_code=403, detail=str(e))
-
-    # --- Governed Query path (queryId, Phase AN) ---
-    # URL ?queryId= takes precedence over body field for HTTP GET-style approved lookups
-    if query_id:
-        request = GraphQLRequest(queryId=query_id, variables=request.variables, role=request.role)
-    if request.queryId:
-        if state.pg_pool is None:
-            raise HTTPException(status_code=503, detail="Database pool not available")
-        async with state.pg_pool.acquire() as conn:
-            from provisa.registry.store import get_by_stable_id
-            record = await get_by_stable_id(conn, request.queryId)
-        if record is None or record.get("status") != "approved":
-            raise HTTPException(
-                status_code=404,
-                detail=f"Governed query {request.queryId!r} not found or not approved",
-            )
-        request = GraphQLRequest(
-            query=record["query_text"],
-            variables=request.variables,
-            role=request.role,
-        )
 
     # --- APQ (Automatic Persisted Queries, Phase AN) ---
     apq_hash: str | None = None
@@ -324,6 +274,13 @@ async def graphql_endpoint(
     if is_introspection:
         result = gql_execute(schema, document, variable_values=effective_variables)
         return JSONResponse({"data": result.data})
+
+    # AD_HOC_QUERY required for actual data queries (not introspection)
+    if role:
+        try:
+            check_capability(role, Capability.AD_HOC_QUERY)
+        except InsufficientRightsError as e:
+            raise HTTPException(status_code=403, detail=str(e))
 
     # Detect operation type
     is_mut = any(
@@ -645,6 +602,8 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
                         auth=gql_reg.get("auth"),
                         field_name=gql_tbl.get("field_name") or gql_tbl["name"],
                         columns=col_selections,
+                        limit=state.config.graphql_remote.max_list_items,
+                        pagination=gql_tbl.get("pagination"),
                     )
                 except Exception as fetch_exc:
                     log.warning("[GQL REMOTE] fetch failed for %s: %s — skipping", tn, fetch_exc)
@@ -1189,6 +1148,85 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, ck, o
     return field_rows, response_data, phase1_ms, phase2_ms, trino_sql, not _cache_miss
 
 
+async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_field, output_format):
+    """Execute a gRPC remote query method.
+
+    Calls the remote gRPC endpoint with _nf_ args, injects result rows as a
+    VALUES CTE, then applies WHERE/ORDER BY/LIMIT via Trino (Phase 2 only).
+    """
+    from provisa.compiler.nf_extractor import extract_nf_args
+    from provisa.cache.hot_tables import HotTableEntry, build_values_cte_sql
+    from provisa.executor.trino import execute_trino
+    from provisa.transpiler.transpile import transpile_to_trino
+    from provisa.source_adapters import grpc_remote_adapter
+
+    reg = getattr(state, "grpc_remote_sources", {}).get(source_id)
+    if reg is None:
+        raise HTTPException(status_code=400, detail=f"gRPC remote source {source_id!r} not registered")
+
+    table_meta = None
+    for meta in state.contexts.values():
+        tm = meta.tables.get(root_field)
+        if tm:
+            table_meta = tm
+            break
+    table_name = table_meta.table_name if table_meta else root_field
+
+    namespace = reg.get("namespace", "")
+    prefix = f"{namespace}__" if namespace else ""
+    grpc_query = next(
+        (q for q in reg.get("queries", []) if f"{prefix}{q.service}__{q.method}" == table_name),
+        None,
+    )
+    if grpc_query is None:
+        raise HTTPException(status_code=400, detail=f"No gRPC query registered for table {table_name!r}")
+
+    nf_args: dict = compiled.api_args.copy() if compiled.api_args else {}
+
+    _t0 = _time.perf_counter()
+    rows = await grpc_remote_adapter.fetch(
+        source_id=source_id,
+        full_method_path=grpc_query.full_method_path,
+        input_message_name=grpc_query.input_message,
+        output_message_name=grpc_query.output_message,
+        pb2=reg["pb2"],
+        args=nf_args,
+        grpc_remote_sources=getattr(state, "grpc_remote_sources", {}),
+        response_cache_store=state.response_cache_store,
+        ttl=reg.get("cache_ttl", 300),
+        server_streaming=grpc_query.server_streaming,
+    )
+    phase1_ms = (_time.perf_counter() - _t0) * 1000
+
+    col_names = [c.name for c in grpc_query.columns] if rows else (list(rows[0].keys()) if rows else [])
+    entry = HotTableEntry(
+        table_name=table_name,
+        catalog="",
+        schema="",
+        pk_column="",
+        rows=rows,
+        column_names=col_names,
+        is_api=True,
+    )
+
+    exec_sql, exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
+    exec_sql = rewrite_semantic_to_trino_physical(exec_sql, ctx)
+    hot_sql = build_values_cte_sql(exec_sql, table_name, entry)
+    trino_sql = transpile_to_trino(hot_sql)
+
+    _loop = asyncio.get_running_loop()
+    _api_conn_kwargs = getattr(state, "trino_conn_kwargs", None)
+    _api_conn = trino.dbapi.connect(**_api_conn_kwargs) if _api_conn_kwargs else state.trino_conn
+    _t2 = _time.perf_counter()
+    trino_result = await _loop.run_in_executor(None, lambda: execute_trino(_api_conn, trino_sql, exec_params))
+    phase2_ms = (_time.perf_counter() - _t2) * 1000
+
+    response_data = _format_response(trino_result.rows, compiled.columns, root_field, output_format)
+    field_rows = response_data.get("data", {}).get(root_field, []) if isinstance(response_data, dict) else response_data
+
+    return field_rows, response_data, phase1_ms, phase2_ms, trino_sql, False
+
+
 async def _execute_one_field(
     compiled, ctx, rls, state, role, role_id,
     fresh_mvs, output_format,
@@ -1289,10 +1327,17 @@ async def _execute_one_field(
 
     # --- API source path: fetch from external API via router_integration ---
     if decision.route == Route.API and decision.source_id:
+        _api_source_type = getattr(state, "source_types", {}).get(decision.source_id, "")
         try:
-            field_rows, response_data, _phase1_ms, _phase2_ms, _api_physical_sql, _api_cache_hit = await _execute_api_source(
-                compiled, ctx, state, decision.source_id, root_field, ck, output_format,
-            )
+            if _api_source_type == "grpc_remote":
+                field_rows, response_data, _phase1_ms, _phase2_ms, _api_physical_sql, _api_cache_hit = await _execute_grpc_remote_source(
+                    compiled, ctx, state, decision.source_id, root_field, output_format,
+                )
+                _api_cache_hit = False
+            else:
+                field_rows, response_data, _phase1_ms, _phase2_ms, _api_physical_sql, _api_cache_hit = await _execute_api_source(
+                    compiled, ctx, state, decision.source_id, root_field, ck, output_format,
+                )
         except HTTPException:
             raise
         except (MemoryError, ConnectionError) as e:
@@ -1301,7 +1346,6 @@ async def _execute_one_field(
         except Exception as e:
             log.exception("API source execution failed for %s", root_field)
             raise HTTPException(status_code=500, detail=str(e))
-        source_type = getattr(state, "source_types", {}).get(decision.source_id, "")
         _api_rows = len(field_rows) if isinstance(field_rows, list) else 0
         _qs_mod.record(field=root_field, source=decision.source_id,
                        strategy="hydration",
@@ -1309,7 +1353,7 @@ async def _execute_one_field(
                        rows=0,
                        cache_hit=_api_cache_hit)
         _qs_mod.record(field=root_field, source=decision.source_id,
-                       strategy=f"api:{source_type}" if source_type else "api",
+                       strategy=f"api:{_api_source_type}" if _api_source_type else "api",
                        elapsed_ms=_phase2_ms,
                        rows=_api_rows,
                        cache_hit=False,

@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
+import trino.dbapi
 import yaml
 
 _log = logging.getLogger(__name__)
@@ -42,8 +44,9 @@ query.max-memory-per-node={query_max_memory_per_node}
 query.max-total-memory={query_max_total_memory}
 spill-enabled={spill_enabled}
 spiller-spill-path={spill_path}
+spill-encryption-enabled=true
 tracing.enabled=true
-tracing.exporter.endpoint=http://otel-collector:4317
+otel.exporter.endpoint=http://otel-collector:4317
 """
 
 _WORKER_TEMPLATE = """coordinator=false
@@ -53,7 +56,16 @@ catalog.management=dynamic
 query.max-memory-per-node={query_max_memory_per_node}
 spill-enabled={spill_enabled}
 spiller-spill-path={spill_path}
+spill-encryption-enabled=true
 """
+
+_RESOURCE_GROUPS_PROPERTIES_TEMPLATE = """resource-groups.configuration-manager=file
+resource-groups.config-file=/etc/trino/resource-groups.json
+"""
+
+# docker-compose.core.yml trino service volumes must include:
+#   - ./trino/etc/resource-groups.json:/etc/trino/resource-groups.json:ro
+#   - ./trino/etc/resource-groups.properties:/etc/trino/resource-groups.properties:ro
 
 
 def write_trino_config(config_path: str) -> None:
@@ -97,6 +109,27 @@ def write_trino_config(config_path: str) -> None:
             spill_path=spill_path,
         ),
     )
+    _write(
+        os.path.join(trino_etc, "resource-groups.properties"),
+        _RESOURCE_GROUPS_PROPERTIES_TEMPLATE,
+    )
+
+
+def get_trino_connection(
+    trino_conn_kwargs: dict[str, Any],
+    tenant_id: str | None = None,
+) -> trino.dbapi.Connection:
+    """Return a Trino connection scoped to tenant_id as the Trino user.
+
+    In multi-tenant mode callers pass tenant_id; Trino resource groups use
+    ${USER} to assign the query to the correct per-tenant group.
+    When tenant_id is None the connection is made with the kwargs as-is
+    (single-tenant / system pass-through).
+    """
+    kwargs = dict(trino_conn_kwargs)
+    if tenant_id is not None:
+        kwargs["user"] = tenant_id
+    return trino.dbapi.connect(**kwargs)
 
 
 def _write(path: str, content: str) -> None:

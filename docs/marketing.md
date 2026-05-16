@@ -15,7 +15,7 @@ Provisa follows the Hasura V2 PLG model: **connect a source, register tables, su
 
 ### CE vs Enterprise gate
 
-CE is full-featured. Enterprise adds: RLS enforcement, column masking, query approval workflow, audit log, ABAC hooks, SLA-backed support, SSO. No bait-and-switch — CE stays genuinely capable. The GraphQL/Hasura community has a sharp nose for hobbled community editions; trust is the asset.
+CE is full-featured. Enterprise adds: RLS enforcement, column masking, audit log, ABAC hooks, SLA-backed support, SSO. No bait-and-switch — CE stays genuinely capable. The GraphQL/Hasura community has a sharp nose for hobbled community editions; trust is the asset.
 
 BSL 1.1 license: source-available, converts to Apache 2 after time window, prevents commercial cloud hosting without a deal. Explicitly communicated in docs and marketing.
 

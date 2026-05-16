@@ -9,7 +9,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for Flight SQL catalog and approved modes (REQ-126)."""
+"""Unit tests for Flight SQL catalog (REQ-126)."""
 
 from __future__ import annotations
 
@@ -20,10 +20,8 @@ import pyarrow.flight as flight
 import pytest
 
 from provisa.api.flight.catalog import (
-    ApprovedQuery,
     CatalogColumn,
     CatalogTable,
-    approved_query_to_flight_info,
     catalog_table_to_arrow_schema,
     catalog_table_to_flight_info,
     _trino_type_to_arrow,
@@ -35,6 +33,7 @@ from provisa.api.flight.server import _parse_limit_value
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 class FakeState:
     """Minimal AppState substitute for testing."""
@@ -77,21 +76,10 @@ def _make_table(
     )
 
 
-def _make_approved_query(
-    stable_id="abc-123",
-    query_text="{ orders { id } }",
-    compiled_sql="SELECT id FROM orders",
-) -> ApprovedQuery:
-    return ApprovedQuery(
-        stable_id=stable_id,
-        query_text=query_text,
-        compiled_sql=compiled_sql,
-    )
-
-
 # ---------------------------------------------------------------------------
 # Type mapping
 # ---------------------------------------------------------------------------
+
 
 class TestTrinoTypeToArrow:
     def test_varchar(self):
@@ -123,6 +111,7 @@ class TestTrinoTypeToArrow:
 # ---------------------------------------------------------------------------
 # Catalog schema
 # ---------------------------------------------------------------------------
+
 
 class TestCatalogTableToArrowSchema:
     def test_field_count(self):
@@ -166,6 +155,7 @@ class TestCatalogTableToArrowSchema:
 # FlightInfo for catalog
 # ---------------------------------------------------------------------------
 
+
 class TestCatalogFlightInfo:
     def test_descriptor_path(self):
         table = _make_table()
@@ -182,57 +172,22 @@ class TestCatalogFlightInfo:
         info = catalog_table_to_flight_info(table)
         assert len(info.endpoints) == 0
 
-
-# ---------------------------------------------------------------------------
-# FlightInfo for approved queries
-# ---------------------------------------------------------------------------
-
-class TestApprovedFlightInfo:
-    def test_descriptor_path(self):
-        q = _make_approved_query()
-        info = approved_query_to_flight_info(q)
-        assert list(info.descriptor.path) == [b"approved", b"abc-123"]
-
-    def test_schema_fields(self):
-        q = _make_approved_query()
-        info = approved_query_to_flight_info(q)
-        assert info.schema.names == ["stable_id", "query_text", "compiled_sql"]
-
-
-# ---------------------------------------------------------------------------
-# Server mode parsing
-# ---------------------------------------------------------------------------
-
-class TestModeFromTicket:
-    def test_default_none(self):
-        assert ProvisaFlightServer._parse_mode(None) == "default"
-
-    def test_default_empty(self):
-        assert ProvisaFlightServer._parse_mode(b"") == "default"
-
-    def test_default_garbage(self):
-        assert ProvisaFlightServer._parse_mode(b"\xff\xfe") == "default"
-
-    def test_catalog(self):
-        buf = json.dumps({"mode": "catalog"}).encode()
-        assert ProvisaFlightServer._parse_mode(buf) == "catalog"
-
-    def test_approved(self):
-        buf = json.dumps({"mode": "approved"}).encode()
-        assert ProvisaFlightServer._parse_mode(buf) == "approved"
-
-    def test_default_explicit(self):
-        buf = json.dumps({"mode": "default"}).encode()
-        assert ProvisaFlightServer._parse_mode(buf) == "default"
-
-    def test_no_mode_key(self):
-        buf = json.dumps({"query": "test"}).encode()
-        assert ProvisaFlightServer._parse_mode(buf) == "default"
+    def test_ticket_has_no_mode_key(self):
+        """Ticket JSON must not contain a 'mode' key."""
+        table = _make_table()
+        loc = flight.Location.for_grpc_tcp("localhost", 8815)
+        info = catalog_table_to_flight_info(table, location=loc)
+        assert len(info.endpoints) == 1
+        ticket_data = json.loads(info.endpoints[0].ticket.ticket.decode())
+        assert "mode" not in ticket_data
+        assert ticket_data["domain"] == "sales"
+        assert ticket_data["table"] == "orders"
 
 
 # ---------------------------------------------------------------------------
 # Server catalog streams
 # ---------------------------------------------------------------------------
+
 
 class TestServerCatalogTables:
     def test_catalog_tables(self):
@@ -259,10 +214,14 @@ class TestServerCatalogTables:
         result = ProvisaFlightServer._build_columns_table(table)
         assert result.num_rows == 3
         assert result.column("column_name").to_pylist() == [
-            "id", "customer_name", "total",
+            "id",
+            "customer_name",
+            "total",
         ]
         assert result.column("data_type").to_pylist() == [
-            "integer", "varchar", "decimal(10,2)",
+            "integer",
+            "varchar",
+            "decimal(10,2)",
         ]
 
     def test_empty_catalog(self):
@@ -271,76 +230,52 @@ class TestServerCatalogTables:
 
 
 # ---------------------------------------------------------------------------
-# Server approved streams
+# Limit value parsing
 # ---------------------------------------------------------------------------
 
-class TestServerApprovedTables:
-    def test_approved_queries_table(self):
-        queries = [
-            _make_approved_query("id-1", "q1", "sql1"),
-            _make_approved_query("id-2", "q2", "sql2"),
-        ]
-        result = ProvisaFlightServer._build_approved_queries_table(queries)
-        assert result.num_rows == 2
-        assert result.column("stable_id").to_pylist() == ["id-1", "id-2"]
 
-    def test_approved_queries_table_limit(self):
-        queries = [
-            _make_approved_query("id-1", "q1", "sql1"),
-            _make_approved_query("id-2", "q2", "sql2"),
-        ]
-        result = ProvisaFlightServer._build_approved_queries_table(queries, limit=1)
-        assert result.num_rows == 1
-        assert result.column("stable_id").to_pylist() == ["id-1"]
-
-    def test_approved_queries_limit_zero(self):
-        queries = [_make_approved_query("id-1", "q1", "sql1")]
-        result = ProvisaFlightServer._build_approved_queries_table(queries, limit=0)
-        assert result.num_rows == 0
-
-    def test_limit_value_rejects_negative(self):
+class TestParseLimitValue:
+    def test_rejects_negative(self):
         with pytest.raises(flight.FlightServerError, match="non-negative integer"):
             _parse_limit_value(-1)
 
-    def test_limit_value_rejects_bool(self):
+    def test_rejects_bool(self):
         with pytest.raises(flight.FlightServerError, match="non-negative integer"):
             _parse_limit_value(True)
 
-    def test_single_approved_query_table(self):
-        q = _make_approved_query()
-        result = ProvisaFlightServer._build_approved_query_table(q)
-        assert result.num_rows == 1
-        assert result.column("stable_id").to_pylist() == ["abc-123"]
-        assert result.column("compiled_sql").to_pylist() == ["SELECT id FROM orders"]
+    def test_none_passthrough(self):
+        assert _parse_limit_value(None) is None
 
-    def test_empty_approved(self):
-        result = ProvisaFlightServer._build_approved_queries_table([])
-        assert result.num_rows == 0
+    def test_zero(self):
+        assert _parse_limit_value(0) == 0
 
+    def test_positive(self):
+        assert _parse_limit_value(10) == 10
 
-# ---------------------------------------------------------------------------
-# Default mode unchanged
-# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # WHERE variable parsing (REQ-302)
 # ---------------------------------------------------------------------------
+
 
 class TestParseWhereVariables:
     """Unit tests for _parse_where_variables — JDBC WHERE-clause variable extraction."""
 
     def test_integer_equality(self):
         from provisa.api.flight.server import _parse_where_variables
+
         sql = "SELECT * FROM orders WHERE id = 42"
         assert _parse_where_variables(sql) == {"id": 42}
 
     def test_string_equality(self):
         from provisa.api.flight.server import _parse_where_variables
+
         sql = "SELECT * FROM orders WHERE region = 'us-east'"
         assert _parse_where_variables(sql) == {"region": "us-east"}
 
     def test_multiple_predicates(self):
         from provisa.api.flight.server import _parse_where_variables
+
         sql = "SELECT * FROM orders WHERE region = 'eu-west' AND id = 99"
         result = _parse_where_variables(sql)
         assert result["region"] == "eu-west"
@@ -348,45 +283,49 @@ class TestParseWhereVariables:
 
     def test_no_where_returns_empty(self):
         from provisa.api.flight.server import _parse_where_variables
+
         sql = "SELECT * FROM orders"
         assert _parse_where_variables(sql) == {}
 
     def test_stops_at_limit(self):
         from provisa.api.flight.server import _parse_where_variables
+
         sql = "SELECT * FROM orders WHERE id = 5 LIMIT 10"
         result = _parse_where_variables(sql)
         assert result == {"id": 5}
 
     def test_float_value(self):
         from provisa.api.flight.server import _parse_where_variables
+
         sql = "SELECT * FROM orders WHERE amount = 3.14"
         assert _parse_where_variables(sql) == {"amount": 3.14}
 
     def test_negative_integer(self):
         from provisa.api.flight.server import _parse_where_variables
+
         sql = "SELECT * FROM orders WHERE offset_val = -1"
         assert _parse_where_variables(sql) == {"offset_val": -1}
 
 
 # ---------------------------------------------------------------------------
-# Default mode unchanged
+# do_get routing
 # ---------------------------------------------------------------------------
 
-class TestDefaultMode:
-    def test_missing_query_raises(self, fake_state):
-        """Default mode still requires a query in the ticket."""
+
+class TestDoGet:
+    def test_missing_query_falls_through_to_catalog(self, fake_state):
+        """No query in ticket routes to catalog fetch (pg_pool=None → empty)."""
         server = ProvisaFlightServer.__new__(ProvisaFlightServer)
         server._state = fake_state
-        server._session_modes = {}
         ticket = flight.Ticket(json.dumps({"role": "admin"}).encode())
-        with pytest.raises(flight.FlightServerError, match="must include 'query'"):
-            server.do_get(None, ticket)
+        # pg_pool is None, so _do_get_catalog returns empty table stream
+        stream = server.do_get(None, ticket)
+        assert stream is not None
 
     def test_missing_role_raises(self, fake_state):
-        """Default mode raises when the role schema is missing."""
+        """Query with unknown role raises FlightServerError."""
         server = ProvisaFlightServer.__new__(ProvisaFlightServer)
         server._state = fake_state
-        server._session_modes = {}
         ticket = flight.Ticket(json.dumps({"query": "{ x }", "role": "nope"}).encode())
         with pytest.raises(flight.FlightServerError, match="No schema for role"):
             server.do_get(None, ticket)

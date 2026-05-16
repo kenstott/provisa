@@ -273,7 +273,7 @@ Repeat these steps on each additional node after the primary is running and reac
 
 | Service | Why singleton |
 |---------|---------------|
-| PostgreSQL | Shared schema, app config, governed queries, semantic model |
+| PostgreSQL | Shared schema, app config, semantic model |
 | Redis | Shared query result cache and subscription state |
 | MinIO | Shared object store for redirect results and MV snapshots |
 | Federation engine coordinator | All workers (primary + secondaries) register here |

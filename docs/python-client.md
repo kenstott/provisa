@@ -108,7 +108,6 @@ conn = connect(
     username="alice",
     password="secret",
     role="admin",       # optional, default "admin"
-    mode="approved",    # "approved" or "catalog"
 )
 ```
 
@@ -157,13 +156,6 @@ with connect("http://localhost:8001", username="alice", password="secret") as co
         print(cur.fetchall())
 ```
 
-### Modes
-
-| Mode | Behavior |
-|------|----------|
-| `approved` | SQL `SELECT * FROM <stableId>` executes an approved query via Arrow Flight or JSON |
-| `catalog` | Arbitrary SQL is routed through the Stage 2 governance engine (RLS, masking, visibility) |
-
 ---
 
 ## SQLAlchemy Dialect
@@ -198,11 +190,10 @@ df = pd.read_sql("{ orders { id amount } }", engine)
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `role` | Provisa role | `admin` |
-| `mode` | `approved` or `catalog` | `approved` |
 
 ```python
 engine = create_engine(
-    "provisa+http://alice:secret@localhost:8001?role=analyst&mode=catalog"
+    "provisa+http://alice:secret@localhost:8001?role=analyst"
 )
 ```
 

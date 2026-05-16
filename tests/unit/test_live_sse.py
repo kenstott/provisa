@@ -43,6 +43,7 @@ pytestmark = [pytest.mark.asyncio]
 # Shared helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_pool_with_conn(conn_mock):
     """Build an asyncpg pool mock whose acquire() context manager yields conn_mock."""
     pool = MagicMock()
@@ -68,17 +69,17 @@ def _make_engine(pool=None) -> LiveEngine:
 
 
 def _patch_poll_deps(record=None, watermark=None):
-    """Return three patch objects for registry + watermark internals."""
+    """Return patch objects for watermark internals."""
     return (
         patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=watermark)),
         patch("provisa.live.watermark.set_watermark", AsyncMock()),
-        patch("provisa.registry.store.get_by_stable_id", AsyncMock(return_value=record)),
     )
 
 
 # ---------------------------------------------------------------------------
 # TestSSEFanoutQueueFullBehaviour
 # ---------------------------------------------------------------------------
+
 
 class TestSSEFanoutQueueFullBehaviour:
     """Tests focused on the QueueFull / drop path inside SSEFanout.send."""
@@ -129,6 +130,7 @@ class TestSSEFanoutQueueFullBehaviour:
 # TestSSEFanoutSubscriberCountLifecycle
 # ---------------------------------------------------------------------------
 
+
 class TestSSEFanoutSubscriberCountLifecycle:
     async def test_count_starts_at_zero(self):
         fanout = SSEFanout("q-lifecycle")
@@ -173,6 +175,7 @@ class TestSSEFanoutSubscriberCountLifecycle:
 # TestSSEFanoutConcurrentDelivery
 # ---------------------------------------------------------------------------
 
+
 class TestSSEFanoutConcurrentDelivery:
     async def test_concurrent_sends_all_delivered_to_subscriber(self):
         fanout = SSEFanout("q-concurrent")
@@ -212,41 +215,40 @@ class TestSSEFanoutConcurrentDelivery:
 # TestEnginePollEdgeCases
 # ---------------------------------------------------------------------------
 
+
 class TestEnginePollEdgeCases:
-    async def test_poll_uses_compiled_sql_over_query_text(self):
+    async def test_poll_uses_registered_sql(self):
         raw_rows = [{"id": 1, "ts": "2026-04-01"}]
         conn = _make_conn()
         conn.fetch = AsyncMock(return_value=raw_rows)
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
-        engine.register("q1", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM compiled_events", watermark_column="ts", poll_interval=5
+        )
         engine.subscribe("q1")
 
-        record = {
-            "query_text": "SELECT * FROM fallback_table",
-            "compiled_sql": "SELECT id, ts FROM compiled_events",
-        }
-        p1, p2, p3 = _patch_poll_deps(record=record, watermark=None)
-        with p1, p2, p3:
+        p1, p2 = _patch_poll_deps(watermark=None)
+        with p1, p2:
             await engine._poll("q1")
 
         executed_sql = conn.fetch.call_args[0][0]
         assert "compiled_events" in executed_sql
-        assert "fallback_table" not in executed_sql
 
-    async def test_poll_returns_early_when_query_text_is_empty_string(self):
+    async def test_poll_with_no_rows_does_not_deliver_to_fanout(self):
         conn = _make_conn()
+        conn.fetch = AsyncMock(return_value=[])
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
-        engine.register("q1", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
         q = engine.subscribe("q1")
 
-        record = {"query_text": "", "compiled_sql": ""}
-        p1, p2, p3 = _patch_poll_deps(record=record, watermark=None)
-        with p1, p2, p3:
+        p1, p2 = _patch_poll_deps(watermark=None)
+        with p1, p2:
             await engine._poll("q1")
 
-        conn.fetch.assert_not_called()
         assert q.empty()
 
     async def test_poll_single_row_watermark_set_to_that_row_value(self):
@@ -255,16 +257,19 @@ class TestEnginePollEdgeCases:
         conn.fetch = AsyncMock(return_value=raw_rows)
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
-        engine.register("q1", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
 
         mock_set_wm = AsyncMock()
         record = {
             "query_text": "SELECT id, ts FROM events",
             "compiled_sql": "SELECT id, ts FROM events",
         }
-        with patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)), \
-             patch("provisa.live.watermark.set_watermark", mock_set_wm), \
-             patch("provisa.registry.store.get_by_stable_id", AsyncMock(return_value=record)):
+        with (
+            patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
+            patch("provisa.live.watermark.set_watermark", mock_set_wm),
+        ):
             await engine._poll("q1")
 
         mock_set_wm.assert_called_once_with(conn, "q1", "2026-03-31")
@@ -275,16 +280,19 @@ class TestEnginePollEdgeCases:
         conn.fetch = AsyncMock(return_value=raw_rows)
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
-        engine.register("q1", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
 
         mock_set_wm = AsyncMock()
         record = {
             "query_text": "SELECT id FROM events",
             "compiled_sql": "SELECT id FROM events",
         }
-        with patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)), \
-             patch("provisa.live.watermark.set_watermark", mock_set_wm), \
-             patch("provisa.registry.store.get_by_stable_id", AsyncMock(return_value=record)):
+        with (
+            patch("provisa.live.watermark.get_watermark", AsyncMock(return_value=None)),
+            patch("provisa.live.watermark.set_watermark", mock_set_wm),
+        ):
             await engine._poll("q1")
 
         mock_set_wm.assert_called_once()
@@ -297,7 +305,9 @@ class TestEnginePollEdgeCases:
         conn.fetch = AsyncMock(return_value=raw_rows)
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
-        engine.register("q1", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
 
         q_a = engine.subscribe("q1")
         q_b = engine.subscribe("q1")
@@ -306,8 +316,8 @@ class TestEnginePollEdgeCases:
             "query_text": "SELECT id, ts FROM events",
             "compiled_sql": "SELECT id, ts FROM events",
         }
-        p1, p2, p3 = _patch_poll_deps(record=record, watermark="2026-01-01")
-        with p1, p2, p3:
+        p1, p2 = _patch_poll_deps(record=record, watermark="2026-01-01")
+        with p1, p2:
             await engine._poll("q1")
 
         expected = [dict(r) for r in raw_rows]
@@ -319,6 +329,7 @@ class TestEnginePollEdgeCases:
 # TestEngineUnregisterBehaviour
 # ---------------------------------------------------------------------------
 
+
 class TestEngineUnregisterBehaviour:
     async def test_unregister_does_not_flush_existing_subscriber_queues(self):
         raw_rows = [{"id": 1, "ts": "2026-04-01"}]
@@ -326,15 +337,17 @@ class TestEngineUnregisterBehaviour:
         conn.fetch = AsyncMock(return_value=raw_rows)
         pool = _make_pool_with_conn(conn)
         engine = _make_engine(pool)
-        engine.register("q1", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
         q = engine.subscribe("q1")
 
         record = {
             "query_text": "SELECT id, ts FROM events",
             "compiled_sql": "SELECT id, ts FROM events",
         }
-        p1, p2, p3 = _patch_poll_deps(record=record, watermark=None)
-        with p1, p2, p3:
+        p1, p2 = _patch_poll_deps(record=record, watermark=None)
+        with p1, p2:
             await engine._poll("q1")
 
         engine.unregister("q1")
@@ -349,14 +362,18 @@ class TestEngineUnregisterBehaviour:
             MockSched.return_value = mock_sched
             await engine.start()
 
-        engine.register("q-removal", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q-removal", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
         engine.unregister("q-removal")
 
         mock_sched.remove_job.assert_called_once_with("live_q-removal")
 
     async def test_unregister_without_scheduler_does_not_raise(self):
         engine = _make_engine()
-        engine.register("q-no-sched", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q-no-sched", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
         engine.unregister("q-no-sched")
         assert not engine.is_registered("q-no-sched")
 
@@ -364,6 +381,7 @@ class TestEngineUnregisterBehaviour:
 # ---------------------------------------------------------------------------
 # TestEngineStopMultipleQueries
 # ---------------------------------------------------------------------------
+
 
 class TestEngineStopMultipleQueries:
     async def test_stop_sends_none_sentinel_to_all_registered_query_subscribers(self):
@@ -377,8 +395,12 @@ class TestEngineStopMultipleQueries:
             MockSched.return_value = mock_sched
             await engine.start()
 
-        engine.register("qa", watermark_column="ts", poll_interval=5)
-        engine.register("qb", watermark_column="ts", poll_interval=10)
+        engine.register(
+            "qa", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
+        engine.register(
+            "qb", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=10
+        )
 
         qa_sub = engine.subscribe("qa")
         qb_sub1 = engine.subscribe("qb")
@@ -400,7 +422,9 @@ class TestEngineStopMultipleQueries:
             await engine.start()
 
         for qid in ("alpha", "beta", "gamma"):
-            engine.register(qid, watermark_column="ts", poll_interval=5)
+            engine.register(
+                qid, sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+            )
 
         assert len(engine._jobs) == 3
         await engine.stop()
@@ -427,16 +451,21 @@ class TestEngineStopMultipleQueries:
 # TestEngineRegisterWithoutStart
 # ---------------------------------------------------------------------------
 
+
 class TestEngineRegisterWithoutStart:
     async def test_subscribe_after_register_without_start_returns_queue(self):
         engine = _make_engine()
-        engine.register("q1", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
         q = engine.subscribe("q1")
         assert isinstance(q, asyncio.Queue)
 
     async def test_fanout_delivers_rows_after_register_without_start(self):
         engine = _make_engine()
-        engine.register("q1", watermark_column="ts", poll_interval=5)
+        engine.register(
+            "q1", sql="SELECT id, ts FROM events", watermark_column="ts", poll_interval=5
+        )
         q = engine.subscribe("q1")
 
         rows = [{"id": 1, "ts": "2026-04-06"}]
@@ -448,6 +477,7 @@ class TestEngineRegisterWithoutStart:
 # ---------------------------------------------------------------------------
 # TestSSEFanout (moved from tests/integration/test_sse_subscriptions.py)
 # ---------------------------------------------------------------------------
+
 
 class TestSSEFanout:
     async def test_sse_provider_yields_events_on_insert(self):
@@ -513,9 +543,11 @@ class TestSSEFanout:
 # TestLiveEngineWatermark (moved from tests/integration/test_sse_subscriptions.py)
 # ---------------------------------------------------------------------------
 
+
 class TestLiveEngineWatermark:
     async def test_live_engine_watermark_advances(self):
         from provisa.live.engine import _build_incremental_sql
+
         base_sql = 'SELECT * FROM "public"."orders"'
         result_with = _build_incremental_sql(base_sql, "created_at", "2026-01-01T00:00:00")
         assert "WHERE" in result_with
@@ -526,6 +558,7 @@ class TestLiveEngineWatermark:
 
     async def test_live_engine_watermark_appends_and_filter(self):
         from provisa.live.engine import _build_incremental_sql
+
         base_sql = 'SELECT * FROM "public"."orders" WHERE "region" = \'us-east\''
         result = _build_incremental_sql(base_sql, "created_at", "2026-01-01")
         assert result.count("WHERE") == 1
@@ -541,7 +574,12 @@ class TestLiveEngineWatermark:
             MockSched.return_value = mock_sched_instance
             await engine.start()
 
-        engine.register("abc-123", watermark_column="created_at", poll_interval=10)
+        engine.register(
+            "abc-123",
+            sql="SELECT id, ts FROM events",
+            watermark_column="created_at",
+            poll_interval=10,
+        )
         assert engine.is_registered("abc-123")
 
         queue = engine.subscribe("abc-123")

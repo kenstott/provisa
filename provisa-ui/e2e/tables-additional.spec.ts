@@ -112,6 +112,41 @@ test.describe("TablesPage — additional coverage", () => {
     await expect(domainSelect.locator("option[value='analytics']")).toBeAttached();
   });
 
+  // ── GovData source: allowedDomains must not block source dropdown ─────────
+
+  test("govdata source with no allowedDomains appears in register-table source dropdown", async ({ page }) => {
+    // Regression: createSource was sending allowedDomains:"" which GraphQL coerced to [""],
+    // causing the source to be hidden by the allowedDomains filter in TablesPage.
+    const govdataSource = {
+      id: "govdata-test", type: "govdata", host: "", port: 0, database: "sec,patents,ref,geo",
+      username: "", dialect: null, cacheEnabled: true, cacheTtl: null, allowedDomains: [],
+      namingConvention: null, description: "",
+    };
+    await setupMocks(page, { sources: [...(await import("./mocks")).MOCK_SOURCES, govdataSource] });
+    await page.goto("/tables");
+    await expect(page.getByRole("heading", { name: "Registered Tables" })).toBeVisible({ timeout: 10000 });
+
+    await page.getByRole("button", { name: "+ Table" }).click();
+    const sourceSelect = page.locator(".form-card select").first();
+    await expect(sourceSelect.locator("option[value='govdata-test']")).toBeAttached({ timeout: 5000 });
+  });
+
+  test("govdata source with non-empty allowedDomains is hidden from source dropdown when domain not checked", async ({ page }) => {
+    // This confirms the filter works — sources with allowedDomains are hidden unless the domain is active.
+    const govdataSource = {
+      id: "govdata-restricted", type: "govdata", host: "", port: 0, database: "sec,patents,ref,geo",
+      username: "", dialect: null, cacheEnabled: true, cacheTtl: null, allowedDomains: ["restricted-domain"],
+      namingConvention: null, description: "",
+    };
+    await setupMocks(page, { sources: [...(await import("./mocks")).MOCK_SOURCES, govdataSource] });
+    await page.goto("/tables");
+    await expect(page.getByRole("heading", { name: "Registered Tables" })).toBeVisible({ timeout: 10000 });
+
+    await page.getByRole("button", { name: "+ Table" }).click();
+    const sourceSelect = page.locator(".form-card select").first();
+    await expect(sourceSelect.locator("option[value='govdata-restricted']")).not.toBeAttached({ timeout: 3000 });
+  });
+
   // ── Delete table (confirmed) ──────────────────────────────────────────────
 
   test("delete table triggers deleteTable mutation", async ({ page }) => {

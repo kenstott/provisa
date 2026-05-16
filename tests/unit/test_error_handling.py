@@ -23,91 +23,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from provisa.registry.ceiling import CeilingViolationError, check_ceiling
-from provisa.registry.governance import (
-    GovernanceError,
-    GovernanceMode,
-    check_deprecated,
-    check_governance,
-    check_output_type,
-)
 from provisa.security.rights import (
     Capability,
     InsufficientRightsError,
     check_capability,
 )
 from provisa.webhooks.executor import execute_webhook
-
-
-# ── Governance errors propagate ──────────────────────────────────────────────
-
-
-class TestGovernanceErrorPropagates:
-    def test_registry_required_table_without_stable_id_raises(self):
-        """Raw query against registry-required table raises GovernanceError (REQ-001)."""
-        with pytest.raises(GovernanceError, match="requires an approved query"):
-            check_governance(
-                mode=GovernanceMode.PRODUCTION,
-                target_table_ids=[1],
-                table_governance={1: "registry-required"},
-                stable_id=None,
-            )
-
-    def test_approved_query_passes_governance(self):
-        """Approved query (stable_id set) does not raise in production mode."""
-        check_governance(
-            mode=GovernanceMode.PRODUCTION,
-            target_table_ids=[1],
-            table_governance={1: "registry-required"},
-            stable_id="approved-query-id",
-        )
-
-    def test_pre_approved_table_passes_without_stable_id(self):
-        """pre-approved table never requires a registry entry (REQ-003)."""
-        check_governance(
-            mode=GovernanceMode.PRODUCTION,
-            target_table_ids=[1],
-            table_governance={1: "pre-approved"},
-            stable_id=None,
-        )
-
-    def test_test_mode_allows_all_queries(self):
-        """Test mode bypasses governance gate — no error raised."""
-        check_governance(
-            mode=GovernanceMode.TEST,
-            target_table_ids=[1],
-            table_governance={1: "registry-required"},
-            stable_id=None,
-        )
-
-    def test_deprecated_query_raises_governance_error(self):
-        """Deprecated query raises GovernanceError with replacement pointer (REQ-026)."""
-        with pytest.raises(GovernanceError, match="deprecated"):
-            check_deprecated(
-                {"status": "deprecated", "stable_id": "old-query", "deprecated_by": "new-query"}
-            )
-
-    def test_deprecated_query_message_includes_replacement(self):
-        """Deprecation error includes the replacement query ID."""
-        with pytest.raises(GovernanceError, match="new-query"):
-            check_deprecated(
-                {"status": "deprecated", "stable_id": "old-query", "deprecated_by": "new-query"}
-            )
-
-    def test_disallowed_output_type_raises(self):
-        """Requesting an output type not in permitted_outputs raises GovernanceError."""
-        with pytest.raises(GovernanceError, match="not permitted"):
-            check_output_type(
-                {"permitted_outputs": ["json"]},
-                requested_output="parquet",
-            )
-
-    def test_permitted_output_type_passes(self):
-        """Requesting an allowed output type does not raise."""
-        check_output_type(
-            {"permitted_outputs": ["json", "parquet"]},
-            requested_output="parquet",
-        )
 
 
 # ── Insufficient rights errors propagate ─────────────────────────────────────
@@ -145,37 +66,6 @@ class TestInsufficientRightsErrorPropagates:
         role = {"id": "guest", "capabilities": []}
         with pytest.raises(InsufficientRightsError, match="guest"):
             check_capability(role, Capability.SOURCE_REGISTRATION)
-
-
-# ── Ceiling violation errors propagate ───────────────────────────────────────
-
-
-class TestCeilingViolationErrorPropagates:
-    def test_extra_columns_raise_ceiling_error(self):
-        """Requesting columns beyond the approved ceiling raises CeilingViolationError."""
-        approved = "query Approved { orders { id amount } }"
-        client = "query Req { orders { id amount secret_column } }"
-        with pytest.raises(CeilingViolationError):
-            check_ceiling(approved, client)
-
-    def test_subset_columns_passes(self):
-        """Requesting fewer columns than approved is allowed."""
-        approved = "query Approved { orders { id amount region } }"
-        client = "query Req { orders { id } }"
-        check_ceiling(approved, client)
-
-    def test_exact_approved_columns_passes(self):
-        """Requesting exactly the approved columns is allowed."""
-        approved = "query Approved { orders { id amount } }"
-        client = "query Req { orders { id amount } }"
-        check_ceiling(approved, client)
-
-    def test_ceiling_error_message_is_descriptive(self):
-        """CeilingViolationError message identifies the violation."""
-        approved = "query Approved { orders { id } }"
-        client = "query Req { orders { id secret } }"
-        with pytest.raises(CeilingViolationError, match="ceiling"):
-            check_ceiling(approved, client)
 
 
 # ── Webhook executor raises on HTTP errors ────────────────────────────────────
@@ -245,9 +135,7 @@ class TestWebhookExecutorFailFast:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client.request = AsyncMock(
-                side_effect=httpx.TimeoutException("timed out")
-            )
+            mock_client.request = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
             mock_cls.return_value = mock_client
 
             from provisa.core.models import Webhook
@@ -282,9 +170,7 @@ class TestScheduledTriggerSwallowsExceptions:
             mock_client = AsyncMock()
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
-            mock_client.post = AsyncMock(
-                side_effect=httpx.ConnectError("connection refused")
-            )
+            mock_client.post = AsyncMock(side_effect=httpx.ConnectError("connection refused"))
             mock_cls.return_value = mock_client
 
             # Must not raise — scheduler-level exception swallowing is intentional
@@ -309,29 +195,3 @@ class TestScheduledTriggerSwallowsExceptions:
             mock_cls.return_value = mock_client
 
             await _execute_webhook("https://example.com/hook", "trigger-1")
-
-
-# ── Test mode gatekeeping (REQ-004) ──────────────────────────────────────────
-
-
-class TestGovernanceModeGating:
-    def test_test_mode_from_env(self, monkeypatch):
-        """PROVISA_MODE unset → test mode (REQ-004)."""
-        monkeypatch.delenv("PROVISA_MODE", raising=False)
-        from provisa.registry.governance import get_mode
-
-        assert get_mode() == GovernanceMode.TEST
-
-    def test_production_mode_from_env(self, monkeypatch):
-        """PROVISA_MODE=production → production mode (REQ-004)."""
-        monkeypatch.setenv("PROVISA_MODE", "production")
-        from provisa.registry.governance import get_mode
-
-        assert get_mode() == GovernanceMode.PRODUCTION
-
-    def test_prod_alias_from_env(self, monkeypatch):
-        """PROVISA_MODE=prod is accepted as production (REQ-004)."""
-        monkeypatch.setenv("PROVISA_MODE", "prod")
-        from provisa.registry.governance import get_mode
-
-        assert get_mode() == GovernanceMode.PRODUCTION

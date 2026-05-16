@@ -4,15 +4,12 @@ Provisa supports real-time push over Server-Sent Events (SSE). Clients receive a
 
 ## Sources
 
-Subscriptions can target either a **registered table** or a **governed query**:
+Subscriptions target a **registered table**:
 
 | Source | Delivery modes available |
 |--------|-------------------------|
 | Table (PostgreSQL) | `listen` (LISTEN/NOTIFY), `cdc` (Debezium), `poll` |
 | Table (non-PG, e.g. federated view) | federated poll only |
-| Governed query | `poll` only |
-
-A governed query subscription uses the same poll engine as a non-CDC table subscription. `watermark_column` is required for all poll delivery.
 
 ### PostgreSQL trigger auto-installation
 
@@ -47,12 +44,6 @@ GET /data/subscribe/{table}
 Accept: text/event-stream
 ```
 
-Subscribe to a governed query:
-```
-GET /data/subscribe/query/{query_id}
-Accept: text/event-stream
-```
-
 The connection stays open and emits one JSON event per change:
 ```
 data: {"event":"insert","table":"orders","row":{"id":43,"amount":55.00,"region":"east"}}
@@ -66,7 +57,7 @@ data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region"
 |------|-----------|---------------|---------|
 | `listen` | PostgreSQL `LISTEN`/`NOTIFY` | PG tables | Nothing extra |
 | `cdc` | Kafka topic from Debezium connector | Non-PG RDBMS tables | Debezium + Kafka |
-| `poll` | Watermark-based polling | Any table, any governed query | `watermark_column` |
+| `poll` | Watermark-based polling | Any table | `watermark_column` |
 
 ### LISTEN/NOTIFY
 
@@ -85,18 +76,6 @@ tables:
       delivery: poll
       watermark_column: updated_at
       soft_delete_column: deleted_at
-      poll_interval: 30s
-      outputs:
-        - type: sse_subscription
-```
-
-Governed query poll config:
-```yaml
-governed_queries:
-  - id: active-orders
-    query: "{ orders(where: {status: {_eq: \"active\"}}) { id amount updated_at } }"
-    live:
-      watermark_column: updated_at
       poll_interval: 30s
       outputs:
         - type: sse_subscription
@@ -150,10 +129,10 @@ curl -X POST http://localhost:8000/data/graphql \
 
 ### Kafka Sink as a Config-Level Second Output
 
-A governed query (or poll-based table subscription) can simultaneously publish to a Kafka topic via `provisa.yaml`. SSE subscription and Kafka sink are both outputs of the same Live Query Engine. Each output tracks its watermark independently.
+A poll-based table subscription can simultaneously publish to a Kafka topic via `provisa.yaml`. SSE subscription and Kafka sink are both outputs of the same Live Query Engine. Each output tracks its watermark independently.
 
 ```yaml
-governed_queries:
+tables:
   - id: active-orders
     live:
       watermark_column: updated_at
@@ -181,11 +160,6 @@ A client whose role loses access mid-stream receives a `{"event":"unauthorized"}
 ```javascript
 // Table subscription (LISTEN/NOTIFY)
 const source = new EventSource('/data/subscribe/orders', {
-  headers: { 'Authorization': 'Bearer <token>' }
-});
-
-// Governed query subscription (poll)
-const source = new EventSource('/data/subscribe/query/active-orders', {
   headers: { 'Authorization': 'Bearer <token>' }
 });
 

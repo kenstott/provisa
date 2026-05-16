@@ -248,10 +248,24 @@ def build_context(si: object) -> CompilationContext:
         # Register connection variant for cursor pagination
         ctx.tables[f"{t.field_name}_connection"] = meta
 
-        # Store column metadata for aggregate compilation
+        # Store column metadata for aggregate compilation.
+        # Exclude GQL object blob columns covered by a FK relationship — those columns
+        # are not physical SQL columns in the materialized Trino table.
+        _gql_obj_cols = si.gql_object_columns.get(t.table_name, {})
+        _src_rels = [
+            r for r in si.relationships
+            if r.get("source_table_id") == t.table_id and r.get("source_column")
+        ]
+        _covered_blobs = {
+            blob_col
+            for blob_col in _gql_obj_cols
+            if any(r["source_column"].lower().startswith(blob_col.lower()) for r in _src_rels)
+        }
         col_info = []
         for col in t.visible_columns:
             col_name = col["column_name"]
+            if col_name in _covered_blobs:
+                continue
             col_meta = t.column_metadata.get(col_name.lower())
             if col_meta:
                 col_info.append((col_name, col_meta.data_type))

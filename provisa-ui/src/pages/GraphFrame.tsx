@@ -199,8 +199,11 @@ const CLUSTER_COLORS = [
   "#22c55e","#06b6d4","#3b82f6","#ef4444","#14b8a6",
   "#a855f7","#f43f5e","#84cc16","#0ea5e9","#d946ef",
 ];
-function clusterColor(id: number): string {
-  return CLUSTER_COLORS[((id % CLUSTER_COLORS.length) + CLUSTER_COLORS.length) % CLUSTER_COLORS.length];
+function clusterColor(id: string): string {
+  // Hash the string id to a stable index
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (Math.imul(31, h) + id.charCodeAt(i)) | 0;
+  return CLUSTER_COLORS[((h % CLUSTER_COLORS.length) + CLUSTER_COLORS.length) % CLUSTER_COLORS.length];
 }
 
 // ── Relationship line override type ──────────────────────────────────────────
@@ -621,21 +624,28 @@ function Inspector({ selected, colorOverrides, onColorChange, onClose, width, on
 }
 
 // ── Cluster helpers ───────────────────────────────────────────────────────────
-type ClusterLevel = "none" | "l1" | "l2" | "l3";
+type ClusterLevel = "none" | "l1" | "l2" | "l3" | string;
+
+// Sanitize a property value for use in a Cytoscape element ID
+function _cidToId(val: string): string { return val.replace(/[^a-zA-Z0-9_-]/g, "_"); }
 
 function buildClusterElements(
   nodes: Map<string, GNode>,
   edges: Map<string, GEdge>,
-  level: "l1" | "l2" | "l3",
+  level: Exclude<ClusterLevel, "none">,
+  overlayEdges?: Map<string, GEdge>,
+  collapsedClusters: Set<string> = new Set(),
 ): CyElementDefinition[] {
-  const clusterKey = level === "l1" ? "scl1" : level === "l2" ? "scl2" : "scl3";
+  // For ML cluster levels resolve to the backing property; anything else is used directly.
+  const clusterKey = level === "l1" ? "scl1" : level === "l2" ? "scl2" : level === "l3" ? "scl3" : level;
 
-  // 1. Compound parent hull nodes (one per cluster)
-  const clusterLabels = new Map<number, Set<string>>();
-  const clusterSizes = new Map<number, number>();
+  // 1. Cluster nodes — compound hull (expanded) or collapsed super-node
+  const clusterLabels = new Map<string, Set<string>>();
+  const clusterSizes = new Map<string, number>();
   nodes.forEach((n) => {
-    const cid = n.properties[clusterKey] as number | null | undefined;
-    if (cid === null || cid === undefined) return;
+    const raw = n.properties[clusterKey];
+    if (raw === null || raw === undefined) return;
+    const cid = String(raw);
     if (!clusterLabels.has(cid)) { clusterLabels.set(cid, new Set()); clusterSizes.set(cid, 0); }
     clusterLabels.get(cid)!.add(n.label.includes(":") ? n.label.split(":").pop()! : n.label);
     clusterSizes.set(cid, (clusterSizes.get(cid) ?? 0) + 1);
@@ -643,38 +653,113 @@ function buildClusterElements(
 
   const els: CyElementDefinition[] = [];
   clusterLabels.forEach((labels, cid) => {
-    els.push({
-      group: "nodes",
-      data: {
-        id: `__cluster_${level}_${cid}`,
-        label: "Cluster",
-        _cluster: true,
-        _clusterId: cid,
-        _clusterLevel: level,
-        _clusterSize: clusterSizes.get(cid) ?? 0,
-        _clusterLabels: [...labels].sort().join(", "),
-      },
-    });
+    if (collapsedClusters.has(cid)) {
+      // Collapsed: single representative node
+      els.push({
+        group: "nodes",
+        data: {
+          id: `__collapsed_${level}_${_cidToId(cid)}`,
+          label: `${cid}\n(${clusterSizes.get(cid) ?? 0})`,
+          _collapsed: true,
+          _clusterId: cid,
+          _clusterLevel: level,
+          _clusterSize: clusterSizes.get(cid) ?? 0,
+          _color: clusterColor(cid),
+        },
+      });
+    } else {
+      els.push({
+        group: "nodes",
+        data: {
+          id: `__cluster_${level}_${_cidToId(cid)}`,
+          label: cid,
+          _cluster: true,
+          _clusterId: cid,
+          _clusterLevel: level,
+          _clusterSize: clusterSizes.get(cid) ?? 0,
+          _clusterLabels: [...labels].sort().join(", "),
+        },
+      });
+    }
   });
 
-  // 2. All data nodes, parented into their compound hull
+  // 2. Data child nodes — only for expanded clusters
+  const nodeToCid = new Map<string, string | null>();
   nodes.forEach((n, k) => {
-    const cid = n.properties[clusterKey] as number | null | undefined;
-    const parentId = cid !== null && cid !== undefined ? `__cluster_${level}_${cid}` : undefined;
+    const raw = n.properties[clusterKey];
+    nodeToCid.set(k, raw !== null && raw !== undefined ? String(raw) : null);
+  });
+
+  nodes.forEach((n, k) => {
+    const cid = nodeToCid.get(k) ?? null;
+    if (cid !== null && collapsedClusters.has(cid)) return; // hidden inside collapsed super-node
+    const parentId = cid !== null ? `__cluster_${level}_${_cidToId(cid)}` : undefined;
     els.push({
       group: "nodes",
       data: { id: k, label: n.label, _node: n, ...(parentId ? { parent: parentId, _inCluster: true } : {}) },
     });
   });
 
-  // 3. All edges (both intra- and cross-cluster)
-  edges.forEach((e) => {
+  // 3. Edges — intra-cluster between data nodes; everything crossing a cluster boundary
+  //    (including free↔cluster and collapsed↔anything) becomes a meta-edge.
+  const allEdges = overlayEdges ? new Map([...edges, ...overlayEdges]) : edges;
+  const metaEdges = new Map<string, { src: string; tgt: string; type: string; count: number }>();
+
+  // Effective routing ID for an edge endpoint:
+  //   collapsed cluster member → collapsed super-node
+  //   expanded cluster member  → compound hull node (for meta-edge dedup)
+  //   free node                → null (use data node key directly)
+  const routingId = (nodeKey: string, cid: string | null): string | null => {
+    if (cid === null) return null;
+    if (collapsedClusters.has(cid)) return `__collapsed_${level}_${_cidToId(cid)}`;
+    return `__cluster_${level}_${_cidToId(cid)}`;
+  };
+
+  allEdges.forEach((e) => {
     const srcKey = `${e.startNode.label}:${e.startNode.id}`;
     const tgtKey = `${e.endNode.label}:${e.endNode.id}`;
     if (!nodes.has(srcKey) || !nodes.has(tgtKey)) return;
+    const srcCid = nodeToCid.get(srcKey) ?? null;
+    const tgtCid = nodeToCid.get(tgtKey) ?? null;
+
+    // Same cluster: intra-cluster data edge (expanded) or drop (collapsed)
+    if (srcCid !== null && srcCid === tgtCid) {
+      if (!collapsedClusters.has(srcCid)) {
+        els.push({ group: "edges", data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e } });
+      }
+      return;
+    }
+
+    const srcRouting = routingId(srcKey, srcCid);
+    const tgtRouting = routingId(tgtKey, tgtCid);
+
+    // Both free: plain data edge
+    if (srcRouting === null && tgtRouting === null) {
+      els.push({ group: "edges", data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e } });
+      return;
+    }
+
+    // At least one side is clustered: consolidate into meta-edge
+    const srcId = srcRouting ?? srcKey;
+    const tgtId = tgtRouting ?? tgtKey;
+    const metaKey = `${srcId}→${tgtId}:${e.type}`;
+    const existing = metaEdges.get(metaKey);
+    if (existing) { existing.count += 1; }
+    else { metaEdges.set(metaKey, { src: srcId, tgt: tgtId, type: e.type, count: 1 }); }
+  });
+
+  metaEdges.forEach(({ src, tgt, type, count }, metaKey) => {
     els.push({
       group: "edges",
-      data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e },
+      data: {
+        id: `__meta_${metaKey}`,
+        source: src,
+        target: tgt,
+        label: count > 1 ? `${type} (×${count})` : type,
+        _metaEdge: true,
+        _metaCount: count,
+        _metaType: type,
+      },
     });
   });
 
@@ -773,15 +858,32 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
   // Stable ref to nudgeLayout so event handlers can call it without stale closure
   const nudgeLayoutRef = useRef<() => void>(() => {});
   // SVG hull circles drawn over the canvas for cluster visualization
-  const [hullCircles, setHullCircles] = useState<Array<{ cid: number; x: number; y: number; r: number }>>([]);
+  const [hullCircles, setHullCircles] = useState<Array<{ cid: string; x: number; y: number; r: number }>>([]);
+  const [collapsedClusters, setCollapsedClusters] = useState<Set<string>>(new Set());
+  const collapsedClustersRef = useRef<Set<string>>(new Set());
   const clusterLevelRef = useRef(clusterLevel);
   clusterLevelRef.current = clusterLevel;
+  // Reset collapsed state when cluster level changes
+  useEffect(() => {
+    setCollapsedClusters(new Set());
+    collapsedClustersRef.current = new Set();
+  }, [clusterLevel]);
+  const toggleCollapse = useCallback((cid: string) => {
+    setCollapsedClusters((prev) => {
+      const next = new Set(prev);
+      if (next.has(cid)) next.delete(cid); else next.add(cid);
+      collapsedClustersRef.current = next;
+      return next;
+    });
+  }, []);
   const computeHulls = useCallback(() => {
     const cy = cyRef.current;
     if (!cy || clusterLevelRef.current === "none") { setHullCircles([]); return; }
-    const hulls: Array<{ cid: number; x: number; y: number; r: number }> = [];
+    const collapsed = collapsedClustersRef.current;
+    const hulls: Array<{ cid: string; x: number; y: number; r: number }> = [];
     cy.nodes("[?_cluster]").forEach((cn) => {
-      const cid = cn.data("_clusterId") as number;
+      const cid = cn.data("_clusterId") as string;
+      if (collapsed.has(cid)) return; // collapsed clusters have no hull
       const children = cn.children();
       if (children.length === 0) return;
       let sumX = 0, sumY = 0;
@@ -844,7 +946,14 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       // No relationships — grid fills the container rectangle by auto-sizing rows/cols
       opts = { name: "grid", animate: false, fit: true, padding: 30, avoidOverlap: true, avoidOverlapPadding: 12 } as CyLayoutOptions;
     } else {
-      opts = { ...LAYOUT_OPTIONS.force, idealEdgeLength: () => edgeDistanceRef.current } as CyLayoutOptions;
+      const inCluster = clusterLevelRef.current !== "none";
+      opts = {
+        ...LAYOUT_OPTIONS.force,
+        idealEdgeLength: () => edgeDistanceRef.current,
+        // In cluster mode: higher nestingFactor shortens ideal edge length within compounds,
+        // pulling cluster members together; higher repulsion spreads clusters apart.
+        ...(inCluster ? { nestingFactor: 0.1, nodeRepulsion: () => 25000 } : {}),
+      } as CyLayoutOptions;
     }
     const layout = cy.layout(opts);
     activeLayoutRef.current = layout;
@@ -853,6 +962,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         cy.batch(() => {
           cy.nodes().forEach((node) => {
             if (node.data("_cluster")) return;
+            if (node.data("_collapsed")) return;
             const lbl = node.data("label") as string;
             const n = node.data("_node") as GNode | undefined;
             const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
@@ -876,65 +986,6 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       try { cy.nodes().forEach((n) => { if (anchored.has(n.id())) n.unlock(); }); } catch { /* cy may have been destroyed */ }
       layoutRunningRef.current = false;
     };
-    // Cluster mode: region-based layout — divide canvas into N cells, one node at center, rest in ring
-    if (clusterLevelRef.current !== "none") {
-      const clusterParents = cy.nodes("[?_cluster]");
-      const N = clusterParents.length;
-      if (N > 0) {
-        const el = containerRef.current;
-        const W = el ? el.clientWidth : 800;
-        const H = el ? el.clientHeight : 600;
-        const cols = Math.ceil(Math.sqrt(N));
-        const rows = Math.ceil(N / cols);
-        const cellW = W / cols;
-        const cellH = H / rows;
-        // Ring radius: largest circle that fits in the cell with padding, capped per child count
-        const maxR = Math.min(cellW, cellH) / 2 - 40;
-        const ringSpacing = 44; // px between concentric rings
-        const minArcGap = 20;  // min arc gap between nodes on a ring
-        let i = 0;
-        clusterParents.forEach((cn) => {
-          const children = cn.children();
-          const col = i % cols;
-          const row = Math.floor(i / cols);
-          const centerX = (col + 0.5) * cellW - W / 2;
-          const centerY = (row + 0.5) * cellH - H / 2;
-          const queue: typeof children[0][] = [];
-          children.forEach((child) => { queue.push(child); });
-          // Place first node at center
-          const first = queue.shift();
-          if (first && !anchored.has(first.id())) first.position({ x: centerX, y: centerY });
-          let ringNum = 1;
-          while (queue.length > 0) {
-            const ringR = ringNum * ringSpacing;
-            if (ringR > maxR) break; // remaining nodes won't fit; clamp to last valid ring
-            const capacity = Math.max(4, Math.floor(2 * Math.PI * ringR / (minArcGap + 22)));
-            const slice = queue.splice(0, capacity);
-            slice.forEach((child, j) => {
-              if (anchored.has(child.id())) return;
-              const angle = (2 * Math.PI * j / slice.length) - Math.PI / 2;
-              child.position({ x: centerX + ringR * Math.cos(angle), y: centerY + ringR * Math.sin(angle) });
-            });
-            ringNum++;
-          }
-          // Any overflow nodes (beyond maxR): stack at last valid ring
-          if (queue.length > 0) {
-            const ringR = (ringNum - 1) * ringSpacing || ringSpacing;
-            queue.forEach((child, j) => {
-              if (anchored.has(child.id())) return;
-              const angle = (2 * Math.PI * j / Math.max(1, queue.length)) - Math.PI / 2;
-              child.position({ x: centerX + ringR * Math.cos(angle), y: centerY + ringR * Math.sin(angle) });
-            });
-          }
-          i++;
-        });
-      }
-      applyStyles();
-      releaseRun();
-      try { cy.fit(undefined, 40); } catch { /* cy may have been destroyed */ }
-      computeHulls();
-      return;
-    }
 
     const safetyTimer = setTimeout(() => { applyStyles(); releaseRun(); try { cy.fit(undefined, 40); } catch { /* cy may have been destroyed */ } }, 1000);
     layout.one("layoutstop", () => {
@@ -1039,7 +1090,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
   useEffect(() => {
     if (!containerRef.current) return;
     const els: CyElementDefinition[] = clusterLevel !== "none"
-      ? buildClusterElements(nodes, edges, clusterLevel)
+      ? buildClusterElements(nodes, edges, clusterLevel, overlayEdges, collapsedClusters)
       : (() => {
           const _els: CyElementDefinition[] = [];
           nodes.forEach((n) => {
@@ -1145,6 +1196,25 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           },
         },
         {
+          selector: "edge[?_metaEdge]",
+          style: {
+            "line-color": "#6366f1",
+            "target-arrow-color": "#6366f1",
+            "target-arrow-shape": "triangle",
+            "curve-style": "bezier",
+            "label": "data(label)",
+            "font-size": 9,
+            "color": "#a5b4fc",
+            "text-background-opacity": 0.7,
+            "text-background-color": "#1a1d2e",
+            "text-background-padding": "2px",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            "width": ((ele: any) => Math.min(0.75 + Math.log1p(ele.data("_metaCount") as number) * 0.5, 3)) as any,
+            "line-style": "dashed",
+            "line-dash-pattern": [6, 3],
+          },
+        },
+        {
           selector: "node[?_cluster]",
           style: {
             "background-opacity": 0,
@@ -1172,6 +1242,25 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             },
           },
         },
+        {
+          selector: "node[?_collapsed]",
+          style: {
+            shape: "round-rectangle" as const,
+            "background-color": "data(_color)",
+            "background-opacity": 0.85,
+            "border-width": 2,
+            "border-color": "data(_color)",
+            "border-opacity": 1,
+            width: 72,
+            height: 46,
+            "color": "#fff",
+            "font-size": 9,
+            "text-wrap": "wrap" as const,
+            "text-max-width": "66px",
+            "text-valign": "center" as const,
+            "text-halign": "center" as const,
+          },
+        },
       ],
       layout: { name: "null" } as CyLayoutOptions,
       minZoom: 0.05,
@@ -1179,9 +1268,13 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any as CyInstance;
 
+    cy.on("dbltap", "node[?_collapsed]", (evt) => {
+      const cid = evt.target.data("_clusterId") as string;
+      if (cid) toggleCollapse(cid);
+    });
     cy.on("tap", "node", (evt) => {
       setNodeCtxMenu(null);
-      onSelect({ kind: "node", data: evt.target.data("_node") as GNode });
+      if (!evt.target.data("_collapsed")) onSelect({ kind: "node", data: evt.target.data("_node") as GNode });
     });
     cy.on("tap", "edge", (evt) => {
       setNodeCtxMenu(null);
@@ -1233,7 +1326,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       cy.destroy();
       setHullCircles([]);
     };
-  }, [nodes, edges, clusterLevel]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nodes, edges, overlayEdges, clusterLevel, collapsedClusters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Incremental overlay update — adds/removes overlay nodes+edges without full re-layout
   const prevOverlayNodesRef = useRef<Map<string, GNode>>(new Map());
@@ -1422,7 +1515,13 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           {hullCircles.map(({ cid, x, y, r }) => (
             <g key={cid}>
               <circle cx={x} cy={y} r={r} fill={clusterColor(cid)} fillOpacity={0.1} stroke={clusterColor(cid)} strokeWidth={2} strokeOpacity={0.75} />
-              <text x={x} y={y - r - 6} textAnchor="middle" fill={clusterColor(cid)} fontSize={11} fontWeight="bold" fontFamily="sans-serif">{`C${cid}`}</text>
+              <text
+                x={x} y={y - r - 6}
+                textAnchor="middle" fill={clusterColor(cid)} fontSize={11} fontWeight="bold" fontFamily="sans-serif"
+                style={{ pointerEvents: "all", cursor: "pointer", userSelect: "none" }}
+                onDoubleClick={() => toggleCollapse(cid)}
+                title="Double-click to collapse group"
+              >{cid} ⊟</text>
             </g>
           ))}
         </svg>
@@ -1441,10 +1540,18 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         </button>
         <button
           className="gf-ctrl-btn"
-          onMouseDown={() => { nudgeHeldRef.current = true; nudgeLayout(undefined, true); }}
+          onMouseDown={() => {
+            nudgeHeldRef.current = true;
+            const cy = cyRef.current;
+            const sel = cy ? cy.nodes(":selected").not("[?_cluster]") : null;
+            const freeNodes = sel && sel.length > 0
+              ? new Set(sel.map((n: CyElement) => n.id() as string))
+              : undefined;
+            nudgeLayout(freeNodes, true);
+          }}
           onMouseUp={() => { nudgeHeldRef.current = false; }}
           onMouseLeave={() => { nudgeHeldRef.current = false; }}
-          title="Nudge layout — hold to keep iterating"
+          title="Nudge layout — nudges selected nodes (or all if none selected); hold to keep iterating"
         >
           ⟳
         </button>
@@ -2248,6 +2355,26 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
   const hasClusters = frame.nodes.size > 0 &&
     [...frame.nodes.values()].some((n) => n.properties.scl1 !== null && n.properties.scl1 !== undefined);
+
+  // Properties available for attribute-based grouping: any scalar property present on ≥1 node,
+  // excluding internal cluster keys and properties with only one distinct value (no grouping possible).
+  const groupableAttrs = useMemo(() => {
+    if (frame.nodes.size === 0) return [];
+    const SKIP = new Set(["scl1", "scl2", "scl3"]);
+    const counts = new Map<string, Set<string>>();
+    frame.nodes.forEach((n) => {
+      Object.entries(n.properties).forEach(([k, v]) => {
+        if (SKIP.has(k) || v === null || v === undefined) return;
+        if (typeof v === "object") return; // skip nested objects/arrays
+        if (!counts.has(k)) counts.set(k, new Set());
+        counts.get(k)!.add(String(v));
+      });
+    });
+    return [...counts.entries()]
+      .filter(([, vals]) => vals.size > 1)
+      .sort((a, b) => b[1].size - a[1].size) // most distinct values first
+      .map(([k]) => k);
+  }, [frame.nodes]);
   const activeView: "graph" | "table" | "json" = hasGraph ? view : (view === "json" ? "json" : "table");
 
   const renderHeader = (isModal: boolean) => (
@@ -2292,16 +2419,27 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
         )}
         {hasGraph && frame.status === "done" && hasClusters && (
           <button
-            className={`gf-icon-btn${clusterLevel !== "none" ? " gf-icon-btn--on" : ""}`}
-            onClick={() => setClusterLevel((l) => l === "none" ? "l1" : l === "l1" ? "l2" : l === "l2" ? "l3" : "none")}
-            title={clusterLevel === "none" ? "Group by schema clusters (L1)" : clusterLevel === "l1" ? "Group by schema clusters (L2)" : clusterLevel === "l2" ? "Group by schema clusters (L3)" : "Disable clustering"}
+            className={`gf-icon-btn${["l1","l2","l3"].includes(clusterLevel) ? " gf-icon-btn--on" : ""}`}
+            onClick={() => setClusterLevel((l) => l === "none" || !["l1","l2","l3"].includes(l) ? "l1" : l === "l1" ? "l2" : l === "l2" ? "l3" : "none")}
+            title={clusterLevel === "none" ? "Group by schema clusters (L1)" : clusterLevel === "l1" ? "Group by schema clusters (L2)" : clusterLevel === "l2" ? "Group by schema clusters (L3)" : clusterLevel === "l3" ? "Disable schema clustering" : "Group by schema clusters (L1)"}
           >
             {clusterLevel === "l1" ? "⬡₁" : clusterLevel === "l2" ? "⬡₂" : clusterLevel === "l3" ? "⬡₃" : "⬡"}
           </button>
         )}
+        {hasGraph && frame.status === "done" && groupableAttrs.length > 0 && (
+          <select
+            className={`gf-attr-select${groupableAttrs.includes(clusterLevel) ? " gf-icon-btn--on" : ""}`}
+            value={groupableAttrs.includes(clusterLevel) ? clusterLevel : ""}
+            onChange={(e) => setClusterLevel(e.target.value || "none")}
+            title="Group nodes by attribute"
+          >
+            <option value="">⬡ attr</option>
+            {groupableAttrs.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        )}
         {hasGraph && (
           <button className={`gf-view-btn ${activeView === "graph" ? "active" : ""}`}
-                  onClick={() => setView("graph")} title="Graph">⬡</button>
+                  onClick={() => setView("graph")} title="Graph">✦</button>
         )}
         <button className={`gf-view-btn ${activeView === "table" ? "active" : ""}`}
                 onClick={() => setView("table")} title="Table">⊞</button>

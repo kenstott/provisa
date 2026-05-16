@@ -1,73 +1,78 @@
-# Provisa install-simulation config — base (no demo services).
-# Used by start-ui-install.sh when --demo is NOT passed.
-# Only includes pet-store-pg (PostgreSQL). No petstore-mock, no SQLite, no GraphQL demo.
 sources:
-  - id: pet-store-pg
-    type: postgresql
-    host: ${env:POSTGRES_HOST:-postgres}
-    port: 5432
-    database: provisa
-    username: provisa
-    password: ${env:PG_PASSWORD:-provisa}
-    description: Internal pet store inventory — tracks animals available for sale, pricing, species, and breed assignments managed by the inventory department
-
+- id: pet-store-pg
+  type: postgresql
+  host: ${env:POSTGRES_HOST:-postgres}
+  port: 5432
+  database: provisa
+  username: provisa
+  password: ${env:PG_PASSWORD:-provisa}
+  description: "Internal pet store inventory \u2014 tracks animals available for sale,\
+    \ pricing, species, and breed assignments managed by the inventory department"
 domains:
-  - id: pet-store
-    description: "Pet store — internal inventory (PostgreSQL)"
-
+- id: pet-store
+  description: "Pet store \u2014 internal inventory (PostgreSQL)"
 naming:
   domain_prefix: true
   rules: []
-
 tables:
-  - source_id: pet-store-pg
-    domain_id: pet-store
-    schema: pet_store
-    table: pets
-    governance: pre-approved
-    description: "Pet inventory — managed by the inventory department"
-    columns:
-      - name: id
-        visible_to: [admin, analyst]
-      - name: name
-        visible_to: [admin, analyst]
-      - name: species
-        visible_to: [admin, analyst]
-      - name: breed_name
-        visible_to: [admin, analyst]
-      - name: price
-        visible_to: [admin]
-      - name: available
-        visible_to: [admin, analyst]
-
+- source_id: pet-store-pg
+  domain_id: pet-store
+  schema: pet_store
+  table: pets
+  governance: pre-approved
+  description: "Pet inventory \u2014 managed by the inventory department"
+  columns:
+  - name: id
+    visible_to:
+    - admin
+    - analyst
+  - name: name
+    visible_to:
+    - admin
+    - analyst
+  - name: species
+    visible_to:
+    - admin
+    - analyst
+  - name: breed_name
+    visible_to:
+    - admin
+    - analyst
+  - name: price
+    visible_to:
+    - admin
+  - name: available
+    visible_to:
+    - admin
+    - analyst
 roles:
-  - id: admin
-    capabilities:
-      - source_registration
-      - table_registration
-      - create_relationship
-      - access_config
-      - query_development
-      - approve_view
-      - admin
-    domain_access: ["*"]
-  - id: analyst
-    capabilities:
-      - query_development
-    domain_access:
-      - pet-store
-
+- id: admin
+  capabilities:
+  - source_registration
+  - table_registration
+  - create_relationship
+  - access_config
+  - query_development
+  - approve_view
+  - admin
+  domain_access:
+  - '*'
+- id: analyst
+  capabilities:
+  - query_development
+  domain_access:
+  - pet-store
 cache:
   enabled: true
   redis_url: redis://${env:REDIS_HOST:-localhost}:6379
   default_ttl: 300
-
 discovery:
   sample_size: 20
   min_confidence: 0.7
   api_key: ${env:ANTHROPIC_API_KEY}
-
 observability:
-  endpoint: ""
+  endpoint: ''
   service_name: provisa
   sample_rate: 1.0
+auth:
+  provider: none

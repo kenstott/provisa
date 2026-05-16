@@ -9,36 +9,82 @@
 # permission from the copyright holder.
 
 """Unit tests for provisa/grpc_remote/mapper.py — pure business logic, no I/O."""
-import pytest
+
 from provisa.grpc_remote.mapper import (
-    is_query_method,
     map_proto,
-    QUERY_PREFIXES,
-    GrpcQuery,
-    GrpcMutation,
 )
 
+# Methods:
+#   ListOrders   — server_streaming=True  → query (signal: streaming)
+#   BrowseOrders — unary, returns OrderPage (has repeated Order items) → query (signal: repeated message field)
+#   GetOrder     — unary, returns Order (no repeated message fields) → mutation
+#   CreateOrder  — unary, returns Order → mutation
+#   DeleteOrder  — unary, returns DeleteResponse → mutation
 PROTO_DICT = {
     "package": "orders",
     "services": [
         {
             "name": "OrderService",
             "methods": [
-                {"name": "GetOrder", "input_type": "GetOrderRequest", "output_type": "Order", "server_streaming": False, "client_streaming": False},
-                {"name": "ListOrders", "input_type": "ListRequest", "output_type": "Order", "server_streaming": True, "client_streaming": False},
-                {"name": "CreateOrder", "input_type": "CreateOrderRequest", "output_type": "Order", "server_streaming": False, "client_streaming": False},
-                {"name": "DeleteOrder", "input_type": "DeleteOrderRequest", "output_type": "DeleteResponse", "server_streaming": False, "client_streaming": False},
+                {
+                    "name": "ListOrders",
+                    "input_type": "ListRequest",
+                    "output_type": "Order",
+                    "server_streaming": True,
+                    "client_streaming": False,
+                },
+                {
+                    "name": "BrowseOrders",
+                    "input_type": "BrowseRequest",
+                    "output_type": "OrderPage",
+                    "server_streaming": False,
+                    "client_streaming": False,
+                },
+                {
+                    "name": "GetOrder",
+                    "input_type": "GetOrderRequest",
+                    "output_type": "Order",
+                    "server_streaming": False,
+                    "client_streaming": False,
+                },
+                {
+                    "name": "CreateOrder",
+                    "input_type": "CreateOrderRequest",
+                    "output_type": "Order",
+                    "server_streaming": False,
+                    "client_streaming": False,
+                },
+                {
+                    "name": "DeleteOrder",
+                    "input_type": "DeleteOrderRequest",
+                    "output_type": "DeleteResponse",
+                    "server_streaming": False,
+                    "client_streaming": False,
+                },
             ],
         }
     ],
     "messages": {
-        "GetOrderRequest": [{"name": "order_id", "type": "string", "repeated": False}],
         "ListRequest": [{"name": "page", "type": "int32", "repeated": False}],
+        "BrowseRequest": [{"name": "filter", "type": "string", "repeated": False}],
+        "GetOrderRequest": [{"name": "order_id", "type": "string", "repeated": False}],
         "Order": [
             {"name": "id", "type": "string", "repeated": False},
             {"name": "amount", "type": "double", "repeated": False},
             {"name": "shipped", "type": "bool", "repeated": False},
-            {"name": "tags", "type": "string", "repeated": True},
+            {
+                "name": "tags",
+                "type": "string",
+                "repeated": True,
+            },  # repeated scalar — does NOT trigger query
+        ],
+        "OrderPage": [
+            {
+                "name": "items",
+                "type": "Order",
+                "repeated": True,
+            },  # repeated message — triggers query
+            {"name": "total", "type": "int32", "repeated": False},
         ],
         "CreateOrderRequest": [
             {"name": "customer_id", "type": "string", "repeated": False},
@@ -51,121 +97,210 @@ PROTO_DICT = {
 }
 
 
-def test_is_query_method_get():
-    assert is_query_method("GetOrder") is True
-
-
-def test_is_query_method_list():
-    assert is_query_method("ListOrders") is True
-
-
-def test_is_query_method_find():
-    assert is_query_method("FindUser") is True
-
-
-def test_is_query_method_fetch():
-    assert is_query_method("FetchData") is True
-
-
-def test_is_query_method_search():
-    assert is_query_method("SearchProducts") is True
-
-
-def test_is_query_method_stream():
-    assert is_query_method("StreamEvents") is True
-
-
-def test_is_mutation_method():
-    assert is_query_method("CreateOrder") is False
-    assert is_query_method("DeleteOrder") is False
-    assert is_query_method("UpdateUser") is False
-
-
 def test_map_proto_query_count():
     queries, mutations = map_proto(PROTO_DICT, "", "src", "dom")
-    assert len(queries) == 2  # GetOrder, ListOrders
+    assert len(queries) == 2  # ListOrders (streaming), BrowseOrders (repeated message field)
 
 
 def test_map_proto_mutation_count():
     queries, mutations = map_proto(PROTO_DICT, "", "src", "dom")
-    assert len(mutations) == 2  # CreateOrder, DeleteOrder
+    assert len(mutations) == 3  # GetOrder, CreateOrder, DeleteOrder
+
+
+def test_server_streaming_is_query():
+    queries, _ = map_proto(PROTO_DICT, "", "src", "dom")
+    assert any(q.method == "ListOrders" for q in queries)
+
+
+def test_repeated_message_field_is_query():
+    queries, _ = map_proto(PROTO_DICT, "", "src", "dom")
+    assert any(q.method == "BrowseOrders" for q in queries)
+
+
+def test_repeated_scalar_field_does_not_trigger_query():
+    # GetOrder returns Order which has repeated string tags — should be mutation
+    _, mutations = map_proto(PROTO_DICT, "", "src", "dom")
+    assert any(m.method == "GetOrder" for m in mutations)
+
+
+def test_unary_single_entity_is_mutation():
+    _, mutations = map_proto(PROTO_DICT, "", "src", "dom")
+    assert any(m.method == "CreateOrder" for m in mutations)
+    assert any(m.method == "DeleteOrder" for m in mutations)
+
+
+def test_override_query_forces_query():
+    queries, mutations = map_proto(
+        PROTO_DICT,
+        "",
+        "src",
+        "dom",
+        method_overrides={"GetOrder": "query"},
+    )
+    assert any(q.method == "GetOrder" for q in queries)
+    assert not any(m.method == "GetOrder" for m in mutations)
+
+
+def test_override_mutation_forces_mutation():
+    queries, mutations = map_proto(
+        PROTO_DICT,
+        "",
+        "src",
+        "dom",
+        method_overrides={"ListOrders": "mutation"},
+    )
+    assert any(m.method == "ListOrders" for m in mutations)
+    assert not any(q.method == "ListOrders" for q in queries)
+
+
+def test_override_query_ignored_for_scalar_output():
+    d = {
+        "package": "",
+        "services": [
+            {
+                "name": "Svc",
+                "methods": [
+                    {
+                        "name": "GetVersion",
+                        "input_type": "Empty",
+                        "output_type": "string",
+                        "server_streaming": False,
+                        "client_streaming": False,
+                    },
+                ],
+            }
+        ],
+        "messages": {"Empty": []},
+        "enums": [],
+    }
+    queries, mutations = map_proto(d, "", "src", "dom", method_overrides={"GetVersion": "query"})
+    assert len(queries) == 0
+    assert len(mutations) == 1
+    assert mutations[0].return_columns[0].name == "value"
 
 
 def test_full_method_path_with_package():
     queries, _ = map_proto(PROTO_DICT, "", "src", "dom")
-    get_order = next(q for q in queries if q.method == "GetOrder")
-    assert get_order.full_method_path == "/orders.OrderService/GetOrder"
+    list_orders = next(q for q in queries if q.method == "ListOrders")
+    assert list_orders.full_method_path == "/orders.OrderService/ListOrders"
 
 
 def test_full_method_path_no_package():
     d = {**PROTO_DICT, "package": ""}
     queries, _ = map_proto(d, "", "src", "dom")
-    get_order = next(q for q in queries if q.method == "GetOrder")
-    assert get_order.full_method_path == "/OrderService/GetOrder"
+    list_orders = next(q for q in queries if q.method == "ListOrders")
+    assert list_orders.full_method_path == "/OrderService/ListOrders"
 
 
 def test_server_streaming_flag_propagated():
     queries, _ = map_proto(PROTO_DICT, "", "src", "dom")
     list_orders = next(q for q in queries if q.method == "ListOrders")
     assert list_orders.server_streaming is True
-    get_order = next(q for q in queries if q.method == "GetOrder")
-    assert get_order.server_streaming is False
+    browse_orders = next(q for q in queries if q.method == "BrowseOrders")
+    assert browse_orders.server_streaming is False
 
 
-def test_repeated_field_maps_to_jsonb():
-    queries, _ = map_proto(PROTO_DICT, "", "src", "dom")
-    get_order = next(q for q in queries if q.method == "GetOrder")
-    col = next(c for c in get_order.columns if c.name == "tags")
+def test_repeated_scalar_maps_to_jsonb():
+    _, mutations = map_proto(PROTO_DICT, "", "src", "dom")
+    get_order = next(m for m in mutations if m.method == "GetOrder")
+    col = next(c for c in get_order.return_columns if c.name == "tags")
     assert col.type == "jsonb"
 
 
 def test_scalar_type_mapping():
-    queries, _ = map_proto(PROTO_DICT, "", "src", "dom")
-    get_order = next(q for q in queries if q.method == "GetOrder")
-    cols = {c.name: c.type for c in get_order.columns}
+    _, mutations = map_proto(PROTO_DICT, "", "src", "dom")
+    get_order = next(m for m in mutations if m.method == "GetOrder")
+    cols = {c.name: c.type for c in get_order.return_columns}
     assert cols["id"] == "text"
     assert cols["amount"] == "numeric"
     assert cols["shipped"] == "boolean"
 
 
-def test_namespace_prefix():
+def test_namespace_does_not_affect_service():
     queries, mutations = map_proto(PROTO_DICT, "myns", "src", "dom")
     for q in queries:
-        assert q.service == "OrderService"  # service unchanged
-    # full_method_path is unaffected by namespace (namespace is for table names, applied in router)
+        assert q.service == "OrderService"
 
 
 def test_enum_type_maps_to_text():
     d = {
         "package": "",
-        "services": [{
-            "name": "Svc",
-            "methods": [{"name": "GetItem", "input_type": "Req", "output_type": "Res", "server_streaming": False, "client_streaming": False}],
-        }],
+        "services": [
+            {
+                "name": "Svc",
+                "methods": [
+                    {
+                        "name": "GetItem",
+                        "input_type": "Req",
+                        "output_type": "Res",
+                        "server_streaming": False,
+                        "client_streaming": False,
+                    },
+                ],
+            }
+        ],
         "messages": {
             "Req": [],
             "Res": [{"name": "status", "type": "Status", "repeated": False}],
         },
         "enums": ["Status"],
     }
-    queries, _ = map_proto(d, "", "src", "dom")
-    col = next(c for c in queries[0].columns if c.name == "status")
+    _, mutations = map_proto(d, "", "src", "dom")
+    col = next(c for c in mutations[0].return_columns if c.name == "status")
     assert col.type == "text"
 
 
 def test_unknown_message_type_maps_to_jsonb():
     d = {
         "package": "",
-        "services": [{
-            "name": "Svc",
-            "methods": [{"name": "GetItem", "input_type": "Req", "output_type": "Res", "server_streaming": False, "client_streaming": False}],
-        }],
+        "services": [
+            {
+                "name": "Svc",
+                "methods": [
+                    {
+                        "name": "GetItem",
+                        "input_type": "Req",
+                        "output_type": "Res",
+                        "server_streaming": False,
+                        "client_streaming": False,
+                    },
+                ],
+            }
+        ],
         "messages": {
             "Req": [],
             "Res": [{"name": "meta", "type": "SomeNestedMsg", "repeated": False}],
         },
         "enums": [],
     }
-    queries, _ = map_proto(d, "", "src", "dom")
-    col = next(c for c in queries[0].columns if c.name == "meta")
+    _, mutations = map_proto(d, "", "src", "dom")
+    col = next(c for c in mutations[0].return_columns if c.name == "meta")
     assert col.type == "jsonb"
+
+
+def test_enum_repeated_field_does_not_trigger_query():
+    d = {
+        "package": "",
+        "services": [
+            {
+                "name": "Svc",
+                "methods": [
+                    {
+                        "name": "GetItem",
+                        "input_type": "Req",
+                        "output_type": "Res",
+                        "server_streaming": False,
+                        "client_streaming": False,
+                    },
+                ],
+            }
+        ],
+        "messages": {
+            "Req": [],
+            "Res": [{"name": "statuses", "type": "Status", "repeated": True}],
+        },
+        "enums": ["Status"],
+    }
+    queries, mutations = map_proto(d, "", "src", "dom")
+    assert len(queries) == 0
+    assert len(mutations) == 1

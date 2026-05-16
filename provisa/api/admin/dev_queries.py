@@ -13,7 +13,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from provisa.api.admin._dev_shared import detect_target, extract_operation_name
+from provisa.api.admin._dev_shared import extract_operation_name
 
 log = logging.getLogger(__name__)
 
@@ -433,95 +433,3 @@ async def compile_query(
             pass
 
     return results
-
-
-async def submit_query(
-    role_id: str,
-    query: str,
-    variables: dict | None = None,
-    compiled_cypher: str | None = None,
-    sink_topic: str | None = None,
-    sink_trigger: str = "change_event",
-    sink_key_column: str | None = None,
-    schedule_cron: str | None = None,
-    schedule_output_type: str | None = None,
-    schedule_output_format: str | None = None,
-    schedule_destination: str | None = None,
-    business_purpose: str | None = None,
-    use_cases: str | None = None,
-    data_sensitivity: str | None = None,
-    refresh_frequency: str | None = None,
-    expected_row_count: str | None = None,
-    owner_team: str | None = None,
-    expiry_date: str | None = None,
-) -> tuple[int, str, str]:
-    """Compile and submit a GQL/SQL/Cypher query for steward approval.
-
-    Returns (query_id, operation_name, message).
-    """
-    from provisa.api.app import state
-    from provisa.compiler.rls import RLSContext
-    from provisa.registry.store import submit
-
-    if role_id not in state.schemas:
-        raise ValueError(f"No schema for role {role_id!r}")
-
-    ctx = state.contexts[role_id]
-    rls = state.rls_contexts.get(role_id, RLSContext.empty())
-    target = detect_target(query)
-
-    if target == "graphql":
-        op_name, compiled_sql, target_tables, _cypher = await _compile_graphql(
-            query, variables, role_id, ctx, rls, state
-        )
-        compiled_cypher = compiled_cypher or _cypher
-    elif target == "cypher":
-        op_name, compiled_sql, target_tables, _cypher = _compile_cypher_submit(query, role_id, ctx)
-        compiled_cypher = compiled_cypher or _cypher
-    else:
-        op_name, compiled_sql, target_tables, _ = _compile_sql_submit(query, ctx)
-
-    async with state.pg_pool.acquire() as conn:
-        query_id = await submit(
-            conn,
-            query_text=query,
-            compiled_sql=compiled_sql,
-            target_tables=target_tables,
-            developer_id=role_id,
-            compiled_cypher=compiled_cypher or None,
-        )
-
-        updates = []
-        params = []
-        idx = 1
-        for field_name, value in [
-            ("sink_topic", sink_topic),
-            ("sink_trigger", sink_trigger if sink_topic else None),
-            ("sink_key_column", sink_key_column),
-            ("business_purpose", business_purpose),
-            ("use_cases", use_cases),
-            ("data_sensitivity", data_sensitivity),
-            ("refresh_frequency", refresh_frequency),
-            ("expected_row_count", expected_row_count),
-            ("owner_team", owner_team),
-            (
-                "expiry_date",
-                __import__("datetime").date.fromisoformat(expiry_date) if expiry_date else None,
-            ),
-            ("schedule_cron", schedule_cron),
-            ("schedule_output_type", schedule_output_type),
-            ("schedule_output_format", schedule_output_format),
-            ("schedule_destination", schedule_destination),
-        ]:
-            if value is not None:
-                updates.append(f"{field_name} = ${idx}")
-                params.append(value)
-                idx += 1
-        if updates:
-            params.append(query_id)
-            await conn.execute(
-                f"UPDATE persisted_queries SET {', '.join(updates)} WHERE id = ${idx}",
-                *params,
-            )
-
-    return query_id, op_name, f"Query '{op_name}' submitted for approval (id={query_id})."

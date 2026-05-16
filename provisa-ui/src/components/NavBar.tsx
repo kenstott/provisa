@@ -60,7 +60,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Security",
     items: [
       { to: "/security", label: "Policies", capability: "access_config" },
-      { to: "/approvals", label: "Approvals", capability: "approve_view" },
     ],
   },
   {

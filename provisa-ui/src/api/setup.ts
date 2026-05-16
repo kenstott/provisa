@@ -20,7 +20,7 @@ export async function fetchSetupStatus(): Promise<SetupStatus> {
 }
 
 export async function runSetup(body: {
-  provider: "basic" | "firebase";
+  provider: "basic" | "firebase" | "none";
   mode: "single" | "multi";
   admin_username?: string;
   admin_password?: string;

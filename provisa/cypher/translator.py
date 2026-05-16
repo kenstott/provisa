@@ -714,6 +714,10 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         )
                         no_rel_join_type = "LEFT" if clause.optional else "INNER"
                         joins.append({"table": jt, "on": exp.false(), "join_type": no_rel_join_type})
+                    # Register the relationship variable so _build_select emits NULL instead of a
+                    # bare column reference (which would cause a column-not-found SQL error).
+                    if rel.variable:
+                        self._rel_var_types[rel.variable] = ""
                     continue
 
                 join_type = "LEFT" if clause.optional else "INNER"

@@ -395,7 +395,7 @@ relationships:
   source_column: pet_id
   target_column: id
   cardinality: many-to-one
-  alias: ABOUT_PET
+  alias: HAS_PETS
 - id: order-to-find-pets-by-status
   source_table_id: order_by_id
   target_table_id: pet_by_status

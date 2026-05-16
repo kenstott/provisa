@@ -40,12 +40,34 @@ _WEBSOCKET_TYPES = {"websocket"}
 # RSS/Atom feed sources — poll HTTP feed, watermark by pubDate/updated
 _RSS_TYPES = {"rss"}
 
+# GovData — Calcite JDBC adapter over US government datasets (JPype, polling)
+_GOVDATA_TYPES = {"govdata"}
+
 # All other SQL-ish sources fall back to polling
 _POLLING_TYPES = {
-    "mysql", "singlestore", "mariadb", "sqlserver", "oracle", "duckdb",
-    "snowflake", "bigquery", "databricks", "redshift", "clickhouse",
-    "elasticsearch", "pinot", "druid", "exasol", "delta_lake", "iceberg",
-    "hive", "cassandra", "redis", "kudu", "accumulo", "google_sheets",
+    "mysql",
+    "singlestore",
+    "mariadb",
+    "sqlserver",
+    "oracle",
+    "duckdb",
+    "snowflake",
+    "bigquery",
+    "databricks",
+    "redshift",
+    "clickhouse",
+    "elasticsearch",
+    "pinot",
+    "druid",
+    "exasol",
+    "delta_lake",
+    "iceberg",
+    "hive",
+    "cassandra",
+    "redis",
+    "kudu",
+    "accumulo",
+    "google_sheets",
     "prometheus",
 }
 
@@ -122,6 +144,18 @@ def get_provider(source_type: str, config: dict[str, Any]) -> NotificationProvid
             pool=config["pool"],
             poll_interval=config.get("poll_interval", 5.0),
             watermark_column=config.get("watermark_column", "updated_at"),
+        )
+
+    if source_type in _GOVDATA_TYPES:
+        from provisa.subscriptions.govdata_provider import GovDataPollingProvider
+
+        return GovDataPollingProvider(
+            sources=config["sources"],
+            table=config["table"],
+            watermark_column=config["watermark_column"],
+            schema=config.get("schema", ""),
+            jar_path=config.get("jar_path", ""),
+            poll_interval=config.get("poll_interval", 30.0),
         )
 
     raise ValueError(f"No subscription provider for source_type={source_type!r}")

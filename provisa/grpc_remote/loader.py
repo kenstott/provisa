@@ -15,6 +15,7 @@ Two distinct operations:
   load_proto(path_or_url)    — fetch file or URL, return parsed dict
   compile_proto_stubs(...)   — compile proto → Python stubs via grpc_tools.protoc
 """
+
 from __future__ import annotations
 
 import os
@@ -26,6 +27,7 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Text-based proto parser (pure, no external deps)
 # ---------------------------------------------------------------------------
+
 
 def _strip_comments(text: str) -> str:
     text = re.sub(r"//[^\n]*", "", text)
@@ -56,9 +58,30 @@ def _extract_blocks(text: str, keyword: str) -> list[tuple[str, str]]:
 def _parse_message_fields(body: str) -> list[dict]:
     """Parse field declarations from a message body."""
     fields = []
+    skip = {"option", "reserved", "extensions"}
+
+    # map<K, V> field_name = N  →  jsonb
+    map_pattern = re.compile(r"\bmap\s*<[^>]+>\s+(\w+)\s*=\s*\d+")
+    for m in map_pattern.finditer(body):
+        fields.append({"name": m.group(1), "type": "jsonb", "repeated": False})
+
+    # oneof block: emit each inner field normally; strip blocks so main loop skips them
+    oneof_pattern = re.compile(r"\boneof\s+\w+\s*\{([^}]*)\}", re.DOTALL)
+    remainder = body
+    for block in oneof_pattern.finditer(body):
+        inner = block.group(1)
+        for m in re.finditer(r"(repeated\s+)?(\w[\w.]*)\s+(\w+)\s*=\s*\d+", inner):
+            if m.group(2) not in skip:
+                fields.append(
+                    {"name": m.group(3), "type": m.group(2), "repeated": bool(m.group(1))}
+                )
+        remainder = remainder.replace(block.group(0), "")
+
+    # Strip map fields from remainder so main loop doesn't see them either
+    remainder = map_pattern.sub("", remainder)
+
     pattern = re.compile(r"(repeated\s+)?(\w[\w.]*)\s+(\w+)\s*=\s*\d+")
-    skip = {"option", "reserved", "extensions", "oneof", "map"}
-    for m in pattern.finditer(body):
+    for m in pattern.finditer(remainder):
         field_type = m.group(2)
         if field_type in skip:
             continue
@@ -132,6 +155,7 @@ def parse_proto_text(proto_text: str) -> dict:
 # File / URL loader
 # ---------------------------------------------------------------------------
 
+
 async def load_proto(
     path_or_url: str,
     import_paths: list[str] | None = None,
@@ -147,6 +171,7 @@ async def load_proto(
     """
     if path_or_url.startswith("http://") or path_or_url.startswith("https://"):
         import httpx
+
         r = httpx.get(path_or_url, timeout=30, follow_redirects=True)
         r.raise_for_status()
         text = r.text
@@ -162,6 +187,7 @@ async def load_proto(
 # ---------------------------------------------------------------------------
 # Stub compiler (requires grpcio-tools)
 # ---------------------------------------------------------------------------
+
 
 def compile_proto_stubs(
     proto_text: str,
@@ -192,7 +218,7 @@ def compile_proto_stubs(
     include_flags: list[str] = [f"-I{tmp}"]
     if well_known:
         include_flags.append(f"-I{well_known}")
-    for ip in (import_paths or []):
+    for ip in import_paths or []:
         include_flags.append(f"-I{ip}")
 
     args = [

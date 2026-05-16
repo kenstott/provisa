@@ -9,12 +9,14 @@
 # permission from the copyright holder.
 
 """Source adapter for graphql_remote sources (REQ-309, REQ-310)."""
+
 from __future__ import annotations
 import hashlib
 import json
 import logging
 
 log = logging.getLogger(__name__)
+
 
 async def fetch_rows(
     source_id: str,
@@ -27,6 +29,7 @@ async def fetch_rows(
 ) -> list[dict]:
     """Fetch rows from a remote GraphQL source with cache-aside pattern.
 
+    columns entries may be bare names or gql_selection strings (e.g. "employee { id name }").
     Cache key: graphql_remote:{source_id}:{field_name}:{col_hash}
     """
     col_hash = hashlib.sha256(json.dumps(sorted(columns)).encode()).hexdigest()[:12]
@@ -38,6 +41,7 @@ async def fetch_rows(
         return json.loads(cached)
 
     from provisa.graphql_remote.executor import execute_remote
+
     rows = await execute_remote(url=url, auth=auth, field_name=field_name, columns=columns)
 
     await response_cache_store.set(cache_key, json.dumps(rows), ttl=ttl)

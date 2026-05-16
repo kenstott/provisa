@@ -66,6 +66,8 @@ class SourceType(str, Enum):
     grpc_remote = "grpc_remote"
     # Push receiver — external services POST JSON events (Phase AS)
     ingest = "ingest"
+    # U.S. government open data via Apache Calcite / GovData JDBC adapter
+    govdata = "govdata"
 
 
 class GovernanceLevel(str, Enum):
@@ -512,6 +514,12 @@ class OtelConfig(BaseModel):
     collector_batch_timeout_ms: int = 200
 
 
+class GraphQLRemoteConfig(BaseModel):
+    max_object_depth: int = 5
+    max_list_depth: int = 2
+    max_list_items: int = 100
+
+
 class ServerConfig(BaseModel):
     """Server network configuration.
 
@@ -530,6 +538,84 @@ class ServerConfig(BaseModel):
     port: int = 8000
     grpc_port: int = 50051
     flight_port: int = 8815
+
+
+class GovDataSubject(str, Enum):
+    """Subscription subject groupings for GovData schemas.
+
+    ALL is equivalent to subscribing to the full GOVDATA service.
+    """
+
+    all = "ALL"
+    commerce = "COMMERCE"
+    economy = "ECONOMY"
+    education = "EDUCATION"
+    health = "HEALTH"
+    cyber = "CYBER"
+    public_safety = "PUBLIC_SAFETY"
+    environment = "ENVIRONMENT"
+    weather = "WEATHER"
+    government = "GOVERNMENT"
+
+
+# Maps each subject to the GovData schema names it covers.
+# ALL expands to every schema at access-check time.
+# "ref" and "geo" are always included as linker schemas — not listed here.
+GOVDATA_SUBJECT_SCHEMAS: dict[str, list[str]] = {
+    "COMMERCE": ["sec", "patents"],
+    "ECONOMY": ["econ"],
+    "EDUCATION": ["census", "edu"],
+    "HEALTH": ["health"],
+    "CYBER": ["cyber_threat", "cyber_vuln"],
+    "PUBLIC_SAFETY": ["crime"],
+    "ENVIRONMENT": ["lands"],
+    "WEATHER": ["weather"],
+    "GOVERNMENT": ["fedregister", "fec"],
+}
+
+
+class GovDataSource(BaseModel):
+    """A GovData dataset group exposed via the Calcite JDBC adapter.
+
+    Each entry corresponds to one set of GovData schemas sharing a subject tag.
+    At query time Provisa connects via jaydebeapi using ``jar_path`` and the
+    constructed JDBC URL.
+
+    Driver config priority (mirrors GovData precedence):
+    1. ``model_file`` — use a pre-built Calcite model JSON (e.g. .aperio/debug-model-sec.json)
+       that already embeds S3 credentials and operatingDirectory.
+    2. Inline fields — ``operating_directory``, ``s3_config``, ``auto_download`` are
+       injected into the per-schema operand when building the inline model.
+    """
+
+    id: str
+    subject: GovDataSubject
+    govdata_schemas: list[str]
+    jar_path: str
+    domain_id: str
+    description: str = ""
+    # Optional: path to a pre-built Calcite model JSON.  When set, used verbatim
+    # as the JDBC model= param; all inline operand fields are ignored.
+    model_file: str | None = None
+    # Inline operand fields (used when model_file is None)
+    operating_directory: str | None = None
+    s3_config: dict[str, str] = Field(default_factory=dict)
+    auto_download: bool = True
+    start_year: int | None = None
+    end_year: int | None = None
+    api_keys: dict[str, str] = Field(default_factory=dict)
+    ciks: str | None = None
+    governance: GovernanceLevel = GovernanceLevel.pre_approved
+
+
+class GovDataSubscription(BaseModel):
+    """Per-tenant list of allowed GovData subjects.
+
+    ``subjects`` containing GovDataSubject.all grants access to every subject.
+    An empty list means no GovData access.
+    """
+
+    subjects: list[GovDataSubject] = Field(default_factory=list)
 
 
 class ProvisaConfig(BaseModel):
@@ -556,3 +642,6 @@ class ProvisaConfig(BaseModel):
     auth: AuthConfig = Field(default_factory=AuthConfig)
     hot_tables: HotTablesConfig = Field(default_factory=HotTablesConfig)
     observability: OtelConfig = Field(default_factory=OtelConfig)
+    graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
+    govdata_sources: list[GovDataSource] = Field(default_factory=list)
+    govdata_subscriptions: list[GovDataSubscription] = Field(default_factory=list)

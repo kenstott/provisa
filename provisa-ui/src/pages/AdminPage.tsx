@@ -24,6 +24,7 @@ import {
   updateSettings,
   reloadQueryEngineCatalog,
   restartQueryEngine,
+  recomputeSchemaClusters,
   createDomain,
   deleteDomain,
   fetchLocalUsers,
@@ -990,6 +991,51 @@ function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
         <p style={{ marginTop: "1.5rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
           Note: endpoint and service_name changes take effect on next restart. Sample rate is applied immediately.
         </p>
+
+        <h4 style={{ marginTop: "1.5rem" }}>Support Telemetry</h4>
+        <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "1rem" }}>
+          Optionally forward telemetry to Provisa support. SQL literals are stripped by default.
+        </p>
+        <label>
+          Support OTLP Endpoint
+          <input
+            type="text"
+            value={settings.otel.support_endpoint}
+            onChange={(e) => update("support_endpoint", e.target.value)}
+            placeholder="https://otel.provisa.io:4318"
+          />
+          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            Leave empty to disable support telemetry. Override with PROVISA_SUPPORT_OTLP_ENDPOINT env var.
+          </span>
+        </label>
+        <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
+          <input
+            type="checkbox"
+            checked={settings.otel.support_redact_sql_literals}
+            onChange={(e) => update("support_redact_sql_literals", e.target.checked)}
+          />
+          Redact SQL literals before forwarding to support
+        </label>
+        <label>
+          Redact Attributes (comma-separated)
+          <input
+            type="text"
+            value={(settings.otel.support_redact_attributes ?? []).join(", ")}
+            onChange={(e) =>
+              update(
+                "support_redact_attributes",
+                e.target.value
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              )
+            }
+            placeholder="user.id, db.user, ..."
+          />
+          <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+            Attribute keys to drop entirely before sending to support.
+          </span>
+        </label>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
         <TraceFeed />
@@ -1002,8 +1048,10 @@ function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
 function QueryEngineActions() {
   const [reloadStatus, setReloadStatus] = useState<string>("");
   const [restartStatus, setRestartStatus] = useState<string>("");
+  const [clusterStatus, setClusterStatus] = useState<string>("");
   const [reloading, setReloading] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [reclustering, setReclustering] = useState(false);
 
   const handleReload = async () => {
     setReloading(true);
@@ -1031,6 +1079,19 @@ function QueryEngineActions() {
     }
   };
 
+  const handleRecluster = async () => {
+    setReclustering(true);
+    setClusterStatus("");
+    try {
+      const result = await recomputeSchemaClusters();
+      setClusterStatus(`Clustered ${result.tables_clustered} tables.`);
+    } catch (e: unknown) {
+      setClusterStatus(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setReclustering(false);
+    }
+  };
+
   return (
     <div className="settings-section">
       <h4>Query Engine</h4>
@@ -1041,9 +1102,13 @@ function QueryEngineActions() {
         <button className="btn-warning" onClick={handleRestart} disabled={restarting}>
           {restarting ? "Restarting..." : "Restart Engine"}
         </button>
+        <button className="btn-secondary" onClick={handleRecluster} disabled={reclustering}>
+          {reclustering ? "Clustering..." : "Recompute Schema Clusters"}
+        </button>
       </div>
       {reloadStatus && <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>{reloadStatus}</span>}
       {restartStatus && <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>{restartStatus}</span>}
+      {clusterStatus && <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>{clusterStatus}</span>}
     </div>
   );
 }

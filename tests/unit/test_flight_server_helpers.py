@@ -16,7 +16,6 @@ These tests require no running infrastructure.
 
 from __future__ import annotations
 
-import json
 from decimal import Decimal
 from unittest.mock import MagicMock
 
@@ -29,38 +28,6 @@ from provisa.executor.formats.arrow import rows_to_arrow_table
 from provisa.compiler.sql_gen import ColumnRef
 
 pytestmark = [pytest.mark.asyncio]
-
-
-class TestFlightServerParseMode:
-    """Unit tests for ProvisaFlightServer._parse_mode."""
-
-    async def test_none_returns_default(self):
-        assert ProvisaFlightServer._parse_mode(None) == "default"
-
-    async def test_empty_bytes_returns_default(self):
-        assert ProvisaFlightServer._parse_mode(b"") == "default"
-
-    async def test_catalog_mode_parsed(self):
-        buf = json.dumps({"mode": "catalog"}).encode()
-        assert ProvisaFlightServer._parse_mode(buf) == "catalog"
-
-    async def test_approved_mode_parsed(self):
-        buf = json.dumps({"mode": "approved"}).encode()
-        assert ProvisaFlightServer._parse_mode(buf) == "approved"
-
-    async def test_default_mode_parsed(self):
-        buf = json.dumps({"mode": "default"}).encode()
-        assert ProvisaFlightServer._parse_mode(buf) == "default"
-
-    async def test_missing_mode_key_returns_default(self):
-        buf = json.dumps({"other": "value"}).encode()
-        assert ProvisaFlightServer._parse_mode(buf) == "default"
-
-    async def test_invalid_json_returns_default(self):
-        assert ProvisaFlightServer._parse_mode(b"not-json") == "default"
-
-    async def test_non_utf8_returns_default(self):
-        assert ProvisaFlightServer._parse_mode(b"\xff\xfe") == "default"
 
 
 class TestFlightServerBuildCatalogTable:
@@ -113,33 +80,6 @@ class TestFlightServerBuildCatalogTable:
         assert "is_nullable" in table.schema.names
         assert "description" in table.schema.names
         assert table.num_rows == 1
-
-    async def test_build_approved_query_table(self):
-        q = MagicMock()
-        q.stable_id = "abc123"
-        q.query_text = "{ orders { id } }"
-        q.compiled_sql = "SELECT id FROM orders"
-
-        table = ProvisaFlightServer._build_approved_query_table(q)
-        assert "stable_id" in table.schema.names
-        assert "query_text" in table.schema.names
-        assert "compiled_sql" in table.schema.names
-        assert table.num_rows == 1
-
-    async def test_build_approved_queries_table(self):
-        q1 = MagicMock()
-        q1.stable_id = "s1"
-        q1.query_text = "{ a { id } }"
-        q1.compiled_sql = "SELECT id FROM a"
-
-        q2 = MagicMock()
-        q2.stable_id = "s2"
-        q2.query_text = "{ b { id } }"
-        q2.compiled_sql = "SELECT id FROM b"
-
-        table = ProvisaFlightServer._build_approved_queries_table([q1, q2])
-        assert table.num_rows == 2
-
 
 class TestRowsToArrowTable:
     """Unit tests for the rows → Arrow table conversion used by Flight."""

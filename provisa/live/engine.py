@@ -32,9 +32,8 @@ Usage::
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -49,6 +48,7 @@ class _LiveJob:
     """Runtime state for one registered live query."""
 
     query_id: str
+    sql: str
     watermark_column: str
     poll_interval: int
     fanout: object  # SSEFanout
@@ -89,12 +89,19 @@ class LiveEngine:
         self._jobs.clear()
         log.info("[LIVE ENGINE] stopped")
 
-    def register(self, query_id: str, watermark_column: str, poll_interval: int,
-                 kafka_outputs: list | None = None) -> None:
+    def register(
+        self,
+        query_id: str,
+        sql: str,
+        watermark_column: str,
+        poll_interval: int,
+        kafka_outputs: list | None = None,
+    ) -> None:
         """Register a live query for polling.
 
         Args:
-            query_id: stable_id of the approved persisted query.
+            query_id: identifier for this live query.
+            sql: compiled SQL to execute on each poll.
             watermark_column: column whose MAX value is tracked as watermark.
             poll_interval: seconds between polls.
             kafka_outputs: list of KafkaSinkOutput instances to receive rows.
@@ -108,6 +115,7 @@ class LiveEngine:
         fanout = SSEFanout(query_id)
         job = _LiveJob(
             query_id=query_id,
+            sql=sql,
             watermark_column=watermark_column,
             poll_interval=poll_interval,
             fanout=fanout,
@@ -162,33 +170,13 @@ class LiveEngine:
 
         try:
             from provisa.live.watermark import get_watermark, set_watermark
-            from provisa.registry.store import get_by_stable_id
 
             async with self._pg_pool.acquire() as conn:
-                # Load the approved query
-                record = await get_by_stable_id(conn, query_id)
-                if record is None:
-                    log.warning("[LIVE ENGINE] query %s not found in registry", query_id)
-                    return
-
-                query_text = record.get("query_text", "")
-                if not query_text:
-                    return
-
                 # Get current watermark
                 watermark = await get_watermark(conn, query_id)
 
-                # Build incremental SQL by injecting watermark filter.
-                # compiled_sql may be a JSON array for multi-root queries; use
-                # the first statement since the watermark column lives in one table.
-                _raw_sql = record.get("compiled_sql", query_text)
-                try:
-                    _parsed = json.loads(_raw_sql)
-                    _base_sql = _parsed[0] if isinstance(_parsed, list) and _parsed else _raw_sql
-                except (json.JSONDecodeError, TypeError):
-                    _base_sql = _raw_sql
                 incremental_sql = _build_incremental_sql(
-                    _base_sql,
+                    job.sql,
                     job.watermark_column,
                     watermark,
                 )
@@ -239,5 +227,5 @@ def _build_incremental_sql(base_sql: str, watermark_column: str, watermark: str 
     for keyword in ("GROUP BY", "ORDER BY", "LIMIT", "HAVING"):
         match = re.search(rf"\b{keyword}\b", sql, re.IGNORECASE)
         if match:
-            return f"{sql[:match.start()]}WHERE {filter_expr} {sql[match.start():]}"
+            return f"{sql[: match.start()]}WHERE {filter_expr} {sql[match.start() :]}"
     return f"{sql} WHERE {filter_expr}"

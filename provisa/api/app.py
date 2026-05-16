@@ -117,6 +117,8 @@ class AppState:
     otel_compact_batch_size: int = 1000  # rows per INSERT batch during compaction
     otel_compact_file_chunk: int = 50  # Parquet files processed per compaction chunk
     domain_write_targets: dict[str, tuple[str, str]] = {}  # domain_id → (catalog, domain_id) from Domain.catalog
+    multitenancy: bool = False
+    tenant_context_cache: object = None  # TenantContextCache, set at startup when multitenancy=True
 
 
 state = AppState()
@@ -128,7 +130,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
         CREATE VIEW public.registered_tables_meta AS
         SELECT id, source_id, domain_id, schema_name, table_name, governance,
                alias, description, cache_ttl, naming_convention, watermark_column,
-               column_presets::text AS column_presets
+               column_presets::text AS column_presets,
+               tenant_id
         FROM public.registered_tables
     """,
     "table_columns": """
@@ -141,14 +144,16 @@ _META_TABLE_VIEWS: dict[str, str] = {
                object_fields::text AS object_fields,
                array_to_json(visible_to)::text  AS visible_to,
                array_to_json(unmasked_to)::text AS unmasked_to,
-               array_to_json(writable_by)::text AS writable_by
+               array_to_json(writable_by)::text AS writable_by,
+               tenant_id
         FROM public.table_columns
     """,
     "roles": """
         CREATE OR REPLACE VIEW public.roles_meta AS
         SELECT id, parent_role_id,
                array_to_json(capabilities)::text  AS capabilities,
-               array_to_json(domain_access)::text AS domain_access
+               array_to_json(domain_access)::text AS domain_access,
+               tenant_id
         FROM public.roles
     """,
 }
@@ -197,6 +202,7 @@ _OPS_TABLES: dict[str, list[tuple[str, str, bool]]] = {
         ("domain_id", "text", False),
         ("role_id", "text", False),
         ("query_text", "text", False),
+        ("tenant_id", "text", False),
         ("_date", "date", False),
     ],
     "metrics": [
@@ -212,6 +218,7 @@ _OPS_TABLES: dict[str, list[tuple[str, str, bool]]] = {
         ("metric_attributes", "text", False),
         ("resource_attributes", "text", False),
         ("value", "float8", False),
+        ("tenant_id", "text", False),
         ("_date", "date", False),
     ],
     "logs": [
@@ -227,6 +234,7 @@ _OPS_TABLES: dict[str, list[tuple[str, str, bool]]] = {
         ("scope_name", "text", False),
         ("log_attributes", "text", False),
         ("resource_attributes", "text", False),
+        ("tenant_id", "text", False),
         ("_date", "date", False),
     ],
 }
@@ -358,6 +366,39 @@ async def _seed_meta_domain(conn: asyncpg.Connection) -> None:
         ON CONFLICT (id) DO NOTHING
         """
     )
+
+
+async def _compute_and_store_clusters(conn: asyncpg.Connection) -> int:
+    """Run Louvain on the schema graph and write l1/l2/l3_cluster onto registered_tables.
+
+    Returns the number of tables clustered.
+    """
+    from provisa.schema_clusters import compute_clusters
+
+    rows = await conn.fetch("SELECT id FROM registered_tables")
+    table_ids = [r["id"] for r in rows]
+
+    rel_rows = await conn.fetch(
+        "SELECT source_table_id, target_table_id FROM relationships "
+        "WHERE source_table_id IS NOT NULL AND target_table_id IS NOT NULL"
+    )
+    edges = [(r["source_table_id"], r["target_table_id"]) for r in rel_rows]
+
+    if not table_ids:
+        return 0
+
+    clusters = compute_clusters(table_ids, edges)
+
+    await conn.executemany(
+        """
+        UPDATE registered_tables
+        SET l1_cluster = $2, l2_cluster = $3, l3_cluster = $4,
+            clusters_computed_at = NOW()
+        WHERE id = $1
+        """,
+        [(tid, l1, l2, l3) for tid, (l1, l2, l3) in clusters.items()],
+    )
+    return len(clusters)
 
 
 async def _seed_ops_pg(conn: asyncpg.Connection) -> None:
@@ -501,6 +542,27 @@ def _seed_ops_trino(trino_conn: object, snapshot_retention_hours: int | None = N
                     _log.warning("ops Iceberg: %s on %s failed (non-fatal)", proc, tbl_name, exc_info=True)
 
 
+async def _init_meta_rls(conn: asyncpg.Connection) -> None:
+    """Enable Postgres RLS on all _META_TABLES. Called only when multitenancy=True."""
+    for tbl in _META_TABLES:
+        await conn.execute(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY")
+        await conn.execute(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY")
+        await conn.execute(
+            f"""
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_policies
+                    WHERE tablename = '{tbl}' AND policyname = 'tenant_isolation_{tbl}'
+                ) THEN
+                    CREATE POLICY tenant_isolation_{tbl}
+                        ON {tbl}
+                        USING (tenant_id IS NULL OR tenant_id = current_setting('app.tenant_id', true)::uuid);
+                END IF;
+            END $$
+            """
+        )
+
+
 async def _load_and_build(config_path: str | None = None) -> None:
     """Load config, introspect Trino, build schemas for all roles."""
     if config_path is None:
@@ -525,6 +587,12 @@ async def _load_and_build(config_path: str | None = None) -> None:
     if schema_sql_path.exists():
         schema_sql = schema_sql_path.read_text()
         await init_schema(state.pg_pool, schema_sql)
+
+    from provisa.audit.query_log import init_audit_schema
+    await init_audit_schema(state.pg_pool)
+
+    from provisa.api.billing.tenant_db import init_billing_schema
+    await init_billing_schema(state.pg_pool)
 
     # Seed built-in sources so the Data Sources page is never empty on first start.
     trino_host_early = os.environ.get("TRINO_HOST", "localhost")
@@ -555,6 +623,11 @@ async def _load_and_build(config_path: str | None = None) -> None:
         )
         await _seed_meta_domain(_conn)
         await _seed_ops_pg(_conn)
+        needs_clusters = await _conn.fetchval(
+            "SELECT COUNT(*) FROM registered_tables WHERE l1_cluster IS NULL"
+        )
+        if needs_clusters:
+            await _compute_and_store_clusters(_conn)
 
     path = Path(config_path)
     if not path.exists():
@@ -726,11 +799,18 @@ async def _load_and_build(config_path: str | None = None) -> None:
             state.kafka_table_physical[gql_table_name] = physical_table
 
     # Store auth config for middleware setup
-    state.auth_config = raw_config.get("auth")
+    _raw_auth = raw_config.get("auth")
+    state.auth_config = None if (isinstance(_raw_auth, dict) and _raw_auth.get("provider") == "none") else _raw_auth
 
     # Load config into PG (and create Trino catalogs)
     config = parse_config_dict(raw_config)
     state.config = config
+    state.multitenancy = config.multitenancy
+    if config.multitenancy:
+        from provisa.core.tenant_context import TenantContextCache
+        state.tenant_context_cache = TenantContextCache()
+        async with state.pg_pool.acquire() as _rls_conn:
+            await _init_meta_rls(_rls_conn)
 
     # Apply observability config to state
     if config.observability:
@@ -1460,6 +1540,9 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         # Load tracked functions and webhooks for action schema fields
         from provisa.api.admin.actions_router import _ensure_tables
         await _ensure_tables(state.pg_pool)
+
+        from provisa.discovery.catalog_cache import ensure_table as _ensure_catalog_cache
+        await _ensure_catalog_cache(state.pg_pool)
         fn_rows = await conn.fetch("SELECT * FROM tracked_functions ORDER BY name")
         wh_rows = await conn.fetch("SELECT * FROM tracked_webhooks ORDER BY name")
         import json as _json
@@ -2066,6 +2149,28 @@ def create_app() -> FastAPI:
     from provisa.auth.wiring import wire_auth
     wire_auth(app, state.auth_config, db_pool=state.pg_pool)
 
+    if state.multitenancy:
+        from provisa.api.middleware.tenant_middleware import TenantMiddleware
+        app.add_middleware(TenantMiddleware)
+
+        from starlette.middleware.base import BaseHTTPMiddleware as _BaseHTTPMiddleware
+
+        class _TenantSpanMiddleware(_BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                response = await call_next(request)
+                tenant_id = getattr(request.state, "tenant_id", None)
+                if tenant_id:
+                    try:
+                        from opentelemetry import trace as _trace
+                        _span = _trace.get_current_span()
+                        if _span.is_recording():
+                            _span.set_attribute("tenant_id", tenant_id)
+                    except Exception:
+                        pass
+                return response
+
+        app.add_middleware(_TenantSpanMiddleware)
+
     app.include_router(data_router)
     app.include_router(dev_router)
     app.include_router(sdl_router)
@@ -2144,6 +2249,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.table_profile_router import router as table_profile_router
     app.include_router(table_profile_router)
 
+    from provisa.api.admin.table_search_router import router as table_search_router
+    app.include_router(table_search_router)
+
     from provisa.api.admin.local_users_router import router as local_users_router
     app.include_router(local_users_router)
 
@@ -2182,6 +2290,9 @@ def create_app() -> FastAPI:
         app.include_router(nl_router)
     except ImportError:
         pass
+
+    from provisa.api.billing.router import router as billing_router
+    app.include_router(billing_router, prefix="/billing", tags=["billing"])
 
     @app.api_route("/health", methods=["GET", "HEAD"])
     async def health():

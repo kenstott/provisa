@@ -25,26 +25,33 @@ class MVRegistry:
 
     Loaded from config at startup. Status updates are tracked here
     and optionally persisted to PG.
+
+    When tenant_id is set, MV IDs are namespaced as "{tenant_id}:{mv.id}"
+    so per-tenant registries can coexist without key collisions.
+    Single-tenant mode (tenant_id=None) is unchanged.
     """
 
-    def __init__(self):
+    def __init__(self, tenant_id: str | None = None) -> None:
         self._mvs: dict[str, MVDefinition] = {}
+        self._tenant_id = tenant_id
+
+    def _key(self, mv_id: str) -> str:
+        if self._tenant_id is not None:
+            return f"{self._tenant_id}:{mv_id}"
+        return mv_id
 
     def register(self, mv: MVDefinition) -> None:
-        self._mvs[mv.id] = mv
+        self._mvs[self._key(mv.id)] = mv
 
     def unregister(self, mv_id: str) -> None:
-        self._mvs.pop(mv_id, None)
+        self._mvs.pop(self._key(mv_id), None)
 
     def get(self, mv_id: str) -> MVDefinition | None:
-        return self._mvs.get(mv_id)
+        return self._mvs.get(self._key(mv_id))
 
     def get_fresh(self) -> list[MVDefinition]:
         """Return all enabled and fresh MVs (for rewriter)."""
-        return [
-            mv for mv in self._mvs.values()
-            if mv.enabled and mv.is_fresh
-        ]
+        return [mv for mv in self._mvs.values() if mv.enabled and mv.is_fresh]
 
     def get_enabled(self) -> list[MVDefinition]:
         """Return all enabled MVs (for refresh scheduler)."""
@@ -73,12 +80,12 @@ class MVRegistry:
         return affected
 
     def mark_refreshing(self, mv_id: str) -> None:
-        mv = self._mvs.get(mv_id)
+        mv = self._mvs.get(self._key(mv_id))
         if mv:
             mv.status = MVStatus.REFRESHING
 
     def mark_refreshed(self, mv_id: str, row_count: int) -> None:
-        mv = self._mvs.get(mv_id)
+        mv = self._mvs.get(self._key(mv_id))
         if mv:
             mv.status = MVStatus.FRESH
             mv.last_refresh_at = time.time()
@@ -86,7 +93,7 @@ class MVRegistry:
             mv.last_error = None
 
     def mark_refresh_failed(self, mv_id: str, error: str) -> None:
-        mv = self._mvs.get(mv_id)
+        mv = self._mvs.get(self._key(mv_id))
         if mv:
             mv.status = MVStatus.STALE
             mv.last_error = error

@@ -17,6 +17,7 @@ Endpoints:
   GET  /admin/grpc-remote/{id}/proto       — return stored proto text
   PUT  /admin/grpc-remote/{id}/proto       — store new proto text + re-register
 """
+
 from __future__ import annotations
 
 import logging
@@ -34,14 +35,16 @@ router = APIRouter(prefix="/admin/grpc-remote", tags=["admin", "grpc-remote"])
 
 class GrpcRemoteRegisterRequest(BaseModel):
     source_id: str
-    proto_path: str                  # local path or http/https URL to .proto file
-    server_address: str              # host:port
+    proto_path: str  # local path or http/https URL to .proto file
+    server_address: str  # host:port
     namespace: str = ""
     domain_id: str = ""
     import_paths: list[str] = []
     tls: bool = False
     auth_config: dict | None = None
     cache_ttl: int = 300
+    method_overrides: dict[str, str] = {}  # {"MethodName": "query" | "mutation"}
+    relationships: list[dict] = []
 
 
 async def _load_and_register(
@@ -55,6 +58,8 @@ async def _load_and_register(
     auth_config: dict | None,
     cache_ttl: int,
     state,
+    method_overrides: dict[str, str] | None = None,
+    relationships: list[dict] | None = None,
 ) -> tuple[str, int, int]:
     """Load proto, compile stubs, open channel, register tables/functions.
 
@@ -70,11 +75,13 @@ async def _load_and_register(
     # Re-read raw text for storage
     if proto_path.startswith("http://") or proto_path.startswith("https://"):
         import httpx
+
         r = httpx.get(proto_path, timeout=30, follow_redirects=True)
         r.raise_for_status()
         proto_text = r.text
     else:
         from pathlib import Path
+
         proto_text = Path(proto_path).read_text()
 
     pb2_path, pb2_grpc_path = compile_proto_stubs(
@@ -84,7 +91,7 @@ async def _load_and_register(
     )
     pb2, _ = load_stubs(pb2_path, pb2_grpc_path)
 
-    queries, mutations = map_proto(proto_dict, namespace, source_id, domain_id)
+    queries, mutations = map_proto(proto_dict, namespace, source_id, domain_id, method_overrides)
 
     if state.pg_pool is None:
         raise HTTPException(status_code=503, detail="Database not connected")
@@ -95,6 +102,11 @@ async def _load_and_register(
         n_tables, n_mutations = await _register_schema(
             source_id, queries, mutations, conn, namespace, domain_id
         )
+
+    if relationships:
+        from provisa.api.admin.graphql_remote_router import _upsert_relationships_to_semantic_layer
+
+        await _upsert_relationships_to_semantic_layer(relationships, state.pg_pool, state)
 
     # Open gRPC channel
     if tls:
@@ -125,6 +137,8 @@ async def _load_and_register(
         "tls": tls,
         "auth_config": auth_config,
         "cache_ttl": cache_ttl,
+        "method_overrides": method_overrides or {},
+        "relationships": relationships or [],
         "pb2_path": pb2_path,
         "pb2_grpc_path": pb2_grpc_path,
         "pb2": pb2,
@@ -172,16 +186,35 @@ async def _register_schema(
             domain_id,
             f"grpc_query:{q.full_method_path}",
         )
+        from provisa.core.models import ObjectField
+
+        def _col_def_to_object_fields(defs):
+            return [
+                ObjectField(
+                    name=d.name, type=d.type, fields=_col_def_to_object_fields(d.object_fields)
+                )
+                for d in defs
+            ]
+
+        output_cols = [
+            Column(
+                name=c.name,
+                visible_to=[],
+                object_fields=_col_def_to_object_fields(c.object_fields),
+            )
+            for c in q.columns
+        ]
+        nf_cols = [
+            Column(name=f"_nf_{c.name}", visible_to=[], native_filter_type="grpc_input")
+            for c in q.input_fields
+        ]
         tbl = Table(
             source_id=source_id,
             domain_id=domain_id or "",
             schema_name="grpc_remote",
             table_name=table_name,
             governance=GovernanceLevel.pre_approved,
-            columns=[
-                Column(name=c.name, visible_to=[])
-                for c in q.columns
-            ],
+            columns=output_cols + nf_cols,
         )
         await table_repo.upsert(conn, tbl)
 
@@ -220,9 +253,18 @@ async def register_grpc_remote_source(body: GrpcRemoteRegisterRequest, request: 
     state = request.app.state
     try:
         proto_text, n_tables, n_mutations = await _load_and_register(
-            body.source_id, body.proto_path, body.server_address,
-            body.namespace, body.domain_id, body.import_paths,
-            body.tls, body.auth_config, body.cache_ttl, state,
+            body.source_id,
+            body.proto_path,
+            body.server_address,
+            body.namespace,
+            body.domain_id,
+            body.import_paths,
+            body.tls,
+            body.auth_config,
+            body.cache_ttl,
+            state,
+            body.method_overrides or None,
+            body.relationships or None,
         )
     except HTTPException:
         raise
@@ -233,7 +275,9 @@ async def register_grpc_remote_source(body: GrpcRemoteRegisterRequest, request: 
 
     log.info(
         "Registered gRPC remote source %s (%d tables, %d mutations)",
-        body.source_id, n_tables, n_mutations,
+        body.source_id,
+        n_tables,
+        n_mutations,
     )
     return {"source_id": body.source_id, "tables": n_tables, "mutations": n_mutations}
 
@@ -259,13 +303,20 @@ async def refresh_grpc_remote_source(source_id: str, request: Request):
             reg.get("auth_config"),
             reg.get("cache_ttl", 300),
             state,
+            reg.get("method_overrides") or None,
+            reg.get("relationships") or None,
         )
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Refresh failed: {exc}") from exc
 
-    log.info("Refreshed gRPC remote source %s (%d tables, %d mutations)", source_id, n_tables, n_mutations)
+    log.info(
+        "Refreshed gRPC remote source %s (%d tables, %d mutations)",
+        source_id,
+        n_tables,
+        n_mutations,
+    )
     return {"source_id": source_id, "tables": n_tables, "mutations": n_mutations}
 
 
@@ -275,16 +326,18 @@ async def list_grpc_remote_sources(request: Request):
     sources = getattr(request.app.state, "grpc_remote_sources", {})
     result = []
     for sid, reg in sources.items():
-        result.append({
-            "source_id": sid,
-            "server_address": reg.get("server_address"),
-            "proto_path": reg.get("proto_path"),
-            "namespace": reg.get("namespace", ""),
-            "domain_id": reg.get("domain_id", ""),
-            "tls": reg.get("tls", False),
-            "tables": len(reg.get("queries", [])),
-            "mutations": len(reg.get("mutations", [])),
-        })
+        result.append(
+            {
+                "source_id": sid,
+                "server_address": reg.get("server_address"),
+                "proto_path": reg.get("proto_path"),
+                "namespace": reg.get("namespace", ""),
+                "domain_id": reg.get("domain_id", ""),
+                "tls": reg.get("tls", False),
+                "tables": len(reg.get("queries", [])),
+                "mutations": len(reg.get("mutations", [])),
+            }
+        )
     return result
 
 
@@ -330,6 +383,7 @@ async def put_grpc_proto(source_id: str, request: Request):
             reg.get("namespace", ""),
             source_id,
             reg.get("domain_id", ""),
+            reg.get("method_overrides") or None,
         )
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Proto compilation failed: {exc}") from exc
@@ -341,18 +395,29 @@ async def put_grpc_proto(source_id: str, request: Request):
 
     async with state.pg_pool.acquire() as conn:
         n_tables, n_mutations = await _register_schema(
-            source_id, queries, mutations, conn,
-            reg.get("namespace", ""), reg.get("domain_id", ""),
+            source_id,
+            queries,
+            mutations,
+            conn,
+            reg.get("namespace", ""),
+            reg.get("domain_id", ""),
         )
 
-    sources[source_id].update({
-        "proto_text": proto_text,
-        "pb2_path": pb2_path,
-        "pb2_grpc_path": pb2_grpc_path,
-        "pb2": pb2,
-        "queries": queries,
-        "mutations": mutations,
-    })
+    sources[source_id].update(
+        {
+            "proto_text": proto_text,
+            "pb2_path": pb2_path,
+            "pb2_grpc_path": pb2_grpc_path,
+            "pb2": pb2,
+            "queries": queries,
+            "mutations": mutations,
+        }
+    )
 
-    log.info("Updated proto for gRPC source %s (%d tables, %d mutations)", source_id, n_tables, n_mutations)
+    log.info(
+        "Updated proto for gRPC source %s (%d tables, %d mutations)",
+        source_id,
+        n_tables,
+        n_mutations,
+    )
     return {"source_id": source_id, "tables": n_tables, "mutations": n_mutations}

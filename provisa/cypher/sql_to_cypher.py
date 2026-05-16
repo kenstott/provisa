@@ -91,11 +91,15 @@ def semantic_sql_to_cypher(
         domain_to_label.setdefault((_sql_dom, _tbl), lbl)
         domain_to_label.setdefault(("", _tbl), lbl)
 
-    # Build reverse lookup for relationships: (src_col, tgt_col) → RelationshipMapping
-    join_to_rel: dict[tuple[str, str], RelationshipMapping] = {}
+    # Build lookup for relationships: (src_col, tgt_col, tgt_display_label) → RelationshipMapping
+    # Keyed by forward direction + target label to avoid collision between inverse relationships
+    # that share the same column names (e.g. pets→assignments and assignments→pets both use
+    # breed_name/breedName but target different labels).
+    join_to_rel: dict[tuple[str, str, str], RelationshipMapping] = {}
     for rel in label_map.relationships.values():
-        join_to_rel[(rel.join_source_column, rel.join_target_column)] = rel
-        join_to_rel[(rel.join_target_column, rel.join_source_column)] = rel
+        tgt_nm = label_map.nodes.get(rel.target_label)
+        tgt_display = label_map.display_label(tgt_nm) if tgt_nm is not None else rel.target_label
+        join_to_rel[(rel.join_source_column, rel.join_target_column, tgt_display)] = rel
 
     # --- Resolve FROM clause ---
     from_clause = tree.args.get("from_")
@@ -195,7 +199,7 @@ def semantic_sql_to_cypher(
         tgt_sql_alias = join_tbl.alias or join_tbl.name
 
         on_expr = join.args.get("on")
-        rel_type = _rel_type_from_on(on_expr, join_to_rel) or label_to_rel.get(tgt_label)
+        rel_type = _rel_type_from_on(on_expr, join_to_rel, tgt_label) or label_to_rel.get(tgt_label)
         # Determine source alias from ON condition table references
         src_sql_alias = _src_alias_from_on(on_expr, tgt_sql_alias, sql_base_alias)
         is_optional = (join.side or "").upper() == "LEFT"
@@ -684,7 +688,8 @@ def _resolve_label(
 
 def _rel_type_from_on(
     on_expr: exp.Expression | None,
-    join_to_rel: dict[tuple[str, str], RelationshipMapping],
+    join_to_rel: dict[tuple[str, str, str], RelationshipMapping],
+    tgt_label: str | None = None,
 ) -> str | None:
     """Extract Cypher relationship type from a JOIN ON condition."""
     if on_expr is None:
@@ -694,7 +699,10 @@ def _rel_type_from_on(
         if isinstance(left, exp.Column) and isinstance(right, exp.Column):
             lc = left.name
             rc = right.name
-            rel = join_to_rel.get((lc, rc)) or join_to_rel.get((rc, lc))
+            rel = (
+                join_to_rel.get((lc, rc, tgt_label))
+                or join_to_rel.get((rc, lc, tgt_label))
+            ) if tgt_label is not None else None
             if rel:
                 return rel.rel_type
     return None

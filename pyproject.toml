@@ -32,6 +32,8 @@ dependencies = [
     "aiokafka",
     "websockets>=11.0",
     "boto3",
+    "stripe",
+    "cryptography",
     "sqlalchemy>=2",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",
@@ -44,6 +46,7 @@ dependencies = [
     "opentelemetry-instrumentation-grpc",
     "buenavista>=0.5.0.post1",
     "duckdb",
+    "networkx>=3.0",
 ]
 
 [project.optional-dependencies]

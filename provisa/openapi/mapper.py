@@ -9,6 +9,7 @@
 # permission from the copyright holder.
 
 """Parse an OpenAPI 3.x or Swagger 2.0 spec into query and mutation descriptors."""
+
 from __future__ import annotations
 from dataclasses import dataclass, field
 import re
@@ -20,8 +21,8 @@ class OpenAPIQuery:
     path: str
     method: str = "GET"
     summary: str | None = None
-    path_params: list[dict] = field(default_factory=list)    # [{name, type}]
-    query_params: list[dict] = field(default_factory=list)   # [{name, type}]
+    path_params: list[dict] = field(default_factory=list)  # [{name, type}]
+    query_params: list[dict] = field(default_factory=list)  # [{name, type}]
     response_schema: dict | None = None  # JSON Schema of 200 response
 
 
@@ -31,7 +32,7 @@ class OpenAPIMutation:
     path: str
     method: str
     summary: str | None = None
-    input_schema: dict | None = None      # JSON Schema of requestBody
+    input_schema: dict | None = None  # JSON Schema of requestBody
     response_schema: dict | None = None
 
 
@@ -159,10 +160,17 @@ def _extract_params(spec: dict, params: list) -> tuple[list[dict], list[dict]]:
     return path_params, query_params
 
 
-def parse_spec(spec: dict) -> tuple[list[OpenAPIQuery], list[OpenAPIMutation]]:
-    """Parse an OpenAPI 3.x or Swagger 2.0 spec into queries and mutations."""
+def parse_spec(
+    spec: dict,
+    operation_overrides: dict[str, str] | None = None,
+) -> tuple[list[OpenAPIQuery], list[OpenAPIMutation]]:
+    """Parse an OpenAPI 3.x or Swagger 2.0 spec into queries and mutations.
+
+    operation_overrides: {operationId: "query" | "mutation"} — takes priority over x-provisa-kind.
+    """
     queries: list[OpenAPIQuery] = []
     mutations: list[OpenAPIMutation] = []
+    _op_overrides = operation_overrides or {}
 
     paths = spec.get("paths", {})
     for path, path_item in paths.items():
@@ -181,30 +189,42 @@ def parse_spec(spec: dict) -> tuple[list[OpenAPIQuery], list[OpenAPIMutation]]:
             summary = operation.get("summary") or operation.get("description")
             response_schema = _extract_response_schema(spec, operation)
 
-            # x-provisa-kind: "query" | "mutation" overrides the GET heuristic.
-            # Useful when POST is used as an enhanced read (common REST anti-pattern).
-            explicit_kind = (operation.get("x-provisa-kind") or "").lower()
-            is_query = explicit_kind == "query" or (method == "get" and explicit_kind != "mutation")
+            # Payload override > x-provisa-kind > GET heuristic
+            explicit_kind = (
+                _op_overrides.get(op_id, "").lower()
+                or (operation.get("x-provisa-kind") or "").lower()
+            )
+            _SCALAR_TYPES = {"string", "number", "boolean", "integer"}
+            response_is_scalar = (
+                isinstance(response_schema, dict) and response_schema.get("type") in _SCALAR_TYPES
+            )
+            is_query = not response_is_scalar and (
+                explicit_kind == "query" or (method == "get" and explicit_kind != "mutation")
+            )
 
             if is_query:
-                queries.append(OpenAPIQuery(
-                    operation_id=op_id,
-                    path=path,
-                    method=method.upper(),
-                    summary=summary,
-                    path_params=path_params,
-                    query_params=query_params,
-                    response_schema=response_schema,
-                ))
+                queries.append(
+                    OpenAPIQuery(
+                        operation_id=op_id,
+                        path=path,
+                        method=method.upper(),
+                        summary=summary,
+                        path_params=path_params,
+                        query_params=query_params,
+                        response_schema=response_schema,
+                    )
+                )
             else:
                 input_schema = _extract_request_schema(spec, operation)
-                mutations.append(OpenAPIMutation(
-                    operation_id=op_id,
-                    path=path,
-                    method=method.upper(),
-                    summary=summary,
-                    input_schema=input_schema,
-                    response_schema=response_schema,
-                ))
+                mutations.append(
+                    OpenAPIMutation(
+                        operation_id=op_id,
+                        path=path,
+                        method=method.upper(),
+                        summary=summary,
+                        input_schema=input_schema,
+                        response_schema=response_schema,
+                    )
+                )
 
     return queries, mutations

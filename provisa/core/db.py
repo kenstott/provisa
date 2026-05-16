@@ -61,3 +61,9 @@ async def init_schema(pool: asyncpg.Pool, schema_sql: str) -> None:
             await conn.execute(schema_sql)
         finally:
             await conn.execute("SELECT pg_advisory_unlock(7337)")
+
+
+async def set_tenant_context(conn: asyncpg.Connection, tenant_id: str | None) -> None:
+    """Set app.tenant_id session variable for RLS. Call at start of each transaction."""
+    if tenant_id:
+        await conn.execute(f"SET LOCAL app.tenant_id = '{tenant_id}'")

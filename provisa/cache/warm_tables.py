@@ -52,16 +52,27 @@ class QueryCounter:
 
 
 class WarmTableManager:
-    """Manages promotion/demotion of frequently queried tables to Iceberg."""
+    """Manages promotion/demotion of frequently queried tables to Iceberg.
+
+    In multi-tenant mode, instantiate one WarmTableManager per tenant, passing
+    the tenant_id so each tenant gets an isolated Iceberg schema
+    (``warm_cache_<tenant_id>``). The per-tenant instance should be obtained
+    from TenantContext — do not share a single instance across tenants.
+    """
 
     def __init__(
         self,
         iceberg_catalog: str = DEFAULT_ICEBERG_CATALOG,
         iceberg_schema: str = DEFAULT_ICEBERG_SCHEMA,
+        tenant_id: str | None = None,
     ) -> None:
         self._warm_tables: set[str] = set()
         self._iceberg_catalog = iceberg_catalog
-        self._iceberg_schema = iceberg_schema
+        # Each tenant gets an isolated schema so warm tables never bleed across tenants.
+        if tenant_id is not None:
+            self._iceberg_schema = f"warm_cache_{tenant_id.replace('-', '_')}"
+        else:
+            self._iceberg_schema = iceberg_schema
         self._lock = threading.Lock()
 
     def get_warm_tables(self) -> set[str]:
@@ -95,19 +106,21 @@ class WarmTableManager:
 
             # Size check
             cursor = trino_conn.cursor()
-            cursor.execute(f'SELECT COUNT(*) FROM {table}')
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
             row_count = cursor.fetchone()[0]
 
             if row_count > max_rows:
                 log.info(
                     "Skipping warm promotion for %s: %d rows exceeds max %d",
-                    table, row_count, max_rows,
+                    table,
+                    row_count,
+                    max_rows,
                 )
                 continue
 
             # CTAS into Iceberg
             target = self._iceberg_ref(table)
-            cursor.execute(f'CREATE TABLE {target} AS SELECT * FROM {table}')
+            cursor.execute(f"CREATE TABLE {target} AS SELECT * FROM {table}")
             cursor.fetchall()
 
             with self._lock:
@@ -139,7 +152,7 @@ class WarmTableManager:
 
             target = self._iceberg_ref(table)
             cursor = trino_conn.cursor()
-            cursor.execute(f'DROP TABLE IF EXISTS {target}')
+            cursor.execute(f"DROP TABLE IF EXISTS {target}")
             cursor.fetchall()
 
             with self._lock:

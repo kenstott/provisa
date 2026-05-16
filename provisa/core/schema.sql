@@ -34,6 +34,7 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO domains (id, description) VALUES ('ops', 'Operational telemetry')
 ON CONFLICT (id) DO NOTHING;
 
+
 -- Seed demo shelter domain
 INSERT INTO domains (id, description) VALUES ('shelter', 'Animal shelter staff and breed management')
 ON CONFLICT (id) DO NOTHING;
@@ -516,6 +517,18 @@ CREATE TABLE IF NOT EXISTS user_role_assignments (
     UNIQUE (user_id, role_id, domain_id)
 );
 
+-- tenant_id isolation for _META_TABLES (SaaS multi-tenancy)
+DO $$ BEGIN
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE domains ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE roles ADD COLUMN IF NOT EXISTS tenant_id UUID;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 -- Org invite tokens for multi-tenant basic auth account creation
 CREATE TABLE IF NOT EXISTS org_invites (
     token       TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -526,3 +539,12 @@ CREATE TABLE IF NOT EXISTS org_invites (
     used_at     TIMESTAMPTZ,
     used_by     TEXT
 );
+
+-- Louvain cluster assignments as computed attributes on registered_tables
+DO $$ BEGIN
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS l1_cluster INTEGER;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS l2_cluster INTEGER;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS l3_cluster INTEGER;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS clusters_computed_at TIMESTAMPTZ;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;

@@ -159,6 +159,7 @@ class SourceInput:
     password: str = ""
     path: str | None = None
     description: str = ""
+    allowed_domains: list[str] = strawberry.field(default_factory=list)
 
 
 @strawberry.input
@@ -247,33 +248,6 @@ class RLSRuleInput:
 
 
 @strawberry.type
-class GovernedQueryType:
-    id: int
-    query_text: str
-    compiled_sql: str
-    status: str
-    stable_id: str | None
-    developer_id: str | None
-    approved_by: str | None
-    sink_topic: str | None
-    sink_trigger: str | None
-    sink_key_column: str | None
-    business_purpose: str | None
-    use_cases: str | None
-    data_sensitivity: str | None
-    refresh_frequency: str | None
-    expected_row_count: str | None
-    owner_team: str | None
-    expiry_date: str | None
-    visible_to: list[str]
-    schedule_cron: str | None
-    schedule_output_type: str | None
-    schedule_output_format: str | None
-    schedule_destination: str | None
-    compiled_cypher: str | None
-
-
-@strawberry.type
 class MVType:
     id: str
     source_tables: list[str]
@@ -325,6 +299,7 @@ class MutationResult:
 
 # --- Compile / Submit types ---
 
+
 @strawberry.type
 class ColumnAliasType:
     field_name: str
@@ -368,42 +343,3 @@ class CompileQueryInput:
     flat_sql: bool = False
     flat_cypher: bool = False
     node_only_cypher: bool = False
-
-
-@strawberry.type
-class SubmitQueryResult:
-    query_id: int
-    operation_name: str
-    message: str
-
-
-@strawberry.input
-class SinkInput:
-    topic: str
-    trigger: str = "change_event"
-    key_column: str | None = None
-
-
-@strawberry.input
-class ScheduleInput:
-    cron: str
-    output_type: str | None = None
-    output_format: str | None = None
-    destination: str | None = None
-
-
-@strawberry.input
-class SubmitQueryInput:
-    query: str
-    role: str
-    variables: strawberry.scalars.JSON | None = None
-    compiled_cypher: str | None = None
-    sink: SinkInput | None = None
-    schedule: ScheduleInput | None = None
-    business_purpose: str | None = None
-    use_cases: str | None = None
-    data_sensitivity: str | None = None
-    refresh_frequency: str | None = None
-    expected_row_count: str | None = None
-    owner_team: str | None = None
-    expiry_date: str | None = None

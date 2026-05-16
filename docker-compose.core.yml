@@ -52,6 +52,8 @@ services:
       - ./trino/etc/config.properties:/etc/trino/config.properties:ro
       - ./trino/etc/jvm.config:/etc/trino/jvm.config:ro
       - ./trino/etc/node.properties:/etc/trino/node.properties:ro
+      - ./trino/etc/resource-groups.json:/etc/trino/resource-groups.json:ro
+      - ./trino/etc/resource-groups.properties:/etc/trino/resource-groups.properties:ro
       - ./trino/catalog:/etc/trino/catalog
       - ./trino/kafka:/etc/trino/kafka:ro
       - trino_cache:/data/trino/cache
@@ -105,10 +107,16 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/localhost/8480' || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 18
-      start_period: 60s
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 20s
+      start_interval: 2s
+
+  stripe-mock:
+    image: stripe/stripe-mock:latest
+    ports:
+      - "12111:12111"
 
 volumes:
   pg_data:

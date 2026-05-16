@@ -26,6 +26,36 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/.logs"
 mkdir -p "$LOG_DIR"
 
+# Download GovData JAR from GitHub Packages if not present
+GOVDATA_JAR="$SCRIPT_DIR/lib/calcite-govdata-all.jar"
+if [ ! -f "$GOVDATA_JAR" ]; then
+  mkdir -p "$SCRIPT_DIR/lib"
+  _GOVDATA_TOKEN="${GITHUB_TOKEN:-$(gh auth token 2>/dev/null || true)}"
+  if [ -n "$_GOVDATA_TOKEN" ]; then
+    echo -n "Downloading GovData JAR..."
+    _GOVDATA_BASE="https://maven.pkg.github.com/kenstott/calcite/org/apache/calcite/calcite-govdata/1.42.0-SNAPSHOT"
+    _GOVDATA_META=$(curl -fsSL -H "Authorization: Bearer $_GOVDATA_TOKEN" "$_GOVDATA_BASE/maven-metadata.xml" 2>/dev/null || true)
+    _GOVDATA_TS=$(echo "$_GOVDATA_META" | grep -oE '<timestamp>[^<]+' | head -1 | sed 's/<timestamp>//')
+    _GOVDATA_BN=$(echo "$_GOVDATA_META" | grep -oE '<buildNumber>[^<]+' | head -1 | sed 's/<buildNumber>//')
+    if [ -n "$_GOVDATA_TS" ] && [ -n "$_GOVDATA_BN" ]; then
+      _GOVDATA_URL="$_GOVDATA_BASE/calcite-govdata-1.42.0-${_GOVDATA_TS}-${_GOVDATA_BN}-all.jar"
+    else
+      _GOVDATA_URL="$_GOVDATA_BASE/calcite-govdata-1.42.0-SNAPSHOT-all.jar"
+    fi
+    if curl -fsSL \
+        -H "Authorization: Bearer $_GOVDATA_TOKEN" \
+        -o "$GOVDATA_JAR" \
+        "$_GOVDATA_URL"; then
+      echo " OK"
+    else
+      echo " FAILED (GovData subscriptions unavailable)"
+      rm -f "$GOVDATA_JAR"
+    fi
+  else
+    echo "Warning: no GitHub token — set GITHUB_TOKEN or run 'gh auth login'. GovData subscriptions unavailable."
+  fi
+fi
+
 # Load .env if present
 if [ -f "$SCRIPT_DIR/.env" ]; then
   set -a
@@ -150,39 +180,50 @@ docker exec provisa-postgres-1 psql -U provisa -d provisa -c "
 " 2>/dev/null || echo "pet_store schema setup skipped (will retry on next start)"
 
 if [ "$DEMO" = true ]; then
-  # Seed petstore-mock with demo customer names so get_user_by_name lookups succeed
   echo -n "Waiting for petstore-mock"
+  _petstore_ready=false
   for i in $(seq 1 30); do
-    if curl -sf "${PETSTORE_BASE_URL}/openapi.json" > /dev/null 2>&1; then
+    PET_OK=$(docker inspect --format '{{.State.Health.Status}}' provisa-petstore-mock-1 2>/dev/null || echo "missing")
+    if [ "$PET_OK" = "healthy" ]; then
       echo " OK"
+      _petstore_ready=true
       break
     fi
     if [ "$i" -eq 30 ]; then
       echo " TIMEOUT (skipping user seed)"
-      break
     fi
     echo -n "."
     sleep 2
   done
-  curl -sf "${PETSTORE_BASE_URL}/openapi.json" > /dev/null 2>&1 && \
-  curl -s -X POST "${PETSTORE_BASE_URL}/user/createWithList" \
-    -H "Content-Type: application/json" \
-    -d '[
-      {"id":101,"username":"Sara Kim","firstName":"Sara","lastName":"Kim","email":"sara.kim@example.com","password":"demo","phone":"555-0101","userStatus":1},
-      {"id":102,"username":"Tom Evans","firstName":"Tom","lastName":"Evans","email":"tom.evans@example.com","password":"demo","phone":"555-0102","userStatus":1},
-      {"id":103,"username":"Amy Zhao","firstName":"Amy","lastName":"Zhao","email":"amy.zhao@example.com","password":"demo","phone":"555-0103","userStatus":1},
-      {"id":104,"username":"Carlos Ruiz","firstName":"Carlos","lastName":"Ruiz","email":"carlos.ruiz@example.com","password":"demo","phone":"555-0104","userStatus":1},
-      {"id":105,"username":"Nina Patel","firstName":"Nina","lastName":"Patel","email":"nina.patel@example.com","password":"demo","phone":"555-0105","userStatus":1},
-      {"id":106,"username":"James Park","firstName":"James","lastName":"Park","email":"james.park@example.com","password":"demo","phone":"555-0106","userStatus":1},
-      {"id":107,"username":"Lisa Chen","firstName":"Lisa","lastName":"Chen","email":"lisa.chen@example.com","password":"demo","phone":"555-0107","userStatus":1},
-      {"id":108,"username":"Mark Torres","firstName":"Mark","lastName":"Torres","email":"mark.torres@example.com","password":"demo","phone":"555-0108","userStatus":1},
-      {"id":109,"username":"Jen Wu","firstName":"Jen","lastName":"Wu","email":"jen.wu@example.com","password":"demo","phone":"555-0109","userStatus":1},
-      {"id":110,"username":"Derek Hall","firstName":"Derek","lastName":"Hall","email":"derek.hall@example.com","password":"demo","phone":"555-0110","userStatus":1},
-      {"id":111,"username":"Rachel Scott","firstName":"Rachel","lastName":"Scott","email":"rachel.scott@example.com","password":"demo","phone":"555-0111","userStatus":1}
-    ]' > /dev/null 2>&1 && echo "Petstore users seeded." || echo "Petstore user seed skipped."
+  if [ "$_petstore_ready" = true ]; then
+    _users_seeded=false
+    for _attempt in 1 2 3; do
+      if curl -sf -X POST "${PETSTORE_BASE_URL}/user/createWithList" \
+        -H "Content-Type: application/json" \
+        -d '[
+          {"id":101,"username":"Sara Kim","firstName":"Sara","lastName":"Kim","email":"sara.kim@example.com","password":"demo","phone":"555-0101","userStatus":1},
+          {"id":102,"username":"Tom Evans","firstName":"Tom","lastName":"Evans","email":"tom.evans@example.com","password":"demo","phone":"555-0102","userStatus":1},
+          {"id":103,"username":"Amy Zhao","firstName":"Amy","lastName":"Zhao","email":"amy.zhao@example.com","password":"demo","phone":"555-0103","userStatus":1},
+          {"id":104,"username":"Carlos Ruiz","firstName":"Carlos","lastName":"Ruiz","email":"carlos.ruiz@example.com","password":"demo","phone":"555-0104","userStatus":1},
+          {"id":105,"username":"Nina Patel","firstName":"Nina","lastName":"Patel","email":"nina.patel@example.com","password":"demo","phone":"555-0105","userStatus":1},
+          {"id":106,"username":"James Park","firstName":"James","lastName":"Park","email":"james.park@example.com","password":"demo","phone":"555-0106","userStatus":1},
+          {"id":107,"username":"Lisa Chen","firstName":"Lisa","lastName":"Chen","email":"lisa.chen@example.com","password":"demo","phone":"555-0107","userStatus":1},
+          {"id":108,"username":"Mark Torres","firstName":"Mark","lastName":"Torres","email":"mark.torres@example.com","password":"demo","phone":"555-0108","userStatus":1},
+          {"id":109,"username":"Jen Wu","firstName":"Jen","lastName":"Wu","email":"jen.wu@example.com","password":"demo","phone":"555-0109","userStatus":1},
+          {"id":110,"username":"Derek Hall","firstName":"Derek","lastName":"Hall","email":"derek.hall@example.com","password":"demo","phone":"555-0110","userStatus":1},
+          {"id":111,"username":"Rachel Scott","firstName":"Rachel","lastName":"Scott","email":"rachel.scott@example.com","password":"demo","phone":"555-0111","userStatus":1}
+        ]' > /dev/null 2>&1; then
+        echo "Petstore users seeded."
+        _users_seeded=true
+        break
+      fi
+      sleep 2
+    done
+    [ "$_users_seeded" = false ] && echo "Petstore user seed skipped."
+  fi
 
   # Seed one order per pet — each animal is unique, so one sale per pet makes sense.
-  if curl -sf "${PETSTORE_BASE_URL}/openapi.json" > /dev/null 2>&1; then
+  if [ "$_petstore_ready" = true ] && curl -sf "${PETSTORE_BASE_URL}/pet/findByStatus?status=available" > /dev/null 2>&1; then
     for i in 1 2 3 4 5 6 7 8 9 10; do
       curl -s -X DELETE "${PETSTORE_BASE_URL}/store/order/$i" > /dev/null 2>&1 || true
     done
@@ -203,6 +244,20 @@ if [ "$DEMO" = true ]; then
   else
     echo "Petstore order seed skipped."
   fi
+
+  echo -n "Waiting for graphql-demo"
+  for i in $(seq 1 45); do
+    GQL_OK=$(docker inspect --format '{{.State.Health.Status}}' provisa-graphql-demo-1 2>/dev/null || echo "missing")
+    if [ "$GQL_OK" = "healthy" ]; then
+      echo " OK"
+      break
+    fi
+    if [ "$i" -eq 45 ]; then
+      echo " TIMEOUT (continuing anyway)"
+    fi
+    echo -n "."
+    sleep 2
+  done
 fi
 
 # Kill any existing UI and backend processes.

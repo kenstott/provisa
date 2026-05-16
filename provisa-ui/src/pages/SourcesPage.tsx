@@ -27,6 +27,8 @@ const DISCOVERABLE_TYPES = new Set(["mongodb", "elasticsearch", "cassandra", "pr
 const MAPPING_TYPES = new Set(["redis", "mongodb", "elasticsearch", "cassandra", "prometheus", "accumulo"]);
 
 const SOURCE_TYPES = [
+  // Subscriptions
+  { value: "govdata", label: "GovData (US Government)", category: "Subscriptions", defaultPort: 0 },
   // RDBMS
   { value: "postgresql", label: "PostgreSQL", category: "RDBMS", defaultPort: 5432 },
   { value: "mysql", label: "MySQL", category: "RDBMS", defaultPort: 3306 },
@@ -71,6 +73,7 @@ const SOURCE_TYPES = [
   { value: "grpc", label: "gRPC", category: "API", defaultPort: 50051 },
   // Streaming
   { value: "kafka", label: "Kafka", category: "Streaming", defaultPort: 9092 },
+  // Public Data
 ];
 
 const API_AUTH_TYPES = [
@@ -212,7 +215,7 @@ export function SourcesPage() {
   };
 
   const handleTypeChange = (type: string) => {
-    setForm({ ...form, type, port: getDefaultPort(type) });
+    setForm({ ...form, type, port: getDefaultPort(type), description: "" });
     setAuthType("none");
     setAuthFields({});
   };
@@ -235,6 +238,14 @@ export function SourcesPage() {
     });
     setAuthType("none");
     setAuthFields({});
+    if (s.type === "govdata" && s.database) {
+      const storedSchemas = s.database.split(",").map((x: string) => x.trim()).filter(Boolean);
+      setGovdataSubjects(GOVDATA_SUBJECTS.filter((subj) =>
+        subj.schemas.some((schema) => storedSchemas.includes(schema))
+      ).map((subj) => subj.value));
+    } else {
+      setGovdataSubjects([]);
+    }
     setEditingSourceId(s.id);
     updateExpanded(s.id);
     setShowForm(false);
@@ -246,6 +257,7 @@ export function SourcesPage() {
     setForm({ id: "", type: "postgresql", host: "", port: 5432, database: "", username: "", password: "", namingConvention: "", cacheTtl: "", cacheEnabled: true, path: "", allowedDomains: "", description: "" });
     setAuthType("none");
     setAuthFields({});
+    setGovdataSubjects([]);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -256,6 +268,12 @@ export function SourcesPage() {
       const sourcePayload = {
         ...coreForm,
         path: FILE_SOURCES.has(form.type) ? form.path || null : null,
+        database: form.type === "govdata"
+          ? Array.from(new Set([
+              ...govdataSubjects.flatMap((sv) => GOVDATA_SUBJECTS.find((s) => s.value === sv)?.schemas ?? []),
+              "ref", "geo",
+            ])).join(",")
+          : coreForm.database,
       };
       if (editingSourceId) {
         const effectiveId = form.id.trim() || editingSourceId;
@@ -275,7 +293,14 @@ export function SourcesPage() {
         const domainsResult = await updateSourceAllowedDomains(effectiveId, parsedDomains);
         if (!domainsResult.success) throw new Error(domainsResult.message);
       } else {
-        await createSource(sourcePayload);
+        const { allowedDomains: _ad, ...createPayload } = sourcePayload as typeof sourcePayload & { allowedDomains?: unknown };
+        void _ad;
+        await createSource(createPayload as Parameters<typeof createSource>[0]);
+        const parsedDomainsCreate = form.allowedDomains.split(",").map((d) => d.trim()).filter(Boolean);
+        if (parsedDomainsCreate.length > 0) {
+          const domainsResult = await updateSourceAllowedDomains(form.id, parsedDomainsCreate);
+          if (!domainsResult.success) throw new Error(domainsResult.message);
+        }
       }
       handleCancelForm();
       load();
@@ -298,6 +323,20 @@ export function SourcesPage() {
   const [openapiPreview, setOpenapiPreview] = useState<{ queries: any[]; mutations: any[]; spec_description?: string } | null>(null);
   const [openapiPreviewing, setOpenapiPreviewing] = useState(false);
   const [openapiPreviewError, setOpenapiPreviewError] = useState<string | null>(null);
+
+  // GovData-specific state — subjects map to schema groups; "ref" is always included silently
+  const [govdataSubjects, setGovdataSubjects] = useState<string[]>([]);
+  const GOVDATA_SUBJECTS: { value: string; label: string; schemas: string[] }[] = [
+    { value: "COMMERCE",      label: "Commerce",      schemas: ["sec", "patents"] },
+    { value: "ECONOMY",       label: "Economy",       schemas: ["econ"] },
+    { value: "EDUCATION",     label: "Education",     schemas: ["census", "edu"] },
+    { value: "HEALTH",        label: "Health",        schemas: ["health"] },
+    { value: "CYBER",         label: "Cyber",         schemas: ["cyber_threat", "cyber_vuln"] },
+    { value: "PUBLIC_SAFETY", label: "Public Safety", schemas: ["crime"] },
+    { value: "ENVIRONMENT",   label: "Environment",   schemas: ["lands"] },
+    { value: "WEATHER",       label: "Weather",       schemas: ["weather"] },
+    { value: "GOVERNMENT",    label: "Government",    schemas: ["fedregister", "fec"] },
+  ];
 
   // gRPC Remote-specific state
   const [grpcProtoPath, setGrpcProtoPath] = useState("");
@@ -761,6 +800,29 @@ export function SourcesPage() {
             <label style={{ gridColumn: "1 / -1" }}>Token <input required value={authFields.token ?? ""} onChange={(e) => setAuthFields({ ...authFields, token: e.target.value })} placeholder="${env:SPARQL_TOKEN}" /></label>
           )}
           {authType === "basic" && <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />}
+        </>
+      )}
+      {form.type === "govdata" && (
+        <>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={{ marginBottom: "0.5rem" }}>Data Subjects</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", marginTop: "0.25rem" }}>
+              {GOVDATA_SUBJECTS.map((subj) => (
+                <label key={subj.value} style={{ flexDirection: "row", alignItems: "center", gap: "0.4rem", whiteSpace: "nowrap", fontWeight: "normal" }}>
+                  <input
+                    type="checkbox"
+                    style={{ width: "auto" }}
+                    checked={govdataSubjects.includes(subj.value)}
+                    onChange={(e) => setGovdataSubjects(e.target.checked
+                      ? [...govdataSubjects, subj.value]
+                      : govdataSubjects.filter((x) => x !== subj.value)
+                    )}
+                  />
+                  {subj.label}
+                </label>
+              ))}
+            </div>
+          </div>
         </>
       )}
       {isKafka && (

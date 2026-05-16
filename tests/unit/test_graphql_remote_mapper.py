@@ -9,8 +9,13 @@
 # permission from the copyright holder.
 
 """Unit tests for graphql_remote mapper (REQ-308, REQ-312)."""
-import pytest
-from provisa.graphql_remote.mapper import map_schema, _unwrap_type, _gql_to_provisa_type
+
+from provisa.graphql_remote.mapper import (
+    _detect_pagination_args,
+    _gql_to_provisa_type,
+    _unwrap_type,
+    map_schema,
+)
 
 
 def _make_schema(query_fields=None, mutation_fields=None, extra_types=None):
@@ -46,6 +51,7 @@ def _non_null(inner):
 
 # --- _unwrap_type tests ---
 
+
 def test_unwrap_scalar():
     t = _scalar_type("String")
     assert _unwrap_type(t) == ("SCALAR", "String")
@@ -67,6 +73,7 @@ def test_unwrap_non_null_list_of_object():
 
 
 # --- _gql_to_provisa_type tests ---
+
 
 def test_scalar_string_maps_to_text():
     assert _gql_to_provisa_type(_scalar_type("String")) == "text"
@@ -102,6 +109,7 @@ def test_non_null_object_maps_to_jsonb():
 
 # --- map_schema tests ---
 
+
 def test_query_field_with_scalar_fields_produces_virtual_table():
     user_type = {
         "kind": "OBJECT",
@@ -129,7 +137,11 @@ def test_query_field_with_scalar_fields_produces_virtual_table():
 
 
 def test_namespace_prefix_applied():
-    user_type = {"kind": "OBJECT", "name": "Product", "fields": [{"name": "sku", "type": _scalar_type("String")}]}
+    user_type = {
+        "kind": "OBJECT",
+        "name": "Product",
+        "fields": [{"name": "sku", "type": _scalar_type("String")}],
+    }
     schema = _make_schema(
         query_fields=[{"name": "products", "type": _object_type("Product"), "args": []}],
         extra_types=[user_type],
@@ -139,7 +151,11 @@ def test_namespace_prefix_applied():
 
 
 def test_non_scalar_nested_field_becomes_jsonb():
-    address_type = {"kind": "OBJECT", "name": "Address", "fields": [{"name": "city", "type": _scalar_type("String")}]}
+    address_type = {
+        "kind": "OBJECT",
+        "name": "Address",
+        "fields": [{"name": "city", "type": _scalar_type("String")}],
+    }
     user_type = {
         "kind": "OBJECT",
         "name": "User",
@@ -160,7 +176,11 @@ def test_non_scalar_nested_field_becomes_jsonb():
 
 def test_object_column_gets_gql_selection():
     """OBJECT-typed columns must include gql_selection for proper nested GQL query."""
-    address_type = {"kind": "OBJECT", "name": "Address", "fields": [{"name": "city", "type": _scalar_type("String")}]}
+    address_type = {
+        "kind": "OBJECT",
+        "name": "Address",
+        "fields": [{"name": "city", "type": _scalar_type("String")}],
+    }
     user_type = {
         "kind": "OBJECT",
         "name": "User",
@@ -181,7 +201,11 @@ def test_object_column_gets_gql_selection():
 
 def test_deeply_nested_object_gql_selection():
     """Nested OBJECT within OBJECT gets recursive selection."""
-    breed_type = {"kind": "OBJECT", "name": "Breed", "fields": [{"name": "name", "type": _scalar_type("String")}]}
+    breed_type = {
+        "kind": "OBJECT",
+        "name": "Breed",
+        "fields": [{"name": "name", "type": _scalar_type("String")}],
+    }
     assignment_type = {
         "kind": "OBJECT",
         "name": "Assignment",
@@ -215,8 +239,16 @@ def test_empty_query_type_no_tables():
 
 
 def test_multiple_query_fields_produce_multiple_tables():
-    type_a = {"kind": "OBJECT", "name": "TypeA", "fields": [{"name": "x", "type": _scalar_type("Int")}]}
-    type_b = {"kind": "OBJECT", "name": "TypeB", "fields": [{"name": "y", "type": _scalar_type("String")}]}
+    type_a = {
+        "kind": "OBJECT",
+        "name": "TypeA",
+        "fields": [{"name": "x", "type": _scalar_type("Int")}],
+    }
+    type_b = {
+        "kind": "OBJECT",
+        "name": "TypeB",
+        "fields": [{"name": "y", "type": _scalar_type("String")}],
+    }
     schema = _make_schema(
         query_fields=[
             {"name": "things_a", "type": _object_type("TypeA"), "args": []},
@@ -244,18 +276,23 @@ def test_mutation_field_produces_tracked_function():
     result_type = {
         "kind": "OBJECT",
         "name": "CreateUserResult",
-        "fields": [{"name": "id", "type": _scalar_type("ID")}, {"name": "ok", "type": _scalar_type("Boolean")}],
+        "fields": [
+            {"name": "id", "type": _scalar_type("ID")},
+            {"name": "ok", "type": _scalar_type("Boolean")},
+        ],
     }
     schema = _make_schema(
         query_fields=[],
-        mutation_fields=[{
-            "name": "createUser",
-            "type": _object_type("CreateUserResult"),
-            "args": [
-                {"name": "name", "type": _scalar_type("String")},
-                {"name": "age", "type": _scalar_type("Int")},
-            ],
-        }],
+        mutation_fields=[
+            {
+                "name": "createUser",
+                "type": _object_type("CreateUserResult"),
+                "args": [
+                    {"name": "name", "type": _scalar_type("String")},
+                    {"name": "age", "type": _scalar_type("Int")},
+                ],
+            }
+        ],
         extra_types=[result_type],
     )
     _, functions, _rels = map_schema(schema, "api", "src")
@@ -272,7 +309,11 @@ def test_mutation_field_produces_tracked_function():
 
 
 def test_domain_id_propagated():
-    user_type = {"kind": "OBJECT", "name": "User", "fields": [{"name": "id", "type": _scalar_type("ID")}]}
+    user_type = {
+        "kind": "OBJECT",
+        "name": "User",
+        "fields": [{"name": "id", "type": _scalar_type("ID")}],
+    }
     schema = _make_schema(
         query_fields=[{"name": "users", "type": _object_type("User"), "args": []}],
         extra_types=[user_type],
@@ -282,7 +323,11 @@ def test_domain_id_propagated():
 
 
 def test_no_mutation_type_no_functions():
-    user_type = {"kind": "OBJECT", "name": "User", "fields": [{"name": "id", "type": _scalar_type("ID")}]}
+    user_type = {
+        "kind": "OBJECT",
+        "name": "User",
+        "fields": [{"name": "id", "type": _scalar_type("ID")}],
+    }
     schema = _make_schema(
         query_fields=[{"name": "users", "type": _object_type("User"), "args": []}],
         extra_types=[user_type],
@@ -290,3 +335,80 @@ def test_no_mutation_type_no_functions():
     # no mutation_fields → mutationType is None
     _, functions, _rels = map_schema(schema, "ns", "src")
     assert functions == []
+
+
+# --- _detect_pagination_args tests ---
+
+
+def _arg(name):
+    return {"name": name, "type": _scalar_type("Int")}
+
+
+def test_detect_first_arg():
+    assert _detect_pagination_args([_arg("first"), _arg("offset")])["limit_arg"] == "first"
+
+
+def test_detect_limit_arg_when_no_first():
+    assert _detect_pagination_args([_arg("limit"), _arg("offset")])["limit_arg"] == "limit"
+
+
+def test_first_takes_priority_over_limit():
+    assert _detect_pagination_args([_arg("first"), _arg("limit")])["limit_arg"] == "first"
+
+
+def test_detect_offset_arg():
+    assert _detect_pagination_args([_arg("first"), _arg("offset")])["offset_arg"] == "offset"
+
+
+def test_detect_cursor_arg():
+    assert _detect_pagination_args([_arg("first"), _arg("after")])["cursor_arg"] == "after"
+
+
+def test_no_pagination_args():
+    result = _detect_pagination_args([_arg("filter")])
+    assert result["limit_arg"] is None
+    assert result["offset_arg"] is None
+    assert result["cursor_arg"] is None
+
+
+def test_empty_args_list():
+    result = _detect_pagination_args([])
+    assert result == {"limit_arg": None, "offset_arg": None, "cursor_arg": None}
+
+
+def test_pagination_stored_on_table():
+    user_type = {
+        "kind": "OBJECT",
+        "name": "User",
+        "fields": [{"name": "id", "type": _scalar_type("ID")}],
+    }
+    schema = _make_schema(
+        query_fields=[
+            {
+                "name": "users",
+                "type": _list_of_object("User"),
+                "args": [_arg("first"), _arg("offset")],
+            }
+        ],
+        extra_types=[user_type],
+    )
+    tables, _, _ = map_schema(schema, "ns", "src")
+    pg = tables[0]["pagination"]
+    assert pg["limit_arg"] == "first"
+    assert pg["offset_arg"] == "offset"
+
+
+def test_pagination_none_when_no_args():
+    user_type = {
+        "kind": "OBJECT",
+        "name": "User",
+        "fields": [{"name": "id", "type": _scalar_type("ID")}],
+    }
+    schema = _make_schema(
+        query_fields=[{"name": "users", "type": _list_of_object("User"), "args": []}],
+        extra_types=[user_type],
+    )
+    tables, _, _ = map_schema(schema, "ns", "src")
+    pg = tables[0]["pagination"]
+    assert pg["limit_arg"] is None
+    assert pg["offset_arg"] is None

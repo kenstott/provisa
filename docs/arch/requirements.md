@@ -607,6 +607,8 @@ These must never be conflated. `alias` must not appear as a GraphQL field name f
 
 - **REQ-446** (2026-04-29): The Cypher compiler must support a high-value subset of `CALL gds.*` procedure syntax, implemented via igraph rather than a Neo4j GDS dependency. Target procedures: `gds.pageRank.stream`, `gds.louvain.stream` (community detection), `gds.betweenness.stream`, `gds.closeness.stream`, `gds.wcc.stream` (weakly connected components), `gds.nodeSimilarity.stream`. The governed subgraph (nodes and edges, filtered by RLS and domain permissions) is materialized by Provisa before being passed to igraph — no data outside the caller's access is visible to the algorithm. Results are returned as tabular output consistent with all other Cypher query responses.
 
+- **REQ-455** (2026-05-15): The `ad_hoc_query` right (capability) controls whether an identity can execute free SQL/GraphQL/Cypher queries; identities without this right can only execute governed queries by stable ID (queryId). The check is server-enforced in the query pipeline before compilation, not at the transport layer, and applies uniformly across all transports (HTTP, pgwire, Arrow Flight, Protobuf gRPC, JDBC). The JDBC driver's `mode` URL parameter is removed; clients cannot bypass the right.
+
 ## API & Integration
 
 - **REQ-447** (2026-05-04): The Arrow Flight approved-queries listing path must accept an optional `limit` value and return at most that many approved query records. Invalid limit values must be rejected.
@@ -620,3 +622,33 @@ These must never be conflated. `alias` must not appear as a GraphQL field name f
 - **REQ-451** (2026-05-04): GraphQL object relationship paths (`many-to-one` and `one-to-one`) must not expose collection query arguments such as `limit`, `offset`, `where`, `order_by`, or `distinct_on`; this follows Hasura v2 object relationship behavior.
 
 - **REQ-452** (2026-05-05): A top-level Data Quality page (peer to Tables, Sources, etc.) OR a tab within registered tables—user preference TBD. Enables stewards to configure periodic data quality checks per table (configurable schedule, check types), stores and displays most recent check results. Builds on existing per-table Profile button (TABLESAMPLE-based column profiling). Aggregate DQ dashboard view by domain is a follow-on feature. Status: deferred.
+
+## API & Integration
+
+- **REQ-453** (2026-05-15): For all remote schema adapters (GraphQL, gRPC, OpenAPI), a root query/GET operation whose return type is a scalar (not an object or message) MUST be registered as a tracked function with `return_schema [{"name": "value", "type": <scalar_type>}]`, not as a virtual table. Object-returning operations are registered as virtual tables; scalar-returning operations are registered as tracked functions.
+
+- **REQ-454** (2026-05-15): All infrastructure and classification decisions around representing remote schemas (scalar vs. object detection, virtual-table vs. tracked-function registration, return_schema derivation) MUST be implemented identically across all remote schema adapter types (GraphQL, gRPC, OpenAPI). No adapter-specific divergence in classification logic is permitted.
+
+## Infrastructure
+
+- **REQ-456** (2026-05-15): SaaS multi-tenancy model: all ProvisaConfig entities (Source, Table, Relationship, Role, RLSRule, etc.) are stored in a shared admin database with a tenant_id foreign key on every entity. Config is loaded per-request from the database, not from a YAML file.
+
+- **REQ-457** (2026-05-15): Tenant model with fields: id (PK), stripe_customer_id, plan (trial/starter/pro enum), created_at timestamp, source_limit (integer). A tenant is created before or during payment signup.
+
+- **REQ-461** (2026-05-15): Trino catalog naming in multi-tenant mode must follow the pattern {tenant_id}_{source_id} to prevent cross-tenant catalog collisions.
+
+- **REQ-462** (2026-05-15): Config cache with TTL: decrypted tenant config is cached in memory with a short TTL (5 minutes) to avoid KMS latency on every request. The cache must support invalidation when config is changed.
+
+## Security
+
+- **REQ-458** (2026-05-15): Provisa-managed KMS envelope encryption: one AWS KMS key per tenant. All tenant config data in the admin database is encrypted at rest. The encryption key is fetched from KMS at config load time; plaintext config is held only for the duration of the request.
+
+- **REQ-459** (2026-05-15): Trial mode enforcement: plan='trial' is enforced when a new source is registered. Trial plan has a source limit (exact limit TBD). Trial mode is zero cost.
+
+- **REQ-460** (2026-05-15): Stripe integration: Stripe Checkout and webhook events gate plan tier transitions. Webhook events update the tenant's plan field in the admin database. Tenant record is created before payment is processed (during trial signup).
+
+- **REQ-464** (2026-05-15): NL-assisted table candidate discovery for registration. When a registered source has a large schema (hundreds or thousands of tables), stewards search across registered source schemas — table names, column names, descriptions — using natural language ("customer invoicing and payment tables"). A two-pass approach: fast fuzzy text filter narrows candidates, then LLM (haiku) provides semantic ranking with confidence scores. Steward judgment is required — feature surfaces candidates, does not claim them. Implementation in admin API and unclaimed tables UI.
+
+## Data & Storage
+
+- **REQ-463** (2026-05-15): Materialized and cached data isolation via per-tenant S3 prefixes: DuckDB, Parquet, and Arrow caches for each tenant are stored under s3://bucket/{tenant_id}/.... Cross-tenant prefix reads are prohibited.

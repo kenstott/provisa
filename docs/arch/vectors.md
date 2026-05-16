@@ -228,7 +228,6 @@ Embedding columns participate in the full Provisa governance stack:
 | Domain boundary | ✅ — embedding columns respect domain traversal rules |
 | Sensitivity tiers | ✅ — `restricted` tier blocks cosine_similarity() for unauthorized roles |
 | Per-role schema visibility | ✅ — embedding columns hidden from roles without visibility |
-| Query approval | ✅ — similarity search queries subject to approval workflow |
 
 Column masking does not apply to embedding columns — a vector cannot be partially masked and remain semantically meaningful. Access control is enforced via visibility (hide entirely), RLS (filter rows), sensitivity tier (block search), and domain boundary rules. An embedding column is either visible and searchable for a given role, or absent from the schema entirely.
 

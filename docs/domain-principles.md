@@ -11,7 +11,7 @@
 3. **The admin owns sources.** Sources are infrastructure, not domain resources. The admin registers and manages connections to external data systems.
 4. **Stewards can claim tables for a domain.** Claiming is exclusive — a table belongs to exactly one domain. This is the governed act that bridges infrastructure and the semantic layer.
 5. **Stewards can create intradomain views from domain assets.** Views express business logic — joins, aggregations, derived metrics — over assets the steward owns within the same domain. Views create new semantic meaning and require steward approval.
-6. **Analysts can create cross-domain queries from approved relationships.** Queries are interdomain views built in GraphQL. They do not create new semantics — they traverse approved relationship paths. No additional approval is required: governance is handled upstream at the Relationship and column visibility layers. The GQL schema is the enforcement mechanism: only approved relationships are traversable.
+6. **Analysts can create cross-domain queries from approved relationships.** Queries are interdomain views expressed in any supported query language. They do not create new semantics — they traverse approved relationship paths. No additional approval is required: governance is handled upstream at the Relationship and column visibility layers. The catalog is the enforcement mechanism: the compiler rejects traversals not in the approved relationship catalog.
 7. **Anyone can request access to a domain resource.** Access is granted at the resource level, not the query level. If you have access to a resource, you can query it. Governance is enforced at execution time through the pipeline.
 
 ### Resources: Tables and Views as Peers
@@ -40,15 +40,27 @@ Every view carries a declared business purpose, stated at creation time:
 
 ### Queries
 
-A Query is a view built in GraphQL over approved relationship paths. Unlike Views, Queries do not create new semantic meaning — they traverse the approved structure of the model.
+A Query traverses approved relationship paths over domain assets. Unlike Views, Queries do not create new semantic meaning — they traverse the approved structure of the model. Queries may be expressed in any supported query language (SQL, GraphQL, Cypher).
 
-**Structural enforcement:** The GQL schema is the enforcement mechanism. Only approved relationships are modeled in the schema, so unapproved traversals are not expressible. Governance is structural, not a runtime check.
+**Structural enforcement:** The relationship catalog is the enforcement mechanism. The compiler validates every traversal against approved catalog entries and rejects queries that reference unapproved paths. Governance is structural, not a runtime check.
 
 **No approval required:** Governance happens upstream — at the Relationship and column visibility layers. If a user has access to the columns and the traversal path is approved, the Query is valid usage. No additional gate.
 
 **Distinction from Views:**
 - Views: intradomain, introduce new semantic meaning, steward-curated
 - Queries: traverse approved relationships, no new semantics, no approval gate
+
+**Domain expression by query language:**
+
+Each supported language surfaces the domain as a structural namespace native to that language:
+
+| Language | Domain expression | Example |
+|---|---|---|
+| GraphQL | Type and field name prefix | `type sales__Order { ... }`, `query { sales__orders { ... } }` |
+| SQL | Schema name | `SELECT * FROM sales.orders` |
+| Cypher | Additional node label (domain only required when type name is ambiguous) | `MATCH (o:Sales:Order)` |
+
+The compiler resolves domain membership from these structural positions — no annotation or hint is required.
 
 ### Relationships
 
@@ -61,6 +73,8 @@ A relationship is an approved traversal path between two assets. Domain boundari
 - Approving a relationship builds each steward's dependency graph, enabling proactive schema evolution notifications
 
 Relationships are created by demand, not speculatively. The first team with the business need does the work; subsequent teams inherit the infrastructure.
+
+**Optimization consequence:** A relationship declaration is not only a governance artifact — it is also a structural description of a join shape. The two tables, two columns, and join type that define a relationship are exactly what the query optimizer needs to pre-materialize that join. Cross-source relationships automatically generate pre-materialized join tables; same-source relationships can opt in via `materialize: true`. Stewards who think through and approve valid relationships get query acceleration as a direct byproduct — governance work and optimization work are the same act.
 
 ### Field Access Grants
 
@@ -94,11 +108,11 @@ Three stages, in order.
 **Stage 2 — Relationship approval** (consequential — structural and permanent):
 - Raised to every distinct steward who owns an asset involved in the relationship
 - Is this a legitimate traversal path? Is the join semantically valid?
-- All implicated stewards must approve; relationship becomes a permanent catalog entry and is added to the GQL schema
+- All implicated stewards must approve; relationship becomes a permanent catalog entry
 
-**Stage 3 — Query creation (GraphQL):**
-- Analyst builds the Query in GraphQL, traversing approved relationship paths
-- Only approved relationships are traversable — the GQL schema enforces this structurally
+**Stage 3 — Query creation:**
+- Analyst builds the Query in any supported language (SQL, GraphQL, Cypher), traversing approved relationship paths
+- Only approved catalog relationships are traversable — the compiler enforces this structurally
 - No approval required — column visibility and relationship approval are the only gates
 
 ### HITL as the Primary Control
@@ -121,7 +135,7 @@ Discovery is structured across five tiers of increasing governance. Each tier is
 |---|---|---|
 | 1 — Registered source schema | Every table, column, and type from a registered source. Admin-level visibility. | None — raw inventory |
 | 2 — Unclaimed tables | Tables introspected from registered sources with no domain owner. Visible to stewards with source access. | Available but ungoverned |
-| 3 — Domain assets | Claimed tables and steward-defined views. Fully governed, owned, catalog-visible. GraphQL operates here. | Fully governed |
+| 3 — Domain assets | Claimed tables and steward-defined views. Fully governed, owned, catalog-visible. | Fully governed |
 | 4 — Relationships | Approved traversal paths between Tier 3 assets. Prerequisite for cross-domain view creation. | Approved by both stewards |
 | 5 — Field grants | Domain-to-domain field access permissions. The most specific and deliberate governed access. | Approved by source steward |
 
@@ -154,7 +168,7 @@ For semantically inferred candidates, data probing provides a validation step:
 - **Cardinality** — whether distribution matches the expected relationship type
 - **Null rate** — proportion of source column that is null, indicating optionality
 
-High correlation elevates confidence; low correlation suppresses or demotes the candidate. Probing is corroborating evidence, not proof — integer ranges can overlap coincidentally and partial referential integrity is common in analytical systems. Significant room for error remains. Steward semantic judgment is the only reliable final check.
+High correlation raises confidence; low correlation suppresses or demotes the candidate. Probing is corroborating evidence, not proof — integer ranges can overlap coincidentally and partial referential integrity is common in analytical systems. Significant room for error remains. Steward semantic judgment is the only reliable final check.
 
 ### LLM-Assisted Discovery
 
@@ -185,7 +199,7 @@ The analyst provides a natural language description and optional constraints. Th
 6. Gaps — entities or fields with no candidate in any tier, flagged for admin escalation
 
 *Output:*
-- Draft GraphQL query for analyst review and refinement
+- Draft query for analyst review and refinement
 - Per-component confidence scores
 - Ordered prerequisite list
 - Gap list
@@ -200,7 +214,7 @@ Accessed as a modal from the Relationships page. The intent is to build the sema
 2. SQL AST is parsed — each JOIN condition becomes a candidate Relationship proposal
 3. Candidate list is shown alongside machine-suggested candidates (FK inference, semantic inference) for unified review
 4. Analyst promotes selected candidates to formal Relationship requests
-5. Approved Relationships are added to the GQL schema and become traversable in Queries
+5. Approved Relationships are added to the catalog and become traversable in Queries
 
 The Modeling tool may show all registered tables for structural exploration, even where the analyst cannot see the underlying data — steward approval governs actual data access, not schema visibility.
 

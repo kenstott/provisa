@@ -517,6 +517,29 @@
   color: #fff !important;
 }
 
+.gf-attr-select {
+  height: 26px;
+  border-radius: 4px;
+  border: 1px solid #2a2d3e;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0 4px;
+  max-width: 90px;
+}
+
+.gf-attr-select:hover {
+  background: #1e2130;
+  color: var(--text);
+}
+
+.gf-attr-select.gf-icon-btn--on {
+  background: #2e5fa3 !important;
+  color: #fff !important;
+  border-color: #2e5fa3;
+}
+
 /* ── Frame body ─────────────────────────────────────────────────────────────────── */
 .gf-body {
   display: flex;

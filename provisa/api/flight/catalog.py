@@ -20,7 +20,6 @@ semantic layer as a read-only JDBC catalog:
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from dataclasses import dataclass
 
@@ -81,20 +80,14 @@ class CatalogColumn:
     description: str
 
 
-@dataclass(frozen=True)
-class ApprovedQuery:
-    """An approved persisted query exposed as a virtual table."""
-    stable_id: str
-    query_text: str
-    compiled_sql: str
-
-
 def build_catalog_tables(state) -> list[CatalogTable]:
     """Build the virtual catalog from AppState.
 
     Reads registered tables and introspected column metadata from the
     compilation contexts. Uses the 'admin' role context as the broadest view.
     """
+    import asyncio
+
     if not state.pg_pool:
         return []
 
@@ -255,67 +248,7 @@ def catalog_table_to_flight_info(
     endpoints = []
     if location:
         ticket = flight.Ticket(
-            f'{{"mode":"catalog","domain":"{table.domain_id}",'
-            f'"table":"{table.table_name}"}}'.encode("utf-8"),
+            f'{{"domain":"{table.domain_id}","table":"{table.table_name}"}}'.encode("utf-8"),
         )
         endpoints = [flight.FlightEndpoint(ticket, [location])]
     return flight.FlightInfo(schema, descriptor, endpoints, -1, -1)
-
-
-def approved_query_to_flight_info(
-    query: ApprovedQuery,
-    location: flight.Location | None = None,
-) -> flight.FlightInfo:
-    """Build a FlightInfo descriptor for an approved query virtual table."""
-    descriptor = flight.FlightDescriptor.for_path(
-        "approved", query.stable_id,
-    )
-    # Approved queries expose a minimal schema: stable_id + query_text
-    schema = pa.schema([
-        pa.field("stable_id", pa.utf8()),
-        pa.field("query_text", pa.utf8()),
-        pa.field("compiled_sql", pa.utf8()),
-    ])
-    endpoints = []
-    if location:
-        ticket = flight.Ticket(
-            f'{{"mode":"approved","stable_id":"{query.stable_id}"}}'.encode("utf-8"),
-        )
-        endpoints = [flight.FlightEndpoint(ticket, [location])]
-    return flight.FlightInfo(schema, descriptor, endpoints, -1, -1)
-
-
-def fetch_approved_queries(state, limit: int | None = None) -> list[ApprovedQuery]:
-    """Fetch approved persisted queries from PG."""
-    if not state.pg_pool:
-        return []
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(fetch_approved_queries_async(state, limit=limit))
-    finally:
-        loop.close()
-
-
-async def fetch_approved_queries_async(state, limit: int | None = None) -> list[ApprovedQuery]:
-    async with state.pg_pool.acquire() as conn:
-        if limit is None:
-            rows = await conn.fetch(
-                "SELECT stable_id, query_text, compiled_sql "
-                "FROM persisted_queries WHERE status = 'approved' "
-                "ORDER BY approved_at"
-            )
-        else:
-            rows = await conn.fetch(
-                "SELECT stable_id, query_text, compiled_sql "
-                "FROM persisted_queries WHERE status = 'approved' "
-                "ORDER BY approved_at LIMIT $1",
-                limit,
-            )
-    return [
-        ApprovedQuery(
-            stable_id=r["stable_id"],
-            query_text=r["query_text"],
-            compiled_sql=r["compiled_sql"],
-        )
-        for r in rows
-    ]

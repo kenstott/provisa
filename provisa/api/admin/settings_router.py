@@ -85,6 +85,14 @@ async def get_settings():
             "service_name": os.environ.get("OTEL_SERVICE_NAME")
             or otel_cfg.get("service_name", "provisa"),
             "sample_rate": float(otel_cfg.get("sample_rate", 1.0)),
+            "support_endpoint": os.environ.get("PROVISA_SUPPORT_OTLP_ENDPOINT")
+            or otel_cfg.get("support_endpoint", ""),
+            "support_redact_sql_literals": bool(
+                otel_cfg.get("support_telemetry_filter", {}).get("redact_sql_literals", True)
+            ),
+            "support_redact_attributes": list(
+                otel_cfg.get("support_telemetry_filter", {}).get("redact_attributes", [])
+            ),
         },
     }
 
@@ -171,6 +179,20 @@ async def update_settings(request: Request):
             if "sample_rate" in o:
                 cfg["observability"]["sample_rate"] = float(o["sample_rate"])
                 updated.append("otel.sample_rate")
+            if "support_endpoint" in o:
+                cfg["observability"]["support_endpoint"] = o["support_endpoint"]
+                os.environ["PROVISA_SUPPORT_OTLP_ENDPOINT"] = o["support_endpoint"]
+                updated.append("otel.support_endpoint")
+            if "support_redact_sql_literals" in o:
+                cfg["observability"].setdefault("support_telemetry_filter", {})[
+                    "redact_sql_literals"
+                ] = bool(o["support_redact_sql_literals"])
+                updated.append("otel.support_redact_sql_literals")
+            if "support_redact_attributes" in o:
+                cfg["observability"].setdefault("support_telemetry_filter", {})[
+                    "redact_attributes"
+                ] = list(o["support_redact_attributes"])
+                updated.append("otel.support_redact_attributes")
             write_config(path, cfg)
             if "endpoint" in o and o["endpoint"]:
                 from provisa.api.otel_setup import attach_otlp_exporters
@@ -289,6 +311,18 @@ async def restart_query_engine(container: str | None = None):
         )
 
     return {"success": True, "container": container, "output": stdout.decode().strip()}
+
+
+@router.post("/admin/schema-clusters/recompute")
+async def recompute_schema_clusters():
+    """Rerun Louvain clustering on the schema graph and refresh schema_clusters."""
+    from provisa.api.app import state, _compute_and_store_clusters
+
+    if not state.pg_pool:
+        raise HTTPException(status_code=503, detail="Database not available")
+    async with state.pg_pool.acquire() as conn:
+        count = await _compute_and_store_clusters(conn)  # type: ignore[arg-type]
+    return {"success": True, "tables_clustered": count}
 
 
 @router.get("/admin/traces/recent")

@@ -9,10 +9,14 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from collections import deque
 from threading import Lock
 from typing import Any
+
+# Matches SQL string literals ('...') and bare numeric literals outside identifiers.
+_SQL_LITERAL_RE = re.compile(r"'[^']*'|\"[^\"]*\"|\b\d+(\.\d+)?\b")
 
 import yaml
 
@@ -149,6 +153,60 @@ def _write_otlp2parquet_toml(max_age_secs: int, config_path: str) -> None:
         _log.debug("Could not write otlp2parquet.toml: %s", exc)
 
 
+def _make_filtering_exporter(
+    inner: "Any",
+    redact_sql_literals: bool,
+    redact_attributes: list[str],
+) -> "Any":
+    """Wrap *inner* SpanExporter — redacts spans before delegating. Never mutates originals."""
+    try:
+        from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
+        from opentelemetry.sdk.trace import ReadableSpan
+
+        _drop = frozenset(redact_attributes)
+        _redact_sql = redact_sql_literals
+
+        def _scrub(attrs: dict) -> dict:
+            out = dict(attrs)
+            if _redact_sql and "db.statement" in out:
+                out["db.statement"] = _SQL_LITERAL_RE.sub("?", out["db.statement"])
+            for key in _drop:
+                out.pop(key, None)
+            return out
+
+        class _FilteringExporter(SpanExporter):
+            def export(self, spans: Any) -> "SpanExportResult":
+                scrubbed = []
+                for span in spans:
+                    attrs = dict(span.attributes or {})
+                    clean = _scrub(attrs)
+                    scrubbed.append(ReadableSpan(
+                        name=span.name,
+                        context=span.context,
+                        parent=span.parent,
+                        resource=span.resource,
+                        attributes=clean,
+                        events=span.events,
+                        links=span.links,
+                        kind=span.kind,
+                        instrumentation_scope=span.instrumentation_scope,
+                        status=span.status,
+                        start_time=span.start_time,
+                        end_time=span.end_time,
+                    ))
+                return inner.export(scrubbed)
+
+            def shutdown(self) -> None:
+                inner.shutdown()
+
+            def force_flush(self, timeout_millis: int = 30000) -> bool:
+                return inner.force_flush(timeout_millis)
+
+        return _FilteringExporter()
+    except ImportError:
+        return inner
+
+
 def setup_otel(app: "object") -> None:
     """Initialize OpenTelemetry tracing unconditionally.
 
@@ -174,6 +232,13 @@ def setup_otel(app: "object") -> None:
     compact_batch_size = int(os.environ.get("OTEL_COMPACT_BATCH_SIZE") or _otel_cfg.get("compact_batch_size", 10))
     span_export_delay_millis = int(os.environ.get("OTEL_SPAN_EXPORT_DELAY_MILLIS") or _otel_cfg.get("span_export_delay_millis", 1000))
     otlp2parquet_max_age_secs = int(os.environ.get("OTLP2PARQUET_MAX_AGE_SECS") or _otel_cfg.get("otlp2parquet_max_age_secs", 5))
+    _internal_filter = _otel_cfg.get("telemetry_filter", {})
+    _internal_redact_sql = bool(_internal_filter.get("redact_sql_literals", False))
+    _internal_redact_attrs = list(_internal_filter.get("redact_attributes", []))
+    support_endpoint = os.environ.get("PROVISA_SUPPORT_OTLP_ENDPOINT") or _otel_cfg.get("support_endpoint", "")
+    _support_filter = _otel_cfg.get("support_telemetry_filter", {})
+    _support_redact_sql = bool(_support_filter.get("redact_sql_literals", True))
+    _support_redact_attrs = list(_support_filter.get("redact_attributes", []))
     _write_otlp2parquet_toml(otlp2parquet_max_age_secs, config_path)
     try:
         from opentelemetry import trace
@@ -201,10 +266,26 @@ def setup_otel(app: "object") -> None:
         provider.add_span_processor(_BufferProcessor())
         if endpoint:
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
-            provider.add_span_processor(
-                BatchSpanProcessor(_make_span_exporter(endpoint), schedule_delay_millis=span_export_delay_millis)
+            _internal_exporter = _make_filtering_exporter(
+                _make_span_exporter(endpoint),
+                _internal_redact_sql,
+                _internal_redact_attrs,
             )
-            _log.info("OTel tracing → %s (service=%s)", endpoint, service_name)
+            provider.add_span_processor(
+                BatchSpanProcessor(_internal_exporter, schedule_delay_millis=span_export_delay_millis)
+            )
+            _log.info("OTel tracing → %s (service=%s, redact_sql=%s)", endpoint, service_name, _internal_redact_sql)
+        if support_endpoint:
+            from opentelemetry.sdk.trace.export import BatchSpanProcessor
+            _support_exporter = _make_filtering_exporter(
+                _make_span_exporter(support_endpoint),
+                _support_redact_sql,
+                _support_redact_attrs,
+            )
+            provider.add_span_processor(
+                BatchSpanProcessor(_support_exporter, schedule_delay_millis=span_export_delay_millis)
+            )
+            _log.info("OTel support tracing → %s (redact_sql=%s)", support_endpoint, _support_redact_sql)
         else:
             _log.debug(
                 "OTel tracing active (no collector; spans dropped). "

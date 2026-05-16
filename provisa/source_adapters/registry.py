@@ -25,6 +25,7 @@ from types import ModuleType
 log = logging.getLogger(__name__)
 
 _ADAPTER_MAP: dict[str, str] = {
+    "govdata": "provisa.govdata.source",
     "redis": "provisa.redis.source",
     "mongodb": "provisa.mongodb.source",
     "elasticsearch": "provisa.elasticsearch.source",
