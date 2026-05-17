@@ -280,11 +280,11 @@ async def native_tables(
         def _list_tables_sync() -> list[str]:
             import jaydebeapi  # optional dependency
 
-            _os.environ.setdefault("AWS_ACCESS_KEY_ID", access_key)
+            _os.environ["AWS_ACCESS_KEY_ID"] = access_key
             if secret_key:
-                _os.environ.setdefault("AWS_SECRET_ACCESS_KEY", secret_key)
+                _os.environ["AWS_SECRET_ACCESS_KEY"] = secret_key
             if endpoint:
-                _os.environ.setdefault("AWS_ENDPOINT_OVERRIDE", endpoint)
+                _os.environ["AWS_ENDPOINT_OVERRIDE"] = endpoint
 
             operand: dict = {"dataSource": schema_name}
             s3: dict = {}
@@ -318,16 +318,12 @@ async def native_tables(
                 jar_path,
             )
             try:
-                meta = conn.jconn.getMetaData()
-                _GOVDATA_META_TABLES = {"columns", "tables"}
-                rs = meta.getTables(None, schema_name.upper(), "%", ["TABLE", "VIEW"])
-                names: list[str] = []
-                while rs.next():
-                    name = rs.getString("TABLE_NAME").lower()
-                    if name not in _GOVDATA_META_TABLES:
-                        names.append(name)
-                rs.close()
-                return names
+                curs = conn.cursor()
+                curs.execute(
+                    'SELECT "tableName" FROM metadata."TABLES" '
+                    f"WHERE \"tableSchem\" = '{schema_name.upper()}'"
+                )
+                return [row[0].lower() for row in curs.fetchall()]
             finally:
                 conn.close()
 
