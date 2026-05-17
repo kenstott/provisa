@@ -284,6 +284,7 @@ async def native_tables(
                 _os.environ["AWS_SECRET_ACCESS_KEY"] = secret_key
             if endpoint:
                 _os.environ["AWS_ENDPOINT_OVERRIDE"] = endpoint
+            _os.environ.setdefault("AWS_REGION", "auto")
 
             if not jpype.isJVMStarted():
                 jpype.startJVM(classpath=[jar_path])
