@@ -259,7 +259,6 @@ async def native_tables(
     # ── GovData ───────────────────────────────────────────────────────────────
     if t == "govdata":
         import asyncio
-        import json
         import os as _os
 
         row = await config_conn.fetchrow(
@@ -278,7 +277,7 @@ async def native_tables(
         )
 
         def _list_tables_sync() -> list[str]:
-            import jaydebeapi  # optional dependency
+            import jpype
 
             _os.environ["AWS_ACCESS_KEY_ID"] = access_key
             if secret_key:
@@ -286,44 +285,28 @@ async def native_tables(
             if endpoint:
                 _os.environ["AWS_ENDPOINT_OVERRIDE"] = endpoint
 
-            operand: dict = {"dataSource": schema_name}
-            s3: dict = {}
-            if endpoint:
-                s3["endpointOverride"] = endpoint
-            if access_key:
-                s3["accessKey"] = access_key
-            if secret_key:
-                s3["secretKey"] = secret_key
-            if s3:
-                operand["s3Config"] = s3
+            if not jpype.isJVMStarted():
+                jpype.startJVM(classpath=[jar_path])
+                try:
+                    factory = jpype.JClass("org.slf4j.LoggerFactory").getILoggerFactory()
+                    level = jpype.JClass("ch.qos.logback.classic.Level")
+                    factory.getLogger("ROOT").setLevel(level.ERROR)
+                except Exception:
+                    pass
 
-            model_json = json.dumps(
-                {
-                    "version": "1.0",
-                    "schemas": [
-                        {
-                            "name": schema_name.upper(),
-                            "type": "custom",
-                            "factory": "org.apache.calcite.adapter.govdata.GovDataSchemaFactory",
-                            "operand": operand,
-                        }
-                    ],
-                }
-            )
-            url = f"jdbc:calcite:model=inline:{model_json}"
-            conn = jaydebeapi.connect(
-                "org.apache.calcite.jdbc.Driver",
-                url,
-                {"lex": "ORACLE", "unquotedCasing": "TO_LOWER"},
-                jar_path,
-            )
+            GovDataDriver = jpype.JClass("org.apache.calcite.adapter.govdata.GovDataDriver")
+            props = jpype.JClass("java.util.Properties")()
+            url = f"jdbc:govdata:source={schema_name}"
+            conn = GovDataDriver().connect(url, props)
+            assert conn is not None, f"GovDataDriver.connect() returned null for: {url}"
             try:
-                curs = conn.cursor()
-                curs.execute(
-                    'SELECT "tableName" FROM metadata."TABLES" '
-                    f"WHERE \"tableSchem\" = '{schema_name.upper()}'"
-                )
-                return [row[0].lower() for row in curs.fetchall()]
+                meta = conn.getMetaData()
+                rs = meta.getTables(None, schema_name.upper(), "%", None)
+                names: list[str] = []
+                while rs.next():
+                    names.append(str(rs.getString("TABLE_NAME")))
+                rs.close()
+                return names
             finally:
                 conn.close()
 
