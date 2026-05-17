@@ -136,4 +136,35 @@ test.describe("GovData table registration and query (live backend)", () => {
     await expect(page.locator("table.sql-results-table th").first()).toBeVisible();
     await expect(page.locator("table.sql-results-table tbody tr").first()).toBeVisible();
   });
+
+  test("creates econ-source and registers econ.fred_indicators_enriched", async ({ page }) => {
+    test.setTimeout(300000);
+    await page.goto("/sources");
+    await expect(page.getByRole("heading", { name: "Data Sources" })).toBeVisible({ timeout: 10000 });
+    await page.locator("button", { hasText: "+ Source" }).click();
+    await page.locator(".form-card select").first().selectOption("govdata");
+    await page.locator("input[placeholder='e.g. sales-pg']").fill("econ-source");
+    await page.locator(".form-card label").filter({ hasText: /^Economy$/ }).locator("input[type='checkbox']").check();
+    await page.locator("label", { hasText: "AWS Access Key ID" }).locator("input").fill(accessKey);
+    await page.locator("label", { hasText: "AWS Secret Access Key" }).locator("input[type='password']").fill(secretKey);
+    await page.getByRole("button", { name: "Create" }).click();
+    await expect(page.locator(".form-card")).not.toBeVisible({ timeout: 60000 });
+
+    await page.goto("/tables");
+    await expect(page.getByRole("heading", { name: "Registered Tables" })).toBeVisible({ timeout: 10000 });
+    await page.getByRole("button", { name: "+ Table" }).click();
+    await page.locator(".form-card select").first().selectOption("econ-source");
+
+    const schemaSelect = page.locator(".form-card select").nth(2);
+    await expect(schemaSelect).not.toBeDisabled({ timeout: 30000 });
+    await schemaSelect.selectOption("econ");
+
+    const tableSelect = page.locator(".form-card select").nth(3);
+    await expect(tableSelect).not.toBeDisabled({ timeout: 60000 });
+    await tableSelect.selectOption("fred_indicators_enriched");
+
+    await expect(page.locator(".column-editor-row").first()).toBeVisible({ timeout: 30000 });
+    await page.locator(".form-card button", { hasText: "+ Table" }).click();
+    await expect(page.locator(".form-card")).not.toBeVisible({ timeout: 60000 });
+  });
 });
