@@ -12,6 +12,7 @@
 
 Returns None when no native path exists — caller falls back to Trino.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -22,9 +23,18 @@ if TYPE_CHECKING:
 
 _MYSQL_SYSTEM_DBS = {"information_schema", "mysql", "performance_schema", "sys"}
 _SQLSERVER_SYSTEM_SCHEMAS = {
-    "sys", "INFORMATION_SCHEMA", "guest", "db_owner", "db_accessadmin",
-    "db_securityadmin", "db_ddladmin", "db_backupoperator", "db_datareader",
-    "db_datawriter", "db_denydatareader", "db_denydatawriter",
+    "sys",
+    "INFORMATION_SCHEMA",
+    "guest",
+    "db_owner",
+    "db_accessadmin",
+    "db_securityadmin",
+    "db_ddladmin",
+    "db_backupoperator",
+    "db_datareader",
+    "db_datawriter",
+    "db_denydatareader",
+    "db_denydatawriter",
 }
 _PG_SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast", "mv_cache"}
 
@@ -52,6 +62,12 @@ async def native_schemas(
 
     if t == "openapi":
         return ["openapi"]
+
+    if t == "govdata":
+        row = await config_conn.fetchrow("SELECT database FROM sources WHERE id = $1", source_id)
+        if row and row["database"]:
+            return [s.strip().lower() for s in row["database"].split(",") if s.strip()]
+        return []
 
     # RDBMS — requires a live driver in source_pools
     if not pool.has(source_id):
@@ -111,7 +127,9 @@ def _openapi_is_table(query) -> bool:
     # Pagination wrapper: object with exactly one array-typed property
     if schema.get("type") == "object":
         props = schema.get("properties") or {}
-        array_props = [v for v in props.values() if isinstance(v, dict) and v.get("type") == "array"]
+        array_props = [
+            v for v in props.values() if isinstance(v, dict) and v.get("type") == "array"
+        ]
         if len(array_props) == 1:
             return True
     return False
@@ -151,6 +169,7 @@ async def native_tables(
         if spec_info is None:
             return None
         from provisa.openapi.mapper import parse_spec
+
         queries, _ = parse_spec(spec_info["spec"])
         return [
             AvailableTableType(name=q.operation_id, comment=q.summary)
@@ -172,6 +191,7 @@ async def native_tables(
             return None
         try:
             from provisa.graphql_remote.introspect import introspect_schema
+
             schema = await introspect_schema(url, auth)
         except Exception:
             return None
@@ -201,13 +221,14 @@ async def native_tables(
             return None
         try:
             from provisa.grpc_remote.loader import parse_proto_text
+
             proto_dict = parse_proto_text(proto_text)
         except Exception:
             return None
         messages = proto_dict.get("messages") or {}
         results: list[AvailableTableType] = []
-        for service in (proto_dict.get("services") or []):
-            for method in (service.get("methods") or []):
+        for service in proto_dict.get("services") or []:
+            for method in service.get("methods") or []:
                 is_streaming = method.get("server_streaming", False)
                 if is_streaming:
                     results.append(AvailableTableType(name=method["name"], comment=None))
@@ -234,6 +255,87 @@ async def native_tables(
     # ── Neo4j / SPARQL ────────────────────────────────────────────────────────
     if t in ("neo4j", "sparql"):
         return []
+
+    # ── GovData ───────────────────────────────────────────────────────────────
+    if t == "govdata":
+        import asyncio
+        import json
+        import os as _os
+
+        row = await config_conn.fetchrow(
+            "SELECT username, password FROM sources WHERE id = $1", source_id
+        )
+        if not row:
+            return None
+
+        access_key = row["username"] or ""
+        secret_key = row["password"] or ""
+        endpoint = _os.environ.get("AWS_ENDPOINT_OVERRIDE", "")
+        jar_path = _os.path.abspath(
+            _os.path.join(
+                _os.path.dirname(__file__), "..", "..", "..", "lib", "calcite-govdata-all.jar"
+            )
+        )
+
+        def _list_tables_sync() -> list[str]:
+            import jaydebeapi  # optional dependency
+
+            _os.environ.setdefault("AWS_ACCESS_KEY_ID", access_key)
+            if secret_key:
+                _os.environ.setdefault("AWS_SECRET_ACCESS_KEY", secret_key)
+            if endpoint:
+                _os.environ.setdefault("AWS_ENDPOINT_OVERRIDE", endpoint)
+
+            operand: dict = {"dataSource": schema_name}
+            s3: dict = {}
+            if endpoint:
+                s3["endpointOverride"] = endpoint
+            if access_key:
+                s3["accessKey"] = access_key
+            if secret_key:
+                s3["secretKey"] = secret_key
+            if s3:
+                operand["s3Config"] = s3
+
+            model_json = json.dumps(
+                {
+                    "version": "1.0",
+                    "schemas": [
+                        {
+                            "name": schema_name.upper(),
+                            "type": "custom",
+                            "factory": "org.apache.calcite.adapter.govdata.GovDataSchemaFactory",
+                            "operand": operand,
+                        }
+                    ],
+                }
+            )
+            url = f"jdbc:calcite:model=inline:{model_json}"
+            conn = jaydebeapi.connect(
+                "org.apache.calcite.jdbc.Driver",
+                url,
+                {"lex": "ORACLE", "unquotedCasing": "TO_LOWER"},
+                jar_path,
+            )
+            try:
+                meta = conn.jconn.getMetaData()
+                _GOVDATA_META_TABLES = {"columns", "tables"}
+                rs = meta.getTables(None, schema_name.upper(), "%", ["TABLE", "VIEW"])
+                names: list[str] = []
+                while rs.next():
+                    name = rs.getString("TABLE_NAME").lower()
+                    if name not in _GOVDATA_META_TABLES:
+                        names.append(name)
+                rs.close()
+                return names
+            finally:
+                conn.close()
+
+        try:
+            table_names = await asyncio.to_thread(_list_tables_sync)
+            return [AvailableTableType(name=name, comment=None) for name in table_names]
+        except Exception:
+            return None
 
     # ── RDBMS ─────────────────────────────────────────────────────────────────
     if not pool.has(source_id):
