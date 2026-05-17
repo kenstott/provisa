@@ -744,6 +744,8 @@ class Mutation:
             _os.environ.setdefault("AWS_ACCESS_KEY_ID", _rs(input.username))
             if input.password:
                 _os.environ.setdefault("AWS_SECRET_ACCESS_KEY", _rs(input.password))
+            if input.host:
+                _os.environ["AWS_ENDPOINT_OVERRIDE"] = _rs(input.host)
 
         from provisa.api.app import state
         from provisa.executor.drivers.registry import has_driver
@@ -849,6 +851,8 @@ class Mutation:
             _os.environ["AWS_ACCESS_KEY_ID"] = _rs(input.username)
             if input.password:
                 _os.environ["AWS_SECRET_ACCESS_KEY"] = _rs(input.password)
+            if input.host:
+                _os.environ["AWS_ENDPOINT_OVERRIDE"] = _rs(input.host)
 
         from provisa.api.app import state
         from provisa.executor.drivers.registry import has_driver

@@ -262,14 +262,15 @@ async def native_tables(
         import os as _os
 
         row = await config_conn.fetchrow(
-            "SELECT username, password FROM sources WHERE id = $1", source_id
+            "SELECT username, host FROM sources WHERE id = $1", source_id
         )
         if not row:
             return None
 
-        access_key = row["username"] or ""
-        secret_key = row["password"] or ""
-        endpoint = _os.environ.get("AWS_ENDPOINT_OVERRIDE", "")
+        # Access key may be in DB (username column) or env; secret never stored in DB
+        access_key = row["username"] or _os.environ.get("AWS_ACCESS_KEY_ID", "")
+        secret_key = _os.environ.get("AWS_SECRET_ACCESS_KEY", "")
+        endpoint = row["host"] or _os.environ.get("AWS_ENDPOINT_OVERRIDE", "")
         jar_path = _os.path.abspath(
             _os.path.join(
                 _os.path.dirname(__file__), "..", "..", "..", "lib", "calcite-govdata-all.jar"
@@ -279,7 +280,8 @@ async def native_tables(
         def _list_tables_sync() -> list[str]:
             import jpype
 
-            _os.environ["AWS_ACCESS_KEY_ID"] = access_key
+            if access_key:
+                _os.environ["AWS_ACCESS_KEY_ID"] = access_key
             if secret_key:
                 _os.environ["AWS_SECRET_ACCESS_KEY"] = secret_key
             if endpoint:
@@ -314,7 +316,12 @@ async def native_tables(
         try:
             table_names = await asyncio.to_thread(_list_tables_sync)
             return [AvailableTableType(name=name, comment=None) for name in table_names]
-        except Exception:
+        except Exception as _e:
+            import logging as _logging
+
+            _logging.getLogger(__name__).error(
+                "govdata native_tables failed: %s", _e, exc_info=True
+            )
             return None
 
     # ── RDBMS ─────────────────────────────────────────────────────────────────

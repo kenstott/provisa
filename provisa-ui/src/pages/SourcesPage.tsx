@@ -825,6 +825,7 @@ export function SourcesPage() {
           </div>
           <label>AWS Access Key ID <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="${env:AWS_ACCESS_KEY_ID}" /></label>
           <label>AWS Secret Access Key <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="${env:AWS_SECRET_ACCESS_KEY}" /></label>
+          <label style={{ gridColumn: "1 / -1" }}>S3 Endpoint Override <input value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="https://... (Cloudflare R2 or MinIO)" /></label>
         </>
       )}
       {isKafka && (

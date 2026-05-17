@@ -83,6 +83,7 @@ test.describe("GovData source entry", () => {
 test.describe("GovData table registration and query (live backend)", () => {
   const accessKey = process.env.AWS_ACCESS_KEY_ID ?? "";
   const secretKey = process.env.AWS_SECRET_ACCESS_KEY ?? "";
+  const endpoint = process.env.AWS_ENDPOINT_OVERRIDE ?? "";
 
   test.beforeEach(async () => {
     test.skip(!accessKey || !secretKey, "AWS credentials not set in environment");
@@ -99,6 +100,9 @@ test.describe("GovData table registration and query (live backend)", () => {
     await page.locator(".form-card label").filter({ hasText: /^Government$/ }).locator("input[type='checkbox']").check();
     await page.locator("label", { hasText: "AWS Access Key ID" }).locator("input").fill(accessKey);
     await page.locator("label", { hasText: "AWS Secret Access Key" }).locator("input[type='password']").fill(secretKey);
+    if (endpoint) {
+      await page.locator("label", { hasText: "S3 Endpoint Override" }).locator("input").fill(endpoint);
+    }
     await page.getByRole("button", { name: "Create" }).click();
     await expect(page.locator(".form-card")).not.toBeVisible({ timeout: 60000 });
 
@@ -147,6 +151,9 @@ test.describe("GovData table registration and query (live backend)", () => {
     await page.locator(".form-card label").filter({ hasText: /^Economy$/ }).locator("input[type='checkbox']").check();
     await page.locator("label", { hasText: "AWS Access Key ID" }).locator("input").fill(accessKey);
     await page.locator("label", { hasText: "AWS Secret Access Key" }).locator("input[type='password']").fill(secretKey);
+    if (endpoint) {
+      await page.locator("label", { hasText: "S3 Endpoint Override" }).locator("input").fill(endpoint);
+    }
     await page.getByRole("button", { name: "Create" }).click();
     await expect(page.locator(".form-card")).not.toBeVisible({ timeout: 60000 });
 
