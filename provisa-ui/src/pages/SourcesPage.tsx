@@ -823,6 +823,8 @@ export function SourcesPage() {
               ))}
             </div>
           </div>
+          <label>AWS Access Key ID <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="${env:AWS_ACCESS_KEY_ID}" /></label>
+          <label>AWS Secret Access Key <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="${env:AWS_SECRET_ACCESS_KEY}" /></label>
         </>
       )}
       {isKafka && (

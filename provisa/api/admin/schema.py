@@ -738,6 +738,13 @@ class Mutation:
                     _domains, input.id,
                 )
 
+        if input.type == "govdata" and input.username:
+            import os as _os
+            from provisa.core.secrets import resolve_secrets as _rs
+            _os.environ.setdefault("AWS_ACCESS_KEY_ID", _rs(input.username))
+            if input.password:
+                _os.environ.setdefault("AWS_SECRET_ACCESS_KEY", _rs(input.password))
+
         from provisa.api.app import state
         from provisa.executor.drivers.registry import has_driver
         from provisa.core.secrets import resolve_secrets
@@ -835,6 +842,13 @@ class Mutation:
                     "UPDATE sources SET allowed_domains = $1 WHERE id = $2",
                     input.allowed_domains, input.id,
                 )
+
+        if input.type == "govdata" and input.username:
+            import os as _os
+            from provisa.core.secrets import resolve_secrets as _rs
+            _os.environ["AWS_ACCESS_KEY_ID"] = _rs(input.username)
+            if input.password:
+                _os.environ["AWS_SECRET_ACCESS_KEY"] = _rs(input.password)
 
         from provisa.api.app import state
         from provisa.executor.drivers.registry import has_driver
