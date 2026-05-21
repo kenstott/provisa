@@ -154,6 +154,37 @@ async def _insert_rel(
     return result == "INSERT 0 1"
 
 
+async def _govdata_fks(
+    source_id: str,
+    schema_name: str,
+    table_name: str,
+    config_conn: asyncpg.Connection,
+) -> list[dict]:
+    from provisa.core.models import GovDataSource, GovDataSubject
+    from provisa.core.secrets import resolve_secrets as _resolve_secrets
+    from provisa.govdata.source import fetch_foreign_keys as _fetch_fks
+
+    try:
+        row = await config_conn.fetchrow("SELECT username FROM sources WHERE id = $1", source_id)
+        api_key = _resolve_secrets((row["username"] or "") if row else "")
+        gds = GovDataSource(
+            id=source_id,
+            subject=GovDataSubject.all,
+            govdata_schemas=[schema_name.lower()],
+            domain_id="default",
+            api_key=api_key,
+        )
+        loop = asyncio.get_running_loop()
+        raw = await loop.run_in_executor(None, _fetch_fks, gds, schema_name.lower(), table_name.lower())
+        return [
+            {"fk_table": table_name, "fk_column": fk["fk_col"], "ref_table": fk["ref_table"], "ref_column": fk["ref_col"]}
+            for fk in raw
+        ]
+    except Exception:
+        _log.debug("govdata FK introspection failed for %s.%s", schema_name, table_name, exc_info=True)
+        return []
+
+
 async def auto_register_fk_relationships(
     source_pools,
     source_type: str,
@@ -167,22 +198,24 @@ async def auto_register_fk_relationships(
     Uses ON CONFLICT DO NOTHING — never overwrites manually configured rels.
     Returns count of newly inserted relationships.
     """
-    if not source_pools.has(source_id):
-        return 0
-
-    driver = source_pools.get(source_id)
     source_type_lower = source_type.lower()
 
-    try:
-        if source_type_lower in ("postgresql", "postgres", "mysql", "mariadb"):
-            fk_rows = await _pg_fks(driver, schema_name, table_name)
-        elif source_type_lower == "sqlite":
-            fk_rows = await _sqlite_fks(driver, schema_name, table_name)
-        else:
+    if source_type_lower == "govdata":
+        fk_rows = await _govdata_fks(source_id, schema_name, table_name, config_conn)
+    else:
+        if not source_pools.has(source_id):
             return 0
-    except Exception:
-        _log.debug("FK introspection failed for %s.%s (%s)", schema_name, table_name, source_type, exc_info=True)
-        return 0
+        driver = source_pools.get(source_id)
+        try:
+            if source_type_lower in ("postgresql", "postgres", "mysql", "mariadb"):
+                fk_rows = await _pg_fks(driver, schema_name, table_name)
+            elif source_type_lower == "sqlite":
+                fk_rows = await _sqlite_fks(driver, schema_name, table_name)
+            else:
+                return 0
+        except Exception:
+            _log.debug("FK introspection failed for %s.%s (%s)", schema_name, table_name, source_type, exc_info=True)
+            return 0
 
     if not fk_rows:
         return 0

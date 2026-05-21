@@ -84,6 +84,52 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         return False
 
 
+
+async def _govdata_columns(
+    source_id: str,
+    schema_name: str,
+    table_name: str,
+    _config_conn,
+) -> list["AvailableColumnType"]:
+    import asyncio as _asyncio
+    import logging as _logging
+
+    from provisa.core.models import GovDataSource, GovDataSubject
+    from provisa.core.secrets import resolve_secrets as _resolve_secrets
+    from provisa.govdata.source import fetch_columns as _fetch_columns, fetch_primary_keys as _fetch_pks
+
+    schema_lower = schema_name.lower()
+    table_lower = table_name.lower()
+
+    pool = await _get_pool()
+    async with pool.acquire() as _conn:
+        row = await _conn.fetchrow("SELECT username FROM sources WHERE id = $1", source_id)
+    api_key = _resolve_secrets((row["username"] or "") if row else "")
+
+    gds = GovDataSource(
+        id=source_id,
+        subject=GovDataSubject.all,
+        govdata_schemas=[schema_lower],
+        domain_id="default",
+        api_key=api_key,
+    )
+
+    try:
+        loop = _asyncio.get_running_loop()
+        cols_fut = loop.run_in_executor(None, _fetch_columns, gds, schema_lower, table_lower)
+        pks_fut = loop.run_in_executor(None, _fetch_pks, gds, schema_lower, table_lower)
+        rows, pk_cols = await _asyncio.gather(cols_fut, pks_fut)
+        return [
+            AvailableColumnType(name=col, data_type=typ, comment=rem or None, is_primary_key=col in pk_cols)
+            for col, typ, rem in rows
+        ]
+    except Exception as _e:
+        _logging.getLogger(__name__).error(
+            "govdata _govdata_columns failed for %s.%s: %s", schema_name, table_name, _e, exc_info=True
+        )
+        return []
+
+
 async def _rebuild_schemas():
     from provisa.api.app import _rebuild_schemas as rebuild
     await rebuild()
@@ -365,8 +411,8 @@ class Query:
                 f"ORDER BY schema_name"
             )
             return [
-                row[0] for row in cursor.fetchall()
-                if row[0] not in _HIDDEN_SCHEMAS
+                row[0].lower() for row in cursor.fetchall()
+                if row[0].lower() not in _HIDDEN_SCHEMAS
             ]
         except Exception:
             return []
@@ -412,14 +458,14 @@ class Query:
             cursor = state.trino_conn.cursor()
             cursor.execute(
                 f"SELECT table_name FROM \"{catalog}\".information_schema.tables "
-                f"WHERE table_schema = '{schema_name}' "
+                f"WHERE lower(table_schema) = lower('{schema_name}') "
                 f"AND table_type = 'BASE TABLE' "
                 f"ORDER BY table_name"
             )
             return [
                 AvailableTableType(name=row[0], comment=None)
                 for row in cursor.fetchall()
-                if row[0] not in _ADMIN_TABLES
+                if row[0].lower() not in _ADMIN_TABLES
             ]
         except Exception:
             return []
@@ -452,6 +498,10 @@ class Query:
     ) -> list[str]:
         """List columns for a table in a source's Trino catalog."""
         from provisa.api.app import state
+        source_type = state.source_types.get(source_id, "")
+        if source_type == "govdata":
+            cols = await _govdata_columns(source_id, schema_name, table_name, None)
+            return [c.name for c in cols]
         catalog = source_to_catalog(source_id)
         try:
             cursor = state.trino_conn.cursor()
@@ -474,6 +524,9 @@ class Query:
         For OpenAPI sources: derives columns from the operation's response schema + params.
         """
         from provisa.api.app import state
+        source_type = state.source_types.get(source_id, "")
+        if source_type == "govdata":
+            return await _govdata_columns(source_id, schema_name, table_name, None)
         if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
             from provisa.openapi.mapper import parse_spec
             from provisa.openapi.register import _schema_to_columns
@@ -722,6 +775,33 @@ class Mutation:
         from provisa.core.models import Source as SourceModel
         from provisa.core.repositories import source as source_repo
 
+        if input.type == "govdata":
+            if not input.username:
+                return MutationResult(success=False, message="AskAmerica API Key is required")
+            import asyncio as _asyncio
+            import logging as _vlog
+            from provisa.core.models import GovDataSource as _GDS, GovDataSubject as _GDSubj
+            from provisa.core.secrets import resolve_secrets as _rs_v
+            from provisa.govdata.source import connect as _gd_v
+
+            def _validate():
+                gds = _GDS(
+                    id=input.id,
+                    subject=_GDSubj.all,
+                    govdata_schemas=["fec"],
+                    domain_id="default",
+                    api_key=_rs_v(input.username),
+                )
+                conn = _gd_v(gds)
+                conn.getMetaData().getDatabaseProductName()
+
+            try:
+                loop = _asyncio.get_running_loop()
+                await loop.run_in_executor(None, _validate)
+            except Exception as _ve:
+                _vlog.getLogger(__name__).warning("govdata API key validation failed: %s", _ve)
+                return MutationResult(success=False, message=f"Invalid AskAmerica API Key: {_ve}")
+
         pool = await _get_pool()
         model = SourceModel(
             id=input.id, type=input.type, host=input.host,
@@ -807,6 +887,28 @@ class Mutation:
             table_refs = [_TblRef(input.id, r["schema_name"], r["table_name"]) for r in rows]
             if table_refs:
                 analyze_source_tables(state.trino_conn, model, table_refs)
+
+        # Prime govdata metadata cache so the table registration form is instant
+        if input.type == "govdata" and input.database and input.username:
+            import asyncio as _asyncio
+            from provisa.core.models import GovDataSource as _GDS, GovDataSubject as _GDSubj
+            from provisa.core.secrets import resolve_secrets as _rs2
+            from provisa.govdata.source import prime_source as _prime
+
+            _gds = _GDS(
+                id=input.id,
+                subject=_GDSubj.all,
+                govdata_schemas=[s.strip().lower() for s in input.database.split(",") if s.strip()],
+                domain_id="default",
+                api_key=_rs2(input.username),
+            )
+            _schemas = [s.strip().lower() for s in input.database.split(",") if s.strip()]
+
+            async def _prime_task():
+                loop = _asyncio.get_running_loop()
+                await loop.run_in_executor(None, _prime, _gds, _schemas)
+
+            _asyncio.create_task(_prime_task())
 
         # Fire background catalog indexing for NL table search (REQ-464)
         import asyncio as _asyncio

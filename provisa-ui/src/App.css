@@ -974,6 +974,7 @@ main {
 .column-editor-header, .column-editor-row {
   display: flex; gap: 0.5rem; align-items: center;
 }
+.column-editor-row input[type="checkbox"] { width: auto; flex-shrink: 0; }
 .column-editor-header { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; padding-bottom: 0.25rem; border-bottom: 1px solid var(--border); }
 .col-name-header { min-width: 150px; font-family: monospace; }
 .col-flex-header { flex: 1; }
@@ -1076,4 +1077,16 @@ main {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 0.4em;
 }

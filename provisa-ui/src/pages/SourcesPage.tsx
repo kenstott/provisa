@@ -28,7 +28,7 @@ const MAPPING_TYPES = new Set(["redis", "mongodb", "elasticsearch", "cassandra",
 
 const SOURCE_TYPES = [
   // Subscriptions
-  { value: "govdata", label: "GovData (US Government)", category: "Subscriptions", defaultPort: 0 },
+  { value: "govdata", label: "AskAmerica (US Government Data)", category: "Subscriptions", defaultPort: 0 },
   // RDBMS
   { value: "postgresql", label: "PostgreSQL", category: "RDBMS", defaultPort: 5432 },
   { value: "mysql", label: "MySQL", category: "RDBMS", defaultPort: 3306 },
@@ -159,6 +159,7 @@ export function SourcesPage() {
   const [discoverSourceType, setDiscoverSourceType] = useState<string | null>(null);
   const [mappingSourceId, setMappingSourceId] = useState<string | null>(null);
   const [mappingSourceType, setMappingSourceType] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const updateSearch = (v: string) => {
     setSourceSearch(v);
@@ -263,6 +264,7 @@ export function SourcesPage() {
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSubmitting(true);
     try {
       const { namingConvention: _nc, cacheTtl: _ct, cacheEnabled: _ce, ...coreForm } = form;
       const sourcePayload = {
@@ -295,7 +297,8 @@ export function SourcesPage() {
       } else {
         const { allowedDomains: _ad, ...createPayload } = sourcePayload as typeof sourcePayload & { allowedDomains?: unknown };
         void _ad;
-        await createSource(createPayload as Parameters<typeof createSource>[0]);
+        const createResult = await createSource(createPayload as Parameters<typeof createSource>[0]);
+        if (!createResult.success) throw new Error(createResult.message);
         const parsedDomainsCreate = form.allowedDomains.split(",").map((d) => d.trim()).filter(Boolean);
         if (parsedDomainsCreate.length > 0) {
           const domainsResult = await updateSourceAllowedDomains(form.id, parsedDomainsCreate);
@@ -306,6 +309,8 @@ export function SourcesPage() {
       load();
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -823,9 +828,17 @@ export function SourcesPage() {
               ))}
             </div>
           </div>
-          <label>AWS Access Key ID <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="${env:AWS_ACCESS_KEY_ID}" /></label>
-          <label>AWS Secret Access Key <input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="${env:AWS_SECRET_ACCESS_KEY}" /></label>
-          <label style={{ gridColumn: "1 / -1" }}>S3 Endpoint Override <input value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="https://... (Cloudflare R2 or MinIO)" /></label>
+          <div style={{ gridColumn: "1 / -1", display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
+            <label style={{ flex: 1 }}>AskAmerica API Key
+              <input value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} placeholder="${ASKAMERICA_API_KEY}" />
+            </label>
+            <button type="button" onClick={() => window.open("https://askamerica.ai", "_blank")}>Get API Key →</button>
+          </div>
+          {submitting && !editingSourceId && (
+            <div style={{ gridColumn: "1 / -1", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+              Validating API key and pre-loading metadata… this may take up to 30 seconds on first use.
+            </div>
+          )}
         </>
       )}
       {isKafka && (
@@ -894,7 +907,7 @@ export function SourcesPage() {
             </select>
           </label>
           {renderFormFields()}
-          <button type="submit">Create</button>
+          <button type="submit" disabled={submitting}>{submitting && <span className="btn-spinner" />}{submitting ? "Creating…" : "Create"}</button>
         </form>
       )}
 

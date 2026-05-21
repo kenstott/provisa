@@ -8,125 +8,138 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""GovData JDBC query executor via jaydebeapi.
-
-Each GovDataSource is backed by the Calcite/GovData fat JAR.  Connections are
-opened per-request (no persistent pool — GovData uses DuckDB internally which
-manages its own connection lifecycle).
-
-JDBC URL construction (in priority order):
-  model_file set:       jdbc:calcite:model=<path>
-  Single-schema inline: jdbc:govdata:source=<schema>&<params>
-  Multi-schema inline:  jdbc:calcite:model=inline:<json>
-
-The inline model injects ``operatingDirectory`` and ``s3Config`` into each
-schema operand so the GovData driver can locate its .aperio cache and download
-data from Cloudflare R2.
-"""
+"""GovData query executor via askamerica Python package."""
 
 from __future__ import annotations
 
-import json
 import logging
 import os
+import threading
 from typing import Any
 
 from provisa.core.models import GovDataSource
 
 log = logging.getLogger(__name__)
 
-_GOVDATA_DRIVER = "org.apache.calcite.jdbc.Driver"
+_jvm_lock = threading.Lock()
 
-
-def _build_operand(source: GovDataSource, schema: str) -> dict[str, Any]:
-    operand: dict[str, Any] = {"dataSource": schema}
-    if source.start_year:
-        operand["startYear"] = source.start_year
-    if source.end_year:
-        operand["endYear"] = source.end_year
-    if source.ciks:
-        operand["ciks"] = source.ciks
-    if source.auto_download:
-        operand["autoDownload"] = True
-    if source.operating_directory:
-        operand["operatingDirectory"] = source.operating_directory
-    elif source.operating_directory is None:
-        # Default: <cwd>/.aperio/<schema> — mirrors GovDataSchemaFactory behaviour
-        operand["operatingDirectory"] = os.path.join(os.getcwd(), ".aperio", schema.lower())
-    if source.s3_config:
-        operand["s3Config"] = source.s3_config
-    return operand
-
-
-def _build_jdbc_url(source: GovDataSource) -> str:
-    if source.model_file:
-        return f"jdbc:calcite:model={source.model_file}"
-
-    schemas = source.govdata_schemas
-
-    if len(schemas) == 1:
-        operand = _build_operand(source, schemas[0])
-        # Single-schema shorthand URL; operand fields not expressible in the URL
-        # are passed as inline model instead to preserve s3Config / operatingDirectory.
-        model = json.dumps(
-            {
-                "version": "1.0",
-                "schemas": [
-                    {
-                        "name": schemas[0].upper(),
-                        "type": "custom",
-                        "factory": "org.apache.calcite.adapter.govdata.GovDataSchemaFactory",
-                        "operand": operand,
-                    }
-                ],
-            }
-        )
-        return f"jdbc:calcite:model=inline:{model}"
-
-    schema_entries = [
-        {
-            "name": schema.upper(),
-            "type": "custom",
-            "factory": "org.apache.calcite.adapter.govdata.GovDataSchemaFactory",
-            "operand": _build_operand(source, schema),
-        }
-        for schema in schemas
-    ]
-    model = json.dumps({"version": "1.0", "schemas": schema_entries})
-    return f"jdbc:calcite:model=inline:{model}"
-
-
-def _env_props(source: GovDataSource) -> dict[str, str]:
-    props = {"lex": "ORACLE", "unquotedCasing": "TO_LOWER"}
-    for key, val in source.api_keys.items():
-        os.environ.setdefault(key, val)
-    return props
+# (source_id, schema) -> [table_name, ...]
+_tables_cache: dict[tuple[str, str], list[str]] = {}
+# (source_id, schema, table) -> [(col_name, type_name, remarks), ...]
+_columns_cache: dict[tuple[str, str, str], list[tuple[str, str, str | None]]] = {}
+# (source_id, schema, table) -> {pk_col_name, ...}
+_pk_cache: dict[tuple[str, str, str], set[str]] = {}
+# (source_id, schema, table) -> [{"fk_col", "ref_schema", "ref_table", "ref_col"}, ...]
+_fk_cache: dict[tuple[str, str, str], list[dict[str, str]]] = {}
 
 
 def connect(source: GovDataSource):
-    """Open a jaydebeapi connection to the GovData JDBC adapter.
+    from askamerica.engine import DEFAULT_SCHEMAS, get_connection
 
-    Caller is responsible for closing the returned connection.
+    with _jvm_lock:
+        if "ASKAMERICA_SCHEMAS" not in os.environ:
+            os.environ["ASKAMERICA_SCHEMAS"] = DEFAULT_SCHEMAS
+        return get_connection(source.api_key)
+
+
+def fetch_tables(source: GovDataSource, schema: str) -> list[str]:
+    key = (source.id, schema)
+    if key in _tables_cache:
+        return _tables_cache[key]
+    conn = connect(source)
+    meta = conn.getMetaData()
+    rs = meta.getTables(None, schema, "%", None)
+    names = []
+    while rs.next():
+        names.append(str(rs.getString("TABLE_NAME")).lower())
+    rs.close()
+    _tables_cache[key] = names
+    return names
+
+
+def fetch_columns(
+    source: GovDataSource, schema: str, table: str
+) -> list[tuple[str, str, str | None]]:
+    key = (source.id, schema, table)
+    if key in _columns_cache:
+        return _columns_cache[key]
+    conn = connect(source)
+    meta = conn.getMetaData()
+    rs = meta.getColumns(None, schema, table, "%")
+    cols: list[tuple[str, str, str | None]] = []
+    while rs.next():
+        cols.append(
+            (
+                str(rs.getString("COLUMN_NAME")).lower(),
+                str(rs.getString("TYPE_NAME")).lower(),
+                rs.getString("REMARKS"),
+            )
+        )
+    rs.close()
+    _columns_cache[key] = cols
+    return cols
+
+
+def fetch_primary_keys(source: GovDataSource, schema: str, table: str) -> set[str]:
+    key = (source.id, schema, table)
+    if key in _pk_cache:
+        return _pk_cache[key]
+    conn = connect(source)
+    meta = conn.getMetaData()
+    rs = meta.getPrimaryKeys(None, schema.upper(), table.upper())
+    pks: set[str] = set()
+    while rs.next():
+        pks.add(str(rs.getString("COLUMN_NAME")).lower())
+    rs.close()
+    _pk_cache[key] = pks
+    return pks
+
+
+def fetch_foreign_keys(source: GovDataSource, schema: str, table: str) -> list[dict[str, str]]:
+    """Return imported FK references for *table* via JDBC getImportedKeys().
+
+    Each entry: {"fk_col", "ref_schema", "ref_table", "ref_col"}.
     """
-    import jaydebeapi  # optional dependency
+    key = (source.id, schema, table)
+    if key in _fk_cache:
+        return _fk_cache[key]
+    conn = connect(source)
+    meta = conn.getMetaData()
+    rs = meta.getImportedKeys(None, schema.upper(), table.upper())
+    fks: list[dict[str, str]] = []
+    while rs.next():
+        fks.append(
+            {
+                "fk_col": str(rs.getString("FKCOLUMN_NAME")).lower(),
+                "ref_schema": (rs.getString("PKTABLE_SCHEM") or schema).lower(),
+                "ref_table": str(rs.getString("PKTABLE_NAME")).lower(),
+                "ref_col": str(rs.getString("PKCOLUMN_NAME")).lower(),
+            }
+        )
+    rs.close()
+    _fk_cache[key] = fks
+    return fks
 
-    url = _build_jdbc_url(source)
-    log.debug("GovData JDBC connect: %s (jar=%s)", url, source.jar_path)
-    return jaydebeapi.connect(
-        _GOVDATA_DRIVER,
-        url,
-        _env_props(source),
-        source.jar_path,
-    )
+
+def prime_source(source: GovDataSource, schemas: list[str]) -> None:
+    """Fetch and cache tables (and columns) for all schemas. Called after source creation."""
+    for schema in schemas:
+        try:
+            tables = fetch_tables(source, schema)
+            for table in tables:
+                try:
+                    fetch_columns(source, schema, table)
+                    fetch_primary_keys(source, schema, table)
+                    fetch_foreign_keys(source, schema, table)
+                except Exception:
+                    log.warning("govdata prime_source: columns failed for %s.%s", schema, table)
+        except Exception:
+            log.warning("govdata prime_source: tables failed for schema %s", schema)
 
 
 def execute_query(source: GovDataSource, sql: str) -> list[dict[str, Any]]:
-    """Execute *sql* against *source* and return rows as dicts."""
+    from askamerica.engine import execute_query as _execute
+
     conn = connect(source)
-    try:
-        cursor = conn.cursor()
-        cursor.execute(sql)
-        cols = [desc[0].lower() for desc in cursor.description]
-        return [dict(zip(cols, row)) for row in cursor.fetchall()]
-    finally:
-        conn.close()
+    log.warning("GovData query: %s", sql[:300])
+    return _execute(conn, sql)
