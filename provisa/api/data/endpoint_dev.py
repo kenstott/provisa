@@ -59,6 +59,72 @@ async def proto_endpoint(role_id: str):
     return Response(content=state.proto_files[role_id], media_type="text/plain")
 
 
+async def _execute_govdata(source_id: str, sql: str, state) -> "QueryResult":
+    log.warning("_execute_govdata called: sql=%s", sql[:300])
+    from provisa.core.models import GovDataSource, GovDataSubject
+    from provisa.core.secrets import resolve_secrets
+    from provisa.executor.trino import QueryResult
+    from provisa.govdata.source import execute_query
+
+    pool = state.pg_pool
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT username, database FROM sources WHERE id = $1",
+            source_id,
+        )
+
+    api_key = resolve_secrets(row["username"] or "")
+    database = row["database"] or ""
+
+    all_govdata_schemas = [s.strip().lower() for s in database.split(",") if s.strip()]
+
+    # Only instantiate schemas actually referenced in the SQL — instantiating all
+    # schemas in the source's database list causes JDBC errors for schemas not cached locally.
+    # Strip SQL quotes before regex so both "fec"."candidates" and fec.candidates are matched.
+    import re as _re
+    _sql_unquoted = sql.replace('"', '').replace('`', '')
+    _sql_schemas = {m.group(1).lower() for m in _re.finditer(r'\b(\w+)\.\w+', _sql_unquoted)}
+    govdata_schemas = [s for s in all_govdata_schemas if s in _sql_schemas] or all_govdata_schemas
+
+    loop = asyncio.get_event_loop()
+
+    gds = GovDataSource(
+        id=source_id,
+        subject=GovDataSubject.all,
+        govdata_schemas=govdata_schemas,
+        domain_id="default",
+        api_key=api_key,
+    )
+
+    # Calcite/GovData uses Oracle-mode lexer: unquoted identifiers are uppercased for matching.
+    # normalize_table_refs() adds quoted=True ("fec"."candidates") → case-sensitive lowercase →
+    # fails to match the uppercase schema FEC. Strip quotes so Calcite uppercases them.
+    # Also convert LIMIT n → FETCH FIRST n ROWS ONLY (Calcite Oracle syntax).
+    import re as _re
+    govdata_sql = sql.replace('"', '')
+    govdata_sql = _re.sub(
+        r'\bLIMIT\s+(\d+)\b', r'FETCH FIRST \1 ROWS ONLY', govdata_sql, flags=_re.IGNORECASE
+    )
+    govdata_sql = _re.sub(r'\)\s+AS\s+(\w)', r') \1', govdata_sql, flags=_re.IGNORECASE)
+    # Calcite Oracle mode rejects subquery aliases entirely in some contexts.
+    # Unwrap SELECT * FROM (inner) alias FETCH FIRST n ROWS ONLY → inner FETCH FIRST n ROWS ONLY
+    _unwrap = _re.match(
+        r'^\s*SELECT\s+\*\s+FROM\s*\(\s*(.*?)\s*\)\s+\w+\s+(FETCH\s+FIRST\s+\d+\s+ROWS\s+ONLY)\s*$',
+        govdata_sql,
+        flags=_re.IGNORECASE | _re.DOTALL,
+    )
+    if _unwrap:
+        govdata_sql = f"{_unwrap.group(1).strip()} {_unwrap.group(2)}"
+    rows_as_dicts = await loop.run_in_executor(None, lambda: execute_query(gds, govdata_sql))
+
+    if not rows_as_dicts:
+        return QueryResult(rows=[], column_names=[])
+
+    column_names = list(rows_as_dicts[0].keys())
+    rows = [tuple(r[c] for c in column_names) for r in rows_as_dicts]
+    return QueryResult(rows=rows, column_names=column_names)
+
+
 @router.post("/sql")
 async def sql_endpoint(
     raw_request: Request,
@@ -217,7 +283,13 @@ async def sql_endpoint(
     # --- Step 7: Execute ---
     try:
         exec_params = embedded_params or None
-        if decision.route == Route.TRINO:
+        _govdata_sid = next(
+            (sid for sid in (sources or {_default_source}) if state.source_types.get(sid) == "govdata"),
+            None,
+        )
+        if _govdata_sid:
+            result = await _execute_govdata(_govdata_sid, governed_physical, state)
+        elif decision.route == Route.TRINO:
             from provisa.api.data.endpoint import _materialize_api_to_trino_cache
             from provisa.cache.hot_tables import build_values_cte_sql
             from provisa.api_source.trino_cache import rewrite_all_from_cache

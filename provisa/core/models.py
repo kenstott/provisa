@@ -555,6 +555,7 @@ class GovDataSubject(str, Enum):
     public_safety = "PUBLIC_SAFETY"
     environment = "ENVIRONMENT"
     weather = "WEATHER"
+    energy = "ENERGY"
     government = "GOVERNMENT"
 
 
@@ -563,47 +564,33 @@ class GovDataSubject(str, Enum):
 # "ref" and "geo" are always included as linker schemas — not listed here.
 GOVDATA_SUBJECT_SCHEMAS: dict[str, list[str]] = {
     "COMMERCE": ["sec", "patents"],
-    "ECONOMY": ["econ"],
+    "ECONOMY": ["econ", "econ_reference"],
     "EDUCATION": ["census", "edu"],
     "HEALTH": ["health"],
     "CYBER": ["cyber_threat", "cyber_vuln"],
     "PUBLIC_SAFETY": ["crime"],
     "ENVIRONMENT": ["lands"],
     "WEATHER": ["weather"],
+    "ENERGY": ["energy"],
     "GOVERNMENT": ["fedregister", "fec"],
 }
 
 
 class GovDataSource(BaseModel):
-    """A GovData dataset group exposed via the Calcite JDBC adapter.
+    """A GovData dataset group exposed via the askamerica JDBC adapter.
 
     Each entry corresponds to one set of GovData schemas sharing a subject tag.
-    At query time Provisa connects via jaydebeapi using ``jar_path`` and the
-    constructed JDBC URL.
-
-    Driver config priority (mirrors GovData precedence):
-    1. ``model_file`` — use a pre-built Calcite model JSON (e.g. .aperio/debug-model-sec.json)
-       that already embeds S3 credentials and operatingDirectory.
-    2. Inline fields — ``operating_directory``, ``s3_config``, ``auto_download`` are
-       injected into the per-schema operand when building the inline model.
+    At query time Provisa connects via askamerica.engine.get_connection(api_key).
     """
 
     id: str
     subject: GovDataSubject
     govdata_schemas: list[str]
-    jar_path: str
     domain_id: str
     description: str = ""
-    # Optional: path to a pre-built Calcite model JSON.  When set, used verbatim
-    # as the JDBC model= param; all inline operand fields are ignored.
-    model_file: str | None = None
-    # Inline operand fields (used when model_file is None)
-    operating_directory: str | None = None
-    s3_config: dict[str, str] = Field(default_factory=dict)
-    auto_download: bool = True
+    api_key: str = ""
     start_year: int | None = None
     end_year: int | None = None
-    api_keys: dict[str, str] = Field(default_factory=dict)
     ciks: str | None = None
     governance: GovernanceLevel = GovernanceLevel.pre_approved
 

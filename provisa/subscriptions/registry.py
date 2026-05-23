@@ -153,8 +153,8 @@ def get_provider(source_type: str, config: dict[str, Any]) -> NotificationProvid
             sources=config["sources"],
             table=config["table"],
             watermark_column=config["watermark_column"],
+            api_key=config["api_key"],
             schema=config.get("schema", ""),
-            jar_path=config.get("jar_path", ""),
             poll_interval=config.get("poll_interval", 30.0),
         )
 

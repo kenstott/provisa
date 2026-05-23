@@ -9,6 +9,22 @@
 // permission from the copyright holder.
 
 import { defineConfig } from "@playwright/test";
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
+
+// Load root .env so live-backend tests receive AWS credentials
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootEnv = path.resolve(__dirname, "../.env");
+if (fs.existsSync(rootEnv)) {
+  for (const line of fs.readFileSync(rootEnv, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+    const [k, ...rest] = trimmed.split("=");
+    const key = k.trim();
+    if (!process.env[key]) process.env[key] = rest.join("=").trim();
+  }
+}
 
 export default defineConfig({
   testDir: "./e2e",

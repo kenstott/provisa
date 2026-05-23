@@ -26,18 +26,17 @@ test.describe("GovData source entry", () => {
     await expect(page.locator(".form-card label").filter({ hasText: /^Commerce$/ })).toBeVisible();
   });
 
-  test("govdata form shows AWS credential fields", async ({ page }) => {
-    await expect(page.locator("label", { hasText: "AWS Access Key ID" }).locator("input")).toBeVisible();
-    await expect(page.locator("label", { hasText: "AWS Secret Access Key" }).locator("input[type='password']")).toBeVisible();
+  test("govdata form shows AskAmerica API Key field and Get API Key button", async ({ page }) => {
+    await expect(page.locator("label", { hasText: "AskAmerica API Key" }).locator("input")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Get API Key →" })).toBeVisible();
   });
 
-  test("AWS credential fields accept input", async ({ page }) => {
-    await page.locator("label", { hasText: "AWS Access Key ID" }).locator("input").fill("AKIAIOSFODNN7EXAMPLE");
-    await page.locator("label", { hasText: "AWS Secret Access Key" }).locator("input[type='password']").fill("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
-    await expect(page.locator("label", { hasText: "AWS Access Key ID" }).locator("input")).toHaveValue("AKIAIOSFODNN7EXAMPLE");
+  test("AskAmerica API Key field accepts input", async ({ page }) => {
+    await page.locator("label", { hasText: "AskAmerica API Key" }).locator("input").fill("aa_test_key_12345");
+    await expect(page.locator("label", { hasText: "AskAmerica API Key" }).locator("input")).toHaveValue("aa_test_key_12345");
   });
 
-  test("govdata create submits username/password from AWS fields", async ({ page }) => {
+  test("govdata create submits api key in username field", async ({ page }) => {
     const captured: Record<string, unknown>[] = [];
     await page.route("**/admin/graphql", async (route) => {
       const body = JSON.parse(route.request().postData() || "{}");
@@ -51,8 +50,7 @@ test.describe("GovData source entry", () => {
 
     await page.locator("input[placeholder='e.g. sales-pg']").fill("fec-source");
     await page.locator(".form-card label").filter({ hasText: /^Government$/ }).locator("input[type='checkbox']").check();
-    await page.locator("label", { hasText: "AWS Access Key ID" }).locator("input").fill("AKIAIOSFODNN7EXAMPLE");
-    await page.locator("label", { hasText: "AWS Secret Access Key" }).locator("input[type='password']").fill("secretkey123");
+    await page.locator("label", { hasText: "AskAmerica API Key" }).locator("input").fill("aa_test_key_12345");
 
     await page.getByRole("button", { name: "Create" }).click();
     await expect(page.locator(".form-card")).not.toBeVisible({ timeout: 5000 });
@@ -61,36 +59,47 @@ test.describe("GovData source entry", () => {
     expect(captured[0]).toMatchObject({
       id: "fec-source",
       type: "govdata",
-      username: "AKIAIOSFODNN7EXAMPLE",
-      password: "secretkey123",
+      username: "aa_test_key_12345",
     });
   });
 
-  test("govdata edit restores AWS Access Key ID from saved username", async ({ page }) => {
+  test("govdata edit restores AskAmerica API Key from saved username", async ({ page }) => {
     await setupMocks(page, {
       sources: [
-        { id: "fec-source", type: "govdata", host: "", port: 0, database: "fec,ref,geo", username: "AKIAIOSFODNN7EXAMPLE", dialect: "govdata", cacheEnabled: true, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "" },
+        { id: "fec-source", type: "govdata", host: "", port: 0, database: "fec,ref,geo", username: "aa_saved_key_99999", dialect: "govdata", cacheEnabled: true, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "" },
       ],
     });
     await page.goto("/sources");
     await expect(page.getByRole("heading", { name: "Data Sources" })).toBeVisible({ timeout: 10000 });
     await page.locator("tr", { hasText: "fec-source" }).first().click();
     await page.locator("button[title='Edit']").first().click();
-    await expect(page.locator("label", { hasText: "AWS Access Key ID" }).locator("input")).toHaveValue("AKIAIOSFODNN7EXAMPLE");
+    await expect(page.locator("label", { hasText: "AskAmerica API Key" }).locator("input")).toHaveValue("aa_saved_key_99999");
   });
 });
 
 test.describe("GovData table registration and query (live backend)", () => {
-  const accessKey = process.env.AWS_ACCESS_KEY_ID ?? "";
-  const secretKey = process.env.AWS_SECRET_ACCESS_KEY ?? "";
-  const endpoint = process.env.AWS_ENDPOINT_OVERRIDE ?? "";
+  const apiKey = process.env.ASKAMERICA_API_KEY ?? "";
 
   test.beforeEach(async () => {
-    test.skip(!accessKey || !secretKey, "AWS credentials not set in environment");
+    test.skip(!apiKey, "ASKAMERICA_API_KEY not set in environment");
   });
 
   test("creates fec-source and registers fec.candidates", async ({ page }) => {
     test.setTimeout(300000);
+    // Delete fec.candidates if already registered so the dropdown shows it
+    const tablesResp = await page.request.post("http://localhost:8000/admin/graphql", {
+      data: { query: "{ tables { id sourceId schemaName tableName } }" },
+    });
+    const tablesJson = await tablesResp.json();
+    const existing = (tablesJson.data?.tables ?? []).find(
+      (t: { sourceId: string; schemaName: string; tableName: string }) =>
+        t.sourceId === "fec-source" && t.schemaName === "fec" && t.tableName === "candidates"
+    );
+    if (existing) {
+      await page.request.post("http://localhost:8000/admin/graphql", {
+        data: { query: `mutation { deleteTable(id: ${existing.id}) { success } }` },
+      });
+    }
     // Create the govdata source
     await page.goto("/sources");
     await expect(page.getByRole("heading", { name: "Data Sources" })).toBeVisible({ timeout: 10000 });
@@ -98,11 +107,7 @@ test.describe("GovData table registration and query (live backend)", () => {
     await page.locator(".form-card select").first().selectOption("govdata");
     await page.locator("input[placeholder='e.g. sales-pg']").fill("fec-source");
     await page.locator(".form-card label").filter({ hasText: /^Government$/ }).locator("input[type='checkbox']").check();
-    await page.locator("label", { hasText: "AWS Access Key ID" }).locator("input").fill(accessKey);
-    await page.locator("label", { hasText: "AWS Secret Access Key" }).locator("input[type='password']").fill(secretKey);
-    if (endpoint) {
-      await page.locator("label", { hasText: "S3 Endpoint Override" }).locator("input").fill(endpoint);
-    }
+    await page.locator("label", { hasText: "AskAmerica API Key" }).locator("input").fill(apiKey);
     await page.getByRole("button", { name: "Create" }).click();
     await expect(page.locator(".form-card")).not.toBeVisible({ timeout: 60000 });
 
@@ -117,7 +122,7 @@ test.describe("GovData table registration and query (live backend)", () => {
     await schemaSelect.selectOption("fec");
 
     const tableSelect = page.locator(".form-card select").nth(3);
-    await expect(tableSelect).not.toBeDisabled({ timeout: 30000 });
+    await expect(tableSelect).not.toBeDisabled({ timeout: 90000 });
     await tableSelect.selectOption("candidates");
 
     await expect(page.locator(".column-editor-row").first()).toBeVisible({ timeout: 30000 });
@@ -149,11 +154,7 @@ test.describe("GovData table registration and query (live backend)", () => {
     await page.locator(".form-card select").first().selectOption("govdata");
     await page.locator("input[placeholder='e.g. sales-pg']").fill("econ-source");
     await page.locator(".form-card label").filter({ hasText: /^Economy$/ }).locator("input[type='checkbox']").check();
-    await page.locator("label", { hasText: "AWS Access Key ID" }).locator("input").fill(accessKey);
-    await page.locator("label", { hasText: "AWS Secret Access Key" }).locator("input[type='password']").fill(secretKey);
-    if (endpoint) {
-      await page.locator("label", { hasText: "S3 Endpoint Override" }).locator("input").fill(endpoint);
-    }
+    await page.locator("label", { hasText: "AskAmerica API Key" }).locator("input").fill(apiKey);
     await page.getByRole("button", { name: "Create" }).click();
     await expect(page.locator(".form-card")).not.toBeVisible({ timeout: 60000 });
 

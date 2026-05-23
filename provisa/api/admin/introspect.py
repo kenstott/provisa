@@ -258,69 +258,35 @@ async def native_tables(
 
     # ── GovData ───────────────────────────────────────────────────────────────
     if t == "govdata":
-        import asyncio
-        import os as _os
+        import asyncio as _asyncio
+        import logging as _logging
 
-        row = await config_conn.fetchrow(
-            "SELECT username, host FROM sources WHERE id = $1", source_id
+        from provisa.core.models import GovDataSource, GovDataSubject
+        from provisa.core.secrets import resolve_secrets as _resolve_secrets
+        from provisa.govdata.source import fetch_tables as _fetch_tables
+
+        schema_lower = schema_name.lower()
+
+        cred_row = await config_conn.fetchrow(
+            "SELECT username FROM sources WHERE id = $1", source_id
         )
-        if not row:
-            return None
+        api_key = _resolve_secrets((cred_row["username"] or "") if cred_row else "")
 
-        # Access key may be in DB (username column) or env; secret never stored in DB
-        access_key = row["username"] or _os.environ.get("AWS_ACCESS_KEY_ID", "")
-        secret_key = _os.environ.get("AWS_SECRET_ACCESS_KEY", "")
-        endpoint = row["host"] or _os.environ.get("AWS_ENDPOINT_OVERRIDE", "")
-        jar_path = _os.path.abspath(
-            _os.path.join(
-                _os.path.dirname(__file__), "..", "..", "..", "lib", "calcite-govdata-all.jar"
-            )
+        gds = GovDataSource(
+            id=source_id,
+            subject=GovDataSubject.all,
+            govdata_schemas=[schema_lower],
+            domain_id="default",
+            api_key=api_key,
         )
-
-        def _list_tables_sync() -> list[str]:
-            import jpype
-
-            if access_key:
-                _os.environ["AWS_ACCESS_KEY_ID"] = access_key
-            if secret_key:
-                _os.environ["AWS_SECRET_ACCESS_KEY"] = secret_key
-            if endpoint:
-                _os.environ["AWS_ENDPOINT_OVERRIDE"] = endpoint
-            _os.environ.setdefault("AWS_REGION", "auto")
-
-            if not jpype.isJVMStarted():
-                jpype.startJVM(classpath=[jar_path])
-                try:
-                    factory = jpype.JClass("org.slf4j.LoggerFactory").getILoggerFactory()
-                    level = jpype.JClass("ch.qos.logback.classic.Level")
-                    factory.getLogger("ROOT").setLevel(level.ERROR)
-                except Exception:
-                    pass
-
-            GovDataDriver = jpype.JClass("org.apache.calcite.adapter.govdata.GovDataDriver")
-            props = jpype.JClass("java.util.Properties")()
-            url = f"jdbc:govdata:source={schema_name}"
-            conn = GovDataDriver().connect(url, props)
-            assert conn is not None, f"GovDataDriver.connect() returned null for: {url}"
-            try:
-                meta = conn.getMetaData()
-                rs = meta.getTables(None, schema_name.upper(), "%", None)
-                names: list[str] = []
-                while rs.next():
-                    names.append(str(rs.getString("TABLE_NAME")))
-                rs.close()
-                return names
-            finally:
-                conn.close()
 
         try:
-            table_names = await asyncio.to_thread(_list_tables_sync)
-            return [AvailableTableType(name=name, comment=None) for name in table_names]
+            loop = _asyncio.get_running_loop()
+            names = await loop.run_in_executor(None, _fetch_tables, gds, schema_lower)
+            return [AvailableTableType(name=n, comment=None) for n in names]
         except Exception as _e:
-            import logging as _logging
-
-            _logging.getLogger(__name__).error(
-                "govdata native_tables failed: %s", _e, exc_info=True
+            _logging.getLogger(__name__).warning(
+                "govdata native_tables FAILED: %s", _e, exc_info=True
             )
             return None
 

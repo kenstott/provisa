@@ -314,7 +314,13 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
         native_filter_cols = [c for c in table["columns"] if c.get("native_filter_type")]
 
         if not visible_cols and not native_filter_cols:
-            continue
+            if not col_meta:
+                continue
+            # No registered columns but synthesized metadata exists (e.g., govdata JAR YAML)
+            visible_cols = [
+                {"column_name": name, "visible_to": [], "native_filter_type": None}
+                for name in col_meta
+            ]
 
         # Resolve naming convention: table → source → global
         table_conv = table.get("naming_convention")

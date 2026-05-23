@@ -54,6 +54,7 @@ mysql = ["aiomysql"]
 sqlserver = ["aioodbc"]
 oracle = ["oracledb"]
 all-drivers = ["aiomysql", "aioodbc", "oracledb"]
+govdata = ["askamerica[engine]"]
 firebase = ["firebase-admin"]
 dev = [
     "pytest",

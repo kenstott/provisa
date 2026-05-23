@@ -22,16 +22,11 @@ from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
 log = logging.getLogger(__name__)
 
-_DEFAULT_JAR = os.path.join(
-    os.path.dirname(__file__), "..", "..", "lib", "calcite-govdata-all.jar"
-)
-
-
 class GovDataPollingProvider(NotificationProvider):
     """Poll a GovData table using a watermark column.
 
     GovData has no native change feed so polling is the only option.
-    JPype starts the JVM once per process; subsequent calls to startJVM are no-ops.
+    askamerica.engine manages the JVM singleton internally.
     """
 
     def __init__(
@@ -39,40 +34,22 @@ class GovDataPollingProvider(NotificationProvider):
         sources: str,
         table: str,
         watermark_column: str,
+        api_key: str,
         schema: str = "",
-        jar_path: str = "",
         poll_interval: float = 30.0,
     ) -> None:
         self._sources = sources  # e.g. "sec,geo"
         self._table = table
         self._watermark_column = watermark_column
+        self._api_key = api_key
         self._schema = schema.upper() if schema else sources.split(",")[0].upper().strip()
-        self._jar_path = os.path.abspath(jar_path or _DEFAULT_JAR)
         self._poll_interval = poll_interval
         self._running = True
 
     def _connect(self) -> Any:
-        import jpype
-        import jpype.imports
-
-        if not jpype.isJVMStarted():
-            jpype.startJVM(classpath=[self._jar_path])
-            try:
-                factory = jpype.JClass("org.slf4j.LoggerFactory").getILoggerFactory()
-                level = jpype.JClass("ch.qos.logback.classic.Level")
-                factory.getLogger("ROOT").setLevel(level.ERROR)
-            except Exception:
-                pass
-
-        GovDataDriver = jpype.JClass(
-            "org.apache.calcite.adapter.govdata.GovDataDriver"
-        )
-        driver = GovDataDriver()
-        props = jpype.JClass("java.util.Properties")()
-        url = f"jdbc:govdata:source={self._sources}"
-        conn = driver.connect(url, props)
-        assert conn is not None, f"GovDataDriver.connect() returned null for: {url}"
-        return conn
+        from askamerica.engine import get_connection
+        os.environ["ASKAMERICA_SCHEMAS"] = self._sources
+        return get_connection(self._api_key)
 
     def _fetch_new_rows(self, conn: Any, watermark: datetime) -> list[dict]:
         wc = self._watermark_column

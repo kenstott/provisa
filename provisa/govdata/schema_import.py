@@ -111,15 +111,15 @@ def _read_fks(meta, schema: str, table: str) -> list[dict[str, str]]:
 def _read_view_sql(conn, schema: str, table: str) -> str | None:
     """Attempt to retrieve VIEW definition via INFORMATION_SCHEMA."""
     try:
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT VIEW_DEFINITION FROM INFORMATION_SCHEMA.VIEWS "
-            "WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?",
-            [schema.upper(), table.upper()],
+        stmt = conn.createStatement()
+        rs = stmt.executeQuery(
+            f"SELECT VIEW_DEFINITION FROM INFORMATION_SCHEMA.VIEWS "
+            f"WHERE TABLE_SCHEMA = '{schema.upper()}' AND TABLE_NAME = '{table.upper()}'"
         )
-        row = cur.fetchone()
-        cur.close()
-        return row[0] if row else None
+        result = str(rs.getString(1)) if rs.next() else None
+        rs.close()
+        stmt.close()
+        return result
     except Exception:
         return None
 
@@ -136,64 +136,59 @@ def import_govdata_source(
     from provisa.govdata.source import connect
 
     conn = connect(source)
-    try:
-        jconn = conn.jconn  # underlying java.sql.Connection from jaydebeapi
-        meta = jconn.getMetaData()
+    meta = conn.getMetaData()
 
-        tables: list[Table] = []
-        relationships: list[Relationship] = []
-        seen_rel_ids: set[str] = set()
+    tables: list[Table] = []
+    relationships: list[Relationship] = []
+    seen_rel_ids: set[str] = set()
 
-        for schema, table_name in _read_tables(
-            meta, source.govdata_schemas[0] if len(source.govdata_schemas) == 1 else ""
-        ):
-            if schema not in [s.lower() for s in source.govdata_schemas]:
+    for schema, table_name in _read_tables(
+        meta, source.govdata_schemas[0] if len(source.govdata_schemas) == 1 else ""
+    ):
+        if schema not in [s.lower() for s in source.govdata_schemas]:
+            continue
+
+        raw_cols = _read_columns(meta, schema, table_name)
+        if not raw_cols:
+            continue
+
+        view_sql = _read_view_sql(conn, schema, table_name)
+
+        columns = [
+            Column(
+                name=c["name"],
+                visible_to=list(_DEFAULT_VISIBLE_TO),
+            )
+            for c in raw_cols
+        ]
+
+        tables.append(
+            Table(
+                source_id=source.id,
+                domain_id=source.domain_id,
+                schema=schema,
+                table=table_name,
+                governance=source.governance,
+                columns=columns,
+                view_sql=view_sql,
+            )
+        )
+
+        for fk in _read_fks(meta, schema, table_name):
+            rel_id = f"{source.id}-{schema}-{table_name}-{fk['pk_table']}-{fk['fk_col']}"
+            if rel_id in seen_rel_ids:
                 continue
+            seen_rel_ids.add(rel_id)
 
-            raw_cols = _read_columns(meta, schema, table_name)
-            if not raw_cols:
-                continue
-
-            view_sql = _read_view_sql(conn, schema, table_name)
-
-            columns = [
-                Column(
-                    name=c["name"],
-                    visible_to=list(_DEFAULT_VISIBLE_TO),
-                )
-                for c in raw_cols
-            ]
-
-            tables.append(
-                Table(
-                    source_id=source.id,
-                    domain_id=source.domain_id,
-                    schema=schema,
-                    table=table_name,
-                    governance=source.governance,
-                    columns=columns,
-                    view_sql=view_sql,
+            relationships.append(
+                Relationship(
+                    id=rel_id,
+                    source_table_id=f"{schema}.{table_name}",
+                    target_table_id=f"{fk['pk_schema']}.{fk['pk_table']}",
+                    source_column=fk["fk_col"],
+                    target_column=fk["pk_col"],
+                    cardinality=Cardinality.many_to_one,
                 )
             )
 
-            for fk in _read_fks(meta, schema, table_name):
-                rel_id = f"{source.id}-{schema}-{table_name}-{fk['pk_table']}-{fk['fk_col']}"
-                if rel_id in seen_rel_ids:
-                    continue
-                seen_rel_ids.add(rel_id)
-
-                relationships.append(
-                    Relationship(
-                        id=rel_id,
-                        source_table_id=f"{schema}.{table_name}",
-                        target_table_id=f"{fk['pk_schema']}.{fk['pk_table']}",
-                        source_column=fk["fk_col"],
-                        target_column=fk["pk_col"],
-                        cardinality=Cardinality.many_to_one,
-                    )
-                )
-
-        return tables, relationships
-
-    finally:
-        conn.close()
+    return tables, relationships

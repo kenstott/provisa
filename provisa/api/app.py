@@ -1469,6 +1469,29 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                             for c in _tbl.get("columns", [])
                         ]
 
+        # Synthesize ColumnMetadata for govdata tables from registered columns (populated via JDBC at registration time)
+        for _tbl in tables:
+            if state.source_types.get(_tbl["source_id"]) != "govdata":
+                continue
+            _tid = _tbl["id"]
+            if col_types_converted.get(_tid):
+                continue
+            _cols = _tbl.get("columns", [])
+            if not _cols:
+                log.warning(
+                    "govdata table %s.%s has no registered columns — skipping",
+                    _tbl.get("schema_name", ""), _tbl.get("table_name", ""),
+                )
+                continue
+            col_types_converted[_tid] = [
+                ColumnMetadata(
+                    column_name=c["column_name"],
+                    data_type=c.get("data_type") or "varchar",
+                    is_nullable=True,
+                )
+                for c in _cols
+            ]
+
         # Load API sources and endpoints (Phase U)
         from provisa.api_source.loader import load_api_sources
         state.api_endpoints, state.api_sources = await load_api_sources(
@@ -1698,6 +1721,29 @@ async def lifespan(app: FastAPI):
     except Exception:
         _log.exception("Startup failed during _load_and_build")
         raise
+
+    # Pre-warm GovData JVM if govdata is or may be used
+    _govdata_active = any(v == "govdata" for v in state.source_types.values()) or bool(
+        os.environ.get("ASKAMERICA_API_KEY")
+    )
+    if _govdata_active:
+        import threading as _threading
+
+        def _prewarm_jvm():
+            try:
+                import os as _os
+                from provisa.govdata.source import _jvm_lock as _lock
+                from askamerica.engine import DEFAULT_SCHEMAS as _DS, start_jvm as _start_jvm
+
+                with _lock:
+                    if "ASKAMERICA_SCHEMAS" not in _os.environ:
+                        _os.environ["ASKAMERICA_SCHEMAS"] = _DS
+                    api_key = _os.environ.get("ASKAMERICA_API_KEY", "")
+                    _start_jvm(api_key)
+            except Exception:
+                _log.exception("GovData JVM pre-warm failed")
+
+        _threading.Thread(target=_prewarm_jvm, daemon=True, name="govdata-jvm-prewarm").start()
 
     # Start MV refresh background task
     if state.mv_registry.get_enabled() and state.trino_conn:

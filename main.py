@@ -17,7 +17,8 @@ if _env_file.exists():
         _line = _line.strip()
         if _line and not _line.startswith("#") and "=" in _line:
             _k, _, _v = _line.partition("=")
-            os.environ.setdefault(_k.strip(), _v.strip())
+            if not os.environ.get(_k.strip()):
+                os.environ[_k.strip()] = _v.strip()
 
 from provisa.api.app import create_app
 
