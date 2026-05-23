@@ -57,7 +57,7 @@ class GovDataPollingProvider(NotificationProvider):
         table = self._table
         ts = watermark.strftime("%Y-%m-%d %H:%M:%S")
         sql = (
-            f"SELECT * FROM {schema}.{table} "  # noqa: S608
+            f'SELECT * FROM "{schema}"."{table}" '  # noqa: S608
             f"WHERE {wc} > TIMESTAMP '{ts}' "
             f"ORDER BY {wc} "
             f"FETCH FIRST 1000 ROWS ONLY"
