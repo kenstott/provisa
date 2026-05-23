@@ -39,6 +39,8 @@ def connect(source: GovDataSource):
     with _jvm_lock:
         if "ASKAMERICA_SCHEMAS" not in os.environ:
             os.environ["ASKAMERICA_SCHEMAS"] = DEFAULT_SCHEMAS
+        if "ASKAMERICA_DATA_DIR" not in os.environ:
+            os.environ["ASKAMERICA_DATA_DIR"] = os.path.expanduser("~/.provisa_askamerica/data")
         return get_connection(source.api_key)
 
 
