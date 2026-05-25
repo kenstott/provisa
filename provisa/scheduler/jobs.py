@@ -82,6 +82,7 @@ def _compact_signal(
 ) -> None:
     """Compact one OTel signal type. Runs entirely in a thread — no event loop blocking."""
     import io
+    import os
     from datetime import datetime
 
     import boto3
@@ -102,13 +103,14 @@ def _compact_signal(
         config=BotoConfig(signature_version="s3v4"),
     )
 
-    prefix = f"{signal}/"
+    service = os.environ.get("OTEL_SERVICE_NAME", "provisa")
+    prefix = f"{signal}/{service}/{date_glob}"
     try:
         paginator = s3.get_paginator("list_objects_v2")
         keys = []
         for page in paginator.paginate(Bucket=otel_bucket, Prefix=prefix):
             for obj in page.get("Contents", []):
-                if obj["Key"].endswith(".parquet") and date_glob in obj["Key"]:
+                if obj["Key"].endswith(".parquet"):
                     keys.append(obj["Key"])
     except Exception:
         logger.warning("compact_otel: cannot list s3://%s/%s", otel_bucket, prefix)
