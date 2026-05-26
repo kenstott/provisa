@@ -141,7 +141,7 @@ def _compact_signal(
             return
 
         try:
-            _insert_otel_iceberg(trino_conn, signal, combined, target, delete_first=(chunk_start == 0))
+            _insert_otel_iceberg(trino_conn, signal, combined, target)
             total_rows += len(combined)
             del_resp = s3.delete_objects(
                 Bucket=otel_bucket,
@@ -159,7 +159,7 @@ def _compact_signal(
     logger.info("compact_otel: inserted %d %s rows for %s", total_rows, signal, date_glob)
 
 
-def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object, *, delete_first: bool = True) -> None:
+def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -> None:
     """Create Iceberg table from schema and INSERT the rows (runs in thread)."""
     import pyarrow as pa
 
@@ -233,14 +233,6 @@ def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object, *
         logger.warning("compact_otel: could not cast %s table to Trino schema, proceeding as-is", signal)
 
     date_val = dt.strftime("%Y-%m-%d")
-
-    if delete_first:
-        try:
-            cursor.execute(
-                f"DELETE FROM otel.signals.{signal} WHERE _date = DATE '{date_val}'"
-            )
-        except Exception:
-            pass
 
     # For traces: extract provisa-specific span attributes into dedicated columns.
     # otlp2parquet stores attributes as JSON in span_attributes (not "attributes").

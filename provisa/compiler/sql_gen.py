@@ -94,6 +94,7 @@ class JoinMeta:
     disable_cypher: bool = False  # when True, suppress this edge in the Cypher graph
     source_constant: int | str | None = None  # when set, use as literal join value instead of source column
     source_json_key: str | None = None  # when set, extract key from JSON object column via ->>'key'
+    source_expr: str | None = None  # when set, use as raw SQL expression; {alias} is replaced with the current alias
     default_limit: int | None = None  # when set, wrap join target in a LIMIT subquery
 
 
@@ -407,6 +408,7 @@ def build_context(si: object) -> CompilationContext:
         if meta_rt:
             ctx.joins[(meta_rt.type_name, join_field)] = JoinMeta(
                 source_column="table_name",
+                source_expr="CONCAT(REGEXP_REPLACE({alias}.\"domain_id\", '[^a-zA-Z0-9]', '_'), '.', {alias}.\"table_name\")",
                 target_column="table_name",
                 source_column_type="text",
                 target_column_type="text",
@@ -998,6 +1000,8 @@ def _emit_agg_subqueries(
                     if isinstance(sub_join_meta.source_constant, str)
                     else str(sub_join_meta.source_constant)
                 )
+            elif sub_join_meta.source_expr is not None:
+                sub_src = sub_join_meta.source_expr.replace("{alias}", _q(current_alias))
             elif sub_join_meta.source_json_key:
                 sub_src = (
                     f'CAST({_q(current_alias)}.{_q(sub_join_meta.source_column)} AS JSON)'
@@ -1444,6 +1448,8 @@ def _compile_root_field(
 
             if join_meta.source_constant is not None:
                 src_expr = _sql_str_literal(join_meta.source_constant) if isinstance(join_meta.source_constant, str) else str(join_meta.source_constant)
+            elif join_meta.source_expr is not None:
+                src_expr = join_meta.source_expr.replace("{alias}", _q(root_alias))
             elif join_meta.source_column in _VIRTUAL_COLS:
                 _svc = (ctx.virtual_columns.get(table.table_id) or {}).get(join_meta.source_column, "")
                 src_expr = _sql_str_literal(_svc)

@@ -171,7 +171,7 @@ class TestInsertOtelIceberg:
             }
         )
 
-        _insert_otel_iceberg(conn, "traces", table, datetime(2026, 5, 11), delete_first=False)
+        _insert_otel_iceberg(conn, "traces", table, datetime(2026, 5, 11))
 
         cur = conn.cursor.return_value
         all_args = " ".join(str(c) for c in cur.execute.call_args_list)
@@ -203,7 +203,7 @@ class TestInsertOtelIceberg:
             }
         )
 
-        _insert_otel_iceberg(conn, "traces", table, datetime(2026, 5, 11), delete_first=False)
+        _insert_otel_iceberg(conn, "traces", table, datetime(2026, 5, 11))
 
         cur = conn.cursor.return_value
         all_args = " ".join(str(c) for c in cur.execute.call_args_list)
@@ -235,7 +235,7 @@ class TestInsertOtelIceberg:
         )
 
         # Must not raise when table_name column is absent from Trino schema
-        _insert_otel_iceberg(conn, "traces", table, datetime(2026, 5, 11), delete_first=False)
+        _insert_otel_iceberg(conn, "traces", table, datetime(2026, 5, 11))
 
 
 # ---------------------------------------------------------------------------
