@@ -127,6 +127,76 @@ function _downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function _compositeGraphDownload(
+  cy: CyInstance,
+  hullSvg: SVGSVGElement | null,
+  filename: string,
+  format: "png" | "jpg",
+) {
+  const bg = format === "jpg" ? "white" : "transparent";
+  const mimeType = format === "jpg" ? "image/jpeg" : "image/png";
+  const hasHulls = hullSvg && hullSvg.children.length > 0;
+
+  if (!hasHulls) {
+    const blob = (format === "jpg"
+      ? cy.jpg({ output: "blob", bg, full: true })
+      : cy.png({ output: "blob", bg, full: true })) as unknown as Blob;
+    _downloadBlob(blob, filename);
+    return;
+  }
+
+  // Hull coords are renderedPosition()-based (viewport pixels). Capture viewport only.
+  const dataUrl = (format === "jpg"
+    ? cy.jpg({ output: "dataURL", bg })
+    : cy.png({ output: "dataURL", bg })) as string;
+
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(img, 0, 0);
+
+    // viewBox maps hull CSS-pixel coords → PNG physical pixels (handles devicePixelRatio)
+    const container = cy.container() as HTMLElement;
+    const cssW = container.offsetWidth;
+    const cssH = container.offsetHeight;
+    const svgClone = hullSvg!.cloneNode(true) as SVGSVGElement;
+    svgClone.setAttribute("viewBox", `0 0 ${cssW} ${cssH}`);
+    svgClone.setAttribute("width", String(img.width));
+    svgClone.setAttribute("height", String(img.height));
+
+    const svgData = new XMLSerializer().serializeToString(svgClone);
+    const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
+    const svgUrl = URL.createObjectURL(svgBlob);
+    const svgImg = new Image();
+    const finish = () => {
+      URL.revokeObjectURL(svgUrl);
+      canvas.toBlob((b) => { if (b) _downloadBlob(b, filename); }, mimeType);
+    };
+    svgImg.onload = () => { ctx.drawImage(svgImg, 0, 0, img.width, img.height); finish(); };
+    svgImg.onerror = finish;
+    svgImg.src = svgUrl;
+  };
+  img.src = dataUrl;
+}
+
+function _downloadGraphSvg(cy: CyInstance, hullSvg: SVGSVGElement | null) {
+  const hasHulls = hullSvg && hullSvg.children.length > 0;
+  // Viewport SVG shares coord system with renderedPosition(); full=true would differ.
+  const svgBase = cy.svg({ full: !hasHulls, bg: "transparent" });
+  if (!hasHulls) {
+    _downloadBlob(new Blob([svgBase], { type: "image/svg+xml" }), "graph.svg");
+    return;
+  }
+  const hullContent = Array.from(hullSvg!.children)
+    .map((c) => new XMLSerializer().serializeToString(c))
+    .join("");
+  const composite = svgBase.replace("</svg>", `<g class="hulls">${hullContent}</g></svg>`);
+  _downloadBlob(new Blob([composite], { type: "image/svg+xml" }), "graph.svg");
+}
+
 function _toCSV(columns: string[], rows: Record<string, unknown>[]): string {
   const esc = (v: unknown) => {
     const s = v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
@@ -793,6 +863,7 @@ interface CanvasProps {
   onToggleParentsCircular: (nodeKey: string) => void;
   onCyReady?: (cy: CyInstance | null) => void;
   clusterLevel: ClusterLevel;
+  hullSvgRef?: React.Ref<SVGSVGElement>;
 }
 
 type LayoutMode = "force" | "hierarchy";
@@ -827,7 +898,7 @@ const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
   } as CyLayoutOptions,
 };
 
-function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, labelSiblings: _labelSiblings, showingChildrenNatural, onToggleChildren, showingChildrenCircular, onToggleChildrenCircular, showingParents, onToggleParents, showingParentsCircular, onToggleParentsCircular, onCyReady, clusterLevel }: CanvasProps) {
+function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, labelSiblings: _labelSiblings, showingChildrenNatural, onToggleChildren, showingChildrenCircular, onToggleChildrenCircular, showingParents, onToggleParents, showingParentsCircular, onToggleParentsCircular, onCyReady, clusterLevel, hullSvgRef }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
   const colorOverridesRef = useRef(colorOverrides);
@@ -1550,7 +1621,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     >
       <div ref={containerRef} className="gf-canvas" />
       {hullCircles.length > 0 && (
-        <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+        <svg ref={hullSvgRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
           {hullCircles.map(({ cid, x, y, r }) => (
             <g key={cid}>
               <circle
@@ -2015,6 +2086,7 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
     setTableColWidths(frame.columns.map(() => 180));
   }
   const canvasCyRef = useRef<CyInstance | null>(null);
+  const canvasHullSvgRef = useRef<SVGSVGElement | null>(null);
   const inspWidthRef = useRef(inspectorWidth);
   inspWidthRef.current = inspectorWidth;
   const graphAreaHeightRef = useRef(graphAreaHeight);
@@ -2543,8 +2615,7 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
                   <button className="gf-dl-item" onClick={() => {
                     const cy = canvasCyRef.current;
                     if (!cy) return;
-                    const blob = cy.png({ output: "blob", bg: "transparent", full: true }) as unknown as Blob;
-                    _downloadBlob(blob, "graph.png");
+                    _compositeGraphDownload(cy, canvasHullSvgRef.current, "graph.png", "png");
                     setShowDlMenu(false);
                   }}>PNG</button>
                 )}
@@ -2552,8 +2623,7 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
                   <button className="gf-dl-item" onClick={() => {
                     const cy = canvasCyRef.current;
                     if (!cy) return;
-                    const blob = cy.jpg({ output: "blob", bg: "transparent", full: true }) as unknown as Blob;
-                    _downloadBlob(blob, "graph.jpg");
+                    _compositeGraphDownload(cy, canvasHullSvgRef.current, "graph.jpg", "jpg");
                     setShowDlMenu(false);
                   }}>JPG</button>
                 )}
@@ -2561,8 +2631,7 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
                   <button className="gf-dl-item" onClick={() => {
                     const cy = canvasCyRef.current;
                     if (!cy) return;
-                    const svgStr = cy.svg({ full: true, bg: "transparent" });
-                    _downloadBlob(new Blob([svgStr], { type: "image/svg+xml" }), "graph.svg");
+                    _downloadGraphSvg(cy, canvasHullSvgRef.current);
                     setShowDlMenu(false);
                   }}>SVG</button>
                 )}
@@ -2596,7 +2665,7 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
       )}
       {frame.status !== "error" && hasGraph && (
         <div className="gf-graph-area" style={{ height: graphAreaHeight, display: activeView === "graph" ? undefined : "none" }}>
-          <GraphCanvas nodes={frame.nodes} edges={frame.edges} overlayNodes={overlayNodes} overlayEdges={overlayEdges} onSelect={setSelected} colorOverrides={colorOverrides} sizeOverrides={sizeOverrides} labelProperty={labelProperty} relLineOverrides={relLineOverrides} onExcludeNode={handleExcludeNode} pkMap={pkMap} relationships={relationships ?? []} showingChildrenNatural={showingChildrenNatural} onToggleChildren={handleToggleChildren} showingChildrenCircular={showingChildrenCircular} onToggleChildrenCircular={handleToggleChildrenCircular} showingParents={showingParents} onToggleParents={handleToggleParents} showingParentsCircular={showingParentsCircular} onToggleParentsCircular={handleToggleParentsCircular} onCyReady={(cy) => { canvasCyRef.current = cy; }} clusterLevel={clusterLevel} />
+          <GraphCanvas nodes={frame.nodes} edges={frame.edges} overlayNodes={overlayNodes} overlayEdges={overlayEdges} onSelect={setSelected} colorOverrides={colorOverrides} sizeOverrides={sizeOverrides} labelProperty={labelProperty} relLineOverrides={relLineOverrides} onExcludeNode={handleExcludeNode} pkMap={pkMap} relationships={relationships ?? []} showingChildrenNatural={showingChildrenNatural} onToggleChildren={handleToggleChildren} showingChildrenCircular={showingChildrenCircular} onToggleChildrenCircular={handleToggleChildrenCircular} showingParents={showingParents} onToggleParents={handleToggleParents} showingParentsCircular={showingParentsCircular} onToggleParentsCircular={handleToggleParentsCircular} onCyReady={(cy) => { canvasCyRef.current = cy; }} clusterLevel={clusterLevel} hullSvgRef={canvasHullSvgRef} />
           <Inspector selected={selected} colorOverrides={colorOverrides} onColorChange={onColorChange}
                      onClose={() => setSelected(null)}
                      width={inspectorWidth} onResizeStart={handleResizeStart}
