@@ -57,6 +57,9 @@ class RelationshipMapping:
     source_constant: int | str | None = (
         None  # when set, use as literal join value instead of source column
     )
+    source_expr: str | None = (
+        None  # when set, use as raw SQL expression on source side; {alias} replaced with join alias
+    )
     target_expr: str | None = (
         None  # when set, use as raw SQL expression on target side; {alias} replaced with join alias
     )
@@ -280,6 +283,7 @@ class CypherLabelMap:
                 field_name=gql_field_name,
                 alias=cypher_alias,
                 source_constant=getattr(join_meta, "source_constant", None),
+                source_expr=getattr(join_meta, "source_expr", None),
                 target_expr=getattr(join_meta, "target_expr", None),
                 many=(cardinality == "one-to-many"),
             )

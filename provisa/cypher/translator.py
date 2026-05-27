@@ -600,14 +600,18 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         tgt_alias = tgt_var
                         join_table = self._build_domain_union(tgt_var, self._domain_nodes[tgt_var])
                         src_table_ref = self._var_table.get(src_var, (src_var, None))[0] if src_var else src_nm.table_name
-                        src_col_expr = (
-                            _const_literal(rel_mapping.source_constant)
-                            if rel_mapping.source_constant is not None
-                            else exp.Column(
+                        if rel_mapping.source_constant is not None:
+                            src_col_expr = _const_literal(rel_mapping.source_constant)
+                        elif rel_mapping.source_expr is not None:
+                            src_col_expr = exp.maybe_parse(
+                                rel_mapping.source_expr.replace("{alias}", src_table_ref),
+                                dialect="trino",
+                            )
+                        else:
+                            src_col_expr = exp.Column(
                                 this=exp.Identifier(this=rel_mapping.join_source_column, quoted=True),
                                 table=exp.Identifier(this=src_table_ref),
                             )
-                        )
                         if rel_mapping.target_expr is not None:
                             tgt_col_expr = exp.maybe_parse(
                                 rel_mapping.target_expr.replace("{alias}", tgt_alias),
@@ -770,6 +774,11 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     else:
                         if rm.source_constant is not None:
                             src_col_expr = _const_literal(rm.source_constant)
+                        elif rm.source_expr is not None:
+                            src_col_expr = exp.maybe_parse(
+                                rm.source_expr.replace("{alias}", src_table_ref),
+                                dialect="trino",
+                            )
                         elif rm.join_source_column == "_name_" and src_nm is not None:
                             # _name_ is a virtual column — resolve to literal "domain_sql.table_name"
                             from provisa.compiler.naming import domain_to_sql_name as _d2s
@@ -1224,9 +1233,16 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     this=(
                         _const_literal(rm.source_constant)
                         if rm.source_constant is not None
-                        else exp.Column(
-                            this=exp.Identifier(this=rm.join_source_column, quoted=True),
-                            table=exp.Identifier(this=sa),
+                        else (
+                            exp.maybe_parse(
+                                rm.source_expr.replace("{alias}", sa),
+                                dialect="trino",
+                            )
+                            if rm.source_expr is not None
+                            else exp.Column(
+                                this=exp.Identifier(this=rm.join_source_column, quoted=True),
+                                table=exp.Identifier(this=sa),
+                            )
                         )
                     ),
                     expression=(

@@ -1800,3 +1800,83 @@ def test_has_table_stable_key_not_integer():
     assert join_val_match is None, (
         f"Unexpected integer used as HAS_TABLE join value (unstable after config reload): {sql}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Ops join: source_expr on both sides (registered_tables → _traces/_queries)
+# ---------------------------------------------------------------------------
+
+
+def _make_ops_join_label_map() -> CypherLabelMap:
+    """Label map simulating production ops join: RegisteredTables → Traces.
+
+    Both sides use CONCAT(domain_id, '.', table_name) as the join key.
+    source_expr on the source (registered_tables) side,
+    target_expr on the target (traces) side.
+    """
+    rt = NodeMapping(
+        label="RegisteredTables",
+        type_name="RegisteredTables",
+        domain_label=None,
+        table_label="RegisteredTables",
+        table_id=99,
+        source_id="meta",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="meta",
+        schema_name="meta",
+        table_name="registered_tables",
+        properties={"id": "id", "tableName": "table_name", "domainId": "domain_id"},
+    )
+    traces = NodeMapping(
+        label="Traces",
+        type_name="Traces",
+        domain_label=None,
+        table_label="Traces",
+        table_id=200,
+        source_id="otel",
+        id_column="span_id",
+        pk_columns=[],
+        catalog_name="otel",
+        schema_name="signals",
+        table_name="traces",
+        properties={"spanId": "span_id", "tableName": "table_name", "domainId": "domain_id"},
+    )
+    has_traces = RelationshipMapping(
+        rel_type="HAS_TRACES",
+        source_label="RegisteredTables",
+        target_label="Traces",
+        join_source_column="table_name",
+        join_target_column="table_name",
+        field_name="_traces",
+        source_expr='CONCAT({alias}."domain_id", \'.\', {alias}."table_name")',
+        target_expr='CONCAT({alias}."domain_id", \'.\', {alias}."table_name")',
+    )
+    return CypherLabelMap(
+        nodes={"RegisteredTables": rt, "Traces": traces},
+        relationships={"HAS_TRACES::RegisteredTables→Traces": has_traces},
+        nodes_by_table={"RegisteredTables": ["RegisteredTables"], "Traces": ["Traces"]},
+        aliases={"HAS_TRACES": [has_traces]},
+    )
+
+
+def test_ops_join_source_expr_emits_concat_on_both_sides():
+    """Ops join (registered_tables → traces) must use CONCAT on both sides.
+
+    Without source_expr propagation the source side falls back to the bare
+    table_name column ('pets'), while target_expr gives CONCAT(...) = 'pet-store.pets'.
+    These never match. Both sides must emit CONCAT(domain_id, '.', table_name).
+    """
+    lm = _make_ops_join_label_map()
+    ast = parse_cypher(
+        "MATCH (r:RegisteredTables)-[:HAS_TRACES]->(t:Traces) RETURN r.tableName, t.spanId"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+
+    assert "CONCAT" in sql.upper(), f"Expected CONCAT on both sides of ops join: {sql}"
+    concat_count = sql.upper().count("CONCAT")
+    assert concat_count >= 2, (
+        f"Expected CONCAT on both source and target sides, got {concat_count} occurrence(s): {sql}"
+    )
+    assert '"domain_id"' in sql, f"Expected domain_id in CONCAT expression: {sql}"
