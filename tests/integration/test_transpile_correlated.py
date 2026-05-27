@@ -38,10 +38,23 @@ def _trino_reachable() -> bool:
         return False
 
 
+def _tpch_catalog_exists() -> bool:
+    try:
+        conn = trino.dbapi.connect(host=TRINO_HOST, port=TRINO_PORT, user="test")
+        cur = conn.cursor()
+        cur.execute("SHOW SCHEMAS FROM tpch")
+        cur.fetchone()
+        return True
+    except Exception:
+        return False
+
+
 @pytest.fixture(scope="module")
 def trino_cur():
     if not _trino_reachable():
         pytest.skip(f"Trino not reachable at {TRINO_HOST}:{TRINO_PORT}")
+    if not _tpch_catalog_exists():
+        pytest.skip("Trino 'tpch' catalog not available")
     conn = trino.dbapi.connect(
         host=TRINO_HOST,
         port=TRINO_PORT,

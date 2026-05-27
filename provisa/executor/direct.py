@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 
-from provisa.executor.drivers.base import DirectDriver
 from provisa.executor.pool import SourcePool
 from provisa.executor.trino import QueryResult
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -45,6 +44,7 @@ async def execute_direct(
     """
     with _tracer.start_as_current_span("direct.execute") as span:
         from provisa.compiler.params import extract_params_comment
+
         sql, embedded = extract_params_comment(sql)
         effective_params = params if params is not None else embedded
         span.set_attribute("db.source_id", source_id)

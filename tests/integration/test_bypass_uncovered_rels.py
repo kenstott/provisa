@@ -23,6 +23,7 @@ Validates:
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import httpx
 import pytest
@@ -30,6 +31,7 @@ import pytest
 pytestmark = pytest.mark.requires_provisa_server
 
 BASE_URL = os.environ.get("PROVISA_URL", "http://localhost:8000")
+_MAIN_CONFIG = Path(__file__).parent.parent.parent / "config" / "provisa.yaml"
 
 
 def _headers() -> dict:
@@ -37,10 +39,128 @@ def _headers() -> dict:
     return {"Authorization": f"Bearer {token}"} if token else {}
 
 
+def _admin_gql(query: str) -> dict:
+    resp = httpx.post(
+        f"{BASE_URL}/admin/graphql",
+        json={"query": query},
+        headers=_headers(),
+        timeout=120,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 @pytest.fixture(scope="module")
 def client():
-    with httpx.Client(base_url=BASE_URL, headers=_headers(), timeout=30) as c:
+    with httpx.Client(base_url=BASE_URL, headers=_headers(), timeout=120) as c:
         yield c
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _register_demo_data():
+    """Register demo sources/tables/relationships required by GQL and CQL tests."""
+    import urllib.request
+
+    try:
+        urllib.request.urlopen(f"{BASE_URL}/health", timeout=3)
+    except Exception:
+        yield
+        return
+
+    _admin_gql(
+        'mutation { createSource(input: {id: "inquiries-sqlite", type: "sqlite"}) { success } }'
+    )
+    _admin_gql(
+        'mutation { createSource(input: {id: "shelter", type: "graphql_remote"}) { success } }'
+    )
+    _admin_gql(
+        'mutation { createDomain(input: {id: "shelter", description: "Animal shelter"}) { success } }'
+    )
+    _admin_gql("""
+        mutation {
+            registerTable(input: {
+                sourceId: "inquiries-sqlite", domainId: "pet-store",
+                schemaName: "default", tableName: "inquiries",
+                governance: "pre-approved",
+                columns: [
+                    {name: "id", visibleTo: ["admin", "analyst"]},
+                    {name: "pet_id", visibleTo: ["admin", "analyst"]},
+                    {name: "inquiry_type", visibleTo: ["admin", "analyst"]},
+                    {name: "message", visibleTo: ["admin", "analyst"]},
+                    {name: "status", visibleTo: ["admin", "analyst"]},
+                    {name: "submitted_at", visibleTo: ["admin", "analyst"]}
+                ]
+            }) { success message }
+        }
+    """)
+    _admin_gql("""
+        mutation {
+            registerTable(input: {
+                sourceId: "shelter", domainId: "shelter",
+                schemaName: "default", tableName: "assignments",
+                alias: "shelter__assignments",
+                governance: "pre-approved",
+                columns: [
+                    {name: "id", visibleTo: ["admin", "analyst"]},
+                    {name: "breedName", visibleTo: ["admin", "analyst"]}
+                ]
+            }) { success message }
+        }
+    """)
+    _admin_gql("""
+        mutation {
+            upsertRelationship(input: {
+                id: "inquiries-to-pets",
+                sourceTableId: "inquiries",
+                targetTableId: "pets",
+                sourceColumn: "pet_id",
+                targetColumn: "id",
+                cardinality: "many-to-one",
+                alias: "HAS_PETS"
+            }) { success message }
+        }
+    """)
+    _admin_gql("""
+        mutation {
+            upsertRelationship(input: {
+                id: "pets-to-shelter-assignments",
+                sourceTableId: "pets",
+                targetTableId: "shelter__assignments",
+                sourceColumn: "breed_name",
+                targetColumn: "breedName",
+                cardinality: "many-to-one"
+            }) { success message }
+        }
+    """)
+
+    yield
+
+    for rel_id in ("pets-to-shelter-assignments", "inquiries-to-pets"):
+        httpx.post(
+            f"{BASE_URL}/admin/graphql",
+            json={"query": f'mutation {{ deleteRelationship(id: "{rel_id}") {{ success }} }}'},
+            headers=_headers(),
+            timeout=120,
+        )
+    for src_id in ("inquiries-sqlite", "shelter"):
+        httpx.post(
+            f"{BASE_URL}/admin/graphql",
+            json={"query": f'mutation {{ deleteSource(id: "{src_id}") {{ success }} }}'},
+            headers=_headers(),
+            timeout=120,
+        )
+    httpx.post(
+        f"{BASE_URL}/admin/graphql",
+        json={"query": 'mutation { deleteDomain(id: "shelter") { success } }'},
+        headers=_headers(),
+        timeout=30,
+    )
+    httpx.put(
+        f"{BASE_URL}/admin/config",
+        content=_MAIN_CONFIG.read_bytes(),
+        headers={**_headers(), "Content-Type": "application/x-yaml"},
+        timeout=30,
+    )
 
 
 # ---------------------------------------------------------------------------

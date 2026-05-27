@@ -32,31 +32,38 @@ pytestmark = [pytest.mark.integration]
 # Dialect structural tests — no live server required
 # ---------------------------------------------------------------------------
 
+
 class TestDialectProperties:
     def test_dialect_name(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         assert ProvisaDialect.name == "provisa"
 
     def test_dialect_driver(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         assert ProvisaDialect.driver == "provisa_client"
 
     def test_dbapi_returns_provisa_dbapi(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
         from provisa_client import dbapi
+
         assert ProvisaDialect.dbapi() is dbapi
 
     def test_import_dbapi_returns_provisa_dbapi(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
         from provisa_client import dbapi
+
         assert ProvisaDialect.import_dbapi() is dbapi
 
     def test_does_not_support_alter(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         assert ProvisaDialect.supports_alter is False
 
     def test_supports_unicode_statements(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         assert ProvisaDialect.supports_unicode_statements is True
 
 
@@ -143,15 +150,17 @@ class TestEntryPointRegistration:
 # Live-server tests — require running Provisa instance
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.requires_provisa_server
 class TestLiveSQLAlchemyDialect:
     """Require running Provisa server at localhost:8001 (Docker Compose stack)."""
 
-    PROVISA_URL = "provisa+http://admin:provisa@localhost:8001"
+    PROVISA_URL = "provisa+http://admin:provisa@localhost:8000"
 
     @pytest.fixture
     def engine(self):
         from sqlalchemy import create_engine
+
         return create_engine(self.PROVISA_URL)
 
     @pytest.fixture
@@ -166,6 +175,7 @@ class TestLiveSQLAlchemyDialect:
     def test_get_tables(self, connection):
         """get_tables returns registered approved queries as virtual tables."""
         from sqlalchemy import inspect
+
         inspector = inspect(connection)
         tables = inspector.get_table_names()
         assert isinstance(tables, list)
@@ -173,6 +183,7 @@ class TestLiveSQLAlchemyDialect:
     def test_execute_approved_query(self, connection):
         """SQL SELECT with no table references executes through the governance pipeline."""
         from sqlalchemy import text
+
         result = connection.execute(text("SELECT 1 AS result"))
         rows = result.fetchall()
         assert isinstance(rows, list)
@@ -180,6 +191,7 @@ class TestLiveSQLAlchemyDialect:
     def test_column_names_from_metadata(self, connection):
         """get_columns returns a list (empty if no semantic model tables registered)."""
         from sqlalchemy import inspect
+
         inspector = inspect(connection)
         tables = inspector.get_table_names()
         # When no approved queries are registered, tables is empty and cols is empty.
@@ -196,6 +208,7 @@ class TestLiveSQLAlchemyDialect:
     def test_where_filter_passed_to_executor(self, connection):
         """A WHERE clause in a table-free SQL is forwarded to the Provisa pipeline."""
         from sqlalchemy import text
+
         result = connection.execute(text("SELECT 1 AS id WHERE 1 = 1"))
         rows = result.fetchall()
         assert isinstance(rows, list)
@@ -203,7 +216,8 @@ class TestLiveSQLAlchemyDialect:
     def test_rls_applied_for_role(self, engine):
         """Connections with a role header use the role in the request pipeline."""
         from sqlalchemy import create_engine, text
-        role_url = "provisa+http://admin:provisa@localhost:8001?role=admin"
+
+        role_url = "provisa+http://admin:provisa@localhost:8000?role=admin"
         role_engine = create_engine(role_url)
         with role_engine.connect() as conn:
             result = conn.execute(text("SELECT 1 AS val"))

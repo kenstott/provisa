@@ -21,11 +21,23 @@ from provisa.executor.drivers.registry import create_driver
 from provisa.executor.trino import QueryResult
 
 
+_SOURCE_DIALECT: dict[str, str] = {
+    "postgresql": "postgres",
+    "mysql": "mysql",
+    "singlestore": "mysql",
+    "mariadb": "mysql",
+    "duckdb": "duckdb",
+    "sqlserver": "tsql",
+    "oracle": "oracle",
+}
+
+
 class SourcePool:
     """Manages DirectDriver instances keyed by source_id."""
 
     def __init__(self) -> None:
         self._drivers: dict[str, DirectDriver] = {}
+        self._dialects: dict[str, str] = {}
 
     async def add(
         self,
@@ -52,6 +64,11 @@ class SourcePool:
         connect_port = pgbouncer_port if use_pgbouncer else port
         await driver.connect(host, connect_port, database, user, password, min_size, max_size)
         self._drivers[source_id] = driver
+        self._dialects[source_id] = _SOURCE_DIALECT.get(source_type, source_type)
+
+    def dialect_for(self, source_id: str) -> str | None:
+        """Return the sqlglot dialect string for a source, or None if unknown."""
+        return self._dialects.get(source_id)
 
     def get(self, source_id: str) -> DirectDriver:
         """Get driver for a source. Raises KeyError if not registered."""
@@ -61,7 +78,10 @@ class SourcePool:
         return source_id in self._drivers
 
     async def execute(
-        self, source_id: str, sql: str, params: list | None = None,
+        self,
+        source_id: str,
+        sql: str,
+        params: list | None = None,
     ) -> QueryResult:
         """Execute SQL against a source's driver."""
         driver = self._drivers[source_id]

@@ -85,20 +85,30 @@ def introspect_tables(
         {table_id: [ColumnMetadata]}.
     """
     result: dict[int, list[ColumnMetadata]] = {}
+    _GQL_TYPE_MAP = {
+        "text": "varchar",
+        "string": "varchar",
+        "varchar": "varchar",
+        "integer": "integer",
+        "int": "integer",
+        "float": "double",
+        "number": "double",
+        "double": "double",
+        "boolean": "boolean",
+        "json": "json",
+        "jsonb": "json",
+    }
     for table in registered_tables:
-        if table.get("schema_name") == "graphql_remote":
+        _src_type = sources.get(table["source_id"], {}).get("type", "")
+        if table.get("schema_name") == "graphql_remote" or _src_type in (
+            "graphql_remote",
+            "graphql",
+        ):
             # Synthesize ColumnMetadata from registered columns (no Trino catalog for remote GQL)
-            gql_type_map = {
-                "text": "varchar", "string": "varchar", "varchar": "varchar",
-                "integer": "integer", "int": "integer",
-                "float": "double", "number": "double", "double": "double",
-                "boolean": "boolean",
-                "json": "json", "jsonb": "json",
-            }
             result[table["id"]] = [
                 ColumnMetadata(
                     column_name=c["column_name"],
-                    data_type=gql_type_map.get((c.get("data_type") or "text").lower(), "varchar"),
+                    data_type=_GQL_TYPE_MAP.get((c.get("data_type") or "text").lower(), "varchar"),
                     is_nullable=True,
                 )
                 for c in table.get("columns", [])
@@ -112,6 +122,7 @@ def introspect_tables(
         if physical_table_map:
             trino_table_name = physical_table_map.get(trino_table_name, trino_table_name)
         import logging
+
         _log = logging.getLogger(__name__)
         last_exc: Exception | None = None
         for attempt in range(6):
@@ -126,7 +137,8 @@ def introspect_tables(
                 if "CATALOG_NOT_FOUND" in str(e) and attempt < 5:
                     _log.info(
                         "Catalog '%s' not yet ready, retrying in 3s (attempt %d/5)…",
-                        catalog_name, attempt + 1,
+                        catalog_name,
+                        attempt + 1,
                     )
                     time.sleep(3)
                     last_exc = e
@@ -139,7 +151,10 @@ def introspect_tables(
         if last_exc is not None:
             _log.warning(
                 "Failed to introspect %s.%s.%s: %s. Table will be skipped.",
-                catalog_name, table["schema_name"], trino_table_name, last_exc,
+                catalog_name,
+                table["schema_name"],
+                trino_table_name,
+                last_exc,
             )
     return result
 

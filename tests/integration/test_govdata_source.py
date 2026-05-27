@@ -45,10 +45,7 @@ def _jar_path() -> str | None:
 
 
 def _aws_creds_available() -> bool:
-    if os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"):
-        return True
-    creds = os.path.expanduser("~/.aws/credentials")
-    return os.path.isfile(creds)
+    return bool(os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY"))
 
 
 @pytest.fixture(scope="module")

@@ -21,7 +21,6 @@ import pytest_asyncio
 from graphql import parse, validate
 
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.compiler.rls import RLSContext
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import build_context, compile_query
 from provisa.executor.direct import execute_direct
@@ -33,6 +32,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> ColumnMetadata:
     return ColumnMetadata(column_name=name, data_type=data_type, is_nullable=nullable)
@@ -119,6 +119,7 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
 # Session-scoped source pool
 # ---------------------------------------------------------------------------
 
+
 @pytest_asyncio.fixture(scope="session")
 async def exec_pool():
     sp = SourcePool()
@@ -139,8 +140,8 @@ async def exec_pool():
 # Tests
 # ---------------------------------------------------------------------------
 
-class TestGraphQLExecution:
 
+class TestGraphQLExecution:
     async def test_simple_list_query(self, exec_pool):
         """`{ orders { id amount region } }` returns rows with correct columns."""
         schema, ctx = _build_schema_and_ctx()
@@ -213,7 +214,7 @@ class TestGraphQLExecution:
         errors = validate(schema, doc)
         assert not errors, errors
 
-        results = compile_query(doc, ctx)
+        results = compile_query(doc, ctx, flat=True)
         compiled = results[0]
 
         result = await execute_direct(exec_pool, "sales-pg", compiled.sql, compiled.params)

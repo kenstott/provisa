@@ -15,8 +15,7 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from provisa.core.config_loader import load_config, parse_config
-from provisa.core.db import init_schema
+from provisa.core.config_loader import load_config, load_config_from_yaml, parse_config
 from provisa.core.repositories import (
     domain as domain_repo,
     relationship as rel_repo,
@@ -30,6 +29,7 @@ pytestmark = [pytest.mark.integration]
 
 SCHEMA_SQL = (Path(__file__).parent.parent.parent / "provisa" / "core" / "schema.sql").read_text()
 FIXTURE_CONFIG = Path(__file__).parent.parent / "fixtures" / "sample_config.yaml"
+MAIN_CONFIG = Path(__file__).parent.parent.parent / "config" / "provisa.yaml"
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
@@ -37,6 +37,14 @@ async def _init_schema(pg_pool):
     """Create config schema tables once per module."""
     async with pg_pool.acquire() as conn:
         await conn.execute(SCHEMA_SQL)
+
+
+@pytest_asyncio.fixture(scope="module", loop_scope="session", autouse=True)
+async def _restore_config_after_module(pg_pool, _init_schema):
+    """Restore main config after all tests in this module (which truncate tables)."""
+    yield
+    async with pg_pool.acquire() as conn:
+        await load_config_from_yaml(MAIN_CONFIG, conn, replace=True)
 
 
 @pytest_asyncio.fixture(autouse=True)

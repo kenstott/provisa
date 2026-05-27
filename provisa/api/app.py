@@ -2103,6 +2103,14 @@ async def lifespan(app: FastAPI):
     if state._grpc_server:
         await state._grpc_server.stop(grace=5)
 
+    # Cancel SQLite staleness loop
+    if getattr(state, "_sqlite_stale_task", None):
+        state._sqlite_stale_task.cancel()
+        try:
+            await state._sqlite_stale_task
+        except asyncio.CancelledError:
+            pass
+
     # Cancel warm-table task
     if state._warm_task:
         state._warm_task.cancel()

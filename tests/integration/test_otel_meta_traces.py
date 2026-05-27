@@ -25,6 +25,7 @@ import time
 import uuid
 
 import pytest
+import pytest_asyncio
 
 pytestmark = [pytest.mark.integration]
 
@@ -32,8 +33,44 @@ TABLE_NAME = "pets"
 SERVICE_NAME = "provisa"
 SPAN_NAME = "provisa.query.trino"
 
-
 QUERY_TEXT = "{ ps__pets(limit: 1) { id } }"
+
+
+@pytest_asyncio.fixture(scope="module", autouse=True)
+async def _ensure_pets_registered(pg_pool):
+    """Ensure source, domain, and registered_tables have a pets row so the _meta join resolves."""
+    inserted_source = False
+    inserted_domain = False
+    inserted_id = None
+    async with pg_pool.acquire() as conn:
+        src = await conn.fetchrow(
+            "INSERT INTO sources (id, type) VALUES ('pet-store-pg', 'postgresql')"
+            " ON CONFLICT (id) DO NOTHING RETURNING id"
+        )
+        inserted_source = src is not None
+        dom = await conn.fetchrow(
+            "INSERT INTO domains (id, description) VALUES ('pet-store', 'Pet store')"
+            " ON CONFLICT (id) DO NOTHING RETURNING id"
+        )
+        inserted_domain = dom is not None
+        row = await conn.fetchrow(
+            """
+            INSERT INTO registered_tables
+                (source_id, domain_id, schema_name, table_name, governance)
+            VALUES ('pet-store-pg', 'pet-store', 'pet_store', 'pets', 'pre-approved')
+            ON CONFLICT (source_id, schema_name, table_name) DO NOTHING
+            RETURNING id
+            """
+        )
+        inserted_id = row["id"] if row else None
+    yield
+    async with pg_pool.acquire() as conn:
+        if inserted_id is not None:
+            await conn.execute("DELETE FROM registered_tables WHERE id = $1", inserted_id)
+        if inserted_domain:
+            await conn.execute("DELETE FROM domains WHERE id = 'pet-store'")
+        if inserted_source:
+            await conn.execute("DELETE FROM sources WHERE id = 'pet-store-pg'")
 
 
 def _insert_test_trace(trino_conn, table_name: str, trace_id: str, span_id: str) -> None:

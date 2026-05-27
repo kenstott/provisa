@@ -95,6 +95,7 @@ class JoinMeta:
     source_constant: int | str | None = None  # when set, use as literal join value instead of source column
     source_json_key: str | None = None  # when set, extract key from JSON object column via ->>'key'
     source_expr: str | None = None  # when set, use as raw SQL expression; {alias} is replaced with the current alias
+    target_expr: str | None = None  # when set, use as raw SQL expression on target side; {alias} replaced with join alias
     default_limit: int | None = None  # when set, wrap join target in a LIMIT subquery
 
 
@@ -374,13 +375,14 @@ def build_context(si: object) -> CompilationContext:
                 continue
             ctx.joins[(t.type_name, "_meta")] = JoinMeta(
                 source_column="__table_id__",
-                target_column="id",
-                source_column_type="integer",
-                target_column_type="integer",
+                target_column="domain_id",
+                source_column_type="text",
+                target_column_type="text",
                 target=meta_tgt,
                 cardinality="many-to-one",
                 cypher_alias="HAS_TABLE",
-                source_constant=t.table_id,
+                source_constant=f"{t.domain_id}.{t.table_name}",
+                target_expr='CONCAT({alias}."domain_id", \'.\', {alias}."table_name")',
             )
 
     # Inject synthetic traversal joins: registered_tables → ops tables
@@ -408,8 +410,9 @@ def build_context(si: object) -> CompilationContext:
         if meta_rt:
             ctx.joins[(meta_rt.type_name, join_field)] = JoinMeta(
                 source_column="table_name",
-                source_expr="CONCAT(REGEXP_REPLACE({alias}.\"domain_id\", '[^a-zA-Z0-9]', '_'), '.', {alias}.\"table_name\")",
+                source_expr='CONCAT({alias}."domain_id", \'.\', {alias}."table_name")',
                 target_column="table_name",
+                target_expr='CONCAT({alias}."domain_id", \'.\', {alias}."table_name")',
                 source_column_type="text",
                 target_column_type="text",
                 target=ops_tgt,
@@ -914,15 +917,18 @@ def _lateral_join(
     use_catalog: bool,
 ) -> str:
     args = _field_args(field_node, variables)
-    target_expr = _join_column_expr_for(
-        None,
-        join_meta.target_column,
-        join_meta.target_column_type,
-        join_meta.source_column_type,
-    )
+    if join_meta.target_expr is not None:
+        _lat_tgt_expr = join_meta.target_expr.replace("{alias}", _q(join_alias))
+    else:
+        _lat_tgt_expr = _join_column_expr_for(
+            None,
+            join_meta.target_column,
+            join_meta.target_column_type,
+            join_meta.source_column_type,
+        )
     sql = (
         f'LEFT JOIN LATERAL (SELECT * FROM {_table_ref(join_meta.target, use_catalog)}'
-        f' WHERE {target_expr} = {src_expr}'
+        f' WHERE {_lat_tgt_expr} = {src_expr}'
     )
     if "where" in args:
         where_sql = _compile_where(
@@ -1012,7 +1018,9 @@ def _emit_agg_subqueries(
                     current_alias, sub_join_meta.source_column,
                     sub_join_meta.source_column_type, sub_join_meta.target_column_type,
                 )
-            if sub_join_meta.target_column in _VIRTUAL_COLS:
+            if sub_join_meta.target_expr is not None:
+                sub_tgt = sub_join_meta.target_expr.replace("{alias}", _q(sub_alias))
+            elif sub_join_meta.target_column in _VIRTUAL_COLS:
                 _tvc = (ctx.virtual_columns.get(sub_join_meta.target.table_id) or {}).get(
                     sub_join_meta.target_column, ""
                 )
@@ -1109,6 +1117,7 @@ def _build_rel_json_kv(
     alias_counter: int,
     sources: set[str],
     variables: dict | None,
+    parent_src_val: str | None = None,
 ) -> tuple[list[str], int]:
     """Build KEY/VALUE pairs for json_object(KEY k VALUE v, ...) for a relationship.
 
@@ -1139,6 +1148,14 @@ def _build_rel_json_kv(
                     if isinstance(sub_join_meta.source_constant, str)
                     else str(sub_join_meta.source_constant)
                 )
+            elif sub_join_meta.source_expr is not None:
+                if parent_src_val is not None:
+                    # Trino rejects doubly-nested correlated subqueries. When the parent
+                    # join resolved to a constant (e.g. 'pet-store.pets'), use that value
+                    # here so the child subquery's WHERE clause contains no outer reference.
+                    sub_src = parent_src_val
+                else:
+                    sub_src = sub_join_meta.source_expr.replace("{alias}", _q(table_alias))
             elif sub_join_meta.source_json_key:
                 sub_src = (
                     f'CAST({_q(table_alias)}.{_q(sub_join_meta.source_column)} AS JSON)'
@@ -1149,7 +1166,9 @@ def _build_rel_json_kv(
                     table_alias, sub_join_meta.source_column,
                     sub_join_meta.source_column_type, sub_join_meta.target_column_type,
                 )
-            if sub_join_meta.target_column in _VIRTUAL_COLS:
+            if sub_join_meta.target_expr is not None:
+                sub_tgt = sub_join_meta.target_expr.replace("{alias}", _q(sub_alias))
+            elif sub_join_meta.target_column in _VIRTUAL_COLS:
                 _tvc = (ctx.virtual_columns.get(sub_join_meta.target.table_id) or {}).get(
                     sub_join_meta.target_column, ""
                 )
@@ -1168,6 +1187,7 @@ def _build_rel_json_kv(
                 sub_alias, sub_from, sub_where,
                 sub_join_meta.cardinality, sub_limit,
                 use_catalog, alias_counter, sources, variables,
+                parent_src_val=sub_src,
             )
             kv_pairs.append(f"KEY '{key}' VALUE {sub_expr}")
         else:
@@ -1197,6 +1217,7 @@ def _build_rel_json_expr(
     alias_counter: int,
     sources: set[str],
     variables: dict | None = None,
+    parent_src_val: str | None = None,
 ) -> tuple[str, int]:
     """Build one correlated JSON subquery for a relationship.
 
@@ -1209,6 +1230,7 @@ def _build_rel_json_expr(
     kv_pairs, alias_counter = _build_rel_json_kv(
         selections, ctx, type_name, table_meta, table_alias,
         use_catalog, alias_counter, sources, variables,
+        parent_src_val=parent_src_val,
     )
     jbo = f"json_object({', '.join(kv_pairs)})"
 
@@ -1282,7 +1304,9 @@ def _collect_nested_columns(
                     parent_alias, nested_join_meta.source_column,
                     nested_join_meta.source_column_type, nested_join_meta.target_column_type,
                 )
-            if nested_join_meta.target_column in _VIRTUAL_COLS:
+            if nested_join_meta.target_expr is not None:
+                tgt_expr = nested_join_meta.target_expr.replace("{alias}", _q(nested_alias))
+            elif nested_join_meta.target_column in _VIRTUAL_COLS:
                 _tvc = (ctx.virtual_columns.get(nested_join_meta.target.table_id) or {}).get(nested_join_meta.target_column, "")
                 tgt_expr = _sql_str_literal(_tvc)
             else:
@@ -1460,7 +1484,9 @@ def _compile_root_field(
                     root_alias, join_meta.source_column,
                     join_meta.source_column_type, join_meta.target_column_type,
                 )
-            if join_meta.target_column in _VIRTUAL_COLS:
+            if join_meta.target_expr is not None:
+                tgt_expr = join_meta.target_expr.replace("{alias}", _q(join_alias))
+            elif join_meta.target_column in _VIRTUAL_COLS:
                 _tvc = (ctx.virtual_columns.get(join_meta.target.table_id) or {}).get(join_meta.target_column, "")
                 tgt_expr = _sql_str_literal(_tvc)
             else:
@@ -1514,6 +1540,7 @@ def _compile_root_field(
                     join_alias, _from_clause, _where_expr,
                     join_meta.cardinality, _agg_limit,
                     use_catalog, alias_counter, sources, variables,
+                    parent_src_val=src_expr,
                 )
                 select_parts.append(f"{json_expr} AS {_q(_rel_key)}")
                 columns.append(ColumnRef(

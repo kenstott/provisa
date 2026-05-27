@@ -136,14 +136,14 @@ class TestFlightServerStartsAndConnects:
             reader = client.do_get(bad_ticket)
             reader.read_all()
 
-    async def test_flight_ticket_missing_query_raises_error(self, flight_server_and_client):
-        """Ticket without 'query' key raises FlightServerError."""
+    async def test_flight_ticket_missing_query_returns_catalog(self, flight_server_and_client):
+        """Ticket without 'query' key returns catalog metadata (not an error)."""
         client, server, state = flight_server_and_client
         ticket_bytes = json.dumps({"role": "admin"}).encode()
-        bad_ticket = flight.Ticket(ticket_bytes)
-        with pytest.raises(flight.FlightServerError):
-            reader = client.do_get(bad_ticket)
-            reader.read_all()
+        ticket = flight.Ticket(ticket_bytes)
+        reader = client.do_get(ticket)
+        table = reader.read_all()
+        assert table is not None
 
     async def test_flight_unknown_role_raises_error(self, flight_server_and_client):
         """Ticket with unknown role raises FlightServerError."""
@@ -273,7 +273,7 @@ class TestFlightDoGetWithRealData:
         state.schemas = {"admin": schema}
         state.contexts = {"admin": ctx}
         state.rls_contexts = {"admin": RLSContext.empty()}
-        state.roles = {"admin": {"id": "admin", "capabilities": ["full_results"]}}
+        state.roles = {"admin": {"id": "admin", "capabilities": ["full_results", "ad_hoc_query"]}}
         state.source_pools = source_pool
         state.source_types = {"test-pg": "postgresql"}
         state.source_dialects = {"test-pg": "postgres"}

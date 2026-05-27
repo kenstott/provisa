@@ -933,6 +933,16 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map
     )
 
+    # Deduplicate tables sharing a type_name (same domain+table registered from multiple sources).
+    # Keep the first occurrence (lowest id); duplicates produce a GraphQLSchema TypeError.
+    _seen_type_names: set[str] = set()
+    _deduped: list[_TableInfo] = []
+    for t in tables:
+        if t.type_name not in _seen_type_names:
+            _seen_type_names.add(t.type_name)
+            _deduped.append(t)
+    tables = _deduped
+
     # Build base column fields — share object_type_registry so same-named object types are reused
     _object_type_registry: dict[str, GraphQLObjectType] = {}
     for t in tables:
