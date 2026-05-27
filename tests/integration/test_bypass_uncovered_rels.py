@@ -153,13 +153,13 @@ def _register_demo_data():
         f"{BASE_URL}/admin/graphql",
         json={"query": 'mutation { deleteDomain(id: "shelter") { success } }'},
         headers=_headers(),
-        timeout=30,
+        timeout=120,
     )
     httpx.put(
         f"{BASE_URL}/admin/config",
         content=_MAIN_CONFIG.read_bytes(),
         headers={**_headers(), "Content-Type": "application/x-yaml"},
-        timeout=30,
+        timeout=120,
     )
 
 

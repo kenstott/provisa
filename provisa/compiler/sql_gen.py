@@ -97,6 +97,7 @@ class JoinMeta:
     source_expr: str | None = None  # when set, use as raw SQL expression; {alias} is replaced with the current alias
     target_expr: str | None = None  # when set, use as raw SQL expression on target side; {alias} replaced with join alias
     default_limit: int | None = None  # when set, wrap join target in a LIMIT subquery
+    child_src_val: str | None = None  # when set, propagate as parent_src_val to child joins instead of sub_src
 
 
 @dataclass
@@ -375,14 +376,16 @@ def build_context(si: object) -> CompilationContext:
                 continue
             ctx.joins[(t.type_name, "_meta")] = JoinMeta(
                 source_column="__table_id__",
-                target_column="domain_id",
+                target_column="id",
                 source_column_type="text",
                 target_column_type="text",
                 target=meta_tgt,
                 cardinality="many-to-one",
                 cypher_alias="HAS_TABLE",
-                source_constant=f"{t.domain_id}.{t.table_name}",
+                source_constant=t.table_id,  # kept for Cypher path only (RelationshipMapping)
+                source_expr=f"VARCHAR '{t.domain_id}.{t.table_name}'",  # stable SQL constant
                 target_expr='CONCAT({alias}."domain_id", \'.\', {alias}."table_name")',
+                child_src_val=f"VARCHAR '{t.domain_id}.{t.table_name}'",
             )
 
     # Inject synthetic traversal joins: registered_tables → ops tables
@@ -1142,13 +1145,7 @@ def _build_rel_json_kv(
             alias_counter += 1
             sources.add(sub_join_meta.target.source_id)
 
-            if sub_join_meta.source_constant is not None:
-                sub_src = (
-                    _sql_str_literal(sub_join_meta.source_constant)
-                    if isinstance(sub_join_meta.source_constant, str)
-                    else str(sub_join_meta.source_constant)
-                )
-            elif sub_join_meta.source_expr is not None:
+            if sub_join_meta.source_expr is not None:
                 if parent_src_val is not None:
                     # Trino rejects doubly-nested correlated subqueries. When the parent
                     # join resolved to a constant (e.g. 'pet-store.pets'), use that value
@@ -1156,6 +1153,12 @@ def _build_rel_json_kv(
                     sub_src = parent_src_val
                 else:
                     sub_src = sub_join_meta.source_expr.replace("{alias}", _q(table_alias))
+            elif sub_join_meta.source_constant is not None:
+                sub_src = (
+                    _sql_str_literal(sub_join_meta.source_constant)
+                    if isinstance(sub_join_meta.source_constant, str)
+                    else str(sub_join_meta.source_constant)
+                )
             elif sub_join_meta.source_json_key:
                 sub_src = (
                     f'CAST({_q(table_alias)}.{_q(sub_join_meta.source_column)} AS JSON)'
@@ -1181,13 +1184,21 @@ def _build_rel_json_kv(
             sub_from = f"{_table_ref(sub_join_meta.target, use_catalog)} {_q(sub_alias)}"
             sub_where = f"{sub_tgt} = {sub_src}"
             sub_limit = _explicit_limit(sel, variables) or sub_join_meta.default_limit
+            # Prefer child_src_val (explicit varchar constant) over sub_src. Fall back to
+            # sub_src for non-integer joins; block propagation for integer joins to avoid
+            # type mismatches in child varchar source_expr comparisons.
+            _next_parent_src = (
+                sub_join_meta.child_src_val
+                if sub_join_meta.child_src_val is not None
+                else (sub_src if sub_join_meta.source_column_type != "integer" else None)
+            )
             sub_expr, alias_counter = _build_rel_json_expr(
                 sel.selection_set.selections, ctx,
                 sub_join_meta.target.type_name, sub_join_meta.target,
                 sub_alias, sub_from, sub_where,
                 sub_join_meta.cardinality, sub_limit,
                 use_catalog, alias_counter, sources, variables,
-                parent_src_val=sub_src,
+                parent_src_val=_next_parent_src,
             )
             kv_pairs.append(f"KEY '{key}' VALUE {sub_expr}")
         else:
@@ -1470,10 +1481,10 @@ def _compile_root_field(
             alias_counter += 1
             sources.add(join_meta.target.source_id)
 
-            if join_meta.source_constant is not None:
-                src_expr = _sql_str_literal(join_meta.source_constant) if isinstance(join_meta.source_constant, str) else str(join_meta.source_constant)
-            elif join_meta.source_expr is not None:
+            if join_meta.source_expr is not None:
                 src_expr = join_meta.source_expr.replace("{alias}", _q(root_alias))
+            elif join_meta.source_constant is not None:
+                src_expr = _sql_str_literal(join_meta.source_constant) if isinstance(join_meta.source_constant, str) else str(join_meta.source_constant)
             elif join_meta.source_column in _VIRTUAL_COLS:
                 _svc = (ctx.virtual_columns.get(table.table_id) or {}).get(join_meta.source_column, "")
                 src_expr = _sql_str_literal(_svc)
@@ -1534,13 +1545,18 @@ def _compile_root_field(
                 _from_clause = f"{_table_ref(join_meta.target, use_catalog)} {_q(join_alias)}"
                 _where_expr = f"{tgt_expr} = {src_expr}"
                 _rel_key = sel.alias.value if sel.alias else sel_name
+                _pv = (
+                    join_meta.child_src_val
+                    if join_meta.child_src_val is not None
+                    else (src_expr if join_meta.source_column_type != "integer" else None)
+                )
                 json_expr, alias_counter = _build_rel_json_expr(
                     sel.selection_set.selections, ctx,
                     join_meta.target.type_name, join_meta.target,
                     join_alias, _from_clause, _where_expr,
                     join_meta.cardinality, _agg_limit,
                     use_catalog, alias_counter, sources, variables,
-                    parent_src_val=src_expr,
+                    parent_src_val=_pv,
                 )
                 select_parts.append(f"{json_expr} AS {_q(_rel_key)}")
                 columns.append(ColumnRef(
