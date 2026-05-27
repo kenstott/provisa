@@ -608,13 +608,17 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                                 table=exp.Identifier(this=src_table_ref),
                             )
                         )
-                        on_cond = exp.EQ(
-                            this=src_col_expr,
-                            expression=exp.Column(
+                        if rel_mapping.target_expr is not None:
+                            tgt_col_expr = exp.maybe_parse(
+                                rel_mapping.target_expr.replace("{alias}", tgt_alias),
+                                dialect="trino",
+                            )
+                        else:
+                            tgt_col_expr = exp.Column(
                                 this=exp.Identifier(this=rel_mapping.join_target_column, quoted=True),
                                 table=exp.Identifier(this=tgt_alias),
-                            ),
-                        )
+                            )
+                        on_cond = exp.EQ(this=src_col_expr, expression=tgt_col_expr)
                         joins.append({"table": join_table, "on": on_cond, "join_type": join_type})
                     elif rel_mapping is None:
                         # Fully unlabeled pattern: UNION ALL over all relationship types
@@ -736,16 +740,24 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         ),
                         alias=tgt_alias,
                     )
+                    def _tgt_col_expr(alias: str) -> exp.Expression:
+                        if rm.target_expr is not None:
+                            return exp.maybe_parse(
+                                rm.target_expr.replace("{alias}", alias),
+                                dialect="trino",
+                            )
+                        return exp.Column(
+                            this=exp.Identifier(this=rm.join_target_column, quoted=True),
+                            table=exp.Identifier(this=alias),
+                        )
+
                     if is_bwd:
                         if rm.source_constant is not None:
                             # source_constant: join condition is always <literal> = src.target_col
                             # whether forward or backward, the physical condition is the same.
                             cond = exp.EQ(
                                 this=_const_literal(rm.source_constant),
-                                expression=exp.Column(
-                                    this=exp.Identifier(this=rm.join_target_column, quoted=True),
-                                    table=exp.Identifier(this=src_table_ref),
-                                ),
+                                expression=_tgt_col_expr(src_table_ref),
                             )
                         else:
                             cond = exp.EQ(
@@ -753,10 +765,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                                     this=exp.Identifier(this=rm.join_source_column, quoted=True),
                                     table=exp.Identifier(this=tgt_alias),
                                 ),
-                                expression=exp.Column(
-                                    this=exp.Identifier(this=rm.join_target_column, quoted=True),
-                                    table=exp.Identifier(this=src_table_ref),
-                                ),
+                                expression=_tgt_col_expr(src_table_ref),
                             )
                     else:
                         if rm.source_constant is not None:
@@ -771,13 +780,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                                 this=exp.Identifier(this=rm.join_source_column, quoted=True),
                                 table=exp.Identifier(this=src_table_ref),
                             )
-                        cond = exp.EQ(
-                            this=src_col_expr,
-                            expression=exp.Column(
-                                this=exp.Identifier(this=rm.join_target_column, quoted=True),
-                                table=exp.Identifier(this=tgt_alias),
-                            ),
-                        )
+                        cond = exp.EQ(this=src_col_expr, expression=_tgt_col_expr(tgt_alias))
                     return {"table": jt, "on": cond, "join_type": join_type}
 
                 # Primary candidate → main join; extra candidates → UNION ALL branches
@@ -1226,9 +1229,16 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                             table=exp.Identifier(this=sa),
                         )
                     ),
-                    expression=exp.Column(
-                        this=exp.Identifier(this=rm.join_target_column, quoted=True),
-                        table=exp.Identifier(this=ta),
+                    expression=(
+                        exp.maybe_parse(
+                            rm.target_expr.replace("{alias}", ta),
+                            dialect="trino",
+                        )
+                        if rm.target_expr is not None
+                        else exp.Column(
+                            this=exp.Identifier(this=rm.join_target_column, quoted=True),
+                            table=exp.Identifier(this=ta),
+                        )
                     ),
                 ),
                 join_type="INNER",

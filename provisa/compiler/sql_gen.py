@@ -382,7 +382,7 @@ def build_context(si: object) -> CompilationContext:
                 target=meta_tgt,
                 cardinality="many-to-one",
                 cypher_alias="HAS_TABLE",
-                source_constant=t.table_id,  # kept for Cypher path only (RelationshipMapping)
+                source_constant=f"{t.domain_id}.{t.table_name}",  # stable varchar for Cypher path
                 source_expr=f"VARCHAR '{t.domain_id}.{t.table_name}'",  # stable SQL constant
                 target_expr='CONCAT({alias}."domain_id", \'.\', {alias}."table_name")',
                 child_src_val=f"VARCHAR '{t.domain_id}.{t.table_name}'",

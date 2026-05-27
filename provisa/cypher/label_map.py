@@ -21,19 +21,21 @@ from dataclasses import dataclass, field
 
 @dataclass
 class NodeMapping:
-    label: str            # Cypher label string, e.g. "SalesAnalytics:Orders" or "Orders"
-    type_name: str        # internal lookup key, e.g. "SalesAnalytics_Orders"
+    label: str  # Cypher label string, e.g. "SalesAnalytics:Orders" or "Orders"
+    type_name: str  # internal lookup key, e.g. "SalesAnalytics_Orders"
     domain_label: str | None  # PascalCase domain part, e.g. "SalesAnalytics"; None if no domain
-    table_label: str      # PascalCase table part, e.g. "Orders"
+    table_label: str  # PascalCase table part, e.g. "Orders"
     table_id: int
     source_id: str
-    id_column: str        # primary key column (first column if no explicit pk)
+    id_column: str  # primary key column (first column if no explicit pk)
     pk_columns: list[str]  # user-designated PK columns (informational; empty = heuristic only)
     catalog_name: str
     schema_name: str
-    table_name: str          # logical name — domain initials prefix stripped (e.g. "orders")
+    table_name: str  # logical name — domain initials prefix stripped (e.g. "orders")
     properties: dict[str, str]  # cypher prop name → SQL column name
-    native_filter_columns: set[str] = field(default_factory=set)  # SQL column names that are native API params
+    native_filter_columns: set[str] = field(
+        default_factory=set
+    )  # SQL column names that are native API params
     physical_table_name: str = ""  # physical DB table name; "" means same as table_name
     traversal_only: bool = False  # True = cross-domain node; may not be a MATCH starting node
     domain_id: str | None = None  # raw domain id, e.g. "pet-store"; None if no domain
@@ -45,14 +47,19 @@ class NodeMapping:
 
 @dataclass
 class RelationshipMapping:
-    rel_type: str          # Cypher relationship type (UPPER_SNAKE)
+    rel_type: str  # Cypher relationship type (UPPER_SNAKE)
     source_label: str
     target_label: str
     join_source_column: str
     join_target_column: str
-    field_name: str        # GraphQL field name that defines this join
+    field_name: str  # GraphQL field name that defines this join
     alias: str | None = None  # relationship alias from config (e.g. WORKS_FOR)
-    source_constant: int | str | None = None  # when set, use as literal join value instead of source column
+    source_constant: int | str | None = (
+        None  # when set, use as literal join value instead of source column
+    )
+    target_expr: str | None = (
+        None  # when set, use as raw SQL expression on target side; {alias} replaced with join alias
+    )
     many: bool = False  # True when cardinality is one-to-many (source is parent, target is array)
 
 
@@ -162,7 +169,9 @@ class CypherLabelMap:
                         queue.append((rel.source_label, path + [rev], used_rel_keys | {key}))
         return results
 
-    def relationships_for(self, source_label: str, target_label: str | None = None) -> list[RelationshipMapping]:
+    def relationships_for(
+        self, source_label: str, target_label: str | None = None
+    ) -> list[RelationshipMapping]:
         result = []
         for rel in self.relationships.values():
             if rel.source_label == source_label:
@@ -186,7 +195,7 @@ class CypherLabelMap:
         cross-domain nodes reachable via registered relationships are included and
         marked traversal_only=True — they cannot be used as MATCH starting nodes.
         """
-        from provisa.compiler.sql_gen import CompilationContext, TableMeta, JoinMeta
+        from provisa.compiler.sql_gen import CompilationContext
 
         nodes: dict[str, NodeMapping] = {}
         relationships: dict[str, RelationshipMapping] = {}
@@ -223,7 +232,9 @@ class CypherLabelMap:
             # logical table name: domain initials prefix stripped (lowercase of table_label parts)
             logical_table = _strip_domain_prefix(table_meta.table_name, domain_id)
             physical_table = table_meta.table_name
-            physical_kwarg = {"physical_table_name": physical_table} if physical_table != logical_table else {}
+            physical_kwarg = (
+                {"physical_table_name": physical_table} if physical_table != logical_table else {}
+            )
 
             nf_cols = ctx_typed.native_filter_columns.get(table_meta.table_id, set())
             nodes[table_meta.type_name] = NodeMapping(
@@ -269,6 +280,7 @@ class CypherLabelMap:
                 field_name=gql_field_name,
                 alias=cypher_alias,
                 source_constant=getattr(join_meta, "source_constant", None),
+                target_expr=getattr(join_meta, "target_expr", None),
                 many=(cardinality == "one-to-many"),
             )
             rel_key = f"{rel_type}::{source_type_name}→{join_meta.target.type_name}"
@@ -311,16 +323,18 @@ class CypherLabelMap:
                 tgt_type_name = (
                     f"{tgt_domain_label}_{tgt_table_label}" if tgt_domain_label else tgt_table_label
                 )
-                tgt_cypher_label = f"{tgt_domain_label}:{tgt_table_label}" if tgt_domain_label else tgt_table_label
+                tgt_cypher_label = (
+                    f"{tgt_domain_label}:{tgt_table_label}" if tgt_domain_label else tgt_table_label
+                )
 
                 if tgt_type_name not in nodes:
                     col_names = [c.column_name for c in col_metas]
                     props: dict[str, str] = {_to_camel(c): c for c in col_names}
                     id_col = _resolve_id_column(tgt_type_name, col_names, {}, [])
-                    from provisa.compiler.introspect import ColumnMetadata as _CM
                     tgt_source_id = tgt_table.get("source_id") or ""
                     tgt_schema = tgt_table.get("schema_name") or ""
                     from provisa.compiler.naming import source_to_catalog as _s2c
+
                     tgt_catalog = (source_catalogs or {}).get(tgt_source_id) or (
                         _s2c(tgt_source_id) if tgt_source_id else ""
                     )
@@ -348,7 +362,11 @@ class CypherLabelMap:
 
                 cypher_alias = rel.get("alias") or rel.get("computed_cypher_alias")
                 rel_cardinality = rel.get("cardinality")
-                rel_type = cypher_alias if cypher_alias else _to_rel_type(rel.get("graphql_alias") or tgt_raw_name, rel_cardinality)
+                rel_type = (
+                    cypher_alias
+                    if cypher_alias
+                    else _to_rel_type(rel.get("graphql_alias") or tgt_raw_name, rel_cardinality)
+                )
                 rel_key = f"{rel_type}::{src_type}→{tgt_type_name}"
                 if rel_key not in relationships:
                     xrel = RelationshipMapping(
@@ -364,7 +382,13 @@ class CypherLabelMap:
                     relationships[rel_key] = xrel
                     aliases.setdefault(rel_type, []).append(xrel)
 
-        return cls(nodes=nodes, relationships=relationships, domains=domains, nodes_by_table=nodes_by_table, aliases=aliases)
+        return cls(
+            nodes=nodes,
+            relationships=relationships,
+            domains=domains,
+            nodes_by_table=nodes_by_table,
+            aliases=aliases,
+        )
 
 
 _ID_EXACT = {"id", "_id", "pk", "oid"}
@@ -428,7 +452,7 @@ def _to_rel_type(field_name: str, cardinality: str | None = None) -> str:
     many-to-one → IS_ prefix (e.g. animalBreed → IS_ANIMAL_BREED)
     one-to-many / unknown → HAS_ prefix (e.g. tableColumns → HAS_TABLE_COLUMNS, _queries → HAS_QUERIES)
     """
-    s = re.sub(r'([a-z])([A-Z])', r'\1_\2', field_name).upper().lstrip("_")
+    s = re.sub(r"([a-z])([A-Z])", r"\1_\2", field_name).upper().lstrip("_")
     prefix = "IS_" if cardinality == "many-to-one" else "HAS_"
     return f"{prefix}{s}"
 
@@ -465,7 +489,7 @@ def _strip_domain_prefix(table_name: str, domain_id: str | None) -> str:
     if domain_id:
         prefix = _domain_initials(domain_id) + "_"
         if table_name.lower().startswith(prefix):
-            return table_name[len(prefix):]
+            return table_name[len(prefix) :]
     return table_name
 
 
@@ -478,7 +502,7 @@ def _table_label_from_table_name(table_name: str, domain_id: str | None) -> str:
     if domain_id:
         prefix = _domain_initials(domain_id) + "_"
         if table_name.lower().startswith(prefix):
-            table_name = table_name[len(prefix):]
+            table_name = table_name[len(prefix) :]
     return _pascal(table_name)
 
 

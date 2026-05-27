@@ -1691,3 +1691,112 @@ def test_call_subquery_traversal_only_node_collect_slice_qualified():
     assert '_call0."d_list"' in sql, (
         f'Regression #47 production: outer SELECT must use _call0."d_list", not bare d_list: {sql}'
     )
+
+
+# ---------------------------------------------------------------------------
+# HAS_TABLE target_expr: stable varchar join via CONCAT
+# ---------------------------------------------------------------------------
+
+
+def _make_has_table_target_expr_label_map() -> CypherLabelMap:
+    """Label map simulating production HAS_TABLE join.
+
+    source_constant='pet-store.pets' (stable varchar, not integer ID)
+    target_expr='CONCAT({alias}."domain_id", \'.\', {alias}."table_name")'
+    This is the stable join key that survives PUT /admin/config reloads.
+    """
+    pets = NodeMapping(
+        label="Pets",
+        type_name="Pets",
+        domain_label=None,
+        table_label="Pets",
+        table_id=10,
+        source_id="pg-main",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="postgresql",
+        schema_name="pet_store",
+        table_name="pets",
+        properties={"id": "id", "name": "name"},
+    )
+    rt = NodeMapping(
+        label="RegisteredTables",
+        type_name="RegisteredTables",
+        domain_label=None,
+        table_label="RegisteredTables",
+        table_id=99,
+        source_id="meta",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="meta",
+        schema_name="meta",
+        table_name="registered_tables",
+        properties={"id": "id", "tableName": "table_name", "domainId": "domain_id"},
+    )
+    has_table = RelationshipMapping(
+        rel_type="HAS_TABLE",
+        source_label="Pets",
+        target_label="RegisteredTables",
+        join_source_column="__table_id__",
+        join_target_column="id",
+        field_name="_meta",
+        source_constant="pet-store.pets",
+        target_expr='CONCAT({alias}."domain_id", \'.\', {alias}."table_name")',
+    )
+    return CypherLabelMap(
+        nodes={"Pets": pets, "RegisteredTables": rt},
+        relationships={"HAS_TABLE::Pets→RegisteredTables": has_table},
+        nodes_by_table={"Pets": ["Pets"], "RegisteredTables": ["RegisteredTables"]},
+        aliases={"HAS_TABLE": [has_table]},
+    )
+
+
+def test_has_table_target_expr_emits_concat_not_id_column():
+    """HAS_TABLE with target_expr must emit CONCAT(...) on target side, not registered_tables.id.
+
+    Regression: before this fix, the join was 'pet-store.pets' = rt."id" which broke
+    after every PUT /admin/config because id is an auto-increment that changes on reload.
+    After the fix, the join is 'pet-store.pets' = CONCAT(rt."domain_id", '.', rt."table_name")
+    which is stable across config reloads.
+    """
+    lm = _make_has_table_target_expr_label_map()
+    ast = parse_cypher(
+        "MATCH (a:Pets) "
+        "OPTIONAL MATCH (a:Pets)-[:HAS_TABLE]->(b:RegisteredTables) "
+        "RETURN a.name, b.tableName"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+
+    assert '"id"' not in sql.lower().replace('"id"', "\x00"), (
+        f"HAS_TABLE must not join on registered_tables.id (unstable): {sql}"
+    )
+    # The integer ID column must not be used as the target
+    assert "CONCAT" in sql.upper(), f"Expected CONCAT expression in HAS_TABLE join: {sql}"
+    assert '"domain_id"' in sql, f"Expected domain_id in CONCAT expression: {sql}"
+    assert '"table_name"' in sql, f"Expected table_name in CONCAT expression: {sql}"
+    assert "'pet-store.pets'" in sql, f"Expected stable varchar literal in join: {sql}"
+
+
+def test_has_table_stable_key_not_integer():
+    """source_constant for HAS_TABLE must be a string, not an integer.
+
+    Integer IDs change on every PUT /admin/config (auto-increment resets).
+    The translator must emit a string literal, not a number literal.
+    """
+    lm = _make_has_table_target_expr_label_map()
+    ast = parse_cypher("MATCH (a:Pets)-[:HAS_TABLE]->(b:RegisteredTables) RETURN a.id, b.tableName")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+
+    # source_constant must be quoted string, not a bare integer
+    assert "'pet-store.pets'" in sql, (
+        f"Expected varchar constant 'pet-store.pets' as join key, got: {sql}"
+    )
+    # No bare integer 10 (table_id) or 99 should appear as the join value
+    import re
+
+    join_val_match = re.search(r"=\s*(\d+)", sql)
+    assert join_val_match is None, (
+        f"Unexpected integer used as HAS_TABLE join value (unstable after config reload): {sql}"
+    )
