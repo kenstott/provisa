@@ -34,9 +34,7 @@ def create_flight_connection(
     """Create an ADBC Flight SQL connection to the Zaychik proxy.
 
     Returns an adbc_driver_flightsql.dbapi.Connection.
-
-    Raises ConnectionError or ImportError when Zaychik is unavailable.
-    Callers should catch these and fall back to execute_trino() (REQ-146).
+    Raises on connection failure — no fallback.
     """
     import adbc_driver_flightsql.dbapi as flight_sql
 
@@ -94,7 +92,6 @@ def execute_trino_flight(
     return QueryResult(rows=rows, column_names=column_names)
 
 
-
 def _skip_prepare(cursor) -> None:
     """Patch cursor to skip prepare() — Zaychik doesn't support it."""
     import types
@@ -106,7 +103,8 @@ def _skip_prepare(cursor) -> None:
             self._stmt.set_sql_query(operation)
 
     cursor._prepare_execute = types.MethodType(
-        _prepare_execute_no_prepare, cursor,
+        _prepare_execute_no_prepare,
+        cursor,
     )
 
 

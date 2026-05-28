@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
 
 import httpx
+import pyarrow as pa
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -44,9 +46,9 @@ async def compact_otel_signals() -> None:
     reinserting so re-runs are idempotent. Set OTEL_COMPACT_DATE (YYYY-MM-DD)
     to backfill a specific date.
     """
+    logger.warning("compact_otel: invoked")
     import asyncio
     import os
-    from datetime import datetime
 
     from provisa.api.app import state
 
@@ -54,9 +56,14 @@ async def compact_otel_signals() -> None:
     if override:
         target = datetime.strptime(override, "%Y-%m-%d")
     else:
-        target = datetime.utcnow()
+        target = datetime.now(timezone.utc).replace(tzinfo=None)
 
-    s3_endpoint = os.environ.get("PROVISA_OTEL_S3_ENDPOINT", "http://minio:9000")
+    s3_endpoint = os.environ.get("PROVISA_OTEL_S3_ENDPOINT") or getattr(
+        state, "otel_s3_endpoint", "http://minio:9000"
+    )
+    logger.warning(
+        "compact_otel: starting — s3=%s trino_conn=%s", s3_endpoint, state.trino_conn is not None
+    )
     access_key = os.environ.get("PROVISA_OTEL_S3_ACCESS_KEY", "minioadmin")
     secret_key = os.environ.get("PROVISA_OTEL_S3_SECRET_KEY", "minioadmin")
     otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
@@ -65,25 +72,31 @@ async def compact_otel_signals() -> None:
 
     for signal in ("logs", "metrics", "traces"):
         await asyncio.to_thread(
-            _compact_signal, signal, target, s3_endpoint, access_key, secret_key,
-            otel_bucket, file_chunk, trino_conn,
+            _compact_signal,
+            signal,
+            target,
+            s3_endpoint,
+            access_key,
+            secret_key,
+            otel_bucket,
+            file_chunk,
+            trino_conn,
         )
 
 
 def _compact_signal(
     signal: str,
-    target: object,
+    target: datetime,
     s3_endpoint: str,
     access_key: str,
     secret_key: str,
     otel_bucket: str,
     file_chunk: int,
-    trino_conn: object,
+    trino_conn: Any,
 ) -> None:
     """Compact one OTel signal type. Runs entirely in a thread — no event loop blocking."""
     import io
     import os
-    from datetime import datetime
 
     import boto3
     from botocore.config import Config as BotoConfig
@@ -137,7 +150,9 @@ def _compact_signal(
                 parts.append(pq.read_table(io.BytesIO(obj["Body"].read())))
             combined = pa.concat_tables(parts, promote_options="default")
         except Exception:
-            logger.exception("compact_otel: failed reading %s parquet files (chunk %d)", signal, chunk_start)
+            logger.exception(
+                "compact_otel: failed reading %s parquet files (chunk %d)", signal, chunk_start
+            )
             return
 
         try:
@@ -150,18 +165,21 @@ def _compact_signal(
             for err in del_resp.get("Errors", []):
                 logger.warning(
                     "compact_otel: s3 delete failed key=%s code=%s msg=%s",
-                    err.get("Key"), err.get("Code"), err.get("Message"),
+                    err.get("Key"),
+                    err.get("Code"),
+                    err.get("Message"),
                 )
         except Exception:
-            logger.exception("compact_otel: failed inserting %s into Iceberg (chunk %d)", signal, chunk_start)
+            logger.exception(
+                "compact_otel: failed inserting %s into Iceberg (chunk %d)", signal, chunk_start
+            )
             return
 
     logger.info("compact_otel: inserted %d %s rows for %s", total_rows, signal, date_glob)
 
 
-def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -> None:
+def _insert_otel_iceberg(conn: Any, signal: str, table: pa.Table, dt: datetime) -> None:
     """Create Iceberg table from schema and INSERT the rows (runs in thread)."""
-    import pyarrow as pa
 
     _PA_TO_TRINO: dict[object, str] = {
         pa.string(): "VARCHAR",
@@ -230,7 +248,9 @@ def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -
     try:
         table = table.cast(pa.schema(cast_fields), safe=False)
     except Exception:
-        logger.warning("compact_otel: could not cast %s table to Trino schema, proceeding as-is", signal)
+        logger.warning(
+            "compact_otel: could not cast %s table to Trino schema, proceeding as-is", signal
+        )
 
     date_val = dt.strftime("%Y-%m-%d")
 
@@ -242,9 +262,15 @@ def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -
         extra_cols = ["table_name", "domain_id", "role_id", "query_text"]
 
     _TRINO_CAST = {
-        "bigint": "BIGINT", "integer": "INTEGER", "double": "DOUBLE", "real": "REAL",
-        "boolean": "BOOLEAN", "timestamp(6)": "TIMESTAMP(6)", "timestamp(3)": "TIMESTAMP(3)",
-        "date": "DATE", "varchar": "VARCHAR",
+        "bigint": "BIGINT",
+        "integer": "INTEGER",
+        "double": "DOUBLE",
+        "real": "REAL",
+        "boolean": "BOOLEAN",
+        "timestamp(6)": "TIMESTAMP(6)",
+        "timestamp(3)": "TIMESTAMP(3)",
+        "date": "DATE",
+        "varchar": "VARCHAR",
     }
 
     def _cast_ph(col_lower: str) -> str:
@@ -255,13 +281,19 @@ def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -
     col_names = [f'"{n}"' for n in parquet_cols] + ['"_date"']
     placeholders = [_cast_ph(n.lower()) for n in parquet_cols] + ["CAST(? AS DATE)"]
     if extract_trace_attrs:
-        extra_insert = [ec for ec in extra_cols if ec not in table.schema.names and ec.lower() in trino_cols]
+        extra_insert = [
+            ec for ec in extra_cols if ec not in table.schema.names and ec.lower() in trino_cols
+        ]
         col_names += [f'"{ec}"' for ec in extra_insert]
         placeholders += [_cast_ph(ec.lower()) for ec in extra_insert]
-    insert_sql = f"INSERT INTO otel.signals.{signal} ({', '.join(col_names)}) VALUES ({', '.join(placeholders)})"
+
+    _SPAN_ATTRS_MAX = 4096
 
     def _row(row: dict) -> tuple:  # type: ignore[type-arg]
-        base = tuple(row.get(n) for n in parquet_cols) + (date_val,)
+        vals = dict(row)
+        if "span_attributes" in vals and isinstance(vals["span_attributes"], str):
+            vals["span_attributes"] = vals["span_attributes"][:_SPAN_ATTRS_MAX]
+        base = tuple(vals.get(n) for n in parquet_cols) + (date_val,)
         if not extract_trace_attrs or "table_name" in table.schema.names:
             return base
         attrs: dict = {}
@@ -277,18 +309,24 @@ def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -
             "role_id": "provisa.role",
             "query_text": "provisa.query_text",
         }
-        return base + tuple(attrs.get(_attr_keys[ec]) for ec in extra_cols if ec.lower() in trino_cols)
+        return base + tuple(
+            attrs.get(_attr_keys[ec]) for ec in extra_cols if ec.lower() in trino_cols
+        )
 
     rows = [_row(r) for r in table.to_pylist()]
     if not rows:
         return
 
     # Batch inserts: build multi-row VALUES per execute call (avoids per-row round trips).
+    # span_attributes truncated above to 4096 chars; 5 trace rows stay well under Trino's 1 MB limit.
     try:
         from provisa.api.app import state as _state
-        _BATCH = max(_state.otel_compact_batch_size, 100)
+
+        _BATCH = min(max(_state.otel_compact_batch_size, 1), 10)
     except Exception:
-        _BATCH = 100
+        _BATCH = 10
+    if signal == "traces":
+        _BATCH = min(_BATCH, 5)
     row_ph = f"({', '.join(placeholders)})"
     for i in range(0, len(rows), _BATCH):
         batch = rows[i : i + _BATCH]
@@ -299,13 +337,11 @@ def _insert_otel_iceberg(conn: object, signal: str, table: object, dt: object) -
         flat = [v for row in batch for v in row]
         cursor.execute(multi_sql, flat)
 
-    # Expire all but the current snapshot to prevent metadata bloat → Trino OOM.
-    # retention_threshold must be a TIMESTAMP; CURRENT_TIMESTAMP expires everything
-    # older than "now", leaving only the snapshot just written.
+    # Expire all snapshots older than 0 days to prevent metadata bloat → Trino OOM.
     try:
         cursor.execute(
             f"ALTER TABLE otel.signals.{signal} EXECUTE expire_snapshots"
-            f"(retention_threshold => CURRENT_TIMESTAMP)"
+            f"(retention_threshold => '0d')"
         )
     except Exception:
         logger.warning("compact_otel: expire_snapshots for %s failed", signal, exc_info=True)
@@ -329,7 +365,9 @@ async def watch_trino() -> None:
     logger.warning("watch_trino: Trino unresponsive — attempting restart")
     try:
         proc = await asyncio.create_subprocess_exec(
-            "docker", "start", "provisa-trino-1",
+            "docker",
+            "start",
+            "provisa-trino-1",
             stdout=asyncio.subprocess.DEVNULL,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -365,8 +403,8 @@ async def watch_trino() -> None:
     logger.error("watch_trino: Trino did not become healthy within 120 s")
 
 
-def _trino_ping(conn: object) -> None:
-    cur = conn.cursor()  # type: ignore[union-attr]
+def _trino_ping(conn: Any) -> None:
+    cur = conn.cursor()
     cur.execute("SELECT 1")
     cur.fetchone()
 
@@ -397,7 +435,8 @@ def build_scheduler(triggers: list[ScheduledTrigger]) -> AsyncIOScheduler | None
         elif trigger.function:
             logger.warning(
                 "Trigger %s: internal function %s not yet supported",
-                trigger.id, trigger.function,
+                trigger.id,
+                trigger.function,
             )
 
     return scheduler

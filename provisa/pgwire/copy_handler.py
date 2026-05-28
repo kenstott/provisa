@@ -286,23 +286,12 @@ class CopyHandler:
     def _exec_trino_flight(self, plan, fmt: str) -> tuple[bytes, int]:
         from provisa.api.app import state
         from provisa.executor.trino_flight import execute_trino_flight_arrow
-        from provisa.executor.trino import execute_trino
 
-        if state.flight_client is not None:
-            try:
-                table = execute_trino_flight_arrow(
-                    state.flight_client, plan.trino_sql, plan.exec_params
-                )
-                data_bytes = _arrow_table_to_copy_bytes(table, fmt)
-                return data_bytes, table.num_rows
-            except Exception as exc:
-                log.warning("[COPY TO] Flight SQL failed, falling back to Trino REST: %s", exc)
-
-        if state.trino_conn is None:
-            raise RuntimeError("Trino connection not available")
-        result = execute_trino(state.trino_conn, plan.trino_sql, params=plan.exec_params)
-        data_bytes = _queryresult_to_copy_bytes(result, fmt)
-        return data_bytes, len(result.rows)
+        if state.flight_client is None:
+            raise RuntimeError("Arrow Flight client not connected")
+        table = execute_trino_flight_arrow(state.flight_client, plan.trino_sql, plan.exec_params)
+        data_bytes = _arrow_table_to_copy_bytes(table, fmt)
+        return data_bytes, table.num_rows
 
     def _exec_direct_plan(
         self, plan, loop: asyncio.AbstractEventLoop, fmt: str

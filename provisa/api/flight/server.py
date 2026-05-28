@@ -434,7 +434,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
             extract_sources,
         )
         from provisa.executor.direct import execute_direct
-        from provisa.executor.trino import execute_trino
+        from provisa.executor.trino_flight import execute_trino_flight_arrow
 
         sql = request.get("query", "")
         role_id = request.get("role", "admin")
@@ -495,9 +495,13 @@ class ProvisaFlightServer(flight.FlightServerBase):
 
         if decision.route == Route.TRINO:
             sql_to_run = transpile_to_trino(physical)
-            result = asyncio.run_coroutine_threadsafe(
-                execute_trino(sql_to_run, []), self._main_loop
-            ).result()
+            if self._state.flight_client is None:
+                raise flight.FlightServerError(
+                    "Zaychik Flight SQL proxy is not configured. "
+                    "Set ZAYCHIK_HOST/ZAYCHIK_PORT and ensure the service is running."
+                )
+            table = execute_trino_flight_arrow(self._state.flight_client, sql_to_run, [])
+            return flight.RecordBatchStream(table)
         else:
             sql_to_run = transpile(physical, decision.dialect or "postgres")
             result = asyncio.run_coroutine_threadsafe(
@@ -512,7 +516,10 @@ class ProvisaFlightServer(flight.FlightServerBase):
 
         from provisa.compiler.sql_gen import ColumnRef
 
-        columns = [ColumnRef(field_name=c, column=c) for c in result.column_names]
+        columns = [
+            ColumnRef(field_name=c, column=c, alias=None, nested_in=None)
+            for c in result.column_names
+        ]
         table = rows_to_arrow_table(result.rows, columns)
         return flight.RecordBatchStream(table)
 

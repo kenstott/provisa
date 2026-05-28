@@ -1,0 +1,4705 @@
+# ============================================================================
+# Economic Data Schema (ECON)
+# ============================================================================
+# Data Sources:
+#   - Federal Reserve Economic Data (FRED) - 800,000+ time series
+#   - Bureau of Labor Statistics (BLS) - Employment, wages, inflation
+#   - Bureau of Economic Analysis (BEA) - GDP, national accounts
+#   - U.S. Treasury Department - Interest rates, debt
+#
+# Features:
+#   - Semantic search via DuckDB quackformers extension
+#   - Hive-style partitioning for efficient querying
+#   - Rate-limited API integration with BLS
+#   - Bulk download support for QCEW data
+# ============================================================================
+
+schemaName: "${SCHEMA_NAME:econ}"
+dataLagYears: 2
+materializeDirectory: "${GOVDATA_PARQUET_DIR}/econ"
+
+comment: >
+  U.S. economic indicators from Federal Reserve (FRED), Bureau of Labor Statistics (BLS),
+  Bureau of Economic Analysis (BEA), and Treasury Department. Includes employment statistics,
+  inflation metrics, GDP components, interest rates, regional economic data, and over 800,000
+  time series from FRED. Enables macroeconomic analysis, economic forecasting, policy research,
+  and cross-domain correlation with geographic and demographic data. Uses DuckDB quackformers
+  extension for native embedding generation.
+
+# ============================================================================
+# COLUMN TEMPLATES
+# ============================================================================
+# Reusable column definitions using YAML anchors to reduce duplication
+# Use *anchor_name to reference these templates in table definitions
+# ============================================================================
+
+column_templates:
+
+  # --- Time Series Common Columns ---
+
+  date_column: &date_column
+    name: date
+    type: string
+    nullable: true
+    comment: Observation date (ISO 8601 format)
+
+  series_column: &series_column
+    name: series
+    type: string
+    nullable: true
+    comment: BLS series identifier
+
+  value_column: &value_column
+    name: value
+    type: double
+    nullable: true
+    comment: Numeric value for the metric
+
+  # --- Percentage Change Columns ---
+
+  percent_change_month_column: &percent_change_month
+    name: percent_change_month
+    type: double
+    nullable: true
+    comment: Month-over-month percentage change
+
+  percent_change_year_column: &percent_change_year
+    name: percent_change_year
+    type: double
+    nullable: true
+    comment: Year-over-year percentage change
+
+  # --- Geographic Columns ---
+
+  state_name_column: &state_name
+    name: state_name
+    type: string
+    nullable: true
+    comment: State name
+
+  state_fips_column: &state_fips
+    name: state_fips
+    type: string
+    nullable: true
+    comment: State FIPS code
+
+  # --- Industry Columns ---
+
+  industry_name_column: &industry_name
+    name: industry_name
+    type: string
+    nullable: true
+    comment: Industry name
+
+  # --- Partition Column Definitions ---
+
+  partition_type: &partition_type
+    name: type
+    type: VARCHAR
+
+  partition_frequency: &partition_frequency
+    name: frequency
+    type: VARCHAR
+
+  partition_year: &partition_year
+    name: year
+    type: INTEGER
+
+  # --- Standard Hive Partition Set ---
+
+  standard_partitions: &standard_partitions
+    style: hive
+    columnDefinitions:
+      - *partition_type
+      - *partition_frequency
+      - *partition_year
+
+# ============================================================================
+# DIMENSION VALUES
+# ============================================================================
+# Reusable dimension value lists using YAML anchors
+# These can be referenced in table dimension definitions using *anchor_name
+# ============================================================================
+
+dimension_values:
+
+  # --- Frequency Dimensions ---
+
+  monthly_frequency: &monthly_frequency
+    - M
+
+  quarterly_frequency: &quarterly_frequency
+    - Q
+
+  annual_frequency: &annual_frequency
+    - A
+
+  all_frequencies: &all_frequencies
+    - M
+    - Q
+    - A
+
+  # --- State Geographic Dimensions ---
+  # All US states + DC (51 jurisdictions)
+  # Note: Loaded from reference_bls_geographies catalog at runtime
+  # This list serves as documentation and fallback
+
+  state_fips_codes: &state_fips_codes
+    - '01'  # Alabama
+    - '02'  # Alaska
+    - '04'  # Arizona
+    - '05'  # Arkansas
+    - '06'  # California
+    - '08'  # Colorado
+    - '09'  # Connecticut
+    - '10'  # Delaware
+    - '11'  # District of Columbia
+    - '12'  # Florida
+    - '13'  # Georgia
+    - '15'  # Hawaii
+    - '16'  # Idaho
+    - '17'  # Illinois
+    - '18'  # Indiana
+    - '19'  # Iowa
+    - '20'  # Kansas
+    - '21'  # Kentucky
+    - '22'  # Louisiana
+    - '23'  # Maine
+    - '24'  # Maryland
+    - '25'  # Massachusetts
+    - '26'  # Michigan
+    - '27'  # Minnesota
+    - '28'  # Mississippi
+    - '29'  # Missouri
+    - '30'  # Montana
+    - '31'  # Nebraska
+    - '32'  # Nevada
+    - '33'  # New Hampshire
+    - '34'  # New Jersey
+    - '35'  # New Mexico
+    - '36'  # New York
+    - '37'  # North Carolina
+    - '38'  # North Dakota
+    - '39'  # Ohio
+    - '40'  # Oklahoma
+    - '41'  # Oregon
+    - '42'  # Pennsylvania
+    - '44'  # Rhode Island
+    - '45'  # South Carolina
+    - '46'  # South Dakota
+    - '47'  # Tennessee
+    - '48'  # Texas
+    - '49'  # Utah
+    - '50'  # Vermont
+    - '51'  # Virginia
+    - '53'  # Washington
+    - '54'  # West Virginia
+    - '55'  # Wisconsin
+    - '56'  # Wyoming
+
+  # --- Census Region Dimensions ---
+
+  census_regions: &census_regions
+    - '0100'  # Northeast
+    - '0200'  # Midwest
+    - '0300'  # South
+    - '0400'  # West
+
+  # --- BEA Regional Geographic Sets ---
+  # Geographic FIPS code sets for BEA Regional API queries
+
+  bea_geo_fips_sets: &bea_geo_fips_sets
+    - STATE    # All states (50 states + District of Columbia)
+    - COUNTY   # All counties nationwide
+    - MSA      # All Metropolitan Statistical Areas
+    - MIC      # All Micropolitan Areas
+    - PORT     # All state metropolitan/nonmetropolitan portions
+    - DIV      # All Metropolitan Divisions
+    - CSA      # All Combined Statistical Areas
+
+  # --- BEA Regional Table Names ---
+  # All active tables in BEA Regional dataset (63 tables)
+  # Organized by category: State Annual (SAINC*/SAGDP*), State Quarterly (SQINC*/SQGDP*),
+  # County/MSA Annual (CAINC*/CAGDP*), and specialty tables (SAAC*, SAO*, SAPCE*, *RPP, *SUMMARY)
+
+  bea_regional_tables: &bea_regional_tables
+    # State Annual Personal Income (SAINC*) - 12 active tables
+    - SAINC1
+    - SAINC30
+    - SAINC35
+    - SAINC4
+    - SAINC40
+    - SAINC50
+    - SAINC51
+    - SAINC5N
+    - SAINC6N
+    - SAINC70
+    - SAINC7N
+    - SAINC91
+    # State Quarterly Personal Income (SQINC*) - 6 active tables
+    - SQINC1
+    - SQINC35
+    - SQINC4
+    - SQINC5N
+    - SQINC6N
+    - SQINC7N
+    # County/MSA Annual Personal Income (CAINC*) - 6 active tables
+    - CAINC1
+    - CAINC30
+    - CAINC4
+    - CAINC5N
+    - CAINC6N
+    - CAINC91
+    # State Annual GDP (SAGDP*) - 10 active tables
+    - SAGDP1
+    - SAGDP2
+    - SAGDP3
+    - SAGDP4
+    - SAGDP5
+    - SAGDP6
+    - SAGDP7
+    - SAGDP8
+    - SAGDP9
+    - SAGDP11
+    # State Quarterly GDP (SQGDP*) - 5 active tables
+    - SQGDP1
+    - SQGDP2
+    - SQGDP8
+    - SQGDP9
+    - SQGDP11
+    # County/MSA Annual GDP (CAGDP*) - 5 active tables
+    - CAGDP1
+    - CAGDP2
+    - CAGDP8
+    - CAGDP9
+    - CAGDP11
+    # State Arts & Culture (SAAC*) - 7 active tables
+    - SAACArtsComp
+    - SAACArtsEmp
+    - SAACArtsVA
+    - SAACCompLQ
+    - SAACCompRatio
+    - SAACLVALQ
+    - SAACVARatio
+    # State Outdoor Recreation (SAO*) - 4 active tables
+    - SAOACTVA
+    - SAOCOMP
+    - SAOEMP
+    - SAOVA
+    # Personal Consumption Expenditures (SAPCE*) - 4 active tables
+    - SAPCE1
+    - SAPCE2
+    - SAPCE3
+    - SAPCE4
+    # Real Personal Income (*RPP) - 3 active tables
+    - SARPP
+    - MARPP
+    - PARPP
+    # Summary Statistics - 3 active tables
+    - SASUMMARY
+    - TASUMMARY1
+    - TASUMMARY2
+
+  # --- BEA Regional Line Codes ---
+  # Common line codes for BEA Regional API queries
+  bea_regional_line_codes: &bea_regional_line_codes
+    - 1    # Total Personal Income
+    - 2    # Per Capita Personal Income
+    - 3    # Population
+    - 10   # Wages and Salaries
+    - 20   # Dividends, Interest, Rent
+    - 35   # Personal Current Transfer Receipts
+    - 45   # Farm Income
+    - 46   # Nonfarm Income
+
+  # --- Year Range Dimensions ---
+  # Override: ECON_START_YEAR for ECON-only, GOVDATA_START_YEAR for all schemas
+  # Note: Per-table overrides exist for data availability (QCEW from 1990, JOLTS from 2001)
+
+  year_range_default: &year_range_default
+    type: yearRange
+    start: "${ECON_START_YEAR:${GOVDATA_START_YEAR:2000}}"
+    end: current
+    dataLag: 1
+
+  year_range_from_2020: &year_range_from_2020
+    type: yearRange
+    start: "${ECON_START_YEAR:${GOVDATA_START_YEAR:2000}}"
+    end: current
+    dataLag: 1
+
+  year_range_from_2000: &year_range_from_2000
+    type: yearRange
+    start: "${ECON_START_YEAR:${GOVDATA_START_YEAR:2000}}"
+    end: current
+    dataLag: 1
+
+  # --- BEA Frequencies ---
+  bea_frequencies: &bea_frequencies
+    - A   # Annual
+    - Q   # Quarterly
+
+# ============================================================================
+# BULK DOWNLOADS
+# ============================================================================
+# Large data files shared across multiple tables to optimize download
+# ============================================================================
+
+bulkDownloads:
+
+  # Quarterly Comprehensive Employment and Wages (QCEW) bulk data
+  # File sizes: Annual ~80MB, Quarterly ~323MB
+  # Shared by: state_wages, county_wages, county_qcew, metro_wages
+  qcew_annual_bulk:
+    cachePattern: "type=qcew_bulk/year={year}/{frequency}_singlefile.zip"
+    url: "https://data.bls.gov/cew/data/files/{year}/csv/{year}_{frequency}_singlefile.zip"
+    dimensions:
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+        dataLag: 1      # QCEW annual data is released with ~1 year lag
+        releaseMonth: 9  # Released in September (with Q1 data of following year)
+      frequency:
+        - annual
+    comment: >
+      QCEW bulk CSV download shared by state_wages, county_wages, county_qcew, and metro_wages tables. Annual file ~80MB, quarterly file ~323MB. Contains all counties, states, and metros for a given year.
+
+  # BEA Regional Economic Data bulk downloads
+  # Downloads all data for a table family in a single ZIP file
+  # Much more efficient than per-year/per-geo API calls (~16MB vs 12,000+ API calls)
+  # NOTE: Only state-level data has bulk downloads. County/MSA (CAINC, CAGDP) must use API.
+
+  bea_sainc_bulk:
+    cachePattern: "type=bea_bulk/dataset=SAINC/SAINC.zip"
+    url: "https://apps.bea.gov/regional/zip/SAINC.zip"
+    dimensions: {}  # No dimensions - single static file containing all years
+    comment: >
+      BEA State Annual Personal Income (SAINC) bulk download ~16.4MB.
+      Contains all SAINC tables (SAINC1-SAINC91) for all states, all years from 1929-present.
+      Wide format CSV with years as columns - requires wideToNarrow transformation.
+
+  bea_sagdp_bulk:
+    cachePattern: "type=bea_bulk/dataset=SAGDP/SAGDP.zip"
+    url: "https://apps.bea.gov/regional/zip/SAGDP.zip"
+    dimensions: {}
+    comment: >
+      BEA State Annual GDP (SAGDP) bulk download ~9.5MB.
+      Contains all SAGDP tables for all states, all years.
+      Wide format CSV with years as columns.
+
+  bea_sqinc_bulk:
+    cachePattern: "type=bea_bulk/dataset=SQINC/SQINC.zip"
+    url: "https://apps.bea.gov/regional/zip/SQINC.zip"
+    dimensions: {}
+    comment: >
+      BEA State Quarterly Personal Income (SQINC) bulk download ~16.7MB.
+      Contains all SQINC tables for all states.
+      Wide format CSV with years as columns.
+
+  bea_sqgdp_bulk:
+    cachePattern: "type=bea_bulk/dataset=SQGDP/SQGDP.zip"
+    url: "https://apps.bea.gov/regional/zip/SQGDP.zip"
+    dimensions: {}
+    comment: >
+      BEA State Quarterly GDP (SQGDP) bulk download ~3.2MB.
+      Contains all SQGDP tables for all states.
+      Wide format CSV with years as columns.
+
+  bea_sapce_bulk:
+    cachePattern: "type=bea_bulk/dataset=SAPCE/SAPCE.zip"
+    url: "https://apps.bea.gov/regional/zip/SAPCE.zip"
+    dimensions: {}
+    comment: >
+      BEA State Personal Consumption Expenditures (SAPCE) bulk download ~3.7MB.
+      Contains all SAPCE tables for all states.
+      Wide format CSV with years as columns.
+
+# ============================================================================
+# PARTITIONED TABLES
+# ============================================================================
+# Economic data organized by type, frequency, and year
+# Standard partitioning: type=<category>/frequency=<M|Q|A>/year=<YYYY>
+# ============================================================================
+
+partitionedTables:
+
+  # --- EMPLOYMENT STATISTICS ---
+  - name: employment_statistics
+    pattern: "type=employment_statistics/frequency=*/year=*/*.parquet"
+    alternate_partitions:
+      - name: employment_statistics_trend
+        enabled: false  # Disabled due to OOM issues during reorganization
+        pattern: "type=employment_statistics/frequency=*/*.parquet"
+        partition:
+          columnDefinitions:
+            - {name: frequency, type: VARCHAR}
+    partitions: *standard_partitions
+    comment: >
+      U.S. employment and unemployment statistics from BLS including national unemployment rate, labor force participation, job openings, and employment by sector. Updated monthly with seasonal adjustments.
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - employment_statistics  # Static table type
+      frequency: *monthly_frequency  # Reference YAML anchor
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+        dataLag: 0
+        releaseMonth: 2  # BLS monthly data complete by mid-January
+
+    # Columns match BLS API response fields
+    columns:
+      - name: series
+        type: string
+        nullable: true
+        comment: BLS series identifier (e.g., 'LNS14000000' for unemployment rate)
+      - name: year
+        type: string
+        nullable: true
+        comment: Data year from BLS API
+      - name: period
+        type: string
+        nullable: true
+        comment: BLS period identifier (M01-M12 for monthly, Q01-Q04 for quarterly)
+      - name: periodName
+        type: string
+        nullable: true
+        comment: Human-readable period name (e.g., 'January', 'February')
+      - name: value
+        type: double
+        nullable: true
+        comment: Employment statistic value (e.g., unemployment rate as percentage)
+      - name: latest
+        type: boolean
+        nullable: true
+        comment: Whether this is the latest data point in the series
+      - name: footnotes
+        type: string
+        nullable: true
+        comment: Any footnotes or qualifiers for the data point
+
+    # API Configuration
+    download:
+      enabled: true
+      method: POST
+      baseUrl: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      authentication:
+        type: json_body
+        paramName: registrationkey
+        envVar: BLS_API_KEY  # Set BLS API key in environment
+      requestBody:
+        seriesid:
+          type: iteration
+          source: seriesList
+        startyear: {year}
+        endyear: {year}
+        registrationkey:
+          type: auth
+      seriesList:  # BLS series codes to fetch
+        - "LNS14000000"
+        - "CES0000000001"
+        - "LNS11300000"
+      rateLimit:  # BLS API limits: 500 daily queries, 25/series per query
+        minIntervalMs: 1100  # Wait time between requests
+        maxRetries: 3
+      response:
+        format: json
+        dataPath: "Results.series"
+
+    # HTTP Source configuration for EtlPipeline
+    source:
+      type: http
+      url: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      method: POST
+      headers:
+        Content-Type: "application/json"
+      body:
+        seriesid:  # BLS series codes - inlined for HttpSource (variables don't support lists)
+          - "LNS14000000"   # Unemployment rate
+          - "CES0000000001" # Total nonfarm employment
+          - "LNS11300000"   # Labor force participation rate
+        startyear: "{year}"
+        endyear: "{year}"
+        registrationkey: "{env:BLS_API_KEY}"
+      response:
+        format: json
+        # NOTE: dataPath removed - BlsResponseTransformer handles extraction and flattening
+        errorPath: "message"  # BLS API returns errors in message array
+      rateLimit:
+        requestsPerSecond: 0.9
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Custom hooks for BLS response handling
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.BlsResponseTransformer"
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=employment_statistics/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- INFLATION METRICS ---
+  - name: inflation_metrics
+    pattern: "type=inflation_metrics/frequency=*/year=*/inflation_metrics.parquet"
+    partitions: *standard_partitions
+    comment: >
+      Consumer Price Index (CPI) and Producer Price Index (PPI) data tracking inflation across different categories of goods and services. Includes urban, regional, and sector-specific inflation rates.
+    # Columns match BLS API response fields (series > data array)
+    columns:
+      - name: series
+        type: string
+        nullable: true
+        comment: BLS series identifier (e.g., 'CUUR0000SA0' for CPI All Urban, 'WPUFD49207' for PPI)
+      - name: year
+        type: string
+        nullable: true
+        comment: Data year from BLS API
+      - name: period
+        type: string
+        nullable: true
+        comment: BLS period identifier (M01-M12 for monthly)
+      - name: periodName
+        type: string
+        nullable: true
+        comment: Human-readable period name (e.g., 'January', 'February')
+      - name: value
+        type: double
+        nullable: true
+        comment: Price index value (typically base period = 100)
+      - name: latest
+        type: boolean
+        nullable: true
+        comment: Whether this is the latest data point in the series
+      - name: footnotes
+        type: string
+        nullable: true
+        comment: Any footnotes or qualifiers for the data point
+
+    # API Configuration
+    download:
+      enabled: true
+      method: POST
+      baseUrl: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      authentication:
+        type: json_body
+        paramName: registrationkey
+        envVar: BLS_API_KEY  # Set BLS API key in environment
+      requestBody:
+        seriesid:
+          type: iteration
+          source: seriesList
+        startyear: {year}
+        endyear: {year}
+        registrationkey:
+          type: auth
+      seriesList:  # BLS series codes to fetch
+        - "CUUR0000SA0"
+        - "CUUR0000SA0L1E"
+        - "WPUFD49207"
+      rateLimit:  # BLS API limits: 500 daily queries, 25/series per query
+        minIntervalMs: 1100  # Wait time between requests
+        maxRetries: 3
+      response:
+        format: json
+        dataPath: "Results.series"
+
+    # HTTP Source configuration for EtlPipeline
+    source:
+      type: http
+      url: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      method: POST
+      headers:
+        Content-Type: "application/json"
+      body:
+        seriesid:  # BLS series codes - inlined for HttpSource
+          - "CUUR0000SA0"     # CPI All Urban Consumers
+          - "CUUR0000SA0L1E"  # CPI All Items Less Food and Energy
+          - "WPUFD49207"      # PPI Finished Goods
+        startyear: "{year}"
+        endyear: "{year}"
+        registrationkey: "{env:BLS_API_KEY}"
+      response:
+        format: json
+        # NOTE: dataPath removed - BlsResponseTransformer handles extraction and flattening
+        errorPath: "message"  # BLS API returns errors in message array
+      rateLimit:
+        requestsPerSecond: 0.9
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - inflation_metrics
+      frequency: *monthly_frequency
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+
+    # Custom hooks for BLS response handling
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.BlsResponseTransformer"
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=inflation_metrics/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- REGIONAL CPI ---
+  - name: regional_cpi
+    pattern: "type=regional_cpi/frequency=*/year=*/regional_cpi.parquet"
+    partitions: *standard_partitions
+    comment: >
+      Consumer Price Index for 4 U.S. Census regions (Northeast, Midwest, South, West). Enables regional inflation comparisons and analysis of cost-of-living differences across major geographic areas.
+    columns:
+      - *date_column
+      - *series_column
+      - name: area_code
+        type: string
+        nullable: true
+        comment: Census region code
+      - name: area_name
+        type: string
+        nullable: true
+        comment: Census region name
+      - name: value
+        type: double
+        nullable: true
+        comment: CPI value (base period = 100)
+      - *percent_change_month
+      - *percent_change_year
+    dimensions:
+      type:
+        - regional_cpi
+      frequency: *monthly_frequency
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+        dataLag: 0
+        releaseMonth: 2  # BLS monthly data complete by mid-January
+
+    # API Configuration
+    download:
+      enabled: true
+      method: POST
+      baseUrl: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      authentication:
+        type: json_body
+        paramName: registrationkey
+        envVar: BLS_API_KEY  # Set BLS API key in environment
+
+    # HTTP Source configuration for EtlPipeline
+    source:
+      type: http
+      enabled: true
+      url: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      method: POST
+      headers:
+        Content-Type: "application/json"
+      body:
+        seriesid:  # Regional CPI series - 4 Census regions
+          - "CUUR0100SA0"   # Northeast - All items
+          - "CUUR0200SA0"   # Midwest - All items
+          - "CUUR0300SA0"   # South - All items
+          - "CUUR0400SA0"   # West - All items
+        startyear: "{year}"
+        endyear: "{year}"
+        registrationkey: "{env:BLS_API_KEY}"
+      response:
+        format: json
+        # NOTE: dataPath removed - BlsResponseTransformer handles extraction and flattening
+        errorPath: "message"  # BLS API returns errors in message array
+      rateLimit:
+        requestsPerSecond: 0.9
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Custom hooks for BLS response handling
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.BlsResponseTransformer"
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=regional_cpi/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- METRO CPI ---
+  - name: metro_cpi
+    pattern: "type=metro_cpi/frequency=*/year=*/metro_cpi.parquet"
+    partitions: *standard_partitions
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - metro_cpi
+      frequency: *monthly_frequency
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+        dataLag: 0
+        releaseMonth: 2  # BLS monthly data complete by mid-January
+
+    comment: >
+      Consumer Price Index for 20 major U.S. metropolitan areas including NYC, LA, Chicago, Houston, Phoenix, and others. Critical for understanding local cost-of-living variations and metro-specific inflation trends.
+    columns:
+      - *date_column
+      - *series_column
+      - name: area_code
+        type: string
+        nullable: true
+        comment: Metro area code
+      - name: area_name
+        type: string
+        nullable: true
+        comment: Metro area name
+      - name: value
+        type: double
+        nullable: true
+        comment: CPI value (base period = 100)
+      - *percent_change_month
+      - *percent_change_year
+
+    # API Configuration - series IDs directly in request body
+    # 20 unique area codes covering 22 metros (5 of 27 metros have no CPI data)
+    # Some metros share codes (e.g., Jacksonville/Miami use S35C, NYC/Tampa use S35D)
+    download:
+      enabled: true
+      method: POST
+      baseUrl: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      requestBody:
+        seriesid:
+          - CUURS12ASA0  # Chicago-Naperville-Elgin, IL-IN-WI
+          - CUURS12BSA0  # Philadelphia-Camden-Wilmington, PA-NJ-DE-MD
+          - CUURS23ASA0  # Dallas-Fort Worth-Arlington, TX
+          - CUURS23BSA0  # Detroit-Warren-Dearborn, MI
+          - CUURS24ASA0  # Minneapolis-St. Paul-Bloomington, MN-WI
+          - CUURS24BSA0  # St. Louis, MO-IL
+          - CUURS35ASA0  # Atlanta-Sandy Springs-Roswell, GA
+          - CUURS35BSA0  # Washington-Arlington-Alexandria, DC-VA-MD-WV
+          - CUURS35CSA0  # Miami-Fort Lauderdale / Jacksonville, FL
+          - CUURS35DSA0  # New York-Newark-Jersey City / Tampa, FL
+          - CUURS35ESA0  # Boston-Cambridge-Newton, MA-NH
+          - CUURS37BSA0  # Houston-The Woodlands-Sugar Land, TX
+          - CUURS48ASA0  # Denver-Aurora-Lakewood, CO
+          - CUURS48BSA0  # Seattle-Tacoma-Bellevue, WA
+          - CUURS49ASA0  # San Jose-Sunnyvale-Santa Clara, CA
+          - CUURS49BSA0  # Phoenix-Mesa-Scottsdale, AZ
+          - CUURS49CSA0  # Portland-Vancouver-Hillsboro, OR-WA
+          - CUURS49DSA0  # Riverside-San Bernardino-Ontario, CA
+          - CUURS49ESA0  # San Diego-Carlsbad, CA
+          - CUURS49GSA0  # Los Angeles-Long Beach-Anaheim, CA
+        startyear: "{year}"
+        endyear: "{year}"
+      authentication:
+        type: json_body
+        paramName: registrationkey
+        envVar: BLS_API_KEY
+
+    # HTTP Source configuration for EtlPipeline
+    source:
+      type: http
+      url: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      method: POST
+      headers:
+        Content-Type: "application/json"
+      body:
+        seriesid:  # Metro CPI series - inlined for HttpSource
+          - CUURS12ASA0  # Chicago-Naperville-Elgin, IL-IN-WI
+          - CUURS12BSA0  # Philadelphia-Camden-Wilmington, PA-NJ-DE-MD
+          - CUURS23ASA0  # Dallas-Fort Worth-Arlington, TX
+          - CUURS23BSA0  # Detroit-Warren-Dearborn, MI
+          - CUURS24ASA0  # Minneapolis-St. Paul-Bloomington, MN-WI
+          - CUURS24BSA0  # St. Louis, MO-IL
+          - CUURS35ASA0  # Atlanta-Sandy Springs-Roswell, GA
+          - CUURS35BSA0  # Washington-Arlington-Alexandria, DC-VA-MD-WV
+          - CUURS35CSA0  # Miami-Fort Lauderdale / Jacksonville, FL
+          - CUURS35DSA0  # New York-Newark-Jersey City / Tampa, FL
+          - CUURS35ESA0  # Boston-Cambridge-Newton, MA-NH
+          - CUURS37BSA0  # Houston-The Woodlands-Sugar Land, TX
+          - CUURS48ASA0  # Denver-Aurora-Lakewood, CO
+          - CUURS48BSA0  # Seattle-Tacoma-Bellevue, WA
+          - CUURS49ASA0  # San Jose-Sunnyvale-Santa Clara, CA
+          - CUURS49BSA0  # Phoenix-Mesa-Scottsdale, AZ
+          - CUURS49CSA0  # Portland-Vancouver-Hillsboro, OR-WA
+          - CUURS49DSA0  # Riverside-San Bernardino-Ontario, CA
+          - CUURS49ESA0  # San Diego-Carlsbad, CA
+          - CUURS49GSA0  # Los Angeles-Long Beach-Anaheim, CA
+        startyear: "{year}"
+        endyear: "{year}"
+        registrationkey: "{env:BLS_API_KEY}"
+      response:
+        format: json
+        # NOTE: dataPath removed - BlsResponseTransformer handles extraction and flattening
+        errorPath: "message"  # BLS API returns errors in message array
+      rateLimit:
+        requestsPerSecond: 0.9
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Custom hooks for BLS response handling
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.BlsResponseTransformer"
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=metro_cpi/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- STATE INDUSTRY ---
+  - name: state_industry
+    pattern: "type=state_industry/frequency=*/year=*/state_industry.parquet"
+    partitions: *standard_partitions
+    comment: >
+      Employment by industry sector for all 51 U.S. jurisdictions (50 states + DC) across 22 NAICS supersector codes. Includes total nonfarm employment, private sector employment, and breakdowns by major industry categories like manufacturing, construction, retail, healthcare, and government. Enables state-level industry analysis and cross-state economic comparisons.
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - state_industry
+      frequency: *monthly_frequency
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+
+    # Columns match BLS API response fields (series > data array)
+    # The series ID encodes state and industry: SMS{stateCode}{industryCode}01
+    columns:
+      - name: series
+        type: string
+        nullable: true
+        comment: BLS series ID (e.g., SMS01000000000000001 encodes Alabama total employment)
+      - name: year
+        type: string
+        nullable: true
+        comment: Data year from BLS API
+      - name: period
+        type: string
+        nullable: true
+        comment: BLS period identifier (M01-M12 for monthly)
+      - name: periodName
+        type: string
+        nullable: true
+        comment: Human-readable period name (e.g., 'January')
+      - name: value
+        type: double
+        nullable: true
+        comment: Employment in thousands
+      - name: latest
+        type: boolean
+        nullable: true
+        comment: Whether this is the latest data point in the series
+      - name: footnotes
+        type: string
+        nullable: true
+        comment: Any footnotes or qualifiers for the data point
+
+    # API Configuration
+    # Full series list (1,122 total: 51 states x 22 industries) available in /bls/state-industry-series.json
+    # BLS API limit: 50 series/request
+    download:
+      enabled: true
+      method: POST
+      baseUrl: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      authentication:
+        type: json_body
+        paramName: registrationkey
+        envVar: BLS_API_KEY  # Set BLS API key in environment
+
+    # HTTP Source configuration for EtlPipeline
+    # Uses batching to split 1,122 series into requests of 50 (BLS API limit)
+    source:
+      type: http
+      enabled: true
+      url: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      method: POST
+      headers:
+        Content-Type: "application/json"
+      body:
+        seriesid: []  # Placeholder - replaced by batching
+        startyear: "{year}"
+        endyear: "{year}"
+        registrationkey: "{env:BLS_API_KEY}"
+      batching:
+        field: seriesid
+        source: "/bls/state-industry-series.json"
+        path: "seriesIds"
+        size: 50  # BLS API limit
+        delayMs: 1100  # Rate limit between batches
+      response:
+        format: json
+        # NOTE: dataPath removed - BlsResponseTransformer handles extraction and flattening
+        errorPath: "message"  # BLS API returns errors in message array
+      rateLimit:
+        requestsPerSecond: 0.9
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Custom hooks for BLS response handling
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.BlsResponseTransformer"
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=state_industry/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- STATE WAGES ---
+  - name: state_wages
+    pattern: "type=state_wages/frequency=*/year=*/state_wages.parquet"
+    partitions: *standard_partitions
+    comment: >
+      Average weekly wages for all 51 U.S. jurisdictions (50 states + DC) from BLS QCEW (Quarterly Census of Employment and Wages). Provides state-level compensation data for understanding regional wage differences, cost-of-living adjustments, and economic competitiveness analysis.
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - state_wages  # Static table type
+      frequency:
+        - annual
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:1990}"  # QCEW data only available from 1990
+        end: current
+        dataLag: 1       # QCEW annual data is released with ~1 year lag
+        releaseMonth: 9  # Released in September (with Q1 data of following year)
+
+    # Source columns from QCEW CSV (matching actual file structure)
+    columns:
+      - name: area_fips
+        type: string
+        nullable: true
+        comment: State FIPS code with 000 suffix (e.g., 01000 for Alabama)
+      - name: own_code
+        type: string
+        nullable: true
+        comment: Ownership code (0=all, 5=private)
+      - name: industry_code
+        type: string
+        nullable: true
+        comment: NAICS industry code (10=total)
+      - name: agglvl_code
+        type: string
+        nullable: true
+        comment: Aggregation level code
+      - name: annual_avg_estabs
+        type: int
+        nullable: true
+        comment: Average annual establishment count
+      - name: annual_avg_emplvl
+        type: int
+        nullable: true
+        comment: Average annual employment level
+      - name: total_annual_wages
+        type: long
+        nullable: true
+        comment: Total annual wages in dollars
+      - name: annual_avg_wkly_wage
+        type: int
+        nullable: true
+        comment: Average weekly wage in dollars
+      # Computed columns for user convenience
+      - name: state_fips
+        type: string
+        nullable: true
+        expression: "SUBSTR(CAST(area_fips AS VARCHAR), 1, 2)"
+        comment: 2-digit state FIPS code derived from area_fips
+      - name: state_name
+        type: string
+        nullable: true
+        expression: "CASE SUBSTR(CAST(area_fips AS VARCHAR), 1, 2) WHEN '01' THEN 'Alabama' WHEN '02' THEN 'Alaska' WHEN '04' THEN 'Arizona' WHEN '05' THEN 'Arkansas' WHEN '06' THEN 'California' WHEN '08' THEN 'Colorado' WHEN '09' THEN 'Connecticut' WHEN '10' THEN 'Delaware' WHEN '11' THEN 'District of Columbia' WHEN '12' THEN 'Florida' WHEN '13' THEN 'Georgia' WHEN '15' THEN 'Hawaii' WHEN '16' THEN 'Idaho' WHEN '17' THEN 'Illinois' WHEN '18' THEN 'Indiana' WHEN '19' THEN 'Iowa' WHEN '20' THEN 'Kansas' WHEN '21' THEN 'Kentucky' WHEN '22' THEN 'Louisiana' WHEN '23' THEN 'Maine' WHEN '24' THEN 'Maryland' WHEN '25' THEN 'Massachusetts' WHEN '26' THEN 'Michigan' WHEN '27' THEN 'Minnesota' WHEN '28' THEN 'Mississippi' WHEN '29' THEN 'Missouri' WHEN '30' THEN 'Montana' WHEN '31' THEN 'Nebraska' WHEN '32' THEN 'Nevada' WHEN '33' THEN 'New Hampshire' WHEN '34' THEN 'New Jersey' WHEN '35' THEN 'New Mexico' WHEN '36' THEN 'New York' WHEN '37' THEN 'North Carolina' WHEN '38' THEN 'North Dakota' WHEN '39' THEN 'Ohio' WHEN '40' THEN 'Oklahoma' WHEN '41' THEN 'Oregon' WHEN '42' THEN 'Pennsylvania' WHEN '44' THEN 'Rhode Island' WHEN '45' THEN 'South Carolina' WHEN '46' THEN 'South Dakota' WHEN '47' THEN 'Tennessee' WHEN '48' THEN 'Texas' WHEN '49' THEN 'Utah' WHEN '50' THEN 'Vermont' WHEN '51' THEN 'Virginia' WHEN '53' THEN 'Washington' WHEN '54' THEN 'West Virginia' WHEN '55' THEN 'Wisconsin' WHEN '56' THEN 'Wyoming' WHEN '72' THEN 'Puerto Rico' WHEN '78' THEN 'Virgin Islands' ELSE 'Unknown' END"
+        comment: State name derived from FIPS code
+
+
+    # API Configuration
+    download:
+      bulkDownload: qcew_annual_bulk
+
+    # HTTP Source configuration for EtlPipeline (bulk download)
+    # Downloads ZIP file and extracts CSV content
+    # Uses lazy streaming for large CSV files (parsed row-by-row, not loaded into memory)
+    source:
+      type: http
+      url: "https://data.bls.gov/cew/data/files/{year}/csv/{year}_{frequency}_singlefile.zip"
+      method: GET
+      extractPattern: "*.csv"  # Extract CSV from ZIP archive
+      # Row filter: state-level data has area_fips = XX000 (2-digit state + 000)
+      rowFilter:
+        column: area_fips
+        pattern: "^\\d{2}000$"  # State FIPS codes: 01000, 02000, etc.
+      response:
+        format: csv
+      rateLimit:
+        requestsPerSecond: 1.0
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=state_wages/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- METRO INDUSTRY ---
+  - name: metro_industry
+    pattern: "type=metro_industry/frequency=*/year=*/metro_industry.parquet"
+    partitions: *standard_partitions
+    comment: >
+      Employment by industry sector for 27 major U.S. metropolitan areas across 22 NAICS supersector codes. Covers major metros including NYC, LA, Chicago, Houston, and others with detailed industry breakdowns for manufacturing, retail, healthcare, financial activities, and government sectors. Enables metro-level industry analysis and cross-metro economic comparisons.
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - metro_industry
+      frequency: *monthly_frequency
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+
+    # Columns match BLS API response fields (series > data array)
+    # The series ID encodes metro area and industry: SMU{areaCode}{industryCode}01
+    columns:
+      - name: series
+        type: string
+        nullable: true
+        comment: BLS series ID (e.g., SMU36935610000000001 encodes NYC total employment)
+      - name: year
+        type: string
+        nullable: true
+        comment: Data year from BLS API
+      - name: period
+        type: string
+        nullable: true
+        comment: BLS period identifier (M01-M12 for monthly)
+      - name: periodName
+        type: string
+        nullable: true
+        comment: Human-readable period name (e.g., 'January')
+      - name: value
+        type: double
+        nullable: true
+        comment: Employment in thousands
+      - name: latest
+        type: boolean
+        nullable: true
+        comment: Whether this is the latest data point in the series
+      - name: footnotes
+        type: string
+        nullable: true
+        comment: Any footnotes or qualifiers for the data point
+
+    # API Configuration
+    # Full series list (594 total) available in /bls/metro-industry-series.json
+    # BLS API limit: 50 series/request. This config uses Batch 1 (first 50 series).
+    download:
+      enabled: true
+      method: POST
+      baseUrl: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      authentication:
+        type: json_body
+        paramName: registrationkey
+        envVar: BLS_API_KEY  # Set API key in environment
+      # BLS metro industry series IDs: SMU{areaCode}{industryCode}01
+      # Batch 1: NYC (22) + LA (22) + Chicago (6) = 50 series
+      seriesList:
+        # NYC (3693561) - All industries
+        - "SMU36935610000000001"
+        - "SMU36935610500000001"
+        - "SMU36935610600000001"
+        - "SMU36935610700000001"
+        - "SMU36935610800000001"
+        - "SMU36935611000000001"
+        - "SMU36935612000000001"
+        - "SMU36935613000000001"
+        - "SMU36935613100000001"
+        - "SMU36935613200000001"
+        - "SMU36935614000000001"
+        - "SMU36935614100000001"
+        - "SMU36935614200000001"
+        - "SMU36935614300000001"
+        - "SMU36935614400000001"
+        - "SMU36935615000000001"
+        - "SMU36935615500000001"
+        - "SMU36935616000000001"
+        - "SMU36935616500000001"
+        - "SMU36935617000000001"
+        - "SMU36935618000000001"
+        - "SMU36935619000000001"
+        # LA (0631080) - All industries
+        - "SMU06310800000000001"
+        - "SMU06310800500000001"
+        - "SMU06310800600000001"
+        - "SMU06310800700000001"
+        - "SMU06310800800000001"
+        - "SMU06310801000000001"
+        - "SMU06310802000000001"
+        - "SMU06310803000000001"
+        - "SMU06310803100000001"
+        - "SMU06310803200000001"
+        - "SMU06310804000000001"
+        - "SMU06310804100000001"
+        - "SMU06310804200000001"
+        - "SMU06310804300000001"
+        - "SMU06310804400000001"
+        - "SMU06310805000000001"
+        - "SMU06310805500000001"
+        - "SMU06310806000000001"
+        - "SMU06310806500000001"
+        - "SMU06310807000000001"
+        - "SMU06310808000000001"
+        - "SMU06310809000000001"
+        # Chicago (1716980) - First 6 industries
+        - "SMU17169800000000001"
+        - "SMU17169800500000001"
+        - "SMU17169800600000001"
+        - "SMU17169800700000001"
+        - "SMU17169800800000001"
+        - "SMU17169801000000001"
+      rateLimit:
+        minIntervalMs: 1100
+        maxRetries: 3
+
+    # HTTP Source configuration for EtlPipeline
+    # Uses batching to split 594 series into requests of 50 (BLS API limit)
+    source:
+      type: http
+      enabled: true
+      url: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      method: POST
+      headers:
+        Content-Type: "application/json"
+      body:
+        seriesid: []  # Placeholder - replaced by batching
+        startyear: "{year}"
+        endyear: "{year}"
+        registrationkey: "{env:BLS_API_KEY}"
+      batching:
+        field: seriesid
+        source: "/bls/metro-industry-series.json"
+        path: "seriesIds"
+        size: 50  # BLS API limit
+        delayMs: 1100  # Rate limit between batches
+      response:
+        format: json
+        # NOTE: dataPath removed - BlsResponseTransformer handles extraction and flattening
+        errorPath: "message"  # BLS API returns errors in message array
+      rateLimit:
+        requestsPerSecond: 0.9
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Custom hooks for BLS response transformation
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.BlsResponseTransformer"
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=metro_industry/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- METRO WAGES ---
+  - name: metro_wages
+    pattern: "type=metro_wages/frequency=*/year=*/metro_wages.parquet"
+    partitions: *standard_partitions
+    comment: >
+      Average weekly wages for 27 major U.S. metropolitan areas from BLS QCEW (Quarterly Census of Employment and Wages). Provides metro-level compensation data for understanding local wage differences, cost-of-living adjustments, and metropolitan economic competitiveness analysis.
+    # Source columns from QCEW CSV (matching actual file structure)
+    columns:
+      - name: area_fips
+        type: string
+        nullable: true
+        comment: Metro/CSA area FIPS code
+      - name: own_code
+        type: string
+        nullable: true
+        comment: Ownership code (0=all, 5=private)
+      - name: industry_code
+        type: string
+        nullable: true
+        comment: NAICS industry code (10=total)
+      - name: agglvl_code
+        type: string
+        nullable: true
+        comment: Aggregation level code
+      - name: annual_avg_estabs
+        type: int
+        nullable: true
+        comment: Average annual establishment count
+      - name: annual_avg_emplvl
+        type: int
+        nullable: true
+        comment: Average annual employment level
+      - name: total_annual_wages
+        type: long
+        nullable: true
+        comment: Total annual wages in dollars
+      - name: annual_avg_wkly_wage
+        type: int
+        nullable: true
+        comment: Average weekly wage in dollars
+      - name: avg_annual_pay
+        type: int
+        nullable: true
+        comment: Average annual pay in dollars
+      # Computed columns for user convenience
+      - name: metro_code
+        type: string
+        nullable: true
+        expression: "CASE area_fips WHEN 'C3562' THEN 'A100' WHEN 'C3108' THEN 'A400' WHEN 'C1698' THEN 'A207' WHEN 'C2642' THEN 'A425' WHEN 'C3806' THEN 'A423' WHEN 'C3798' THEN 'A102' WHEN 'C4170' THEN 'A426' WHEN 'C4174' THEN 'A421' WHEN 'C1910' THEN 'A127' WHEN 'C4194' THEN 'A429' WHEN 'C1242' THEN 'A438' WHEN 'C2726' THEN 'A420' WHEN 'C1446' THEN 'A103' WHEN 'C4266' THEN 'A428' WHEN 'C1974' THEN 'A427' WHEN 'C4790' THEN 'A101' WHEN 'C1982' THEN 'A211' WHEN 'C1746' THEN 'A104' WHEN 'C3346' THEN 'A212' WHEN 'C3310' THEN 'A422' WHEN 'C1206' THEN 'A419' WHEN 'C3890' THEN 'A437' WHEN 'C4014' THEN 'A424' WHEN 'C4118' THEN 'A320' WHEN 'C1258' THEN 'A319' WHEN 'C4530' THEN 'A433' WHEN 'C1126' THEN 'A440' END"
+        comment: Metro area publication code (e.g., A419 for Atlanta)
+      - name: metro_name
+        type: string
+        nullable: true
+        expression: "CASE area_fips WHEN 'C3562' THEN 'New York-Newark-Jersey City, NY-NJ-PA' WHEN 'C3108' THEN 'Los Angeles-Long Beach-Anaheim, CA' WHEN 'C1698' THEN 'Chicago-Naperville-Elgin, IL-IN' WHEN 'C2642' THEN 'Houston-The Woodlands-Sugar Land, TX' WHEN 'C3806' THEN 'Phoenix-Mesa-Chandler, AZ' WHEN 'C3798' THEN 'Philadelphia-Camden-Wilmington, PA-NJ-DE-MD' WHEN 'C4170' THEN 'San Antonio-New Braunfels, TX' WHEN 'C4174' THEN 'San Diego-Chula Vista-Carlsbad, CA' WHEN 'C1910' THEN 'Dallas-Fort Worth-Arlington, TX' WHEN 'C4194' THEN 'San Jose-Sunnyvale-Santa Clara, CA' WHEN 'C1242' THEN 'Austin-Round Rock-San Marcos, TX' WHEN 'C2726' THEN 'Jacksonville, FL' WHEN 'C1446' THEN 'Boston-Cambridge-Newton, MA-NH' WHEN 'C4266' THEN 'Seattle-Tacoma-Bellevue, WA' WHEN 'C1974' THEN 'Denver-Aurora-Centennial, CO' WHEN 'C4790' THEN 'Washington-Arlington-Alexandria, DC-VA-MD-WV' WHEN 'C1982' THEN 'Detroit-Warren-Dearborn, MI' WHEN 'C1746' THEN 'Cleveland-Elyria, OH' WHEN 'C3346' THEN 'Minneapolis-St. Paul-Bloomington, MN-WI' WHEN 'C3310' THEN 'Miami-Fort Lauderdale-West Palm Beach, FL' WHEN 'C1206' THEN 'Atlanta-Sandy Springs-Roswell, GA' WHEN 'C3890' THEN 'Portland-Vancouver-Hillsboro, OR-WA' WHEN 'C4014' THEN 'Riverside-San Bernardino-Ontario, CA' WHEN 'C4118' THEN 'St. Louis, MO-IL' WHEN 'C1258' THEN 'Baltimore-Columbia-Towson, MD' WHEN 'C4530' THEN 'Tampa-St. Petersburg-Clearwater, FL' WHEN 'C1126' THEN 'Anchorage, AK' END"
+        comment: Metro area name
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - metro_wages
+      frequency:
+        - annual
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+        dataLag: 1       # QCEW annual data is released with ~1 year lag
+        releaseMonth: 9  # Released in September
+
+    # API Configuration
+    download:
+      bulkDownload: qcew_annual_bulk
+
+    # HTTP Source configuration for EtlPipeline (bulk download)
+    # Downloads ZIP file and extracts CSV content
+    # Uses lazy streaming for large CSV files (parsed row-by-row, not loaded into memory)
+    source:
+      type: http
+      url: "https://data.bls.gov/cew/data/files/{year}/csv/{year}_{frequency}_singlefile.zip"
+      method: GET
+      extractPattern: "*.csv"  # Extract CSV from ZIP archive
+      # Row filter: all metro/CSA codes (area_fips starting with C)
+      rowFilter:
+        column: area_fips
+        pattern: "^C.*"
+      response:
+        format: csv
+      rateLimit:
+        requestsPerSecond: 1.0
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=metro_wages/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- COUNTY QCEW ---
+  - name: county_qcew
+    pattern: "type=county_qcew/frequency=*/year=*/county_qcew.parquet"
+    partitions: *standard_partitions
+    comment: >
+      County-level employment and wages from BLS QCEW (Quarterly Census of Employment and Wages) for all ~3,142 U.S. counties. Comprehensive data includes establishment counts, employment levels, total wages, and average weekly wages by industry (NAICS codes) and ownership type (private, federal, state, local government). Enables detailed county-level labor market analysis, industry concentration studies, and regional economic development research.
+    columns:
+      - name: area_fips
+        type: string
+        nullable: true
+        comment: County FIPS code
+      - name: own_code
+        type: string
+        nullable: true
+        comment: Ownership code (private, federal, state, local government)
+      - name: industry_code
+        type: string
+        nullable: true
+        comment: NAICS industry code
+      - name: agglvl_code
+        type: string
+        nullable: true
+        comment: Aggregation level code
+      - name: annual_avg_estabs
+        type: int
+        nullable: true
+        comment: Average annual establishment count
+      - name: annual_avg_emplvl
+        type: int
+        nullable: true
+        comment: Average annual employment level
+      - name: total_annual_wages
+        type: long
+        nullable: true
+        comment: Total annual wages in dollars
+      - name: annual_avg_wkly_wage
+        type: int
+        nullable: true
+        comment: Average weekly wage in dollars
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - county_qcew
+      frequency:
+        - annual
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+        dataLag: 1       # QCEW annual data is released with ~1 year lag
+        releaseMonth: 9  # Released in September
+
+    # API Configuration
+    download:
+      bulkDownload: qcew_annual_bulk
+
+    # HTTP Source configuration for EtlPipeline (bulk download)
+    # Downloads ZIP file and extracts CSV content
+    # Uses lazy streaming for large CSV files (parsed row-by-row, not loaded into memory)
+    source:
+      type: http
+      url: "https://data.bls.gov/cew/data/files/{year}/csv/{year}_{frequency}_singlefile.zip"
+      method: GET
+      extractPattern: "*.csv"  # Extract CSV from ZIP archive
+      # Row filter: county-level data has 5-digit area_fips (excludes state 000 suffix)
+      rowFilter:
+        column: area_fips
+        pattern: "^\\d{2}[0-9]{2}[1-9]$|^\\d{2}[0-9][1-9][0-9]$|^\\d{2}[1-9][0-9]{2}$"  # County FIPS (not ending in 000)
+      response:
+        format: csv
+      rateLimit:
+        requestsPerSecond: 1.0
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=county_qcew/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- COUNTY WAGES ---
+  - name: county_wages
+    pattern: "type=county_wages/frequency=*/year=*/county_wages.parquet"
+    partitions: *standard_partitions
+    comment: >
+      Average weekly wages for all 6,038 U.S. counties from BLS QCEW (Quarterly Census of Employment and Wages). Most granular geographic wage data available, enabling county-level compensation analysis, local labor market studies, and rural-urban wage comparisons. Essential for detailed regional economic analysis.
+    # Source columns from QCEW CSV (matching actual file structure)
+    columns:
+      - name: area_fips
+        type: string
+        nullable: true
+        comment: County FIPS code (5 digits)
+      - name: own_code
+        type: string
+        nullable: true
+        comment: Ownership code (0=all, 5=private)
+      - name: industry_code
+        type: string
+        nullable: true
+        comment: NAICS industry code (10=total)
+      - name: agglvl_code
+        type: string
+        nullable: true
+        comment: Aggregation level code
+      - name: annual_avg_estabs
+        type: int
+        nullable: true
+        comment: Average annual establishment count
+      - name: annual_avg_emplvl
+        type: int
+        nullable: true
+        comment: Average annual employment level
+      - name: total_annual_wages
+        type: long
+        nullable: true
+        comment: Total annual wages in dollars
+      - name: annual_avg_wkly_wage
+        type: int
+        nullable: true
+        comment: Average weekly wage in dollars
+      # Computed columns for user convenience
+      - name: county_fips
+        type: string
+        nullable: true
+        expression: "area_fips"
+        comment: County FIPS code alias
+      - name: state_fips
+        type: string
+        nullable: true
+        expression: "SUBSTR(CAST(area_fips AS VARCHAR), 1, 2)"
+        comment: State FIPS code derived from county FIPS
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - county_wages
+      frequency:
+        - annual
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+        dataLag: 1       # QCEW annual data is released with ~1 year lag
+        releaseMonth: 9  # Released in September
+
+    # API Configuration
+    download:
+      bulkDownload: qcew_annual_bulk
+
+    # HTTP Source configuration for EtlPipeline (bulk download)
+    # Downloads ZIP file and extracts CSV content
+    # Uses lazy streaming for large CSV files (parsed row-by-row, not loaded into memory)
+    source:
+      type: http
+      url: "https://data.bls.gov/cew/data/files/{year}/csv/{year}_{frequency}_singlefile.zip"
+      method: GET
+      extractPattern: "*.csv"  # Extract CSV from ZIP archive
+      # Row filter: county-level data has 5-digit area_fips (excludes state 000 suffix)
+      rowFilter:
+        column: area_fips
+        pattern: "^\\d{2}[0-9]{2}[1-9]$|^\\d{2}[0-9][1-9][0-9]$|^\\d{2}[1-9][0-9]{2}$"  # County FIPS (not ending in 000)
+      response:
+        format: csv
+      rateLimit:
+        requestsPerSecond: 1.0
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=county_wages/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- JOLTS REGIONAL ---
+  - name: jolts_regional
+    pattern: "type=jolts_regional/frequency=*/year=*/jolts_regional.parquet"
+    partitions: *standard_partitions
+    sourcePaths:
+      ftpFiles:
+        - cachePath: "type=jolts_ftp/jt.series"
+          url: "https://download.bls.gov/pub/time.series/jt/jt.series"
+          comment: JOLTS series definitions
+        - cachePath: "type=jolts_ftp/jt.data.2.JobOpenings"
+          url: "https://download.bls.gov/pub/time.series/jt/jt.data.2.JobOpenings"
+          comment: Job openings data
+        - cachePath: "type=jolts_ftp/jt.data.3.Hires"
+          url: "https://download.bls.gov/pub/time.series/jt/jt.data.3.Hires"
+          comment: Hires data
+        - cachePath: "type=jolts_ftp/jt.data.4.TotalSeparations"
+          url: "https://download.bls.gov/pub/time.series/jt/jt.data.4.TotalSeparations"
+          comment: Total separations data
+        - cachePath: "type=jolts_ftp/jt.data.5.Quits"
+          url: "https://download.bls.gov/pub/time.series/jt/jt.data.5.Quits"
+          comment: Quits data
+        - cachePath: "type=jolts_ftp/jt.data.6.LayoffsDischarges"
+          url: "https://download.bls.gov/pub/time.series/jt/jt.data.6.LayoffsDischarges"
+          comment: Layoffs and discharges data
+    comment: >
+      Job Openings and Labor Turnover Survey (JOLTS) data for 4 U.S. Census regions (Northeast, Midwest, South, West). Tracks job openings rate, hires rate, total separations rate, quits rate, and layoffs/discharges rate. Provides critical insights into labor market dynamics, worker mobility, and regional employment trends.
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - jolts_regional  # Static table type
+      frequency: *monthly_frequency  # Monthly JOLTS releases
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2001}"  # JOLTS data only available from December 2000
+        end: current
+
+    columns:
+      # BLS TSV columns: series_id, year, period, value, footnote_codes
+      # Series ID format: JTU{region}{industry}{dataelement} (e.g., JTU00000000JOR)
+      - name: date
+        type: string
+        nullable: true
+        comment: Observation date (ISO 8601 format)
+        # Construct date from year + period (e.g., 2020 + M01 -> 2020-01-01)
+        expression: "year || '-' || LPAD(CAST(CAST(SUBSTRING(period, 2, 2) AS INTEGER) AS VARCHAR), 2, '0') || '-01'"
+      - name: series
+        type: string
+        nullable: true
+        comment: BLS series identifier
+        source: series_id
+      - name: region_code
+        type: string
+        nullable: true
+        comment: Census region code (00=US, NE/MW/SO/WE for regions)
+        # Extract region from series_id positions 4-5 (after JTU prefix)
+        expression: "SUBSTRING(series_id, 4, 2)"
+      - name: region_name
+        type: string
+        nullable: true
+        comment: Census region name
+        # Map region code to name
+        expression: "CASE SUBSTRING(series_id, 4, 2) WHEN '00' THEN 'United States' WHEN 'NE' THEN 'Northeast' WHEN 'MW' THEN 'Midwest' WHEN 'SO' THEN 'South' WHEN 'WE' THEN 'West' ELSE 'Unknown' END"
+      - name: metric_type
+        type: string
+        nullable: true
+        comment: JOLTS metric (hires, separations, openings, quits, layoffs)
+        # Extract data element code from series_id (last 3 chars like JOR, HIR, etc.)
+        expression: "CASE RIGHT(series_id, 3) WHEN 'JOR' THEN 'JobOpenings' WHEN 'HIR' THEN 'Hires' WHEN 'TSR' THEN 'TotalSeparations' WHEN 'QUR' THEN 'Quits' WHEN 'LDR' THEN 'LayoffsDischarges' ELSE RIGHT(series_id, 3) END"
+      - name: value
+        type: double
+        nullable: true
+        comment: JOLTS metric value (levels in thousands, rates as percentage)
+        source: value
+      - name: percent_change_month
+        type: double
+        nullable: true
+        comment: Month-over-month percentage change
+        # Not available in raw BLS data, set to NULL
+        expression: "NULL"
+      - name: percent_change_year
+        type: double
+        nullable: true
+        comment: Year-over-year percentage change
+        # Not available in raw BLS data, set to NULL
+        expression: "NULL"
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - jolts_regional
+      frequency:
+        - monthly
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+      metric:
+        - "2.JobOpenings"
+        - "3.Hires"
+        - "4.TotalSeparations"
+        - "5.Quits"
+        - "6.LayoffsDischarges"
+
+    # HTTP Source configuration for EtlPipeline (FTP files)
+    source:
+      type: http
+      url: "https://download.bls.gov/pub/time.series/jt/jt.data.{metric}"
+      method: GET
+      response:
+        format: tsv
+      rateLimit:
+        requestsPerSecond: 1.0
+        maxRetries: 3
+      rawCache:
+        enabled: true
+      # Filter to regional data only (national aggregate 00 and Census regions NE, MW, SO, WE)
+      # Series ID format: JTS{region}{industry}{element} - region is positions 4-5
+      rowFilter:
+        column: series_id
+        pattern: "^JTS(00|NE|MW|SO|WE).*$"
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=jolts_regional/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year, metric]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        batchPartitionColumns: [year, metric]
+        incrementalKeys: [year, metric]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+        compactionSmallFileSizeBytes: 1048576  # 1MB
+        targetFileSizeBytes: 134217728
+
+  # --- JOLTS STATE ---
+  - name: jolts_state
+    pattern: "type=jolts_state/frequency=*/year=*/jolts_state.parquet"
+    partitions: *standard_partitions
+    sourcePaths:
+      ftpFiles:
+        - cachePath: "type=jolts_ftp/jt.series"
+          url: "https://download.bls.gov/pub/time.series/jt/jt.series"
+          comment: JOLTS series definitions
+        - cachePath: "type=jolts_ftp/jt.data.2.JobOpenings"
+          url: "https://download.bls.gov/pub/time.series/jt/jt.data.2.JobOpenings"
+          comment: Job openings data
+        - cachePath: "type=jolts_ftp/jt.data.3.Hires"
+          url: "https://download.bls.gov/pub/time.series/jt/jt.data.3.Hires"
+          comment: Hires data
+        - cachePath: "type=jolts_ftp/jt.data.4.TotalSeparations"
+          url: "https://download.bls.gov/pub/time.series/jt/jt.data.4.TotalSeparations"
+          comment: Total separations data
+        - cachePath: "type=jolts_ftp/jt.data.5.Quits"
+          url: "https://download.bls.gov/pub/time.series/jt/jt.data.5.Quits"
+          comment: Quits data
+        - cachePath: "type=jolts_ftp/jt.data.6.LayoffsDischarges"
+          url: "https://download.bls.gov/pub/time.series/jt/jt.data.6.LayoffsDischarges"
+          comment: Layoffs and discharges data
+    comment: >
+      Job Openings and Labor Turnover Survey (JOLTS) data for all 51 U.S. jurisdictions (50 states + DC). Tracks job openings rate, hires rate, total separations rate, quits rate, and layoffs/discharges rate at state level. Provides state-specific insights into labor market dynamics, worker mobility, and employment trends for state-level policy analysis.
+    columns:
+      # BLS TSV columns: series_id, year, period, value, footnote_codes
+      # Series ID format for state data: JTS{state}{industry}{dataelement} (e.g., JTS01000000JOR)
+      # Expressions use inline evaluateExpression which now supports SUBSTRING and RIGHT
+      - name: state_fips
+        type: string
+        nullable: true
+        comment: State FIPS code (positions 4-5 of series_id, after JTS prefix)
+        expression: "SUBSTRING(src.series_id, 4, 2)"
+      - name: state_name
+        type: string
+        nullable: true
+        comment: State name (join with geo.states table)
+        # Will be null - can be joined with geo.states
+      - name: year
+        type: int
+        nullable: true
+        comment: Year
+        source: year
+      - name: date
+        type: string
+        nullable: true
+        comment: Observation date - period field (M01, M02, etc.)
+        source: period
+      - name: series
+        type: string
+        nullable: true
+        comment: BLS series identifier
+        source: series_id
+      - name: metric_type
+        type: string
+        nullable: true
+        comment: "JOLTS metric code (last 3 chars - JOR, HIR, TSR, QUR, LDR)"
+        expression: "RIGHT(src.series_id, 3)"
+      - name: value
+        type: double
+        nullable: true
+        comment: JOLTS metric value (levels in thousands, rates as percentage)
+        source: value
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - jolts_state
+      frequency:
+        - monthly
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+      metric:
+        - "2.JobOpenings"
+        - "3.Hires"
+        - "4.TotalSeparations"
+        - "5.Quits"
+        - "6.LayoffsDischarges"
+
+    # HTTP Source configuration for EtlPipeline (FTP files)
+    source:
+      type: http
+      url: "https://download.bls.gov/pub/time.series/jt/jt.data.{metric}"
+      method: GET
+      response:
+        format: tsv
+      rateLimit:
+        requestsPerSecond: 1.0
+        maxRetries: 3
+      rawCache:
+        enabled: true
+      # Filter to state-level data only (exclude national aggregate where state FIPS = 00)
+      # Series ID format: JTS{state}{industry}{element} - state is positions 4-5
+      # Pattern matches JTS followed by 01-99 (any state except 00)
+      rowFilter:
+        column: series_id
+        pattern: "^JTS(?:0[1-9]|[1-9][0-9]).*$"
+
+    # No responseTransformer - using inline expressions instead
+    # (responseTransformer only works for JSON responses, not CSV/TSV from FTP)
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=jolts_state/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year, metric]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        batchPartitionColumns: [year, metric]
+        incrementalKeys: [year, metric]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+        targetFileSizeBytes: 134217728
+
+  # --- WAGE GROWTH ---
+  - name: wage_growth
+    pattern: "type=wage_growth/frequency=*/year=*/wage_growth.parquet"
+    partitions: *standard_partitions
+    comment: >
+      Average hourly and weekly earnings from BLS Current Employment Statistics (CES).
+      Tracks wage growth trends across all private sector employees.
+    columns:
+      - *date_column
+      - name: series
+        type: string
+        nullable: true
+        comment: BLS series identifier for wage/earnings data
+      - name: value
+        type: double
+        nullable: true
+        comment: Earnings value (hourly or weekly depending on series)
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - wage_growth
+      frequency: *monthly_frequency
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+
+    # API Configuration
+    download:
+      enabled: true
+      method: POST
+      baseUrl: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      authentication:
+        type: json_body
+        paramName: registrationkey
+        envVar: BLS_API_KEY  # Set API key in environment
+
+    # HTTP Source configuration for EtlPipeline
+    source:
+      type: http
+      enabled: true
+      url: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      method: POST
+      headers:
+        Content-Type: "application/json"
+      body:
+        seriesid:  # CES Average Earnings series
+          - "CES0500000003"   # Average Hourly Earnings, All Employees, Total Private
+          - "CES0500000008"   # Average Hourly Earnings, Production and Nonsupervisory
+          - "CES0500000011"   # Average Weekly Earnings, All Employees, Total Private
+        startyear: "{year}"
+        endyear: "{year}"
+        registrationkey: "{env:BLS_API_KEY}"
+      response:
+        format: json
+        # NOTE: dataPath removed - BlsResponseTransformer handles extraction and flattening
+        errorPath: "message"  # BLS API returns errors in message array
+      rateLimit:
+        requestsPerSecond: 0.9
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Custom hooks for BLS response handling
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.BlsResponseTransformer"
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=wage_growth/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+        emptyResultTtlMillis: 86400000  # Retry after 24 hours if no data
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- REGIONAL EMPLOYMENT ---
+  - name: regional_employment
+    pattern: "type=regional_employment/year=*/state_fips=*/regional_employment.parquet"
+    partitions:
+      style: hive
+      columnDefinitions:
+        - name: type
+          type: VARCHAR
+        - name: year
+          type: INTEGER
+        - name: state_fips
+          type: VARCHAR
+    comment: >
+      State-level LAUS employment statistics including unemployment rates, employment levels, and labor force participation for all 51 U.S. jurisdictions. Source: BLS Local Area Unemployment Statistics (LAUS) program.
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - regional_employment
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+        dataLag: 0
+        releaseMonth: 2  # BLS monthly data complete by mid-January
+
+    columns:
+      - name: series
+        type: string
+        nullable: true
+        comment: BLS LAUS series identifier
+      - name: year
+        type: integer
+        nullable: true
+        comment: Observation year
+      - name: period
+        type: string
+        nullable: true
+        comment: BLS period identifier (M01-M12 for monthly)
+      - name: value
+        type: double
+        nullable: true
+        comment: Employment statistic value
+      - name: state_fips
+        type: string
+        nullable: true
+        expression: "SUBSTRING(series, 6, 2)"
+        comment: 2-digit state FIPS code derived from series ID (LASST{fips}...)
+      - name: measure
+        type: string
+        nullable: true
+        expression: "CASE SUBSTRING(series, LENGTH(series), 1) WHEN '3' THEN 'unemployment_rate' WHEN '4' THEN 'unemployment' WHEN '5' THEN 'employment' WHEN '6' THEN 'labor_force' ELSE 'unknown' END"
+        comment: Employment measure type derived from series ID
+
+    # API Configuration
+    # Full series list (204 total: 51 states x 4 measures) available in /bls/regional-employment-series.json
+    download:
+      enabled: true
+      method: POST
+      baseUrl: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      authentication:
+        type: json_body
+        paramName: registrationkey
+        envVar: BLS_API_KEY  # Set API key in environment
+
+    # HTTP Source configuration for EtlPipeline
+    # Uses batching to split 204 series into requests of 50 (BLS API limit)
+    source:
+      type: http
+      enabled: true
+      url: "https://api.bls.gov/publicAPI/v2/timeseries/data/"
+      method: POST
+      headers:
+        Content-Type: "application/json"
+      body:
+        seriesid: []  # Placeholder - replaced by batching
+        startyear: "{year}"
+        endyear: "{year}"
+        registrationkey: "{env:BLS_API_KEY}"
+      batching:
+        field: seriesid
+        source: "/bls/regional-employment-series.json"
+        path: "seriesIds"
+        size: 50  # BLS API limit
+        delayMs: 1100  # Rate limit between batches
+      response:
+        format: json
+        # NOTE: dataPath removed - BlsResponseTransformer handles extraction and flattening
+        errorPath: "message"  # BLS API returns errors in message array
+      rateLimit:
+        requestsPerSecond: 0.9
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Custom hooks for BLS response handling
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.BlsResponseTransformer"
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=regional_employment/year=*/state_fips=*/"
+      partition:
+        columns: [type, year, state_fips]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+        emptyResultTtlMillis: 86400000  # Retry after 24 hours if no data
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- TREASURY YIELDS ---
+  - name: treasury_yields
+    pattern: "type=timeseries/frequency=daily/year=*/treasury_yields.parquet"
+    partitions: *standard_partitions
+    comment: >
+      Daily U.S. Treasury yield curve rates from 1-month to 30-year maturities. Includes nominal yields, TIPS yields, and yield curve shape indicators. Source: U.S. Treasury Direct API.
+    # Columns match Treasury Fiscal Data API response fields
+    columns:
+      - name: record_date
+        type: string
+        nullable: true
+        comment: Date of the interest rate record (YYYY-MM-DD format)
+      - name: security_type_desc
+        type: string
+        nullable: true
+        comment: Type of Treasury security (e.g., 'Treasury Bills', 'Treasury Notes')
+      - name: security_desc
+        type: string
+        nullable: true
+        comment: Description of the security
+      - name: avg_interest_rate_amt
+        type: double
+        nullable: true
+        comment: Average interest rate as a percentage
+      - name: src_line_nbr
+        type: string
+        nullable: true
+        comment: Source line number identifier
+
+    # API Configuration
+    download:
+      enabled: true
+      method: GET
+      baseUrl: "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v2/accounting/od/avg_interest_rates"
+      authentication:
+        type: none
+      queryParams:
+        filter:
+          type: expression
+          value: "record_date:gte:{year}-01-01,record_date:lte:{year}-12-31"
+        sort:
+          type: constant
+          value: "-record_date"
+        page[size]:
+          type: constant
+          value: "10000"
+      cachePattern: "type=timeseries/frequency=daily/year=*/treasury_yields.json"
+
+    # HTTP Source configuration for EtlPipeline
+    source:
+      type: http
+      url: "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v2/accounting/od/avg_interest_rates"
+      method: GET
+      parameters:
+        filter: "record_date:gte:{year}-01-01,record_date:lte:{year}-12-31"
+        sort: "-record_date"
+        page[size]: "10000"
+      response:
+        format: json
+        dataPath: "data"
+      rateLimit:
+        requestsPerSecond: 2.0
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - timeseries
+      frequency:
+        - daily
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=timeseries/frequency=daily/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- FEDERAL DEBT ---
+  - name: federal_debt
+    pattern: "type=timeseries/frequency=daily/year=*/federal_debt.parquet"
+    partitions: *standard_partitions
+    comment: >
+      U.S. federal debt statistics including total public debt, debt held by public, and intragovernmental holdings. Tracks debt levels, composition, and trends. Source: Treasury Fiscal Data API.
+    # Columns match Treasury Fiscal Data debt_to_penny API response fields
+    columns:
+      - name: record_date
+        type: string
+        nullable: true
+        comment: Date of the debt record (YYYY-MM-DD format)
+      - name: debt_held_public_amt
+        type: double
+        nullable: true
+        comment: Debt held by the public in dollars
+      - name: intragov_hold_amt
+        type: double
+        nullable: true
+        comment: Intragovernmental holdings in dollars
+      - name: tot_pub_debt_out_amt
+        type: double
+        nullable: true
+        comment: Total public debt outstanding in dollars
+      - name: src_line_nbr
+        type: string
+        nullable: true
+        comment: Source line number identifier
+
+    # API Configuration
+    download:
+      enabled: true
+      method: GET
+      baseUrl: "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v2/accounting/od/debt_to_penny"
+      authentication:
+        type: none
+      queryParams:
+        filter:
+          type: expression
+          value: "record_date:gte:{year}-01-01,record_date:lte:{year}-12-31"
+        sort:
+          type: constant
+          value: "-record_date"
+        page[size]:
+          type: constant
+          value: "10000"
+      cachePattern: "type=timeseries/frequency=daily/year=*/federal_debt.json"
+
+    # HTTP Source configuration for EtlPipeline
+    source:
+      type: http
+      url: "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v2/accounting/od/debt_to_penny"
+      method: GET
+      parameters:
+        filter: "record_date:gte:{year}-01-01,record_date:lte:{year}-12-31"
+        sort: "-record_date"
+        page[size]: "10000"
+      response:
+        format: json
+        dataPath: "data"
+      rateLimit:
+        requestsPerSecond: 2.0
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Dimension definitions for iteration
+    dimensions:
+      type:
+        - timeseries
+      frequency:
+        - daily
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=timeseries/frequency=daily/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- WORLD INDICATORS ---
+  - name: world_indicators
+    pattern: "type=indicators/frequency=*/year=*/world_indicators.parquet"
+    partitions: *standard_partitions
+    comment: >
+      International economic indicators from World Bank for all countries. Includes GDP, inflation,
+      unemployment, government debt, and population statistics. Uses bulk download with response
+      partitioning: one API call per indicator returns all countries/years, then partitioned on write.
+
+    # Dimensions for batch iteration - only indicator drives API calls
+    # Country and year are derived from response data via responsePartitioning
+    dimensions:
+      indicator:
+        type: json_catalog
+        source: "/worldbank/worldbank-indicators.json"
+        path: "indicators[*].items[*].code"
+
+    # Columns match World Bank API response fields from [1] array (data array)
+    # API response: [metadata, [{indicator:{id,value}, country:{id,value}, countryiso3code, date, value, unit, ...}]]
+    columns:
+      - name: countryiso3code
+        type: string
+        nullable: true
+        comment: ISO 3-letter country code (e.g., 'USA', 'CHN')
+      - name: date
+        type: string
+        nullable: true
+        comment: Year of observation as string (e.g., '2022')
+      - name: value
+        type: double
+        nullable: true
+        comment: Indicator value for the given country and year
+      - name: unit
+        type: string
+        nullable: true
+        comment: Unit of measurement (e.g., 'current US$', 'percent')
+      - name: obs_status
+        type: string
+        nullable: true
+        comment: Observation status flag
+      - name: decimal
+        type: int
+        nullable: true
+        comment: Decimal precision indicator
+
+    # HTTP Source configuration for EtlPipeline
+    # Uses bulk download: all countries, year range filter, high per_page limit
+    source:
+      type: http
+      url: "https://api.worldbank.org/v2/country/all/indicator/{indicator}"
+      method: GET
+      parameters:
+        format: "json"
+        date: "{env:GOVDATA_START_YEAR:2000}:{env:GOVDATA_END_YEAR:2025}"
+        per_page: "20000"  # Get all data in one request (API supports up to ~20k)
+      response:
+        format: json
+        dataPath: "[1]"  # World Bank API returns [metadata, data_array]
+      rateLimit:
+        requestsPerSecond: 2.0
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+      # Response partitioning: filter response rows by year range
+      # Note: country_code is NOT a partition column - it's a regular column with stats
+      responsePartitioning:
+        fields:
+          year: "date"  # Used for year filtering only
+        yearFilter:
+          field: "date"
+          start: "${GOVDATA_START_YEAR:-2020}"
+          end: current
+
+    # Materialization configuration
+    # Partition by coarse dimensions only - country_code uses column statistics for pruning
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=indicators/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year]  # NO country_code - avoids small file problem
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- FRED INDICATORS ---
+  - name: fred_indicators
+    pattern: "type=fred_indicators/series=*/year=*/fred_indicators.parquet"
+    partitions:
+      style: hive
+      columnDefinitions:
+        - name: type
+          type: VARCHAR
+        - name: series
+          type: VARCHAR
+        - name: year
+          type: INTEGER
+    comment: >
+      Federal Reserve Economic Data (FRED) time series raw observations. For metadata (series name, units, frequency, etc.), JOIN with reference_fred_series or use fred_indicators_enriched view.
+    columns:
+      - name: series
+        type: string
+        nullable: true
+        comment: FRED series identifier (foreign key to reference_fred_series)
+      - *date_column
+      - name: value
+        type: double
+        nullable: true
+        comment: Observed value for this date
+
+    # API Configuration
+    download:
+      enabled: true
+      method: GET
+      baseUrl: "https://api.stlouisfed.org/fred/series/observations"
+      authentication:
+        type: query_param
+        paramName: api_key
+        envVar: FRED_API_KEY  # Set API key in environment
+      queryParams:
+        api_key:
+          type: auth
+        file_type:
+          type: constant
+          value: json
+        observation_start:
+          type: expression
+          value: "startOfYear({year})"
+        observation_end:
+          type: expression
+          value: "endOfYear({year})"
+        limit:
+          type: constant
+          value: 100000
+        offset:
+          type: pagination
+        series_id:
+          type: iteration
+          source: seriesList
+      seriesList:  # API series codes to fetch
+        - "DFF"
+        - "UNRATE"
+        - "GDP"
+        - "CPIAUCSL"
+        - "FEDFUNDS"
+        - "T10Y2Y"
+        - "MORTGAGE30US"
+        - "UMCSENT"
+        - "PAYEMS"
+        - "INDPRO"
+      rateLimit:  # API rate limiting
+        minIntervalMs: 500  # Milliseconds between requests
+        maxRetries: 5
+        retryDelayMs: 5000
+      pagination:
+        enabled: true
+        offsetParam: offset
+        limitParam: limit
+        maxPerRequest: 100000
+      caching:
+        usePattern: true
+      response:
+        format: json
+        dataPath: "observations"
+        missingValueIndicator: "."  # FRED uses "." to indicate missing values
+
+    # HTTP Source configuration for EtlPipeline
+    source:
+      type: http
+      url: "https://api.stlouisfed.org/fred/series/observations"
+      method: GET
+      parameters:
+        api_key: "{env:FRED_API_KEY}"
+        file_type: "json"
+        series_id: "{series}"
+        observation_start: "{year}-01-01"
+        observation_end: "{year}-12-31"
+        limit: "100000"
+      response:
+        format: json
+        # NOTE: dataPath removed - FredResponseTransformer already extracts observations array
+      rateLimit:
+        requestsPerSecond: 2.0
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Custom hooks for FRED response handling
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.FredResponseTransformer"
+
+    # Dimension definitions for ETL iteration
+    dimensions:
+      type:
+        - fred_indicators
+      series:
+        - "DFF"
+        - "UNRATE"
+        - "GDP"
+        - "CPIAUCSL"
+        - "FEDFUNDS"
+        - "T10Y2Y"
+        - "MORTGAGE30US"
+        - "UMCSENT"
+        - "PAYEMS"
+        - "INDPRO"
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2020}"
+        end: current
+        dataLag: 0
+        releaseMonth: 2  # FRED data typically available within days
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=fred_indicators/series=*/year=*/"
+      partition:
+        columns: [type, series, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- NATIONAL ACCOUNTS ---
+  - name: national_accounts
+    pattern: "type=national_accounts/frequency=*/year=*/tablename=*/national_accounts.parquet"
+    partitions:
+      style: hive
+      columnDefinitions:
+        - name: type
+          type: VARCHAR
+        - name: frequency
+          type: VARCHAR
+        - name: year
+          type: INTEGER
+        - name: tablename
+          type: VARCHAR
+    comment: >
+      National Income and Product Accounts (NIPA) data from BEA covering comprehensive economic statistics. Includes ALL NIPA tables across 8 sections: 1=Domestic Product & Income (GDP, national income), 2=Personal Income & Outlays (wages, consumer spending), 3=Government (receipts, expenditures), 4=Foreign Transactions (exports, imports), 5=Saving & Investment (capital formation), 6=Industry (sectoral data), 7=Supplemental (per capita, additional details), 8=Not Seasonally Adjusted. Tables dynamically discovered from BEA reference catalog.
+    columns:
+      # Source columns from NationalAccountsTransformer output (snake_case)
+      - name: table_name
+        type: string
+        source: table_name
+        nullable: true
+        comment: BEA table identifier (e.g., 'T10101')
+      - name: line_number_raw
+        type: string
+        source: line_number_raw
+        nullable: true
+        comment: Line number within the BEA table (raw string)
+      - name: line_description
+        type: string
+        source: line_description
+        nullable: true
+        comment: Description of the GDP component
+      - name: series_code
+        type: string
+        source: series_code
+        nullable: true
+        comment: BEA series code for this component
+      - name: time_period
+        type: string
+        source: time_period
+        nullable: true
+        comment: BEA time period (e.g., '2023' for annual, '2023Q1' for quarterly)
+      - name: data_value
+        type: string
+        source: data_value
+        nullable: true
+        comment: Raw data value from BEA API
+      - name: cl_unit
+        type: string
+        source: cl_unit
+        nullable: true
+        comment: Units of measurement (e.g., 'Millions of Dollars')
+      - name: unit_mult
+        type: string
+        source: unit_mult
+        nullable: true
+        comment: Unit multiplier
+      - name: note_ref
+        type: string
+        source: note_ref
+        nullable: true
+        comment: Note reference
+      # Computed columns derived from source columns
+      - name: table_id
+        expression: "table_name"
+        comment: BEA table identifier for GDP components
+      - name: line_number
+        expression: "CAST(line_number_raw AS INTEGER)"
+        comment: Line number within the BEA table
+      - name: year
+        expression: "CAST(SUBSTR(time_period, 1, 4) AS INTEGER)"
+        comment: Year extracted from time period
+      - name: value
+        expression: "CASE WHEN data_value IN ('(NA)', '(D)', '(NM)', '---') THEN NULL ELSE CAST(REPLACE(data_value, ',', '') AS DOUBLE) END"
+        comment: Component value in millions of dollars (NULL for unavailable data)
+      - name: units
+        expression: "cl_unit"
+        comment: Units of measurement
+      - name: frequency
+        expression: "CASE WHEN time_period LIKE '%Q%' THEN 'Q' WHEN LENGTH(time_period) = 4 THEN 'A' ELSE NULL END"
+        comment: Data frequency (A=Annual, Q=Quarterly)
+
+    # API Configuration
+    download:
+      enabled: true
+      method: GET
+      baseUrl: "https://apps.bea.gov/api/data"
+      authentication:
+        type: query_param
+        paramName: UserID
+        envVar: BEA_API_KEY  # Set API key in environment
+      queryParams:
+        UserID:
+          type: auth
+        method:
+          type: constant
+          value: GetData
+        datasetname:
+          type: constant
+          value: NIPA
+        TableName:
+          type: expression
+          value: "{tablename}"
+        Frequency:
+          type: expression
+          value: "{frequency}"
+        Year:
+          type: expression
+          value: "{year}"
+        ResultFormat:
+          type: constant
+          value: JSON
+      response:
+        format: json
+        dataPath: "BEAAPI.Results.Data"
+        errorPath: "BEAAPI.Results.Error"
+      rateLimit:  # API rate limiting
+        minIntervalMs: 500  # Milliseconds between requests
+        maxRetries: 5
+        retryDelayMs: 5000
+
+    # HTTP Source configuration for EtlPipeline
+    source:
+      type: http
+      url: "https://apps.bea.gov/api/data"
+      method: GET
+      parameters:
+        UserID: "{env:BEA_API_KEY}"
+        method: "GetData"
+        DataSetName: "NIPA"
+        TableName: "{tablename}"
+        Frequency: "{frequency}"
+        Year: "{year}"
+        ResultFormat: "JSON"
+      response:
+        format: json
+        # Note: dataPath removed because responseTransformer already extracts the data
+        errorPath: "BEAAPI.Results.Error"
+      rateLimit:
+        requestsPerSecond: 1.5
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Custom hooks for BEA response handling
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.NationalAccountsTransformer"
+
+    # Dimension definitions for ETL iteration
+    dimensions:
+      type:
+        - national_accounts
+      frequency: *bea_frequencies  # Use anchor: A, Q
+      year: *year_range_from_2020  # Use anchor for year range
+      tablename:
+        # Section 1: Domestic Product and Income (Core GDP)
+        - T10101   # Percent Change From Preceding Period in Real GDP
+        - T10105   # Gross Domestic Product
+        - T10301   # Real Gross Domestic Product, Quantity Indexes
+        - T10303   # Real Gross Domestic Product, Chained Dollars
+        # Section 2: Personal Income and Outlays
+        - T20100   # Personal Income and Its Disposition
+        - T20200   # Personal Consumption Expenditures by Major Type
+        # Section 3: Government
+        - T30100   # Federal Government Current Receipts and Expenditures
+        # Section 4: Foreign Transactions
+        - T40100   # Foreign Transactions in GDP
+        - T40205B  # Exports and Imports of Goods and Services
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=national_accounts/frequency=*/year=*/tablename=*/"
+      partition:
+        columns: [type, frequency, year, tablename]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- STATE PERSONAL INCOME (BULK DOWNLOAD) ---
+  # Efficient bulk download approach replacing 12,000+ API calls with single ~16MB download
+  - name: state_personal_income
+    pattern: "type=*/year=*/*.parquet"
+    partitions:
+      style: hive
+      columnDefinitions:
+        - name: type
+          type: VARCHAR
+        - name: year
+          type: INTEGER
+    comment: >
+      State personal income from BEA Regional Economic Accounts (SAINC tables).
+      Uses bulk download approach - single 16MB ZIP file contains all data since 1929.
+      Much more efficient than per-year/geo/linecode API calls.
+
+    # Simplified dimensions - no per-API-call iteration needed
+    dimensions:
+      type:
+        - state_personal_income  # Static table type
+
+    columns:
+      - name: geo_fips
+        type: string
+        nullable: true
+        comment: FIPS code for the geographic area (e.g., '01000' for Alabama)
+      - name: geo_name
+        type: string
+        nullable: true
+        comment: Name of the geographic area (state name)
+      - name: region
+        type: string
+        nullable: true
+        comment: Census region
+      - name: table_name
+        type: string
+        nullable: true
+        comment: BEA table identifier (e.g., SAINC1, SAINC30)
+      - name: line_code
+        type: string
+        nullable: true
+        comment: BEA line code for specific metric
+      - name: industry_classification
+        type: string
+        nullable: true
+        comment: Industry classification code
+      - name: description
+        type: string
+        nullable: true
+        comment: Description of the metric
+      - name: unit
+        type: string
+        nullable: true
+        comment: Unit of measurement
+      - name: year
+        type: string
+        nullable: true
+        comment: Year (unpivoted from column headers)
+      - name: data_value
+        type: double
+        nullable: true
+        comment: Value for this year (unpivoted from wide format)
+
+
+    # API Configuration - references bulk download
+    download:
+      bulkDownload: bea_sainc_bulk
+
+    # HTTP Source configuration for bulk download
+    source:
+      type: http
+      url: "https://apps.bea.gov/regional/zip/SAINC.zip"
+      method: GET
+      extractPattern: "*__ALL_AREAS_*.csv"  # Extract the ALL_AREAS CSV from ZIP
+      response:
+        format: csv
+      # Wide-to-narrow transformation: years as columns -> Year + DataValue rows
+      wideToNarrow:
+        keyColumns: [GeoFIPS, GeoName, Region, TableName, LineCode, IndustryClassification, Description, Unit]
+        valueColumnPattern: "^\\d{4}$"  # Match 4-digit year columns (1929-2024)
+        keyColumnName: year
+        valueColumnName: data_value
+        skipValues: ["(NA)", "(D)", "(L)", "(NM)", ""]  # BEA notation for missing/suppressed data
+        columnMapping:
+          GeoFIPS: geo_fips
+          GeoName: geo_name
+          Region: region
+          TableName: table_name
+          LineCode: line_code
+          IndustryClassification: industry_classification
+          Description: description
+          Unit: unit
+      rateLimit:
+        requestsPerSecond: 1.0
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=*/year=*/"
+      partition:
+        columns: [type, year]
+      options:
+        compression: snappy
+        batchSize: 100000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- STATE GDP (BULK DOWNLOAD) ---
+  - name: state_gdp
+    pattern: "type=*/year=*/*.parquet"
+    partitions:
+      style: hive
+      columnDefinitions:
+        - name: type
+          type: VARCHAR
+        - name: year
+          type: INTEGER
+    comment: >
+      State GDP from BEA Regional Economic Accounts (SAGDP tables).
+      Uses bulk download approach - single 9.5MB ZIP file contains all data.
+
+    dimensions:
+      type:
+        - state_gdp
+
+    columns:
+      - name: geo_fips
+        type: string
+        nullable: true
+        comment: FIPS code for the geographic area
+      - name: geo_name
+        type: string
+        nullable: true
+        comment: Name of the geographic area (state name)
+      - name: region
+        type: string
+        nullable: true
+        comment: Census region
+      - name: table_name
+        type: string
+        nullable: true
+        comment: BEA table identifier (e.g., SAGDP1, SAGDP2)
+      - name: line_code
+        type: string
+        nullable: true
+        comment: BEA line code for specific metric
+      - name: industry_classification
+        type: string
+        nullable: true
+        comment: Industry classification code
+      - name: description
+        type: string
+        nullable: true
+        comment: Description of the metric
+      - name: unit
+        type: string
+        nullable: true
+        comment: Unit of measurement
+      - name: year
+        type: string
+        nullable: true
+        comment: Year (unpivoted from column headers)
+      - name: data_value
+        type: double
+        nullable: true
+        comment: Value for this year (unpivoted from wide format)
+
+
+    download:
+      bulkDownload: bea_sagdp_bulk
+
+    source:
+      type: http
+      url: "https://apps.bea.gov/regional/zip/SAGDP.zip"
+      method: GET
+      extractPattern: "*__ALL_AREAS_*.csv"
+      response:
+        format: csv
+      wideToNarrow:
+        keyColumns: [GeoFIPS, GeoName, Region, TableName, LineCode, IndustryClassification, Description, Unit]
+        valueColumnPattern: "^\\d{4}$"
+        keyColumnName: year
+        valueColumnName: data_value
+        skipValues: ["(NA)", "(D)", "(L)", "(NM)", ""]
+        columnMapping:
+          GeoFIPS: geo_fips
+          GeoName: geo_name
+          Region: region
+          TableName: table_name
+          LineCode: line_code
+          IndustryClassification: industry_classification
+          Description: description
+          Unit: unit
+      rateLimit:
+        requestsPerSecond: 1.0
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=*/year=*/"
+      partition:
+        columns: [type, year]
+      options:
+        compression: snappy
+        batchSize: 100000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- STATE QUARTERLY INCOME (BULK DOWNLOAD) ---
+  - name: state_quarterly_income
+    pattern: "type=*/year=*/*.parquet"
+    partitions:
+      style: hive
+      columnDefinitions:
+        - name: type
+          type: VARCHAR
+        - name: year
+          type: INTEGER
+    comment: >
+      State quarterly personal income from BEA Regional Economic Accounts (SQINC tables).
+      Uses bulk download approach - single 16.7MB ZIP file contains all data.
+
+    dimensions:
+      type:
+        - state_quarterly_income
+
+    columns:
+      - name: geo_fips
+        type: string
+        nullable: true
+        comment: FIPS code for the geographic area
+      - name: geo_name
+        type: string
+        nullable: true
+        comment: Name of the geographic area (state name)
+      - name: region
+        type: string
+        nullable: true
+        comment: Census region
+      - name: table_name
+        type: string
+        nullable: true
+        comment: BEA table identifier (e.g., SQINC1, SQINC35)
+      - name: line_code
+        type: string
+        nullable: true
+        comment: BEA line code for specific metric
+      - name: industry_classification
+        type: string
+        nullable: true
+        comment: Industry classification code
+      - name: description
+        type: string
+        nullable: true
+        comment: Description of the metric
+      - name: unit
+        type: string
+        nullable: true
+        comment: Unit of measurement
+      - name: year
+        type: string
+        nullable: true
+        comment: Year/Quarter (unpivoted from column headers, e.g., 2020Q1)
+      - name: data_value
+        type: double
+        nullable: true
+        comment: Value for this period (unpivoted from wide format)
+
+
+    download:
+      bulkDownload: bea_sqinc_bulk
+
+    source:
+      type: http
+      url: "https://apps.bea.gov/regional/zip/SQINC.zip"
+      method: GET
+      extractPattern: "*__ALL_AREAS_*.csv"
+      response:
+        format: csv
+      wideToNarrow:
+        keyColumns: [GeoFIPS, GeoName, Region, TableName, LineCode, IndustryClassification, Description, Unit]
+        valueColumnPattern: "^\\d{4}:Q[1-4]$"  # Match BEA quarterly columns (1948:Q1, 2024:Q2)
+        keyColumnName: year
+        valueColumnName: data_value
+        skipValues: ["(NA)", "(D)", "(L)", "(NM)", ""]
+        columnMapping:
+          GeoFIPS: geo_fips
+          GeoName: geo_name
+          Region: region
+          TableName: table_name
+          LineCode: line_code
+          IndustryClassification: industry_classification
+          Description: description
+          Unit: unit
+      rateLimit:
+        requestsPerSecond: 1.0
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=*/year=*/"
+      partition:
+        columns: [type, year]
+      options:
+        compression: snappy
+        batchSize: 100000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- STATE QUARTERLY GDP (BULK DOWNLOAD) ---
+  - name: state_quarterly_gdp
+    pattern: "type=*/year=*/*.parquet"
+    partitions:
+      style: hive
+      columnDefinitions:
+        - name: type
+          type: VARCHAR
+        - name: year
+          type: INTEGER
+    comment: >
+      State quarterly GDP from BEA Regional Economic Accounts (SQGDP tables).
+      Uses bulk download approach - single 3.2MB ZIP file contains all data.
+
+    dimensions:
+      type:
+        - state_quarterly_gdp
+
+    columns:
+      - name: geo_fips
+        type: string
+        nullable: true
+        comment: FIPS code for the geographic area
+      - name: geo_name
+        type: string
+        nullable: true
+        comment: Name of the geographic area (state name)
+      - name: region
+        type: string
+        nullable: true
+        comment: Census region
+      - name: table_name
+        type: string
+        nullable: true
+        comment: BEA table identifier (e.g., SQGDP1, SQGDP2)
+      - name: line_code
+        type: string
+        nullable: true
+        comment: BEA line code for specific metric
+      - name: industry_classification
+        type: string
+        nullable: true
+        comment: Industry classification code
+      - name: description
+        type: string
+        nullable: true
+        comment: Description of the metric
+      - name: unit
+        type: string
+        nullable: true
+        comment: Unit of measurement
+      - name: year
+        type: string
+        nullable: true
+        comment: Year/Quarter (unpivoted from column headers, e.g., 2020Q1)
+      - name: data_value
+        type: double
+        nullable: true
+        comment: Value for this period (unpivoted from wide format)
+
+
+    download:
+      bulkDownload: bea_sqgdp_bulk
+
+    source:
+      type: http
+      url: "https://apps.bea.gov/regional/zip/SQGDP.zip"
+      method: GET
+      extractPattern: "*__ALL_AREAS_*.csv"
+      response:
+        format: csv
+      wideToNarrow:
+        keyColumns: [GeoFIPS, GeoName, Region, TableName, LineCode, IndustryClassification, Description, Unit]
+        valueColumnPattern: "^\\d{4}:Q[1-4]$"
+        keyColumnName: year
+        valueColumnName: data_value
+        skipValues: ["(NA)", "(D)", "(L)", "(NM)", ""]
+        columnMapping:
+          GeoFIPS: geo_fips
+          GeoName: geo_name
+          Region: region
+          TableName: table_name
+          LineCode: line_code
+          IndustryClassification: industry_classification
+          Description: description
+          Unit: unit
+      rateLimit:
+        requestsPerSecond: 1.0
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=*/year=*/"
+      partition:
+        columns: [type, year]
+      options:
+        compression: snappy
+        batchSize: 100000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- STATE CONSUMPTION (BULK DOWNLOAD) ---
+  - name: state_consumption
+    pattern: "type=*/year=*/*.parquet"
+    partitions:
+      style: hive
+      columnDefinitions:
+        - name: type
+          type: VARCHAR
+        - name: year
+          type: INTEGER
+    comment: >
+      State personal consumption expenditures from BEA Regional Economic Accounts (SAPCE tables).
+      Uses bulk download approach - single 3.7MB ZIP file contains all data.
+
+    dimensions:
+      type:
+        - state_consumption
+
+    columns:
+      - name: geo_fips
+        type: string
+        nullable: true
+        comment: FIPS code for the geographic area
+      - name: geo_name
+        type: string
+        nullable: true
+        comment: Name of the geographic area (state name)
+      - name: region
+        type: string
+        nullable: true
+        comment: Census region
+      - name: table_name
+        type: string
+        nullable: true
+        comment: BEA table identifier (e.g., SAPCE1, SAPCE2)
+      - name: line_code
+        type: string
+        nullable: true
+        comment: BEA line code for specific metric
+      - name: industry_classification
+        type: string
+        nullable: true
+        comment: Industry classification code
+      - name: description
+        type: string
+        nullable: true
+        comment: Description of the metric
+      - name: unit
+        type: string
+        nullable: true
+        comment: Unit of measurement
+      - name: year
+        type: string
+        nullable: true
+        comment: Year (unpivoted from column headers)
+      - name: data_value
+        type: double
+        nullable: true
+        comment: Value for this year (unpivoted from wide format)
+
+
+    download:
+      bulkDownload: bea_sapce_bulk
+
+    source:
+      type: http
+      url: "https://apps.bea.gov/regional/zip/SAPCE.zip"
+      method: GET
+      extractPattern: "*__ALL_AREAS_*.csv"
+      response:
+        format: csv
+      wideToNarrow:
+        keyColumns: [GeoFIPS, GeoName, Region, TableName, LineCode, IndustryClassification, Description, Unit]
+        valueColumnPattern: "^\\d{4}$"
+        keyColumnName: year
+        valueColumnName: data_value
+        skipValues: ["(NA)", "(D)", "(L)", "(NM)", ""]
+        columnMapping:
+          GeoFIPS: geo_fips
+          GeoName: geo_name
+          Region: region
+          TableName: table_name
+          LineCode: line_code
+          IndustryClassification: industry_classification
+          Description: description
+          Unit: unit
+      rateLimit:
+        requestsPerSecond: 1.0
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=*/year=*/"
+      partition:
+        columns: [type, year]
+      options:
+        compression: snappy
+        batchSize: 100000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- REGIONAL INCOME (API-BASED - DEPRECATED) ---
+  # NOTE: This table uses per-API-call approach which is slow and memory-intensive.
+  # Consider using state_personal_income (SAINC bulk), state_gdp (SAGDP bulk), etc. instead.
+  - name: regional_income
+    pattern: "type=*/year=*/*.parquet"
+    partitions:
+      style: hive
+      columnDefinitions:
+        - name: type
+          type: VARCHAR
+        - name: year
+          type: INTEGER
+    comment: >
+      State and regional personal income statistics from BEA Regional Economic Accounts. Includes total income, per capita income, and population by state.
+
+    # Dimension definitions for iteration
+    # IMPORTANT: Dimension order matters for context-aware resolution!
+    # geo_fips_set and tablename must come before line_code so the resolver can filter
+    # valid combinations. BeaDimensionResolver uses both to return only valid line codes.
+    dimensions:
+      type:
+        - regional_income  # Static table type
+      year: *year_range_from_2000  # Use anchor for year range from 2000
+      geo_fips_set: *bea_geo_fips_sets  # Use anchor: STATE, COUNTY, MSA, MIC, PORT, DIV, CSA
+      tablename: *bea_regional_tables  # Use anchor: All 63 BEA Regional tables
+      line_code:
+        type: custom  # Resolved by BeaDimensionResolver using tablename context
+        properties:
+          # Reference directory containing regional_linecodes Iceberg table
+          # Must point to the econ_reference schema output directory
+          referenceDirectory: "${ECON_REFERENCE_CACHE_DIR:-${GOVDATA_PARQUET_DIR}/econ_reference}"
+
+    columns:
+      - name: geo_fips
+        type: string
+        source: GeoFips
+        nullable: true
+        comment: FIPS code for the geographic area (e.g., '01000' for Alabama)
+      - name: geo_name
+        type: string
+        source: GeoName
+        nullable: true
+        comment: Name of the geographic area
+      - name: time_period
+        type: string
+        source: TimePeriod
+        nullable: true
+        comment: Year or Quarter - e.g. 2020 or 2023Q1
+      - name: cl_unit
+        type: string
+        source: CL_UNIT
+        nullable: true
+        comment: Income metric type (e.g., 'Personal Income', 'Per Capita Income')
+      - name: unit_mult
+        type: string
+        source: UNIT_MULT
+        nullable: true
+        comment: Unit multiplier (e.g., thousands, millions)
+      - name: data_value
+        type: double
+        source: DataValue
+        nullable: true
+        comment: Income value in thousands of dollars or dollars (depending on metric)
+      # Partition columns - types must match what DuckDB infers when writing
+      - name: year
+        type: string
+        nullable: true
+        comment: Year partition from dimension iteration
+      - name: geo_fips_set
+        type: string
+        nullable: true
+        comment: Geographic level - STATE, COUNTY, MSA, etc.
+      - name: tablename
+        type: string
+        nullable: true
+        comment: BEA table identifier (e.g., SAGDP1, SAINC1)
+      - name: line_code
+        type: string
+        nullable: true
+        comment: BEA line code for specific metric
+
+    # API Configuration
+    download:
+      enabled: true
+      method: GET
+      baseUrl: "https://apps.bea.gov/api/data"
+      authentication:
+        type: query_param
+        paramName: UserID
+        envVar: BEA_API_KEY  # Set API key in environment
+      queryParams:
+        UserID:
+          type: auth
+        method:
+          type: constant
+          value: GetData
+        datasetname:
+          type: constant
+          value: Regional
+        TableName:
+          type: expression
+          value: "{tablename}"
+        LineCode:
+          type: expression
+          value: "{line_code}"
+        GeoFips:
+          type: expression
+          value: "{geo_fips_set}"
+        Year:
+          type: expression
+          value: "{year}"
+        ResultFormat:
+          type: constant
+          value: JSON
+      rateLimit:  # API rate limiting
+        minIntervalMs: 500  # Milliseconds between requests
+        maxRetries: 5
+        retryDelayMs: 5000
+      geoFipsSet:
+        STATE: "All states (50 states + District of Columbia)"
+        COUNTY: "All counties nationwide"
+        MSA: "All Metropolitan Statistical Areas"
+        MIC: "All Micropolitan Areas"
+        PORT: "All state metropolitan/nonmetropolitan portions"
+        DIV: "All Metropolitan Divisions"
+        CSA: "All Combined Statistical Areas"
+      tableNamesSet:
+        # State Annual Personal Income (SAINC*) - 12 active tables
+        SAINC1: "State annual personal income summary: personal income, population, per capita personal income"
+        SAINC30: "State annual economic profile"
+        SAINC35: "State annual personal current transfer receipts"
+        SAINC4: "State annual personal income and employment by major component"
+        SAINC40: "State annual property income"
+        SAINC50: "State annual personal current taxes"
+        SAINC51: "State annual disposable personal income"
+        SAINC5N: "State annual personal income by major component and earnings by NAICS industry"
+        SAINC6N: "State annual compensation of employees by NAICS industry"
+        SAINC70: "State annual wage and salary disbursements"
+        SAINC7N: "State annual wages and salaries by NAICS industry"
+        SAINC91: "State annual gross flow of earnings"
+        # State Quarterly Personal Income (SQINC*) - 6 active tables
+        SQINC1: "State quarterly personal income summary: personal income, population, per capita personal income"
+        SQINC35: "State quarterly personal current transfer receipts"
+        SQINC4: "State quarterly personal income and employment by major component"
+        SQINC5N: "State quarterly personal income by major component and earnings by NAICS industry"
+        SQINC6N: "State quarterly compensation of employees by NAICS industry"
+        SQINC7N: "State quarterly wages and salaries by NAICS industry"
+        # County/MSA Annual Personal Income (CAINC*) - 6 active tables
+        CAINC1: "County and MSA annual personal income summary: personal income, population, per capita personal income"
+        CAINC30: "County and MSA annual economic profile"
+        CAINC4: "County and MSA annual personal income and employment by major component"
+        CAINC5N: "County and MSA annual personal income by major component and earnings by NAICS industry"
+        CAINC6N: "County and MSA annual compensation of employees by NAICS industry"
+        CAINC91: "County annual gross flow of earnings (inter-county commuting, county-level only)"
+        # State Annual GDP (SAGDP*) - 10 active tables
+        SAGDP1: "State annual GDP summary"
+        SAGDP2: "State annual GDP by industry"
+        SAGDP3: "State annual GDP contributions by industry"
+        SAGDP4: "State annual components of GDP by industry"
+        SAGDP5: "State annual GDP by industry (chain-type quantity indexes)"
+        SAGDP6: "State annual GDP by industry (chain-type price indexes)"
+        SAGDP7: "State annual chain-type quantity indexes for real GDP by industry"
+        SAGDP8: "State annual chain-type price indexes for GDP by industry"
+        SAGDP9: "State annual real GDP by industry"
+        SAGDP11: "State annual real GDP contributions by industry"
+        # State Quarterly GDP (SQGDP*) - 5 active tables
+        SQGDP1: "State quarterly GDP by state"
+        SQGDP2: "State quarterly GDP by industry"
+        SQGDP8: "State quarterly chain-type price indexes for GDP"
+        SQGDP9: "State quarterly real GDP by state"
+        SQGDP11: "State quarterly industry contributions to percent change in real GDP"
+        # County/MSA Annual GDP (CAGDP*) - 5 active tables
+        CAGDP1: "County and MSA annual GDP summary"
+        CAGDP2: "County and MSA annual GDP by industry"
+        CAGDP8: "County and MSA annual chain-type price indexes for GDP"
+        CAGDP9: "County and MSA annual real GDP"
+        CAGDP11: "County and MSA annual real GDP contributions by industry"
+        # State Arts & Culture (SAAC*) - 7 active tables
+        SAACArtsComp: "State arts and culture compensation"
+        SAACArtsEmp: "State arts and culture employment"
+        SAACArtsVA: "State arts and culture value added"
+        SAACCompLQ: "State arts and culture compensation location quotient"
+        SAACCompRatio: "State arts and culture compensation ratio"
+        SAACLVALQ: "State arts and culture value added location quotient"
+        SAACVARatio: "State arts and culture value added ratio"
+        # State Outdoor Recreation (SAO*) - 4 active tables
+        SAOACTVA: "State outdoor activities value added"
+        SAOCOMP: "State outdoor recreation compensation"
+        SAOEMP: "State outdoor recreation employment"
+        SAOVA: "State outdoor recreation value added"
+        # Personal Consumption Expenditures (SAPCE*) - 4 active tables
+        SAPCE1: "State annual personal consumption expenditures (PCE) by state - level 1"
+        SAPCE2: "State annual personal consumption expenditures (PCE) by state - level 2"
+        SAPCE3: "State annual personal consumption expenditures (PCE) by state - level 3"
+        SAPCE4: "State annual personal consumption expenditures (PCE) by state - level 4"
+        # Real Personal Income (*RPP) - 3 active tables
+        SARPP: "State annual real personal income"
+        MARPP: "Metropolitan area annual real personal income"
+        PARPP: "Port area annual real personal income"
+        # Summary Statistics - 3 active tables
+        SASUMMARY: "State summary statistics"
+        TASUMMARY1: "Territory summary statistics - table 1"
+        TASUMMARY2: "Territory summary statistics - table 2"
+      response:
+        format: json
+        dataPath: "BEAAPI.Results.Data"
+        errorPath: "BEAAPI.Results.Error"
+
+    # HTTP Source configuration for EtlPipeline
+    source:
+      type: http
+      url: "https://apps.bea.gov/api/data"
+      method: GET
+      parameters:
+        UserID: "{env:BEA_API_KEY}"
+        method: "GetData"
+        DataSetName: "Regional"
+        TableName: "{tablename}"
+        LineCode: "{line_code}"
+        GeoFips: "{geo_fips_set}"
+        Year: "{year}"
+        ResultFormat: "JSON"
+      response:
+        format: json
+        # Note: dataPath removed because responseTransformer already extracts the data
+        errorPath: "BEAAPI.Results.Error"
+      rateLimit:
+        requestsPerSecond: 1.5
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Custom hooks for BEA response handling and dimension resolution
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.BeaResponseTransformer"
+      dimensionResolver: "org.apache.calcite.adapter.govdata.econ.BeaDimensionResolver"
+
+    # Materialization configuration
+    # Consolidates ~26K small parquet files into ~25-175 larger Iceberg files
+    # partitioned by (type, year) for optimal query performance.
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=regional_income/year=*/"
+      partition:
+        columns: [type, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        # Process in batches by year AND geo_fips_set to avoid OOM on the
+        # high cardinality dimension cross-product (7 geo_fips × 63 tables × many linecodes)
+        batchPartitionColumns: [year, geo_fips_set]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728  # 128MB
+        compactionMinFiles: 10
+        compactionSmallFileSizeBytes: 10485760  # 10MB
+
+    # Alternate partition layouts for optimized query patterns
+    # Consolidated files use different partition keys within type=regional_income.
+    # All alternates include year as partition key for incremental processing.
+    alternate_partitions:
+      # Consolidated by geo_fips (state/county/MSA/etc) and year
+      - name: regional_income_by_fips
+        enabled: false  # Disabled due to OOM issues during reorganization
+        pattern: "type=regional_income/geo_fips=*/year=*/*.parquet"
+        partition:
+          style: hive
+          columnDefinitions:
+            - name: geo_fips
+              type: VARCHAR
+              sourceColumn: GeoFips
+            - name: year
+              type: INTEGER
+        # Incremental keys - only process new values of these columns
+        incremental_keys:
+          - year
+        # TTL for current year reprocessing (7 days - weekly refresh for new data)
+        current_year_ttl_days: 7
+        # Batch reorganization by year and geo_fips_set to avoid OOM on 700K+ files
+        batch_partition_columns:
+          - year
+          - geo_fips_set
+        threads: 4
+
+      # Consolidated by year (all geo_fips in one partition per year)
+      - name: regional_income_by_year
+        enabled: false  # Disabled due to OOM issues during reorganization
+        pattern: "type=regional_income/year=*/*.parquet"
+        partition:
+          style: hive
+          columnDefinitions:
+            - name: year
+              type: INTEGER
+        incremental_keys:
+          - year
+        current_year_ttl_days: 7
+        # Batch by geo_fips_set to reduce memory usage
+        batch_partition_columns:
+          - year
+          - geo_fips_set
+        threads: 4
+
+      # Consolidated by indicator table and year
+      - name: regional_income_by_indicator
+        enabled: false  # Disabled due to OOM issues during reorganization
+        pattern: "type=regional_income/tablename=*/year=*/*.parquet"
+        partition:
+          style: hive
+          columnDefinitions:
+            - name: tablename
+              type: VARCHAR
+            - name: year
+              type: INTEGER
+        incremental_keys:
+          - year
+        current_year_ttl_days: 7
+        # Batch by year and geo_fips_set for large datasets
+        threads: 4
+        batch_partition_columns:
+          - year
+          - geo_fips_set
+
+  # --- ITA DATA ---
+  - name: ita_data
+    pattern: "type=ita_data/frequency=*/year=*/indicator=*/ita_data.parquet"
+    partitions:
+      style: hive
+      columnDefinitions:
+        - name: type
+          type: VARCHAR
+        - name: frequency
+          type: VARCHAR
+        - name: year
+          type: INTEGER
+        - name: indicator
+          type: VARCHAR
+    comment: >
+      International Transactions Accounts (ITA) from BEA providing balance of payments statistics. Includes trade balance, current account, capital account, and income balances.
+    columns:
+      # Source columns from ItaDataTransformer output (snake_case)
+      - name: data_value
+        type: double
+        source: data_value
+        nullable: true
+        comment: Transaction value
+      - name: area_or_country
+        type: string
+        source: area_or_country
+        nullable: true
+        comment: Geographic area or country name for the transaction
+      - name: time_series_description
+        type: string
+        source: time_series_description
+        nullable: true
+        comment: Description of the time series
+      - name: series_code
+        type: string
+        source: series_code
+        nullable: true
+        comment: Unique identifier for the time series
+      - name: time_period
+        type: string
+        source: time_period
+        nullable: true
+        comment: Time period for the data point (e.g., '2022', '2022Q1')
+      - name: cl_unit
+        type: string
+        source: cl_unit
+        nullable: true
+        comment: Classification unit (e.g., 'USD')
+      - name: unit_mult
+        type: string
+        source: unit_mult
+        nullable: true
+        comment: Unit multiplier (e.g., '6' for millions)
+      - name: metric_name
+        type: string
+        source: metric_name
+        nullable: true
+        comment: Type of metric (e.g., 'Current Dollars')
+      - name: frequency
+        type: string
+        source: frequency
+        nullable: true
+        comment: Data frequency ('A' for Annual, 'Q' for Quarterly)
+      - name: note_ref
+        type: string
+        source: note_ref
+        nullable: true
+        comment: Reference to explanatory notes
+
+    # API Configuration
+    download:
+      enabled: true
+      method: GET
+      baseUrl: "https://apps.bea.gov/api/data"
+      authentication:
+        type: query_param
+        paramName: UserID
+        envVar: BEA_API_KEY  # Set API key in environment
+      queryParams:
+        UserID:
+          type: auth
+        method:
+          type: constant
+          value: GetData
+        datasetname:
+          type: constant
+          value: ITA
+        Indicator:
+          type: expression
+          value: "{indicator}"
+        Frequency:
+          type: expression
+          value: "{frequency}"
+        Year:
+          type: expression
+          value: "{year}"
+        ResultFormat:
+          type: constant
+          value: JSON
+      itaIndicatorsList:
+        - "BalGds"
+        - "BalServ"
+        - "BalGdsServ"
+        - "BalCurrAcct"
+        - "BalCapAcct"
+        - "BalPrimInc"
+        - "BalSecInc"
+        - "ExpGds"
+        - "ImpGds"
+        - "ExpServ"
+        - "ImpServ"
+      frequencyList:
+        - "A"
+        - "Q"
+      response:
+        format: json
+        dataPath: "BEAAPI.Results.Data"
+        errorPath: "BEAAPI.Results.Error"
+      rateLimit:  # API rate limiting
+        minIntervalMs: 500  # Milliseconds between requests
+        maxRetries: 5
+        retryDelayMs: 5000
+
+    # HTTP Source configuration for EtlPipeline
+    source:
+      type: http
+      url: "https://apps.bea.gov/api/data"
+      method: GET
+      parameters:
+        UserID: "{env:BEA_API_KEY}"
+        method: "GetData"
+        DataSetName: "ITA"
+        Indicator: "{indicator}"
+        Frequency: "{frequency}"
+        Year: "{year}"
+        ResultFormat: "JSON"
+      response:
+        format: json
+        # Note: dataPath removed because responseTransformer already extracts the data
+        errorPath: "BEAAPI.Results.Error"
+      rateLimit:
+        requestsPerSecond: 1.5
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Custom hooks for BEA response handling
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.ItaDataTransformer"
+
+    # Dimension definitions for ETL iteration
+    dimensions:
+      type:
+        - ita_data
+      frequency:
+        - A   # Annual only - BEA ITA dataset does not provide quarterly data
+      year: *year_range_from_2020  # Use anchor for year range
+      indicator:
+        - "BalGds"        # Balance on Goods
+        - "BalServ"       # Balance on Services
+        - "BalGdsServ"    # Balance on Goods and Services
+        - "BalCurrAcct"   # Current Account Balance
+        - "BalCapAcct"    # Capital Account Balance
+        - "BalPrimInc"    # Primary Income Balance
+        - "BalSecInc"     # Secondary Income Balance
+        - "ExpGds"        # Exports of Goods
+        - "ImpGds"        # Imports of Goods
+        - "ExpServ"       # Exports of Services
+        - "ImpServ"       # Imports of Services
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=ita_data/frequency=*/year=*/indicator=*/"
+      partition:
+        columns: [type, frequency, year, indicator]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- GDP STATISTICS ---
+  - name: gdp_statistics
+    pattern: "type=gdp_statistics/frequency=*/year=*/gdp_statistics.parquet"
+    partitions: *standard_partitions
+    comment: >
+      Quarterly and annual GDP growth rates, nominal and real GDP values.
+    columns:
+      # Map BEA API field names to our column names
+      - name: year
+        type: int
+        nullable: true
+        expression: "CAST(SUBSTRING(TimePeriod, 1, 4) AS INTEGER)"
+        comment: Year of the GDP observation (extracted from TimePeriod)
+      - name: quarter
+        type: int
+        nullable: true
+        expression: "CASE WHEN TimePeriod LIKE '%Q%' THEN CAST(SUBSTRING(TimePeriod, 6, 1) AS INTEGER) ELSE NULL END"
+        comment: Quarter number (1-4) for quarterly data, null for annual data
+      - name: metric
+        type: string
+        source: LineDescription
+        nullable: true
+        comment: GDP metric name (e.g., 'Nominal GDP', 'Real GDP', 'Personal Consumption')
+      - name: value
+        type: double
+        nullable: true
+        expression: "CAST(REPLACE(DataValue, ',', '') AS DOUBLE)"
+        comment: GDP value in millions of dollars (BEA returns comma-formatted numbers)
+      - name: percent_change
+        type: double
+        nullable: true
+        expression: "NULL"
+        comment: Percent change from previous period (not available in raw NIPA data)
+      - name: seasonally_adjusted
+        type: string
+        nullable: true
+        expression: "CASE WHEN NoteRef IS NOT NULL AND NoteRef LIKE '%SA%' THEN 'Yes' ELSE 'No' END"
+        comment: Whether the data is seasonally adjusted ('Yes' or 'No')
+
+    # HTTP Source configuration for EtlPipeline
+    source:
+      type: http
+      url: "https://apps.bea.gov/api/data"
+      method: GET
+      parameters:
+        UserID: "{env:BEA_API_KEY}"
+        method: "GetData"
+        DataSetName: "NIPA"
+        TableName: "T10101"
+        Frequency: "{frequency}"
+        Year: "{year}"
+        ResultFormat: "JSON"
+      response:
+        format: json
+        # Note: dataPath removed because responseTransformer already extracts the data
+        errorPath: "BEAAPI.Results.Error"
+      rateLimit:
+        requestsPerSecond: 1.5
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Custom hooks for BEA response handling
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.BeaResponseTransformer"
+
+    # Dimension definitions for ETL iteration
+    dimensions:
+      type:
+        - gdp_statistics
+      frequency: *bea_frequencies     # Use anchor: A, Q
+      year: *year_range_from_2020     # Use anchor for year range
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=gdp_statistics/frequency=*/year=*/"
+      partition:
+        columns: [type, frequency, year]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+  # --- STATE GDP (View over regional_income) ---
+  # Note: State GDP data is downloaded as part of regional_income (SAGDP* tables).
+  # This view filters regional_income to just the SAGDP tables for convenience.
+
+  # --- INDUSTRY GDP ---
+  - name: industry_gdp
+    pattern: "type=industry_gdp/frequency=*/year=*/industry=*/industry_gdp.parquet"
+    dimensions:
+      type:
+        - industry_gdp
+      frequency:
+        - "A"  # Annual
+        - "Q"  # Quarterly
+      industry:
+        - "31G"
+        - "52"
+        - "53"
+        - "54"
+        - "GSLG"
+      year:
+        type: yearRange
+        start: "{env:GOVDATA_START_YEAR:2000}"
+        end: current
+    partitions:
+      style: hive
+      columnDefinitions:
+        - name: type
+          type: VARCHAR
+        - name: frequency
+          type: VARCHAR
+        - name: year
+          type: INTEGER
+        - name: industry
+          type: VARCHAR
+    comment: >
+      GDP by Industry data from BEA showing value added by NAICS industry sectors. Provides comprehensive breakdown of economic output by industry including agriculture, mining, manufacturing, services, and government sectors. Available at both annual and quarterly frequencies for detailed sectoral analysis.
+    columns:
+      # Source columns from IndustryGdpTransformer output (snake_case)
+      - name: table_id
+        type: string
+        source: table_id
+        nullable: true
+        comment: BEA table identifier for industry GDP data
+      - name: quarter
+        type: string
+        source: quarter
+        nullable: true
+        comment: Quarter identifier (e.g., 'Q1', 'Q2') or empty for annual data
+      - name: industry_code
+        type: string
+        source: industry_code
+        nullable: true
+        comment: NAICS industry code
+      - name: industry_description
+        type: string
+        source: industry_description
+        nullable: true
+        comment: Full description of the industry
+      - name: value
+        type: double
+        source: value
+        nullable: true
+        comment: GDP value for the industry in millions of dollars
+      - name: units
+        type: string
+        source: units
+        nullable: true
+        comment: Units of measurement (e.g., 'Millions of Dollars')
+      - name: note_ref
+        type: string
+        source: note_ref
+        nullable: true
+        comment: Reference to footnotes or data quality notes
+
+    # API Configuration
+    download:
+      enabled: true
+      method: GET
+      baseUrl: "https://apps.bea.gov/api/data"
+      authentication:
+        type: query_param
+        paramName: UserID
+        envVar: BEA_API_KEY  # Set API key in environment
+      queryParams:
+        UserID:
+          type: auth
+        method:
+          type: constant
+          value: GetData
+        datasetname:
+          type: constant
+          value: GDPbyIndustry
+        Industry:
+          type: expression
+          value: "{industry}"
+        Frequency:
+          type: expression
+          value: "{frequency}"
+        Year:
+          type: expression
+          value: "{year}"
+        ResultFormat:
+          type: constant
+          value: JSON
+        TableID:
+          type: constant
+          value: ALL
+      response:
+        format: json
+        dataPath: "BEAAPI.Results.Data"
+        errorPath: "BEAAPI.Results.Error"
+      rateLimit:  # API rate limiting
+        minIntervalMs: 500  # Milliseconds between requests
+        maxRetries: 5
+        retryDelayMs: 5000
+
+    # HTTP Source configuration for EtlPipeline
+    source:
+      type: http
+      url: "https://apps.bea.gov/api/data"
+      method: GET
+      parameters:
+        UserID: "{env:BEA_API_KEY}"
+        method: "GetData"
+        DataSetName: "GDPbyIndustry"
+        Industry: "{industry}"
+        Frequency: "{frequency}"
+        Year: "{year}"
+        TableID: "ALL"
+        ResultFormat: "JSON"
+      response:
+        format: json
+        # Note: dataPath removed because responseTransformer already extracts the data
+        errorPath: "BEAAPI.Results.Error"
+      rateLimit:
+        requestsPerSecond: 1.5
+        retryOn: [429, 503]
+        maxRetries: 3
+      rawCache:
+        enabled: true
+
+    # Custom hooks for BEA response handling
+    hooks:
+      responseTransformer: "org.apache.calcite.adapter.govdata.econ.IndustryGdpTransformer"
+
+    # Materialization configuration
+    materialize:
+      enabled: true
+      format: iceberg
+      output:
+        pattern: "type=industry_gdp/frequency=*/year=*/industry=*/"
+      partition:
+        columns: [type, frequency, year, industry]
+      options:
+        compression: snappy
+        batchSize: 50000
+        stagingMode: local
+      iceberg:
+        catalogType: hadoop
+        targetFileSizeBytes: 134217728  # 128MB target for optimal read performance
+        batchPartitionColumns: [year]
+        incrementalKeys: [year]
+        runMaintenance: true
+        snapshotRetentionDays: 7
+        runCompaction: true
+        compactionTargetFileSizeBytes: 134217728
+        compactionMinFiles: 5
+
+# ============================================================================
+# CONSTRAINTS
+# ============================================================================
+# Table constraints (metadata only - not enforced).
+# Primary keys document unique row identifiers based on partition columns.
+# Foreign keys document relationships between tables across schemas (econ, geo)
+# to guide analysts and query optimizers on potential joins and correlations.
+# Used for query optimization hints and documentation, not data validation.
+# ============================================================================
+
+constraints:
+  employment_statistics:
+    primaryKey:
+      - type
+      - frequency
+      - year
+    foreignKeys:
+      - columns:
+          - series
+        targetSchema: "${SCHEMA_NAME:econ}"
+        targetTable: fred_indicators
+        targetColumns:
+          - series
+
+  inflation_metrics:
+    primaryKey:
+      - type
+      - frequency
+      - year
+    foreignKeys:
+      - columns:
+          - area_code
+        targetSchema: "${SCHEMA_NAME:econ}"
+        targetTable: regional_employment
+        targetColumns:
+          - area_code
+
+  regional_cpi:
+    primaryKey:
+      - type
+      - frequency
+      - year
+
+  metro_cpi:
+    primaryKey:
+      - type
+      - frequency
+      - year
+    foreignKeys:
+      - columns:
+          - area_code
+        targetSchema: "${ECON_REFERENCE_SCHEMA_NAME:econ_reference}"
+        targetTable: bls_geographies
+        targetColumns:
+          - metro_cpi_area_code
+        comment: Links metro CPI data to BLS geography reference for CBSA lookups and geographic analysis
+
+  state_industry:
+    primaryKey:
+      - type
+      - frequency
+      - year
+    foreignKeys:
+      - columns:
+          - state_fips
+        targetSchema: "${GEO_SCHEMA_NAME:geo}"
+        targetTable: states
+        targetColumns:
+          - state_fips
+        comment: Links state industry employment to geographic and demographic data for state-level analysis
+      - columns:
+          - industry_code
+        targetSchema: "${ECON_REFERENCE_SCHEMA_NAME:econ_reference}"
+        targetTable: naics_sectors
+        targetColumns:
+          - supersector_code
+        comment: Links to NAICS supersector reference for industry name lookups
+
+  state_wages:
+    primaryKey:
+      - type
+      - frequency
+      - year
+    foreignKeys:
+      - columns:
+          - state_fips
+        targetSchema: "${GEO_SCHEMA_NAME:geo}"
+        targetTable: states
+        targetColumns:
+          - state_fips
+        comment: Links state wage data to geographic and demographic data for regional compensation analysis
+
+  metro_industry:
+    primaryKey:
+      - type
+      - frequency
+      - year
+    foreignKeys:
+      - columns:
+          - metro_code
+        targetSchema: "${ECON_REFERENCE_SCHEMA_NAME:econ_reference}"
+        targetTable: bls_geographies
+        targetColumns:
+          - metro_bls_area_code
+        comment: Links metro industry employment to BLS geography reference for CBSA lookups and geographic analysis
+      - columns:
+          - industry_code
+        targetSchema: "${ECON_REFERENCE_SCHEMA_NAME:econ_reference}"
+        targetTable: naics_sectors
+        targetColumns:
+          - supersector_code
+        comment: Links to NAICS supersector reference for industry name lookups
+
+  metro_wages:
+    primaryKey:
+      - type
+      - frequency
+      - year
+    foreignKeys:
+      - columns:
+          - metro_code
+        targetSchema: "${ECON_REFERENCE_SCHEMA_NAME:econ_reference}"
+        targetTable: bls_geographies
+        targetColumns:
+          - geo_code
+        comment: Links metro wage data to BLS geography reference for CBSA lookups and geographic analysis
+
+  county_qcew:
+    primaryKey:
+      - type
+      - frequency
+      - year
+    foreignKeys:
+      - columns:
+          - area_fips
+        targetSchema: geo
+        targetTable: counties
+        targetColumns:
+          - county_fips
+        comment: Links county QCEW employment and wage data to geographic county boundaries, enabling county name lookups and spatial analysis
+
+  county_wages:
+    primaryKey:
+      - type
+      - frequency
+      - year
+    foreignKeys:
+      - columns:
+          - county_fips
+        targetSchema: geo
+        targetTable: counties
+        targetColumns:
+          - county_fips
+        comment: Links county wage data to geographic and demographic data for granular regional compensation analysis and rural-urban wage comparisons
+      - columns:
+          - state_fips
+        targetSchema: "${GEO_SCHEMA_NAME:geo}"
+        targetTable: states
+        targetColumns:
+          - state_fips
+        comment: Links county wage data to state-level geography for state-aggregated analysis
+
+  jolts_regional:
+    primaryKey:
+      - type
+      - frequency
+      - year
+
+  jolts_state:
+    primaryKey:
+      - type
+      - frequency
+      - year
+    foreignKeys:
+      - columns:
+          - state_fips
+        targetSchema: "${GEO_SCHEMA_NAME:geo}"
+        targetTable: states
+        targetColumns:
+          - state_fips
+        comment: Links state JOLTS data to geographic and demographic data for state-level labor market dynamics analysis
+
+  wage_growth:
+    primaryKey:
+      - type
+      - frequency
+      - year
+
+  regional_employment:
+    primaryKey:
+      - type
+      - year
+      - state_fips
+    foreignKeys:
+      - columns:
+          - area_code
+        targetSchema: "${GEO_SCHEMA_NAME:geo}"
+        targetTable: states
+        targetColumns:
+          - state_fips
+        comment: Links regional employment to state geography when area_code represents state-level data (state FIPS codes)
+
+  treasury_yields:
+    primaryKey:
+      - type
+      - frequency
+      - year
+
+  federal_debt:
+    primaryKey:
+      - type
+      - frequency
+      - year
+
+  world_indicators:
+    primaryKey:
+      - type
+      - frequency
+      - year
+
+  fred_indicators:
+    primaryKey:
+      - type
+      - series
+      - year
+    foreignKeys:
+      - columns:
+          - series
+        targetSchema: "${ECON_REFERENCE_SCHEMA_NAME:econ_reference}"
+        targetTable: fred_series
+        targetColumns:
+          - series
+
+  national_accounts:
+    primaryKey:
+      - table_id
+      - line_number
+      - year
+      - frequency
+    foreignKeys:
+      - columns:
+          - table_id
+        targetSchema: "${ECON_REFERENCE_SCHEMA_NAME:econ_reference}"
+        targetTable: nipa_tables
+        targetColumns:
+          - TableName
+        comment: Links national accounts data to NIPA table metadata catalog for section categorization and descriptions
+
+  gdp_statistics:
+    primaryKey:
+      - type
+      - frequency
+      - year
+
+  regional_income:
+    primaryKey:
+      - geo_fips
+      - table_name
+      - line_code
+      - year
+    foreignKeys:
+      - columns:
+          - geo_fips
+        targetSchema: "${GEO_SCHEMA_NAME:geo}"
+        targetTable: states
+        targetColumns:
+          - state_fips
+        comment: Links regional income to state geography for spatial analysis and demographic correlation (when geo_fips is state-level)
+      - columns:
+          - table_name
+          - line_code
+        targetSchema: "${ECON_REFERENCE_SCHEMA_NAME:econ_reference}"
+        targetTable: regional_linecodes
+        targetColumns:
+          - tablename
+          - LineCode
+        comment: Links BEA income data to line code descriptions and metadata
+
+  state_gdp:
+    primaryKey:
+      - geo_fips
+      - table_name
+      - line_code
+      - year
+    foreignKeys:
+      - columns:
+          - geo_fips
+        targetSchema: "${GEO_SCHEMA_NAME:geo}"
+        targetTable: states
+        targetColumns:
+          - state_fips
+        comment: Links state GDP to geographic and demographic data for per capita analysis and regional economic comparisons
+      - columns:
+          - table_name
+          - line_code
+        targetSchema: "${ECON_REFERENCE_SCHEMA_NAME:econ_reference}"
+        targetTable: regional_linecodes
+        targetColumns:
+          - tablename
+          - LineCode
+        comment: Links BEA GDP data to line code descriptions and metadata
+
+  state_personal_income:
+    primaryKey:
+      - geo_fips
+      - table_name
+      - line_code
+      - year
+    foreignKeys:
+      - columns:
+          - geo_fips
+        targetSchema: "${GEO_SCHEMA_NAME:geo}"
+        targetTable: states
+        targetColumns:
+          - state_fips
+        comment: Links state personal income to geographic and demographic data (when geo_fips is state-level)
+
+  quarterly_income:
+    primaryKey:
+      - geo_fips
+      - table_name
+      - line_code
+      - year
+    foreignKeys:
+      - columns:
+          - table_name
+          - line_code
+        targetSchema: "${ECON_REFERENCE_SCHEMA_NAME:econ_reference}"
+        targetTable: regional_linecodes
+        targetColumns:
+          - tablename
+          - LineCode
+        comment: Links BEA quarterly income data to line code descriptions
+      - columns:
+          - geo_fips
+        targetSchema: "${GEO_SCHEMA_NAME:geo}"
+        targetTable: states
+        targetColumns:
+          - state_fips
+        comment: Links quarterly income to geographic and demographic data (when geo_fips is state-level)
+
+  quarterly_gdp:
+    primaryKey:
+      - geo_fips
+      - table_name
+      - line_code
+      - year
+    foreignKeys:
+      - columns:
+          - table_name
+          - line_code
+        targetSchema: "${ECON_REFERENCE_SCHEMA_NAME:econ_reference}"
+        targetTable: regional_linecodes
+        targetColumns:
+          - tablename
+          - LineCode
+        comment: Links BEA quarterly GDP data to line code descriptions
+      - columns:
+          - geo_fips
+        targetSchema: "${GEO_SCHEMA_NAME:geo}"
+        targetTable: states
+        targetColumns:
+          - state_fips
+        comment: Links quarterly GDP to geographic and demographic data (when geo_fips is state-level)
+
+  state_consumption:
+    primaryKey:
+      - geo_fips
+      - table_name
+      - line_code
+      - year
+    foreignKeys:
+      - columns:
+          - table_name
+          - line_code
+        targetSchema: "${ECON_REFERENCE_SCHEMA_NAME:econ_reference}"
+        targetTable: regional_linecodes
+        targetColumns:
+          - tablename
+          - LineCode
+        comment: Links BEA consumption data to line code descriptions
+      - columns:
+          - geo_fips
+        targetSchema: "${GEO_SCHEMA_NAME:geo}"
+        targetTable: states
+        targetColumns:
+          - state_fips
+        comment: Links state consumption to geographic and demographic data (when geo_fips is state-level)
+
+  trade_statistics:
+    primaryKey:
+      - type
+      - frequency
+      - year
+
+  ita_data:
+    primaryKey:
+      - type
+      - frequency
+      - year
+
+  industry_gdp:
+    primaryKey:
+      - type
+      - frequency
+      - year
+
+tables:
+  - name: fred_indicators_enriched
+    type: view
+    sql: "SELECT i.series, i.date, i.value, c.title AS series_name, c.units, c.frequency, c.seasonal_adjustment, c.last_updated, c.observation_start, c.observation_end, c.popularity, c.category_name, c.source_name FROM ${ECON_SCHEMA_NAME:econ}.fred_indicators i JOIN ${ECON_REFERENCE_SCHEMA_NAME:econ_reference}.fred_series c ON i.series = c.series"
+    comment: Enriched fred_indicator observations with metadata such as series names, units, frequency, or others.
+
+  - name: national_accounts_enriched
+    type: view
+    sql: "SELECT na.table_id, na.line_number, na.line_description, na.series_code, na.year, na.value, na.units, na.frequency, r.Description AS table_description, r.section, r.section_name, r.family, r.metric, r.table_number FROM ${ECON_SCHEMA_NAME:econ}.national_accounts na LEFT JOIN ${ECON_REFERENCE_SCHEMA_NAME:econ_reference}.nipa_tables r ON na.table_id = r.TableName"
+    comment: >
+      National accounts (NIPA) data enriched with table metadata and section categorization. Columns: table_id (BEA table code), line_number (line within table), line_description (component description), series_code (BEA series code), year, value (millions of dollars), units, frequency (A=Annual/Q=Quarterly), table_description (full table description from BEA), section (1-8), section_name (e.g., 'domestic_product_income', 'foreign_transactions'), family (table family within section), metric (metric type code), table_number (standard BEA format like '1.1.5'). Enables semantic queries by economic category without manual joins.
+
+  - name: regional_income_enriched
+    type: view
+    sql: "SELECT ri.*, rlc.Description AS line_code_description, rlc.table_prefix, rlc.data_category, rlc.geography_level, rlc.frequency AS table_frequency FROM ${ECON_SCHEMA_NAME:econ}.regional_income ri LEFT JOIN ${ECON_REFERENCE_SCHEMA_NAME:econ_reference}.regional_linecodes rlc ON ri.tablename = rlc.TableName AND ri.line_code = rlc.LineCode"
+    comment: >
+      Regional income data enriched with LineCode descriptions and table metadata from the reference catalog. Columns include all regional_income fields plus line_code_description (what the line code represents), table_prefix (SA/SQ/CA for State Annual/Quarterly, County/MSA Annual), data_category (INC/GDP/etc), geography_level (state/county/msa), table_frequency (annual/quarterly). Enables semantic queries without needing to know specific LineCode values.
+
+  - name: interest_rate_spreads
+    type: view
+    sql: "SELECT date, MAX(CASE WHEN series = 'DGS10' THEN value END) AS ten_year_yield, MAX(CASE WHEN series = 'DGS3MO' THEN value END) AS three_month_yield, MAX(CASE WHEN series = 'DGS10' THEN value END) - MAX(CASE WHEN series = 'DGS3MO' THEN value END) AS term_spread_10y_3m, MAX(CASE WHEN series = 'DFF' THEN value END) AS fed_funds_rate, MAX(CASE WHEN series = 'BAMLC0A0CM' THEN value END) AS corporate_spread_bps FROM ${ECON_SCHEMA_NAME:econ}.fred_indicators WHERE series IN ('DGS10', 'DGS3MO', 'DFF', 'BAMLC0A0CM') GROUP BY date"
+    comment: >
+      Interest rate spreads and yield curve analytics. Columns: date (observation date), ten_year_yield (10Y Treasury constant maturity rate %), three_month_yield (3M T-Bill rate %), term_spread_10y_3m (yield curve spread, negative values historically precede recessions), fed_funds_rate (Federal Reserve policy rate %), corporate_spread_bps (investment grade corporate bond spread over Treasuries in basis points, widening indicates credit stress). Critical for recession forecasting, monetary policy analysis, and credit market health assessment.
+
+  - name: housing_indicators
+    type: view
+    sql: "SELECT date, MAX(CASE WHEN series = 'HOUST' THEN value END) AS housing_starts, MAX(CASE WHEN series = 'HOUST1F' THEN value END) AS single_family_starts, MAX(CASE WHEN series = 'PERMIT' THEN value END) AS building_permits, MAX(CASE WHEN series = 'EXHOSLUSM495S' THEN value END) AS existing_sales, MAX(CASE WHEN series = 'CSUSHPISA' THEN value END) AS case_shiller_index, MAX(CASE WHEN series = 'MSPUS' THEN value END) AS median_sale_price, MAX(CASE WHEN series = 'MORTGAGE30US' THEN value END) AS mortgage_rate_30y, MAX(CASE WHEN series = 'RRVRUSQ156N' THEN value END) AS rental_vacancy_rate FROM ${ECON_SCHEMA_NAME:econ}.fred_indicators WHERE series IN ('HOUST', 'HOUST1F', 'PERMIT', 'EXHOSLUSM495S', 'CSUSHPISA', 'MSPUS', 'MORTGAGE30US', 'RRVRUSQ156N') GROUP BY date"
+    comment: >
+      Comprehensive housing market health dashboard. Columns: date, housing_starts (total new housing units started in thousands, annualized), single_family_starts (single-family housing starts subset in thousands), building_permits (authorized building permits in thousands, leading indicator), existing_sales (existing home sales in millions annualized), case_shiller_index (S&P CoreLogic Case-Shiller U.S. National Home Price Index), median_sale_price (median sales price of houses sold in USD), mortgage_rate_30y (30-year fixed rate mortgage average %), rental_vacancy_rate (percentage of rental units vacant). Essential for real estate analysis, construction sector tracking, and housing affordability assessment.
+
+  - name: monetary_aggregates
+    type: view
+    sql: "SELECT date, MAX(CASE WHEN series = 'M1SL' THEN value END) AS m1_money_supply, MAX(CASE WHEN series = 'M2SL' THEN value END) AS m2_money_supply, MAX(CASE WHEN series = 'BOGMBASE' THEN value END) AS monetary_base, MAX(CASE WHEN series = 'GDP' THEN value END) AS nominal_gdp, MAX(CASE WHEN series = 'GDP' THEN value END) / NULLIF(MAX(CASE WHEN series = 'M2SL' THEN value END), 0) AS m2_velocity FROM ${ECON_SCHEMA_NAME:econ}.fred_indicators WHERE series IN ('M1SL', 'M2SL', 'BOGMBASE', 'GDP') GROUP BY date"
+    comment: >
+      Federal Reserve monetary aggregates and velocity analysis. Columns: date, m1_money_supply (narrow money supply including currency and demand deposits in billions), m2_money_supply (broad money supply including M1 plus savings deposits and money market funds in billions), monetary_base (currency in circulation plus bank reserves in billions), nominal_gdp (gross domestic product in billions), m2_velocity (calculated as GDP/M2, measures money turnover rate, declining velocity may indicate liquidity hoarding). Critical for Federal Reserve policy analysis, inflation expectations, and monetary transmission mechanism assessment.
+
+  - name: business_indicators
+    type: view
+    sql: "SELECT date, MAX(CASE WHEN series = 'INDPRO' THEN value END) AS industrial_production_index, MAX(CASE WHEN series = 'TCU' THEN value END) AS capacity_utilization_pct, MAX(CASE WHEN series = 'RSXFS' THEN value END) AS retail_sales_millions, MAX(CASE WHEN series = 'TOTBKCR' THEN value END) AS bank_credit_billions, MAX(CASE WHEN series = 'DRTSCILM' THEN value END) AS lending_standards_net_pct FROM ${ECON_SCHEMA_NAME:econ}.fred_indicators WHERE series IN ('INDPRO', 'TCU', 'RSXFS', 'TOTBKCR', 'DRTSCILM') GROUP BY date"
+    comment: >
+      Business cycle and economic activity dashboard. Columns: date, industrial_production_index (index of manufacturing and industrial output, 2017=100), capacity_utilization_pct (percentage of total industrial capacity in use, high values indicate potential inflation pressure), retail_sales_millions (advance retail sales in millions USD, excludes services, leading consumer spending indicator), bank_credit_billions (total credit extended by banks in billions, measure of lending activity), lending_standards_net_pct (net percentage of banks tightening lending standards, positive values indicate credit tightening). Essential for business cycle analysis, recession/expansion identification, and credit conditions monitoring.
+
+  - name: trade_balance_summary
+    type: view
+    sql: "SELECT year, quarter, line_description, SUM(CASE WHEN trade_type = 'exports' THEN value ELSE 0 END) AS total_exports, SUM(CASE WHEN trade_type = 'imports' THEN value ELSE 0 END) AS total_imports, SUM(CASE WHEN trade_type = 'trade_balance' THEN value ELSE 0 END) AS net_trade_balance FROM ${ECON_SCHEMA_NAME:econ}.trade_statistics GROUP BY year, quarter, line_description"
+    comment: >
+      U.S. international trade balance aggregated by category from BEA. Columns: year (calendar year), quarter (Q1-Q4 for quarterly data, NULL for annual), line_description (trade category such as 'Goods', 'Services', 'Foods feeds and beverages', etc.), total_exports (sum of exports in millions USD), total_imports (sum of imports in millions USD), net_trade_balance (exports minus imports, negative indicates trade deficit). Derived from BEA NIPA Table 4.2.5B (Foreign Transactions section), enables analysis of trade composition, bilateral balances, and sectoral trade patterns. Critical for understanding U.S. competitiveness, currency impacts, and GDP contribution from net exports.
+
+  - name: trade_statistics
+    type: view
+    sql: "SELECT tablename AS table_id, line_number, line_description, series_code, year, time_period, CASE WHEN time_period LIKE '%Q%' THEN CAST(SUBSTRING(time_period, LENGTH(time_period), 1) AS INTEGER) ELSE NULL END AS quarter, value, units, frequency, CASE WHEN LOWER(line_description) LIKE '%export%' THEN 'exports' WHEN LOWER(line_description) LIKE '%import%' THEN 'imports' ELSE 'trade_balance' END AS trade_type FROM ${ECON_SCHEMA_NAME:econ}.national_accounts WHERE tablename = 'T40205B'"
+    comment: >
+      U.S. international trade statistics from BEA NIPA Table 4.2.5B (Foreign Transactions section). Provides detailed breakdown of exports and imports of goods and services with computed columns: quarter (1-4 extracted from time_period for quarterly data, NULL for annual), trade_type (exports/imports/trade_balance derived from line_description). This is a convenience view filtering national_accounts for trade-specific data. For enriched version with section metadata, query national_accounts_enriched WHERE table_id = 'T40205B'.
+
+  - name: state_gdp
+    type: view
+    sql: "SELECT geo_fips_set AS geo_fips, GeoName AS geo_name, tablename, line_code, year, CL_UNIT AS metric, DataValue AS value, UNIT_MULT AS units FROM ${ECON_SCHEMA_NAME:econ}.regional_income WHERE tablename LIKE 'SAGDP%'"
+    comment: >
+      State-level GDP statistics from BEA Regional Economic Accounts (SAGDP tables). This is a convenience view filtering regional_income to just the State Annual GDP tables (SAGDP1-SAGDP11). Columns: geo_fips (2-digit state FIPS code), geo_name (state name), tablename (specific SAGDP table), line_code (BEA line code), year, metric (GDP component description), value (GDP value), units (unit multiplier). For quarterly state GDP, filter regional_income for SQGDP* tables.
+
+# ============================================================================
+# END OF SCHEMA
+# ============================================================================
+# STATISTICS:
+#   - 30 partitioned tables
+#   - 225 total columns
+#   - 11 reusable column templates (anchors)
+#   - 42 anchor references (reducing duplication)
+#   - 18 tables use standard partitioning scheme
+#   - 1 bulk download configuration (QCEW data ~80-323MB)
+#   - 28 table constraints (primary keys + foreign keys)
+#   - 10 SQL views for enriched data and analytics
+#
+# ANCHOR USAGE:
+#   - *date_column: 12 uses
+#   - *percent_change_year: 7 uses
+#   - *series_column: 6 uses
+#   - *percent_change_month: 6 uses
+#   - *state_name: 4 uses
+#   - *industry_name: 3 uses
+#   - *state_fips: 2 uses
+#   - *standard_partitions: 18 uses
+#
+# FILE SIZE: 57KB (49.6% smaller than JSON 113KB)
+#
+# MAINTAINABILITY IMPROVEMENTS:
+#   - Column definitions centralized in column_templates section
+#   - Consistent formatting with 2-space indentation
+#   - Comprehensive inline comments for API configs and data sources
+#   - Clear section separators for navigation
+#   - Rate limit documentation (BLS: 500 daily, 1.1s between requests)
+#   - Bulk download file size annotations (80MB annual, 323MB quarterly)
+# ============================================================================
+
+# ============================================================================
+# VIEWS
+# ============================================================================
+
+views:
+
+  - name: state_economic_snapshot
+    comment: >
+      State-level economic snapshot joining BLS state wages and JOLTS state labor
+      market data, enriched with geographic identifiers. One row per state+year+
+      wage_series+jolts_series — filter on series codes to select specific indicators.
+      Use state_fips to join with geo.states, census, or health schemas.
+    sql: >
+      SELECT
+        w.state_fips,
+        gs.state_name,
+        gs.state_abbr,
+        w.year,
+        w.series          AS wage_series,
+        TRY_CAST(w.value AS DOUBLE) AS wage_value,
+        w.periodName      AS period,
+        j.series          AS jolts_series,
+        TRY_CAST(j.value AS DOUBLE) AS jolts_value
+      FROM state_wages w
+      LEFT JOIN jolts_state j
+        ON w.state_fips = j.state_fips AND w.year = j.year
+      LEFT JOIN "geo"."states" gs ON w.state_fips = gs.state_fips

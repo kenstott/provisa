@@ -499,6 +499,9 @@ class OtelConfig(BaseModel):
         (seconds). Lower values reduce trace latency; default 5.
     collector_batch_timeout_ms: OTel Collector batch processor timeout (milliseconds).
         Lower values reduce trace latency; default 200.
+    s3_endpoint: S3/MinIO endpoint for Parquet→Iceberg compaction. Default http://minio:9000
+        works in Docker; set to http://localhost:9000 when running the backend locally.
+        Overridden at runtime by PROVISA_OTEL_S3_ENDPOINT env var.
     """
 
     endpoint: str = ""
@@ -512,6 +515,7 @@ class OtelConfig(BaseModel):
     span_export_delay_millis: int = 1000
     otlp2parquet_max_age_secs: int = 5
     collector_batch_timeout_ms: int = 200
+    s3_endpoint: str = "http://minio:9000"
 
 
 class GraphQLRemoteConfig(BaseModel):

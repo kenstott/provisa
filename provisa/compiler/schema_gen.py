@@ -16,26 +16,36 @@ Domain-scoped, per-role column filtering (REQ-008, REQ-021).
 
 import re
 from dataclasses import dataclass, field
+from typing import cast
 
 from graphql import (
     GraphQLArgument,
-    GraphQLBoolean,
+    GraphQLBoolean as _GraphQLBoolean,
     GraphQLDirective,
     GraphQLEnumType,
     GraphQLEnumValue,
     GraphQLField,
-    GraphQLFloat,
+    GraphQLFloat as _GraphQLFloat,
     GraphQLInputField,
     GraphQLInputObjectType,
-    GraphQLInt,
+    GraphQLInt as _GraphQLInt,
     GraphQLList,
     GraphQLNonNull,
     GraphQLObjectType,
+    GraphQLOutputType,
+    GraphQLScalarType,
     GraphQLSchema,
-    GraphQLString,
+    GraphQLString as _GraphQLString,
     specified_directives,
 )
 from graphql.language import DirectiveLocation
+
+# graphql-core 3.2.x: __new__ returns GraphQLNamedType instead of Self;
+# re-bind scalars with explicit GraphQLScalarType annotation so Pyright narrows correctly.
+GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
+GraphQLInt: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLInt)
+GraphQLBoolean: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLBoolean)
+GraphQLFloat: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLFloat)
 
 from provisa.compiler.aggregate_gen import build_aggregate_types
 from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
@@ -107,38 +117,47 @@ class _TableInfo:
 
 # --- GraphQL enum for ORDER BY direction ---
 
-OrderDirection = GraphQLEnumType(
-    "order_by",
-    {
-        "asc": GraphQLEnumValue("asc"),
-        "desc": GraphQLEnumValue("desc"),
-        "asc_nulls_first": GraphQLEnumValue("asc_nulls_first"),
-        "asc_nulls_last": GraphQLEnumValue("asc_nulls_last"),
-        "desc_nulls_first": GraphQLEnumValue("desc_nulls_first"),
-        "desc_nulls_last": GraphQLEnumValue("desc_nulls_last"),
-    },
+OrderDirection = cast(
+    GraphQLEnumType,
+    GraphQLEnumType(
+        "order_by",
+        {
+            "asc": GraphQLEnumValue("asc"),
+            "desc": GraphQLEnumValue("desc"),
+            "asc_nulls_first": GraphQLEnumValue("asc_nulls_first"),
+            "asc_nulls_last": GraphQLEnumValue("asc_nulls_last"),
+            "desc_nulls_first": GraphQLEnumValue("desc_nulls_first"),
+            "desc_nulls_last": GraphQLEnumValue("desc_nulls_last"),
+        },
+    ),
 )
 
 # --- Provisa directive enums ---
 
-RouteEngineEnum = GraphQLEnumType(
-    "RouteEngine",
-    {
-        "FEDERATED": GraphQLEnumValue("FEDERATED", description="Route via Trino federation"),
-        "DIRECT": GraphQLEnumValue("DIRECT", description="Route directly to source"),
-    },
-    description="Execution engine routing hint for @route.",
+RouteEngineEnum = cast(
+    GraphQLEnumType,
+    GraphQLEnumType(
+        "RouteEngine",
+        {
+            "FEDERATED": GraphQLEnumValue("FEDERATED", description="Route via Trino federation"),
+            "DIRECT": GraphQLEnumValue("DIRECT", description="Route directly to source"),
+        },
+        description="Execution engine routing hint for @route.",
+    ),
 )
 
-JoinStrategyEnum = GraphQLEnumType(
-    "JoinStrategy",
-    {
-        "BROADCAST": GraphQLEnumValue("BROADCAST", description="Broadcast join distribution"),
-        "PARTITIONED": GraphQLEnumValue(
-            "PARTITIONED", description="Partitioned (hash) join distribution"
-        ),
-    },
-    description="Join distribution strategy hint for @join.",
+JoinStrategyEnum = cast(
+    GraphQLEnumType,
+    GraphQLEnumType(
+        "JoinStrategy",
+        {
+            "BROADCAST": GraphQLEnumValue("BROADCAST", description="Broadcast join distribution"),
+            "PARTITIONED": GraphQLEnumValue(
+                "PARTITIONED", description="Partitioned (hash) join distribution"
+            ),
+        },
+        description="Join distribution strategy hint for @join.",
+    ),
 )
 
 # Directive locations
@@ -236,14 +255,17 @@ PROVISA_DIRECTIVES = [
 
 # --- Relay-style connection types for cursor pagination (REQ-218) ---
 
-PageInfoType = GraphQLObjectType(
-    "PageInfo",
-    lambda: {
-        "hasNextPage": GraphQLField(GraphQLNonNull(GraphQLBoolean)),
-        "hasPreviousPage": GraphQLField(GraphQLNonNull(GraphQLBoolean)),
-        "startCursor": GraphQLField(GraphQLString),
-        "endCursor": GraphQLField(GraphQLString),
-    },
+PageInfoType = cast(
+    GraphQLObjectType,
+    GraphQLObjectType(
+        "PageInfo",
+        lambda: {
+            "hasNextPage": GraphQLField(GraphQLNonNull(GraphQLBoolean)),
+            "hasPreviousPage": GraphQLField(GraphQLNonNull(GraphQLBoolean)),
+            "startCursor": GraphQLField(GraphQLString),
+            "endCursor": GraphQLField(GraphQLString),
+        },
+    ),
 )
 
 
@@ -252,19 +274,25 @@ def _build_connection_types(
     node_type: GraphQLObjectType,
 ) -> tuple[GraphQLObjectType, GraphQLObjectType]:
     """Build Edge and Connection types for cursor pagination."""
-    edge_type = GraphQLObjectType(
-        f"{type_name}Edge",
-        lambda node_type=node_type: {
-            "cursor": GraphQLField(GraphQLNonNull(GraphQLString)),
-            "node": GraphQLField(GraphQLNonNull(node_type)),
-        },
+    edge_type = cast(
+        GraphQLObjectType,
+        GraphQLObjectType(
+            f"{type_name}Edge",
+            lambda node_type=node_type: {
+                "cursor": GraphQLField(GraphQLNonNull(GraphQLString)),
+                "node": GraphQLField(GraphQLNonNull(node_type)),
+            },
+        ),
     )
-    connection_type = GraphQLObjectType(
-        f"{type_name}Connection",
-        lambda edge_type=edge_type: {
-            "edges": GraphQLField(GraphQLNonNull(GraphQLList(GraphQLNonNull(edge_type)))),
-            "pageInfo": GraphQLField(GraphQLNonNull(PageInfoType)),
-        },
+    connection_type = cast(
+        GraphQLObjectType,
+        GraphQLObjectType(
+            f"{type_name}Connection",
+            lambda edge_type=edge_type: {
+                "edges": GraphQLField(GraphQLNonNull(GraphQLList(GraphQLNonNull(edge_type)))),
+                "pageInfo": GraphQLField(GraphQLNonNull(PageInfoType)),
+            },
+        ),
     )
     return edge_type, connection_type
 
@@ -402,7 +430,7 @@ def _assign_names(
                 t.type_name = to_type_name(t.field_name)
 
 
-_OBJECT_FIELD_TYPE_MAP: dict[str, object] = {
+_OBJECT_FIELD_TYPE_MAP: dict[str, GraphQLScalarType] = {
     "string": GraphQLString,
     "integer": GraphQLInt,
     "number": GraphQLFloat,
@@ -427,11 +455,11 @@ def _build_object_type(
         sf_alias = sf.get("alias") or apply_convention(sf_name, convention) or sf_name
         nested = sf.get("fields") or []
         if nested and sf.get("type") == "object":
-            sf_gql: object = _build_object_type(sf_name, nested, convention, registry)
+            sf_gql: GraphQLOutputType = _build_object_type(sf_name, nested, convention, registry)
         else:
             sf_gql = _OBJECT_FIELD_TYPE_MAP.get(sf.get("type", "string"), GraphQLString)
         sub_fields[sf_alias] = GraphQLField(sf_gql, description=sf.get("description"))
-    obj_type = GraphQLObjectType(type_name, lambda: sub_fields)
+    obj_type = cast(GraphQLObjectType, GraphQLObjectType(type_name, lambda: sub_fields))
     registry[type_name] = obj_type
     return obj_type
 
@@ -534,15 +562,17 @@ def _build_where_input(
         return None
 
     name = f"{type_name}Where"
-    where_input: GraphQLInputObjectType | None = None
+    where_input_holder: list[GraphQLInputObjectType] = []
 
     def thunk():
+        wi = where_input_holder[0]
         fields = dict(input_fields)
-        fields["_and"] = GraphQLInputField(GraphQLList(GraphQLNonNull(where_input)))
-        fields["_or"] = GraphQLInputField(GraphQLList(GraphQLNonNull(where_input)))
+        fields["_and"] = GraphQLInputField(GraphQLList(GraphQLNonNull(wi)))
+        fields["_or"] = GraphQLInputField(GraphQLList(GraphQLNonNull(wi)))
         return fields
 
-    where_input = GraphQLInputObjectType(name, thunk)
+    where_input = cast(GraphQLInputObjectType, GraphQLInputObjectType(name, thunk))
+    where_input_holder.append(where_input)
     return where_input
 
 
@@ -584,7 +614,7 @@ def _build_order_by_inputs(
                         )
             return fields
 
-        ob_type = GraphQLInputObjectType(f"{t.type_name}OrderBy", make_fields)
+        ob_type = cast(GraphQLInputObjectType, GraphQLInputObjectType(f"{t.type_name}OrderBy", make_fields))
         order_by_types[t.table_id] = ob_type
 
     return order_by_types
@@ -600,9 +630,12 @@ def _build_distinct_on_enum(
     ]
     if not visible_col_names:
         return None
-    return GraphQLEnumType(
-        f"{table.type_name}DistinctOnColumn",
-        {name: GraphQLEnumValue(name) for name in visible_col_names},
+    return cast(
+        GraphQLEnumType,
+        GraphQLEnumType(
+            f"{table.type_name}DistinctOnColumn",
+            {name: GraphQLEnumValue(name) for name in visible_col_names},
+        ),
     )
 
 
@@ -649,7 +682,7 @@ def _can_see_relationship(rel: dict, table_lookup: dict[int, _TableInfo]) -> boo
     return rel.get("target_column") in tgt_visible
 
 
-_ACTION_SCALAR_MAP: dict[str, object] = {
+_ACTION_SCALAR_MAP: dict[str, GraphQLScalarType] = {
     "String": GraphQLString,
     "Int": GraphQLInt,
     "Float": GraphQLFloat,
@@ -704,7 +737,7 @@ def _json_schema_to_gql_type(schema: dict, type_name: str):
         )
         for k, v in props.items()
     }
-    obj = GraphQLObjectType(type_name, lambda f=gql_fields: f)
+    obj = cast(GraphQLObjectType, GraphQLObjectType(type_name, lambda f=gql_fields: f))
     if top == "array":
         return GraphQLList(GraphQLNonNull(obj))
     return obj
@@ -778,7 +811,7 @@ def _build_action_fields(
             if item.get("kind", "mutation") == "query":
                 args["limit"] = GraphQLArgument(GraphQLInt)
                 args["offset"] = GraphQLArgument(GraphQLInt)
-                args["where"] = GraphQLArgument(JSONScalar)
+                args["where"] = GraphQLArgument(cast(GraphQLScalarType, JSONScalar))
                 args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(GraphQLString)))
 
             gql_field = GraphQLField(gql_return, args=args, description=item.get("description"))
@@ -836,7 +869,7 @@ def _build_action_fields(
                 for f in inline
                 if f.get("name")
             }
-            wh_obj = GraphQLObjectType(wh_type_name, lambda f=inline_fields: f)
+            wh_obj = cast(GraphQLObjectType, GraphQLObjectType(wh_type_name, lambda f=inline_fields: f))
             gql_return = GraphQLList(GraphQLNonNull(wh_obj))
             ret_type = None
         else:
@@ -902,7 +935,7 @@ def _build_subscription_fields(
         field_name = "q_" + stable_id.replace("-", "_")
         desc = q.get("business_purpose") or q.get("query_text", "")[:80]
         fields[field_name] = GraphQLField(
-            GraphQLList(GraphQLNonNull(JSONScalar)),
+            GraphQLList(GraphQLNonNull(cast(GraphQLScalarType, JSONScalar))),
             description=desc,
         )
 
@@ -1067,10 +1100,13 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
 
             return fields
 
-        gql_types[tid] = GraphQLObjectType(
-            t.type_name,
-            make_fields,
-            description=t.description,
+        gql_types[tid] = cast(
+            GraphQLObjectType,
+            GraphQLObjectType(
+                t.type_name,
+                make_fields,
+                description=t.description,
+            ),
         )
 
     # Build root query fields
@@ -1171,7 +1207,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
                 args=conn_args,
             )
 
-    query_type = GraphQLObjectType("Query", lambda: query_fields)
+    query_type = cast(GraphQLObjectType, GraphQLObjectType("Query", lambda: query_fields))
 
     # Build mutation types for RDBMS tables (REQ-031–REQ-037)
     nosql_types = {"mongodb", "cassandra"}
@@ -1197,32 +1233,44 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         if not insert_fields:
             continue
 
-        insert_input = GraphQLInputObjectType(
-            f"{t.type_name}InsertInput",
-            lambda fields=insert_fields: fields,
+        insert_input = cast(
+            GraphQLInputObjectType,
+            GraphQLInputObjectType(
+                f"{t.type_name}InsertInput",
+                lambda fields=insert_fields: fields,
+            ),
         )
 
         # Build set input type for update (same columns)
-        set_input = GraphQLInputObjectType(
-            f"{t.type_name}SetInput",
-            lambda fields=insert_fields: fields,
+        set_input = cast(
+            GraphQLInputObjectType,
+            GraphQLInputObjectType(
+                f"{t.type_name}SetInput",
+                lambda fields=insert_fields: fields,
+            ),
         )
 
         # Where input for update/delete (use mutation-specific name to avoid conflict)
         where_input = _build_where_input(t, f"{t.type_name}Mutation", enum_types=si.enum_types)
 
         # Mutation response type
-        response_type = GraphQLObjectType(
-            f"{t.type_name}MutationResponse",
-            lambda t=t: {
-                "affected_rows": GraphQLField(GraphQLNonNull(GraphQLInt)),
-            },
+        response_type = cast(
+            GraphQLObjectType,
+            GraphQLObjectType(
+                f"{t.type_name}MutationResponse",
+                lambda t=t: {
+                    "affected_rows": GraphQLField(GraphQLNonNull(GraphQLInt)),
+                },
+            ),
         )
 
         # On-conflict column list for upsert
-        conflict_col_enum = GraphQLEnumType(
-            f"{t.type_name}ConflictColumn",
-            {name: GraphQLEnumValue(name) for name in insert_fields},
+        conflict_col_enum = cast(
+            GraphQLEnumType,
+            GraphQLEnumType(
+                f"{t.type_name}ConflictColumn",
+                {name: GraphQLEnumValue(name) for name in insert_fields},
+            ),
         )
 
         conv = t.naming_convention
@@ -1263,13 +1311,13 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
     query_fields.update(extra_query)
     mutation_fields.update(extra_mutation)
 
-    mutation_type = None
+    mutation_type: GraphQLObjectType | None = None
     if mutation_fields:
-        mutation_type = GraphQLObjectType("Mutation", lambda: mutation_fields)
+        mutation_type = cast(GraphQLObjectType, GraphQLObjectType("Mutation", lambda: mutation_fields))
 
     subscription_fields = _build_subscription_fields(si, tables, gql_types)
-    subscription_type = (
-        GraphQLObjectType("Subscription", lambda: subscription_fields)
+    subscription_type: GraphQLObjectType | None = (
+        cast(GraphQLObjectType, GraphQLObjectType("Subscription", lambda: subscription_fields))
         if subscription_fields
         else None
     )

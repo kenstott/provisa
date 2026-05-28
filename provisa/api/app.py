@@ -46,6 +46,9 @@ from provisa.api.trino_setup import write_trino_config as _write_trino_config
 from provisa.mv.registry import MVRegistry
 from provisa.cache.warm_tables import WarmTableManager
 from provisa.apq.cache import APQCache, NoopAPQCache
+from provisa.api_source.models import ApiEndpoint, ApiSource  # noqa: F401
+from provisa.core.models import ProvisaConfig  # noqa: F401
+from typing import Any, cast  # noqa: F401
 
 
 class AppState:
@@ -54,7 +57,7 @@ class AppState:
     pg_pool: asyncpg.Pool | None = None
     trino_conn: trino.dbapi.Connection | None = None
     trino_conn_kwargs: dict = {}  # kwargs used to create trino_conn (for reconnect)
-    flight_client: object | None = None  # pyarrow.flight.FlightClient
+    flight_client: Any | None = None  # pyarrow.flight.FlightClient
     schemas: dict[str, object] = {}  # role_id → GraphQLSchema
     schema_build_cache: dict = {}  # raw data for on-demand domain-filtered schema building
     schema_version: int = 0  # bumped on every _rebuild_schemas; used by clients for cache invalidation
@@ -73,8 +76,8 @@ class AppState:
     mv_registry: MVRegistry = MVRegistry()
     _mv_refresh_task: asyncio.Task | None = None
     proto_files: dict[str, str] = {}  # role_id → .proto content
-    _grpc_server: object | None = None
-    _flight_server: object | None = None  # ProvisaFlightServer
+    _grpc_server: Any | None = None
+    _flight_server: Any | None = None  # ProvisaFlightServer
     kafka_windows: dict[str, str] = {}  # source_id → default_window (e.g. "1h")
     kafka_table_configs: dict[str, object] = {}  # table_name → KafkaTableConfig
     view_sql_map: dict[str, str] = {}  # view_table_name → SQL (for inline expansion)
@@ -82,14 +85,14 @@ class AppState:
     table_cache: dict[int, int | None] = {}  # table_id → cache_ttl
     auth_config: dict | None = None  # auth section from provisa.yaml
     auth_middleware_active: bool = False  # True only when wire_auth installed AuthMiddleware
-    api_endpoints: dict[str, object] = {}  # table_name → ApiEndpoint
-    api_sources: dict[str, object] = {}  # source_id → ApiSource
+    api_endpoints: dict[str, Any] = {}  # table_name → ApiEndpoint
+    api_sources: dict[str, Any] = {}  # source_id → ApiSource
     hot_manager: object | None = None  # HotTableManager
     _hot_refresh_task: asyncio.Task | None = None
     warm_manager: WarmTableManager = WarmTableManager()
     _warm_task: asyncio.Task | None = None
     apq_cache: APQCache = NoopAPQCache()  # Phase AN: Automatic Persisted Queries
-    live_engine: object | None = None  # Phase AM: LiveEngine instance
+    live_engine: Any | None = None  # Phase AM: LiveEngine instance
     hostname: str = "localhost"  # publicly reachable hostname (PROVISA_HOSTNAME)
     source_federation_hints: dict[str, dict[str, str]] = {}  # source_id → Trino session props (AL3)
     source_allowed_domains: dict[str, list[str]] = {}  # source_id → allowed domain ids (empty = unrestricted)
@@ -111,14 +114,19 @@ class AppState:
     rss_sources: dict[str, object] = {}  # source_id → Source
     pg_notify_tables: set[str] = set()  # table_names with pg_notify triggers installed
     table_watermarks: dict[str, str] = {}  # table_name → watermark_column (for polling fallback)
-    _scheduler: object | None = None  # APScheduler instance for scheduled queries
+    _scheduler: Any | None = None  # APScheduler instance for scheduled queries
     global_naming_convention: str = "apollo_graphql"  # runtime override; set via updateNamingConvention
     otel_compact_cron: str = "* * * * *"  # cron for Parquet→Iceberg compaction
     otel_compact_batch_size: int = 1000  # rows per INSERT batch during compaction
     otel_compact_file_chunk: int = 50  # Parquet files processed per compaction chunk
+    otel_s3_endpoint: str = "http://minio:9000"  # MinIO/S3 endpoint for compaction
     domain_write_targets: dict[str, tuple[str, str]] = {}  # domain_id → (catalog, domain_id) from Domain.catalog
     multitenancy: bool = False
     tenant_context_cache: object = None  # TenantContextCache, set at startup when multitenancy=True
+    kafka_table_physical: dict[str, str] = {}  # virtual gql table → physical Trino table (Kafka sources)
+    config: Any = None  # ProvisaConfig set at startup
+    otel_snapshot_retention_hours: int | None = None  # Iceberg snapshot expiry hours
+    _sqlite_stale_task: asyncio.Task | None = None  # SQLite staleness background loop
 
 
 state = AppState()
@@ -131,6 +139,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
         SELECT id, source_id, domain_id, schema_name, table_name, governance,
                alias, description, cache_ttl, naming_convention, watermark_column,
                column_presets::text AS column_presets,
+               view_sql, data_product,
+               l1_cluster, l2_cluster, l3_cluster, clusters_computed_at,
                tenant_id
         FROM public.registered_tables
     """,
@@ -138,7 +148,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         DROP VIEW IF EXISTS public.table_columns_meta CASCADE;
         CREATE VIEW public.table_columns_meta AS
         SELECT id, table_id, column_name, data_type, is_primary_key,
-               alias, description, path,
+               alias, description, path, scope,
                mask_type, mask_pattern, mask_replace, mask_value, mask_precision,
                native_filter_type, is_foreign_key, is_alternate_key,
                object_fields::text AS object_fields,
@@ -149,8 +159,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM public.table_columns
     """,
     "roles": """
-        CREATE OR REPLACE VIEW public.roles_meta AS
-        SELECT id, parent_role_id,
+        DROP VIEW IF EXISTS public.roles_meta CASCADE;
+        CREATE VIEW public.roles_meta AS
+        SELECT id, parent_role_id, org_id,
                array_to_json(capabilities)::text  AS capabilities,
                array_to_json(domain_access)::text AS domain_access,
                tenant_id
@@ -165,7 +176,7 @@ _META_TABLE_ALIAS: dict[str, str] = {
 }
 _META_TABLES = [
     "registered_tables", "table_columns", "domains", "relationships",
-    "rls_rules", "governed_queries", "roles",
+    "rls_rules", "roles",
 ]
 
 _OPS_PG_TO_TRINO: dict[str, str] = {
@@ -468,10 +479,12 @@ def _seed_ops_trino(trino_conn: object, snapshot_retention_hours: int | None = N
                 f'"{col_name}" {_OPS_PG_TO_TRINO.get(pg_type, "VARCHAR")}'
                 for col_name, pg_type, _ in cols
             ]
+            col_names_lower = {col_name.lower() for col_name, _, _ in cols}
+            partition_cols = ["'table_name'", "'_date'"] if "table_name" in col_names_lower else ["'_date'"]
             _exec(
                 f"CREATE TABLE IF NOT EXISTS otel.signals.{tbl_name} "
                 f"({', '.join(col_defs)}) "
-                f"WITH (partitioning = ARRAY['table_name', '_date'], format = 'PARQUET')"
+                f"WITH (partitioning = ARRAY[{', '.join(partition_cols)}], format = 'PARQUET')"
             )
     except Exception:
         _log.warning("ops Iceberg DDL failed — will retry before next schema introspection", exc_info=True)
@@ -621,13 +634,14 @@ async def _load_and_build(config_path: str | None = None) -> None:
             ON CONFLICT (id) DO NOTHING
             """
         )
-        await _seed_meta_domain(_conn)
-        await _seed_ops_pg(_conn)
+        _pg_conn = cast(asyncpg.Connection, _conn)
+        await _seed_meta_domain(_pg_conn)
+        await _seed_ops_pg(_pg_conn)
         needs_clusters = await _conn.fetchval(
             "SELECT COUNT(*) FROM registered_tables WHERE l1_cluster IS NULL"
         )
         if needs_clusters:
-            await _compute_and_store_clusters(_conn)
+            await _compute_and_store_clusters(_pg_conn)
 
     path = Path(config_path)
     if not path.exists():
@@ -638,17 +652,14 @@ async def _load_and_build(config_path: str | None = None) -> None:
 
     # Resolve server hostname: env var > config file > default (localhost)
     state.server_cfg = raw_config.get("server", {}) if isinstance(raw_config, dict) else {}
-    state.hostname = os.environ.get(
-        "PROVISA_HOSTNAME",
-        state.server_cfg.get("hostname", "localhost"),
-    )
+    state.hostname = str(os.environ.get("PROVISA_HOSTNAME") or state.server_cfg.get("hostname", "localhost"))
 
     # Resolve query/request limits: env var > provisa.yaml server.limits > hardcoded defaults
     _limits_cfg = state.server_cfg.get("limits", {})
     state.server_limits = {
-        "default_row_limit": int(os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", _limits_cfg.get("default_row_limit", 10000))),
-        "trino_query_timeout": int(os.environ.get("PROVISA_TRINO_QUERY_TIMEOUT", _limits_cfg.get("trino_query_timeout", 120))),
-        "request_timeout": float(os.environ.get("PROVISA_REQUEST_TIMEOUT", _limits_cfg.get("request_timeout", 60))),
+        "default_row_limit": int(os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", str(_limits_cfg.get("default_row_limit", 10000)))),
+        "trino_query_timeout": int(os.environ.get("PROVISA_TRINO_QUERY_TIMEOUT", str(_limits_cfg.get("trino_query_timeout", 120)))),
+        "request_timeout": float(os.environ.get("PROVISA_REQUEST_TIMEOUT", str(_limits_cfg.get("request_timeout", 60)))),
     }
 
     # Connect to Trino
@@ -669,19 +680,13 @@ async def _load_and_build(config_path: str | None = None) -> None:
 
     _seed_ops_trino(state.trino_conn, getattr(state, "otel_snapshot_retention_hours", None))
 
-    # Create Arrow Flight SQL connection to Trino (separate gRPC port)
-    trino_flight_port = int(os.environ.get("TRINO_FLIGHT_PORT", "8480"))
-    try:
-        from provisa.executor.trino_flight import create_flight_connection
-        state.flight_client = create_flight_connection(
-            host=trino_host, port=trino_flight_port,
-        )
-    except Exception:
-        import logging
-        logging.getLogger(__name__).warning(
-            "Arrow Flight SQL unavailable — falling back to REST",
-            exc_info=True,
-        )
+    # Create Arrow Flight SQL connection via Zaychik proxy
+    zaychik_host = os.environ.get("ZAYCHIK_HOST", "localhost")
+    zaychik_port = int(os.environ.get("ZAYCHIK_PORT", "8480"))
+    from provisa.executor.trino_flight import create_flight_connection
+    state.flight_client = create_flight_connection(
+        host=zaychik_host, port=zaychik_port,
+    )
 
     # Fault-Tolerant Execution (FTE) — env var > server.federation_fte config > disabled
     _fte_cfg = state.server_cfg.get("federation_fte", {})
@@ -689,9 +694,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
         "TRINO_FTE_ENABLED", str(_fte_cfg.get("enabled", False))
     ).lower() not in ("0", "false", "no")
     if _fte_enabled:
-        _retry_policy = os.environ.get(
-            "TRINO_FTE_RETRY_POLICY", _fte_cfg.get("retry_policy", "TASK")
-        ).upper()
+        _rp: str = os.environ.get("TRINO_FTE_RETRY_POLICY") or str(_fte_cfg.get("retry_policy", "TASK"))
+        _retry_policy = _rp.upper()
         state.trino_fte_hints = {"retry_policy": _retry_policy}
         for _k, _v in _fte_cfg.items():
             if _k in ("enabled", "retry_policy"):
@@ -810,7 +814,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
         from provisa.core.tenant_context import TenantContextCache
         state.tenant_context_cache = TenantContextCache()
         async with state.pg_pool.acquire() as _rls_conn:
-            await _init_meta_rls(_rls_conn)
+            await _init_meta_rls(cast(asyncpg.Connection, _rls_conn))
 
     # Apply observability config to state
     if config.observability:
@@ -818,6 +822,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
         state.otel_compact_batch_size = config.observability.compact_batch_size
         state.otel_compact_file_chunk = config.observability.compact_file_chunk
         state.otel_snapshot_retention_hours = config.observability.ops_snapshot_retention_hours
+        state.otel_s3_endpoint = config.observability.s3_endpoint
 
     # Initialize cache store — REDIS_URL env var overrides config
     cache_config = raw_config.get("cache", {})
@@ -831,7 +836,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
 
     async with state.pg_pool.acquire() as conn:
         _replace_mode = os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in ("1", "true", "yes")
-        await load_config(config, conn, state.trino_conn, replace=_replace_mode)
+        await load_config(config, cast(asyncpg.Connection, conn), state.trino_conn, replace=_replace_mode)
 
     # Seed system source catalogs (not in config.sources, so must be explicit).
     state.source_catalogs["provisa-admin"] = source_to_catalog("provisa-admin")  # provisa_admin
@@ -903,7 +908,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
             )
         for _isrc in _ingest_sources:
             _sid = _isrc["id"]
-            _pw = _resolve_secrets(None)  # password resolved via secrets provider if needed
+            _pw = _resolve_secrets("")  # password resolved via secrets provider if needed
             _eng = _get_ingest_engine(
                 source_id=_sid,
                 dialect=_isrc["dialect"] or "postgresql+asyncpg",
@@ -962,7 +967,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
             _driver = state.source_pools.get(_src.id)
             if hasattr(_driver, "fetch_enums"):
                 try:
-                    _reg = await _driver.fetch_enums()
+                    _reg = await cast(Any, _driver).fetch_enums()
                     _enum_registry.update(_reg)
                 except Exception:
                     pass
@@ -1153,7 +1158,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
         async with state.pg_pool.acquire() as _retry_conn:
             for _rel in state.config.relationships:
                 try:
-                    await _rel_repo.upsert(_retry_conn, _rel)
+                    await _rel_repo.upsert(cast(asyncpg.Connection, _retry_conn), _rel)
                 except ValueError:
                     pass
 
@@ -1281,16 +1286,18 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         if path.exists():
             with open(path) as f:
                 raw_config = yaml.safe_load(f)
-            domain_prefix = raw_config.get("naming", {}).get("domain_prefix", False)
-            if raw_config.get("naming", {}).get("convention"):
-                state.global_naming_convention = raw_config["naming"]["convention"]
+            if isinstance(raw_config, dict):
+                domain_prefix = raw_config.get("naming", {}).get("domain_prefix", False)
+                if raw_config.get("naming", {}).get("convention"):
+                    state.global_naming_convention = raw_config["naming"]["convention"]
 
     # Clear mutable state before rebuild
     state.masking_rules = {}
 
     async with state.pg_pool.acquire() as conn:
-        tables = await _fetch_tables(conn)
-        relationships = await _fetch_relationships(conn)
+        _pg = cast(asyncpg.Connection, conn)
+        tables = await _fetch_tables(_pg)
+        relationships = await _fetch_relationships(_pg)
 
         # Apply schema visibility filters (schema.include_ops / schema.include_metrics)
         tables = _filter_tables_by_schema_cfg(
@@ -1398,11 +1405,11 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 if _tbl_obj:
                     _gql_object_cols[_tbl["name"]] = _tbl_obj
 
-        # Synthesize ColumnMetadata for ops views when Trino introspection returns empty.
-        # Iceberg JDBC information_schema.columns does not expose view columns — physical
-        # tables (traces/logs/metrics) introspect correctly; views need static synthesis.
-        _ops_view_cols: dict[str, list[ColumnMetadata]] = {
-            view_name: [
+        # Synthesize ColumnMetadata for all ops tables when Trino introspection returns empty.
+        # Physical tables (traces/logs/metrics) may not exist yet (compact hasn't run);
+        # views are never exposed via Iceberg JDBC information_schema.columns.
+        _ops_static_cols: dict[str, list[ColumnMetadata]] = {
+            tbl_name: [
                 ColumnMetadata(
                     column_name=col_name,
                     data_type=_OPS_PG_TO_TRINO.get(pg_type, "VARCHAR").lower(),
@@ -1410,17 +1417,26 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 )
                 for col_name, pg_type, is_pk in cols
             ]
-            for view_name, cols, _ in _OPS_VIEWS
+            for tbl_name, cols in _OPS_TABLES.items()
         }
+        for view_name, cols, _ in _OPS_VIEWS:
+            _ops_static_cols[view_name] = [
+                ColumnMetadata(
+                    column_name=col_name,
+                    data_type=_OPS_PG_TO_TRINO.get(pg_type, "VARCHAR").lower(),
+                    is_nullable=not is_pk,
+                )
+                for col_name, pg_type, is_pk in cols
+            ]
         for _tbl in tables:
             if _tbl["source_id"] != "provisa-otel":
                 continue
             _vname = _tbl["table_name"]
-            if _vname not in _ops_view_cols:
+            if _vname not in _ops_static_cols:
                 continue
             _tid = _tbl["id"]
             if not col_types_converted.get(_tid):
-                col_types_converted[_tid] = _ops_view_cols[_vname]
+                col_types_converted[_tid] = _ops_static_cols[_vname]
 
         # Synthesize ColumnMetadata for provisa-admin meta tables (no provisa_admin Trino catalog)
         _pg_to_trino: dict[str, str] = {
@@ -1495,7 +1511,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         # Load API sources and endpoints (Phase U)
         from provisa.api_source.loader import load_api_sources
         state.api_endpoints, state.api_sources = await load_api_sources(
-            conn, tables, col_types_converted, roles, state.source_types,
+            _pg, tables, col_types_converted, roles, state.source_types,
         )
 
         # Background hydration for zero-param API endpoints (no path params → full collection known at startup)
@@ -1513,7 +1529,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                     for _ep, _src in eps:
                         try:
                             await fill_api_table(
-                                _src.base_url, _ep.path, _ep.default_params, _conn,
+                                _src.base_url, _ep.path, _ep.default_params, cast(asyncpg.Connection, _conn),
                                 "default", _ep.table_name, _ep.ttl,
                                 _ep.response_root, _ep.error_path, _ep.pk_column,
                             )
@@ -1808,8 +1824,11 @@ async def lifespan(app: FastAPI):
         while True:
             await asyncio.sleep(_sqlite_check_interval)
             try:
+                if state.pg_pool is None:
+                    continue
                 async with state.pg_pool.acquire() as conn:
-                    rows = await conn.fetch(
+                    _sc = cast(asyncpg.Connection, conn)
+                    rows = await _sc.fetch(
                         """SELECT rt.id, rt.table_name, rt.schema_name, s.path
                            FROM registered_tables rt
                            JOIN sources s ON s.id = rt.source_id
@@ -1819,7 +1838,7 @@ async def lifespan(app: FastAPI):
                         try:
                             migrated = await migrate_if_stale(
                                 r["id"], r["path"], r["table_name"],
-                                conn, r["schema_name"], r["table_name"],
+                                _sc, r["schema_name"], r["table_name"],
                             )
                             if migrated:
                                 _log.info("SQLite stale: re-migrated table %d (%s)", r["id"], r["table_name"])
@@ -1924,7 +1943,7 @@ async def lifespan(app: FastAPI):
             if isinstance(_raw, dict):
                 from provisa.core.config_loader import parse_config_dict
                 _cfg = parse_config_dict(_raw)
-                _cfg_triggers = _cfg.scheduler.triggers if _cfg.scheduler else []
+                _cfg_triggers = _cfg.scheduled_triggers if _cfg.scheduled_triggers else []
         except Exception:
             pass
         from provisa.scheduler.jobs import build_scheduler
@@ -1992,8 +2011,9 @@ async def lifespan(app: FastAPI):
                 if not hasattr(state, "graphql_remote_sources"):
                     state.graphql_remote_sources = {}
                 state.graphql_remote_sources["graphql-demo"] = reg.model_dump()
-                if getattr(state, "pg_pool", None) is not None:
-                    async with state.pg_pool.acquire() as _conn:
+                _demo_pool = state.pg_pool
+                if _demo_pool is not None:
+                    async with _demo_pool.acquire() as _conn:
                         # Ensure source row exists before registering tables (FK constraint)
                         await _conn.execute(
                             """
@@ -2008,15 +2028,16 @@ async def lifespan(app: FastAPI):
                             "INSERT INTO domains (id, description) VALUES ('shelter', 'Animal shelter staff and breed management') ON CONFLICT (id) DO NOTHING",
                         )
                     await _upsert_tables_to_semantic_layer(
-                        "graphql-demo", "shelter", tables, state.pg_pool,
+                        "graphql-demo", "shelter", tables, _demo_pool,
                     )
                     from provisa.api.admin.graphql_remote_router import _upsert_relationships_to_semantic_layer
-                    await _upsert_relationships_to_semantic_layer(relationships, state.pg_pool, state)
+                    await _upsert_relationships_to_semantic_layer(relationships, _demo_pool, state)
                     from provisa.core.models import Cardinality, Relationship
                     from provisa.core.repositories import relationship as rel_repo
-                    async with state.pg_pool.acquire() as _rel_conn:
+                    async with _demo_pool.acquire() as _rel_conn:
+                        _pg_rel = cast(asyncpg.Connection, _rel_conn)
                         try:
-                            await rel_repo.upsert(_rel_conn, Relationship(
+                            await rel_repo.upsert(_pg_rel, Relationship(
                                 id="employees_to_assignments",
                                 source_table_id="shelter__employees",
                                 target_table_id="shelter__assignments",
@@ -2027,7 +2048,7 @@ async def lifespan(app: FastAPI):
                         except Exception:
                             _log.warning("Failed to upsert employees_to_assignments", exc_info=True)
                         try:
-                            await rel_repo.upsert(_rel_conn, Relationship(
+                            await rel_repo.upsert(_pg_rel, Relationship(
                                 id="pets-to-shelter-breed",
                                 source_table_id="pets",
                                 target_table_id="shelter__animal_breeds",
@@ -2039,7 +2060,7 @@ async def lifespan(app: FastAPI):
                         except Exception:
                             _log.warning("Failed to upsert pets-to-shelter-breed", exc_info=True)
                         try:
-                            await rel_repo.upsert(_rel_conn, Relationship(
+                            await rel_repo.upsert(_pg_rel, Relationship(
                                 id="shelter-breed-to-pets",
                                 source_table_id="shelter__animal_breeds",
                                 target_table_id="pets",
@@ -2051,7 +2072,7 @@ async def lifespan(app: FastAPI):
                         except Exception:
                             _log.warning("Failed to upsert shelter-breed-to-pets", exc_info=True)
                         try:
-                            await rel_repo.upsert(_rel_conn, Relationship(
+                            await rel_repo.upsert(_pg_rel, Relationship(
                                 id="pets-to-shelter-assignments",
                                 source_table_id="pets",
                                 target_table_id="shelter__assignments",
@@ -2062,7 +2083,7 @@ async def lifespan(app: FastAPI):
                         except Exception:
                             _log.warning("Failed to upsert pets-to-shelter-assignments", exc_info=True)
                         try:
-                            await rel_repo.upsert(_rel_conn, Relationship(
+                            await rel_repo.upsert(_pg_rel, Relationship(
                                 id="shelter-assignments-to-pets",
                                 source_table_id="shelter__assignments",
                                 target_table_id="pets",
@@ -2073,7 +2094,7 @@ async def lifespan(app: FastAPI):
                         except Exception:
                             _log.warning("Failed to upsert shelter-assignments-to-pets", exc_info=True)
                         try:
-                            await rel_repo.upsert(_rel_conn, Relationship(
+                            await rel_repo.upsert(_pg_rel, Relationship(
                                 id="shelter-assignments-to-employees",
                                 source_table_id="shelter__assignments",
                                 target_table_id="shelter__employees",

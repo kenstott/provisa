@@ -204,6 +204,7 @@ observability:
   log_level: WARNING
   compact_cron: "* * * * *"
   compact_batch_size: 1000
+  s3_endpoint: "http://localhost:9000"
   telemetry_filter:
     redact_sql_literals: false       # strip literal values from db.statement before export to internal endpoint
     redact_attributes: []            # attribute names to drop entirely before export to internal endpoint

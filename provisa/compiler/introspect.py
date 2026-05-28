@@ -103,6 +103,7 @@ def introspect_tables(
         if table.get("schema_name") == "graphql_remote" or _src_type in (
             "graphql_remote",
             "graphql",
+            "kafka",
         ):
             # Synthesize ColumnMetadata from registered columns (no Trino catalog for remote GQL)
             result[table["id"]] = [
@@ -116,9 +117,9 @@ def introspect_tables(
             ]
             continue
         source = sources[table["source_id"]]
-        catalog_name = source.get("database") or source_to_catalog(source["id"])
+        catalog_name = str(source.get("database") or source_to_catalog(source["id"]))
         # Use physical table name if mapped (e.g., Kafka discriminated tables)
-        trino_table_name = table["table_name"]
+        trino_table_name = str(table["table_name"])
         if physical_table_map:
             trino_table_name = physical_table_map.get(trino_table_name, trino_table_name)
         import logging
@@ -128,7 +129,7 @@ def introspect_tables(
         for attempt in range(6):
             try:
                 columns = introspect_table_columns(
-                    conn, catalog_name, table["schema_name"], trino_table_name
+                    conn, catalog_name, str(table["schema_name"]), trino_table_name
                 )
                 result[table["id"]] = columns
                 last_exc = None
