@@ -912,14 +912,18 @@ def test_alias_rel_type_resolves_via_aliases_index():
     assert "dept_id" in sql.lower()
 
 
-def test_wrong_arrow_direction_raises_error():
-    """Arrow direction must match canonical relationship direction when both node types are explicit."""
-    from provisa.cypher.translator import CypherTranslateError
+def test_wrong_arrow_direction_returns_empty():
+    """Wrong arrow direction on explicit typed nodes produces impossible join, not an error.
+
+    Cypher semantics: (e:Employee)<-[:WORKS_FOR]-(d:Department) where WORKS_FOR is
+    Employee→Department simply returns no rows — same as traversing a non-existent rel.
+    """
     lm = _make_label_map_with_alias()
-    # WORKS_FOR is defined Employee→Department; '<-' on explicit typed nodes must be rejected.
     ast = parse_cypher("MATCH (e:Employee)<-[:WORKS_FOR]-(d:Department) RETURN e.name, d.name")
-    with pytest.raises(CypherTranslateError, match="contradicts"):
-        cypher_to_sql(ast, lm, {})
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino").upper()
+    # Impossible predicate injected instead of a valid ON clause
+    assert "FALSE" in sql or "1 = 0" in sql or "WHERE FALSE" in sql
 
 
 def test_shared_alias_produces_union_all():
@@ -931,14 +935,13 @@ def test_shared_alias_produces_union_all():
     assert "UNION ALL" in sql.upper()
 
 
-def test_unknown_rel_type_raises_error():
-    """REQ-390: unknown relationship type raises CypherTranslateError."""
-    from provisa.cypher.translator import CypherTranslateError
-
+def test_unknown_rel_type_returns_empty():
+    """Unknown relationship type produces impossible join (Cypher best-effort semantics)."""
     lm = _make_label_map_with_alias()
     ast = parse_cypher("MATCH (e:Employee)-[:UNKNOWN_REL]->(d:Department) RETURN e.name")
-    with pytest.raises(CypherTranslateError, match="Unknown relationship type or alias"):
-        cypher_to_sql(ast, lm, {})
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino").upper()
+    assert "FALSE" in sql or "1 = 0" in sql or "WHERE FALSE" in sql
 
 
 def _make_label_map_product_reviews() -> CypherLabelMap:
