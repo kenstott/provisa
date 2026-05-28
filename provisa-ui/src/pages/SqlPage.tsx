@@ -252,17 +252,18 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
       for (const rel of existingRels) {
         const isNew = rel.sourceTableName === tableName || rel.targetTableName === tableName;
         const otherTable = rel.sourceTableName === tableName ? rel.targetTableName : rel.sourceTableName;
-        if (isNew && existingNames.has(otherTable) && rel.targetColumn) {
-          const joinId = `${rel.sourceTableName}__${rel.sourceColumn}__${rel.targetTableName}__${rel.targetColumn}`;
-          newJoins.push({
-            id: joinId,
-            fromTable: rel.sourceTableName,
-            fromCol: rel.sourceColumn,
-            toTable: rel.targetTableName,
-            toCol: rel.targetColumn,
-            cardinality: rel.cardinality === "one-to-many" ? "one-to-many" : "many-to-one",
-          });
-        }
+        if (!isNew || !existingNames.has(otherTable) || !rel.targetColumn) continue;
+        // Always orient FK→PK: the FK column (many side) references the PK column (one side).
+        // one-to-many: source=parent(PK), target=child(FK) → fromTable=target, fromCol=targetColumn
+        // many-to-one: source=child(FK), target=parent(PK) → fromTable=source, fromCol=sourceColumn
+        const isFkOnTarget = rel.cardinality === "one-to-many";
+        const fkTable = isFkOnTarget ? rel.targetTableName : rel.sourceTableName;
+        const fkCol = isFkOnTarget ? rel.targetColumn : rel.sourceColumn;
+        const pkTable = isFkOnTarget ? rel.sourceTableName : rel.targetTableName;
+        const pkCol = isFkOnTarget ? rel.sourceColumn : rel.targetColumn;
+        // Canonical join ID normalizes direction so forward+reverse config entries dedup correctly.
+        const joinId = `${fkTable}__${fkCol}__${pkTable}__${pkCol}`;
+        newJoins.push({ id: joinId, fromTable: fkTable, fromCol: fkCol, toTable: pkTable, toCol: pkCol, cardinality: "many-to-one" });
       }
       if (newJoins.length > 0) {
         setCanvasJoins((prevJ) => {

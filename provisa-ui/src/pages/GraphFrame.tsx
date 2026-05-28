@@ -856,10 +856,12 @@ interface CanvasProps {
   labelSiblings?: Record<string, string[]>;
   showingChildrenNatural: Set<string>;
   onToggleChildren: (nodeKey: string) => void;
+  onToggleChildrenBatch: (nodeKeys: string[], circular?: boolean) => void;
   showingChildrenCircular: Set<string>;
   onToggleChildrenCircular: (nodeKey: string) => void;
   showingParents: Set<string>;
   onToggleParents: (nodeKey: string) => void;
+  onToggleParentsBatch: (nodeKeys: string[], circular?: boolean) => void;
   showingParentsCircular: Set<string>;
   onToggleParentsCircular: (nodeKey: string) => void;
   onCyReady?: (cy: CyInstance | null) => void;
@@ -899,7 +901,7 @@ const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
   } as CyLayoutOptions,
 };
 
-function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, labelSiblings: _labelSiblings, showingChildrenNatural, onToggleChildren, showingChildrenCircular, onToggleChildrenCircular, showingParents, onToggleParents, showingParentsCircular, onToggleParentsCircular, onCyReady, clusterLevel, hullSvgRef }: CanvasProps) {
+function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, labelSiblings: _labelSiblings, showingChildrenNatural, onToggleChildren, onToggleChildrenBatch, showingChildrenCircular, onToggleChildrenCircular, showingParents, onToggleParents, onToggleParentsBatch, showingParentsCircular, onToggleParentsCircular, onCyReady, clusterLevel, hullSvgRef }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
   const colorOverridesRef = useRef(colorOverrides);
@@ -1770,7 +1772,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             title={hasChildRels ? undefined : "No outgoing relationships for this node type"}
             onClick={() => {
               if (!hasChildRels) return;
-              nodeCtxMenu.selectedNodeIds.forEach((id) => onToggleChildren(id));
+              onToggleChildrenBatch(nodeCtxMenu.selectedNodeIds, false);
               setNodeCtxMenu(null);
             }}
           >
@@ -1783,7 +1785,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             title={hasChildRels ? "Arrange children in a ring around this node" : "No outgoing relationships for this node type"}
             onClick={() => {
               if (!hasChildRels) return;
-              nodeCtxMenu.selectedNodeIds.forEach((id) => onToggleChildrenCircular(id));
+              onToggleChildrenBatch(nodeCtxMenu.selectedNodeIds, true);
               setNodeCtxMenu(null);
             }}
           >
@@ -1796,7 +1798,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             title={hasParentRels ? undefined : "No incoming relationships for this node type"}
             onClick={() => {
               if (!hasParentRels) return;
-              nodeCtxMenu.selectedNodeIds.forEach((id) => onToggleParents(id));
+              onToggleParentsBatch(nodeCtxMenu.selectedNodeIds, false);
               setNodeCtxMenu(null);
             }}
           >
@@ -1809,7 +1811,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             title={hasParentRels ? "Arrange parents in a ring around this node" : "No incoming relationships for this node type"}
             onClick={() => {
               if (!hasParentRels) return;
-              nodeCtxMenu.selectedNodeIds.forEach((id) => onToggleParentsCircular(id));
+              onToggleParentsBatch(nodeCtxMenu.selectedNodeIds, true);
               setNodeCtxMenu(null);
             }}
           >
@@ -2125,93 +2127,11 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
     return extractElements(rows);
   }, []);
 
-  const handleToggleChildren = useCallback(async (nodeKey: string) => {
-    console.log("[toggleChildren] CALLED nodeKey=", nodeKey);
-    const overlayKey = `${nodeKey}:children`;
-    if (overlayData.has(overlayKey)) {
-      console.log("[toggleChildren] early exit: overlay already exists");
-      setOverlayData((prev) => { const next = new Map(prev); next.delete(overlayKey); return next; });
-      return;
-    }
-    const gNode = _resolveNodeForKey(nodeKey);
-    console.log("[toggleChildren] gNode=", gNode ? gNode.label : "null");
-    if (!gNode) return;
-    const tableLabel = gNode.label.includes(":") ? gNode.label.split(":").pop()! : gNode.label;
-    const pkCols = pkMap[gNode.label] ?? pkMap[tableLabel] ?? [];
-    const pkCol = pkCols[0] ?? null;
-    const pkValue = gNode.properties[pkCol ?? ""] ?? gNode.id;
-    const pkLit = pkValue === null || pkValue === undefined
-      ? null
-      : isNaN(Number(pkValue)) ? `'${String(pkValue).replace(/'/g, "\\'")}'` : String(pkValue);
-    console.log("[toggleChildren] label=", gNode.label, "tableLabel=", tableLabel, "pkCol=", pkCol, "pkLit=", pkLit);
-    console.log("[toggleChildren] all sourceTableNames=", (relationships ?? []).map(r => r.sourceTableName));
-    if (!pkLit || !pkCol) { console.log("[toggleChildren] early exit: no pkLit or pkCol"); return; }
-    const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
-    const tl = norm(tableLabel);
-    const rels = (relationships ?? []).filter((r) => norm(r.sourceTableName) === tl);
-    console.log("[toggleChildren] tl=", tl, "matched rels=", rels.length, rels.map(r => ({ src: r.sourceTableName, alias: r.alias, graphqlAlias: r.graphqlAlias, computedCypherAlias: r.computedCypherAlias })));
-    console.log("[toggleChildren] pkMap keys=", Object.keys(pkMap), "pkCols=", pkCols, "gNode.label=", gNode.label);
-    const myPkKey = pkCols.join(",");
-    console.log("[toggleChildren] myPkKey=", myPkKey);
-    const siblingSourceRels = rels.length === 0 ? (() => {
-      const allEntries = Object.entries(pkMap);
-      console.log("[toggleChildren] pkMap entries for sibling search:", allEntries.map(([lbl, cols]) => ({ lbl, cols, pkKey: cols.join(","), match: cols.join(",") === myPkKey })));
-      const siblingTls = allEntries
-        .filter(([lbl, cols]) => cols.join(",") === myPkKey && lbl !== gNode.label && lbl !== tableLabel)
-        .map(([lbl]) => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl));
-      console.log("[toggleChildren] siblingTls=", siblingTls, "all rel sourceTableNames=", (relationships ?? []).map(r => norm(r.sourceTableName)));
-      return (relationships ?? []).filter(r => siblingTls.includes(norm(r.sourceTableName)));
-    })() : null;
-    const effectiveRels = rels.length > 0 ? rels : (siblingSourceRels ?? []);
-    const effectiveLabel = rels.length > 0 ? tableLabel : (() => {
-      if (!siblingSourceRels || siblingSourceRels.length === 0) return tableLabel;
-      const sib = siblingSourceRels[0];
-      return Object.keys(pkMap).find(lbl => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl) === norm(sib.sourceTableName))?.split(":").pop() ?? sib.sourceTableName;
-    })();
-    console.log("[toggleChildren] effectiveRels=", effectiveRels.length, "effectiveLabel=", effectiveLabel, "siblingSourceRels=", siblingSourceRels?.length);
-    if (effectiveRels.length === 0) return;
-    // Run each relationship as a separate query and merge — avoids Trino UNION schema mismatch
-    const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = { nodes: new Map(), edges: new Map() };
-    await Promise.all(effectiveRels.map(async (r) => {
-      const relType = (r.alias ?? r.graphqlAlias ?? "").toUpperCase();
-      const q = `MATCH (n:${effectiveLabel})-[r:${relType}]->(child) WHERE n.${pkCol} = ${pkLit} RETURN n, r, child`;
-      console.log("[toggleChildren] query=", q);
-      const result = await _fetchNeighbors(q);
-      console.log("[toggleChildren] result nodes=", result?.nodes.size, "edges=", result?.edges.size);
-      if (result) {
-        result.nodes.forEach((n, k) => merged.nodes.set(k, n));
-        result.edges.forEach((e, k) => merged.edges.set(k, e));
-      }
-    }));
-    // Patch: when using a sibling label, the query returns a sibling-labelled node for the same
-    // entity. Remove it and remap its edges to the alias node already on the canvas.
-    if (siblingSourceRels && siblingSourceRels.length > 0) {
-      const sibNodeKey = [...merged.nodes.keys()].find((k) => {
-        const n = merged.nodes.get(k)!;
-        return String(n.id) === String(pkValue) && n.label !== gNode.label;
-      });
-      if (sibNodeKey) {
-        merged.nodes.delete(sibNodeKey);
-        merged.edges.forEach((edge) => {
-          if (`${edge.startNode.label}:${edge.startNode.id}` === sibNodeKey) {
-            edge.startNode = gNode;
-          }
-        });
-      }
-    }
-    if (merged.nodes.size > 0 || merged.edges.size > 0) {
-      setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
-    }
-  }, [frame.nodes, overlayData, pkMap, relationships, _resolveNodeForKey, _fetchNeighbors]);
+  type MergedOverlay = { nodes: Map<string, GNode>; edges: Map<string, GEdge> };
 
-  const handleToggleChildrenCircular = useCallback(async (nodeKey: string) => {
-    const overlayKey = `${nodeKey}:children:circular`;
-    if (overlayData.has(overlayKey)) {
-      setOverlayData((prev) => { const next = new Map(prev); next.delete(overlayKey); return next; });
-      return;
-    }
+  const _fetchChildrenForNode = useCallback(async (nodeKey: string): Promise<MergedOverlay | null> => {
     const gNode = _resolveNodeForKey(nodeKey);
-    if (!gNode) return;
+    if (!gNode) return null;
     const tableLabel = gNode.label.includes(":") ? gNode.label.split(":").pop()! : gNode.label;
     const pkCols = pkMap[gNode.label] ?? pkMap[tableLabel] ?? [];
     const pkCol = pkCols[0] ?? null;
@@ -2219,7 +2139,7 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
     const pkLit = pkValue === null || pkValue === undefined
       ? null
       : isNaN(Number(pkValue)) ? `'${String(pkValue).replace(/'/g, "\\'")}'` : String(pkValue);
-    if (!pkLit || !pkCol) return;
+    if (!pkLit || !pkCol) return null;
     const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
     const tl = norm(tableLabel);
     const rels = (relationships ?? []).filter((r) => norm(r.sourceTableName) === tl);
@@ -2236,81 +2156,24 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
       const sib = siblingSourceRels[0];
       return Object.keys(pkMap).find(lbl => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl) === norm(sib.sourceTableName))?.split(":").pop() ?? sib.sourceTableName;
     })();
-    if (effectiveRels.length === 0) return;
-    const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = { nodes: new Map(), edges: new Map() };
+    if (effectiveRels.length === 0) return null;
+    const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
     await Promise.all(effectiveRels.map(async (r) => {
       const relType = (r.alias ?? r.graphqlAlias ?? "").toUpperCase();
       const q = `MATCH (n:${effectiveLabel})-[r:${relType}]->(child) WHERE n.${pkCol} = ${pkLit} RETURN n, r, child`;
       const result = await _fetchNeighbors(q);
-      if (result) {
-        result.nodes.forEach((n, k) => merged.nodes.set(k, n));
-        result.edges.forEach((e, k) => merged.edges.set(k, e));
-      }
+      if (result) { result.nodes.forEach((n, k) => merged.nodes.set(k, n)); result.edges.forEach((e, k) => merged.edges.set(k, e)); }
     }));
     if (siblingSourceRels && siblingSourceRels.length > 0) {
-      const sibNodeKey = [...merged.nodes.keys()].find((k) => {
-        const n = merged.nodes.get(k)!;
-        return String(n.id) === String(pkValue) && n.label !== gNode.label;
-      });
-      if (sibNodeKey) {
-        merged.nodes.delete(sibNodeKey);
-        merged.edges.forEach((edge) => {
-          if (`${edge.startNode.label}:${edge.startNode.id}` === sibNodeKey) {
-            edge.startNode = gNode;
-          }
-        });
-      }
+      const sibNodeKey = [...merged.nodes.keys()].find((k) => { const n = merged.nodes.get(k)!; return String(n.id) === String(pkValue) && n.label !== gNode.label; });
+      if (sibNodeKey) { merged.nodes.delete(sibNodeKey); merged.edges.forEach((edge) => { if (`${edge.startNode.label}:${edge.startNode.id}` === sibNodeKey) edge.startNode = gNode; }); }
     }
-    if (merged.nodes.size > 0 || merged.edges.size > 0) {
-      setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
-    }
-  }, [frame.nodes, overlayData, pkMap, relationships, _resolveNodeForKey, _fetchNeighbors]);
+    return (merged.nodes.size > 0 || merged.edges.size > 0) ? merged : null;
+  }, [pkMap, relationships, _resolveNodeForKey, _fetchNeighbors]);
 
-  const handleToggleParents = useCallback(async (nodeKey: string) => {
-    const overlayKey = `${nodeKey}:parents`;
-    if (overlayData.has(overlayKey)) {
-      setOverlayData((prev) => { const next = new Map(prev); next.delete(overlayKey); return next; });
-      return;
-    }
+  const _fetchParentsForNode = useCallback(async (nodeKey: string): Promise<MergedOverlay | null> => {
     const gNode = _resolveNodeForKey(nodeKey);
-    if (!gNode) return;
-    const tableLabel = gNode.label.includes(":") ? gNode.label.split(":").pop()! : gNode.label;
-    const pkCols = pkMap[gNode.label] ?? pkMap[tableLabel] ?? [];
-    const pkCol = pkCols[0] ?? null;
-    // gNode.id holds the PK value (graph rewriter places it in "id" and excludes it from properties)
-    const pkValue = gNode.properties[pkCol ?? ""] ?? gNode.id;
-    const pkLit = pkValue === null || pkValue === undefined
-      ? null
-      : isNaN(Number(pkValue)) ? `'${String(pkValue).replace(/'/g, "\\'")}'` : String(pkValue);
-    if (!pkLit || !pkCol) return;
-    const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
-    const tl = norm(tableLabel);
-    const rels = (relationships ?? []).filter((r) => norm(r.targetTableName) === tl);
-    if (rels.length === 0) return;
-    // Run each relationship as a separate query and merge — avoids Trino UNION schema mismatch
-    const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = { nodes: new Map(), edges: new Map() };
-    await Promise.all(rels.map(async (r) => {
-      const relType = (r.alias ?? r.graphqlAlias ?? "").toUpperCase();
-      const q = `MATCH (parent)-[r:${relType}]->(n:${tableLabel}) WHERE n.${pkCol} = ${pkLit} RETURN n, r, parent`;
-      const result = await _fetchNeighbors(q);
-      if (result) {
-        result.nodes.forEach((n, k) => merged.nodes.set(k, n));
-        result.edges.forEach((e, k) => merged.edges.set(k, e));
-      }
-    }));
-    if (merged.nodes.size > 0 || merged.edges.size > 0) {
-      setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
-    }
-  }, [frame.nodes, overlayData, pkMap, relationships, _resolveNodeForKey, _fetchNeighbors]);
-
-  const handleToggleParentsCircular = useCallback(async (nodeKey: string) => {
-    const overlayKey = `${nodeKey}:parents:circular`;
-    if (overlayData.has(overlayKey)) {
-      setOverlayData((prev) => { const next = new Map(prev); next.delete(overlayKey); return next; });
-      return;
-    }
-    const gNode = _resolveNodeForKey(nodeKey);
-    if (!gNode) return;
+    if (!gNode) return null;
     const tableLabel = gNode.label.includes(":") ? gNode.label.split(":").pop()! : gNode.label;
     const pkCols = pkMap[gNode.label] ?? pkMap[tableLabel] ?? [];
     const pkCol = pkCols[0] ?? null;
@@ -2318,7 +2181,7 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
     const pkLit = pkValue === null || pkValue === undefined
       ? null
       : isNaN(Number(pkValue)) ? `'${String(pkValue).replace(/'/g, "\\'")}'` : String(pkValue);
-    if (!pkLit || !pkCol) return;
+    if (!pkLit || !pkCol) return null;
     const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
     const tl = norm(tableLabel);
     const rels = (relationships ?? []).filter((r) => norm(r.targetTableName) === tl);
@@ -2335,35 +2198,83 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
       const sib = siblingTargetRels[0];
       return Object.keys(pkMap).find(lbl => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl) === norm(sib.targetTableName))?.split(":").pop() ?? sib.targetTableName;
     })();
-    if (effectiveRels.length === 0) return;
-    const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = { nodes: new Map(), edges: new Map() };
+    if (effectiveRels.length === 0) return null;
+    const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
     await Promise.all(effectiveRels.map(async (r) => {
       const relType = (r.alias ?? r.graphqlAlias ?? "").toUpperCase();
       const q = `MATCH (parent)-[r:${relType}]->(n:${effectiveLabel}) WHERE n.${pkCol} = ${pkLit} RETURN n, r, parent`;
       const result = await _fetchNeighbors(q);
-      if (result) {
-        result.nodes.forEach((n, k) => merged.nodes.set(k, n));
-        result.edges.forEach((e, k) => merged.edges.set(k, e));
-      }
+      if (result) { result.nodes.forEach((n, k) => merged.nodes.set(k, n)); result.edges.forEach((e, k) => merged.edges.set(k, e)); }
     }));
     if (siblingTargetRels && siblingTargetRels.length > 0) {
-      const sibNodeKey = [...merged.nodes.keys()].find((k) => {
-        const n = merged.nodes.get(k)!;
-        return String(n.id) === String(pkValue) && n.label !== gNode.label;
-      });
-      if (sibNodeKey) {
-        merged.nodes.delete(sibNodeKey);
-        merged.edges.forEach((edge) => {
-          if (`${edge.endNode.label}:${edge.endNode.id}` === sibNodeKey) {
-            edge.endNode = gNode;
-          }
-        });
-      }
+      const sibNodeKey = [...merged.nodes.keys()].find((k) => { const n = merged.nodes.get(k)!; return String(n.id) === String(pkValue) && n.label !== gNode.label; });
+      if (sibNodeKey) { merged.nodes.delete(sibNodeKey); merged.edges.forEach((edge) => { if (`${edge.endNode.label}:${edge.endNode.id}` === sibNodeKey) edge.endNode = gNode; }); }
     }
-    if (merged.nodes.size > 0 || merged.edges.size > 0) {
-      setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
+    return (merged.nodes.size > 0 || merged.edges.size > 0) ? merged : null;
+  }, [pkMap, relationships, _resolveNodeForKey, _fetchNeighbors]);
+
+  const handleToggleChildren = useCallback(async (nodeKey: string) => {
+    const overlayKey = `${nodeKey}:children`;
+    if (overlayData.has(overlayKey)) { setOverlayData((prev) => { const next = new Map(prev); next.delete(overlayKey); return next; }); return; }
+    const merged = await _fetchChildrenForNode(nodeKey);
+    if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
+  }, [overlayData, _fetchChildrenForNode]);
+
+  const handleToggleChildrenCircular = useCallback(async (nodeKey: string) => {
+    const overlayKey = `${nodeKey}:children:circular`;
+    if (overlayData.has(overlayKey)) { setOverlayData((prev) => { const next = new Map(prev); next.delete(overlayKey); return next; }); return; }
+    const merged = await _fetchChildrenForNode(nodeKey);
+    if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
+  }, [overlayData, _fetchChildrenForNode]);
+
+  const handleToggleChildrenBatch = useCallback(async (nodeKeys: string[], circular = false) => {
+    const suffix = circular ? ":children:circular" : ":children";
+    const toRemove = nodeKeys.filter(id => overlayData.has(`${id}${suffix}`));
+    const toAdd = nodeKeys.filter(id => !overlayData.has(`${id}${suffix}`));
+    if (toAdd.length === 0) {
+      setOverlayData((prev) => { const next = new Map(prev); toRemove.forEach(id => next.delete(`${id}${suffix}`)); return next; });
+      return;
     }
-  }, [frame.nodes, overlayData, pkMap, relationships, _resolveNodeForKey, _fetchNeighbors]);
+    // All nodes fetched in parallel off-screen; single setOverlayData call renders them all at once.
+    const results = await Promise.all(toAdd.map(id => _fetchChildrenForNode(id)));
+    setOverlayData((prev) => {
+      const next = new Map(prev);
+      toRemove.forEach(id => next.delete(`${id}${suffix}`));
+      toAdd.forEach((id, i) => { if (results[i]) next.set(`${id}${suffix}`, results[i]!); });
+      return next;
+    });
+  }, [overlayData, _fetchChildrenForNode]);
+
+  const handleToggleParents = useCallback(async (nodeKey: string) => {
+    const overlayKey = `${nodeKey}:parents`;
+    if (overlayData.has(overlayKey)) { setOverlayData((prev) => { const next = new Map(prev); next.delete(overlayKey); return next; }); return; }
+    const merged = await _fetchParentsForNode(nodeKey);
+    if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
+  }, [overlayData, _fetchParentsForNode]);
+
+  const handleToggleParentsCircular = useCallback(async (nodeKey: string) => {
+    const overlayKey = `${nodeKey}:parents:circular`;
+    if (overlayData.has(overlayKey)) { setOverlayData((prev) => { const next = new Map(prev); next.delete(overlayKey); return next; }); return; }
+    const merged = await _fetchParentsForNode(nodeKey);
+    if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
+  }, [overlayData, _fetchParentsForNode]);
+
+  const handleToggleParentsBatch = useCallback(async (nodeKeys: string[], circular = false) => {
+    const suffix = circular ? ":parents:circular" : ":parents";
+    const toRemove = nodeKeys.filter(id => overlayData.has(`${id}${suffix}`));
+    const toAdd = nodeKeys.filter(id => !overlayData.has(`${id}${suffix}`));
+    if (toAdd.length === 0) {
+      setOverlayData((prev) => { const next = new Map(prev); toRemove.forEach(id => next.delete(`${id}${suffix}`)); return next; });
+      return;
+    }
+    const results = await Promise.all(toAdd.map(id => _fetchParentsForNode(id)));
+    setOverlayData((prev) => {
+      const next = new Map(prev);
+      toRemove.forEach(id => next.delete(`${id}${suffix}`));
+      toAdd.forEach((id, i) => { if (results[i]) next.set(`${id}${suffix}`, results[i]!); });
+      return next;
+    });
+  }, [overlayData, _fetchParentsForNode]);
 
   const handleExcludeNode = useCallback((nodeKeys: string[]) => {
     // Chain exclusions across all selected nodes, then only update query text.
@@ -2669,7 +2580,7 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
       )}
       {frame.status !== "error" && hasGraph && (
         <div className="gf-graph-area" style={{ height: graphAreaHeight, display: activeView === "graph" ? undefined : "none" }}>
-          <GraphCanvas nodes={frame.nodes} edges={frame.edges} overlayNodes={overlayNodes} overlayEdges={overlayEdges} onSelect={setSelected} colorOverrides={colorOverrides} sizeOverrides={sizeOverrides} labelProperty={labelProperty} relLineOverrides={relLineOverrides} onExcludeNode={handleExcludeNode} pkMap={pkMap} relationships={relationships ?? []} showingChildrenNatural={showingChildrenNatural} onToggleChildren={handleToggleChildren} showingChildrenCircular={showingChildrenCircular} onToggleChildrenCircular={handleToggleChildrenCircular} showingParents={showingParents} onToggleParents={handleToggleParents} showingParentsCircular={showingParentsCircular} onToggleParentsCircular={handleToggleParentsCircular} onCyReady={(cy) => { canvasCyRef.current = cy; }} clusterLevel={clusterLevel} hullSvgRef={canvasHullSvgRef} />
+          <GraphCanvas nodes={frame.nodes} edges={frame.edges} overlayNodes={overlayNodes} overlayEdges={overlayEdges} onSelect={setSelected} colorOverrides={colorOverrides} sizeOverrides={sizeOverrides} labelProperty={labelProperty} relLineOverrides={relLineOverrides} onExcludeNode={handleExcludeNode} pkMap={pkMap} relationships={relationships ?? []} showingChildrenNatural={showingChildrenNatural} onToggleChildren={handleToggleChildren} onToggleChildrenBatch={handleToggleChildrenBatch} showingChildrenCircular={showingChildrenCircular} onToggleChildrenCircular={handleToggleChildrenCircular} showingParents={showingParents} onToggleParents={handleToggleParents} onToggleParentsBatch={handleToggleParentsBatch} showingParentsCircular={showingParentsCircular} onToggleParentsCircular={handleToggleParentsCircular} onCyReady={(cy) => { canvasCyRef.current = cy; }} clusterLevel={clusterLevel} hullSvgRef={canvasHullSvgRef} />
           <Inspector selected={selected} colorOverrides={colorOverrides} onColorChange={onColorChange}
                      onClose={() => setSelected(null)}
                      width={inspectorWidth} onResizeStart={handleResizeStart}
