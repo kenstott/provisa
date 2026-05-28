@@ -389,6 +389,8 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
                         <span
                           className="graph-label-pill"
                           style={{ background: color }}
+                          draggable
+                          onDragStart={(e) => e.dataTransfer.setData("text/x-provisa-label", compoundLabel)}
                           onClick={() => onLabelClick(compoundLabel)}
                           onContextMenu={(e) => handleNodeRightClick(e, node)}
                           title={`MATCH (n:${compoundLabel}) RETURN n LIMIT 25`}
@@ -804,6 +806,66 @@ export function GraphPage() {
     }
   }, [role]);
 
+  const framesRef = useRef(frames);
+  framesRef.current = frames;
+
+  const onTableDrop = useCallback((frameId: string, compoundLabel: string) => {
+    const frame = framesRef.current.find((fr) => fr.id === frameId);
+    if (!frame) return;
+
+    // The dropped label's virtual table name is the last segment (after the last colon)
+    const droppedTableName = compoundLabel.split(":").pop()!;
+
+    // Find a relationship between any node currently in the frame and the dropped table.
+    // Match by virtual table name (alias takes precedence over raw table name).
+    const frameNodeLabels = new Set<string>();
+    frame.nodes.forEach((node) => {
+      node.label.split(":").forEach((l) => frameNodeLabels.add(l));
+    });
+
+    // Build a map from node label → variable name by parsing MATCH clauses in the query
+    const varByLabel: Record<string, string> = {};
+    for (const m of frame.query.matchAll(/\(\s*(\w+)\s*:([\w:]+)\s*\)/g)) {
+      const [, varName, labels] = m;
+      labels.split(":").forEach((l) => { varByLabel[l] = varName; });
+    }
+
+    // Find a rel where one side is a frame node and the other is the dropped table
+    let sourceVar = "n";
+    let relAlias: string | null = null;
+    const rel = adminRels.find((r) => {
+      const srcMatch = frameNodeLabels.has(r.sourceTableName) && r.targetTableName === droppedTableName;
+      const tgtMatch = frameNodeLabels.has(r.targetTableName) && r.sourceTableName === droppedTableName;
+      return srcMatch || tgtMatch;
+    });
+    if (rel) {
+      const connectedLabel = frameNodeLabels.has(rel.sourceTableName) ? rel.sourceTableName : rel.targetTableName;
+      sourceVar = varByLabel[connectedLabel] ?? "n";
+      relAlias = rel.alias;
+    } else {
+      // No known relationship — fall back to first MATCH variable
+      const nodeVarMatch = frame.query.match(/\bMATCH\s*\(\s*(\w+)/i);
+      sourceVar = nodeVarMatch?.[1] ?? "n";
+    }
+
+    const suffix = compoundLabel.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8);
+    const relVar = `r${suffix}`;
+    const targetVar = `m${suffix}`;
+    const relTypeStr = relAlias ? `[${relVar}:${relAlias}]` : `[${relVar}]`;
+    const trimmed = frame.query.replace(/\s+LIMIT\s+\d+\s*$/i, "").trim();
+    const returnMatches = [...trimmed.matchAll(/\bRETURN\b/gi)];
+    const lastReturn = returnMatches.pop();
+    let newQuery: string;
+    if (!lastReturn || lastReturn.index === undefined) {
+      newQuery = `${trimmed}\nOPTIONAL MATCH (${sourceVar})-${relTypeStr}-(${targetVar}:${compoundLabel})\nRETURN ${sourceVar}, ${relVar}, ${targetVar}`;
+    } else {
+      const beforeReturn = trimmed.slice(0, lastReturn.index).trimEnd();
+      const returnClause = trimmed.slice(lastReturn.index + 6).trim();
+      newQuery = `${beforeReturn}\nOPTIONAL MATCH (${sourceVar})-${relTypeStr}-(${targetVar}:${compoundLabel})\nRETURN ${returnClause}, ${relVar}, ${targetVar}`;
+    }
+    rerunFrame(frameId, newQuery);
+  }, [rerunFrame, adminRels]);
+
   const handleColorChange = useCallback((label: string, color: string) => {
     setColorOverrides((prev) => ({ ...prev, [label]: color }));
   }, []);
@@ -951,6 +1013,7 @@ export function GraphPage() {
               frame={frame}
               onClose={closeFrame}
               onRerun={rerunFrame}
+              onTableDrop={onTableDrop}
               colorOverrides={colorOverrides}
               sizeOverrides={sizeOverrides}
               labelProperty={labelProperty}

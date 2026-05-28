@@ -388,7 +388,7 @@ export function buildRemainingRelsQueries(
 // `label` in the query. Uses `n.<pkCol> IN [<pkValue>]` when a PK is available,
 // falling back to `id(n) IN [<nodeId>]` otherwise.
 // Returns null if the label/variable can't be found.
-function injectExclusion(
+export function injectExclusion(
   query: string,
   label: string,
   nodeId: string,
@@ -477,7 +477,7 @@ function injectExclusion(
     : new RegExp(`(WHERE|AND)\\s+NOT\\s+id\\(${varName}\\)\\s+IN\\s+\\[([^\\]]*)\\]`, "i");
   const existing = workingQuery.match(existingRePk);
   if (existing) {
-    const prefix = existing[1].toUpperCase(); // WHERE or AND
+    const prefix = existing[1].toUpperCase();
     const currentList = existing[2];
     const replacement = usePk
       ? `${prefix} NOT ${varName}.${pkCol} IN [${currentList}, ${valLit}]`
@@ -485,7 +485,8 @@ function injectExclusion(
     return workingQuery.replace(existingRePk, replacement);
   }
 
-  // Inject before RETURN
+  // Inject before RETURN. The backend translator guards optional variables with
+  // IS NULL so this WHERE does not filter out rows where the variable is NULL.
   const returnIdx = workingQuery.search(/\bRETURN\b/i);
   if (returnIdx === -1) return null;
   const before = workingQuery.slice(0, returnIdx).trimEnd();
@@ -2048,6 +2049,7 @@ interface GraphFrameProps {
   frame: FrameData;
   onClose: (id: string) => void;
   onRerun: (id: string, query: string) => void;
+  onTableDrop?: (frameId: string, compoundLabel: string) => void;
   colorOverrides: Record<string, string>;
   sizeOverrides: Record<string, number>;
   labelProperty: Record<string, string>;
@@ -2060,7 +2062,7 @@ interface GraphFrameProps {
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<void>;
 }
 
-export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onColorChange, pkMap, relationships, schemaRels, autoImpute: autoImputeProp = false, onSaveEdgeAlias }: GraphFrameProps) {
+export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onColorChange, pkMap, relationships, schemaRels, autoImpute: autoImputeProp = false, onSaveEdgeAlias }: GraphFrameProps) {
   const [view, setView] = useState<"graph" | "table" | "json">("graph");
   const [selected, setSelected] = useState<{ kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
@@ -2070,8 +2072,10 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
   const [editQuery, setEditQuery] = useState(frame.query);
   const editQueryRef = useRef(editQuery);
   editQueryRef.current = editQuery;
+  useEffect(() => { setEditQuery(frame.query); }, [frame.query]);
   const [overlayData, setOverlayData] = useState<Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>>(new Map);
   const [autoImpute, setAutoImpute] = useState(autoImputeProp);
+  const [dragOver, setDragOver] = useState(false);
   const handleRerun = useCallback((id: string, query: string) => {
     setOverlayData(new Map());
     onRerun(id, query);
@@ -2698,7 +2702,12 @@ export function GraphFrame({ frame, onClose, onRerun, colorOverrides, sizeOverri
 
   return (
     <>
-      <div className={`gf-frame${expanded ? " gf-expanded" : ""}`}>
+      <div
+        className={`gf-frame${expanded ? " gf-expanded" : ""}${dragOver ? " gf-frame--drag-over" : ""}`}
+        onDragOver={(e) => { if (e.dataTransfer.types.includes("text/x-provisa-label")) { e.preventDefault(); setDragOver(true); } }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => { setDragOver(false); const label = e.dataTransfer.getData("text/x-provisa-label"); if (label && onTableDrop) { e.preventDefault(); onTableDrop(frame.id, label); } }}
+      >
         {renderHeader(false)}
         {!collapsed && frameBody}
         {!collapsed && !expanded && (
