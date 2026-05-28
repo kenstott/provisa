@@ -1880,3 +1880,58 @@ def test_ops_join_source_expr_emits_concat_on_both_sides():
         f"Expected CONCAT on both source and target sides, got {concat_count} occurrence(s): {sql}"
     )
     assert '"domain_id"' in sql, f"Expected domain_id in CONCAT expression: {sql}"
+
+
+# ---------------------------------------------------------------------------
+# WHERE after OPTIONAL MATCH — NULL guard
+# ---------------------------------------------------------------------------
+
+
+def test_where_after_optional_match_does_not_filter_base_rows():
+    """WHERE referencing an OPTIONAL MATCH variable must not eliminate base MATCH rows.
+
+    Cypher: WHERE after OPTIONAL MATCH constrains the optional pattern, not the whole
+    result. Rows where the optional variable is NULL must still be returned.
+    The translator must emit (opt_var IS NULL OR <condition>) rather than a bare WHERE.
+    """
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) "
+        "OPTIONAL MATCH (n)-[:WORKS_AT]->(c:Company) "
+        "WHERE NOT c.name IN ['Acme'] "
+        "RETURN n.name, c.name"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+
+    assert "LEFT" in sql.upper(), f"OPTIONAL MATCH should produce LEFT JOIN: {sql}"
+    # Condition must be folded into the LEFT JOIN ON clause, not a global WHERE.
+    # This keeps a rows alive when b is excluded — b becomes NULL instead of the row being removed.
+    assert "WHERE" not in sql.upper(), (
+        f"WHERE after OPTIONAL MATCH must be folded into ON clause, not a global WHERE: {sql}"
+    )
+    assert "ON" in sql.upper() and "ACME" in sql.upper(), (
+        f"Exclusion condition must appear in JOIN ON clause: {sql}"
+    )
+
+
+def test_where_on_required_match_variable_is_not_guarded():
+    """WHERE referencing only a required MATCH variable should remain a plain WHERE.
+
+    No IS NULL guard needed — required MATCH variables are never NULL.
+    """
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) "
+        "OPTIONAL MATCH (n)-[:WORKS_AT]->(c:Company) "
+        "WHERE n.age > 30 "
+        "RETURN n.name, c.name"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+
+    # n comes from required MATCH — no IS NULL guard needed
+    assert "IS NULL" not in sql.upper(), (
+        f"WHERE on required MATCH variable must not add IS NULL guard: {sql}"
+    )
+    assert "30" in sql, f"WHERE condition should still appear in SQL: {sql}"

@@ -40,6 +40,69 @@ import sqlglot
 def _const_literal(v: int | str) -> exp.Expression:
     return exp.Literal.string(v) if isinstance(v, str) else exp.Literal.number(v)
 
+
+def _optional_vars(clauses: "list[MatchClause]") -> "set[str]":
+    """Return variables first introduced by OPTIONAL MATCH (not already bound by MATCH)."""
+    seen: set[str] = set()
+    optional_only: set[str] = set()
+    for clause in clauses:
+        if not isinstance(clause.pattern, PathPattern):
+            continue
+        new_in_clause = set()
+        for node in clause.pattern.nodes:
+            if node.variable:
+                new_in_clause.add(node.variable)
+        for rel in clause.pattern.rels:
+            if rel.variable:
+                new_in_clause.add(rel.variable)
+        if clause.optional:
+            optional_only.update(new_in_clause - seen)
+        seen.update(new_in_clause)
+    return optional_only
+
+
+def _join_alias(table_expr: "exp.Expression") -> "str | None":
+    """Extract the SQL alias from a join table expression."""
+    alias = getattr(table_expr, "alias", None)
+    return str(alias) if alias else None
+
+
+def _fold_where_into_optional_joins(
+    where_expr: "exp.Expression",
+    optional_vars: "set[str]",
+    where_text: str,
+    joins: "list[dict]",
+) -> "tuple[list[dict], exp.Expression | None]":
+    """Fold WHERE conditions referencing optional variables into the relevant LEFT JOIN ON clauses.
+
+    Cypher semantics: WHERE after OPTIONAL MATCH constrains the optional pattern.
+    In SQL this must be an ON condition, not a global WHERE — a global WHERE turns
+    a LEFT JOIN into an implicit INNER JOIN, filtering out rows where the optional
+    variable is NULL and eliminating the base MATCH rows.
+
+    Returns (modified_joins, remaining_where_or_None).
+    """
+    referenced = {v for v in optional_vars if re.search(rf"\b{re.escape(v)}\b", where_text)}
+    if not referenced:
+        return joins, where_expr
+
+    modified: list[dict] = []
+    folded = False
+    for join in joins:
+        alias = _join_alias(join["table"])
+        if alias in referenced and join["join_type"] == "LEFT":
+            existing_on = join["on"]
+            if existing_on is None or (hasattr(existing_on, "sql") and existing_on.sql() in ("TRUE", "true", "1 = 1")):
+                new_on = where_expr
+            else:
+                new_on = exp.And(this=existing_on, expression=where_expr)
+            modified.append({**join, "on": new_on})
+            folded = True
+        else:
+            modified.append(join)
+
+    return modified, (None if folded else where_expr)
+
 from provisa.cypher.parser import (
     CypherAST,
     MatchClause,
@@ -184,6 +247,10 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 raise CypherTranslateError("Pipeline segment has no data source")
             select_exprs = self._build_with_select_items(with_clause.items)
             where_expr = self._build_where(stage_where)
+            if where_expr and stage_where is not None:
+                joins, where_expr = _fold_where_into_optional_joins(
+                    where_expr, _optional_vars(all_matches), stage_where.expression, joins
+                )
 
             stage_query = exp.select(*select_exprs).from_(from_clause)
             for join in joins:
@@ -245,6 +312,19 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
 
         select_exprs = self._build_select(self._ast.return_clause)
         where_expr = self._build_where(stage_where)
+        if where_expr and stage_where is not None:
+            opt_vars = _optional_vars(all_matches)
+            joins, where_expr = _fold_where_into_optional_joins(
+                where_expr, opt_vars, stage_where.expression, joins
+            )
+            # Extra UNION branches captured joins_before the fold — apply fold to them too
+            # so bidir/multi-candidate paths inherit the same optional-variable exclusion.
+            raw_where = self._build_where(stage_where)
+            if raw_where is not None:
+                self._extra_path_branches = [
+                    (bf, _fold_where_into_optional_joins(raw_where, opt_vars, stage_where.expression, bj)[0], bps)
+                    for bf, bj, bps in self._extra_path_branches
+                ]
         order_exprs = self._build_order_by(self._ast.order_by)
 
         query = exp.select(*select_exprs).from_(from_clause)
