@@ -20,6 +20,19 @@ _SQL_LITERAL_RE = re.compile(r"'[^']*'|\"[^\"]*\"|\b\d+(\.\d+)?\b")
 
 import yaml
 
+_log_provider: "object | None" = None
+
+
+def shutdown_otel() -> None:
+    """Flush and shut down OTel log provider before interpreter teardown."""
+    global _log_provider
+    if _log_provider is not None:
+        try:
+            _log_provider.shutdown()  # type: ignore[union-attr]
+        except Exception:
+            pass
+        _log_provider = None
+
 
 class SpanBuffer:
     """Thread-safe circular buffer of the last N completed spans."""
@@ -320,6 +333,7 @@ def setup_otel(app: "object") -> None:
 
         # ── Logs ─────────────────────────────────────────────────────────────
         if endpoint:
+            global _log_provider
             import logging as _logging
             from opentelemetry.sdk._logs import LoggerProvider
             from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
@@ -330,6 +344,7 @@ def setup_otel(app: "object") -> None:
                 BatchLogRecordProcessor(_make_log_exporter(endpoint))
             )
             set_logger_provider(log_provider)
+            _log_provider = log_provider
             handler = LoggingHandler(level=getattr(_logging, log_level_name, _logging.WARNING), logger_provider=log_provider)
             _logging.getLogger().addHandler(handler)
             _log.info("OTel logs → %s (service=%s)", endpoint, service_name)

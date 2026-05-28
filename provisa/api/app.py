@@ -41,7 +41,7 @@ from provisa.executor.pool import SourcePool
 from provisa.compiler.mask_inject import MaskingRules
 from provisa.cache.store import CacheStore, NoopCacheStore, RedisCacheStore
 from provisa.api.admin.db_queries import fetch_tables as _fetch_tables, fetch_relationships as _fetch_relationships, parse_mask_value as _parse_mask_value
-from provisa.api.otel_setup import setup_otel as _setup_otel
+from provisa.api.otel_setup import setup_otel as _setup_otel, shutdown_otel as _shutdown_otel
 from provisa.api.trino_setup import write_trino_config as _write_trino_config
 from provisa.mv.registry import MVRegistry
 from provisa.cache.warm_tables import WarmTableManager
@@ -2051,7 +2051,7 @@ async def lifespan(app: FastAPI):
                             await rel_repo.upsert(_pg_rel, Relationship(
                                 id="pets-to-shelter-breed",
                                 source_table_id="pets",
-                                target_table_id="shelter__animal_breeds",
+                                target_table_id="shelter__animalBreeds",
                                 source_column="breed_name",
                                 target_column="name",
                                 cardinality=Cardinality("many-to-one"),
@@ -2062,7 +2062,7 @@ async def lifespan(app: FastAPI):
                         try:
                             await rel_repo.upsert(_pg_rel, Relationship(
                                 id="shelter-breed-to-pets",
-                                source_table_id="shelter__animal_breeds",
+                                source_table_id="shelter__animalBreeds",
                                 target_table_id="pets",
                                 source_column="name",
                                 target_column="breed_name",
@@ -2178,6 +2178,8 @@ async def lifespan(app: FastAPI):
             state._scheduler.shutdown(wait=False)
         except Exception:
             pass
+
+    _shutdown_otel()
 
     await state.response_cache_store.close()
     await state.source_pools.close_all()
