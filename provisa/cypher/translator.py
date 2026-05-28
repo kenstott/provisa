@@ -620,11 +620,17 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 src_nm = self._var_table.get(src_var, (None, None))[1] if src_var else None
                 tgt_nm = self._var_table.get(tgt_var, (None, None))[1] if tgt_var else None
 
+                # Track whether node types were resolved from explicit node labels (not inferred
+                # from the relationship). Direction validation only applies to explicitly-typed nodes.
+                src_nm_explicit = src_nm is not None
+                tgt_nm_explicit = tgt_nm is not None
+
                 if tgt_nm is None and tgt_node.labels:
                     type_label, _ = self._resolve_node_type(tgt_node.labels)
                     tgt_nm = self._lm.nodes.get(type_label) if type_label else None
                     if tgt_nm and tgt_var:
                         self._var_table[tgt_var] = (tgt_var, tgt_nm)
+                    tgt_nm_explicit = tgt_nm is not None
 
                 # Early rel_mapping for domain-node path and anonymous node inference
                 rel_mapping = None
@@ -748,7 +754,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     # exact source/target match before building candidates. Otherwise the primary
                     # candidate may be a wrong-table mapping with is_bwd=True, which emits virtual
                     # column names (e.g. __table_id__) as physical column references.
-                    if src_nm is not None and len(alias_matches) > 1:
+                    if src_nm is not None and src_nm_explicit and len(alias_matches) > 1:
                         fwd_exact = [
                             m for m in alias_matches
                             if m.source_label == src_nm.type_name
@@ -768,9 +774,37 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
 
                     def _is_bwd(m: "RelationshipMapping") -> bool:  # type: ignore[name-defined]
                         if bidir:
+                            # Undirected: no arrow validation, but still orient join columns
+                            # based on which node occupies the canonical source position.
+                            if src_nm is not None:
+                                return m.source_label != src_nm.type_name
                             return False
                         if src_nm is not None:
-                            return m.source_label != src_nm.type_name
+                            canonical_fwd = (m.source_label == src_nm.type_name)
+                            if tgt_nm is not None and tgt_nm_explicit:
+                                # Validate Cypher arrow direction against canonical relationship direction.
+                                # Only when BOTH node types were explicitly declared in the pattern
+                                # (not inferred from the relationship). Anonymous nodes like (n)-[:R]->(m)
+                                # allow the translator to pick any matching candidate — direction is
+                                # implicit from the alias fan-out, not the arrow.
+                                # backward==True means arrow is '<-' (rel flows right→left in pattern).
+                                # canonical_fwd==True means canonical source is the LEFT node.
+                                # Conflict: '<-' on a fwd-canonical rel, or '->' on a bwd-canonical rel.
+                                if backward and canonical_fwd:
+                                    raise CypherTranslateError(
+                                        f"Relationship {rel.types[0]!r} is defined "
+                                        f"{m.source_label}→{m.target_label}; "
+                                        f"'<-' contradicts that direction — use '->' or '-' "
+                                        f"(bidirected) from {src_nm.type_name}"
+                                    )
+                                if not backward and not canonical_fwd:
+                                    raise CypherTranslateError(
+                                        f"Relationship {rel.types[0]!r} is defined "
+                                        f"{m.source_label}→{m.target_label}; "
+                                        f"'->' contradicts that direction — use '<-' or '-' "
+                                        f"(bidirected) from {src_nm.type_name}"
+                                    )
+                            return not canonical_fwd
                         return backward
                     candidates: list[tuple] = [(m, _is_bwd(m)) for m in alias_matches]
                 else:

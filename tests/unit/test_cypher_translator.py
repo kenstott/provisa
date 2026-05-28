@@ -819,8 +819,8 @@ def _make_label_map_with_alias() -> CypherLabelMap:
     # WORKS_FOR is the alias; field_name in GraphQL is also "WORKS_FOR" after alias is applied
     rm = RelationshipMapping(
         rel_type="WORKS_FOR",
-        source_label="Employee",
-        target_label="Department",
+        source_label="Hr_Employee",
+        target_label="Hr_Department",
         join_source_column="dept_id",
         join_target_column="id",
         field_name="WORKS_FOR",
@@ -879,8 +879,8 @@ def _make_label_map_shared_alias() -> CypherLabelMap:
     )
     rm1 = RelationshipMapping(
         rel_type="REPORTS_TO",
-        source_label="Employee",
-        target_label="Manager",
+        source_label="Hr_Employee",
+        target_label="Hr_Manager",
         join_source_column="manager_id",
         join_target_column="id",
         field_name="REPORTS_TO",
@@ -888,8 +888,8 @@ def _make_label_map_shared_alias() -> CypherLabelMap:
     )
     rm2 = RelationshipMapping(
         rel_type="REPORTS_TO",
-        source_label="Manager",
-        target_label="Director",
+        source_label="Hr_Manager",
+        target_label="Hr_Director",
         join_source_column="director_id",
         join_target_column="id",
         field_name="REPORTS_TO",
@@ -897,7 +897,7 @@ def _make_label_map_shared_alias() -> CypherLabelMap:
     )
     rels = {"REPORTS_TO": rm2}  # last wins in single dict
     aliases = {"REPORTS_TO": [rm1, rm2]}
-    nodes = {"Employee": emp, "Manager": mgr, "Director": director}
+    nodes = {"Hr_Employee": emp, "Hr_Manager": mgr, "Hr_Director": director}
     return CypherLabelMap(nodes=nodes, relationships=rels, aliases=aliases)
 
 
@@ -910,6 +910,16 @@ def test_alias_rel_type_resolves_via_aliases_index():
     assert "employees" in sql.lower()
     assert "departments" in sql.lower()
     assert "dept_id" in sql.lower()
+
+
+def test_wrong_arrow_direction_raises_error():
+    """Arrow direction must match canonical relationship direction when both node types are explicit."""
+    from provisa.cypher.translator import CypherTranslateError
+    lm = _make_label_map_with_alias()
+    # WORKS_FOR is defined Employee→Department; '<-' on explicit typed nodes must be rejected.
+    ast = parse_cypher("MATCH (e:Employee)<-[:WORKS_FOR]-(d:Department) RETURN e.name, d.name")
+    with pytest.raises(CypherTranslateError, match="contradicts"):
+        cypher_to_sql(ast, lm, {})
 
 
 def test_shared_alias_produces_union_all():
