@@ -341,7 +341,7 @@ def _insert_otel_iceberg(conn: Any, signal: str, table: pa.Table, dt: datetime) 
     try:
         cursor.execute(
             f"ALTER TABLE otel.signals.{signal} EXECUTE expire_snapshots"
-            f"(retention_threshold => '0d')"
+            f"(retention_threshold => '7d')"
         )
     except Exception:
         logger.warning("compact_otel: expire_snapshots for %s failed", signal, exc_info=True)
