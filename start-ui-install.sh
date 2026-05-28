@@ -33,15 +33,11 @@ if [ ! -f "$GOVDATA_JAR" ]; then
   _GOVDATA_TOKEN="${GITHUB_TOKEN:-$(gh auth token 2>/dev/null || true)}"
   if [ -n "$_GOVDATA_TOKEN" ]; then
     echo -n "Downloading GovData JAR..."
-    _GOVDATA_BASE="https://maven.pkg.github.com/kenstott/calcite/org/apache/calcite/calcite-govdata/1.42.0-SNAPSHOT"
+    _GOVDATA_BASE="https://maven.pkg.github.com/kenstott/calcite/ai/askamerica/askamerica-engine"
     _GOVDATA_META=$(curl -fsSL -H "Authorization: Bearer $_GOVDATA_TOKEN" "$_GOVDATA_BASE/maven-metadata.xml" 2>/dev/null || true)
-    _GOVDATA_TS=$(echo "$_GOVDATA_META" | grep -oE '<timestamp>[^<]+' | head -1 | sed 's/<timestamp>//')
-    _GOVDATA_BN=$(echo "$_GOVDATA_META" | grep -oE '<buildNumber>[^<]+' | head -1 | sed 's/<buildNumber>//')
-    if [ -n "$_GOVDATA_TS" ] && [ -n "$_GOVDATA_BN" ]; then
-      _GOVDATA_URL="$_GOVDATA_BASE/calcite-govdata-1.42.0-${_GOVDATA_TS}-${_GOVDATA_BN}-all.jar"
-    else
-      _GOVDATA_URL="$_GOVDATA_BASE/calcite-govdata-1.42.0-SNAPSHOT-all.jar"
-    fi
+    _GOVDATA_VER=$(echo "$_GOVDATA_META" | grep -oE '<version>0\.[0-9]+\.[0-9]+</version>' | tail -1 | sed 's/<\/*version>//g')
+    _GOVDATA_VER="${_GOVDATA_VER:-0.9.15}"
+    _GOVDATA_URL="$_GOVDATA_BASE/$_GOVDATA_VER/askamerica-engine-${_GOVDATA_VER}.jar"
     if curl -fsSL \
         -H "Authorization: Bearer $_GOVDATA_TOKEN" \
         -o "$GOVDATA_JAR" \
