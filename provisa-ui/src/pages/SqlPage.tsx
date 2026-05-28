@@ -222,7 +222,7 @@ function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: CanvasTa
 
 // ── JoinCanvas ───────────────────────────────────────────────────────────────
 
-function JoinCanvas({ tables, existingRels: _existingRels, onGenerateSql }: JoinCanvasProps) {
+function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
   const [canvasTables, setCanvasTables] = useState<CanvasTable[]>([]);
   const [canvasJoins, setCanvasJoins] = useState<CanvasJoin[]>([]);
   const [connectingMouse, setConnectingMouse] = useState<{ x: number; y: number } | null>(null);
@@ -244,7 +244,34 @@ function JoinCanvas({ tables, existingRels: _existingRels, onGenerateSql }: Join
     if (!rect) return;
     const x = e.clientX - rect.left - CARD_W / 2;
     const y = e.clientY - rect.top - CARD_HEADER_H / 2;
-    setCanvasTables((prev) => [...prev, { tableName, x: Math.max(0, x), y: Math.max(0, y) }]);
+    setCanvasTables((prev) => {
+      const next = [...prev, { tableName, x: Math.max(0, x), y: Math.max(0, y) }];
+      // Auto-wire PK/FK joins between the new table and tables already on the canvas
+      const existingNames = new Set(prev.map((ct) => ct.tableName));
+      const newJoins: CanvasJoin[] = [];
+      for (const rel of existingRels) {
+        const isNew = rel.sourceTableName === tableName || rel.targetTableName === tableName;
+        const otherTable = rel.sourceTableName === tableName ? rel.targetTableName : rel.sourceTableName;
+        if (isNew && existingNames.has(otherTable) && rel.targetColumn) {
+          const joinId = `${rel.sourceTableName}__${rel.sourceColumn}__${rel.targetTableName}__${rel.targetColumn}`;
+          newJoins.push({
+            id: joinId,
+            fromTable: rel.sourceTableName,
+            fromCol: rel.sourceColumn,
+            toTable: rel.targetTableName,
+            toCol: rel.targetColumn,
+            cardinality: rel.cardinality === "one-to-many" ? "one-to-many" : "many-to-one",
+          });
+        }
+      }
+      if (newJoins.length > 0) {
+        setCanvasJoins((prevJ) => {
+          const existingIds = new Set(prevJ.map((j) => j.id));
+          return [...prevJ, ...newJoins.filter((j) => !existingIds.has(j.id))];
+        });
+      }
+      return next;
+    });
   };
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
