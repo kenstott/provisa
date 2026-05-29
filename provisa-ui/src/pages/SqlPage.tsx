@@ -1412,12 +1412,15 @@ export function SqlPage() {
                       setViewDomainId("");
                       setViewMsg("");
                       // Build a lookup of column descriptions from all registered tables.
-                      // When a result column name matches a registered column, inherit its description.
+                      // Build description lookup keyed by both raw column name and tableName_columnName
+                      // so aliased result columns like "users_id" still find "id"'s description.
                       const colDescMap = new Map<string, string>();
                       for (const t of tables) {
                         for (const c of t.columns) {
-                          if (c.description && !colDescMap.has(c.columnName)) {
-                            colDescMap.set(c.columnName, c.description);
+                          if (c.description) {
+                            if (!colDescMap.has(c.columnName)) colDescMap.set(c.columnName, c.description);
+                            const aliased = `${t.tableName}_${c.columnName}`;
+                            if (!colDescMap.has(aliased)) colDescMap.set(aliased, c.description);
                           }
                         }
                       }
