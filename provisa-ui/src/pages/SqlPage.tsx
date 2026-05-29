@@ -659,7 +659,6 @@ export function SqlPage() {
     const locSql = (location.state as { sql?: string } | null)?.sql;
     return locSql ?? loadSqlQuery();
   });
-  const [viewSaving, setViewSaving] = useState(false);
   const [role, setRole] = useState("admin");
   const [roles, setRoles] = useState<string[]>(["admin"]);
   const [domainMap, setDomainMap] = useState<Record<string, Domain>>({});
