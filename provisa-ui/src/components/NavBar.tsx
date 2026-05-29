@@ -38,19 +38,12 @@ interface NavGroup {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    id: "explore",
-    label: "Explore",
-    items: [
-      { to: "/schema", label: "Schema", capability: "query_development" },
-      { to: "/query", label: "GraphQL", capability: "query_development", separatorBefore: true },
-      { to: "/graph", label: "Cypher", capability: "query_development" },
-      { to: "/sql", label: "SQL", capability: "query_development" },
-    ],
-  },
-  {
     id: "model",
     label: "Model",
     items: [
+      { to: "/sources", label: "Sources", capability: "source_registration" },
+      { to: "/tables", label: "Tables", capability: "table_registration" },
+      { to: "/relationships", label: "Relationships", capability: "create_relationship" },
       { to: "/views", label: "Views", capability: "table_registration" },
       { to: "/commands", label: "Commands", capability: "admin" },
     ],
@@ -60,6 +53,16 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Security",
     items: [
       { to: "/security", label: "Policies", capability: "access_config" },
+    ],
+  },
+  {
+    id: "explore",
+    label: "Explore",
+    items: [
+      { to: "/schema", label: "Schema", capability: "query_development" },
+      { to: "/query", label: "GraphQL", capability: "query_development" },
+      { to: "/graph", label: "Cypher", capability: "query_development" },
+      { to: "/sql", label: "SQL", capability: "query_development" },
     ],
   },
   {
@@ -136,14 +139,9 @@ export function NavBar() {
   const displayedGroupId = pinnedGroup ?? routeGroup;
   const displayedGroup = NAV_GROUPS.find((g) => g.id === displayedGroupId) ?? null;
 
-  const onTablesPage =
-    location.pathname === "/tables" ||
-    location.pathname === "/relationships" ||
-    location.pathname === "/security" ||
-    location.pathname === "/schema" ||
-    location.pathname === "/query" ||
-    location.pathname === "/graph" ||
-    location.pathname === "/sql";
+  const onTablesPage = NAV_GROUPS.flatMap((g) => g.items.map((i) => i.to)).some(
+    (to) => location.pathname === to || location.pathname.startsWith(to + "/")
+  );
 
   function toggleGroup(id: string) {
     // If already in this group's route, just toggle the pin
@@ -165,13 +163,6 @@ export function NavBar() {
           <NavLink to="/">Provisa</NavLink>
         </div>
         <div className="navbar-links">
-          <CapabilityGate capability="source_registration">
-            <NavLink to="/sources">Sources</NavLink>
-          </CapabilityGate>
-          <CapabilityGate capability="table_registration">
-            <NavLink to="/tables">Tables</NavLink>
-          </CapabilityGate>
-          <NavLink to="/relationships">Relationships</NavLink>
           {NAV_GROUPS.map((group) => {
             const isActive = routeGroup === group.id || pinnedGroup === group.id;
             return (
