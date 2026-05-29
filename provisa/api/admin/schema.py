@@ -753,15 +753,15 @@ class Query:
     async def generate_column_description(self, table_id: str, column_name: str) -> str:
         """Use LLM to generate a description for a single column."""
         import os
-        import logging
-        log = logging.getLogger(__name__)
+        import sys
+        print(f"[DEBUG] generate_column_description called: table_id={table_id}, column_name={column_name}", file=sys.stderr, flush=True)
         try:
             pool = await _get_pool()
             tid = int(table_id)
             async with pool.acquire() as conn:
                 row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", tid)
                 if row is None:
-                    log.warning("generateColumnDescription: table %s not found", table_id)
+                    print(f"[DEBUG] table {table_id} not found", file=sys.stderr, flush=True)
                     return ""
                 col_rows = await conn.fetch(
                     "SELECT column_name FROM table_columns WHERE table_id = $1 ORDER BY id", tid
@@ -778,15 +778,19 @@ class Query:
             )
             api_key = os.environ.get("ANTHROPIC_API_KEY", "")
             if not api_key:
-                log.warning("generateColumnDescription: ANTHROPIC_API_KEY not set")
+                print("[DEBUG] ANTHROPIC_API_KEY not set", file=sys.stderr, flush=True)
                 return ""
+            print(f"[DEBUG] calling _call_anthropic with model...", file=sys.stderr, flush=True)
             cfg = read_config()
             model = cfg.get("ai_models", {}).get("column_description", "claude-haiku-4-5-20251001")
+            print(f"[DEBUG] model={model}", file=sys.stderr, flush=True)
             result = await _call_anthropic(prompt, api_key, model=model, max_tokens=128)
-            log.info("generateColumnDescription result: %s", result[:100] if result else "(empty)")
+            print(f"[DEBUG] _call_anthropic result: {result[:100] if result else '(empty)'}", file=sys.stderr, flush=True)
             return result
         except Exception as e:
-            log.exception("generateColumnDescription failed: %s", e)
+            print(f"[DEBUG] Exception: {e}", file=sys.stderr, flush=True)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
             return ""
 
 
