@@ -1161,6 +1161,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                           try {
                                             const desc = await generateColumnDescription(editingTable.id, c.columnName);
                                             if (desc) updateEditCol(i, "description", desc);
+                                          } catch (err) {
+                                            console.error("generateColumnDescription failed:", err);
                                           } finally { setGeneratingColDesc(null); }
                                         }}
                                       />
