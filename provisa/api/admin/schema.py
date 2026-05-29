@@ -736,7 +736,7 @@ class Query:
         if not api_key:
             return ""
         cfg = read_config()
-        model = cfg.ai_models.table_description
+        model = cfg.get("ai_models", {}).get("table_description", "claude-haiku-4-5-20251001")
         return await _call_anthropic(prompt, api_key, model=model, max_tokens=256)
 
     @strawberry.field
@@ -766,7 +766,7 @@ class Query:
         if not api_key:
             return ""
         cfg = read_config()
-        model = cfg.ai_models.column_description
+        model = cfg.get("ai_models", {}).get("column_description", "claude-haiku-4-5-20251001")
         return await _call_anthropic(prompt, api_key, model=model, max_tokens=128)
 
 
