@@ -69,7 +69,8 @@ async def _load_and_register(
     if spec_content:
         spec = parse_text(spec_content)
     else:
-        spec = load_spec(spec_path)
+        from provisa.core.secrets import resolve_secrets as _resolve_secrets
+        spec = load_spec(_resolve_secrets(spec_path))
 
     # Resolve base_url: explicit override > spec servers[0].url
     resolved_base_url = base_url.strip()
