@@ -546,7 +546,7 @@ class Query:
                 if nf_name not in existing:
                     cols.append({"name": nf_name, "type": p.get("type", "string"), "native_filter_type": "query_param"})
             return [
-                AvailableColumnType(name=c["name"], data_type=c["type"], comment=None, native_filter_type=c.get("native_filter_type"))
+                AvailableColumnType(name=c["name"], data_type=c["type"], comment=c.get("description"), native_filter_type=c.get("native_filter_type"))
                 for c in cols
             ]
         catalog = source_to_catalog(source_id)
