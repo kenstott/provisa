@@ -1190,15 +1190,7 @@ export function SqlPage() {
                           ].map((col) => (
                             <div key={col.columnName} style={{ display: "flex", alignItems: "center" }}>
                               <button
-                                onClick={() => {
-                                  if (topTab !== "sql") return;
-                                  const snippet = `"${t.tableName}"."${col.columnName}"`;
-                                  insertAtCursor(snippet);
-                                  // After inserting, auto-alias any newly-created conflicts
-                                  setTimeout(() => {
-                                    setSqlText((prev) => { const fixed = autoAliasConflicts(prev); saveSqlQuery(fixed); return fixed; });
-                                  }, 0);
-                                }}
+                                onClick={() => topTab === "sql" ? insertAtCursor(`"${t.tableName}"."${col.columnName}"`) : undefined}
                                 style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", cursor: topTab === "sql" ? "pointer" : "default", padding: "0.15rem 0 0.15rem 2.5rem", display: "flex", alignItems: "center", gap: "0.3rem", color: col.virtual ? "var(--text-muted)" : "var(--text-muted)", fontSize: "0.72rem", fontFamily: "monospace", opacity: col.virtual ? 0.6 : 1 }}
                                 title={col.description ?? (topTab === "sql" ? "Click to insert quoted column" : undefined)}
                               >
