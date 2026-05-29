@@ -651,6 +651,7 @@ export function SqlPage() {
   const [viewSaving, setViewSaving] = useState(false);
   const [viewMsg, setViewMsg] = useState("");
   const [viewColumns, setViewColumns] = useState<ViewColumnConfig[]>([]);
+  const [savedViewId, setSavedViewId] = useState<number | null>(null);
   const [tables, setTables] = useState<RegisteredTable[]>([]);
   const [existingRels, setExistingRels] = useState<Relationship[]>([]);
   const [topTab, setTopTab] = useState<TopTab>("sql");
@@ -998,7 +999,7 @@ export function SqlPage() {
         maskValue: c.maskValue || undefined,
         maskPrecision: c.maskPrecision || undefined,
       }));
-      await registerTable({
+      const result = await registerTable({
         sourceId: "__provisa__",
         domainId: viewDomainId.trim(),
         schemaName: "views",
@@ -1009,12 +1010,14 @@ export function SqlPage() {
         viewSql: sql,
         columns,
       });
+      const idMatch = result.message.match(/\(id=(\d+)\)/);
+      const newTableId = idMatch ? parseInt(idMatch[1], 10) : null;
       setViewMsg(canCreateView ? "View created." : "View request submitted.");
+      setSavedViewId(newTableId);
       fetchTables().catch(() => []).then(setTables);
       fetchRelationships().catch(() => []).then(setExistingRels);
       localStorage.setItem("provisa.schema.version", String(Date.now()));
       window.dispatchEvent(new StorageEvent("storage", { key: "provisa.schema.version" }));
-      setTimeout(() => { setViewModal(false); setViewMsg(""); setViewId(""); setViewDescription(""); setViewDomainId(""); setViewColumns([]); }, 1500);
     } catch (e: any) {
       setViewMsg(`Error: ${e.message}`);
     } finally {
@@ -1894,6 +1897,41 @@ export function SqlPage() {
                     ))}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {savedViewId !== null && (
+        <div className="modal-overlay" onClick={() => { setSavedViewId(null); setViewModal(false); setViewMsg(""); setViewId(""); setViewDescription(""); setViewDomainId(""); setViewColumns([]); }}>
+          <div className="modal" style={{ width: "400px", padding: "2rem" }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0, marginBottom: "1rem" }}>View Saved</h3>
+            <p style={{ marginBottom: "1.5rem", color: "var(--text-muted)" }}>
+              {canCreateView ? `View "${viewId}" has been created and registered.` : `View "${viewId}" has been submitted for approval.`}
+            </p>
+            <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
+              <button
+                className="btn-secondary"
+                onClick={() => { setSavedViewId(null); setViewModal(false); setViewMsg(""); setViewId(""); setViewDescription(""); setViewDomainId(""); setViewColumns([]); }}
+                style={{ fontSize: "0.875rem", padding: "0.4rem 1rem" }}
+              >
+                Close
+              </button>
+              <button
+                className="btn-primary"
+                onClick={() => {
+                  setSavedViewId(null);
+                  setViewModal(false);
+                  setViewMsg("");
+                  setViewId("");
+                  setViewDescription("");
+                  setViewDomainId("");
+                  setViewColumns([]);
+                  window.location.hash = "#/model/views";
+                }}
+                style={{ fontSize: "0.875rem", padding: "0.4rem 1rem" }}
+              >
+                Edit in Model/Views
+              </button>
             </div>
           </div>
         </div>
