@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import React, { useState, useCallback, useMemo, useRef, useEffect, Fragment } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { get as idbGet, set as idbSet } from "idb-keyval";
 import { Play, ChevronRight, ChevronDown, Table2, Columns3, History, Copy, Check, BarChart2, Network, X, Loader2 } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
@@ -642,6 +642,7 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
 export function SqlPage() {
   const { checkedDomains } = useDomainFilter();
   const location = useLocation();
+  const navigate = useNavigate();
   const canCreateView = useCapability("create_view");
   const canRequestView = useCapability("query_development");
   const [viewModal, setViewModal] = useState(false);
@@ -1926,7 +1927,7 @@ export function SqlPage() {
                   setViewDescription("");
                   setViewDomainId("");
                   setViewColumns([]);
-                  window.location.hash = "#/model/views";
+                  navigate("/views");
                 }}
                 style={{ fontSize: "0.875rem", padding: "0.4rem 1rem" }}
               >
