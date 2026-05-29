@@ -525,11 +525,18 @@ class GraphQLRemoteConfig(BaseModel):
 
 
 class AIModelsConfig(BaseModel):
-    """AI model configuration for various operations."""
+    """AI model configuration for various operations.
 
-    table_description: str = "claude-haiku-4-5-20251001"
-    column_description: str = "claude-haiku-4-5-20251001"
-    relationship_inference: str = "claude-haiku-4-5-20251001"
+    Each field accepts either:
+    - A string (legacy): model name (e.g. "claude-haiku-4-5-20251001")
+    - A dict (new): {"vendor": str, "model": str, "fallback": dict | null}
+    """
+
+    table_description: str | dict = "claude-haiku-4-5-20251001"
+    column_description: str | dict = "claude-haiku-4-5-20251001"
+    relationship_inference: str | dict = "claude-haiku-4-5-20251001"
+    sql_generation: str | dict = "claude-opus-4-6"
+    table_selection: str | dict = "claude-haiku-4-5-20251001"
 
 
 class ServerConfig(BaseModel):
