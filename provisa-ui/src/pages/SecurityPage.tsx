@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { Trash2, Pencil, Save, X } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import { createPortal } from "react-dom";
@@ -123,6 +124,7 @@ const EMPTY_ROLE = { id: "", capabilities: [] as Capability[], domainAccess: [] 
 const EMPTY_RULE = { tableId: "", domainId: "", roleId: "", filterExpr: "", domainFilter: "", applyToDomain: false };
 
 export function SecurityPage() {
+  const location = useLocation();
   const { selectedDomain, setDomains: setContextDomains, setSelectedDomain } = useDomainFilter();
   const [roles, setRoles] = useState<Role[]>([]);
   const [rules, setRules] = useState<RLSRule[]>([]);
@@ -144,7 +146,9 @@ export function SecurityPage() {
   const [ruleForm, setRuleForm] = useState(EMPTY_RULE);
   const [expandedRule, setExpandedRule] = useState<number | null>(null);
   const [editingRuleInRow, setEditingRuleInRow] = useState<number | null>(null);
-  const [ruleSearch, setRuleSearch] = useState("");
+  const [ruleSearch, setRuleSearch] = useState(
+    (location.state as { tableFilter?: string } | null)?.tableFilter ?? ""
+  );
 
   const load = useCallback(async () => {
     setLoading(true);

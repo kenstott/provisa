@@ -38,16 +38,6 @@ interface NavGroup {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    id: "explore",
-    label: "Explore",
-    items: [
-      { to: "/schema", label: "Schema", capability: "query_development" },
-      { to: "/query", label: "GraphQL", capability: "query_development", separatorBefore: true },
-      { to: "/graph", label: "Cypher", capability: "query_development" },
-      { to: "/sql", label: "SQL", capability: "query_development" },
-    ],
-  },
-  {
     id: "model",
     label: "Model",
     items: [
@@ -60,6 +50,16 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Security",
     items: [
       { to: "/security", label: "Policies", capability: "access_config" },
+    ],
+  },
+  {
+    id: "explore",
+    label: "Explore",
+    items: [
+      { to: "/schema", label: "Schema", capability: "query_development" },
+      { to: "/query", label: "GraphQL", capability: "query_development", separatorBefore: true },
+      { to: "/graph", label: "Cypher", capability: "query_development" },
+      { to: "/sql", label: "SQL", capability: "query_development" },
     ],
   },
   {

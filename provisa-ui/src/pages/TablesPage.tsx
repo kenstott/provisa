@@ -910,6 +910,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             </button>
                             <button
                               className="btn-icon"
+                              title="View RLS policies for this table"
+                              onClick={(e) => { e.stopPropagation(); navigate("/security", { state: { tableFilter: t.tableName } }); }}
+                            >Policies</button>
+                            <button
+                              className="btn-icon"
                               title="Edit"
                               onClick={(e) => { e.stopPropagation(); startEditing(t); }}
                             ><Pencil size={14} /></button>
