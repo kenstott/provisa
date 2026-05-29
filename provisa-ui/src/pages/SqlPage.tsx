@@ -17,7 +17,7 @@ import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { useDomainFilter } from "../context/DomainFilterContext";
-import { runSql, fetchRoles, fetchDomains, fetchTables, fetchRelationships, registerTable, nlToSql } from "../api/admin";
+import { runSql, fetchRoles, fetchDomains, fetchTables, fetchRelationships, registerTable, nlToSql, updateTable } from "../api/admin";
 import type { Domain, Relationship, RegisteredTable } from "../types/admin";
 import { useCapability } from "../hooks/useCapability";
 import { MultiSelect } from "../components/MultiSelect";
@@ -654,10 +654,12 @@ export function SqlPage() {
   const [tables, setTables] = useState<RegisteredTable[]>([]);
   const [existingRels, setExistingRels] = useState<Relationship[]>([]);
   const [topTab, setTopTab] = useState<TopTab>("sql");
+  const viewTable = (location.state as { viewTable?: RegisteredTable } | null)?.viewTable ?? null;
   const [sqlText, setSqlText] = useState(() => {
     const locSql = (location.state as { sql?: string } | null)?.sql;
     return locSql ?? loadSqlQuery();
   });
+  const [viewSaving, setViewSaving] = useState(false);
   const [role, setRole] = useState("admin");
   const [roles, setRoles] = useState<string[]>(["admin"]);
   const [domainMap, setDomainMap] = useState<Record<string, Domain>>({});
@@ -1330,6 +1332,50 @@ export function SqlPage() {
                 >
                   Auto-alias
                 </button>
+                {viewTable && (
+                  <button
+                    className="btn-primary"
+                    style={{ fontSize: "0.8rem", padding: "0.25rem 0.6rem" }}
+                    title={`Save current SQL as the definition for view "${viewTable.tableName}"`}
+                    disabled={viewSaving || !sqlText.trim()}
+                    onClick={async () => {
+                      setViewSaving(true);
+                      await updateTable({
+                        sourceId: viewTable.sourceId,
+                        domainId: viewTable.domainId ?? "",
+                        schemaName: viewTable.schemaName ?? "",
+                        tableName: viewTable.tableName,
+                        governance: viewTable.governance ?? "pre-approved",
+                        alias: viewTable.alias ?? undefined,
+                        description: viewTable.description ?? undefined,
+                        watermarkColumn: viewTable.watermarkColumn ?? null,
+                        viewSql: sqlText.trim(),
+                        dataProduct: viewTable.dataProduct ?? false,
+                        columns: viewTable.columns.map((c) => ({
+                          name: c.columnName,
+                          visibleTo: c.visibleTo ?? [],
+                          writableBy: c.writableBy,
+                          unmaskedTo: c.unmaskedTo,
+                          maskType: c.maskType ?? undefined,
+                          maskPattern: c.maskPattern ?? undefined,
+                          maskReplace: c.maskReplace ?? undefined,
+                          maskValue: c.maskValue ?? undefined,
+                          maskPrecision: c.maskPrecision ?? undefined,
+                          alias: c.alias ?? undefined,
+                          description: c.description ?? undefined,
+                          nativeFilterType: c.nativeFilterType ?? undefined,
+                          isPrimaryKey: c.isPrimaryKey ?? undefined,
+                          isForeignKey: c.isForeignKey ?? undefined,
+                          isAlternateKey: c.isAlternateKey ?? undefined,
+                          scope: c.scope ?? "domain",
+                        })),
+                      });
+                      setViewSaving(false);
+                    }}
+                  >
+                    {viewSaving ? "Saving…" : `Update "${viewTable.tableName}"`}
+                  </button>
+                )}
                 <select
                   value={sampleMode}
                   onChange={(e) => setSampleMode(e.target.value as "first" | "last" | "random")}

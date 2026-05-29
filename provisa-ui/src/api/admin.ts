@@ -341,6 +341,7 @@ export async function updateTable(input: {
   alias?: string;
   description?: string;
   watermarkColumn?: string | null;
+  viewSql?: string | null;
   columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null; isPrimaryKey?: boolean; isForeignKey?: boolean; isAlternateKey?: boolean; scope?: string }[];
   columnPresets?: { column: string; source: string; name?: string | null; value?: string | null; dataType?: string | null }[];
   dataProduct?: boolean;

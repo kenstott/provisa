@@ -8,14 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { TablesPage } from "./TablesPage";
+
 export function ViewsPage() {
-  return (
-    <div className="page">
-      <h2>Views</h2>
-      <p>
-        Virtual views are defined in <code>config/provisa.yaml</code> under the{" "}
-        <code>views</code> key.
-      </p>
-    </div>
-  );
+  return <TablesPage viewsOnly />;
 }

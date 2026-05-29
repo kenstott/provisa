@@ -133,7 +133,7 @@ interface ColumnForm {
   scope: string;
 }
 
-export function TablesPage() {
+export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [tables, setTables] = useState<RegisteredTable[]>([]);
@@ -510,15 +510,16 @@ export function TablesPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <h2>Registered Tables</h2>
-        <FilterInput value={tableSearch} onChange={setTableSearch} placeholder="Filter by source, domain, or table…" />
-        <button onClick={() => setShowForm(!showForm)}>
-          {showForm ? "Cancel" : "+ Table"}
-        </button>
+        <h2>{viewsOnly ? "Views" : "Registered Tables"}</h2>
+        <FilterInput value={tableSearch} onChange={setTableSearch} placeholder={viewsOnly ? "Filter views…" : "Filter by source, domain, or table…"} />
+        {!viewsOnly && (
+          <button onClick={() => setShowForm(!showForm)}>
+            {showForm ? "Cancel" : "+ Table"}
+          </button>
+        )}
         <button
           onClick={() => navigate("/sql")}
-          title="Views are created from the SQL Explorer"
-          style={{ opacity: 0.85 }}
+          title="Create a new view in the SQL Explorer"
         >
           + View
         </button>
@@ -526,7 +527,7 @@ export function TablesPage() {
 
       {error && <div className="error">{error}</div>}
 
-      {showForm && (
+      {showForm && !viewsOnly && (
         <div className="form-card">
           <label>
             Source
@@ -754,6 +755,7 @@ export function TablesPage() {
         <tbody>
           {tables.filter((t) => {
             if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
+            if (viewsOnly && !t.viewSql) return false;
             if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId)) return false;
             const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
             if (terms.length === 0) return true;
@@ -891,11 +893,11 @@ export function TablesPage() {
                           <div style={{ display: "flex", justifyContent: "flex-start", padding: "0.5rem", gap: "0.5rem", flexWrap: "wrap" }}>
                             {t.viewSql && (
                               <button
-                                onClick={(e) => { e.stopPropagation(); navigate("/sql", { state: { sql: t.viewSql } }); }}
+                                onClick={(e) => { e.stopPropagation(); navigate("/sql", { state: { sql: t.viewSql, viewTable: t } }); }}
                                 style={{ padding: "0.25rem 0.6rem", fontSize: "0.78rem" }}
-                                title="Open this view SQL in the Explorer"
+                                title="Edit this view's SQL in the Explorer"
                               >
-                                Open in Explorer
+                                {viewsOnly ? "Edit SQL" : "Open in Explorer"}
                               </button>
                             )}
                             <button
