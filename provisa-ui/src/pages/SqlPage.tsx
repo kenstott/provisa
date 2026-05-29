@@ -38,7 +38,7 @@ interface HistoryEntry {
 interface CanvasTable { tableName: string; x: number; y: number; }
 interface CanvasJoin { id: string; fromTable: string; fromCol: string; toTable: string; toCol: string; cardinality: "many-to-one" | "one-to-many"; }
 interface JoinCanvasProps { tables: RegisteredTable[]; existingRels: Relationship[]; onGenerateSql: (sql: string) => void; }
-interface CanvasTableCardProps { ct: CanvasTable; tbl: RegisteredTable; onMove: (x: number, y: number) => void; onRemove: () => void; onStartConnect: (colName: string) => void; }
+interface CanvasTableCardProps { ct: CanvasTable; tbl: RegisteredTable; onMove: (x: number, y: number) => void; onRemove: () => void; onStartConnect: (colName: string) => void; selectedCols: Set<string>; onToggleCol: (colName: string) => void; }
 
 const CARD_W = 200;
 const CARD_HEADER_H = 34;
@@ -95,7 +95,7 @@ async function saveSqlResults(results: SqlResults) {
 
 // ── CanvasTableCard ──────────────────────────────────────────────────────────
 
-function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: CanvasTableCardProps) {
+function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect, selectedCols, onToggleCol }: CanvasTableCardProps) {
   const dragRef = useRef<{ startMouseX: number; startMouseY: number; startCardX: number; startCardY: number } | null>(null);
 
   const handleHeaderMouseDown = (e: React.MouseEvent) => {
@@ -164,6 +164,7 @@ function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: CanvasTa
           key={col.columnName}
           data-table={ct.tableName}
           data-col={col.columnName}
+          onClick={() => onToggleCol(col.columnName)}
           style={{
             height: COL_ROW_H,
             display: "flex",
@@ -174,6 +175,7 @@ function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: CanvasTa
             fontFamily: "monospace",
             padding: "0 14px",
             color: "var(--text)",
+            cursor: "pointer",
           }}
         >
           <div
@@ -190,6 +192,22 @@ function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: CanvasTa
               pointerEvents: "none",
             }}
           />
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 13,
+              height: 13,
+              borderRadius: 2,
+              border: `1px solid ${selectedCols.has(col.columnName) ? "var(--primary)" : "var(--border)"}`,
+              background: selectedCols.has(col.columnName) ? "var(--primary)" : "transparent",
+              color: "#fff",
+              fontSize: "0.6rem",
+              flexShrink: 0,
+              marginRight: 5,
+            }}
+          >{selectedCols.has(col.columnName) ? "✓" : ""}</span>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{col.columnName}</span>
           {col.dataType && (
             <span style={{ fontSize: "0.6rem", color: "var(--text-muted)", opacity: 0.5, marginLeft: 4 }}>{col.dataType}</span>
@@ -225,6 +243,7 @@ function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: CanvasTa
 function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
   const [canvasTables, setCanvasTables] = useState<CanvasTable[]>([]);
   const [canvasJoins, setCanvasJoins] = useState<CanvasJoin[]>([]);
+  const [selectedColumns, setSelectedColumns] = useState<Map<string, Set<string>>>(new Map());
   const [connectingMouse, setConnectingMouse] = useState<{ x: number; y: number } | null>(null);
   const connectingRef = useRef<{ tableName: string; colName: string; colIdx: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -284,6 +303,7 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
   const handleRemoveCard = useCallback((tableName: string) => {
     setCanvasTables((prev) => prev.filter((ct) => ct.tableName !== tableName));
     setCanvasJoins((prev) => prev.filter((j) => j.fromTable !== tableName && j.toTable !== tableName));
+    setSelectedColumns((prev) => { const next = new Map(prev); next.delete(tableName); return next; });
   }, []);
 
   const handleStartConnect = useCallback((tableName: string, colName: string) => {
@@ -334,7 +354,22 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
       tbl?.domainId ? normDomain(tbl.domainId) : (tbl?.schemaName ?? "public");
     const tbl0 = canvasTables[0];
     const tblObj0 = tableMap[tbl0.tableName];
-    let s = `SELECT *\nFROM "${schemaOf(tblObj0)}"."${tbl0.tableName}" ${aliasOf(tbl0.tableName)}`;
+    // Build SELECT clause: use checked columns if any, otherwise SELECT *.
+    // When the same column name appears in multiple checked tables, alias as table_column.
+    const checkedEntries = canvasTables.flatMap((ct) =>
+      [...(selectedColumns.get(ct.tableName) ?? [])].map((col) => ({ tbl: ct.tableName, col }))
+    );
+    let selectClause: string;
+    if (checkedEntries.length > 0) {
+      const colFreq = new Map<string, number>();
+      checkedEntries.forEach(({ col }) => colFreq.set(col, (colFreq.get(col) ?? 0) + 1));
+      selectClause = checkedEntries
+        .map(({ tbl, col }) => colFreq.get(col)! > 1 ? `${aliasOf(tbl)}."${col}" ${tbl}_${col}` : `${aliasOf(tbl)}."${col}"`)
+        .join(", ");
+    } else {
+      selectClause = "*";
+    }
+    let s = `SELECT ${selectClause}\nFROM "${schemaOf(tblObj0)}"."${tbl0.tableName}" ${aliasOf(tbl0.tableName)}`;
     const inQuery = new Set([tbl0.tableName]);
     // Track emitted ON/AND conditions as canonical "tA.cA=tB.cB" keys (both directions) to skip duplicates.
     const emittedConds = new Set<string>();
@@ -543,6 +578,14 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
               onMove={(x, y) => handleMoveCard(ct.tableName, x, y)}
               onRemove={() => handleRemoveCard(ct.tableName)}
               onStartConnect={(colName) => handleStartConnect(ct.tableName, colName)}
+              selectedCols={selectedColumns.get(ct.tableName) ?? new Set()}
+              onToggleCol={(colName) => setSelectedColumns((prev) => {
+                const next = new Map(prev);
+                const cols = new Set(next.get(ct.tableName) ?? []);
+                if (cols.has(colName)) cols.delete(colName); else cols.add(colName);
+                next.set(ct.tableName, cols);
+                return next;
+              })}
             />
           );
         })}
