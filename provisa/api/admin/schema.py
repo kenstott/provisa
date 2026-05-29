@@ -1621,5 +1621,95 @@ class Mutation:
             ))
         return out
 
+    @strawberry.mutation
+    async def deploy_view_to_db(self, info: strawberry.types.Info, table_id: int) -> MutationResult:
+        """Promote a virtual Provisa view to a real database view on its underlying native source."""
+        from provisa.api.admin.capabilities import require_capability
+        require_capability(info, "table_registration")
+
+        from provisa.api.app import state
+        from provisa.compiler.naming import domain_to_sql_name
+        from provisa.transpiler.transpile import transpile
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT id, source_id, domain_id, schema_name, table_name, alias, view_sql FROM registered_tables WHERE id = $1",
+                table_id,
+            )
+        if not row:
+            return MutationResult(success=False, message=f"Table {table_id} not found")
+        if row["source_id"] != "__provisa__":
+            return MutationResult(success=False, message="Table is not a virtual Provisa view (source_id != '__provisa__')")
+        if not row["view_sql"]:
+            return MutationResult(success=False, message="Table has no view_sql")
+
+        view_sql = row["view_sql"]
+        view_name = row["alias"] or row["table_name"]
+
+        # Fetch all non-provisa registered tables with domain_id, source info
+        async with pool.acquire() as conn:
+            all_tables = await conn.fetch(
+                """SELECT rt.id, rt.source_id, rt.domain_id, rt.schema_name, rt.table_name, rt.alias,
+                          s.type as source_type
+                   FROM registered_tables rt
+                   JOIN sources s ON s.id = rt.source_id
+                   WHERE rt.source_id != '__provisa__'""",
+            )
+
+        # Build replacement dict: virtual ref → physical ref, tracking source_ids hit
+        # Sort by length descending so longest match wins
+        replacements: list[tuple[str, str, str, str]] = []  # (virtual_ref, physical_ref, source_id, schema_name)
+        for t in all_tables:
+            domain_sql = domain_to_sql_name(t["domain_id"])
+            alias_or_name = t["alias"] or t["table_name"]
+            virtual_ref = f'"{domain_sql}"."{alias_or_name}"'
+            physical_ref = f'"{t["schema_name"]}"."{t["table_name"]}"'
+            replacements.append((virtual_ref, physical_ref, t["source_id"], t["schema_name"]))
+
+        # Apply replacements (longest virtual_ref first), track which sources are hit
+        physical_sql = view_sql
+        hit_sources: dict[str, str] = {}  # source_id → schema_name
+        for virtual_ref, physical_ref, source_id, schema_name in sorted(
+            replacements, key=lambda x: len(x[0]), reverse=True
+        ):
+            if virtual_ref in physical_sql:
+                physical_sql = physical_sql.replace(virtual_ref, physical_ref)
+                hit_sources[source_id] = schema_name
+
+        if not hit_sources:
+            return MutationResult(success=False, message="no recognized table references")
+        if len(hit_sources) > 1:
+            return MutationResult(
+                success=False,
+                message=f"view spans multiple sources: {', '.join(sorted(hit_sources))}",
+            )
+
+        target_source_id = next(iter(hit_sources))
+        target_schema = hit_sources[target_source_id]
+
+        if not state.source_pools.has(target_source_id):
+            return MutationResult(success=False, message=f"source {target_source_id!r} has no active connection")
+
+        dialect = state.source_pools.dialect_for(target_source_id) or "postgres"
+        native_sql = transpile(physical_sql, dialect)
+
+        ddl = f'CREATE OR REPLACE VIEW "{target_schema}"."{view_name}" AS {native_sql}'
+        await state.source_pools.execute_ddl(target_source_id, ddl)
+
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE registered_tables SET source_id=$1, schema_name=$2, view_sql=NULL WHERE id=$3",
+                target_source_id,
+                target_schema,
+                table_id,
+            )
+
+        await _rebuild_schemas()
+        return MutationResult(
+            success=True,
+            message=f"View '{view_name}' deployed to {target_source_id!r} schema '{target_schema}'",
+        )
+
 
 admin_schema = strawberry.Schema(query=Query, mutation=Mutation)

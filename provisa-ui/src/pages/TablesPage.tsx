@@ -18,7 +18,7 @@ import {
   fetchAvailableSchemas, fetchAvailableTables, fetchAvailableColumnsMetadata,
   registerTable, deleteTable, updateTable, updateTableCache, updateTableNaming,
   purgeCacheByTable, invalidateFileSource, fetchSettings, generateTableDescription, generateColumnDescription,
-  profileTable,
+  profileTable, deployViewToDb,
 } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import type { TableMetadata } from "../api/admin";
@@ -182,6 +182,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [cacheTtlEdits, setCacheTtlEdits] = useState<Record<number, { value: string; dirty: boolean; saving: boolean }>>({});
   const [purging, setPurging] = useState<Record<number, boolean>>({});
   const [invalidating, setInvalidating] = useState<Record<number, boolean>>({});
+  const [deploying, setDeploying] = useState<Record<number, boolean>>({});
+  const [deployMsg, setDeployMsg] = useState<Record<number, { success: boolean; message: string }>>({});
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -900,6 +902,24 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                 {viewsOnly ? "Edit SQL" : "Open in Explorer"}
                               </button>
                             )}
+                            {t.viewSql && (
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  setDeploying((prev) => ({ ...prev, [t.id]: true }));
+                                  setDeployMsg((prev) => { const next = { ...prev }; delete next[t.id]; return next; });
+                                  const result = await deployViewToDb(t.id);
+                                  setDeploying((prev) => ({ ...prev, [t.id]: false }));
+                                  setDeployMsg((prev) => ({ ...prev, [t.id]: result }));
+                                  if (result.success) reload();
+                                }}
+                                style={{ padding: "0.25rem 0.6rem", fontSize: "0.78rem" }}
+                                title="Promote this virtual view to a real database view"
+                                disabled={deploying[t.id]}
+                              >
+                                {deploying[t.id] ? "Deploying…" : "Deploy to DB"}
+                              </button>
+                            )}
                             <button
                               onClick={(e) => { e.stopPropagation(); handleProfile(t.id); }}
                               style={{ padding: "0.25rem 0.6rem", fontSize: "0.78rem" }}
@@ -924,6 +944,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
                             ><Trash2 size={14} /></button>
                           </div>
+                          {deployMsg[t.id] && (
+                            <div style={{ padding: "0.5rem 0.75rem", fontSize: "0.8rem", color: deployMsg[t.id].success ? "var(--color-success, #22c55e)" : "var(--destructive)" }}>
+                              {deployMsg[t.id].message}
+                            </div>
+                          )}
                           {(() => {
                             const p = tableProfiles[t.id];
                             if (!p || p === "loading") return null;
@@ -988,7 +1013,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                         <>
                           <div className="form-card" style={{ marginBottom: "0.75rem" }}>
                             <label>
-                              Table Alias
+                              Alias <span title="The GraphQL/Cypher field name exposed in the API. Defaults to the table name. Changing this renames the entity across all queries and SDL docs." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem" }}>ⓘ</span>
                               <input
                                 value={editingTable.alias || ""}
                                 onChange={(e) => setEditingTable({ ...editingTable, alias: e.target.value || null })}
@@ -996,7 +1021,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               />
                             </label>
                             <label>
-                              Naming Convention
+                              Naming Convention <span title="Controls how the alias is cased in the API schema. snake_case → my_table, camelCase → myTable, PascalCase → MyTable. 'Inherit' uses the source's convention. Affects GraphQL field names, Cypher labels, and SDL output." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem" }}>ⓘ</span>
                               <select
                                 value={editingTable.namingConvention ?? ""}
                                 onChange={(e) => setEditingTable({ ...editingTable, namingConvention: e.target.value || null })}
@@ -1007,7 +1032,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               </select>
                             </label>
                             <label>
-                              Cache TTL (seconds)
+                              Cache TTL (seconds) <span title="How long query results for this table are cached in memory. 0 disables caching. Leave blank to inherit the source-level TTL. Reduces load on the source database for frequently-queried tables." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem" }}>ⓘ</span>
                               <input
                                 type="number"
                                 min={0}
@@ -1017,7 +1042,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               />
                             </label>
                             <label style={{ gridColumn: "1 / -1" }}>
-                              Table Description
+                              Description <span title="Human-readable description shown in the API schema (SDL), data catalog, and AI-assisted query generation. Good descriptions improve auto-generated SQL accuracy." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem" }}>ⓘ</span>
                               <DescriptionField
                                 value={editingTable.description || ""}
                                 onChange={(v) => setEditingTable({ ...editingTable, description: v || null })}

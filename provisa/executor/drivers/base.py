@@ -41,6 +41,11 @@ class DirectDriver(ABC):
     async def close(self) -> None:
         """Close connection/pool."""
 
+    async def execute_ddl(self, sql: str) -> None:
+        """Execute a DDL statement (CREATE/DROP/ALTER). No return value."""
+        # Default: fall back to execute() and discard result
+        await self.execute(sql)
+
     @property
     @abstractmethod
     def is_connected(self) -> bool:

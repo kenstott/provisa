@@ -1412,10 +1412,20 @@ export function SqlPage() {
                       setViewDescription("");
                       setViewDomainId("");
                       setViewMsg("");
+                      // Build a lookup of column descriptions from all registered tables.
+                      // When a result column name matches a registered column, inherit its description.
+                      const colDescMap = new Map<string, string>();
+                      for (const t of tables) {
+                        for (const c of t.columns) {
+                          if (c.description && !colDescMap.has(c.columnName)) {
+                            colDescMap.set(c.columnName, c.description);
+                          }
+                        }
+                      }
                       setViewColumns(resultColumns.map((name) => ({
                         name,
                         alias: "",
-                        description: "",
+                        description: colDescMap.get(name) ?? "",
                         scope: "domain" as const,
                         visibleTo: roles,
                         maskType: "" as const,

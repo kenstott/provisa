@@ -89,6 +89,10 @@ class PostgreSQLDriver(DirectDriver):
             cols.append(cleaned)
         return cols
 
+    async def execute_ddl(self, sql: str) -> None:
+        async with self._pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
+            await conn.execute(sql)
+
     async def fetch_enums(self) -> dict[str, list[str]]:
         from provisa.compiler.enum_detect import fetch_enum_registry
 

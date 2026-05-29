@@ -87,6 +87,10 @@ class SourcePool:
         driver = self._drivers[source_id]
         return await driver.execute(sql, params)
 
+    async def execute_ddl(self, source_id: str, sql: str) -> None:
+        driver = self._drivers[source_id]
+        await driver.execute_ddl(sql)
+
     async def remove(self, source_id: str) -> None:
         """Close and remove a driver for a source."""
         driver = self._drivers.pop(source_id, None)

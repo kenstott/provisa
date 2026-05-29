@@ -353,6 +353,14 @@ export async function updateTable(input: {
   return data.updateTable;
 }
 
+export async function deployViewToDb(tableId: number): Promise<MutationResult> {
+  const data = await gql<{ deployViewToDb: MutationResult }>(
+    `mutation($tableId: Int!) { deployViewToDb(tableId: $tableId) { success message } }`,
+    { tableId }
+  );
+  return data.deployViewToDb;
+}
+
 export async function deleteTable(id: number): Promise<MutationResult> {
   const data = await gql<{ deleteTable: MutationResult }>(
     `mutation($id: Int!) { deleteTable(id: $id) { success message } }`,
