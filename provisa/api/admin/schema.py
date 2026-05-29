@@ -131,8 +131,11 @@ async def _govdata_columns(
 
 
 async def _rebuild_schemas():
+    import logging
+    logging.getLogger(__name__).warning("[DEBUG] _rebuild_schemas called")
     from provisa.api.app import _rebuild_schemas as rebuild
     await rebuild()
+    logging.getLogger(__name__).warning("[DEBUG] _rebuild_schemas completed")
 
 
 def _source_from_row(row) -> SourceType:
@@ -1066,6 +1069,8 @@ class Mutation:
 
     @strawberry.mutation
     async def register_table(self, info: strawberry.types.Info, input: TableInput) -> MutationResult:
+        import logging
+        logging.getLogger(__name__).warning("[DEBUG] register_table called: table_name=%s, source_id=%s, domain_id=%s", input.table_name, input.source_id, input.domain_id)
         from provisa.api.admin.capabilities import require_capability
         if input.view_sql:
             # view registration: create_view or query_development suffice
