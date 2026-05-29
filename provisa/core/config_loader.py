@@ -178,6 +178,23 @@ async def _load_config_in_txn(
                 log.warning("Failed to load OpenAPI spec for %s: %s", src.id, _e)
 
     for tbl in config.tables:
+        # Enrich OpenAPI table columns with descriptions from spec before upserting
+        src = sources_by_id.get(tbl.source_id)
+        if src and src.type.value == "openapi" and src.base_url:
+            spec = openapi_specs.get(src.id, {})
+            if spec:
+                from provisa.openapi.mapper import parse_spec
+                from provisa.openapi.register import _schema_to_columns
+                queries, _ = parse_spec(spec)
+                match = next((q for q in queries if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)), None)
+                if match:
+                    spec_cols = _schema_to_columns(match.response_schema)
+                    spec_col_map = {c["name"]: c for c in spec_cols}
+                    # Update table columns with descriptions from spec
+                    for col in tbl.columns:
+                        if col.name in spec_col_map and not col.description:
+                            col.description = spec_col_map[col.name].get("description")
+
         await table_repo.upsert(conn, tbl)
         src = sources_by_id.get(tbl.source_id)
         if src and src.type.value == "sqlite" and src.path:

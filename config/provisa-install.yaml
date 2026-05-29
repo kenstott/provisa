@@ -390,6 +390,11 @@ discovery:
   min_confidence: 0.7
   api_key: ${env:ANTHROPIC_API_KEY}
 
+ai_models:
+  table_description: claude-haiku-4-5-20251001
+  column_description: claude-haiku-4-5-20251001
+  relationship_inference: claude-haiku-4-5-20251001
+
 server:
   limits:
     default_row_limit: 10000

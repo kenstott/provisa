@@ -524,6 +524,14 @@ class GraphQLRemoteConfig(BaseModel):
     max_list_items: int = 100
 
 
+class AIModelsConfig(BaseModel):
+    """AI model configuration for various operations."""
+
+    table_description: str = "claude-haiku-4-5-20251001"
+    column_description: str = "claude-haiku-4-5-20251001"
+    relationship_inference: str = "claude-haiku-4-5-20251001"
+
+
 class ServerConfig(BaseModel):
     """Server network configuration.
 
@@ -634,5 +642,6 @@ class ProvisaConfig(BaseModel):
     hot_tables: HotTablesConfig = Field(default_factory=HotTablesConfig)
     observability: OtelConfig = Field(default_factory=OtelConfig)
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
+    ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)
     govdata_sources: list[GovDataSource] = Field(default_factory=list)
     govdata_subscriptions: list[GovDataSubscription] = Field(default_factory=list)

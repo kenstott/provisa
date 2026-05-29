@@ -272,11 +272,11 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
     )
 
 
-async def _call_anthropic(prompt: str, api_key: str, max_tokens: int = 256) -> str:
+async def _call_anthropic(prompt: str, api_key: str, model: str = "claude-haiku-4-5-20251001", max_tokens: int = 256) -> str:
     import anthropic
     client = anthropic.AsyncAnthropic(api_key=api_key)
     message = await client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=model,
         max_tokens=max_tokens,
         messages=[{"role": "user", "content": prompt}],
     )
@@ -735,7 +735,9 @@ class Query:
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
             return ""
-        return await _call_anthropic(prompt, api_key, max_tokens=256)
+        cfg = read_config()
+        model = cfg.ai_models.table_description
+        return await _call_anthropic(prompt, api_key, model=model, max_tokens=256)
 
     @strawberry.field
     async def generate_column_description(self, table_id: str, column_name: str) -> str:
@@ -763,7 +765,9 @@ class Query:
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
             return ""
-        return await _call_anthropic(prompt, api_key, max_tokens=128)
+        cfg = read_config()
+        model = cfg.ai_models.column_description
+        return await _call_anthropic(prompt, api_key, model=model, max_tokens=128)
 
 
 @strawberry.type
