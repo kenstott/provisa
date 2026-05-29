@@ -86,7 +86,10 @@ export function ColumnPresetsEditor({ presets, columns, columnTypes, onChange }:
 
   return (
     <div className="cp-editor">
-      <div className="cp-editor-label">Column Presets</div>
+      <div className="cp-editor-label" style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+        Column Presets
+        <span title="Inject computed or constant values into every row returned for this table. Useful for adding domain identifiers, role-scoped flags, or derived fields without modifying the source schema. 'source' can be: constant, sql_expression, or role_claim." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem", lineHeight: 1 }}>ⓘ</span>
+      </div>
       {presets.length > 0 && (
         <table className="cp-table">
           <thead>

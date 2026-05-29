@@ -1078,7 +1078,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             )}
                             {(
                               <label>
-                                Watermark Column{" "}
+                                <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Watermark Column <span title="A timestamp or incrementing integer column used to detect new/changed rows for CDC (Change Data Capture) and real-time subscriptions. Required for GraphQL subscriptions on SQL sources; optional for CDC sources like PostgreSQL that use triggers." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem", lineHeight: 1 }}>ⓘ</span></span>
                                 <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
                                   {CDC_TYPES.has(sources.find((s) => s.id === editingTable.sourceId)?.type ?? "")
                                     ? "(optional — polling fallback if triggers unavailable)"
