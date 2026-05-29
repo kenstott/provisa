@@ -1747,15 +1747,6 @@ export function SqlPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", overflow: "auto", flex: 1, paddingRight: "1rem", paddingLeft: "2px" }}>
               <div style={{ display: "flex", gap: "0.75rem", flexShrink: 0 }}>
                 <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.875rem", color: "var(--text-muted)", flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>View ID <span style={{ color: "var(--destructive)" }}>*</span></span>
-                  <input
-                    value={viewId}
-                    onChange={(e) => setViewId(e.target.value)}
-                    placeholder="e.g. my_view"
-                    style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: 4, fontSize: "0.875rem", width: "100%", boxSizing: "border-box" }}
-                  />
-                </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.875rem", color: "var(--text-muted)", flex: 1, minWidth: 0 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Alias <span style={{ color: "var(--destructive)" }}>*</span></span>
                   <input
                     value={viewId}
