@@ -712,16 +712,16 @@ class Query:
     async def generate_table_description(self, table_id: str) -> str:
         """Use LLM to generate a description for a registered table."""
         import os
-        import logging
-        log = logging.getLogger(__name__)
+        import sys
+        print(f"[DEBUG] generate_table_description called: table_id={table_id}", file=sys.stderr, flush=True)
         try:
             pool = await _get_pool()
             tid = int(table_id)
             async with pool.acquire() as conn:
                 row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", tid)
                 if row is None:
-                    log.warning("generateTableDescription: table %s not found", table_id)
-                    return ""
+                    print(f"[DEBUG] table {table_id} not found — save the view/table first", file=sys.stderr, flush=True)
+                    return "Save the view first before generating descriptions"
                 col_rows = await conn.fetch(
                     "SELECT column_name FROM table_columns WHERE table_id = $1 ORDER BY id", tid
                 )
@@ -761,8 +761,8 @@ class Query:
             async with pool.acquire() as conn:
                 row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", tid)
                 if row is None:
-                    print(f"[DEBUG] table {table_id} not found", file=sys.stderr, flush=True)
-                    return ""
+                    print(f"[DEBUG] table {table_id} not found — save the view/table first", file=sys.stderr, flush=True)
+                    return "Save the view first before generating descriptions"
                 col_rows = await conn.fetch(
                     "SELECT column_name FROM table_columns WHERE table_id = $1 ORDER BY id", tid
                 )
