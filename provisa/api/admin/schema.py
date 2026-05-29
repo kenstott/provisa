@@ -1114,6 +1114,14 @@ class Mutation:
             data_product=input.data_product,
         )
         async with pool.acquire() as conn:
+            if input.source_id == "__provisa__":
+                await conn.execute(
+                    """
+                    INSERT INTO sources (id, type, description)
+                    VALUES ('__provisa__', 'trino', 'Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products')
+                    ON CONFLICT (id) DO NOTHING
+                    """
+                )
             table_id = await table_repo.upsert(conn, model)
             src_row = await conn.fetchrow("SELECT type, path FROM sources WHERE id = $1", input.source_id)
             await _maybe_migrate_sqlite(src_row, conn, input.source_id, input.table_name, input.schema_name)
