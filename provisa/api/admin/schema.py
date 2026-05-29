@@ -712,62 +712,82 @@ class Query:
     async def generate_table_description(self, table_id: str) -> str:
         """Use LLM to generate a description for a registered table."""
         import os
-        pool = await _get_pool()
-        tid = int(table_id)
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", tid)
-            if row is None:
-                return ""
-            col_rows = await conn.fetch(
-                "SELECT column_name FROM table_columns WHERE table_id = $1 ORDER BY id", tid
+        import logging
+        log = logging.getLogger(__name__)
+        try:
+            pool = await _get_pool()
+            tid = int(table_id)
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", tid)
+                if row is None:
+                    log.warning("generateTableDescription: table %s not found", table_id)
+                    return ""
+                col_rows = await conn.fetch(
+                    "SELECT column_name FROM table_columns WHERE table_id = $1 ORDER BY id", tid
+                )
+            table_name = row["table_name"]
+            schema_name = row["schema_name"]
+            source_id = row["source_id"]
+            columns = [r["column_name"] for r in col_rows]
+            prompt = (
+                f"You are a data catalog assistant. Write a concise one-to-two sentence description "
+                f"for a database table named '{table_name}' in schema '{schema_name}' "
+                f"from source '{source_id}'. "
+                f"Columns: {', '.join(columns)}. "
+                f"Respond with only the description text, no preamble."
             )
-        table_name = row["table_name"]
-        schema_name = row["schema_name"]
-        source_id = row["source_id"]
-        columns = [r["column_name"] for r in col_rows]
-        prompt = (
-            f"You are a data catalog assistant. Write a concise one-to-two sentence description "
-            f"for a database table named '{table_name}' in schema '{schema_name}' "
-            f"from source '{source_id}'. "
-            f"Columns: {', '.join(columns)}. "
-            f"Respond with only the description text, no preamble."
-        )
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if not api_key:
+            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            if not api_key:
+                log.warning("generateTableDescription: ANTHROPIC_API_KEY not set")
+                return ""
+            cfg = read_config()
+            model = cfg.get("ai_models", {}).get("table_description", "claude-haiku-4-5-20251001")
+            result = await _call_anthropic(prompt, api_key, model=model, max_tokens=256)
+            log.info("generateTableDescription result: %s", result[:100] if result else "(empty)")
+            return result
+        except Exception as e:
+            log.exception("generateTableDescription failed: %s", e)
             return ""
-        cfg = read_config()
-        model = cfg.get("ai_models", {}).get("table_description", "claude-haiku-4-5-20251001")
-        return await _call_anthropic(prompt, api_key, model=model, max_tokens=256)
 
     @strawberry.field
     async def generate_column_description(self, table_id: str, column_name: str) -> str:
         """Use LLM to generate a description for a single column."""
         import os
-        pool = await _get_pool()
-        tid = int(table_id)
-        async with pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", tid)
-            if row is None:
-                return ""
-            col_rows = await conn.fetch(
-                "SELECT column_name FROM table_columns WHERE table_id = $1 ORDER BY id", tid
+        import logging
+        log = logging.getLogger(__name__)
+        try:
+            pool = await _get_pool()
+            tid = int(table_id)
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", tid)
+                if row is None:
+                    log.warning("generateColumnDescription: table %s not found", table_id)
+                    return ""
+                col_rows = await conn.fetch(
+                    "SELECT column_name FROM table_columns WHERE table_id = $1 ORDER BY id", tid
+                )
+            table_name = row["table_name"]
+            schema_name = row["schema_name"]
+            source_id = row["source_id"]
+            all_columns = [r["column_name"] for r in col_rows]
+            prompt = (
+                f"You are a data catalog assistant. Write a concise one-sentence description "
+                f"for the column '{column_name}' in table '{table_name}' (schema '{schema_name}', "
+                f"source '{source_id}'). Other columns in this table: {', '.join(c for c in all_columns if c != column_name)}. "
+                f"Respond with only the description text, no preamble."
             )
-        table_name = row["table_name"]
-        schema_name = row["schema_name"]
-        source_id = row["source_id"]
-        all_columns = [r["column_name"] for r in col_rows]
-        prompt = (
-            f"You are a data catalog assistant. Write a concise one-sentence description "
-            f"for the column '{column_name}' in table '{table_name}' (schema '{schema_name}', "
-            f"source '{source_id}'). Other columns in this table: {', '.join(c for c in all_columns if c != column_name)}. "
-            f"Respond with only the description text, no preamble."
-        )
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if not api_key:
+            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            if not api_key:
+                log.warning("generateColumnDescription: ANTHROPIC_API_KEY not set")
+                return ""
+            cfg = read_config()
+            model = cfg.get("ai_models", {}).get("column_description", "claude-haiku-4-5-20251001")
+            result = await _call_anthropic(prompt, api_key, model=model, max_tokens=128)
+            log.info("generateColumnDescription result: %s", result[:100] if result else "(empty)")
+            return result
+        except Exception as e:
+            log.exception("generateColumnDescription failed: %s", e)
             return ""
-        cfg = read_config()
-        model = cfg.get("ai_models", {}).get("column_description", "claude-haiku-4-5-20251001")
-        return await _call_anthropic(prompt, api_key, model=model, max_tokens=128)
 
 
 @strawberry.type
