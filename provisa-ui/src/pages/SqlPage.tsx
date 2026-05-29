@@ -11,7 +11,7 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect, Fragment } from "react";
 import { useLocation } from "react-router-dom";
 import { get as idbGet, set as idbSet } from "idb-keyval";
-import { Play, ChevronRight, ChevronDown, Table2, Columns3, History, Copy, Check, BarChart2, Network, X } from "lucide-react";
+import { Play, ChevronRight, ChevronDown, Table2, Columns3, History, Copy, Check, BarChart2, Network, X, Loader2 } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
@@ -1730,7 +1730,7 @@ export function SqlPage() {
                   disabled={viewSaving || !viewId.trim() || !viewDomainId.trim() || viewHasParams}
                   style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}
                 >
-                  {viewSaving ? "Saving…" : canCreateView ? "Create" : "Submit Request"}
+                  {viewSaving ? <><Loader2 size={12} style={{ animation: "spin 1s linear infinite", marginRight: 4 }} />Saving…</> : canCreateView ? "Create" : "Submit Request"}
                 </button>
                 <button className="modal-close" onClick={() => setViewModal(false)}><X size={14} /></button>
               </div>
