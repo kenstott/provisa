@@ -346,21 +346,15 @@ async def nl_to_sql_endpoint(
     Validates the generated SQL with sqlglot and retries (up to 3 attempts)
     feeding parse errors back to Claude.
     """
-    import os
     import sqlglot
-
-    import anthropic
 
     from provisa.api.app import state
     from provisa.compiler.sql_gen import rewrite_semantic_to_physical
+    from provisa.llm.client import ProviasLLMClient
 
     role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
     if role_id not in state.contexts:
         raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
-
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY not set")
 
     ctx = state.contexts[role_id]
 
@@ -407,37 +401,19 @@ async def nl_to_sql_endpoint(
     # table_name → type_name index for pass-1 response parsing
     _table_name_to_type: dict[str, str] = {nm.table_name: tn for tn, nm in _user_nodes.items()}
 
-    # Pass 1: ask haiku which tables the question needs.
+    # Pass 1: ask table_selection LLM which tables the question needs.
     table_list = ", ".join(
         f"{_sql_domain(nm.domain_id)}.{nm.table_name}" for nm in _user_nodes.values()
     )
-    client = anthropic.AsyncAnthropic(api_key=api_key)
-    pass1_resp = await client.messages.create(
-        model="claude-haiku-4-5-20251001",
+    _table_selector = ProviasLLMClient("table_selection")
+    pass1_text = await _table_selector.complete(
+        prompt=f"Tables: {table_list}\n\nQuestion: {request.question}",
+        system=(
+            "You are a table selector. Given a natural-language question and a list of available tables, "
+            "reply with ONLY a comma-separated list of the table names (without domain prefix) that are "
+            "needed to answer the question. No explanation. No punctuation other than commas."
+        ),
         max_tokens=256,
-        system=[
-            {
-                "type": "text",
-                "text": (
-                    "You are a table selector. Given a natural-language question and a list of available tables, "
-                    "reply with ONLY a comma-separated list of the table names (without domain prefix) that are "
-                    "needed to answer the question. No explanation. No punctuation other than commas."
-                ),
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[
-            {
-                "role": "user",
-                "content": f"Tables: {table_list}\n\nQuestion: {request.question}",
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-    )
-    pass1_text = (
-        pass1_resp.content[0].text.strip()
-        if pass1_resp.content and isinstance(pass1_resp.content[0], anthropic.types.TextBlock)
-        else ""
     )
     selected_raw = [t.strip().split(".")[-1] for t in pass1_text.split(",") if t.strip()]
     selected_types: set[str] = {
@@ -512,48 +488,37 @@ async def nl_to_sql_endpoint(
             + "\n".join(multihop_lines)
         )
 
-    system_prompt = [
-        {
-            "type": "text",
-            "text": (
-                "You are a SQL generator for the Provisa data platform.\n"
-                "Output ONLY a valid PostgreSQL SELECT statement — no explanation, no markdown, no code fences.\n\n"
-                f"Available tables and approved joins:\n{schema_block}\n\n"
-                "STRICT RULES — violating any rule causes a validation error:\n"
-                "1. Table names: use domain.table_name exactly as listed (e.g. pet_store.pets). Never quote schema names.\n"
-                "2. Column names: use ONLY the column names listed under each table, exactly as shown (case-sensitive). Never invent names.\n"
-                "3. JOINs: use ONLY the 'Approved JOIN' conditions listed above, character for character. "
-                "Never write a JOIN ON condition that is not in the list above.\n"
-                "4. Include a LIMIT clause (default 100).\n"
-                "5. Output only the SQL statement."
-            ),
-            "cache_control": {"type": "ephemeral"},
-        }
-    ]
+    sql_gen_system = (
+        "You are a SQL generator for the Provisa data platform.\n"
+        "Output ONLY a valid PostgreSQL SELECT statement — no explanation, no markdown, no code fences.\n\n"
+        f"Available tables and approved joins:\n{schema_block}\n\n"
+        "STRICT RULES — violating any rule causes a validation error:\n"
+        "1. Table names: use domain.table_name exactly as listed (e.g. pet_store.pets). Never quote schema names.\n"
+        "2. Column names: use ONLY the column names listed under each table, exactly as shown (case-sensitive). Never invent names.\n"
+        "3. JOINs: use ONLY the 'Approved JOIN' conditions listed above, character for character. "
+        "Never write a JOIN ON condition that is not in the list above.\n"
+        "4. Include a LIMIT clause (default 100).\n"
+        "5. Output only the SQL statement."
+    )
 
-    messages: list[anthropic.types.MessageParam] = [{"role": "user", "content": request.question, "cache_control": {"type": "ephemeral"}}]
+    _sql_gen = ProviasLLMClient("sql_generation")
     last_error: str = ""
     last_sql: str = ""
     attempt: int = 0
+    current_prompt: str = request.question
 
     for attempt in range(1, 4):
         if last_error:
-            messages.append({"role": "assistant", "content": last_sql})
-            messages.append(
-                {
-                    "role": "user",
-                    "content": f"Error: {last_error}\nFix it and output only the corrected SQL.",
-                }
+            current_prompt = (
+                f"{request.question}\n\nPrevious attempt:\n{last_sql}\n\n"
+                f"Error: {last_error}\nFix it and output only the corrected SQL."
             )
 
-        resp = await client.messages.create(
-            model="claude-sonnet-4-6",
+        last_sql = await _sql_gen.complete(
+            prompt=current_prompt,
+            system=sql_gen_system,
             max_tokens=1024,
-            system=system_prompt,
-            messages=messages,
         )
-        block = resp.content[0]
-        last_sql = block.text.strip() if isinstance(block, anthropic.types.TextBlock) else ""
         if last_sql.startswith("```"):
             last_sql = "\n".join(
                 line for line in last_sql.splitlines() if not line.strip().startswith("```")

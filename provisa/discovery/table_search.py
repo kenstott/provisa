@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass
 
@@ -119,22 +118,21 @@ def parse_llm_response(text: str) -> list[dict]:
 async def llm_rank(
     query: str,
     candidates: list[TableCandidate],
-    api_key: str,
+    api_key: str | None = None,
 ) -> list[RankedTable]:
-    """Call haiku to semantically rank candidates. Returns empty list on failure."""
-    import anthropic  # optional dependency
+    """Call LLM to semantically rank candidates. Returns empty list on failure."""
+    from provisa.llm.client import ProviasLLMClient
 
     prompt = build_search_prompt(query, candidates)
     candidate_index = {(c.schema_name, c.name): c for c in candidates}
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = ProviasLLMClient("table_selection")
     try:
-        msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+        raw = await client.complete(
+            prompt,
+            system="You are a data catalog assistant.",
             max_tokens=1024,
-            messages=[{"role": "user", "content": prompt, "cache_control": {"type": "ephemeral"}}],
         )
-        raw = msg.content[0].text if msg.content else "[]"
     except Exception as exc:
         log.warning("LLM table search failed: %s", exc)
         return []
@@ -174,11 +172,9 @@ async def search_tables(
     if not filtered:
         return []
 
-    resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
-    if resolved_key:
-        ranked = await llm_rank(query, filtered, resolved_key)
-        if ranked:
-            return ranked
+    ranked = await llm_rank(query, filtered)
+    if ranked:
+        return ranked
 
     # Fallback: return fuzzy results as RankedTable with no confidence scores
     query_tokens = _tokenize(query)

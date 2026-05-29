@@ -8,10 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Tests for discovery analyzer — mocks the anthropic client."""
+"""Tests for discovery analyzer — mocks the LLM client."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from provisa.discovery.analyzer import RelationshipCandidate, analyze
 from provisa.discovery.collector import DiscoveryInput, TableMeta
@@ -33,16 +33,14 @@ def _make_discovery_input():
     return DiscoveryInput(tables=[t1, t2], existing_relationships=[], rejected_pairs=[])
 
 
-def _mock_response(text: str):
-    content_block = MagicMock()
-    content_block.text = text
-    msg = MagicMock()
-    msg.content = [content_block]
-    return msg
+def _patch_complete_sync(return_text: str):
+    return patch(
+        "provisa.llm.client.ProviasLLMClient._complete_sync",
+        return_value=return_text,
+    )
 
 
-@patch("provisa.discovery.analyzer.anthropic.Anthropic")
-def test_valid_response_parsed(mock_cls):
+def test_valid_response_parsed():
     candidates_json = json.dumps([{
         "source_table_id": 1,
         "source_column": "customer_id",
@@ -52,19 +50,15 @@ def test_valid_response_parsed(mock_cls):
         "confidence": 0.95,
         "reasoning": "FK pattern",
     }])
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _mock_response(candidates_json)
-    mock_cls.return_value = mock_client
-
-    di = _make_discovery_input()
-    results = analyze("test prompt", "fake-key", di)
+    with _patch_complete_sync(candidates_json):
+        di = _make_discovery_input()
+        results = analyze("test prompt", "fake-key", di)
     assert len(results) == 1
     assert results[0].source_column == "customer_id"
     assert results[0].confidence == 0.95
 
 
-@patch("provisa.discovery.analyzer.anthropic.Anthropic")
-def test_invalid_candidates_filtered(mock_cls):
+def test_invalid_candidates_filtered():
     """Candidate references nonexistent column — should be filtered."""
     candidates_json = json.dumps([{
         "source_table_id": 1,
@@ -75,17 +69,13 @@ def test_invalid_candidates_filtered(mock_cls):
         "confidence": 0.9,
         "reasoning": "guess",
     }])
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _mock_response(candidates_json)
-    mock_cls.return_value = mock_client
-
-    di = _make_discovery_input()
-    results = analyze("test prompt", "fake-key", di)
+    with _patch_complete_sync(candidates_json):
+        di = _make_discovery_input()
+        results = analyze("test prompt", "fake-key", di)
     assert len(results) == 0
 
 
-@patch("provisa.discovery.analyzer.anthropic.Anthropic")
-def test_below_threshold_filtered(mock_cls):
+def test_below_threshold_filtered():
     candidates_json = json.dumps([{
         "source_table_id": 1,
         "source_column": "customer_id",
@@ -95,28 +85,20 @@ def test_below_threshold_filtered(mock_cls):
         "confidence": 0.3,
         "reasoning": "weak match",
     }])
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _mock_response(candidates_json)
-    mock_cls.return_value = mock_client
-
-    di = _make_discovery_input()
-    results = analyze("test prompt", "fake-key", di, min_confidence=0.7)
+    with _patch_complete_sync(candidates_json):
+        di = _make_discovery_input()
+        results = analyze("test prompt", "fake-key", di, min_confidence=0.7)
     assert len(results) == 0
 
 
-@patch("provisa.discovery.analyzer.anthropic.Anthropic")
-def test_malformed_json_returns_empty(mock_cls):
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _mock_response("This is not JSON at all {{{")
-    mock_cls.return_value = mock_client
-
-    di = _make_discovery_input()
-    results = analyze("test prompt", "fake-key", di)
+def test_malformed_json_returns_empty():
+    with _patch_complete_sync("This is not JSON at all {{{"):
+        di = _make_discovery_input()
+        results = analyze("test prompt", "fake-key", di)
     assert results == []
 
 
-@patch("provisa.discovery.analyzer.anthropic.Anthropic")
-def test_response_in_code_block_parsed(mock_cls):
+def test_response_in_code_block_parsed():
     candidates_json = json.dumps([{
         "source_table_id": 1,
         "source_column": "customer_id",
@@ -127,10 +109,7 @@ def test_response_in_code_block_parsed(mock_cls):
         "reasoning": "FK pattern",
     }])
     text = f"Here are the results:\n```json\n{candidates_json}\n```"
-    mock_client = MagicMock()
-    mock_client.messages.create.return_value = _mock_response(text)
-    mock_cls.return_value = mock_client
-
-    di = _make_discovery_input()
-    results = analyze("test prompt", "fake-key", di)
+    with _patch_complete_sync(text):
+        di = _make_discovery_input()
+        results = analyze("test prompt", "fake-key", di)
     assert len(results) == 1

@@ -272,22 +272,10 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
     )
 
 
-async def _call_anthropic(prompt: str, api_key: str, model: str = "claude-haiku-4-5-20251001", max_tokens: int = 256) -> str:
-    import anthropic
-    client = anthropic.AsyncAnthropic(api_key=api_key)
-    message = await client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        system=[
-            {
-                "type": "text",
-                "text": "You are a data catalog assistant.",
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return message.content[0].text.strip()
+async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
+    from provisa.llm.client import ProviasLLMClient
+    client = ProviasLLMClient(operation)
+    return await client.complete(prompt, system="You are a data catalog assistant.", max_tokens=max_tokens)
 
 
 async def _maybe_migrate_sqlite(src_row, conn, source_id: str, table_name: str, schema_name: str, table_id: int | None = None) -> None:
@@ -718,7 +706,6 @@ class Query:
     @strawberry.field
     async def generate_table_description(self, table_id: str) -> str:
         """Use LLM to generate a description for a registered table."""
-        import os
         import sys
         print(f"[DEBUG] generate_table_description called: table_id={table_id}", file=sys.stderr, flush=True)
         try:
@@ -743,13 +730,7 @@ class Query:
                 f"Columns: {', '.join(columns)}. "
                 f"Respond with only the description text, no preamble."
             )
-            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-            if not api_key:
-                log.warning("generateTableDescription: ANTHROPIC_API_KEY not set")
-                return ""
-            cfg = read_config()
-            model = cfg.get("ai_models", {}).get("table_description", "claude-haiku-4-5-20251001")
-            result = await _call_anthropic(prompt, api_key, model=model, max_tokens=256)
+            result = await _call_llm(prompt, "table_description", max_tokens=256)
             log.info("generateTableDescription result: %s", result[:100] if result else "(empty)")
             return result
         except Exception as e:
@@ -759,7 +740,6 @@ class Query:
     @strawberry.field
     async def generate_column_description(self, table_id: str, column_name: str) -> str:
         """Use LLM to generate a description for a single column."""
-        import os
         import sys
         print(f"[DEBUG] generate_column_description called: table_id={table_id}, column_name={column_name}", file=sys.stderr, flush=True)
         try:
@@ -783,16 +763,8 @@ class Query:
                 f"source '{source_id}'). Other columns in this table: {', '.join(c for c in all_columns if c != column_name)}. "
                 f"Respond with only the description text, no preamble."
             )
-            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-            if not api_key:
-                print("[DEBUG] ANTHROPIC_API_KEY not set", file=sys.stderr, flush=True)
-                return ""
-            print(f"[DEBUG] calling _call_anthropic with model...", file=sys.stderr, flush=True)
-            cfg = read_config()
-            model = cfg.get("ai_models", {}).get("column_description", "claude-haiku-4-5-20251001")
-            print(f"[DEBUG] model={model}", file=sys.stderr, flush=True)
-            result = await _call_anthropic(prompt, api_key, model=model, max_tokens=128)
-            print(f"[DEBUG] _call_anthropic result: {result[:100] if result else '(empty)'}", file=sys.stderr, flush=True)
+            result = await _call_llm(prompt, "column_description", max_tokens=128)
+            print(f"[DEBUG] _call_llm result: {result[:100] if result else '(empty)'}", file=sys.stderr, flush=True)
             return result
         except Exception as e:
             print(f"[DEBUG] Exception: {e}", file=sys.stderr, flush=True)

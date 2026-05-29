@@ -29,8 +29,7 @@ This file adds:
   - FK suggestion request/response — full API call shape (model, max_tokens, messages)
   - Confidence threshold boundary — exactly at min_confidence is included
   - Confidence threshold boundary — just below min_confidence is excluded
-  - Error when LLM unavailable — anthropic.APIConnectionError propagates
-  - Error when LLM unavailable — anthropic.APIStatusError propagates
+  - Error when LLM unavailable — exception from _complete_sync propagates
   - Multiple candidates with mixed confidence — only passing ones returned
   - Invalid cardinality value in LLM response is filtered
   - Non-array JSON response returns empty list
@@ -80,14 +79,6 @@ def _make_di(tables: list[TableMeta] | None = None) -> DiscoveryInput:
     return DiscoveryInput(tables=tables, existing_relationships=[], rejected_pairs=[])
 
 
-def _mock_response(text: str):
-    content_block = MagicMock()
-    content_block.text = text
-    msg = MagicMock()
-    msg.content = [content_block]
-    return msg
-
-
 def _candidate_json(
     src_table=1, src_col="customer_id",
     tgt_table=2, tgt_col="id",
@@ -106,81 +97,26 @@ def _candidate_json(
     }
 
 
+def _patch_complete_sync(return_text: str):
+    """Patch ProviasLLMClient._complete_sync to return return_text."""
+    return patch(
+        "provisa.llm.client.ProviasLLMClient._complete_sync",
+        return_value=return_text,
+    )
+
+
 # ---------------------------------------------------------------------------
 # FK suggestion request/response shape
 # ---------------------------------------------------------------------------
 
 class TestFKSuggestionRequestResponseShape:
-    """The analyzer must call the Anthropic API with the expected parameters
-    and produce RelationshipCandidate objects with the correct field types."""
+    """The analyzer must call the LLM and produce RelationshipCandidate objects
+    with the correct field types."""
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_api_called_with_expected_model(self, mock_cls):
-        """Claude claude-sonnet-4-20250514 must be the model used."""
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_response(
-            json.dumps([_candidate_json()])
-        )
-        mock_cls.return_value = mock_client
-
-        analyze("test prompt", "fake-key", _make_di())
-
-        call_kwargs = mock_client.messages.create.call_args.kwargs
-        assert call_kwargs["model"] == "claude-sonnet-4-20250514"
-
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_api_called_with_max_tokens(self, mock_cls):
-        """max_tokens must be set (prevents truncated responses)."""
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_response(
-            json.dumps([_candidate_json()])
-        )
-        mock_cls.return_value = mock_client
-
-        analyze("test prompt", "fake-key", _make_di())
-
-        call_kwargs = mock_client.messages.create.call_args.kwargs
-        assert "max_tokens" in call_kwargs
-        assert call_kwargs["max_tokens"] > 0
-
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_api_called_with_user_role_message(self, mock_cls):
-        """Messages list must contain a user-role entry with the prompt."""
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_response(
-            json.dumps([_candidate_json()])
-        )
-        mock_cls.return_value = mock_client
-
-        analyze("my special prompt", "fake-key", _make_di())
-
-        call_kwargs = mock_client.messages.create.call_args.kwargs
-        messages = call_kwargs["messages"]
-        assert len(messages) >= 1
-        assert messages[0]["role"] == "user"
-        assert messages[0]["content"] == "my special prompt"
-
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_api_key_passed_to_client(self, mock_cls):
-        """The provided API key must be forwarded to the Anthropic client."""
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_response(json.dumps([]))
-        mock_cls.return_value = mock_client
-
-        analyze("prompt", "sk-my-test-key", _make_di())
-
-        mock_cls.assert_called_once_with(api_key="sk-my-test-key")
-
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_response_fields_are_correct_types(self, mock_cls):
+    def test_response_fields_are_correct_types(self):
         """Each RelationshipCandidate must have correctly typed fields."""
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_response(
-            json.dumps([_candidate_json(confidence=0.85)])
-        )
-        mock_cls.return_value = mock_client
-
-        results = analyze("prompt", "fake-key", _make_di())
+        with _patch_complete_sync(json.dumps([_candidate_json(confidence=0.85)])):
+            results = analyze("test prompt", "fake-key", _make_di())
 
         assert len(results) == 1
         c = results[0]
@@ -193,8 +129,7 @@ class TestFKSuggestionRequestResponseShape:
         assert isinstance(c.confidence, float)
         assert isinstance(c.reasoning, str)
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_response_field_values_match_llm_output(self, mock_cls):
+    def test_response_field_values_match_llm_output(self):
         """All candidate fields must map to their LLM response counterparts."""
         raw = _candidate_json(
             src_table=1, src_col="customer_id",
@@ -203,11 +138,8 @@ class TestFKSuggestionRequestResponseShape:
             confidence=0.92,
             reasoning="Name pattern match",
         )
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_response(json.dumps([raw]))
-        mock_cls.return_value = mock_client
-
-        results = analyze("prompt", "fake-key", _make_di())
+        with _patch_complete_sync(json.dumps([raw])):
+            results = analyze("prompt", "fake-key", _make_di())
 
         c = results[0]
         assert c.source_table_id == 1
@@ -226,33 +158,20 @@ class TestFKSuggestionRequestResponseShape:
 class TestConfidenceThresholdBoundary:
     """Candidates exactly at min_confidence must be included; just below excluded."""
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_exactly_at_threshold_is_included(self, mock_cls):
+    def test_exactly_at_threshold_is_included(self):
         """confidence == min_confidence should be accepted (inclusive lower bound)."""
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_response(
-            json.dumps([_candidate_json(confidence=0.7)])
-        )
-        mock_cls.return_value = mock_client
-
-        results = analyze("prompt", "fake-key", _make_di(), min_confidence=0.7)
+        with _patch_complete_sync(json.dumps([_candidate_json(confidence=0.7)])):
+            results = analyze("prompt", "fake-key", _make_di(), min_confidence=0.7)
         assert len(results) == 1
         assert results[0].confidence == pytest.approx(0.7)
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_just_below_threshold_is_excluded(self, mock_cls):
+    def test_just_below_threshold_is_excluded(self):
         """confidence < min_confidence should be filtered out."""
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_response(
-            json.dumps([_candidate_json(confidence=0.699)])
-        )
-        mock_cls.return_value = mock_client
-
-        results = analyze("prompt", "fake-key", _make_di(), min_confidence=0.7)
+        with _patch_complete_sync(json.dumps([_candidate_json(confidence=0.699)])):
+            results = analyze("prompt", "fake-key", _make_di(), min_confidence=0.7)
         assert len(results) == 0
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_mixed_confidence_returns_only_passing(self, mock_cls):
+    def test_mixed_confidence_returns_only_passing(self):
         """Three candidates: two pass, one does not."""
         di = _make_di([
             _make_table(1, "orders", ["id", "customer_id", "product_id"]),
@@ -262,7 +181,6 @@ class TestConfidenceThresholdBoundary:
         payload = [
             _candidate_json(src_col="customer_id", tgt_table=2, confidence=0.95),
             _candidate_json(src_col="product_id", tgt_table=3, confidence=0.5),   # filtered
-            # one-to-many direction
             {
                 "source_table_id": 2,
                 "source_column": "id",
@@ -273,37 +191,22 @@ class TestConfidenceThresholdBoundary:
                 "reasoning": "reverse side",
             },
         ]
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_response(json.dumps(payload))
-        mock_cls.return_value = mock_client
-
-        results = analyze("prompt", "fake-key", di, min_confidence=0.7)
+        with _patch_complete_sync(json.dumps(payload)):
+            results = analyze("prompt", "fake-key", di, min_confidence=0.7)
         assert len(results) == 2
         confidences = {r.confidence for r in results}
         assert 0.5 not in confidences
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_zero_threshold_accepts_all_valid(self, mock_cls):
+    def test_zero_threshold_accepts_all_valid(self):
         """min_confidence=0.0 accepts any valid candidate regardless of score."""
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_response(
-            json.dumps([_candidate_json(confidence=0.01)])
-        )
-        mock_cls.return_value = mock_client
-
-        results = analyze("prompt", "fake-key", _make_di(), min_confidence=0.0)
+        with _patch_complete_sync(json.dumps([_candidate_json(confidence=0.01)])):
+            results = analyze("prompt", "fake-key", _make_di(), min_confidence=0.0)
         assert len(results) == 1
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_threshold_1_accepts_only_perfect_confidence(self, mock_cls):
+    def test_threshold_1_accepts_only_perfect_confidence(self):
         """min_confidence=1.0 accepts only candidates with confidence exactly 1.0."""
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_response(
-            json.dumps([_candidate_json(confidence=0.999)])
-        )
-        mock_cls.return_value = mock_client
-
-        results = analyze("prompt", "fake-key", _make_di(), min_confidence=1.0)
+        with _patch_complete_sync(json.dumps([_candidate_json(confidence=0.999)])):
+            results = analyze("prompt", "fake-key", _make_di(), min_confidence=1.0)
         assert len(results) == 0
 
 
@@ -312,67 +215,39 @@ class TestConfidenceThresholdBoundary:
 # ---------------------------------------------------------------------------
 
 class TestLLMUnavailableError:
-    """Anthropic API errors must propagate — the analyzer must not swallow them."""
+    """LLM errors must propagate — the analyzer must not swallow them."""
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_api_connection_error_propagates(self, mock_cls):
-        """anthropic.APIConnectionError must not be silently swallowed."""
-        import anthropic as anthropic_module
+    def test_api_connection_error_propagates(self):
+        """ConnectionError from _complete_sync must not be silently swallowed."""
+        with patch(
+            "provisa.llm.client.ProviasLLMClient._complete_sync",
+            side_effect=ConnectionError("LLM unreachable"),
+        ):
+            with pytest.raises(ConnectionError):
+                analyze("prompt", "fake-key", _make_di())
 
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = anthropic_module.APIConnectionError(
-            request=MagicMock()
-        )
-        mock_cls.return_value = mock_client
+    def test_api_status_error_401_propagates(self):
+        """PermissionError from _complete_sync must propagate."""
+        with patch(
+            "provisa.llm.client.ProviasLLMClient._complete_sync",
+            side_effect=PermissionError("Invalid API key"),
+        ):
+            with pytest.raises(PermissionError):
+                analyze("prompt", "bad-key", _make_di())
 
-        with pytest.raises(anthropic_module.APIConnectionError):
-            analyze("prompt", "fake-key", _make_di())
+    def test_api_rate_limit_error_propagates(self):
+        """RuntimeError (rate limit) from _complete_sync must propagate."""
+        with patch(
+            "provisa.llm.client.ProviasLLMClient._complete_sync",
+            side_effect=RuntimeError("Rate limit exceeded"),
+        ):
+            with pytest.raises(RuntimeError):
+                analyze("prompt", "fake-key", _make_di())
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_api_status_error_401_propagates(self, mock_cls):
-        """Unauthorized (401) from the Anthropic API must propagate."""
-        import anthropic as anthropic_module
-        import httpx
-
-        mock_response = MagicMock()
-        mock_response.status_code = 401
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = anthropic_module.AuthenticationError(
-            message="Invalid API key",
-            response=mock_response,
-            body={"error": {"type": "authentication_error"}},
-        )
-        mock_cls.return_value = mock_client
-
-        with pytest.raises(anthropic_module.AuthenticationError):
-            analyze("prompt", "bad-key", _make_di())
-
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_api_rate_limit_error_propagates(self, mock_cls):
-        """RateLimitError from the Anthropic API must propagate."""
-        import anthropic as anthropic_module
-
-        mock_response = MagicMock()
-        mock_response.status_code = 429
-        mock_client = MagicMock()
-        mock_client.messages.create.side_effect = anthropic_module.RateLimitError(
-            message="Rate limit exceeded",
-            response=mock_response,
-            body={"error": {"type": "rate_limit_error"}},
-        )
-        mock_cls.return_value = mock_client
-
-        with pytest.raises(anthropic_module.RateLimitError):
-            analyze("prompt", "fake-key", _make_di())
-
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
-    def test_empty_content_list_returns_empty(self, mock_cls):
+    def test_empty_content_list_returns_empty(self):
         """If the LLM returns an empty JSON array, analyze returns []."""
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_response("[]")
-        mock_cls.return_value = mock_client
-
-        results = analyze("prompt", "fake-key", _make_di())
+        with _patch_complete_sync("[]"):
+            results = analyze("prompt", "fake-key", _make_di())
         assert results == []
 
 

@@ -17,8 +17,6 @@ import logging
 import re
 from dataclasses import dataclass
 
-import anthropic
-
 from provisa.discovery.collector import DiscoveryInput
 
 log = logging.getLogger(__name__)
@@ -86,15 +84,10 @@ def analyze(
     discovery_input: DiscoveryInput,
     min_confidence: float = 0.7,
 ) -> list[RelationshipCandidate]:
-    """Call Claude API with prompt, parse and validate response."""
-    client = anthropic.Anthropic(api_key=api_key)
-    message = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4096,
-        messages=[{"role": "user", "content": prompt, "cache_control": {"type": "ephemeral"}}],
-    )
-
-    response_text = message.content[0].text
+    """Call LLM with prompt, parse and validate response."""
+    from provisa.llm.client import ProviasLLMClient
+    llm = ProviasLLMClient("relationship_inference")
+    response_text = llm.complete_sync(prompt, "You are a data analyst.", 4096)
     log.warning("LLM raw response (%d chars): %s", len(response_text), response_text[:3000])
 
     try:

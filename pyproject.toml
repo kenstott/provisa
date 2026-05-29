@@ -22,6 +22,7 @@ dependencies = [
     "httpx",
     "redis[hiredis]",
     "anthropic",
+    "aisuite>=0.1",
     "apscheduler>=3.10",
     "inflect",
     "jsonpath-ng",
