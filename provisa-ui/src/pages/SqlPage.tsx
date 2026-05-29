@@ -1756,6 +1756,15 @@ export function SqlPage() {
                   />
                 </label>
                 <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.875rem", color: "var(--text-muted)", flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Alias <span style={{ color: "var(--destructive)" }}>*</span></span>
+                  <input
+                    value={viewId}
+                    onChange={(e) => setViewId(e.target.value)}
+                    placeholder="e.g. my_view"
+                    style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: 4, fontSize: "0.875rem", width: "100%", boxSizing: "border-box" }}
+                  />
+                </label>
+                <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.875rem", color: "var(--text-muted)", flex: 1, minWidth: 0 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Domain <span style={{ color: "var(--destructive)" }}>*</span></span>
                   <select
                     value={viewDomainId}
@@ -1794,110 +1803,6 @@ export function SqlPage() {
                   basicSetup={{ lineNumbers: false, foldGutter: false }}
                 />
               </div>
-              {viewColumns.length > 0 && (
-                <div className="column-editor">
-                    <div className="column-editor-header">
-                      <span className="col-name-header">Column</span>
-                      <span className="col-flex-header">Alias</span>
-                      <span className="col-flex-header">Description</span>
-                      <span className="col-flex-header">Visible To</span>
-                      <span className="col-flex-header">Masking</span>
-                      <span className="col-flex-header">Scope</span>
-                    </div>
-                    {viewColumns.map((col, i) => (
-                      <Fragment key={col.name}>
-                        <div className="column-editor-row">
-                          <span className="col-name">{col.name}</span>
-                          <input
-                            value={col.alias}
-                            onChange={(e) => updateViewCol(i, "alias", e.target.value)}
-                            placeholder={col.name}
-                            className="col-flex-input"
-                          />
-                          <input
-                            value={col.description}
-                            onChange={(e) => updateViewCol(i, "description", e.target.value)}
-                            placeholder="description"
-                            className="col-flex-input"
-                          />
-                          <MultiSelect
-                            options={roles.map((r) => ({ id: r, label: r }))}
-                            value={col.visibleTo}
-                            onChange={(selected) => updateViewCol(i, "visibleTo", selected)}
-                            className="col-flex-input"
-                          />
-                          <select
-                            value={col.maskType}
-                            onChange={(e) => updateViewCol(i, "maskType", e.target.value as ViewColumnConfig["maskType"])}
-                            className="col-flex-input"
-                          >
-                            <option value="">None</option>
-                            <option value="regex">Regex</option>
-                            <option value="constant">Constant</option>
-                            <option value="truncate">Truncate</option>
-                          </select>
-                          <select
-                            value={col.scope}
-                            onChange={(e) => updateViewCol(i, "scope", e.target.value as ViewColumnConfig["scope"])}
-                            className="col-flex-input"
-                          >
-                            <option value="domain">domain</option>
-                            <option value="public">public</option>
-                            <option value="restricted">restricted</option>
-                          </select>
-                        </div>
-                        {col.maskType && (
-                          <div className="column-editor-row column-mask-row">
-                            <span className="col-name" style={{ color: "var(--text-muted)", fontSize: "0.75rem", marginLeft: "0.25rem" }}>↳ masking</span>
-                            {col.maskType === "regex" && (
-                              <>
-                                <input
-                                  value={col.maskPattern}
-                                  onChange={(e) => updateViewCol(i, "maskPattern", e.target.value)}
-                                  placeholder="regex pattern"
-                                  className="col-flex-input"
-                                />
-                                <input
-                                  value={col.maskReplace}
-                                  onChange={(e) => updateViewCol(i, "maskReplace", e.target.value)}
-                                  placeholder="replacement"
-                                  className="col-flex-input"
-                                />
-                              </>
-                            )}
-                            {col.maskType === "constant" && (
-                              <input
-                                value={col.maskValue}
-                                onChange={(e) => updateViewCol(i, "maskValue", e.target.value)}
-                                placeholder="constant value (NULL, 0, ***)"
-                                className="col-flex-input"
-                              />
-                            )}
-                            {col.maskType === "truncate" && (
-                              <select
-                                value={col.maskPrecision}
-                                onChange={(e) => updateViewCol(i, "maskPrecision", e.target.value)}
-                                className="col-flex-input"
-                              >
-                                <option value="">Select precision...</option>
-                                <option value="year">Year</option>
-                                <option value="month">Month</option>
-                                <option value="day">Day</option>
-                                <option value="hour">Hour</option>
-                              </select>
-                            )}
-                            <input
-                              value={col.unmaskedTo}
-                              onChange={(e) => updateViewCol(i, "unmaskedTo", e.target.value)}
-                              placeholder="unmasked roles (csv)"
-                              className="col-flex-input"
-                            />
-                          </div>
-                        )}
-                      </Fragment>
-                    ))}
-                </div>
-              )}
             </div>
           </div>
         </div>
