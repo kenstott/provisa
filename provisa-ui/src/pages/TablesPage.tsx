@@ -1013,7 +1013,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                         <>
                           <div className="form-card" style={{ marginBottom: "0.75rem" }}>
                             <label>
-                              Alias <span title="The GraphQL/Cypher field name exposed in the API. Defaults to the table name. Changing this renames the entity across all queries and SDL docs." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem" }}>ⓘ</span>
+                              <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Alias <span title="The GraphQL/Cypher field name exposed in the API. Defaults to the table name. Changing this renames the entity across all queries and SDL docs." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem", lineHeight: 1 }}>ⓘ</span></span>
                               <input
                                 value={editingTable.alias || ""}
                                 onChange={(e) => setEditingTable({ ...editingTable, alias: e.target.value || null })}
@@ -1021,7 +1021,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               />
                             </label>
                             <label>
-                              Naming Convention <span title="Controls how the alias is cased in the API schema. snake_case → my_table, camelCase → myTable, PascalCase → MyTable. 'Inherit' uses the source's convention. Affects GraphQL field names, Cypher labels, and SDL output." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem" }}>ⓘ</span>
+                              <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Naming Convention <span title="Controls how the alias is cased in the API schema. snake_case → my_table, camelCase → myTable, PascalCase → MyTable. 'Inherit' uses the source's convention. Affects GraphQL field names, Cypher labels, and SDL output." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem", lineHeight: 1 }}>ⓘ</span></span>
                               <select
                                 value={editingTable.namingConvention ?? ""}
                                 onChange={(e) => setEditingTable({ ...editingTable, namingConvention: e.target.value || null })}
@@ -1032,7 +1032,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               </select>
                             </label>
                             <label>
-                              Cache TTL (seconds) <span title="How long query results for this table are cached in memory. 0 disables caching. Leave blank to inherit the source-level TTL. Reduces load on the source database for frequently-queried tables." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem" }}>ⓘ</span>
+                              <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Cache TTL (seconds) <span title="How long query results for this table are cached in memory. 0 disables caching. Leave blank to inherit the source-level TTL. Reduces load on the source database for frequently-queried tables." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem", lineHeight: 1 }}>ⓘ</span></span>
                               <input
                                 type="number"
                                 min={0}
@@ -1042,7 +1042,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                               />
                             </label>
                             <label style={{ gridColumn: "1 / -1" }}>
-                              Description <span title="Human-readable description shown in the API schema (SDL), data catalog, and AI-assisted query generation. Good descriptions improve auto-generated SQL accuracy." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem" }}>ⓘ</span>
+                              <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Description <span title="Human-readable description shown in the API schema (SDL), data catalog, and AI-assisted query generation. Good descriptions improve auto-generated SQL accuracy." style={{ cursor: "help", color: "var(--text-muted)", fontSize: "0.75rem", lineHeight: 1 }}>ⓘ</span></span>
                               <DescriptionField
                                 value={editingTable.description || ""}
                                 onChange={(v) => setEditingTable({ ...editingTable, description: v || null })}
