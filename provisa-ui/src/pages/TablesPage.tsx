@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useRef, Fragment, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Trash2, Pencil, Sparkles, Save, X } from "lucide-react";
+import { Trash2, Pencil, Sparkles, Save, X, Loader2 } from "lucide-react";
 import { CopyButton } from "../components/CopyButton";
 import { MultiSelect } from "../components/MultiSelect";
 import {
@@ -476,6 +476,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         alias: editingTable.alias || undefined,
         description: editingTable.description || undefined,
         watermarkColumn: editingTable.watermarkColumn || null,
+        viewSql: editingTable.viewSql || undefined,
         dataProduct: editingTable.dataProduct,
         columnPresets: editingTable.columnPresets,
         columns: editingTable.columns.map((c) => ({
@@ -1261,8 +1262,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             </tbody>
                           </table>
                           <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", padding: "0.75rem 0.5rem" }}>
-                            <button className="btn-icon" title="Cancel" onClick={cancelEditing}><X size={14} /></button>
-                            <button className="btn-icon-primary" title="Save" onClick={handleSaveEdit} disabled={saving}><Save size={14} /></button>
+                            <button className="btn-icon" title="Cancel" onClick={cancelEditing} disabled={saving}><X size={14} /></button>
+                            <button className="btn-icon-primary" title="Save" onClick={handleSaveEdit} disabled={saving}>{saving ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Save size={14} />}</button>
                           </div>
                         </>
                       )}
