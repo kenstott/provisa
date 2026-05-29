@@ -336,6 +336,12 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
     const tblObj0 = tableMap[tbl0.tableName];
     let s = `SELECT *\nFROM "${schemaOf(tblObj0)}"."${tbl0.tableName}" ${aliasOf(tbl0.tableName)}`;
     const inQuery = new Set([tbl0.tableName]);
+    // Track emitted ON/AND conditions as canonical "tA.cA=tB.cB" keys (both directions) to skip duplicates.
+    const emittedConds = new Set<string>();
+    const condKey = (t1: string, c1: string, t2: string, c2: string) =>
+      [t1, c1, t2, c2].join("\x00") < [t2, c2, t1, c1].join("\x00")
+        ? `${t1}\x00${c1}\x00${t2}\x00${c2}`
+        : `${t2}\x00${c2}\x00${t1}\x00${c1}`;
     for (const join of canvasJoins) {
       const toInQuery = inQuery.has(join.toTable);
       const fromInQuery = inQuery.has(join.fromTable);
@@ -347,11 +353,19 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
         newTable = join.fromTable; newCol = join.fromCol;
         existingTable = join.toTable; existingCol = join.toCol;
       } else {
-        s += `\n  AND ${aliasOf(join.fromTable)}."${join.fromCol}" = ${aliasOf(join.toTable)}."${join.toCol}"`;
+        // Both tables already in query — emit AND only if condition is genuinely new.
+        const key = condKey(join.fromTable, join.fromCol, join.toTable, join.toCol);
+        if (!emittedConds.has(key)) {
+          s += `\n  AND ${aliasOf(join.fromTable)}."${join.fromCol}" = ${aliasOf(join.toTable)}."${join.toCol}"`;
+          emittedConds.add(key);
+        }
         continue;
       }
+      const key = condKey(existingTable, existingCol, newTable, newCol);
+      if (emittedConds.has(key)) continue;  // duplicate join entry — skip
       const newTbl = tableMap[newTable];
       s += `\nJOIN "${schemaOf(newTbl)}"."${newTable}" ${aliasOf(newTable)} ON ${aliasOf(existingTable)}."${existingCol}" = ${aliasOf(newTable)}."${newCol}"`;
+      emittedConds.add(key);
       inQuery.add(newTable);
     }
     onGenerateSql(s);
