@@ -415,15 +415,22 @@ async def nl_to_sql_endpoint(
     pass1_resp = await client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=256,
-        system=(
-            "You are a table selector. Given a natural-language question and a list of available tables, "
-            "reply with ONLY a comma-separated list of the table names (without domain prefix) that are "
-            "needed to answer the question. No explanation. No punctuation other than commas."
-        ),
+        system=[
+            {
+                "type": "text",
+                "text": (
+                    "You are a table selector. Given a natural-language question and a list of available tables, "
+                    "reply with ONLY a comma-separated list of the table names (without domain prefix) that are "
+                    "needed to answer the question. No explanation. No punctuation other than commas."
+                ),
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
         messages=[
             {
                 "role": "user",
                 "content": f"Tables: {table_list}\n\nQuestion: {request.question}",
+                "cache_control": {"type": "ephemeral"},
             }
         ],
     )
@@ -505,20 +512,26 @@ async def nl_to_sql_endpoint(
             + "\n".join(multihop_lines)
         )
 
-    system_prompt = (
-        "You are a SQL generator for the Provisa data platform.\n"
-        "Output ONLY a valid PostgreSQL SELECT statement — no explanation, no markdown, no code fences.\n\n"
-        f"Available tables and approved joins:\n{schema_block}\n\n"
-        "STRICT RULES — violating any rule causes a validation error:\n"
-        "1. Table names: use domain.table_name exactly as listed (e.g. pet_store.pets). Never quote schema names.\n"
-        "2. Column names: use ONLY the column names listed under each table, exactly as shown (case-sensitive). Never invent names.\n"
-        "3. JOINs: use ONLY the 'Approved JOIN' conditions listed above, character for character. "
-        "Never write a JOIN ON condition that is not in the list above.\n"
-        "4. Include a LIMIT clause (default 100).\n"
-        "5. Output only the SQL statement."
-    )
+    system_prompt = [
+        {
+            "type": "text",
+            "text": (
+                "You are a SQL generator for the Provisa data platform.\n"
+                "Output ONLY a valid PostgreSQL SELECT statement — no explanation, no markdown, no code fences.\n\n"
+                f"Available tables and approved joins:\n{schema_block}\n\n"
+                "STRICT RULES — violating any rule causes a validation error:\n"
+                "1. Table names: use domain.table_name exactly as listed (e.g. pet_store.pets). Never quote schema names.\n"
+                "2. Column names: use ONLY the column names listed under each table, exactly as shown (case-sensitive). Never invent names.\n"
+                "3. JOINs: use ONLY the 'Approved JOIN' conditions listed above, character for character. "
+                "Never write a JOIN ON condition that is not in the list above.\n"
+                "4. Include a LIMIT clause (default 100).\n"
+                "5. Output only the SQL statement."
+            ),
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
 
-    messages: list[anthropic.types.MessageParam] = [{"role": "user", "content": request.question}]
+    messages: list[anthropic.types.MessageParam] = [{"role": "user", "content": request.question, "cache_control": {"type": "ephemeral"}}]
     last_error: str = ""
     last_sql: str = ""
     attempt: int = 0

@@ -132,7 +132,7 @@ async def llm_rank(
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": prompt, "cache_control": {"type": "ephemeral"}}],
         )
         raw = msg.content[0].text if msg.content else "[]"
     except Exception as exc:

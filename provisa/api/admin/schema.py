@@ -278,6 +278,13 @@ async def _call_anthropic(prompt: str, api_key: str, model: str = "claude-haiku-
     message = await client.messages.create(
         model=model,
         max_tokens=max_tokens,
+        system=[
+            {
+                "type": "text",
+                "text": "You are a data catalog assistant.",
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
         messages=[{"role": "user", "content": prompt}],
     )
     return message.content[0].text.strip()

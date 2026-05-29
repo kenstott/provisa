@@ -144,7 +144,7 @@ class _AnthropicLLM:
         message = await client.messages.create(
             model="claude-opus-4-6",
             max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": prompt, "cache_control": {"type": "ephemeral"}}],
         )
         return message.content[0].text
 
