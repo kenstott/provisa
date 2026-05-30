@@ -1371,32 +1371,42 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         import logging as _prov_log
         _prov_logger = _prov_log.getLogger(__name__)
         _view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
+        _prov_logger.warning("[PROVISA-VIEW] Starting view creation, catalog=%s", _view_catalog)
         try:
             _view_rows = await _pg.fetch(
                 "SELECT schema_name, table_name, view_sql FROM registered_tables"
                 " WHERE source_id = '__provisa__' AND view_sql IS NOT NULL"
             )
-            _prov_logger.info("Creating %d __provisa__ views in Trino", len(_view_rows))
+            _prov_logger.warning("[PROVISA-VIEW] Query returned %d rows", len(_view_rows))
             for _vr in _view_rows:
                 _schema = _vr["schema_name"]
                 _name = _vr["table_name"]
                 _sql = _vr["view_sql"].rstrip().rstrip(";")
                 _fqn = f"{_view_catalog}.{_schema}.{_name}"
+                _prov_logger.warning("[PROVISA-VIEW] Processing: %s (schema=%s, table=%s)", _fqn, _schema, _name)
                 try:
+                    _prov_logger.warning("[PROVISA-VIEW] Step 1: CREATE SCHEMA IF NOT EXISTS %s.%s", _view_catalog, _schema)
                     _cur = state.trino_conn.cursor()
                     _cur.execute(f"CREATE SCHEMA IF NOT EXISTS {_view_catalog}.{_schema}")
-                    _cur.fetchall()
+                    _res1 = _cur.fetchall()
+                    _prov_logger.warning("[PROVISA-VIEW] Step 1 result: %s", _res1)
+
+                    _prov_logger.warning("[PROVISA-VIEW] Step 2: DROP VIEW IF EXISTS %s", _fqn)
                     _cur = state.trino_conn.cursor()
                     _cur.execute(f"DROP VIEW IF EXISTS {_fqn}")
-                    _cur.fetchall()
+                    _res2 = _cur.fetchall()
+                    _prov_logger.warning("[PROVISA-VIEW] Step 2 result: %s", _res2)
+
+                    _prov_logger.warning("[PROVISA-VIEW] Step 3: CREATE VIEW %s", _fqn)
                     _cur = state.trino_conn.cursor()
                     _cur.execute(f"CREATE VIEW {_fqn} AS {_sql}")
-                    _cur.fetchall()
-                    _prov_logger.info("Created __provisa__ view: %s", _fqn)
+                    _res3 = _cur.fetchall()
+                    _prov_logger.warning("[PROVISA-VIEW] Step 3 result: %s", _res3)
+                    _prov_logger.warning("[PROVISA-VIEW] Successfully created view: %s", _fqn)
                 except Exception as _e:
-                    _prov_logger.warning("Failed to create __provisa__ view %s: %s", _fqn, _e)
+                    _prov_logger.warning("[PROVISA-VIEW] Failed to create %s: %s", _fqn, str(_e), exc_info=True)
         except Exception as _e:
-            _prov_logger.warning("Error creating __provisa__ views: %s", _e)
+            _prov_logger.warning("[PROVISA-VIEW] Error querying views from DB: %s", str(_e), exc_info=True)
 
         # Introspect Trino metadata
         kafka_physical = getattr(state, "kafka_table_physical", {})
