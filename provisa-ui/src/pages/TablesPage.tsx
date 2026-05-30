@@ -145,6 +145,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tableSearch, setTableSearch] = useState(() => searchParams.get("source") ?? "");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
   const { checkedDomains } = useDomainFilter();
   const { domainAccess } = useAuth();
 
@@ -347,6 +349,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       .catch(() => setColumns([]))
       .finally(() => setLoadingColumns(false));
   }, [sourceId, schemaName, tableName]);
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setPage(0);
+  }, [tableSearch, checkedDomains]);
 
   const handleSubmit = async () => {
     setError(null);
@@ -756,15 +763,19 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           </tr>
         </thead>
         <tbody>
-          {tables.filter((t) => {
-            if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
-            if (viewsOnly && !t.viewSql) return false;
-            if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId)) return false;
-            const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
-            if (terms.length === 0) return true;
-            const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
-            return terms.every((term) => haystack.includes(term));
-          }).map((t) => {
+          {(() => {
+            const filtered = tables.filter((t) => {
+              if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
+              if (viewsOnly && !t.viewSql) return false;
+              if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId)) return false;
+              const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+              if (terms.length === 0) return true;
+              const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
+              return terms.every((term) => haystack.includes(term));
+            });
+            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+            return paged.map((t) => {
             const isEditing = editingTable?.id === t.id;
             return (
               <Fragment key={t.id}>
@@ -1272,9 +1283,33 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 )}
               </Fragment>
             );
-          })}
+            });
+          })()}
         </tbody>
       </table>
+
+      {(() => {
+        const filtered = tables.filter((t) => {
+          if (t.sourceId === "provisa-admin" || t.sourceId === "provisa-otel") return false;
+          if (viewsOnly && !t.viewSql) return false;
+          if (t.domainId && checkedDomains.size > 0 && !checkedDomains.has(t.domainId)) return false;
+          const terms = tableSearch.trim().toLowerCase().split(/\s+/).filter(Boolean);
+          if (terms.length === 0) return true;
+          const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
+          return terms.every((term) => haystack.includes(term));
+        });
+        const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+        if (totalPages === 1) return null;
+        return (
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
+            <button onClick={() => setPage(0)} disabled={page === 0}>«</button>
+            <button onClick={() => setPage(p => p - 1)} disabled={page === 0}>‹</button>
+            <span>Page {page + 1} / {totalPages}</span>
+            <button onClick={() => setPage(p => p + 1)} disabled={page >= totalPages - 1}>›</button>
+            <button onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1}>»</button>
+          </div>
+        );
+      })()}
     </div>
   );
 }

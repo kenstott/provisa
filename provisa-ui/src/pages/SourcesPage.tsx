@@ -144,6 +144,8 @@ export function SourcesPage() {
   const [expanded, setExpanded] = useState<string | null>(() => searchParams.get("expanded"));
   const [error, setError] = useState<string | null>(null);
   const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
   const [form, setForm] = useState({
     id: "", type: "postgresql", host: "", port: 5432,
     database: "", username: "", password: "",
@@ -163,6 +165,7 @@ export function SourcesPage() {
 
   const updateSearch = (v: string) => {
     setSourceSearch(v);
+    setPage(0);
     setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("search", v) : n.delete("search"); return n; }, { replace: true });
   };
   const updateExpanded = (v: string | null) => {
@@ -916,11 +919,15 @@ export function SourcesPage() {
           <tr><th>ID</th><th>Type</th><th>Host</th><th>Port</th><th>Database</th><th>Naming</th><th>Cache</th><th>Effective TTL</th><th></th></tr>
         </thead>
         <tbody>
-          {sources.filter((s) => {
-            if (!sourceSearch.trim()) return true;
-            const q = sourceSearch.toLowerCase();
-            return s.id.toLowerCase().includes(q) || s.type.toLowerCase().includes(q) || (s.description ?? "").toLowerCase().includes(q);
-          }).map((s) => {
+          {(() => {
+            const filtered = sources.filter((s) => {
+              if (!sourceSearch.trim()) return true;
+              const q = sourceSearch.toLowerCase();
+              return s.id.toLowerCase().includes(q) || s.type.toLowerCase().includes(q) || (s.description ?? "").toLowerCase().includes(q);
+            });
+            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+            return paged.map((s) => {
             const isExpanded = expanded === s.id;
             const isEditing = editingSourceId === s.id;
             return (
@@ -1021,9 +1028,29 @@ export function SourcesPage() {
                 )}
               </React.Fragment>
             );
-          })}
+            });
+          })()}
         </tbody>
       </table>
+
+      {(() => {
+        const filtered = sources.filter((s) => {
+          if (!sourceSearch.trim()) return true;
+          const q = sourceSearch.toLowerCase();
+          return s.id.toLowerCase().includes(q) || s.type.toLowerCase().includes(q) || (s.description ?? "").toLowerCase().includes(q);
+        });
+        const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+        if (totalPages === 1) return null;
+        return (
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
+            <button onClick={() => setPage(0)} disabled={page === 0}>«</button>
+            <button onClick={() => setPage(p => p - 1)} disabled={page === 0}>‹</button>
+            <span>Page {page + 1} / {totalPages}</span>
+            <button onClick={() => setPage(p => p + 1)} disabled={page >= totalPages - 1}>›</button>
+            <button onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1}>»</button>
+          </div>
+        );
+      })()}
 
       {discoverSourceId && discoverSourceType && (
         <SchemaDiscovery
