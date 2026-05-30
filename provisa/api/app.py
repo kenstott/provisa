@@ -1363,6 +1363,33 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         # if _seed_ops_trino failed at startup because the otel catalog wasn't ready yet.
         _seed_ops_trino(state.trino_conn, getattr(state, "otel_snapshot_retention_hours", None))
 
+        # Create __provisa__ views in Trino before introspection so column metadata is available
+        _view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
+        try:
+            _view_rows = await _pg.fetch(
+                "SELECT schema_name, table_name, view_sql FROM registered_tables"
+                " WHERE source_id = '__provisa__' AND view_sql IS NOT NULL"
+            )
+            for _vr in _view_rows:
+                _schema = _vr["schema_name"]
+                _name = _vr["table_name"]
+                _sql = _vr["view_sql"].rstrip().rstrip(";")
+                _fqn = f"{_view_catalog}.{_schema}.{_name}"
+                try:
+                    _cur = state.trino_conn.cursor()
+                    _cur.execute(f"CREATE SCHEMA IF NOT EXISTS {_view_catalog}.{_schema}")
+                    _cur.fetchall()
+                    _cur = state.trino_conn.cursor()
+                    _cur.execute(f"DROP VIEW IF EXISTS {_fqn}")
+                    _cur.fetchall()
+                    _cur = state.trino_conn.cursor()
+                    _cur.execute(f"CREATE VIEW {_fqn} AS {_sql}")
+                    _cur.fetchall()
+                except Exception:
+                    pass  # Silent — introspection will still handle missing tables
+        except Exception:
+            pass
+
         # Introspect Trino metadata
         kafka_physical = getattr(state, "kafka_table_physical", {})
         column_types = introspect_tables(state.trino_conn, tables, sources, {**_META_TABLE_ALIAS, **(kafka_physical or {})})
@@ -1692,39 +1719,6 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             name: rewrite_semantic_to_trino_physical(sql, ctx)
             for name, sql in state.view_sql_map.items()
         }
-
-    # Create or replace Trino views for registered __provisa__ view tables
-    if state.pg_pool and state.trino_conn:
-        import logging as _logging
-        _vlog = _logging.getLogger(__name__)
-        view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
-        try:
-            async with state.pg_pool.acquire() as _vc:
-                _view_rows = await _vc.fetch(
-                    "SELECT schema_name, table_name, view_sql FROM registered_tables"
-                    " WHERE source_id = '__provisa__' AND view_sql IS NOT NULL"
-                )
-            for _vr in _view_rows:
-                _schema = _vr["schema_name"]
-                _name = _vr["table_name"]
-                _sql = _vr["view_sql"].rstrip().rstrip(";")
-                _fqn = f"{view_catalog}.{_schema}.{_name}"
-                try:
-                    _cur = state.trino_conn.cursor()
-                    _cur.execute(f"CREATE SCHEMA IF NOT EXISTS {view_catalog}.{_schema}")
-                    _cur.fetchall()
-                    _cur = state.trino_conn.cursor()
-                    _cur.execute(f"DROP VIEW IF EXISTS {_fqn}")
-                    _cur.fetchall()
-                    _cur = state.trino_conn.cursor()
-                    _cur.execute(f"CREATE VIEW {_fqn} AS {_sql}")
-                    _cur.fetchall()
-                    _vlog.info("provisa view created: %s", _fqn)
-                except Exception:
-                    _vlog.warning("provisa view create failed: %s", _fqn, exc_info=True)
-        except Exception:
-            _vlog.warning("provisa view lifecycle failed", exc_info=True)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
