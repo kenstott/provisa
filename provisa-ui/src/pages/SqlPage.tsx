@@ -675,6 +675,8 @@ export function SqlPage() {
   const [errors, _setErrors] = useState<string[]>([]);
   const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
+  const [domainPages, setDomainPages] = useState<Record<string, number>>({});
+  const DOMAIN_PAGE_SIZE = 30;
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
   const [copied, setCopied] = useState(false);
   const [copiedResults, setCopiedResults] = useState(false);
@@ -797,7 +799,12 @@ export function SqlPage() {
   const toggleDomain = (d: string) =>
     setExpandedDomains((prev) => {
       const next = new Set(prev);
-      next.has(d) ? next.delete(d) : next.add(d);
+      if (next.has(d)) {
+        next.delete(d);
+        setDomainPages(p => { const n = {...p}; delete n[d]; return n; });
+      } else {
+        next.add(d);
+      }
       return next;
     });
 
@@ -1159,10 +1166,16 @@ export function SqlPage() {
                         <span style={{ flexShrink: 0, color: "var(--text-muted)", opacity: 0.5, fontSize: "0.65rem", lineHeight: 1 }}>ⓘ</span>
                       )}
                     </button>
-                    {domainOpen && domainTables.map((t) => {
-                      const tOpen = expandedTables.has(t.tableName);
+                    {domainOpen && (() => {
+                      const dp = domainPages[domain] ?? 0;
+                      const totalDomainPages = Math.ceil(domainTables.length / DOMAIN_PAGE_SIZE);
+                      const paged = domainTables.slice(dp * DOMAIN_PAGE_SIZE, (dp + 1) * DOMAIN_PAGE_SIZE);
                       return (
-                        <div key={t.tableName}>
+                        <>
+                          {paged.map((t) => {
+                            const tOpen = expandedTables.has(t.tableName);
+                            return (
+                              <div key={t.tableName}>
                           <div style={{ display: "flex", alignItems: "center" }}>
                             <button
                               onClick={() => toggleTable(t.tableName)}
@@ -1213,9 +1226,19 @@ export function SqlPage() {
                               )}
                             </div>
                           ))}
-                        </div>
+                            </div>
+                            );
+                          })}
+                          {totalDomainPages > 1 && (
+                            <div style={{ display: "flex", alignItems: "center", gap: "0.25rem", padding: "0.2rem 0.75rem", fontSize: "0.65rem", color: "var(--text-muted)" }}>
+                              <button onClick={() => setDomainPages(p => ({...p, [domain]: dp - 1}))} disabled={dp === 0} style={{ background: "none", border: "none", cursor: dp > 0 ? "pointer" : "default", padding: "0.1rem 0.2rem", color: "var(--text-muted)", opacity: dp > 0 ? 1 : 0.4 }}>‹</button>
+                              <span>{dp * DOMAIN_PAGE_SIZE + 1}–{Math.min((dp + 1) * DOMAIN_PAGE_SIZE, domainTables.length)} / {domainTables.length}</span>
+                              <button onClick={() => setDomainPages(p => ({...p, [domain]: dp + 1}))} disabled={dp >= totalDomainPages - 1} style={{ background: "none", border: "none", cursor: dp < totalDomainPages - 1 ? "pointer" : "default", padding: "0.1rem 0.2rem", color: "var(--text-muted)", opacity: dp < totalDomainPages - 1 ? 1 : 0.4 }}>›</button>
+                            </div>
+                          )}
+                        </>
                       );
-                    })}
+                    })()}
                   </div>
                 );
               })}
