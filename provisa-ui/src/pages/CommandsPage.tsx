@@ -113,6 +113,9 @@ export function CommandsPage() {
   const [testing, setTesting] = useState<string | null>(null);
   const [expandedFn, setExpandedFn] = useState<string | null>(null);
   const [expandedWh, setExpandedWh] = useState<string | null>(null);
+  const [fnPage, setFnPage] = useState(0);
+  const [whPage, setWhPage] = useState(0);
+  const PAGE_SIZE = 50;
   const [availableFunctions, setAvailableFunctions] = useState<TableMetadata[]>([]);
   const [loadingFunctions, setLoadingFunctions] = useState(false);
 
@@ -476,7 +479,7 @@ export function CommandsPage() {
     <div className="page">
       <div className="page-header">
         <h2>Commands</h2>
-        <FilterInput value={cmdSearch} onChange={setCmdSearch} placeholder="Filter by name…" />
+        <FilterInput value={cmdSearch} onChange={(v) => { setCmdSearch(v); setFnPage(0); setWhPage(0); }} placeholder="Filter by name…" />
         {!editingName && (
           <button onClick={() => { setShowForm(!showForm); if (showForm) handleCancel(); }}>
             {showForm ? "Cancel" : "+ Command"}
@@ -520,7 +523,11 @@ export function CommandsPage() {
           {functions.length === 0 && (
             <tr><td colSpan={7} style={{ color: "var(--text-muted)", textAlign: "center" }}>No functions registered</td></tr>
           )}
-          {functions.filter((fn) => !cmdSearch.trim() || fn.name.toLowerCase().includes(cmdSearch.toLowerCase())).map((fn) => {
+          {(() => {
+            const filtered = functions.filter((fn) => !cmdSearch.trim() || fn.name.toLowerCase().includes(cmdSearch.toLowerCase()));
+            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            const paged = filtered.slice(fnPage * PAGE_SIZE, (fnPage + 1) * PAGE_SIZE);
+            return paged.map((fn) => {
             const isExpanded = expandedFn === fn.name;
             const isEditing = editingName === fn.name;
             return (
@@ -594,9 +601,24 @@ export function CommandsPage() {
                 )}
               </React.Fragment>
             );
-          })}
+            });
+          })()}
         </tbody>
       </table>
+      {(() => {
+        const filtered = functions.filter((fn) => !cmdSearch.trim() || fn.name.toLowerCase().includes(cmdSearch.toLowerCase()));
+        const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+        if (totalPages === 1) return null;
+        return (
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
+            <button onClick={() => setFnPage(0)} disabled={fnPage === 0}>«</button>
+            <button onClick={() => setFnPage(p => p - 1)} disabled={fnPage === 0}>‹</button>
+            <span>Page {fnPage + 1} / {totalPages}</span>
+            <button onClick={() => setFnPage(p => p + 1)} disabled={fnPage >= totalPages - 1}>›</button>
+            <button onClick={() => setFnPage(totalPages - 1)} disabled={fnPage >= totalPages - 1}>»</button>
+          </div>
+        );
+      })()}
 
       <h3 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>Webhooks</h3>
       <table className="data-table">
@@ -616,7 +638,11 @@ export function CommandsPage() {
           {webhooks.length === 0 && (
             <tr><td colSpan={8} style={{ color: "var(--text-muted)", textAlign: "center" }}>No webhooks registered</td></tr>
           )}
-          {webhooks.filter((wh) => !cmdSearch.trim() || wh.name.toLowerCase().includes(cmdSearch.toLowerCase())).map((wh) => {
+          {(() => {
+            const filtered = webhooks.filter((wh) => !cmdSearch.trim() || wh.name.toLowerCase().includes(cmdSearch.toLowerCase()));
+            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            const paged = filtered.slice(whPage * PAGE_SIZE, (whPage + 1) * PAGE_SIZE);
+            return paged.map((wh) => {
             const isExpanded = expandedWh === wh.name;
             const isEditing = editingName === wh.name;
             return (
@@ -695,9 +721,24 @@ export function CommandsPage() {
                 )}
               </React.Fragment>
             );
-          })}
+            });
+          })()}
         </tbody>
       </table>
+      {(() => {
+        const filtered = webhooks.filter((wh) => !cmdSearch.trim() || wh.name.toLowerCase().includes(cmdSearch.toLowerCase()));
+        const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+        if (totalPages === 1) return null;
+        return (
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
+            <button onClick={() => setWhPage(0)} disabled={whPage === 0}>«</button>
+            <button onClick={() => setWhPage(p => p - 1)} disabled={whPage === 0}>‹</button>
+            <span>Page {whPage + 1} / {totalPages}</span>
+            <button onClick={() => setWhPage(p => p + 1)} disabled={whPage >= totalPages - 1}>›</button>
+            <button onClick={() => setWhPage(totalPages - 1)} disabled={whPage >= totalPages - 1}>»</button>
+          </div>
+        );
+      })()}
 
       {testResult && (
         <div style={{ marginTop: "1rem", padding: "1rem", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "4px" }}>

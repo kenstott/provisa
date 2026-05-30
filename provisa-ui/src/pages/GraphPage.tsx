@@ -292,6 +292,9 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
   const [relContextMenu, setRelContextMenu] = useState<RelContextMenuState | null>(null);
   const [nodeLabelsCollapsed, setNodeLabelsCollapsed] = useState(false);
   const [relTypesCollapsed, setRelTypesCollapsed] = useState(false);
+  const [nodeLabelsPage, setNodeLabelsPage] = useState(0);
+  const [relTypesPage, setRelTypesPage] = useState(0);
+  const SCHEMA_PAGE_SIZE = 50;
   const dragging = useRef(false);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -379,7 +382,11 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
                 <div className="graph-schema-empty">No labels found</div>
               ) : (
                 <div className="graph-label-list">
-                  {[...schemaNodeLabels].sort((a, b) => a.tableLabel.localeCompare(b.tableLabel)).map((node) => {
+                  {(() => {
+                    const sorted = [...schemaNodeLabels].sort((a, b) => a.tableLabel.localeCompare(b.tableLabel));
+                    const totalPages = Math.max(1, Math.ceil(sorted.length / SCHEMA_PAGE_SIZE));
+                    const paged = sorted.slice(nodeLabelsPage * SCHEMA_PAGE_SIZE, (nodeLabelsPage + 1) * SCHEMA_PAGE_SIZE);
+                    return paged.map((node) => {
                     const compoundLabel = node.domainLabel
                       ? `${node.domainLabel}:${node.tableLabel}`
                       : node.tableLabel;
@@ -399,7 +406,22 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
                         </span>
                       </div>
                     );
-                  })}
+                    });
+                  })()}
+                  {(() => {
+                    const sorted = [...schemaNodeLabels].sort((a, b) => a.tableLabel.localeCompare(b.tableLabel));
+                    const totalPages = Math.max(1, Math.ceil(sorted.length / SCHEMA_PAGE_SIZE));
+                    if (totalPages === 1) return null;
+                    return (
+                      <div style={{ display: "flex", gap: "0.25rem", padding: "0.4rem 0", fontSize: "0.65rem", color: "var(--text-muted)", justifyContent: "center" }}>
+                        <button onClick={() => setNodeLabelsPage(0)} disabled={nodeLabelsPage === 0} style={{ background: "none", border: "none", cursor: nodeLabelsPage > 0 ? "pointer" : "default", padding: "0.1rem 0.2rem", color: "var(--text-muted)", opacity: nodeLabelsPage > 0 ? 1 : 0.4 }}>«</button>
+                        <button onClick={() => setNodeLabelsPage(p => p - 1)} disabled={nodeLabelsPage === 0} style={{ background: "none", border: "none", cursor: nodeLabelsPage > 0 ? "pointer" : "default", padding: "0.1rem 0.2rem", color: "var(--text-muted)", opacity: nodeLabelsPage > 0 ? 1 : 0.4 }}>‹</button>
+                        <span>{nodeLabelsPage + 1}/{totalPages}</span>
+                        <button onClick={() => setNodeLabelsPage(p => p + 1)} disabled={nodeLabelsPage >= totalPages - 1} style={{ background: "none", border: "none", cursor: nodeLabelsPage < totalPages - 1 ? "pointer" : "default", padding: "0.1rem 0.2rem", color: "var(--text-muted)", opacity: nodeLabelsPage < totalPages - 1 ? 1 : 0.4 }}>›</button>
+                        <button onClick={() => setNodeLabelsPage(totalPages - 1)} disabled={nodeLabelsPage >= totalPages - 1} style={{ background: "none", border: "none", cursor: nodeLabelsPage < totalPages - 1 ? "pointer" : "default", padding: "0.1rem 0.2rem", color: "var(--text-muted)", opacity: nodeLabelsPage < totalPages - 1 ? 1 : 0.4 }}>»</button>
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -415,7 +437,11 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
                 <div className="graph-schema-empty">No relationship types found</div>
               ) : (
                 <div className="graph-rel-list">
-                  {[...new Map(schemaRels.map(r => [r.type, r])).values()].map(({ type }) => {
+                  {(() => {
+                    const uniqueRels = [...new Map(schemaRels.map(r => [r.type, r])).values()];
+                    const totalPages = Math.max(1, Math.ceil(uniqueRels.length / SCHEMA_PAGE_SIZE));
+                    const paged = uniqueRels.slice(relTypesPage * SCHEMA_PAGE_SIZE, (relTypesPage + 1) * SCHEMA_PAGE_SIZE);
+                    return paged.map(({ type }) => {
                     const ov = relLineOverrides[type];
                     return (
                       <div
@@ -429,7 +455,22 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
                         <span className="graph-rel-type">{type}</span>
                       </div>
                     );
-                  })}
+                    });
+                  })()}
+                  {(() => {
+                    const uniqueRels = [...new Map(schemaRels.map(r => [r.type, r])).values()];
+                    const totalPages = Math.max(1, Math.ceil(uniqueRels.length / SCHEMA_PAGE_SIZE));
+                    if (totalPages === 1) return null;
+                    return (
+                      <div style={{ display: "flex", gap: "0.25rem", padding: "0.4rem 0", fontSize: "0.65rem", color: "var(--text-muted)", justifyContent: "center" }}>
+                        <button onClick={() => setRelTypesPage(0)} disabled={relTypesPage === 0} style={{ background: "none", border: "none", cursor: relTypesPage > 0 ? "pointer" : "default", padding: "0.1rem 0.2rem", color: "var(--text-muted)", opacity: relTypesPage > 0 ? 1 : 0.4 }}>«</button>
+                        <button onClick={() => setRelTypesPage(p => p - 1)} disabled={relTypesPage === 0} style={{ background: "none", border: "none", cursor: relTypesPage > 0 ? "pointer" : "default", padding: "0.1rem 0.2rem", color: "var(--text-muted)", opacity: relTypesPage > 0 ? 1 : 0.4 }}>‹</button>
+                        <span>{relTypesPage + 1}/{totalPages}</span>
+                        <button onClick={() => setRelTypesPage(p => p + 1)} disabled={relTypesPage >= totalPages - 1} style={{ background: "none", border: "none", cursor: relTypesPage < totalPages - 1 ? "pointer" : "default", padding: "0.1rem 0.2rem", color: "var(--text-muted)", opacity: relTypesPage < totalPages - 1 ? 1 : 0.4 }}>›</button>
+                        <button onClick={() => setRelTypesPage(totalPages - 1)} disabled={relTypesPage >= totalPages - 1} style={{ background: "none", border: "none", cursor: relTypesPage < totalPages - 1 ? "pointer" : "default", padding: "0.1rem 0.2rem", color: "var(--text-muted)", opacity: relTypesPage < totalPages - 1 ? 1 : 0.4 }}>»</button>
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
