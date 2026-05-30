@@ -1271,7 +1271,11 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     Called after _load_and_build() during startup, and independently after
     admin mutations that change tables/relationships/roles.
     """
+    import logging as _rl
+    _rebuild_log = _rl.getLogger(__name__)
+    _rebuild_log.info("_rebuild_schemas called")
     if state.pg_pool is None or state.trino_conn is None:
+        _rebuild_log.warning("_rebuild_schemas: pg_pool or trino_conn is None, returning")
         return
 
     kafka_physical = getattr(state, "kafka_table_physical", {})
@@ -1364,12 +1368,15 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         _seed_ops_trino(state.trino_conn, getattr(state, "otel_snapshot_retention_hours", None))
 
         # Create __provisa__ views in Trino before introspection so column metadata is available
+        import logging as _prov_log
+        _prov_logger = _prov_log.getLogger(__name__)
         _view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
         try:
             _view_rows = await _pg.fetch(
                 "SELECT schema_name, table_name, view_sql FROM registered_tables"
                 " WHERE source_id = '__provisa__' AND view_sql IS NOT NULL"
             )
+            _prov_logger.info("Creating %d __provisa__ views in Trino", len(_view_rows))
             for _vr in _view_rows:
                 _schema = _vr["schema_name"]
                 _name = _vr["table_name"]
@@ -1385,10 +1392,11 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                     _cur = state.trino_conn.cursor()
                     _cur.execute(f"CREATE VIEW {_fqn} AS {_sql}")
                     _cur.fetchall()
-                except Exception:
-                    pass  # Silent — introspection will still handle missing tables
-        except Exception:
-            pass
+                    _prov_logger.info("Created __provisa__ view: %s", _fqn)
+                except Exception as _e:
+                    _prov_logger.warning("Failed to create __provisa__ view %s: %s", _fqn, _e)
+        except Exception as _e:
+            _prov_logger.warning("Error creating __provisa__ views: %s", _e)
 
         # Introspect Trino metadata
         kafka_physical = getattr(state, "kafka_table_physical", {})
