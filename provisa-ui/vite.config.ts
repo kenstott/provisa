@@ -38,11 +38,13 @@ function graphqlPlugin(): Plugin {
 
       const filePath = id.slice(1);
       if (!fs.existsSync(filePath)) {
+        console.error(`[graphql-loader] File not found: ${filePath}`);
         return undefined;
       }
 
       try {
         const code = fs.readFileSync(filePath, 'utf-8');
+        console.error(`[graphql-loader] Loaded ${filePath} (${code.length} bytes)`);
 
         const operations: string[] = [];
         for (const line of code.split('\n')) {
@@ -50,16 +52,15 @@ function graphqlPlugin(): Plugin {
           if (match) operations.push(match[2]);
         }
 
-        // Use JSON.stringify to safely embed the GraphQL string
-        const jsonString = JSON.stringify(code);
+        // Properly escape backticks and dollar signs for template string
+        const escaped = code.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
-        const output = [
-          "import { gql } from '@apollo/client';",
-          `const doc = gql(${jsonString});`,
-          ...operations.map(op => `export const ${op} = doc;`),
-          'export default doc;',
-        ].join('\n');
+        // Build code output - backtick needs no escaping in regular string
+        const output = 'import { gql } from "@apollo/client";\nconst doc = gql`' + escaped + '`;\n' +
+          operations.map(op => `export const ${op} = doc;`).join('\n') +
+          '\nexport default doc;';
 
+        console.error(`[graphql-loader] Generated code with ${operations.length} operations`);
         return output;
       } catch {
         return undefined;
