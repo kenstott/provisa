@@ -10,7 +10,6 @@
 
 import { defineConfig, createLogger } from 'vite'
 import react from '@vitejs/plugin-react'
-import graphql from '@rollup/plugin-graphql'
 import istanbul from 'vite-plugin-istanbul'
 import path from 'path'
 import _monacoEditorPluginModule from 'vite-plugin-monaco-editor'
@@ -67,7 +66,6 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     rollupOptions: {
-      plugins: [graphql()],
       onwarn(warning, warn) {
         if (warning.code === 'SOURCEMAP_ERROR' && warning.message.includes('monaco-graphql')) return;
         warn(warning);
