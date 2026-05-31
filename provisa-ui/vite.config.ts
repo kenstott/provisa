@@ -39,12 +39,30 @@ export default defineConfig(({ mode }) => ({
         if (id.endsWith('.graphql') || id.endsWith('.gql')) {
           const filePath = path.resolve(id);
           const content = fs.readFileSync(filePath, 'utf-8');
+          const escaped = content.replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
-          return `
-            import { parse } from 'graphql';
-            const doc = parse(\`${content.replace(/`/g, '\\`')}\`);
-            export default doc;
-          `;
+          // Extract operation names (query/mutation/fragment Name)
+          const operations: string[] = [];
+          const opRegex = /(?:query|mutation|fragment)\s+(\w+)/g;
+          let match;
+          const seen = new Set<string>();
+          while ((match = opRegex.exec(content)) !== null) {
+            if (!seen.has(match[1])) {
+              operations.push(match[1]);
+              seen.add(match[1]);
+            }
+          }
+
+          let output = "import { parse } from 'graphql';\n";
+          output += `const doc = parse(\`${escaped}\`);\n`;
+          output += 'export default doc;\n';
+
+          // Export each named operation
+          operations.forEach(op => {
+            output += `export const ${op} = doc;\n`;
+          });
+
+          return output;
         }
       }
     },
