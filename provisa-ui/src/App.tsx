@@ -71,7 +71,6 @@ function App() {
     <BrowserRouter>
       <ApolloProvider client={client}>
         <AuthProvider>
-          <DomainFilterProvider>
           {!setupChecked ? (
             <div className="page"><p>Loading...</p></div>
           ) : needsSetup ? (
@@ -81,9 +80,10 @@ function App() {
               } />
             </Routes>
           ) : (
-            <RequireAuth>
-              <NavBar />
-              <main>
+            <DomainFilterProvider>
+              <RequireAuth>
+                <NavBar />
+                <main>
                 <Routes>
                   <Route path="/" element={<Navigate to="/query" replace />} />
                   <Route
@@ -213,9 +213,9 @@ function App() {
                   ))}
                 </Routes>
               </main>
-            </RequireAuth>
+              </RequireAuth>
+            </DomainFilterProvider>
           )}
-        </DomainFilterProvider>
       </AuthProvider>
     </ApolloProvider>
     </BrowserRouter>
