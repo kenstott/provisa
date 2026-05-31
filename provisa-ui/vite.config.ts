@@ -9,65 +9,13 @@
 // permission from the copyright holder.
 
 import { defineConfig, createLogger } from 'vite'
-import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+import graphql from '@rollup/plugin-graphql'
 import istanbul from 'vite-plugin-istanbul'
-import path from 'path'
 import _monacoEditorPluginModule from 'vite-plugin-monaco-editor'
-import fs from 'fs'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const monacoEditorPlugin: (...args: any[]) => any =
   (_monacoEditorPluginModule as any).default ?? _monacoEditorPluginModule
-
-function graphqlPlugin(): Plugin {
-  return {
-    name: 'graphql-loader',
-    resolveId(id, importer) {
-      if (id.endsWith('.graphql')) {
-        const resolvedPath = importer
-          ? path.resolve(path.dirname(importer), id)
-          : path.resolve(__dirname, id);
-        return '\0' + resolvedPath;
-      }
-      return undefined;
-    },
-    load(id) {
-      if (!id.startsWith('\0') || !id.slice(1).endsWith('.graphql')) {
-        return undefined;
-      }
-
-      const filePath = id.slice(1);
-      if (!fs.existsSync(filePath)) {
-        console.error(`[graphql-loader] File not found: ${filePath}`);
-        return undefined;
-      }
-
-      try {
-        const code = fs.readFileSync(filePath, 'utf-8');
-        console.error(`[graphql-loader] Loaded ${filePath} (${code.length} bytes)`);
-
-        const operations: string[] = [];
-        for (const line of code.split('\n')) {
-          const match = line.match(/^\s*(query|mutation)\s+(\w+)/);
-          if (match) operations.push(match[2]);
-        }
-
-        // Properly escape backticks and dollar signs for template string
-        const escaped = code.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
-
-        // Build code output - backtick needs no escaping in regular string
-        const output = 'import { gql } from "@apollo/client";\nconst doc = gql`' + escaped + '`;\n' +
-          operations.map(op => `export const ${op} = doc;`).join('\n') +
-          '\nexport default doc;';
-
-        console.error(`[graphql-loader] Generated code with ${operations.length} operations`);
-        return output;
-      } catch {
-        return undefined;
-      }
-    },
-  };
-}
 
 const logger = createLogger()
 const origWarn = logger.warn.bind(logger)
@@ -79,7 +27,7 @@ logger.warn = (msg, opts) => {
 export default defineConfig(({ mode }) => ({
   customLogger: logger,
   plugins: [
-    graphqlPlugin(),
+    graphql(),
     react(),
     monacoEditorPlugin({
       languageWorkers: ['editorWorkerService', 'json'],
