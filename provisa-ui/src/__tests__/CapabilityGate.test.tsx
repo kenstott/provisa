@@ -9,55 +9,55 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import { CapabilityGate } from '../components/CapabilityGate'
-import type { Capability } from '../types/auth'
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { CapabilityGate } from '../components/CapabilityGate';
+import type { Capability } from '../types/auth';
 
 // Mock the useCapability hook so we can control its return value without
 // mounting a full AuthProvider (which makes network requests).
 vi.mock('../hooks/useCapability', () => ({
   useCapability: vi.fn(),
   useCapabilities: vi.fn(),
-}))
+}));
 
-import { useCapability } from '../hooks/useCapability'
+import { useCapability } from '../hooks/useCapability';
 
-const mockUseCapability = vi.mocked(useCapability)
+const mockUseCapability = vi.mocked(useCapability);
 
 describe('CapabilityGate', () => {
   beforeEach(() => {
-    mockUseCapability.mockReset()
-  })
+    mockUseCapability.mockReset();
+  });
 
   it('renders children when the capability is allowed', () => {
-    mockUseCapability.mockReturnValue(true)
+    mockUseCapability.mockReturnValue(true);
 
     render(
       <CapabilityGate capability={'query_development' as Capability}>
         <span>Protected Content</span>
       </CapabilityGate>
-    )
+    );
 
-    expect(screen.getByText('Protected Content')).toBeInTheDocument()
-  })
+    expect(screen.getByText('Protected Content')).toBeInTheDocument();
+  });
 
   it('renders nothing when capability is not allowed and no fallback provided', () => {
-    mockUseCapability.mockReturnValue(false)
+    mockUseCapability.mockReturnValue(false);
 
     const { container } = render(
       <CapabilityGate capability={'admin' as Capability}>
         <span>Admin Only</span>
       </CapabilityGate>
-    )
+    );
 
-    expect(screen.queryByText('Admin Only')).not.toBeInTheDocument()
+    expect(screen.queryByText('Admin Only')).not.toBeInTheDocument();
     // Container should be essentially empty (just the root div from RTL)
-    expect(container.textContent).toBe('')
-  })
+    expect(container.textContent).toBe('');
+  });
 
   it('renders fallback when capability is not allowed and fallback provided', () => {
-    mockUseCapability.mockReturnValue(false)
+    mockUseCapability.mockReturnValue(false);
 
     render(
       <CapabilityGate
@@ -66,14 +66,14 @@ describe('CapabilityGate', () => {
       >
         <span>Security Settings</span>
       </CapabilityGate>
-    )
+    );
 
-    expect(screen.queryByText('Security Settings')).not.toBeInTheDocument()
-    expect(screen.getByText('Not Authorized')).toBeInTheDocument()
-  })
+    expect(screen.queryByText('Security Settings')).not.toBeInTheDocument();
+    expect(screen.getByText('Not Authorized')).toBeInTheDocument();
+  });
 
   it('does not render fallback when capability is allowed', () => {
-    mockUseCapability.mockReturnValue(true)
+    mockUseCapability.mockReturnValue(true);
 
     render(
       <CapabilityGate
@@ -82,21 +82,21 @@ describe('CapabilityGate', () => {
       >
         <span>Sources</span>
       </CapabilityGate>
-    )
+    );
 
-    expect(screen.getByText('Sources')).toBeInTheDocument()
-    expect(screen.queryByText('Not Authorized')).not.toBeInTheDocument()
-  })
+    expect(screen.getByText('Sources')).toBeInTheDocument();
+    expect(screen.queryByText('Not Authorized')).not.toBeInTheDocument();
+  });
 
   it('passes the correct capability to useCapability', () => {
-    mockUseCapability.mockReturnValue(true)
+    mockUseCapability.mockReturnValue(true);
 
     render(
       <CapabilityGate capability={'approve_view' as Capability}>
         <span>Approvals</span>
       </CapabilityGate>
-    )
+    );
 
-    expect(mockUseCapability).toHaveBeenCalledWith('approve_view')
-  })
-})
+    expect(mockUseCapability).toHaveBeenCalledWith('approve_view');
+  });
+});

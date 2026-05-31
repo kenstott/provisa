@@ -10,22 +10,22 @@
 
 /** Capabilities matching provisa/security/rights.py */
 export type Capability =
-  | "source_registration"
-  | "table_registration"
-  | "create_relationship"
-  | "access_config"
-  | "query_development"
-  | "approve_view"
-  | "full_results"
-  | "admin"
-  | "usage"
-  | "read_restricted"
-  | "approve_relationship"
-  | "create_view"
-  | "column_grant"
-  | "user_management"
-  | "masking_config"
-  | "superadmin";
+  | 'source_registration'
+  | 'table_registration'
+  | 'create_relationship'
+  | 'access_config'
+  | 'query_development'
+  | 'approve_view'
+  | 'full_results'
+  | 'admin'
+  | 'usage'
+  | 'read_restricted'
+  | 'approve_relationship'
+  | 'create_view'
+  | 'column_grant'
+  | 'user_management'
+  | 'masking_config'
+  | 'superadmin';
 
 export interface Role {
   id: string;
@@ -53,7 +53,7 @@ export interface AuthState {
   capabilities: Capability[];
   /** Unioned domain_access across all selected roles. */
   domainAccess: string[];
-  selectedRole: Role | "all";
+  selectedRole: Role | 'all';
   selectedDomain: string | null;
   /** All role:domain pairs for the authenticated user (empty in dev mode until roles load). */
   assignments: RoleAssignment[];

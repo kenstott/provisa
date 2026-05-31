@@ -8,13 +8,13 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-declare module "cytoscape-svg" {
-  import cytoscape from "cytoscape";
+declare module 'cytoscape-svg' {
+  import cytoscape from 'cytoscape';
   const svg: cytoscape.Ext;
   export default svg;
 }
 
-declare module "cytoscape" {
+declare module 'cytoscape' {
   interface Core {
     svg(options?: { full?: boolean; scale?: number; quality?: number; bg?: string }): string;
   }

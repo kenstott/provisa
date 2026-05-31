@@ -24,7 +24,7 @@
 // All concrete type bodies are intentionally minimal — we delegate the actual
 // structural checking to the existing @types/cytoscape package via skipLibCheck.
 
-declare module "cytoscape" {
+declare module 'cytoscape' {
   // ── Primitive aliases used across the types ───────────────────────────────
   type Position = { x: number; y: number };
   type Selector = string;
@@ -42,7 +42,7 @@ declare module "cytoscape" {
 
   // ── Element types ─────────────────────────────────────────────────────────
   interface ElementDefinition {
-    group?: "nodes" | "edges";
+    group?: 'nodes' | 'edges';
     data: Record<string, unknown>;
     [key: string]: unknown;
   }

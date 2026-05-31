@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { MutationResult } from "../types/admin";
+import type { MutationResult } from '../types/admin';
 
-const API_BASE = import.meta.env.VITE_API_BASE || "";
+const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 export interface ActionArg {
   name: string;
@@ -51,7 +51,10 @@ export interface TrackedWebhook {
   kind: string;
 }
 
-export async function fetchActions(): Promise<{ functions: TrackedFunction[]; webhooks: TrackedWebhook[] }> {
+export async function fetchActions(): Promise<{
+  functions: TrackedFunction[];
+  webhooks: TrackedWebhook[];
+}> {
   const resp = await fetch(`${API_BASE}/admin/actions`);
   if (!resp.ok) throw new Error(`Fetch actions failed: ${resp.status}`);
   return resp.json();
@@ -72,8 +75,8 @@ export async function saveFunction(input: {
   returnSchema?: Record<string, unknown> | null;
 }): Promise<MutationResult> {
   const resp = await fetch(`${API_BASE}/admin/actions/functions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
   if (!resp.ok) throw new Error(`Save function failed: ${resp.status}`);
@@ -94,8 +97,8 @@ export async function saveWebhook(input: {
   kind?: string;
 }): Promise<MutationResult> {
   const resp = await fetch(`${API_BASE}/admin/actions/webhooks`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
   if (!resp.ok) throw new Error(`Save webhook failed: ${resp.status}`);
@@ -104,7 +107,7 @@ export async function saveWebhook(input: {
 
 export async function deleteFunction(name: string): Promise<MutationResult> {
   const resp = await fetch(`${API_BASE}/admin/actions/functions/${encodeURIComponent(name)}`, {
-    method: "DELETE",
+    method: 'DELETE',
   });
   if (!resp.ok) throw new Error(`Delete function failed: ${resp.status}`);
   return resp.json();
@@ -112,19 +115,19 @@ export async function deleteFunction(name: string): Promise<MutationResult> {
 
 export async function deleteWebhook(name: string): Promise<MutationResult> {
   const resp = await fetch(`${API_BASE}/admin/actions/webhooks/${encodeURIComponent(name)}`, {
-    method: "DELETE",
+    method: 'DELETE',
   });
   if (!resp.ok) throw new Error(`Delete webhook failed: ${resp.status}`);
   return resp.json();
 }
 
 export async function testAction(
-  actionType: "function" | "webhook",
-  name: string,
+  actionType: 'function' | 'webhook',
+  name: string
 ): Promise<unknown> {
   const resp = await fetch(`${API_BASE}/admin/actions/test`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ actionType, name }),
   });
   if (!resp.ok) {

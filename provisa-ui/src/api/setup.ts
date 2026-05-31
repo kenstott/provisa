@@ -14,21 +14,21 @@ export interface SetupStatus {
 }
 
 export async function fetchSetupStatus(): Promise<SetupStatus> {
-  const res = await fetch("/setup/status");
+  const res = await fetch('/setup/status');
   if (!res.ok) return { needs_setup: false, demo_mode: false };
   return res.json();
 }
 
 export async function runSetup(body: {
-  provider: "basic" | "firebase" | "none";
-  mode: "single" | "multi";
+  provider: 'basic' | 'firebase' | 'none';
+  mode: 'single' | 'multi';
   admin_username?: string;
   admin_password?: string;
   firebase_project_id?: string;
 }): Promise<{ success: boolean; provider: string }> {
-  const res = await fetch("/setup", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const res = await fetch('/setup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) {

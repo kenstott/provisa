@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-declare module "cytoscape-layout-utilities" {
-  import cytoscape from "cytoscape";
+declare module 'cytoscape-layout-utilities' {
+  import cytoscape from 'cytoscape';
   const layoutUtilities: cytoscape.Ext;
   export default layoutUtilities;
 }

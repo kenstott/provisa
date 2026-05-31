@@ -15,7 +15,8 @@
     "coverage:clean": "rm -rf .nyc_output .nyc_output_flat coverage",
     "coverage:merge": "mkdir -p .nyc_output_flat && cp .nyc_output/vitest/coverage-final.json .nyc_output_flat/vitest.json && cp .nyc_output/playwright/*.json .nyc_output_flat/ && nyc merge .nyc_output_flat coverage/merged.json",
     "coverage:report": "mkdir -p coverage/.nyc_output && cp coverage/merged.json coverage/.nyc_output/coverage-final.json && nyc report --temp-dir coverage/.nyc_output --reporter text --reporter html --report-dir coverage/html",
-    "coverage": "npm run coverage:clean && npm run test:unit && npm run test:e2e && npm run coverage:merge && npm run coverage:report"
+    "coverage": "npm run coverage:clean && npm run test:unit && npm run test:e2e && npm run coverage:merge && npm run coverage:report",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
     "@apollo/client": "^4.1.6",

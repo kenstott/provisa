@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { describe, it, expect } from "vitest";
-import type { GEdge } from "../GraphFrame";
+import { describe, it, expect } from 'vitest';
+import type { GEdge } from '../GraphFrame';
 
 function makeEdge(
   identity: string,
@@ -37,8 +37,12 @@ function computeOverlayEdges(
   if (overlayData.size === 0) return new Map();
   const frameFingerprints = new Set<string>();
   frameEdges.forEach((e) => {
-    frameFingerprints.add(`${e.startNode.label}:${e.startNode.id}→${e.endNode.label}:${e.endNode.id}:${e.type}`);
-    frameFingerprints.add(`${e.endNode.label}:${e.endNode.id}→${e.startNode.label}:${e.startNode.id}:${e.type}`);
+    frameFingerprints.add(
+      `${e.startNode.label}:${e.startNode.id}→${e.endNode.label}:${e.endNode.id}:${e.type}`
+    );
+    frameFingerprints.add(
+      `${e.endNode.label}:${e.endNode.id}→${e.startNode.label}:${e.startNode.id}:${e.type}`
+    );
   });
   const m = new Map<string, GEdge>();
   for (const d of overlayData.values()) {
@@ -52,59 +56,67 @@ function computeOverlayEdges(
   return m;
 }
 
-describe("overlayEdges deduplication", () => {
-  it("excludes imputed edge when frame already has same identity", () => {
-    const edge = makeEdge("WORKS_AT:1-10", "Person", "1", "Company", "10", "WORKS_AT");
-    const frameEdges = new Map([["WORKS_AT:1-10", edge]]);
-    const imputedEdge = makeEdge("WORKS_AT:1-10", "Person", "1", "Company", "10", "WORKS_AT");
-    const overlayData = new Map([["__remaining_rels", { edges: new Map([["WORKS_AT:1-10", imputedEdge]]) }]]);
+describe('overlayEdges deduplication', () => {
+  it('excludes imputed edge when frame already has same identity', () => {
+    const edge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const frameEdges = new Map([['WORKS_AT:1-10', edge]]);
+    const imputedEdge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const overlayData = new Map([
+      ['__remaining_rels', { edges: new Map([['WORKS_AT:1-10', imputedEdge]]) }],
+    ]);
 
     const result = computeOverlayEdges(frameEdges, overlayData);
     expect(result.size).toBe(0);
   });
 
-  it("excludes imputed edge when frame has same edge traversed backward (different identity key)", () => {
+  it('excludes imputed edge when frame has same edge traversed backward (different identity key)', () => {
     // Frame edge: backward traversal query produced canonical identity WORKS_AT:1-10
     // (after backend fix, identity is canonical regardless of traversal direction)
-    const frameEdge = makeEdge("WORKS_AT:1-10", "Person", "1", "Company", "10", "WORKS_AT");
-    const frameEdges = new Map([["WORKS_AT:1-10", frameEdge]]);
+    const frameEdge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const frameEdges = new Map([['WORKS_AT:1-10', frameEdge]]);
 
     // Imputed edge always uses forward canonical direction: same identity
-    const imputedEdge = makeEdge("WORKS_AT:1-10", "Person", "1", "Company", "10", "WORKS_AT");
-    const overlayData = new Map([["__remaining_rels", { edges: new Map([["WORKS_AT:1-10", imputedEdge]]) }]]);
+    const imputedEdge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const overlayData = new Map([
+      ['__remaining_rels', { edges: new Map([['WORKS_AT:1-10', imputedEdge]]) }],
+    ]);
 
     const result = computeOverlayEdges(frameEdges, overlayData);
     expect(result.size).toBe(0);
   });
 
-  it("excludes imputed edge when frame edge has flipped start/end but same type (fingerprint match)", () => {
+  it('excludes imputed edge when frame edge has flipped start/end but same type (fingerprint match)', () => {
     // If for any reason frame has the edge stored with end/start swapped but same type
-    const frameEdge = makeEdge("WORKS_AT:1-10", "Company", "10", "Person", "1", "WORKS_AT");
-    const frameEdges = new Map([["WORKS_AT:1-10", frameEdge]]);
+    const frameEdge = makeEdge('WORKS_AT:1-10', 'Company', '10', 'Person', '1', 'WORKS_AT');
+    const frameEdges = new Map([['WORKS_AT:1-10', frameEdge]]);
 
     // Imputed edge is canonical forward
-    const imputedEdge = makeEdge("WORKS_AT:1-10", "Person", "1", "Company", "10", "WORKS_AT");
-    const overlayData = new Map([["__remaining_rels", { edges: new Map([["WORKS_AT:1-10", imputedEdge]]) }]]);
+    const imputedEdge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const overlayData = new Map([
+      ['__remaining_rels', { edges: new Map([['WORKS_AT:1-10', imputedEdge]]) }],
+    ]);
 
     const result = computeOverlayEdges(frameEdges, overlayData);
     expect(result.size).toBe(0);
   });
 
-  it("includes imputed edge when no frame edge covers it", () => {
-    const frameEdge = makeEdge("OTHER:2-20", "Person", "2", "Company", "20", "OTHER");
-    const frameEdges = new Map([["OTHER:2-20", frameEdge]]);
+  it('includes imputed edge when no frame edge covers it', () => {
+    const frameEdge = makeEdge('OTHER:2-20', 'Person', '2', 'Company', '20', 'OTHER');
+    const frameEdges = new Map([['OTHER:2-20', frameEdge]]);
 
-    const imputedEdge = makeEdge("WORKS_AT:1-10", "Person", "1", "Company", "10", "WORKS_AT");
-    const overlayData = new Map([["__remaining_rels", { edges: new Map([["WORKS_AT:1-10", imputedEdge]]) }]]);
+    const imputedEdge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const overlayData = new Map([
+      ['__remaining_rels', { edges: new Map([['WORKS_AT:1-10', imputedEdge]]) }],
+    ]);
 
     const result = computeOverlayEdges(frameEdges, overlayData);
     expect(result.size).toBe(1);
-    expect(result.has("WORKS_AT:1-10")).toBe(true);
+    expect(result.has('WORKS_AT:1-10')).toBe(true);
   });
 
-  it("returns empty map when overlayData is empty", () => {
-    const frameEdge = makeEdge("WORKS_AT:1-10", "Person", "1", "Company", "10", "WORKS_AT");
-    const frameEdges = new Map([["WORKS_AT:1-10", frameEdge]]);
+  it('returns empty map when overlayData is empty', () => {
+    const frameEdge = makeEdge('WORKS_AT:1-10', 'Person', '1', 'Company', '10', 'WORKS_AT');
+    const frameEdges = new Map([['WORKS_AT:1-10', frameEdge]]);
 
     const result = computeOverlayEdges(frameEdges, new Map());
     expect(result.size).toBe(0);

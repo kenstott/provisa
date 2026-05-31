@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import "@testing-library/jest-dom/vitest";
-import { afterEach } from "vitest";
-import { cleanup } from "@testing-library/react";
+import '@testing-library/jest-dom/vitest';
+import { afterEach } from 'vitest';
+import { cleanup } from '@testing-library/react';
 
 // @testing-library/react auto-cleanup doesn't reliably fire between tests in
 // vitest's vmThreads pool.  Register it explicitly so DOM state never leaks.
@@ -20,13 +20,13 @@ afterEach(cleanup);
 // In jsdom vm contexts the property can be accessor-only; re-declare as a plain
 // writable value so the assignment doesn't throw in strict-mode ES module scope.
 if (typeof HTMLElement !== 'undefined') {
-  const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'focus')
+  const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'focus');
   if (desc) {
-    const fn = 'value' in desc ? desc.value : desc.get?.call(HTMLElement.prototype)
+    const fn = 'value' in desc ? desc.value : desc.get?.call(HTMLElement.prototype);
     Object.defineProperty(HTMLElement.prototype, 'focus', {
       configurable: true,
       writable: true,
       value: typeof fn === 'function' ? fn : () => {},
-    })
+    });
   }
 }

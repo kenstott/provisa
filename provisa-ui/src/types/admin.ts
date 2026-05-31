@@ -34,10 +34,14 @@ export interface Domain {
 
 export function domainGqlAlias(domain: Domain): string {
   if (domain.graphqlAlias) return domain.graphqlAlias.toLowerCase();
-  if (!domain.id) return "";
+  if (!domain.id) return '';
   const parts = domain.id.split(/[^a-zA-Z0-9]+/);
-  const acronym = parts.filter(p => p && /[a-zA-Z]/.test(p[0])).map(p => p[0]).join("").toLowerCase();
-  return acronym || domain.id[0]?.toLowerCase() || "";
+  const acronym = parts
+    .filter((p) => p && /[a-zA-Z]/.test(p[0]))
+    .map((p) => p[0])
+    .join('')
+    .toLowerCase();
+  return acronym || domain.id[0]?.toLowerCase() || '';
 }
 
 export interface TableColumn {
@@ -63,7 +67,7 @@ export interface TableColumn {
 
 export interface ColumnPreset {
   column: string;
-  source: "now" | "header" | "literal";
+  source: 'now' | 'header' | 'literal';
   name: string | null;
   value: string | null;
   dataType: string | null;
@@ -121,7 +125,7 @@ export interface GovernedQuery {
   id: number;
   name: string;
   queryText: string;
-  status: "submitted" | "approved" | "deprecated" | "flagged";
+  status: 'submitted' | 'approved' | 'deprecated' | 'flagged';
   submittedBy: string;
   approvedBy: string | null;
   rejectionReason: string | null;

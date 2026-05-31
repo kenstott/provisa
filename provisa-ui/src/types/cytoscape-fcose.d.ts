@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-declare module "cytoscape-fcose" {
-  import cytoscape from "cytoscape";
+declare module 'cytoscape-fcose' {
+  import cytoscape from 'cytoscape';
   const fcose: cytoscape.Ext;
   export default fcose;
 }

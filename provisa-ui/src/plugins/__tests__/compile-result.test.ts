@@ -9,25 +9,25 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { describe, it, expect } from 'vitest'
-import type { CompileResult } from '../../api/admin'
+import { describe, it, expect } from 'vitest';
+import type { CompileResult } from '../../api/admin';
 
 // Inline the normalization logic (same as ProvisaToolsContent) so we can test it
 // without mounting a React component.
 function normalizeCompileResponse(
-  raw: CompileResult | { queries: CompileResult[] },
+  raw: CompileResult | { queries: CompileResult[] }
 ): CompileResult[] {
-  if (Array.isArray(raw)) return raw as unknown as CompileResult[]
-  if ('queries' in raw && Array.isArray(raw.queries)) return raw.queries
-  return [raw as CompileResult]
+  if (Array.isArray(raw)) return raw as unknown as CompileResult[];
+  if ('queries' in raw && Array.isArray(raw.queries)) return raw.queries;
+  return [raw as CompileResult];
 }
 
 function isAliased(c: CompileResult): boolean {
-  return !!(c.root_field && c.canonical_field && c.root_field !== c.canonical_field)
+  return !!(c.root_field && c.canonical_field && c.root_field !== c.canonical_field);
 }
 
 function hasColumnAliases(c: CompileResult): boolean {
-  return c.column_aliases?.length > 0
+  return c.column_aliases?.length > 0;
 }
 
 const base: CompileResult = {
@@ -42,54 +42,54 @@ const base: CompileResult = {
   root_field: 'orders',
   canonical_field: 'orders',
   column_aliases: [],
-}
+};
 
 describe('normalizeCompileResponse', () => {
   it('wraps a single result in an array', () => {
-    const result = normalizeCompileResponse(base)
-    expect(result).toHaveLength(1)
-    expect(result[0]).toBe(base)
-  })
+    const result = normalizeCompileResponse(base);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(base);
+  });
 
   it('unwraps { queries: [...] } into an array', () => {
-    const second = { ...base, root_field: 'customers', canonical_field: 'customers' }
-    const result = normalizeCompileResponse({ queries: [base, second] })
-    expect(result).toHaveLength(2)
-    expect(result[0].root_field).toBe('orders')
-    expect(result[1].root_field).toBe('customers')
-  })
+    const second = { ...base, root_field: 'customers', canonical_field: 'customers' };
+    const result = normalizeCompileResponse({ queries: [base, second] });
+    expect(result).toHaveLength(2);
+    expect(result[0].root_field).toBe('orders');
+    expect(result[1].root_field).toBe('customers');
+  });
 
   it('preserves each root_field from the multi-root response', () => {
-    const fields = ['a', 'b', 'c']
-    const queries = fields.map(f => ({ ...base, root_field: f, canonical_field: f }))
-    const result = normalizeCompileResponse({ queries })
-    expect(result.map(r => r.root_field)).toEqual(fields)
-  })
-})
+    const fields = ['a', 'b', 'c'];
+    const queries = fields.map((f) => ({ ...base, root_field: f, canonical_field: f }));
+    const result = normalizeCompileResponse({ queries });
+    expect(result.map((r) => r.root_field)).toEqual(fields);
+  });
+});
 
 describe('isAliased', () => {
   it('returns false when root_field equals canonical_field', () => {
-    expect(isAliased(base)).toBe(false)
-  })
+    expect(isAliased(base)).toBe(false);
+  });
 
   it('returns true when root_field differs from canonical_field', () => {
-    const aliased = { ...base, root_field: 'my_alias', canonical_field: 'orders' }
-    expect(isAliased(aliased)).toBe(true)
-  })
+    const aliased = { ...base, root_field: 'my_alias', canonical_field: 'orders' };
+    expect(isAliased(aliased)).toBe(true);
+  });
 
   it('returns false when canonical_field is empty string', () => {
-    const noCanonical = { ...base, canonical_field: '' }
-    expect(isAliased(noCanonical)).toBe(false)
-  })
-})
+    const noCanonical = { ...base, canonical_field: '' };
+    expect(isAliased(noCanonical)).toBe(false);
+  });
+});
 
 describe('hasColumnAliases', () => {
   it('returns false when column_aliases is empty', () => {
-    expect(hasColumnAliases(base)).toBe(false)
-  })
+    expect(hasColumnAliases(base)).toBe(false);
+  });
 
   it('returns true when column_aliases has entries', () => {
-    const withAlias = { ...base, column_aliases: [{ field_name: 'userId', column: 'user_id' }] }
-    expect(hasColumnAliases(withAlias)).toBe(true)
-  })
-})
+    const withAlias = { ...base, column_aliases: [{ field_name: 'userId', column: 'user_id' }] };
+    expect(hasColumnAliases(withAlias)).toBe(true);
+  });
+});

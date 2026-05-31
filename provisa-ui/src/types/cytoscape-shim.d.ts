@@ -25,7 +25,7 @@ export interface EventObject {
 }
 
 export interface ElementDefinition {
-  group?: "nodes" | "edges";
+  group?: 'nodes' | 'edges';
   data: Record<string, unknown>;
   [key: string]: unknown;
 }
