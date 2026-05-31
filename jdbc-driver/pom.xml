@@ -29,6 +29,18 @@
       <scope>runtime</scope>
     </dependency>
 
+    <!-- Security overrides -->
+    <dependency>
+      <groupId>com.google.protobuf</groupId>
+      <artifactId>protobuf-java</artifactId>
+      <version>3.25.5</version>
+    </dependency>
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-codec-http2</artifactId>
+      <version>4.1.121.Final</version>
+    </dependency>
+
     <!-- JSON -->
     <dependency>
       <groupId>com.google.code.gson</groupId>
