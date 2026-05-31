@@ -351,27 +351,30 @@ export async function updateTable(input: {
   columnPresets?: { column: string; source: string; name?: string | null; value?: string | null; dataType?: string | null }[];
   dataProduct?: boolean;
 }): Promise<MutationResult> {
-  const data = await gql<{ updateTable: MutationResult }>(
-    `mutation($input: TableInput!) { updateTable(input: $input) { success message } }`,
-    { input }
-  );
-  return data.updateTable;
+  const result = await client.mutate<{ updateTable: MutationResult }>({
+    mutation: gqlTag`mutation($input: TableInput!) { updateTable(input: $input) { success message } }`,
+    variables: { input },
+    refetchQueries: [{ query: gqlTag`{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint viewSql dataProduct columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey scope } columnPresets { column source name value dataType } } }` }],
+  });
+  return (result.data?.updateTable ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function deployViewToDb(tableId: number): Promise<MutationResult> {
-  const data = await gql<{ deployViewToDb: MutationResult }>(
-    `mutation($tableId: Int!) { deployViewToDb(tableId: $tableId) { success message } }`,
-    { tableId }
-  );
-  return data.deployViewToDb;
+  const result = await client.mutate<{ deployViewToDb: MutationResult }>({
+    mutation: gqlTag`mutation($tableId: Int!) { deployViewToDb(tableId: $tableId) { success message } }`,
+    variables: { tableId },
+    refetchQueries: [{ query: gqlTag`{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint viewSql dataProduct columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey scope } columnPresets { column source name value dataType } } }` }],
+  });
+  return (result.data?.deployViewToDb ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function deleteTable(id: number): Promise<MutationResult> {
-  const data = await gql<{ deleteTable: MutationResult }>(
-    `mutation($id: Int!) { deleteTable(id: $id) { success message } }`,
-    { id }
-  );
-  return data.deleteTable;
+  const result = await client.mutate<{ deleteTable: MutationResult }>({
+    mutation: gqlTag`mutation($id: Int!) { deleteTable(id: $id) { success message } }`,
+    variables: { id },
+    refetchQueries: [{ query: gqlTag`{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint viewSql dataProduct columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey scope } columnPresets { column source name value dataType } } }` }],
+  });
+  return (result.data?.deleteTable ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function profileTable(tableId: number): Promise<{ columns: string[]; rows: Record<string, unknown>[]; rowCount: number }> {
