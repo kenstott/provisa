@@ -22,64 +22,49 @@ const monacoEditorPlugin: (...args: any[]) => any =
 function graphqlPlugin(): Plugin {
   return {
     name: 'graphql-loader',
-    async resolveId(id, importer) {
+    resolveId(id, importer) {
       if (id.endsWith('.graphql')) {
-        // Resolve relative path to absolute
         const resolvedPath = importer
           ? path.resolve(path.dirname(importer), id)
           : path.resolve(__dirname, id);
-        // Mark as virtual module with \0 prefix
         return '\0' + resolvedPath;
       }
+      return undefined;
     },
-    async load(id) {
-      // Check for virtual module marker
-      if (!id.startsWith('\0') || !id.slice(1).endsWith('.graphql')) return null;
+    load(id) {
+      if (!id.startsWith('\0') || !id.slice(1).endsWith('.graphql')) {
+        return undefined;
+      }
 
-      // Remove virtual marker to get actual file path
       const filePath = id.slice(1);
+      if (!fs.existsSync(filePath)) {
+        return undefined;
+      }
 
       try {
-        if (!fs.existsSync(filePath)) {
-          return null;
-        }
-
         const code = fs.readFileSync(filePath, 'utf-8');
 
-        // Extract operation names (query|mutation followed by name)
         const operations: string[] = [];
-        const lines = code.split('\n');
-        for (const line of lines) {
+        for (const line of code.split('\n')) {
           const match = line.match(/^\s*(query|mutation)\s+(\w+)/);
-          if (match) {
-            operations.push(match[2]);
-          }
+          if (match) operations.push(match[2]);
         }
 
-        // Escape backticks and dollar signs for template string
         const escaped = code
-          .replace(/\\/g, '\\\\')  // Escape backslashes first
-          .replace(/`/g, '\\`')     // Escape backticks
-          .replace(/\$/g, '\\$');   // Escape dollar signs
+          .replace(/\\/g, '\\\\')
+          .replace(/`/g, '\\`')
+          .replace(/\$/g, '\\$');
 
-        // Build output with proper escaping
-        const lines_out: string[] = [
+        const output = [
           "import { gql } from '@apollo/client';",
-          '',
           `const doc = gql\`${escaped}\`;`,
-          '',
-        ];
+          ...operations.map(op => `export const ${op} = doc;`),
+          'export default doc;',
+        ].join('\n');
 
-        // Export each named operation
-        for (const op of operations) {
-          lines_out.push(`export const ${op} = doc;`);
-        }
-
-        lines_out.push('export default doc;');
-
-        return lines_out.join('\n');
-      } catch (error) {
-        return null;
+        return output;
+      } catch {
+        return undefined;
       }
     },
   };
