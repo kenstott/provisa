@@ -24,11 +24,13 @@ function graphqlPlugin(): Plugin {
     name: 'graphql-loader',
     resolveId(id) {
       if (id.endsWith('.graphql')) {
-        return path.resolve(id);
+        // Let Vite resolve relative paths; just claim the ID to prevent other plugins from handling it
+        return id;
       }
     },
     load(id) {
       if (!id.endsWith('.graphql')) return;
+      // Vite passes absolute paths to load(), so read directly
       const code = fs.readFileSync(id, 'utf-8');
       const escaped = code.replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
