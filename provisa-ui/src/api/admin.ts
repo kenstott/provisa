@@ -55,7 +55,7 @@ import {
   ToggleScheduledTask,
   PurgeCacheByTable,
   InvalidateFileSource,
-} from './admin.graphql';
+} from '../hooks/admin.graphql';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
