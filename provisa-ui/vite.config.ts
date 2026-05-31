@@ -23,7 +23,9 @@ function graphqlPlugin(): Plugin {
   return {
     name: 'graphql-loader',
     resolveId(id) {
-      if (id.endsWith('.graphql')) return id;
+      if (id.endsWith('.graphql')) {
+        return path.resolve(id);
+      }
     },
     load(id) {
       if (!id.endsWith('.graphql')) return;
