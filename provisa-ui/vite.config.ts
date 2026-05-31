@@ -12,6 +12,7 @@ import { defineConfig, createLogger } from 'vite'
 import react from '@vitejs/plugin-react'
 import graphql from '@rollup/plugin-graphql'
 import istanbul from 'vite-plugin-istanbul'
+import path from 'path'
 import _monacoEditorPluginModule from 'vite-plugin-monaco-editor'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const monacoEditorPlugin: (...args: any[]) => any =
