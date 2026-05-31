@@ -22,16 +22,20 @@ const monacoEditorPlugin: (...args: any[]) => any =
 function graphqlPlugin(): Plugin {
   return {
     name: 'graphql-loader',
-    async resolveId(id) {
+    async resolveId(id, importer) {
       if (id.endsWith('.graphql')) {
-        // Return the id itself; Vite will normalize it to absolute path for load()
-        return id;
+        // Resolve relative to the importing file or project root
+        if (importer) {
+          return path.resolve(path.dirname(importer), id);
+        }
+        return path.resolve(__dirname, id);
       }
     },
     async load(id) {
       if (!id.endsWith('.graphql')) return null;
 
       try {
+        // id is now an absolute path from resolveId
         const code = fs.readFileSync(id, 'utf-8');
         const escaped = code.replace(/`/g, '\\`').replace(/\$/g, '\\$');
 

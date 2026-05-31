@@ -19,42 +19,43 @@ import type {
   MutationResult,
 } from '../types/admin';
 import { client } from '../apolloClient';
-
-const RolesQuery = gqlTag`query { roles { id capabilities domainAccess } }`;
-const SourcesQuery = gqlTag`query { sources { id type host port database username dialect cacheEnabled cacheTtl namingConvention allowedDomains description } }`;
-const DomainsQuery = gqlTag`query { domains { id description graphqlAlias } }`;
-const TablesQuery = gqlTag`query { tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint viewSql dataProduct columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey scope } columnPresets { column source name value dataType } } }`;
-const RelationshipsQuery = gqlTag`query { relationships { id sourceTableId targetTableId sourceTableName targetTableName sourceColumn targetColumn cardinality materialize refreshInterval targetFunctionName functionArg alias graphqlAlias computedCypherAlias autoSuggested disableCypher } }`;
-const RLSRulesQuery = gqlTag`query { rlsRules { id roleId domain table filters { id role_id domain table filter_type filter_sql columns } } }`;
-const AvailableSchemas = gqlTag`query AvailableSchemas($sourceId: String!) { availableSchemas(sourceId: $sourceId) }`;
-const AvailableTables = gqlTag`query AvailableTables($sourceId: String!, $schemaName: String!) { availableTables(sourceId: $sourceId, schemaName: $schemaName) { name comment } }`;
-const AvailableColumns = gqlTag`query AvailableColumns($sourceId: String!, $schemaName: String!, $tableName: String!) { availableColumns(sourceId: $sourceId, schemaName: $schemaName, tableName: $tableName) }`;
-const AvailableColumnsMetadata = gqlTag`query AvailableColumnsMetadata($sourceId: String!, $schemaName: String!, $tableName: String!) { availableColumnsMetadata(sourceId: $sourceId, schemaName: $schemaName, tableName: $tableName) { name dataType comment nativeFilterType isPrimaryKey } }`;
-const AvailableFunctions = gqlTag`query AvailableFunctions($sourceId: String!, $schemaName: String!) { availableFunctions(sourceId: $sourceId, schemaName: $schemaName) { name comment } }`;
-const GenerateColumnDescription = gqlTag`query GenerateColumnDescription($tableId: String!, $columnName: String!) { generateColumnDescription(tableId: $tableId, columnName: $columnName) }`;
-const GenerateTableDescription = gqlTag`query GenerateTableDescription($tableId: String!) { generateTableDescription(tableId: $tableId) }`;
-const CompileQuery = gqlTag`query CompileQuery($input: CompileQueryInput!) { compileQuery(input: $input) { sql semanticSql trinoSql directSql route routeReason sources rootField canonicalField compiledCypher cypherError optimizations warnings columnAliases { fieldName column } enforcement { rlsFiltersApplied columnsExcluded schemaScope maskingApplied ceilingApplied route } } }`;
-const MVList = gqlTag`query { mvList { id sourceTables targetTable refreshInterval enabled status lastRefreshAt rowCount lastError } }`;
-const CacheStats = gqlTag`query { cacheStats { totalKeys hitCount missCount storeType } }`;
-const SystemHealth = gqlTag`query { systemHealth { trinoConnected trinoWorkerCount trinoActiveWorkers pgPoolSize pgPoolFree cacheConnected flightServerRunning mvRefreshLoopRunning } }`;
-const ScheduledTasks = gqlTag`query { scheduledTasks { id name cronExpression webhookUrl enabled lastRunAt nextRunAt } }`;
-const CreateDomain = gqlTag`mutation CreateDomain($id: String!, $description: String!, $graphqlAlias: String) { createDomain(input: { id: $id, description: $description, graphqlAlias: $graphqlAlias }) { success message } }`;
-const DeleteDomain = gqlTag`mutation DeleteDomain($id: String!) { deleteDomain(id: $id) { success message } }`;
-const RegisterTable = gqlTag`mutation RegisterTable($input: TableInput!) { registerTable(input: $input) { success message } }`;
-const UpdateTable = gqlTag`mutation UpdateTable($input: TableInput!) { updateTable(input: $input) { success message } }`;
-const DeleteTable = gqlTag`mutation DeleteTable($id: Int!) { deleteTable(id: $id) { success message } }`;
-const UpsertRelationship = gqlTag`mutation UpsertRelationship($input: RelationshipInput!) { upsertRelationship(input: $input) { success message } }`;
-const DeleteRelationship = gqlTag`mutation DeleteRelationship($id: String!) { deleteRelationship(id: $id) { success message } }`;
-const CreateSource = gqlTag`mutation CreateSource($input: SourceInput!) { createSource(input: $input) { success message } }`;
-const UpdateSource = gqlTag`mutation UpdateSource($input: SourceInput!) { updateSource(input: $input) { success message } }`;
-const DeleteSource = gqlTag`mutation DeleteSource($id: String!) { deleteSource(id: $id) { success message } }`;
-const RenameSource = gqlTag`mutation RenameSource($oldId: String!, $newId: String!) { renameSource(oldId: $oldId, newId: $newId) { success message } }`;
-const DeployViewToDb = gqlTag`mutation DeployViewToDb($tableId: Int!) { deployViewToDb(tableId: $tableId) { success message } }`;
-const RefreshMv = gqlTag`mutation RefreshMv($mvId: String!) { refreshMv(mvId: $mvId) { success message } }`;
-const ToggleMv = gqlTag`mutation ToggleMv($mvId: String!, $enabled: Boolean!) { toggleMv(mvId: $mvId, enabled: $enabled) { success message } }`;
-const ToggleScheduledTask = gqlTag`mutation ToggleScheduledTask($taskId: String!, $enabled: Boolean!) { toggleScheduledTask(taskId: $taskId, enabled: $enabled) { success message } }`;
-const PurgeCacheByTable = gqlTag`mutation PurgeCacheByTable($tableId: Int!) { purgeCacheByTable(tableId: $tableId) { success message } }`;
-const InvalidateFileSource = gqlTag`mutation InvalidateFileSource($tableId: Int!) { invalidateFileSource(tableId: $tableId) { success message } }`;
+import {
+  RolesQuery,
+  SourcesQuery,
+  DomainsQuery,
+  TablesQuery,
+  RelationshipsQuery,
+  RLSRulesQuery,
+  AvailableSchemas,
+  AvailableTables,
+  AvailableColumns,
+  AvailableColumnsMetadata,
+  AvailableFunctions,
+  GenerateColumnDescription,
+  GenerateTableDescription,
+  CompileQuery,
+  MVList,
+  CacheStats,
+  SystemHealth,
+  ScheduledTasks,
+  CreateDomain,
+  DeleteDomain,
+  UpsertRelationship,
+  DeleteRelationship,
+  RegisterTable,
+  UpdateTable,
+  DeleteTable,
+  CreateSource,
+  UpdateSource,
+  DeleteSource,
+  RenameSource,
+  DeployViewToDb,
+  RefreshMv,
+  ToggleMv,
+  ToggleScheduledTask,
+  PurgeCacheByTable,
+  InvalidateFileSource,
+} from '../hooks/admin.graphql';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
