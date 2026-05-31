@@ -22,36 +22,43 @@ const monacoEditorPlugin: (...args: any[]) => any =
 function graphqlPlugin(): Plugin {
   return {
     name: 'graphql-loader',
-    resolveId(id) {
+    async resolveId(id) {
       if (id.endsWith('.graphql')) {
-        // Let Vite resolve relative paths; just claim the ID to prevent other plugins from handling it
+        // Return the id itself; Vite will normalize it to absolute path for load()
         return id;
       }
     },
-    load(id) {
-      if (!id.endsWith('.graphql')) return;
-      // Vite passes absolute paths to load(), so read directly
-      const code = fs.readFileSync(id, 'utf-8');
-      const escaped = code.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+    async load(id) {
+      if (!id.endsWith('.graphql')) return null;
 
-      // Extract operation names (query/mutation Name)
-      const operations: string[] = [];
-      const opRegex = /(query|mutation)\s+(\w+)/g;
-      let match;
-      while ((match = opRegex.exec(code)) !== null) {
-        operations.push(match[2]);
+      try {
+        const code = fs.readFileSync(id, 'utf-8');
+        const escaped = code.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+
+        // Extract operation names (query|mutation followed by name)
+        const operations: string[] = [];
+        const lines = code.split('\n');
+        for (const line of lines) {
+          const match = line.match(/^\s*(query|mutation)\s+(\w+)/);
+          if (match) {
+            operations.push(match[2]);
+          }
+        }
+
+        let output = "import { gql as gqlTag } from '@apollo/client';\n";
+        output += `const doc = gqlTag\`${escaped}\`;\n`;
+
+        // Export each named operation + default
+        operations.forEach(op => {
+          output += `export const ${op} = doc;\n`;
+        });
+
+        output += 'export default doc;';
+        return output;
+      } catch (error) {
+        console.error(`[graphql-loader] Failed to load ${id}:`, error);
+        return null;
       }
-
-      let output = "import { gql } from '@apollo/client';\n";
-      output += `const doc = gql\`${escaped}\`;\n`;
-
-      // Export each named operation
-      operations.forEach(op => {
-        output += `export const ${op} = doc;\n`;
-      });
-
-      output += 'export default doc;';
-      return output;
     },
   };
 }
