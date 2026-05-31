@@ -159,7 +159,7 @@ function _compositeGraphDownload(
     ctx.drawImage(img, 0, 0);
 
     // viewBox maps hull CSS-pixel coords → PNG physical pixels (handles devicePixelRatio)
-    const container = cy.container() as HTMLElement;
+    const container = (cy as any).container() as HTMLElement;
     const cssW = container.offsetWidth;
     const cssH = container.offsetHeight;
     const svgClone = hullSvg!.cloneNode(true) as SVGSVGElement;
@@ -782,7 +782,7 @@ function buildClusterElements(
   //   collapsed cluster member → collapsed super-node
   //   expanded cluster member  → compound hull node (for meta-edge dedup)
   //   free node                → null (use data node key directly)
-  const routingId = (nodeKey: string, cid: string | null): string | null => {
+  const routingId = (_nodeKey: string, cid: string | null): string | null => {
     if (cid === null) return null;
     if (collapsedClusters.has(cid)) return `__collapsed_${level}_${_cidToId(cid)}`;
     return `__cluster_${level}_${_cidToId(cid)}`;
@@ -901,7 +901,7 @@ const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
   } as CyLayoutOptions,
 };
 
-function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, labelSiblings: _labelSiblings, showingChildrenNatural, onToggleChildren, onToggleChildrenBatch, showingChildrenCircular, onToggleChildrenCircular, showingParents, onToggleParents, onToggleParentsBatch, showingParentsCircular, onToggleParentsCircular, onCyReady, clusterLevel, hullSvgRef }: CanvasProps) {
+function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, labelSiblings: _labelSiblings, showingChildrenNatural, onToggleChildren: _onToggleChildren, onToggleChildrenBatch, showingChildrenCircular, onToggleChildrenCircular: _onToggleChildrenCircular, showingParents, onToggleParents: _onToggleParents, onToggleParentsBatch, showingParentsCircular, onToggleParentsCircular: _onToggleParentsCircular, onCyReady, clusterLevel, hullSvgRef }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
   const colorOverridesRef = useRef(colorOverrides);
@@ -932,7 +932,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
   // Tracks the active cytoscape layout object so it can be stopped before starting a new one
   const activeLayoutRef = useRef<{ stop: () => void } | null>(null);
   // Stable ref to nudgeLayout so event handlers can call it without stale closure
-  const nudgeLayoutRef = useRef<() => void>(() => {});
+  const nudgeLayoutRef = useRef<(freeNodes?: Set<string>, aggressive?: boolean) => void>(() => {});
   // SVG hull circles drawn over the canvas for cluster visualization
   const [hullCircles, setHullCircles] = useState<Array<{ cid: string; x: number; y: number; r: number }>>([]);
   const [collapsedClusters, setCollapsedClusters] = useState<Set<string>>(new Set());
@@ -958,17 +958,17 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     if (!cy || clusterLevelRef.current === "none") { setHullCircles([]); return; }
     const collapsed = collapsedClustersRef.current;
     const hulls: Array<{ cid: string; x: number; y: number; r: number }> = [];
-    cy.nodes("[?_cluster]").forEach((cn) => {
+    cy.nodes("[?_cluster]").forEach((cn: any) => {
       const cid = cn.data("_clusterId") as string;
       if (collapsed.has(cid)) return; // collapsed clusters have no hull
-      const children = cn.children();
+      const children = cn.children() as any;
       if (children.length === 0) return;
       let sumX = 0, sumY = 0;
-      children.forEach((c) => { const p = c.renderedPosition(); sumX += p.x; sumY += p.y; });
+      children.forEach((c: any) => { const p = c.renderedPosition(); sumX += p.x; sumY += p.y; });
       const cx = sumX / children.length;
       const cyPos = sumY / children.length;
       let maxR = 30;
-      children.forEach((c) => {
+      children.forEach((c: any) => {
         const p = c.renderedPosition();
         maxR = Math.max(maxR, Math.hypot(p.x - cx, p.y - cyPos) + c.renderedWidth() / 2 + 20);
       });
@@ -986,8 +986,9 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       const dx = (e.clientX - drag.lastX) / zoom;
       const dy = (e.clientY - drag.lastY) / zoom;
       const clusterId = `__cluster_${clusterLevelRef.current}_${_cidToId(drag.cid)}`;
-      cy.getElementById(clusterId).children().forEach((n: CyElement) => {
-        n.position({ x: n.position("x") + dx, y: n.position("y") + dy });
+      (cy as any).getElementById(clusterId).children().forEach((n: any) => {
+        const pos = n.position();
+        n.position({ x: pos.x + dx, y: pos.y + dy });
       });
       drag.lastX = e.clientX;
       drag.lastY = e.clientY;
@@ -1643,7 +1644,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
                 textAnchor="middle" fill={clusterColor(cid)} fontSize={11} fontWeight="bold" fontFamily="sans-serif"
                 style={{ pointerEvents: "all", cursor: "pointer", userSelect: "none" }}
                 onClick={() => toggleCollapse(cid)}
-                title="Click to collapse group"
+                {...{ title: "Click to collapse group" } as any}
               >{cid} ⊟</text>
             </g>
           ))}
@@ -1666,9 +1667,9 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           onMouseDown={() => {
             nudgeHeldRef.current = true;
             const cy = cyRef.current;
-            const sel = cy ? cy.nodes(":selected").not("[?_cluster]") : null;
+            const sel = cy ? (cy.nodes(":selected") as any).not("[?_cluster]") : null;
             const freeNodes = sel && sel.length > 0
-              ? new Set(sel.map((n: CyElement) => n.id() as string))
+              ? new Set(sel.map((n: any) => n.id() as string) as string[])
               : undefined;
             nudgeLayout(freeNodes, true);
           }}
@@ -2353,13 +2354,6 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
     }
     return m;
   }, [frame.edges, overlayData]);
-
-  const mergedNodes = useMemo(() => {
-    if (overlayNodes.size === 0) return frame.nodes;
-    const m = new Map(frame.nodes);
-    overlayNodes.forEach((n, k) => m.set(k, n));
-    return m;
-  }, [frame.nodes, overlayNodes]);
 
   const showingChildrenNatural = useMemo(() => new Set(
     Array.from(overlayData.keys()).filter(k => k.endsWith(":children")).map(k => k.slice(0, -":children".length))

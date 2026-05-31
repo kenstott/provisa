@@ -525,7 +525,6 @@ export function CommandsPage() {
           )}
           {(() => {
             const filtered = functions.filter((fn) => !cmdSearch.trim() || fn.name.toLowerCase().includes(cmdSearch.toLowerCase()));
-            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
             const paged = filtered.slice(fnPage * PAGE_SIZE, (fnPage + 1) * PAGE_SIZE);
             return paged.map((fn) => {
             const isExpanded = expandedFn === fn.name;
@@ -640,7 +639,6 @@ export function CommandsPage() {
           )}
           {(() => {
             const filtered = webhooks.filter((wh) => !cmdSearch.trim() || wh.name.toLowerCase().includes(cmdSearch.toLowerCase()));
-            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
             const paged = filtered.slice(whPage * PAGE_SIZE, (whPage + 1) * PAGE_SIZE);
             return paged.map((wh) => {
             const isExpanded = expandedWh === wh.name;

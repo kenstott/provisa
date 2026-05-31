@@ -925,7 +925,6 @@ export function SourcesPage() {
               const q = sourceSearch.toLowerCase();
               return s.id.toLowerCase().includes(q) || s.type.toLowerCase().includes(q) || (s.description ?? "").toLowerCase().includes(q);
             });
-            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
             const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
             return paged.map((s) => {
             const isExpanded = expanded === s.id;

@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useState, useCallback, useMemo, useRef, useEffect, Fragment } from "react";
+import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { get as idbGet, set as idbSet } from "idb-keyval";
 import { Play, ChevronRight, ChevronDown, Table2, Columns3, History, Copy, Check, BarChart2, Network, X, Loader2 } from "lucide-react";
@@ -20,7 +20,6 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { runSql, fetchRoles, fetchDomains, fetchTables, fetchRelationships, registerTable, nlToSql, updateTable } from "../api/admin";
 import type { Domain, Relationship, RegisteredTable } from "../types/admin";
 import { useCapability } from "../hooks/useCapability";
-import { MultiSelect } from "../components/MultiSelect";
 
 type ResultTab = "results" | "profile" | "errors" | "history";
 type TopTab = "sql" | "canvas";
@@ -983,9 +982,6 @@ export function SqlPage() {
     URL.revokeObjectURL(url);
   }, [profile]);
 
-  const updateViewCol = useCallback(<K extends keyof ViewColumnConfig>(index: number, key: K, value: ViewColumnConfig[K]) => {
-    setViewColumns((prev) => prev.map((c, i) => i === index ? { ...c, [key]: value } : c));
-  }, []);
 
   const handleSaveView = useCallback(async () => {
     if (!viewId.trim() || !viewDomainId.trim()) return;

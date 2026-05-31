@@ -28,20 +28,15 @@ logger.warn = (msg, opts) => {
 export default defineConfig(({ mode }) => ({
   customLogger: logger,
   plugins: [
+    react(),
     {
-      name: 'graphql-module-loader',
-      resolveId(id) {
-        if (id.endsWith('.graphql') || id.endsWith('.gql')) {
-          return id;
-        }
-      },
+      name: 'graphql-loader',
+      enforce: 'pre',
       load(id) {
         if (id.endsWith('.graphql') || id.endsWith('.gql')) {
-          const filePath = path.resolve(id);
-          const content = fs.readFileSync(filePath, 'utf-8');
+          const content = fs.readFileSync(path.resolve(id), 'utf-8');
           const escaped = content.replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
-          // Extract operation names (query/mutation/fragment Name)
           const operations: string[] = [];
           const opRegex = /(?:query|mutation|fragment)\s+(\w+)/g;
           let match;
@@ -57,16 +52,14 @@ export default defineConfig(({ mode }) => ({
           output += `const doc = parse(\`${escaped}\`);\n`;
           output += 'export default doc;\n';
 
-          // Export each named operation
-          operations.forEach(op => {
+          for (const op of operations) {
             output += `export const ${op} = doc;\n`;
-          });
+          }
 
           return output;
         }
       }
     },
-    react(),
     monacoEditorPlugin({
       languageWorkers: ['editorWorkerService', 'json'],
       customWorkers: [

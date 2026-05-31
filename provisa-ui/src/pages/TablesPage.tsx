@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect, useRef, Fragment, useCallback } from "react";
+import { useState, useEffect, Fragment, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Trash2, Pencil, Sparkles, Save, X, Loader2 } from "lucide-react";
 import { CopyButton } from "../components/CopyButton";
@@ -773,7 +773,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
               return terms.every((term) => haystack.includes(term));
             });
-            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
             const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
             return paged.map((t) => {
             const isEditing = editingTable?.id === t.id;

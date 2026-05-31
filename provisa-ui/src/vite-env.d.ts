@@ -50,3 +50,54 @@ declare module '*.graphql' {
   export const UpdateSourceAllowedDomains: DocumentNode;
   export default doc;
 }
+
+declare module '*.gql' {
+  import { DocumentNode } from 'graphql';
+  const doc: DocumentNode;
+  export const RolesQuery: DocumentNode;
+  export const SourcesQuery: DocumentNode;
+  export const DomainsQuery: DocumentNode;
+  export const TablesQuery: DocumentNode;
+  export const RelationshipsQuery: DocumentNode;
+  export const RLSRulesQuery: DocumentNode;
+  export const AvailableSchemas: DocumentNode;
+  export const AvailableTables: DocumentNode;
+  export const AvailableColumns: DocumentNode;
+  export const AvailableColumnsMetadata: DocumentNode;
+  export const AvailableFunctions: DocumentNode;
+  export const GenerateColumnDescription: DocumentNode;
+  export const GenerateTableDescription: DocumentNode;
+  export const CompileQuery: DocumentNode;
+  export const MVList: DocumentNode;
+  export const CacheStats: DocumentNode;
+  export const SystemHealth: DocumentNode;
+  export const ScheduledTasks: DocumentNode;
+  export const CreateDomain: DocumentNode;
+  export const DeleteDomain: DocumentNode;
+  export const RegisterTable: DocumentNode;
+  export const UpdateTable: DocumentNode;
+  export const DeleteTable: DocumentNode;
+  export const UpsertRelationship: DocumentNode;
+  export const DeleteRelationship: DocumentNode;
+  export const CreateSource: DocumentNode;
+  export const UpdateSource: DocumentNode;
+  export const DeleteSource: DocumentNode;
+  export const RenameSource: DocumentNode;
+  export const UpsertRlsRule: DocumentNode;
+  export const DeleteRlsRule: DocumentNode;
+  export const CreateRole: DocumentNode;
+  export const DeleteRole: DocumentNode;
+  export const DeployViewToDb: DocumentNode;
+  export const RefreshMv: DocumentNode;
+  export const ToggleMv: DocumentNode;
+  export const ToggleScheduledTask: DocumentNode;
+  export const PurgeCacheByTable: DocumentNode;
+  export const InvalidateFileSource: DocumentNode;
+  export const PurgeCache: DocumentNode;
+  export const UpdateSourceCache: DocumentNode;
+  export const UpdateTableCache: DocumentNode;
+  export const UpdateSourceNaming: DocumentNode;
+  export const UpdateTableNaming: DocumentNode;
+  export const UpdateSourceAllowedDomains: DocumentNode;
+  export default doc;
+}

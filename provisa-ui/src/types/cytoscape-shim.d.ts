@@ -44,6 +44,10 @@ export interface SingularElement {
   removeClass(cls: string): this;
   position(): Position;
   position(pos: Position): this;
+  position(key: string): number;
+  renderedPosition(): Position;
+  renderedWidth(): number;
+  renderedHeight(): number;
   [key: string]: unknown;
 }
 
@@ -77,6 +81,7 @@ export interface Collection {
   map<T>(fn: (ele: SingularElementReturnValue, i: number, arr: this) => T): T[];
   includes(ele: SingularElementReturnValue): boolean;
   toArray(): SingularElementReturnValue[];
+  not(selector: Selector | ((ele: SingularElementReturnValue) => boolean)): this;
 }
 
 export interface NodeCollection extends Collection {
@@ -108,9 +113,11 @@ export interface Core {
   // Selection
   $(selector: Selector): Collection;
   $id(id: string): SingularElementReturnValue;
+  getElementById(id: string): SingularElementReturnValue;
   nodes(selector?: Selector): NodeCollection;
   edges(selector?: Selector): Collection;
   elements(selector?: Selector): Collection;
+  container(): HTMLElement;
 
   // Manipulation
   add(eles: ElementDefinition | ElementDefinition[] | Collection): Collection;

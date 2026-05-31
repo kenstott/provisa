@@ -489,7 +489,6 @@ export function RelationshipsPage() {
               const q = relSearch.toLowerCase();
               return r.sourceTableName.toLowerCase().includes(q) || r.targetTableName.toLowerCase().includes(q);
             });
-            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
             const paged = filtered.slice(relPage * PAGE_SIZE, (relPage + 1) * PAGE_SIZE);
             return paged.map((r) => {
             const id = String(r.id);

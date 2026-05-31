@@ -384,7 +384,6 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
                 <div className="graph-label-list">
                   {(() => {
                     const sorted = [...schemaNodeLabels].sort((a, b) => a.tableLabel.localeCompare(b.tableLabel));
-                    const totalPages = Math.max(1, Math.ceil(sorted.length / SCHEMA_PAGE_SIZE));
                     const paged = sorted.slice(nodeLabelsPage * SCHEMA_PAGE_SIZE, (nodeLabelsPage + 1) * SCHEMA_PAGE_SIZE);
                     return paged.map((node) => {
                     const compoundLabel = node.domainLabel
@@ -439,7 +438,6 @@ function Sidebar({ schemaNodeLabels, schemaRels, schemaLoading, history, colorOv
                 <div className="graph-rel-list">
                   {(() => {
                     const uniqueRels = [...new Map(schemaRels.map(r => [r.type, r])).values()];
-                    const totalPages = Math.max(1, Math.ceil(uniqueRels.length / SCHEMA_PAGE_SIZE));
                     const paged = uniqueRels.slice(relTypesPage * SCHEMA_PAGE_SIZE, (relTypesPage + 1) * SCHEMA_PAGE_SIZE);
                     return paged.map(({ type }) => {
                     const ov = relLineOverrides[type];
