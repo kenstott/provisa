@@ -329,11 +329,12 @@ export async function registerTable(input: {
   columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null; isPrimaryKey?: boolean; isForeignKey?: boolean; isAlternateKey?: boolean; scope?: string }[];
   columnPresets?: { column: string; source: string; name?: string | null; value?: string | null; dataType?: string | null }[];
 }): Promise<MutationResult> {
-  const data = await gqlMutation<{ registerTable: MutationResult }>(
-    `mutation($input: TableInput!) { registerTable(input: $input) { success message } }`,
-    { input }
-  );
-  return data.registerTable;
+  const result = await client.mutate<{ registerTable: MutationResult }>({
+    mutation: gqlTag`mutation($input: TableInput!) { registerTable(input: $input) { success message } }`,
+    variables: { input },
+    refetchQueries: [{ query: gqlTag`{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint viewSql dataProduct columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey scope } columnPresets { column source name value dataType } } }` }],
+  });
+  return (result.data?.registerTable ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function updateTable(input: {

@@ -68,7 +68,9 @@ export function useRLSRules() {
 }
 
 export function useCreateDomain() {
-  const [createDomain, { loading }] = useMutation<{ createDomain: MutationResult }>(CreateDomain);
+  const [createDomain, { loading }] = useMutation<{ createDomain: MutationResult }>(CreateDomain, {
+    refetchQueries: [{ query: DOMAINS_QUERY }],
+  });
   return {
     createDomain: async (id: string, description: string, graphqlAlias?: string | null) => {
       const result = await createDomain({ variables: { id, description, graphqlAlias: graphqlAlias ?? null } });
@@ -79,7 +81,9 @@ export function useCreateDomain() {
 }
 
 export function useDeleteDomain() {
-  const [deleteDomain, { loading }] = useMutation<{ deleteDomain: MutationResult }>(DeleteDomain);
+  const [deleteDomain, { loading }] = useMutation<{ deleteDomain: MutationResult }>(DeleteDomain, {
+    refetchQueries: [{ query: DOMAINS_QUERY }],
+  });
   return {
     deleteDomain: async (id: string) => {
       const result = await deleteDomain({ variables: { id } });
@@ -90,7 +94,9 @@ export function useDeleteDomain() {
 }
 
 export function useRegisterTable() {
-  const [registerTable, { loading }] = useMutation<{ registerTable: MutationResult }>(RegisterTable);
+  const [registerTable, { loading }] = useMutation<{ registerTable: MutationResult }>(RegisterTable, {
+    refetchQueries: [{ query: TABLES_QUERY }],
+  });
   return {
     registerTable: async (input: any) => {
       const result = await registerTable({ variables: { input } });
@@ -101,7 +107,9 @@ export function useRegisterTable() {
 }
 
 export function useUpdateTable() {
-  const [updateTable, { loading }] = useMutation<{ updateTable: MutationResult }>(UpdateTable);
+  const [updateTable, { loading }] = useMutation<{ updateTable: MutationResult }>(UpdateTable, {
+    refetchQueries: [{ query: TABLES_QUERY }],
+  });
   return {
     updateTable: async (input: any) => {
       const result = await updateTable({ variables: { input } });
@@ -112,7 +120,9 @@ export function useUpdateTable() {
 }
 
 export function useDeleteTable() {
-  const [deleteTable, { loading }] = useMutation<{ deleteTable: MutationResult }>(DeleteTable);
+  const [deleteTable, { loading }] = useMutation<{ deleteTable: MutationResult }>(DeleteTable, {
+    refetchQueries: [{ query: TABLES_QUERY }],
+  });
   return {
     deleteTable: async (id: number) => {
       const result = await deleteTable({ variables: { id } });
@@ -123,7 +133,9 @@ export function useDeleteTable() {
 }
 
 export function useUpsertRelationship() {
-  const [upsertRelationship, { loading }] = useMutation<{ upsertRelationship: MutationResult }>(UpsertRelationship);
+  const [upsertRelationship, { loading }] = useMutation<{ upsertRelationship: MutationResult }>(UpsertRelationship, {
+    refetchQueries: [{ query: RELATIONSHIPS_QUERY }],
+  });
   return {
     upsertRelationship: async (input: any) => {
       const result = await upsertRelationship({ variables: { input } });
@@ -134,7 +146,9 @@ export function useUpsertRelationship() {
 }
 
 export function useDeleteRelationship() {
-  const [deleteRelationship, { loading }] = useMutation<{ deleteRelationship: MutationResult }>(DeleteRelationship);
+  const [deleteRelationship, { loading }] = useMutation<{ deleteRelationship: MutationResult }>(DeleteRelationship, {
+    refetchQueries: [{ query: RELATIONSHIPS_QUERY }],
+  });
   return {
     deleteRelationship: async (id: string) => {
       const result = await deleteRelationship({ variables: { id } });
