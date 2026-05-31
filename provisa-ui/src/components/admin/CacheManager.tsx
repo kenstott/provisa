@@ -13,11 +13,14 @@ import { fetchCacheStats, purgeCache, purgeCacheByTable, fetchTables } from "../
 import type { CacheStats } from "../../api/admin";
 import type { RegisteredTable } from "../../types/admin";
 
+const PAGE_SIZE = 50;
+
 export function CacheManager() {
   const [stats, setStats] = useState<CacheStats | null>(null);
   const [tables, setTables] = useState<RegisteredTable[]>([]);
   const [purging, setPurging] = useState(false);
   const [msg, setMsg] = useState("");
+  const [tablePage, setTablePage] = useState(0);
 
   const load = () => {
     Promise.all([fetchCacheStats(), fetchTables()]).then(([s, t]) => {
@@ -82,29 +85,44 @@ export function CacheManager() {
         {msg && <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>{msg}</span>}
       </div>
 
-      {tables.length > 0 && (
-        <table className="data-table">
-          <thead>
-            <tr><th>Table</th><th>Domain</th><th></th></tr>
-          </thead>
-          <tbody>
-            {tables.map((t) => (
-              <tr key={t.id}>
-                <td>{t.alias || t.tableName}</td>
-                <td>{t.domainId}</td>
-                <td>
-                  <button
-                    onClick={() => handlePurgeTable(t.id, t.tableName)}
-                    style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
-                  >
-                    Purge
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      {tables.length > 0 && (() => {
+        const totalPages = Math.max(1, Math.ceil(tables.length / PAGE_SIZE));
+        const paged = tables.slice(tablePage * PAGE_SIZE, (tablePage + 1) * PAGE_SIZE);
+        return (
+          <div>
+            <table className="data-table">
+              <thead>
+                <tr><th>Table</th><th>Domain</th><th></th></tr>
+              </thead>
+              <tbody>
+                {paged.map((t) => (
+                  <tr key={t.id}>
+                    <td>{t.alias || t.tableName}</td>
+                    <td>{t.domainId}</td>
+                    <td>
+                      <button
+                        onClick={() => handlePurgeTable(t.id, t.tableName)}
+                        style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                      >
+                        Purge
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {totalPages > 1 && (
+              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
+                <button onClick={() => setTablePage(0)} disabled={tablePage === 0}>«</button>
+                <button onClick={() => setTablePage(p => p - 1)} disabled={tablePage === 0}>‹</button>
+                <span>Page {tablePage + 1} / {totalPages}</span>
+                <button onClick={() => setTablePage(p => p + 1)} disabled={tablePage >= totalPages - 1}>›</button>
+                <button onClick={() => setTablePage(totalPages - 1)} disabled={tablePage >= totalPages - 1}>»</button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { gql as gqlTag } from "@apollo/client";
 import type { Role, RoleAssignment, OrgMembership } from "../types/auth";
 import type {
   Source,
@@ -17,22 +18,25 @@ import type {
   RLSRule,
   MutationResult,
 } from "../types/admin";
+import { client } from "../apolloClient";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 async function gql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
-  const resp = await fetch(`${API_BASE}/admin/graphql`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, variables }),
+  const result = await client.query({
+    query: gqlTag(query),
+    variables,
+    fetchPolicy: "cache-first",
   });
-  if (!resp.ok) {
-    const text = await resp.text();
-    throw new Error(`API error ${resp.status}: ${text.slice(0, 200)}`);
-  }
-  const json = await resp.json();
-  if (json.errors) throw new Error(json.errors[0].message);
-  return json.data;
+  return result.data as T;
+}
+
+async function gqlMutation<T>(mutation: string, variables?: Record<string, unknown>): Promise<T> {
+  const result = await client.mutate({
+    mutation: gqlTag(mutation),
+    variables,
+  });
+  return result.data as T;
 }
 
 export async function fetchMe(): Promise<{
@@ -188,11 +192,11 @@ export async function fetchDomains(): Promise<Domain[]> {
 
 export async function createDomain(id: string, description: string, graphqlAlias?: string | null): Promise<void> {
   const aliasArg = graphqlAlias ? `, graphqlAlias: ${JSON.stringify(graphqlAlias)}` : "";
-  await gql(`mutation { createDomain(input: { id: ${JSON.stringify(id)}, description: ${JSON.stringify(description)}${aliasArg} }) { success message } }`);
+  await gqlMutation(`mutation { createDomain(input: { id: ${JSON.stringify(id)}, description: ${JSON.stringify(description)}${aliasArg} }) { success message } }`);
 }
 
 export async function deleteDomain(id: string): Promise<void> {
-  await gql(`mutation { deleteDomain(id: ${JSON.stringify(id)}) { success message } }`);
+  await gqlMutation(`mutation { deleteDomain(id: ${JSON.stringify(id)}) { success message } }`);
 }
 
 
@@ -325,7 +329,7 @@ export async function registerTable(input: {
   columns: { name: string; visibleTo: string[]; writableBy?: string[]; unmaskedTo?: string[]; maskType?: string; maskPattern?: string; maskReplace?: string; maskValue?: string; maskPrecision?: string; alias?: string; description?: string; nativeFilterType?: string | null; isPrimaryKey?: boolean; isForeignKey?: boolean; isAlternateKey?: boolean; scope?: string }[];
   columnPresets?: { column: string; source: string; name?: string | null; value?: string | null; dataType?: string | null }[];
 }): Promise<MutationResult> {
-  const data = await gql<{ registerTable: MutationResult }>(
+  const data = await gqlMutation<{ registerTable: MutationResult }>(
     `mutation($input: TableInput!) { registerTable(input: $input) { success message } }`,
     { input }
   );
@@ -857,14 +861,14 @@ export async function toggleMV(mvId: string, enabled: boolean): Promise<Mutation
 }
 
 export async function purgeCache(): Promise<MutationResult> {
-  const data = await gql<{ purgeCache: MutationResult }>(
+  const data = await gqlMutation<{ purgeCache: MutationResult }>(
     `mutation { purgeCache { success message } }`
   );
   return data.purgeCache;
 }
 
 export async function updateSourceCache(sourceId: string, cacheEnabled: boolean, cacheTtl: number | null): Promise<MutationResult> {
-  const data = await gql<{ updateSourceCache: MutationResult }>(
+  const data = await gqlMutation<{ updateSourceCache: MutationResult }>(
     `mutation($sourceId: String!, $cacheEnabled: Boolean!, $cacheTtl: Int) { updateSourceCache(sourceId: $sourceId, cacheEnabled: $cacheEnabled, cacheTtl: $cacheTtl) { success message } }`,
     { sourceId, cacheEnabled, cacheTtl }
   );
@@ -872,7 +876,7 @@ export async function updateSourceCache(sourceId: string, cacheEnabled: boolean,
 }
 
 export async function updateTableCache(tableId: number, cacheTtl: number | null): Promise<MutationResult> {
-  const data = await gql<{ updateTableCache: MutationResult }>(
+  const data = await gqlMutation<{ updateTableCache: MutationResult }>(
     `mutation($tableId: Int!, $cacheTtl: Int) { updateTableCache(tableId: $tableId, cacheTtl: $cacheTtl) { success message } }`,
     { tableId, cacheTtl }
   );
@@ -880,7 +884,7 @@ export async function updateTableCache(tableId: number, cacheTtl: number | null)
 }
 
 export async function updateSourceNaming(sourceId: string, namingConvention: string | null): Promise<MutationResult> {
-  const data = await gql<{ updateSourceNaming: MutationResult }>(
+  const data = await gqlMutation<{ updateSourceNaming: MutationResult }>(
     `mutation($sourceId: String!, $namingConvention: String) { updateSourceNaming(sourceId: $sourceId, namingConvention: $namingConvention) { success message } }`,
     { sourceId, namingConvention }
   );
@@ -888,7 +892,7 @@ export async function updateSourceNaming(sourceId: string, namingConvention: str
 }
 
 export async function updateSourceAllowedDomains(sourceId: string, allowedDomains: string[]): Promise<MutationResult> {
-  const data = await gql<{ updateSourceAllowedDomains: MutationResult }>(
+  const data = await gqlMutation<{ updateSourceAllowedDomains: MutationResult }>(
     `mutation($sourceId: String!, $allowedDomains: [String!]!) { updateSourceAllowedDomains(sourceId: $sourceId, allowedDomains: $allowedDomains) { success message } }`,
     { sourceId, allowedDomains }
   );
@@ -896,7 +900,7 @@ export async function updateSourceAllowedDomains(sourceId: string, allowedDomain
 }
 
 export async function updateTableNaming(tableId: number, namingConvention: string | null): Promise<MutationResult> {
-  const data = await gql<{ updateTableNaming: MutationResult }>(
+  const data = await gqlMutation<{ updateTableNaming: MutationResult }>(
     `mutation($tableId: Int!, $namingConvention: String) { updateTableNaming(tableId: $tableId, namingConvention: $namingConvention) { success message } }`,
     { tableId, namingConvention }
   );

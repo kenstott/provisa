@@ -1,0 +1,351 @@
+"""
+GraphQL Schema for Provisa Admin API
+Generated via: npm run generate-schema
+Regenerate when server schema changes: npm run generate-schema
+"""
+
+scalar JSON
+
+type Query {
+  sources: [Source!]!
+  domains: [Domain!]!
+  tables: [Table!]!
+  relationships: [Relationship!]!
+  rlsRules: [RLSRule!]!
+  roles: [Role!]!
+  mvList: [MVInfo!]!
+  cacheStats: CacheStats!
+  systemHealth: SystemHealth!
+  scheduledTasks: [ScheduledTask!]!
+  availableSchemas(sourceId: String!): [String!]!
+  availableTables(sourceId: String!, schemaName: String): [TableMetadata!]!
+  availableColumns(sourceId: String!, schemaName: String!, tableName: String!): [String!]!
+  availableColumnsMetadata(sourceId: String!, schemaName: String!, tableName: String!): [ColumnMetadata!]!
+  availableFunctions(sourceId: String!, schemaName: String): [TableMetadata!]!
+  compileQuery(input: CompileQueryInput!): [CompileResult!]!
+  generateColumnDescription(tableId: String!, columnName: String!): String!
+  generateTableDescription(tableId: String!): String!
+}
+
+type Mutation {
+  createDomain(input: CreateDomainInput!): MutationResult!
+  deleteDomain(id: String!): MutationResult!
+  registerTable(input: TableInput!): MutationResult!
+  updateTable(input: TableInput!): MutationResult!
+  deleteTable(id: Int!): MutationResult!
+  deployViewToDb(tableId: Int!): MutationResult!
+  upsertRelationship(input: RelationshipInput!): MutationResult!
+  deleteRelationship(id: String!): MutationResult!
+  createSource(input: SourceInput!): MutationResult!
+  updateSource(input: SourceInput!): MutationResult!
+  deleteSource(id: String!): MutationResult!
+  renameSource(oldId: String!, newId: String!): MutationResult!
+  purgeCache: MutationResult!
+  updateSourceCache(sourceId: String!, cacheEnabled: Boolean!, cacheTtl: Int): MutationResult!
+  updateTableCache(tableId: Int!, cacheTtl: Int): MutationResult!
+  updateSourceNaming(sourceId: String!, namingConvention: String): MutationResult!
+  updateTableNaming(tableId: Int!, namingConvention: String): MutationResult!
+  updateSourceAllowedDomains(sourceId: String!, allowedDomains: [String!]!): MutationResult!
+  upsertRlsRule(input: RLSRuleInput!): MutationResult!
+  deleteRlsRule(roleId: String!, tableId: Int, domainId: String): MutationResult!
+  createRole(input: RoleInput!): MutationResult!
+  deleteRole(id: String!): MutationResult!
+  refreshMv(mvId: String!): MutationResult!
+  toggleMv(mvId: String!, enabled: Boolean!): MutationResult!
+  toggleScheduledTask(taskId: String!, enabled: Boolean!): MutationResult!
+  purgeCacheByTable(tableId: Int!): MutationResult!
+  invalidateFileSource(tableId: Int!): MutationResult!
+}
+
+type Source {
+  id: String!
+  type: String!
+  host: String!
+  port: Int!
+  database: String!
+  username: String!
+  dialect: String!
+  cacheEnabled: Boolean!
+  cacheTtl: Int
+  namingConvention: String
+  allowedDomains: [String!]!
+  description: String
+}
+
+type Domain {
+  id: String!
+  description: String
+  graphqlAlias: String
+}
+
+type Table {
+  id: Int!
+  sourceId: String!
+  domainId: String!
+  schemaName: String!
+  tableName: String!
+  governance: String!
+  alias: String
+  description: String
+  cacheTtl: Int
+  namingConvention: String
+  watermarkColumn: String
+  apiEndpoint: String
+  viewSql: String
+  dataProduct: Boolean
+  columns: [Column!]!
+  columnPresets: [ColumnPreset!]!
+}
+
+type Column {
+  id: Int!
+  columnName: String!
+  visibleTo: [String!]!
+  writableBy: [String!]
+  unmaskedTo: [String!]
+  maskType: String
+  maskPattern: String
+  maskReplace: String
+  maskValue: String
+  maskPrecision: String
+  alias: String
+  description: String
+  nativeFilterType: String
+  isPrimaryKey: Boolean!
+  isForeignKey: Boolean!
+  isAlternateKey: Boolean!
+  scope: String
+}
+
+type ColumnPreset {
+  column: String!
+  source: String!
+  name: String
+  value: String
+  dataType: String
+}
+
+type Relationship {
+  id: String!
+  sourceTableId: Int!
+  targetTableId: Int!
+  sourceTableName: String!
+  targetTableName: String!
+  sourceColumn: String!
+  targetColumn: String!
+  cardinality: String!
+  materialize: Boolean!
+  refreshInterval: Int!
+  targetFunctionName: String
+  functionArg: String
+  alias: String
+  graphqlAlias: String
+  computedCypherAlias: String
+  autoSuggested: Boolean!
+  disableCypher: Boolean!
+}
+
+type RLSRule {
+  id: Int!
+  roleId: String!
+  domain: String
+  table: String
+  filters: [RLSFilter!]!
+}
+
+type RLSFilter {
+  id: Int!
+  role_id: String!
+  domain: String
+  table: String
+  filter_type: String!
+  filter_sql: String!
+  columns: [String!]
+}
+
+type Role {
+  id: String!
+  capabilities: [String!]!
+  domainAccess: [String!]!
+}
+
+type MVInfo {
+  id: String!
+  sourceTables: [String!]!
+  targetTable: String!
+  refreshInterval: Int!
+  enabled: Boolean!
+  status: String!
+  lastRefreshAt: Int
+  rowCount: Int
+  lastError: String
+}
+
+type CacheStats {
+  totalKeys: Int!
+  hitCount: Int!
+  missCount: Int!
+  storeType: String!
+}
+
+type SystemHealth {
+  trinoConnected: Boolean!
+  trinoWorkerCount: Int!
+  trinoActiveWorkers: Int!
+  pgPoolSize: Int!
+  pgPoolFree: Int!
+  cacheConnected: Boolean!
+  flightServerRunning: Boolean!
+  mvRefreshLoopRunning: Boolean!
+}
+
+type ScheduledTask {
+  id: String!
+  name: String!
+  cronExpression: String!
+  webhookUrl: String
+  enabled: Boolean!
+  lastRunAt: String
+  nextRunAt: String
+}
+
+type TableMetadata {
+  name: String!
+  comment: String
+}
+
+type ColumnMetadata {
+  name: String!
+  dataType: String!
+  comment: String
+  nativeFilterType: String
+  isPrimaryKey: Boolean!
+}
+
+type CompileResult {
+  sql: String!
+  semanticSql: String!
+  trinoSql: String
+  directSql: String
+  route: String!
+  routeReason: String!
+  sources: [String!]!
+  rootField: String!
+  canonicalField: String!
+  compiledCypher: String
+  cypherError: String
+  columnAliases: [ColumnAlias!]!
+  optimizations: [String!]
+  warnings: [String!]
+}
+
+type ColumnAlias {
+  fieldName: String!
+  column: String!
+}
+
+type MutationResult {
+  success: Boolean!
+  message: String!
+}
+
+input CreateDomainInput {
+  id: String!
+  description: String!
+  graphqlAlias: String
+}
+
+input TableInput {
+  sourceId: String!
+  domainId: String!
+  schemaName: String!
+  tableName: String!
+  governance: String!
+  alias: String
+  description: String
+  watermarkColumn: String
+  viewSql: String
+  dataProduct: Boolean
+  columns: [ColumnInput!]!
+  columnPresets: [ColumnPresetInput!]
+  cacheTtl: Int
+  namingConvention: String
+}
+
+input ColumnInput {
+  name: String!
+  visibleTo: [String!]!
+  writableBy: [String!]
+  unmaskedTo: [String!]
+  maskType: String
+  maskPattern: String
+  maskReplace: String
+  maskValue: String
+  maskPrecision: String
+  alias: String
+  description: String
+  nativeFilterType: String
+  isPrimaryKey: Boolean
+  isForeignKey: Boolean
+  isAlternateKey: Boolean
+  scope: String
+}
+
+input ColumnPresetInput {
+  column: String!
+  source: String!
+  name: String
+  value: String
+  dataType: String
+}
+
+input RelationshipInput {
+  id: String!
+  sourceTableId: String!
+  targetTableId: String
+  sourceColumn: String!
+  targetColumn: String
+  cardinality: String!
+  materialize: Boolean!
+  refreshInterval: Int!
+  targetFunctionName: String
+  functionArg: String
+  alias: String
+  graphqlAlias: String
+  disableCypher: Boolean
+  recordCandidate: Boolean
+}
+
+input SourceInput {
+  id: String!
+  type: String!
+  host: String!
+  port: Int!
+  database: String!
+  username: String!
+  password: String!
+  path: String
+  description: String
+}
+
+input RLSRuleInput {
+  tableId: Int
+  domainId: String
+  roleId: String!
+  filterExpr: String!
+}
+
+input RoleInput {
+  id: String!
+  capabilities: [String!]!
+  domainAccess: [String!]!
+}
+
+input CompileQueryInput {
+  query: String!
+  role: String!
+  variables: JSON
+  flatSql: Boolean
+  flatCypher: Boolean
+  nodeOnlyCypher: Boolean
+}

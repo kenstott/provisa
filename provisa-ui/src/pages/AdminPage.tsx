@@ -11,12 +11,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { Trash2 } from "lucide-react";
+import { useDomains, useTables, useRelationships, useSources, useRLSRules, useCreateDomain, useDeleteDomain } from "../hooks/useAdminQueries";
 import {
-  fetchSources,
-  fetchDomains,
-  fetchTables,
-  fetchRelationships,
-  fetchRlsRules,
   fetchRoles,
   downloadConfig,
   uploadConfig,
@@ -25,8 +21,6 @@ import {
   reloadQueryEngineCatalog,
   restartQueryEngine,
   recomputeSchemaClusters,
-  createDomain,
-  deleteDomain,
   fetchLocalUsers,
   createLocalUser,
   deleteLocalUser,
@@ -48,7 +42,6 @@ import {
 import type { LocalUser, UserAssignment, Org, OrgMember, OrgInvite } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
-import type { Domain } from "../types/admin";
 import { domainGqlAlias } from "../types/admin";
 import { MVManager } from "../components/admin/MVManager";
 import { CacheManager } from "../components/admin/CacheManager";
@@ -78,7 +71,6 @@ export function AdminPage() {
   const isSuperAdmin = capabilities.includes("superadmin") || capabilities.includes("admin");
   const orgId = activeOrgId ?? "root";
   const [stats, setStats] = useState<Record<string, number>>({});
-  const [domains, setDomains] = useState<Domain[]>([]);
   const [newDomainId, setNewDomainId] = useState("");
   const [newDomainDesc, setNewDomainDesc] = useState("");
   const [newDomainAlias, setNewDomainAlias] = useState("");
@@ -120,39 +112,59 @@ export function AdminPage() {
   const [inviteMsg, setInviteMsg] = useState("");
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
 
+  // Pagination state
+  const [domainPage, setDomainPage] = useState(0);
+  const [userPage, setUserPage] = useState(0);
+  const [orgPage, setOrgPage] = useState(0);
+  const [invitePage, setInvitePage] = useState(0);
+  const [rolePage, setRolePage] = useState(0);
+  const PAGE_SIZE = 50;
+
+  // Apollo hooks for cache-and-network queries and mutations
+  const { sources, loading: sourcesLoading } = useSources();
+  const { domains, loading: domainsLoading, refetch: refetchDomains } = useDomains();
+  const { tables, loading: tablesLoading } = useTables();
+  const { relationships, loading: relsLoading } = useRelationships();
+  const { rlsRules, loading: rlsLoading } = useRLSRules();
+  const { createDomain } = useCreateDomain();
+  const { deleteDomain } = useDeleteDomain();
+
+  // Update state and stats when hook data arrives
+  useEffect(() => {
+    const loading = sourcesLoading || domainsLoading || tablesLoading || relsLoading || rlsLoading;
+    setLoading(loading);
+
+    if (!loading) {
+      setStats({
+        Sources: sources.length,
+        Domains: domains.length,
+        Tables: tables.length,
+        Relationships: relationships.length,
+        Roles: allRoles.length,
+        "RLS Rules": rlsRules.length,
+      });
+      setAllDomains(domains.filter((d) => d.id !== "").map((d) => d.id));
+    }
+  }, [sources, domains, tables, relationships, rlsRules, rlsLoading, domainsLoading, tablesLoading, relsLoading, sourcesLoading, allRoles.length]);
+
+  // Fetch remaining data (non-cached queries and mutations only)
   useEffect(() => {
     Promise.all([
-      fetchSources(),
-      fetchDomains(),
-      fetchTables(),
-      fetchRelationships(),
       fetchRoles(),
-      fetchRlsRules(),
       fetchSettings(),
       fetchLocalUsers().catch(() => [] as LocalUser[]),
       fetchOrgs().catch(() => [] as Org[]),
       fetchOrgRoles(orgId).catch(() => [] as import("../types/auth").Role[]),
       fetchInvites().catch(() => [] as OrgInvite[]),
     ])
-      .then(([sources, doms, tables, rels, roles, rls, s, users, orgsResult, rolesResult, invitesResult]) => {
-        setStats({
-          Sources: sources.length,
-          Domains: doms.length,
-          Tables: tables.length,
-          Relationships: rels.length,
-          Roles: roles.length,
-          "RLS Rules": rls.length,
-        });
-        setDomains(doms);
+      .then(([roles, s, users, orgsResult, rolesResult, invitesResult]) => {
+        setAllRoles(roles.map((r) => r.id));
         setSettings(s);
         setLocalUsers(users as LocalUser[]);
-        setAllRoles(roles.map((r) => r.id));
-        setAllDomains(doms.filter((d) => d.id !== "").map((d) => d.id));
         setOrgs(orgsResult as Org[]);
         setOrgRoles(rolesResult as import("../types/auth").Role[]);
         setOrgInvites(invitesResult as OrgInvite[]);
-      })
-      .finally(() => setLoading(false));
+      });
   }, [orgId]);
 
   const handleDownload = async () => {
@@ -209,9 +221,7 @@ export function AdminPage() {
   const handleAddDomain = async () => {
     if (!newDomainId.trim()) return;
     await createDomain(newDomainId.trim(), newDomainDesc.trim(), newDomainAlias.trim() || null);
-    const updated = await fetchDomains();
-    setDomains(updated);
-    setStats((s) => ({ ...s, Domains: updated.length }));
+    await refetchDomains();
     setNewDomainId("");
     setNewDomainDesc("");
     setNewDomainAlias("");
@@ -220,9 +230,7 @@ export function AdminPage() {
 
   const handleDeleteDomain = async (id: string) => {
     await deleteDomain(id);
-    const updated = await fetchDomains();
-    setDomains(updated);
-    setStats((s) => ({ ...s, Domains: updated.length }));
+    await refetchDomains();
     setDomainMsg(`Deleted "${id}"`);
   };
 
@@ -544,24 +552,41 @@ export function AdminPage() {
       {activeTab === "Domains" && (
         <>
           {domainMsg && <div className="success" style={{ marginBottom: "0.5rem" }}>{domainMsg}</div>}
-          <table className="data-table" style={{ marginBottom: "1rem" }}>
-            <thead><tr><th>ID</th><th>Description</th><th>GQL Alias</th><th></th></tr></thead>
-            <tbody>
-              {domains.length === 0 && (
-                <tr><td colSpan={4} style={{ color: "var(--text-muted)", textAlign: "center" }}>No domains defined</td></tr>
-              )}
-              {domains.map((d) => (
-                <tr key={d.id}>
-                  <td>{d.id}</td>
-                  <td>{d.description || "—"}</td>
-                  <td style={{ color: "var(--text-muted)", fontFamily: "monospace" }}>{domainGqlAlias(d)}</td>
-                  <td>
-                    <button className="btn-icon-danger" title="Delete" onClick={() => handleDeleteDomain(d.id)}><Trash2 size={14} /></button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {(() => {
+            const totalPages = Math.max(1, Math.ceil(domains.length / PAGE_SIZE));
+            const paged = domains.slice(domainPage * PAGE_SIZE, (domainPage + 1) * PAGE_SIZE);
+            return (
+              <div>
+                <table className="data-table" style={{ marginBottom: "1rem" }}>
+                  <thead><tr><th>ID</th><th>Description</th><th>GQL Alias</th><th></th></tr></thead>
+                  <tbody>
+                    {domains.length === 0 && (
+                      <tr><td colSpan={4} style={{ color: "var(--text-muted)", textAlign: "center" }}>No domains defined</td></tr>
+                    )}
+                    {paged.map((d) => (
+                      <tr key={d.id}>
+                        <td>{d.id}</td>
+                        <td>{d.description || "—"}</td>
+                        <td style={{ color: "var(--text-muted)", fontFamily: "monospace" }}>{domainGqlAlias(d)}</td>
+                        <td>
+                          <button className="btn-icon-danger" title="Delete" onClick={() => handleDeleteDomain(d.id)}><Trash2 size={14} /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {totalPages > 1 && (
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0", marginBottom: "1rem" }}>
+                    <button onClick={() => setDomainPage(0)} disabled={domainPage === 0}>«</button>
+                    <button onClick={() => setDomainPage(p => p - 1)} disabled={domainPage === 0}>‹</button>
+                    <span>Page {domainPage + 1} / {totalPages}</span>
+                    <button onClick={() => setDomainPage(p => p + 1)} disabled={domainPage >= totalPages - 1}>›</button>
+                    <button onClick={() => setDomainPage(totalPages - 1)} disabled={domainPage >= totalPages - 1}>»</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
             <input value={newDomainId} onChange={(e) => setNewDomainId(e.target.value)} placeholder="domain-id" style={{ width: "160px", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }} />
             <input value={newDomainDesc} onChange={(e) => setNewDomainDesc(e.target.value)} placeholder="description (optional)" style={{ flex: 1, background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }} />
@@ -580,15 +605,20 @@ export function AdminPage() {
       {activeTab === "Local Users" && (
         <>
           {userMsg && <div className="success" style={{ marginBottom: "0.5rem" }}>{userMsg}</div>}
-          <table className="data-table" style={{ marginBottom: "1rem" }}>
-            <thead>
-              <tr><th>Username</th><th>Email</th><th>Display Name</th><th>Active</th><th></th></tr>
-            </thead>
-            <tbody>
-              {localUsers.length === 0 && (
-                <tr><td colSpan={5} style={{ color: "var(--text-muted)", textAlign: "center" }}>No local users</td></tr>
-              )}
-              {localUsers.map((u) => (
+          {(() => {
+            const totalPages = Math.max(1, Math.ceil(localUsers.length / PAGE_SIZE));
+            const paged = localUsers.slice(userPage * PAGE_SIZE, (userPage + 1) * PAGE_SIZE);
+            return (
+              <div>
+                <table className="data-table" style={{ marginBottom: "1rem" }}>
+                  <thead>
+                    <tr><th>Username</th><th>Email</th><th>Display Name</th><th>Active</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {localUsers.length === 0 && (
+                      <tr><td colSpan={5} style={{ color: "var(--text-muted)", textAlign: "center" }}>No local users</td></tr>
+                    )}
+                    {paged.map((u) => (
                 <>
                   <tr key={u.id}>
                     <td style={{ fontFamily: "monospace" }}>
@@ -653,9 +683,21 @@ export function AdminPage() {
                     </tr>
                   )}
                 </>
-              ))}
-            </tbody>
-          </table>
+                    ))}
+                  </tbody>
+                </table>
+                {totalPages > 1 && (
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0", marginBottom: "1rem" }}>
+                    <button onClick={() => setUserPage(0)} disabled={userPage === 0}>«</button>
+                    <button onClick={() => setUserPage(p => p - 1)} disabled={userPage === 0}>‹</button>
+                    <span>Page {userPage + 1} / {totalPages}</span>
+                    <button onClick={() => setUserPage(p => p + 1)} disabled={userPage >= totalPages - 1}>›</button>
+                    <button onClick={() => setUserPage(totalPages - 1)} disabled={userPage >= totalPages - 1}>»</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <h4 style={{ marginBottom: "0.5rem" }}>Create User</h4>
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: "480px" }}>
             <input
@@ -698,10 +740,15 @@ export function AdminPage() {
         <div>
           <h3>Organizations</h3>
           {orgMsg && <p className="form-msg">{orgMsg}</p>}
-          <table className="admin-table">
-            <thead><tr><th>ID</th><th>Name</th><th>Members</th><th></th></tr></thead>
-            <tbody>
-              {orgs.map((org) => (
+          {(() => {
+            const totalPages = Math.max(1, Math.ceil(orgs.length / PAGE_SIZE));
+            const paged = orgs.slice(orgPage * PAGE_SIZE, (orgPage + 1) * PAGE_SIZE);
+            return (
+              <div>
+                <table className="admin-table">
+                  <thead><tr><th>ID</th><th>Name</th><th>Members</th><th></th></tr></thead>
+                  <tbody>
+                    {paged.map((org) => (
                 <>
                   <tr key={org.id}>
                     <td>{org.id}</td>
@@ -740,11 +787,23 @@ export function AdminPage() {
                         </div>
                       </td>
                     </tr>
-                  )}
-                </>
-              ))}
-            </tbody>
-          </table>
+                    )}
+                  </>
+                ))}
+                  </tbody>
+                </table>
+                {totalPages > 1 && (
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0", marginBottom: "1rem" }}>
+                    <button onClick={() => setOrgPage(0)} disabled={orgPage === 0}>«</button>
+                    <button onClick={() => setOrgPage(p => p - 1)} disabled={orgPage === 0}>‹</button>
+                    <span>Page {orgPage + 1} / {totalPages}</span>
+                    <button onClick={() => setOrgPage(p => p + 1)} disabled={orgPage >= totalPages - 1}>›</button>
+                    <button onClick={() => setOrgPage(totalPages - 1)} disabled={orgPage >= totalPages - 1}>»</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <h4>Create Org</h4>
           <div className="form-row">
             <input placeholder="ID (slug)" value={newOrgId} onChange={(e) => setNewOrgId(e.target.value)} />
@@ -762,16 +821,21 @@ export function AdminPage() {
             </button>
           </div>
           {inviteMsg && <div style={{ marginBottom: 8, color: "var(--muted-foreground)", fontSize: 13 }}>{inviteMsg}</div>}
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr>
-                {["Org", "Token", "Created By", "Expires", "Status", ""].map((h) => (
-                  <th key={h} style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid var(--border)" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {orgInvites.map((inv) => (
+          {(() => {
+            const totalPages = Math.max(1, Math.ceil(orgInvites.length / PAGE_SIZE));
+            const paged = orgInvites.slice(invitePage * PAGE_SIZE, (invitePage + 1) * PAGE_SIZE);
+            return (
+              <div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      {["Org", "Token", "Created By", "Expires", "Status", ""].map((h) => (
+                        <th key={h} style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid var(--border)" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paged.map((inv) => (
                 <tr key={inv.token}>
                   <td style={{ padding: "4px 8px" }}>{inv.org_name}</td>
                   <td style={{ padding: "4px 8px", fontFamily: "monospace", fontSize: 11 }}>{inv.token.slice(0, 8)}…</td>
@@ -791,22 +855,39 @@ export function AdminPage() {
                     )}
                   </td>
                 </tr>
-              ))}
-              {orgInvites.length === 0 && (
-                <tr><td colSpan={6} style={{ padding: "8px", color: "var(--muted-foreground)" }}>No invites</td></tr>
-              )}
-            </tbody>
-          </table>
+                    ))}
+                    {orgInvites.length === 0 && (
+                      <tr><td colSpan={6} style={{ padding: "8px", color: "var(--muted-foreground)" }}>No invites</td></tr>
+                    )}
+                  </tbody>
+                </table>
+                {totalPages > 1 && (
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0", marginBottom: "1rem" }}>
+                    <button onClick={() => setInvitePage(0)} disabled={invitePage === 0}>«</button>
+                    <button onClick={() => setInvitePage(p => p - 1)} disabled={invitePage === 0}>‹</button>
+                    <span>Page {invitePage + 1} / {totalPages}</span>
+                    <button onClick={() => setInvitePage(p => p + 1)} disabled={invitePage >= totalPages - 1}>›</button>
+                    <button onClick={() => setInvitePage(totalPages - 1)} disabled={invitePage >= totalPages - 1}>»</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
       {activeTab === "Roles" && (
         <div>
           <h3>Roles — {orgId}</h3>
           {roleMsg && <p className="form-msg">{roleMsg}</p>}
-          <table className="admin-table">
-            <thead><tr><th>ID</th><th>Capabilities</th><th>Domain Access</th><th></th></tr></thead>
-            <tbody>
-              {orgRoles.map((role) => (
+          {(() => {
+            const totalPages = Math.max(1, Math.ceil(orgRoles.length / PAGE_SIZE));
+            const paged = orgRoles.slice(rolePage * PAGE_SIZE, (rolePage + 1) * PAGE_SIZE);
+            return (
+              <div>
+                <table className="admin-table">
+                  <thead><tr><th>ID</th><th>Capabilities</th><th>Domain Access</th><th></th></tr></thead>
+                  <tbody>
+                    {paged.map((role) => (
                 <tr key={role.id}>
                   <td>{role.id}</td>
                   <td>{role.capabilities.join(", ")}</td>
@@ -817,9 +898,21 @@ export function AdminPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+                    ))}
+                  </tbody>
+                </table>
+                {totalPages > 1 && (
+                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0", marginBottom: "1rem" }}>
+                    <button onClick={() => setRolePage(0)} disabled={rolePage === 0}>«</button>
+                    <button onClick={() => setRolePage(p => p - 1)} disabled={rolePage === 0}>‹</button>
+                    <span>Page {rolePage + 1} / {totalPages}</span>
+                    <button onClick={() => setRolePage(p => p + 1)} disabled={rolePage >= totalPages - 1}>›</button>
+                    <button onClick={() => setRolePage(totalPages - 1)} disabled={rolePage >= totalPages - 1}>»</button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
       </div>

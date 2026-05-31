@@ -10,6 +10,8 @@
 
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { ApolloProvider } from "@apollo/client/react";
+import { client } from "./apolloClient";
 import { AuthProvider } from "./context/AuthContext";
 import { DomainFilterProvider } from "./context/DomainFilterContext";
 import { NavBar } from "./components/NavBar";
@@ -67,8 +69,9 @@ function App() {
 
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <DomainFilterProvider>
+      <ApolloProvider client={client}>
+        <AuthProvider>
+          <DomainFilterProvider>
           {!setupChecked ? (
             <div className="page"><p>Loading...</p></div>
           ) : needsSetup ? (
@@ -214,6 +217,7 @@ function App() {
           )}
         </DomainFilterProvider>
       </AuthProvider>
+    </ApolloProvider>
     </BrowserRouter>
   );
 }

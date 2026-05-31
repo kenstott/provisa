@@ -322,6 +322,27 @@ def _build_column_models(columns: list) -> list:
 @strawberry.type
 class Query:
     @strawberry.field
+    async def schema_version(self) -> str:
+        """Returns SHA256 hash of current schema state for cache validation."""
+        import hashlib
+        import json
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            domains = await conn.fetch("SELECT id, description, graphql_alias FROM domains ORDER BY id")
+            tables = await conn.fetch("SELECT id FROM registered_tables ORDER BY id")
+            rels = await conn.fetch("SELECT id FROM relationships WHERE id NOT LIKE 'gql_auto__%' ORDER BY id")
+
+        # Hash the schema state
+        schema_data = {
+            "domains": [dict(d) for d in domains],
+            "tables": [dict(t) for t in tables],
+            "relationships": [dict(r) for r in rels],
+        }
+        schema_json = json.dumps(schema_data, sort_keys=True, default=str)
+        version_hash = hashlib.sha256(schema_json.encode()).hexdigest()
+        return version_hash
+
+    @strawberry.field
     async def sources(self) -> list[SourceType]:
         pool = await _get_pool()
         async with pool.acquire() as conn:

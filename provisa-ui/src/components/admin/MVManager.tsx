@@ -12,10 +12,13 @@ import { useState, useEffect } from "react";
 import { fetchMVList, refreshMV, toggleMV } from "../../api/admin";
 import type { MVInfo } from "../../api/admin";
 
+const PAGE_SIZE = 50;
+
 export function MVManager() {
   const [mvs, setMvs] = useState<MVInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState<string | null>(null);
+  const [mvPage, setMvPage] = useState(0);
 
   const load = () => {
     setLoading(true);
@@ -39,56 +42,70 @@ export function MVManager() {
   if (loading) return <p>Loading materialized views...</p>;
   if (mvs.length === 0) return <p>No materialized views configured.</p>;
 
+  const totalPages = Math.max(1, Math.ceil(mvs.length / PAGE_SIZE));
+  const paged = mvs.slice(mvPage * PAGE_SIZE, (mvPage + 1) * PAGE_SIZE);
+
   return (
-    <table className="data-table">
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Source Tables</th>
-          <th>Target</th>
-          <th>Status</th>
-          <th>Rows</th>
-          <th>Last Refresh</th>
-          <th>Interval</th>
-          <th>Error</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {mvs.map((mv) => (
-          <tr key={mv.id}>
-            <td><code>{mv.id}</code></td>
-            <td>{mv.sourceTables.join(", ")}</td>
-            <td><code>{mv.targetTable}</code></td>
-            <td>
-              <span className={`status-badge status-${mv.status}`}>{mv.status}</span>
-            </td>
-            <td>{mv.rowCount ?? "—"}</td>
-            <td>{mv.lastRefreshAt ? new Date(mv.lastRefreshAt * 1000).toLocaleTimeString() : "never"}</td>
-            <td>{mv.refreshInterval}s</td>
-            <td className="reasoning-cell" style={{ color: "var(--error)", maxWidth: 200 }}>
-              {mv.lastError || ""}
-            </td>
-            <td>
-              <div style={{ display: "flex", gap: "0.25rem" }}>
-                <button
-                  onClick={() => handleRefresh(mv.id)}
-                  disabled={refreshing === mv.id}
-                  style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
-                >
-                  {refreshing === mv.id ? "..." : "Refresh"}
-                </button>
-                <button
-                  onClick={() => handleToggle(mv.id, !mv.enabled)}
-                  style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
-                >
-                  {mv.enabled ? "Disable" : "Enable"}
-                </button>
-              </div>
-            </td>
+    <div>
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Source Tables</th>
+            <th>Target</th>
+            <th>Status</th>
+            <th>Rows</th>
+            <th>Last Refresh</th>
+            <th>Interval</th>
+            <th>Error</th>
+            <th></th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {paged.map((mv) => (
+            <tr key={mv.id}>
+              <td><code>{mv.id}</code></td>
+              <td>{mv.sourceTables.join(", ")}</td>
+              <td><code>{mv.targetTable}</code></td>
+              <td>
+                <span className={`status-badge status-${mv.status}`}>{mv.status}</span>
+              </td>
+              <td>{mv.rowCount ?? "—"}</td>
+              <td>{mv.lastRefreshAt ? new Date(mv.lastRefreshAt * 1000).toLocaleTimeString() : "never"}</td>
+              <td>{mv.refreshInterval}s</td>
+              <td className="reasoning-cell" style={{ color: "var(--error)", maxWidth: 200 }}>
+                {mv.lastError || ""}
+              </td>
+              <td>
+                <div style={{ display: "flex", gap: "0.25rem" }}>
+                  <button
+                    onClick={() => handleRefresh(mv.id)}
+                    disabled={refreshing === mv.id}
+                    style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                  >
+                    {refreshing === mv.id ? "..." : "Refresh"}
+                  </button>
+                  <button
+                    onClick={() => handleToggle(mv.id, !mv.enabled)}
+                    style={{ fontSize: "0.75rem", padding: "0.2rem 0.5rem" }}
+                  >
+                    {mv.enabled ? "Disable" : "Enable"}
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {totalPages > 1 && (
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
+          <button onClick={() => setMvPage(0)} disabled={mvPage === 0}>«</button>
+          <button onClick={() => setMvPage(p => p - 1)} disabled={mvPage === 0}>‹</button>
+          <span>Page {mvPage + 1} / {totalPages}</span>
+          <button onClick={() => setMvPage(p => p + 1)} disabled={mvPage >= totalPages - 1}>›</button>
+          <button onClick={() => setMvPage(totalPages - 1)} disabled={mvPage >= totalPages - 1}>»</button>
+        </div>
+      )}
+    </div>
   );
 }

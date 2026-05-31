@@ -1,0 +1,228 @@
+# Reusable fragments
+
+fragment MutationResult on MutationResult {
+  success
+  message
+}
+
+fragment ColumnFields on Column {
+  id
+  columnName
+  visibleTo
+  writableBy
+  unmaskedTo
+  maskType
+  maskPattern
+  maskReplace
+  maskValue
+  maskPrecision
+  alias
+  description
+  nativeFilterType
+  isPrimaryKey
+  isForeignKey
+  isAlternateKey
+  scope
+}
+
+fragment ColumnPresetFields on ColumnPreset {
+  column
+  source
+  name
+  value
+  dataType
+}
+
+fragment RLSFilterFields on RLSFilter {
+  id
+  role_id
+  domain
+  table
+  filter_type
+  filter_sql
+  columns
+}
+
+# Queries
+
+query SourcesQuery {
+  sources {
+    id
+    type
+    host
+    port
+    database
+    username
+    dialect
+    cacheEnabled
+    cacheTtl
+    namingConvention
+    allowedDomains
+    description
+  }
+}
+
+query DomainsQuery {
+  domains {
+    id
+    description
+    graphqlAlias
+  }
+}
+
+query TablesQuery {
+  tables {
+    id
+    sourceId
+    domainId
+    schemaName
+    tableName
+    governance
+    alias
+    description
+    cacheTtl
+    namingConvention
+    watermarkColumn
+    apiEndpoint
+    viewSql
+    dataProduct
+    columns {
+      ...ColumnFields
+    }
+    columnPresets {
+      ...ColumnPresetFields
+    }
+  }
+}
+
+query RelationshipsQuery {
+  relationships {
+    id
+    sourceTableId
+    targetTableId
+    sourceTableName
+    targetTableName
+    sourceColumn
+    targetColumn
+    cardinality
+    materialize
+    refreshInterval
+    targetFunctionName
+    functionArg
+    alias
+    graphqlAlias
+    computedCypherAlias
+    autoSuggested
+    disableCypher
+  }
+}
+
+query RLSRulesQuery {
+  rlsRules {
+    id
+    roleId
+    domain
+    table
+    filters {
+      ...RLSFilterFields
+    }
+  }
+}
+
+# Mutations
+
+mutation CreateDomain($id: String!, $description: String!, $graphqlAlias: String) {
+  createDomain(input: { id: $id, description: $description, graphqlAlias: $graphqlAlias }) {
+    ...MutationResult
+  }
+}
+
+mutation DeleteDomain($id: String!) {
+  deleteDomain(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation RegisterTable($input: TableInput!) {
+  registerTable(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateTable($input: TableInput!) {
+  updateTable(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation DeleteTable($id: Int!) {
+  deleteTable(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation UpsertRelationship($input: RelationshipInput!) {
+  upsertRelationship(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation DeleteRelationship($id: String!) {
+  deleteRelationship(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation CreateSource($input: SourceInput!) {
+  createSource(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateSource($input: SourceInput!) {
+  updateSource(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation DeleteSource($id: String!) {
+  deleteSource(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation PurgeCache {
+  purgeCache {
+    ...MutationResult
+  }
+}
+
+mutation UpdateSourceCache($sourceId: String!, $cacheEnabled: Boolean!, $cacheTtl: Int) {
+  updateSourceCache(sourceId: $sourceId, cacheEnabled: $cacheEnabled, cacheTtl: $cacheTtl) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateTableCache($tableId: Int!, $cacheTtl: Int) {
+  updateTableCache(tableId: $tableId, cacheTtl: $cacheTtl) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateSourceNaming($sourceId: String!, $namingConvention: String) {
+  updateSourceNaming(sourceId: $sourceId, namingConvention: $namingConvention) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateTableNaming($tableId: Int!, $namingConvention: String) {
+  updateTableNaming(tableId: $tableId, namingConvention: $namingConvention) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateSourceAllowedDomains($sourceId: String!, $allowedDomains: [String!]!) {
+  updateSourceAllowedDomains(sourceId: $sourceId, allowedDomains: $allowedDomains) {
+    ...MutationResult
+  }
+}

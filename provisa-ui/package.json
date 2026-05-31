@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "generate-schema": "tsx scripts/generate-schema.ts",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
@@ -51,6 +52,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@graphql-tools/graphql-file-loader": "^8.1.14",
     "@playwright/test": "^1.59.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

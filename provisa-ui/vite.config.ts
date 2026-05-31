@@ -9,13 +9,48 @@
 // permission from the copyright holder.
 
 import { defineConfig, createLogger } from 'vite'
+import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import istanbul from 'vite-plugin-istanbul'
 import path from 'path'
 import _monacoEditorPluginModule from 'vite-plugin-monaco-editor'
+import fs from 'fs'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const monacoEditorPlugin: (...args: any[]) => any =
   (_monacoEditorPluginModule as any).default ?? _monacoEditorPluginModule
+
+function graphqlPlugin(): Plugin {
+  return {
+    name: 'graphql-loader',
+    resolveId(id) {
+      if (id.endsWith('.graphql')) return id;
+    },
+    load(id) {
+      if (!id.endsWith('.graphql')) return;
+      const code = fs.readFileSync(id, 'utf-8');
+      const escaped = code.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+
+      // Extract operation names (query/mutation Name)
+      const operations: string[] = [];
+      const opRegex = /(query|mutation)\s+(\w+)/g;
+      let match;
+      while ((match = opRegex.exec(code)) !== null) {
+        operations.push(match[2]);
+      }
+
+      let output = "import { gql } from '@apollo/client';\n";
+      output += `const doc = gql\`${escaped}\`;\n`;
+
+      // Export each named operation
+      operations.forEach(op => {
+        output += `export const ${op} = doc;\n`;
+      });
+
+      output += 'export default doc;';
+      return output;
+    },
+  };
+}
 
 const logger = createLogger()
 const origWarn = logger.warn.bind(logger)
@@ -27,6 +62,7 @@ logger.warn = (msg, opts) => {
 export default defineConfig(({ mode }) => ({
   customLogger: logger,
   plugins: [
+    graphqlPlugin(),
     react(),
     monacoEditorPlugin({
       languageWorkers: ['editorWorkerService', 'json'],
@@ -60,7 +96,8 @@ export default defineConfig(({ mode }) => ({
     // graphiql-explorer is aliased to src/plugins/graphiql-explorer-fork.cjs (CJS → needs pre-bundle)
     include: ['graphiql-explorer', 'picomatch-browser', 'lodash.includes', 'lodash.find'],
     // rolldown (Vite 8) rejects internal ./lib/ sub-path imports not listed in package exports
-    exclude: ['@neo4j-cypher/codemirror'],
+    // Apollo Client v4 has issues with pre-bundling, exclude it
+    exclude: ['@neo4j-cypher/codemirror', '@apollo/client'],
   },
   build: {
     rollupOptions: {

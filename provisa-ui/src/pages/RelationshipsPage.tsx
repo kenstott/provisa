@@ -81,6 +81,8 @@ export function RelationshipsPage() {
   const [editingRel, setEditingRel] = useState<typeof EMPTY_FORM | null>(null);
   const [reverseForm, setReverseForm] = useState<typeof EMPTY_FORM | null>(null);
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
+  const [relPage, setRelPage] = useState(0);
+  const PAGE_SIZE = 50;
   const [showModelingModal, setShowModelingModal] = useState(false);
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
 
@@ -90,6 +92,7 @@ export function RelationshipsPage() {
 
   const updateSearch = (v: string) => {
     setRelSearch(v);
+    setRelPage(0);
     setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("search", v) : n.delete("search"); return n; }, { replace: true });
   };
 
@@ -472,19 +475,23 @@ export function RelationshipsPage() {
             <tr><td colSpan={8} style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
               {rels.length} relationships — use the filter above to browse
             </td></tr>
-          ) : rels.filter((r) => {
-            if (tableSourceById[r.sourceTableId] === "provisa-admin") return false;
-            if (remoteTableIds.has(r.sourceTableId)) return false;
-            if (selectedDomain !== "all") {
-              const srcDomain = tableDomainById[r.sourceTableId];
-              const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
-              const ownerDomain = r.ownerDomainId ? normalizeDomain(r.ownerDomainId) : null;
-              if (srcDomain !== selectedDomain && tgtDomain !== selectedDomain && ownerDomain !== selectedDomain) return false;
-            }
-            if (!relSearch.trim()) return true;
-            const q = relSearch.toLowerCase();
-            return r.sourceTableName.toLowerCase().includes(q) || r.targetTableName.toLowerCase().includes(q);
-          }).map((r) => {
+          ) : (() => {
+            const filtered = rels.filter((r) => {
+              if (tableSourceById[r.sourceTableId] === "provisa-admin") return false;
+              if (remoteTableIds.has(r.sourceTableId)) return false;
+              if (selectedDomain !== "all") {
+                const srcDomain = tableDomainById[r.sourceTableId];
+                const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
+                const ownerDomain = r.ownerDomainId ? normalizeDomain(r.ownerDomainId) : null;
+                if (srcDomain !== selectedDomain && tgtDomain !== selectedDomain && ownerDomain !== selectedDomain) return false;
+              }
+              if (!relSearch.trim()) return true;
+              const q = relSearch.toLowerCase();
+              return r.sourceTableName.toLowerCase().includes(q) || r.targetTableName.toLowerCase().includes(q);
+            });
+            const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+            const paged = filtered.slice(relPage * PAGE_SIZE, (relPage + 1) * PAGE_SIZE);
+            return paged.map((r) => {
             const id = String(r.id);
             const isExpanded = expanded === id;
             return (
@@ -668,9 +675,35 @@ export function RelationshipsPage() {
                 )}
               </React.Fragment>
             );
-          })}
+            });
+          })()}
         </tbody>
       </table>
+      {(() => {
+        const filtered = rels.filter((r) => {
+          if (remoteTableIds.has(r.sourceTableId)) return false;
+          if (selectedDomain !== "all") {
+            const srcDomain = tableDomainById[r.sourceTableId];
+            const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
+            const ownerDomain = r.ownerDomainId ? normalizeDomain(r.ownerDomainId) : null;
+            if (srcDomain !== selectedDomain && tgtDomain !== selectedDomain && ownerDomain !== selectedDomain) return false;
+          }
+          if (!relSearch.trim()) return true;
+          const q = relSearch.toLowerCase();
+          return r.sourceTableName.toLowerCase().includes(q) || r.targetTableName.toLowerCase().includes(q);
+        });
+        const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+        if (totalPages === 1) return null;
+        return (
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
+            <button onClick={() => setRelPage(0)} disabled={relPage === 0}>«</button>
+            <button onClick={() => setRelPage(p => p - 1)} disabled={relPage === 0}>‹</button>
+            <span>Page {relPage + 1} / {totalPages}</span>
+            <button onClick={() => setRelPage(p => p + 1)} disabled={relPage >= totalPages - 1}>›</button>
+            <button onClick={() => setRelPage(totalPages - 1)} disabled={relPage >= totalPages - 1}>»</button>
+          </div>
+        );
+      })()}
 
       {showModelingModal && (
         <SqlModelingModal
