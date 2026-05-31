@@ -41,12 +41,10 @@ function graphqlPlugin(): Plugin {
 
       try {
         if (!fs.existsSync(filePath)) {
-          console.error(`[graphql-loader] File not found: ${filePath}`);
           return null;
         }
 
         const code = fs.readFileSync(filePath, 'utf-8');
-        const escaped = code.replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
         // Extract operation names (query|mutation followed by name)
         const operations: string[] = [];
@@ -58,18 +56,29 @@ function graphqlPlugin(): Plugin {
           }
         }
 
-        let output = "import { gql as gqlTag } from '@apollo/client';\n";
-        output += `const doc = gqlTag\`${escaped}\`;\n`;
+        // Escape backticks and dollar signs for template string
+        const escaped = code
+          .replace(/\\/g, '\\\\')  // Escape backslashes first
+          .replace(/`/g, '\\`')     // Escape backticks
+          .replace(/\$/g, '\\$');   // Escape dollar signs
 
-        // Export each named operation + default
-        operations.forEach(op => {
-          output += `export const ${op} = doc;\n`;
-        });
+        // Build output with proper escaping
+        const lines_out: string[] = [
+          "import { gql } from '@apollo/client';",
+          '',
+          `const doc = gql\`${escaped}\`;`,
+          '',
+        ];
 
-        output += 'export default doc;';
-        return output;
+        // Export each named operation
+        for (const op of operations) {
+          lines_out.push(`export const ${op} = doc;`);
+        }
+
+        lines_out.push('export default doc;');
+
+        return lines_out.join('\n');
       } catch (error) {
-        console.error(`[graphql-loader] Failed to load ${filePath}:`, error);
         return null;
       }
     },
