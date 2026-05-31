@@ -28,6 +28,26 @@ logger.warn = (msg, opts) => {
 export default defineConfig(({ mode }) => ({
   customLogger: logger,
   plugins: [
+    {
+      name: 'graphql-module-loader',
+      resolveId(id) {
+        if (id.endsWith('.graphql') || id.endsWith('.gql')) {
+          return id;
+        }
+      },
+      load(id) {
+        if (id.endsWith('.graphql') || id.endsWith('.gql')) {
+          const filePath = path.resolve(id);
+          const content = fs.readFileSync(filePath, 'utf-8');
+
+          return `
+            import { parse } from 'graphql';
+            const doc = parse(\`${content.replace(/`/g, '\\`')}\`);
+            export default doc;
+          `;
+        }
+      }
+    },
     react(),
     monacoEditorPlugin({
       languageWorkers: ['editorWorkerService', 'json'],

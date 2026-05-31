@@ -29,7 +29,7 @@ import {
   UpdateSourceNaming,
   UpdateTableNaming,
   UpdateSourceAllowedDomains,
-} from './admin.graphql.ts';
+} from './admin.graphql';
 
 export function useSources() {
   const { data, loading, error, refetch } = useQuery<{ sources: Source[] }>(SOURCES_QUERY, {
