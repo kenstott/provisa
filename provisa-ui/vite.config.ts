@@ -50,14 +50,12 @@ function graphqlPlugin(): Plugin {
           if (match) operations.push(match[2]);
         }
 
-        const escaped = code
-          .replace(/\\/g, '\\\\')
-          .replace(/`/g, '\\`')
-          .replace(/\$/g, '\\$');
+        // Use JSON.stringify to safely embed the GraphQL string
+        const jsonString = JSON.stringify(code);
 
         const output = [
           "import { gql } from '@apollo/client';",
-          `const doc = gql\`${escaped}\`;`,
+          `const doc = gql(${jsonString});`,
           ...operations.map(op => `export const ${op} = doc;`),
           'export default doc;',
         ].join('\n');
