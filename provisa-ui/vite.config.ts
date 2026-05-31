@@ -24,32 +24,28 @@ function graphqlPlugin(): Plugin {
     name: 'graphql-loader',
     async resolveId(id, importer) {
       if (id.endsWith('.graphql')) {
-        console.log(`[graphql-loader] resolveId called: id=${id}, importer=${importer}`);
-        // Resolve relative to the importing file or project root
-        let resolved: string;
-        if (importer) {
-          resolved = path.resolve(path.dirname(importer), id);
-        } else {
-          resolved = path.resolve(__dirname, id);
-        }
-        console.log(`[graphql-loader] resolved to: ${resolved}`);
-        return resolved;
+        // Resolve relative path to absolute
+        const resolvedPath = importer
+          ? path.resolve(path.dirname(importer), id)
+          : path.resolve(__dirname, id);
+        // Mark as virtual module with \0 prefix
+        return '\0' + resolvedPath;
       }
     },
     async load(id) {
-      if (!id.endsWith('.graphql')) return null;
+      // Check for virtual module marker
+      if (!id.startsWith('\0') || !id.slice(1).endsWith('.graphql')) return null;
 
-      console.log(`[graphql-loader] load called: ${id}`);
+      // Remove virtual marker to get actual file path
+      const filePath = id.slice(1);
+
       try {
-        // id is now an absolute path from resolveId
-        if (!fs.existsSync(id)) {
-          console.error(`[graphql-loader] File not found: ${id}`);
+        if (!fs.existsSync(filePath)) {
+          console.error(`[graphql-loader] File not found: ${filePath}`);
           return null;
         }
 
-        const code = fs.readFileSync(id, 'utf-8');
-        console.log(`[graphql-loader] Read ${code.length} bytes from ${id}`);
-
+        const code = fs.readFileSync(filePath, 'utf-8');
         const escaped = code.replace(/`/g, '\\`').replace(/\$/g, '\\$');
 
         // Extract operation names (query|mutation followed by name)
@@ -59,7 +55,6 @@ function graphqlPlugin(): Plugin {
           const match = line.match(/^\s*(query|mutation)\s+(\w+)/);
           if (match) {
             operations.push(match[2]);
-            console.log(`[graphql-loader] Found operation: ${match[2]}`);
           }
         }
 
@@ -72,10 +67,9 @@ function graphqlPlugin(): Plugin {
         });
 
         output += 'export default doc;';
-        console.log(`[graphql-loader] Generated ${operations.length} exports for ${id}`);
         return output;
       } catch (error) {
-        console.error(`[graphql-loader] Failed to load ${id}:`, error);
+        console.error(`[graphql-loader] Failed to load ${filePath}:`, error);
         return null;
       }
     },
