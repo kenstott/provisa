@@ -19,25 +19,45 @@ import type {
   MutationResult,
 } from "../types/admin";
 import { client } from "../apolloClient";
+import {
+  RolesQuery,
+  SourcesQuery,
+  DomainsQuery,
+  TablesQuery,
+  RelationshipsQuery,
+  RLSRulesQuery,
+  AvailableSchemas,
+  AvailableTables,
+  AvailableColumns,
+  AvailableColumnsMetadata,
+  AvailableFunctions,
+  GenerateColumnDescription,
+  GenerateTableDescription,
+  CompileQuery,
+  MVList,
+  CacheStats,
+  SystemHealth,
+  ScheduledTasks,
+  CreateDomain,
+  DeleteDomain,
+  UpsertRelationship,
+  DeleteRelationship,
+  RegisterTable,
+  UpdateTable,
+  DeleteTable,
+  CreateSource,
+  UpdateSource,
+  DeleteSource,
+  RenameSource,
+  DeployViewToDb,
+  RefreshMv,
+  ToggleMv,
+  ToggleScheduledTask,
+  PurgeCacheByTable,
+  InvalidateFileSource,
+} from "./admin.graphql";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
-
-async function gql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
-  const result = await client.query({
-    query: gqlTag(query),
-    variables,
-    fetchPolicy: "cache-first",
-  });
-  return result.data as T;
-}
-
-async function gqlMutation<T>(mutation: string, variables?: Record<string, unknown>): Promise<T> {
-  const result = await client.mutate({
-    mutation: gqlTag(mutation),
-    variables,
-  });
-  return result.data as T;
-}
 
 export async function fetchMe(): Promise<{
   user_id: string;
@@ -171,7 +191,11 @@ export async function deleteOrgRole(orgId: string, roleId: string): Promise<void
 }
 
 export async function fetchRoles(): Promise<Role[]> {
-  const data = await gql<{ roles: Role[] }>(`{ roles { id capabilities domainAccess } }`);
+  const result = await client.query({
+    query: RolesQuery,
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { roles: Role[] };
   return data.roles.map((r) => ({
     ...r,
     domain_access: (r as any).domainAccess ?? r.domain_access,
@@ -179,38 +203,53 @@ export async function fetchRoles(): Promise<Role[]> {
 }
 
 export async function fetchSources(): Promise<Source[]> {
-  const data = await gql<{ sources: Source[] }>(
-    `{ sources { id type host port database username dialect cacheEnabled cacheTtl namingConvention allowedDomains description } }`
-  );
+  const result = await client.query({
+    query: SourcesQuery,
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { sources: Source[] };
   return data.sources;
 }
 
 export async function fetchDomains(): Promise<Domain[]> {
-  const data = await gql<{ domains: Domain[] }>(`{ domains { id description graphqlAlias } }`);
+  const result = await client.query({
+    query: DomainsQuery,
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { domains: Domain[] };
   return data.domains;
 }
 
 export async function createDomain(id: string, description: string, graphqlAlias?: string | null): Promise<void> {
-  const aliasArg = graphqlAlias ? `, graphqlAlias: ${JSON.stringify(graphqlAlias)}` : "";
-  await gqlMutation(`mutation { createDomain(input: { id: ${JSON.stringify(id)}, description: ${JSON.stringify(description)}${aliasArg} }) { success message } }`);
+  await client.mutate({
+    mutation: CreateDomain,
+    variables: { id, description, graphqlAlias: graphqlAlias ?? null },
+  });
 }
 
 export async function deleteDomain(id: string): Promise<void> {
-  await gqlMutation(`mutation { deleteDomain(id: ${JSON.stringify(id)}) { success message } }`);
+  await client.mutate({
+    mutation: DeleteDomain,
+    variables: { id },
+  });
 }
 
 
 export async function fetchTables(): Promise<RegisteredTable[]> {
-  const data = await gql<{ tables: RegisteredTable[] }>(
-    `{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint viewSql dataProduct columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey scope } columnPresets { column source name value dataType } } }`
-  );
+  const result = await client.query({
+    query: TablesQuery,
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { tables: RegisteredTable[] };
   return data.tables;
 }
 
 export async function fetchRelationships(): Promise<Relationship[]> {
-  const data = await gql<{ relationships: Relationship[] }>(
-    `{ relationships { id sourceTableId targetTableId sourceTableName targetTableName sourceColumn targetColumn cardinality materialize refreshInterval targetFunctionName functionArg alias graphqlAlias computedCypherAlias autoSuggested disableCypher } }`
-  );
+  const result = await client.query({
+    query: RelationshipsQuery,
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { relationships: Relationship[] };
   return data.relationships;
 }
 
@@ -231,26 +270,28 @@ export async function upsertRelationship(input: {
   recordCandidate?: boolean;
 }): Promise<MutationResult> {
   const result = await client.mutate<{ upsertRelationship: MutationResult }>({
-    mutation: gqlTag`mutation($input: RelationshipInput!) { upsertRelationship(input: $input) { success message } }`,
+    mutation: UpsertRelationship,
     variables: { input },
-    refetchQueries: [{ query: gqlTag`{ relationships { id sourceTableId targetTableId sourceTableName targetTableName sourceColumn targetColumn cardinality materialize refreshInterval targetFunctionName functionArg alias graphqlAlias computedCypherAlias autoSuggested disableCypher } }` }],
+    refetchQueries: [{ query: RelationshipsQuery }],
   });
   return (result.data?.upsertRelationship ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function deleteRelationship(id: string): Promise<MutationResult> {
   const result = await client.mutate<{ deleteRelationship: MutationResult }>({
-    mutation: gqlTag`mutation($id: String!) { deleteRelationship(id: $id) { success message } }`,
+    mutation: DeleteRelationship,
     variables: { id },
-    refetchQueries: [{ query: gqlTag`{ relationships { id sourceTableId targetTableId sourceTableName targetTableName sourceColumn targetColumn cardinality materialize refreshInterval targetFunctionName functionArg alias graphqlAlias computedCypherAlias autoSuggested disableCypher } }` }],
+    refetchQueries: [{ query: RelationshipsQuery }],
   });
   return (result.data?.deleteRelationship ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function fetchRlsRules(): Promise<RLSRule[]> {
-  const data = await gql<{ rlsRules: RLSRule[] }>(
-    `{ rlsRules { id tableId domainId roleId filterExpr } }`
-  );
+  const result = await client.query({
+    query: RLSRulesQuery,
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { rlsRules: RLSRule[] };
   return data.rlsRules;
 }
 
@@ -263,7 +304,7 @@ export async function upsertRlsRule(input: {
   const result = await client.mutate<{ upsertRlsRule: MutationResult }>({
     mutation: gqlTag`mutation($input: RLSRuleInput!) { upsertRlsRule(input: $input) { success message } }`,
     variables: { input },
-    refetchQueries: [{ query: gqlTag`{ rlsRules { id roleId domain table filters { id role_id domain table filter_type filter_sql columns } } }` }],
+    refetchQueries: [{ query: RLSRulesQuery }],
   });
   return (result.data?.upsertRlsRule ?? { success: false, message: "" }) as MutationResult;
 }
@@ -276,7 +317,7 @@ export async function deleteRlsRule(
   const result = await client.mutate<{ deleteRlsRule: MutationResult }>({
     mutation: gqlTag`mutation($roleId: String!, $tableId: Int, $domainId: String) { deleteRlsRule(roleId: $roleId, tableId: $tableId, domainId: $domainId) { success message } }`,
     variables: { roleId, tableId: tableId ?? null, domainId: domainId ?? null },
-    refetchQueries: [{ query: gqlTag`{ rlsRules { id roleId domain table filters { id role_id domain table filter_type filter_sql columns } } }` }],
+    refetchQueries: [{ query: RLSRulesQuery }],
   });
   return (result.data?.deleteRlsRule ?? { success: false, message: "" }) as MutationResult;
 }
@@ -312,11 +353,11 @@ export async function createSource(input: {
   path?: string | null;
   description?: string;
 }): Promise<MutationResult> {
-  const data = await gql<{ createSource: MutationResult }>(
-    `mutation($input: SourceInput!) { createSource(input: $input) { success message } }`,
-    { input }
-  );
-  return data.createSource;
+  const result = await client.mutate<{ createSource: MutationResult }>({
+    mutation: CreateSource,
+    variables: { input },
+  });
+  return (result.data?.createSource ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function registerTable(input: {
@@ -334,9 +375,9 @@ export async function registerTable(input: {
   columnPresets?: { column: string; source: string; name?: string | null; value?: string | null; dataType?: string | null }[];
 }): Promise<MutationResult> {
   const result = await client.mutate<{ registerTable: MutationResult }>({
-    mutation: gqlTag`mutation($input: TableInput!) { registerTable(input: $input) { success message } }`,
+    mutation: RegisterTable,
     variables: { input },
-    refetchQueries: [{ query: gqlTag`{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint viewSql dataProduct columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey scope } columnPresets { column source name value dataType } } }` }],
+    refetchQueries: [{ query: TablesQuery }],
   });
   return (result.data?.registerTable ?? { success: false, message: "" }) as MutationResult;
 }
@@ -356,27 +397,27 @@ export async function updateTable(input: {
   dataProduct?: boolean;
 }): Promise<MutationResult> {
   const result = await client.mutate<{ updateTable: MutationResult }>({
-    mutation: gqlTag`mutation($input: TableInput!) { updateTable(input: $input) { success message } }`,
+    mutation: UpdateTable,
     variables: { input },
-    refetchQueries: [{ query: gqlTag`{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint viewSql dataProduct columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey scope } columnPresets { column source name value dataType } } }` }],
+    refetchQueries: [{ query: TablesQuery }],
   });
   return (result.data?.updateTable ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function deployViewToDb(tableId: number): Promise<MutationResult> {
   const result = await client.mutate<{ deployViewToDb: MutationResult }>({
-    mutation: gqlTag`mutation($tableId: Int!) { deployViewToDb(tableId: $tableId) { success message } }`,
+    mutation: DeployViewToDb,
     variables: { tableId },
-    refetchQueries: [{ query: gqlTag`{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint viewSql dataProduct columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey scope } columnPresets { column source name value dataType } } }` }],
+    refetchQueries: [{ query: TablesQuery }],
   });
   return (result.data?.deployViewToDb ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function deleteTable(id: number): Promise<MutationResult> {
   const result = await client.mutate<{ deleteTable: MutationResult }>({
-    mutation: gqlTag`mutation($id: Int!) { deleteTable(id: $id) { success message } }`,
+    mutation: DeleteTable,
     variables: { id },
-    refetchQueries: [{ query: gqlTag`{ tables { id sourceId domainId schemaName tableName governance alias description cacheTtl namingConvention watermarkColumn apiEndpoint viewSql dataProduct columns { id columnName visibleTo writableBy unmaskedTo maskType maskPattern maskReplace maskValue maskPrecision alias description nativeFilterType isPrimaryKey isForeignKey isAlternateKey scope } columnPresets { column source name value dataType } } }` }],
+    refetchQueries: [{ query: TablesQuery }],
   });
   return (result.data?.deleteTable ?? { success: false, message: "" }) as MutationResult;
 }
@@ -391,26 +432,32 @@ export async function profileTable(tableId: number): Promise<{ columns: string[]
 }
 
 export async function generateColumnDescription(tableId: number, columnName: string): Promise<string> {
-  const data = await gql<{ generateColumnDescription: string }>(
-    `query($tableId: String!, $columnName: String!) { generateColumnDescription(tableId: $tableId, columnName: $columnName) }`,
-    { tableId: String(tableId), columnName }
-  );
+  const result = await client.query({
+    query: GenerateColumnDescription,
+    variables: { tableId: String(tableId), columnName },
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { generateColumnDescription: string };
   return data.generateColumnDescription;
 }
 
 export async function generateTableDescription(tableId: number): Promise<string> {
-  const data = await gql<{ generateTableDescription: string }>(
-    `query($tableId: String!) { generateTableDescription(tableId: $tableId) }`,
-    { tableId: String(tableId) }
-  );
+  const result = await client.query({
+    query: GenerateTableDescription,
+    variables: { tableId: String(tableId) },
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { generateTableDescription: string };
   return data.generateTableDescription;
 }
 
 export async function fetchAvailableSchemas(sourceId: string): Promise<string[]> {
-  const data = await gql<{ availableSchemas: string[] }>(
-    `query($sourceId: String!) { availableSchemas(sourceId: $sourceId) }`,
-    { sourceId }
-  );
+  const result = await client.query({
+    query: AvailableSchemas,
+    variables: { sourceId },
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { availableSchemas: string[] };
   return data.availableSchemas;
 }
 
@@ -420,20 +467,22 @@ export interface TableMetadata {
 }
 
 export async function fetchAvailableTables(sourceId: string, schemaName: string = "public"): Promise<TableMetadata[]> {
-  const data = await gql<{ availableTables: TableMetadata[] }>(
-    `query($sourceId: String!, $schemaName: String!) {
-      availableTables(sourceId: $sourceId, schemaName: $schemaName) { name comment }
-    }`,
-    { sourceId, schemaName }
-  );
+  const result = await client.query({
+    query: AvailableTables,
+    variables: { sourceId, schemaName },
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { availableTables: TableMetadata[] };
   return data.availableTables;
 }
 
 export async function fetchAvailableColumns(sourceId: string, schemaName: string, tableName: string): Promise<string[]> {
-  const data = await gql<{ availableColumns: string[] }>(
-    `query($sourceId: String!, $schemaName: String!, $tableName: String!) { availableColumns(sourceId: $sourceId, schemaName: $schemaName, tableName: $tableName) }`,
-    { sourceId, schemaName, tableName }
-  );
+  const result = await client.query({
+    query: AvailableColumns,
+    variables: { sourceId, schemaName, tableName },
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { availableColumns: string[] };
   return data.availableColumns;
 }
 
@@ -450,24 +499,22 @@ export async function fetchAvailableColumnsMetadata(
   schemaName: string,
   tableName: string,
 ): Promise<ColumnMetadata[]> {
-  const data = await gql<{ availableColumnsMetadata: ColumnMetadata[] }>(
-    `query($sourceId: String!, $schemaName: String!, $tableName: String!) {
-      availableColumnsMetadata(sourceId: $sourceId, schemaName: $schemaName, tableName: $tableName) {
-        name dataType comment nativeFilterType isPrimaryKey
-      }
-    }`,
-    { sourceId, schemaName, tableName }
-  );
+  const result = await client.query({
+    query: AvailableColumnsMetadata,
+    variables: { sourceId, schemaName, tableName },
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { availableColumnsMetadata: ColumnMetadata[] };
   return data.availableColumnsMetadata;
 }
 
 export async function fetchAvailableFunctions(sourceId: string, schemaName = "openapi"): Promise<TableMetadata[]> {
-  const data = await gql<{ availableFunctions: TableMetadata[] }>(
-    `query($sourceId: String!, $schemaName: String!) {
-      availableFunctions(sourceId: $sourceId, schemaName: $schemaName) { name comment }
-    }`,
-    { sourceId, schemaName }
-  );
+  const result = await client.query({
+    query: AvailableFunctions,
+    variables: { sourceId, schemaName },
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { availableFunctions: TableMetadata[] };
   return data.availableFunctions;
 }
 
@@ -483,27 +530,27 @@ export async function updateSource(input: {
   description?: string;
 }): Promise<MutationResult> {
   const result = await client.mutate<{ updateSource: MutationResult }>({
-    mutation: gqlTag`mutation($input: SourceInput!) { updateSource(input: $input) { success message } }`,
+    mutation: UpdateSource,
     variables: { input },
-    refetchQueries: [{ query: gqlTag`{ sources { id type host port database username dialect cacheEnabled cacheTtl namingConvention allowedDomains description } }` }],
+    refetchQueries: [{ query: SourcesQuery }],
   });
   return (result.data?.updateSource ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function renameSource(oldId: string, newId: string): Promise<MutationResult> {
   const result = await client.mutate<{ renameSource: MutationResult }>({
-    mutation: gqlTag`mutation($oldId: String!, $newId: String!) { renameSource(oldId: $oldId, newId: $newId) { success message } }`,
+    mutation: RenameSource,
     variables: { oldId, newId },
-    refetchQueries: [{ query: gqlTag`{ sources { id type host port database username dialect cacheEnabled cacheTtl namingConvention allowedDomains description } }` }],
+    refetchQueries: [{ query: SourcesQuery }],
   });
   return (result.data?.renameSource ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function deleteSource(id: string): Promise<MutationResult> {
   const result = await client.mutate<{ deleteSource: MutationResult }>({
-    mutation: gqlTag`mutation($id: String!) { deleteSource(id: $id) { success message } }`,
+    mutation: DeleteSource,
     variables: { id },
-    refetchQueries: [{ query: gqlTag`{ sources { id type host port database username dialect cacheEnabled cacheTtl namingConvention allowedDomains description } }` }],
+    refetchQueries: [{ query: SourcesQuery }],
   });
   return (result.data?.deleteSource ?? { success: false, message: "" }) as MutationResult;
 }
@@ -712,17 +759,12 @@ export async function compileQuery(
   flatCypher?: boolean,
   nodeOnlyCypher?: boolean,
 ): Promise<CompileResult | { queries: CompileResult[] }> {
-  const data = await gql<{ compileQuery: CompileResult[] }>(
-    `mutation CompileQuery($input: CompileQueryInput!) {
-      compileQuery(input: $input) {
-        sql semanticSql trinoSql directSql route routeReason sources
-        rootField canonicalField compiledCypher cypherError optimizations warnings
-        columnAliases { fieldName column }
-        enforcement { rlsFiltersApplied columnsExcluded schemaScope maskingApplied ceilingApplied route }
-      }
-    }`,
-    { input: { query, role: roleId, variables: variables ?? null, flatSql: flatSql ?? false, flatCypher: flatCypher ?? false, nodeOnlyCypher: nodeOnlyCypher ?? false } },
-  );
+  const result = await client.query({
+    query: CompileQuery,
+    variables: { input: { query, role: roleId, variables: variables ?? null, flatSql: flatSql ?? false, flatCypher: flatCypher ?? false, nodeOnlyCypher: nodeOnlyCypher ?? false } },
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { compileQuery: CompileResult[] };
   const results = data.compileQuery.map((r: any) => ({
     ...r,
     semantic_sql: r.semanticSql ?? r.semantic_sql,
@@ -835,29 +877,35 @@ export interface SystemHealth {
 }
 
 export async function fetchMVList(): Promise<MVInfo[]> {
-  const data = await gql<{ mvList: MVInfo[] }>(
-    `{ mvList { id sourceTables targetTable refreshInterval enabled status lastRefreshAt rowCount lastError } }`
-  );
+  const result = await client.query({
+    query: MVList,
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { mvList: MVInfo[] };
   return data.mvList;
 }
 
 export async function fetchCacheStats(): Promise<CacheStats> {
-  const data = await gql<{ cacheStats: CacheStats }>(
-    `{ cacheStats { totalKeys hitCount missCount storeType } }`
-  );
+  const result = await client.query({
+    query: CacheStats,
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { cacheStats: CacheStats };
   return data.cacheStats;
 }
 
 export async function fetchSystemHealth(): Promise<SystemHealth> {
-  const data = await gql<{ systemHealth: SystemHealth }>(
-    `{ systemHealth { trinoConnected trinoWorkerCount trinoActiveWorkers pgPoolSize pgPoolFree cacheConnected flightServerRunning mvRefreshLoopRunning } }`
-  );
+  const result = await client.query({
+    query: SystemHealth,
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { systemHealth: SystemHealth };
   return data.systemHealth;
 }
 
 export async function refreshMV(mvId: string): Promise<MutationResult> {
   const result = await client.mutate<{ refreshMv: MutationResult }>({
-    mutation: gqlTag`mutation($mvId: String!) { refreshMv(mvId: $mvId) { success message } }`,
+    mutation: RefreshMv,
     variables: { mvId },
   });
   return (result.data?.refreshMv ?? { success: false, message: "" }) as MutationResult;
@@ -865,57 +913,57 @@ export async function refreshMV(mvId: string): Promise<MutationResult> {
 
 export async function toggleMV(mvId: string, enabled: boolean): Promise<MutationResult> {
   const result = await client.mutate<{ toggleMv: MutationResult }>({
-    mutation: gqlTag`mutation($mvId: String!, $enabled: Boolean!) { toggleMv(mvId: $mvId, enabled: $enabled) { success message } }`,
+    mutation: ToggleMv,
     variables: { mvId, enabled },
   });
   return (result.data?.toggleMv ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function purgeCache(): Promise<MutationResult> {
-  const data = await gqlMutation<{ purgeCache: MutationResult }>(
-    `mutation { purgeCache { success message } }`
-  );
-  return data.purgeCache;
+  const result = await client.mutate<{ purgeCache: MutationResult }>({
+    mutation: gqlTag`mutation { purgeCache { success message } }`,
+  });
+  return (result.data?.purgeCache ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function updateSourceCache(sourceId: string, cacheEnabled: boolean, cacheTtl: number | null): Promise<MutationResult> {
-  const data = await gqlMutation<{ updateSourceCache: MutationResult }>(
-    `mutation($sourceId: String!, $cacheEnabled: Boolean!, $cacheTtl: Int) { updateSourceCache(sourceId: $sourceId, cacheEnabled: $cacheEnabled, cacheTtl: $cacheTtl) { success message } }`,
-    { sourceId, cacheEnabled, cacheTtl }
-  );
-  return data.updateSourceCache;
+  const result = await client.mutate<{ updateSourceCache: MutationResult }>({
+    mutation: gqlTag`mutation($sourceId: String!, $cacheEnabled: Boolean!, $cacheTtl: Int) { updateSourceCache(sourceId: $sourceId, cacheEnabled: $cacheEnabled, cacheTtl: $cacheTtl) { success message } }`,
+    variables: { sourceId, cacheEnabled, cacheTtl },
+  });
+  return (result.data?.updateSourceCache ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function updateTableCache(tableId: number, cacheTtl: number | null): Promise<MutationResult> {
-  const data = await gqlMutation<{ updateTableCache: MutationResult }>(
-    `mutation($tableId: Int!, $cacheTtl: Int) { updateTableCache(tableId: $tableId, cacheTtl: $cacheTtl) { success message } }`,
-    { tableId, cacheTtl }
-  );
-  return data.updateTableCache;
+  const result = await client.mutate<{ updateTableCache: MutationResult }>({
+    mutation: gqlTag`mutation($tableId: Int!, $cacheTtl: Int) { updateTableCache(tableId: $tableId, cacheTtl: $cacheTtl) { success message } }`,
+    variables: { tableId, cacheTtl },
+  });
+  return (result.data?.updateTableCache ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function updateSourceNaming(sourceId: string, namingConvention: string | null): Promise<MutationResult> {
-  const data = await gqlMutation<{ updateSourceNaming: MutationResult }>(
-    `mutation($sourceId: String!, $namingConvention: String) { updateSourceNaming(sourceId: $sourceId, namingConvention: $namingConvention) { success message } }`,
-    { sourceId, namingConvention }
-  );
-  return data.updateSourceNaming;
+  const result = await client.mutate<{ updateSourceNaming: MutationResult }>({
+    mutation: gqlTag`mutation($sourceId: String!, $namingConvention: String) { updateSourceNaming(sourceId: $sourceId, namingConvention: $namingConvention) { success message } }`,
+    variables: { sourceId, namingConvention },
+  });
+  return (result.data?.updateSourceNaming ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function updateSourceAllowedDomains(sourceId: string, allowedDomains: string[]): Promise<MutationResult> {
-  const data = await gqlMutation<{ updateSourceAllowedDomains: MutationResult }>(
-    `mutation($sourceId: String!, $allowedDomains: [String!]!) { updateSourceAllowedDomains(sourceId: $sourceId, allowedDomains: $allowedDomains) { success message } }`,
-    { sourceId, allowedDomains }
-  );
-  return data.updateSourceAllowedDomains;
+  const result = await client.mutate<{ updateSourceAllowedDomains: MutationResult }>({
+    mutation: gqlTag`mutation($sourceId: String!, $allowedDomains: [String!]!) { updateSourceAllowedDomains(sourceId: $sourceId, allowedDomains: $allowedDomains) { success message } }`,
+    variables: { sourceId, allowedDomains },
+  });
+  return (result.data?.updateSourceAllowedDomains ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function updateTableNaming(tableId: number, namingConvention: string | null): Promise<MutationResult> {
-  const data = await gqlMutation<{ updateTableNaming: MutationResult }>(
-    `mutation($tableId: Int!, $namingConvention: String) { updateTableNaming(tableId: $tableId, namingConvention: $namingConvention) { success message } }`,
-    { tableId, namingConvention }
-  );
-  return data.updateTableNaming;
+  const result = await client.mutate<{ updateTableNaming: MutationResult }>({
+    mutation: gqlTag`mutation($tableId: Int!, $namingConvention: String) { updateTableNaming(tableId: $tableId, namingConvention: $namingConvention) { success message } }`,
+    variables: { tableId, namingConvention },
+  });
+  return (result.data?.updateTableNaming ?? { success: false, message: "" }) as MutationResult;
 }
 
 // --- Admin: Scheduled Tasks ---
@@ -931,15 +979,17 @@ export interface ScheduledTask {
 }
 
 export async function fetchScheduledTasks(): Promise<ScheduledTask[]> {
-  const data = await gql<{ scheduledTasks: ScheduledTask[] }>(
-    `{ scheduledTasks { id name cronExpression webhookUrl enabled lastRunAt nextRunAt } }`
-  );
+  const result = await client.query({
+    query: ScheduledTasks,
+    fetchPolicy: "cache-first",
+  });
+  const data = result.data as { scheduledTasks: ScheduledTask[] };
   return data.scheduledTasks;
 }
 
 export async function toggleScheduledTask(taskId: string, enabled: boolean): Promise<MutationResult> {
   const result = await client.mutate<{ toggleScheduledTask: MutationResult }>({
-    mutation: gqlTag`mutation($taskId: String!, $enabled: Boolean!) { toggleScheduledTask(taskId: $taskId, enabled: $enabled) { success message } }`,
+    mutation: ToggleScheduledTask,
     variables: { taskId, enabled },
   });
   return (result.data?.toggleScheduledTask ?? { success: false, message: "" }) as MutationResult;
@@ -947,7 +997,7 @@ export async function toggleScheduledTask(taskId: string, enabled: boolean): Pro
 
 export async function purgeCacheByTable(tableId: number): Promise<MutationResult> {
   const result = await client.mutate<{ purgeCacheByTable: MutationResult }>({
-    mutation: gqlTag`mutation($tableId: Int!) { purgeCacheByTable(tableId: $tableId) { success message } }`,
+    mutation: PurgeCacheByTable,
     variables: { tableId },
   });
   return (result.data?.purgeCacheByTable ?? { success: false, message: "" }) as MutationResult;
@@ -955,7 +1005,7 @@ export async function purgeCacheByTable(tableId: number): Promise<MutationResult
 
 export async function invalidateFileSource(tableId: number): Promise<MutationResult> {
   const result = await client.mutate<{ invalidateFileSource: MutationResult }>({
-    mutation: gqlTag`mutation($tableId: Int!) { invalidateFileSource(tableId: $tableId) { success message } }`,
+    mutation: InvalidateFileSource,
     variables: { tableId },
   });
   return (result.data?.invalidateFileSource ?? { success: false, message: "" }) as MutationResult;

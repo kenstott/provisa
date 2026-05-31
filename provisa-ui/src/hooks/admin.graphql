@@ -45,6 +45,14 @@ fragment RLSFilterFields on RLSFilter {
 
 # Queries
 
+query RolesQuery {
+  roles {
+    id
+    capabilities
+    domainAccess
+  }
+}
+
 query SourcesQuery {
   sources {
     id
@@ -126,6 +134,124 @@ query RLSRulesQuery {
     filters {
       ...RLSFilterFields
     }
+  }
+}
+
+query AvailableSchemas($sourceId: String!) {
+  availableSchemas(sourceId: $sourceId)
+}
+
+query AvailableTables($sourceId: String!, $schemaName: String!) {
+  availableTables(sourceId: $sourceId, schemaName: $schemaName) {
+    name
+    comment
+  }
+}
+
+query AvailableColumns($sourceId: String!, $schemaName: String!, $tableName: String!) {
+  availableColumns(sourceId: $sourceId, schemaName: $schemaName, tableName: $tableName)
+}
+
+query AvailableColumnsMetadata($sourceId: String!, $schemaName: String!, $tableName: String!) {
+  availableColumnsMetadata(sourceId: $sourceId, schemaName: $schemaName, tableName: $tableName) {
+    name
+    dataType
+    comment
+    nativeFilterType
+    isPrimaryKey
+  }
+}
+
+query AvailableFunctions($sourceId: String!, $schemaName: String!) {
+  availableFunctions(sourceId: $sourceId, schemaName: $schemaName) {
+    name
+    comment
+  }
+}
+
+query GenerateColumnDescription($tableId: String!, $columnName: String!) {
+  generateColumnDescription(tableId: $tableId, columnName: $columnName)
+}
+
+query GenerateTableDescription($tableId: String!) {
+  generateTableDescription(tableId: $tableId)
+}
+
+query CompileQuery($input: CompileQueryInput!) {
+  compileQuery(input: $input) {
+    sql
+    semanticSql
+    trinoSql
+    directSql
+    route
+    routeReason
+    sources
+    rootField
+    canonicalField
+    compiledCypher
+    cypherError
+    optimizations
+    warnings
+    columnAliases {
+      fieldName
+      column
+    }
+    enforcement {
+      rlsFiltersApplied
+      columnsExcluded
+      schemaScope
+      maskingApplied
+      ceilingApplied
+      route
+    }
+  }
+}
+
+query MVList {
+  mvList {
+    id
+    sourceTables
+    targetTable
+    refreshInterval
+    enabled
+    status
+    lastRefreshAt
+    rowCount
+    lastError
+  }
+}
+
+query CacheStats {
+  cacheStats {
+    totalKeys
+    hitCount
+    missCount
+    storeType
+  }
+}
+
+query SystemHealth {
+  systemHealth {
+    trinoConnected
+    trinoWorkerCount
+    trinoActiveWorkers
+    pgPoolSize
+    pgPoolFree
+    cacheConnected
+    flightServerRunning
+    mvRefreshLoopRunning
+  }
+}
+
+query ScheduledTasks {
+  scheduledTasks {
+    id
+    name
+    cronExpression
+    webhookUrl
+    enabled
+    lastRunAt
+    nextRunAt
   }
 }
 
@@ -223,6 +349,72 @@ mutation UpdateTableNaming($tableId: Int!, $namingConvention: String) {
 
 mutation UpdateSourceAllowedDomains($sourceId: String!, $allowedDomains: [String!]!) {
   updateSourceAllowedDomains(sourceId: $sourceId, allowedDomains: $allowedDomains) {
+    ...MutationResult
+  }
+}
+
+mutation RenameSource($oldId: String!, $newId: String!) {
+  renameSource(oldId: $oldId, newId: $newId) {
+    ...MutationResult
+  }
+}
+
+mutation UpsertRlsRule($input: RLSRuleInput!) {
+  upsertRlsRule(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation DeleteRlsRule($roleId: String!, $tableId: Int, $domainId: String) {
+  deleteRlsRule(roleId: $roleId, tableId: $tableId, domainId: $domainId) {
+    ...MutationResult
+  }
+}
+
+mutation CreateRole($input: RoleInput!) {
+  createRole(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation DeleteRole($id: String!) {
+  deleteRole(id: $id) {
+    ...MutationResult
+  }
+}
+
+mutation DeployViewToDb($tableId: Int!) {
+  deployViewToDb(tableId: $tableId) {
+    ...MutationResult
+  }
+}
+
+mutation RefreshMv($mvId: String!) {
+  refreshMv(mvId: $mvId) {
+    ...MutationResult
+  }
+}
+
+mutation ToggleMv($mvId: String!, $enabled: Boolean!) {
+  toggleMv(mvId: $mvId, enabled: $enabled) {
+    ...MutationResult
+  }
+}
+
+mutation ToggleScheduledTask($taskId: String!, $enabled: Boolean!) {
+  toggleScheduledTask(taskId: $taskId, enabled: $enabled) {
+    ...MutationResult
+  }
+}
+
+mutation PurgeCacheByTable($tableId: Int!) {
+  purgeCacheByTable(tableId: $tableId) {
+    ...MutationResult
+  }
+}
+
+mutation InvalidateFileSource($tableId: Int!) {
+  invalidateFileSource(tableId: $tableId) {
     ...MutationResult
   }
 }
