@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "groupName": "vite ecosystem",
+      "matchPackageNames": ["vite", "rolldown", "@vitejs/plugin-react", "vite-plugin-istanbul", "vite-plugin-monaco-editor"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": false
+    },
+    {
+      "groupName": "apollo",
+      "matchPackageNames": ["@apollo/client"],
+      "matchUpdateTypes": ["minor", "patch"]
+    },
+    {
+      "groupName": "codemirror",
+      "matchPackagePrefixes": ["@codemirror/", "@uiw/react-codemirror"],
+      "matchUpdateTypes": ["minor", "patch"]
+    },
+    {
+      "groupName": "mui",
+      "matchPackagePrefixes": ["@mui/", "@emotion/"],
+      "matchUpdateTypes": ["minor", "patch"]
+    },
+    {
+      "groupName": "testing",
+      "matchPackageNames": ["vitest", "@vitest/coverage-v8", "@playwright/test", "@testing-library/react", "@testing-library/jest-dom"],
+      "matchUpdateTypes": ["minor", "patch"]
+    },
+    {
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["major-update"]
+    }
+  ],
+  "schedule": ["before 6am on Monday"],
+  "prConcurrentLimit": 5,
+  "labels": ["dependencies"]
+}
