@@ -16,25 +16,22 @@ import { AuthProvider } from "./context/AuthContext";
 import { DomainFilterProvider } from "./context/DomainFilterContext";
 import { NavBar } from "./components/NavBar";
 import { CapabilityGate } from "./components/CapabilityGate";
-import { SourcesPage } from "./pages/SourcesPage";
-import { TablesPage } from "./pages/TablesPage";
-import { RelationshipsPage } from "./pages/RelationshipsPage";
-import { SecurityPage } from "./pages/SecurityPage";
-import { QueryPage } from "./pages/QueryPage";
-import { AdminPage } from "./pages/AdminPage";
-import { CommandsPage } from "./pages/CommandsPage";
-import { ViewsPage } from "./pages/ViewsPage";
-import { LoginPage } from "./pages/LoginPage";
-import { GraphPage } from "./pages/GraphPage";
-import { SqlPage } from "./pages/SqlPage";
-import { SetupPage } from "./pages/SetupPage";
 import { fetchSetupStatus } from "./api/setup";
 import "./App.css";
 
-// Lazy-load SchemaExplorer — graphql-voyager requires @mui/material and browser globals
-const SchemaExplorer = lazy(() =>
-  import("./pages/SchemaExplorer").then((m) => ({ default: m.SchemaExplorer }))
-);
+const SourcesPage = lazy(() => import("./pages/SourcesPage").then((m) => ({ default: m.SourcesPage })));
+const TablesPage = lazy(() => import("./pages/TablesPage").then((m) => ({ default: m.TablesPage })));
+const RelationshipsPage = lazy(() => import("./pages/RelationshipsPage").then((m) => ({ default: m.RelationshipsPage })));
+const SecurityPage = lazy(() => import("./pages/SecurityPage").then((m) => ({ default: m.SecurityPage })));
+const QueryPage = lazy(() => import("./pages/QueryPage").then((m) => ({ default: m.QueryPage })));
+const AdminPage = lazy(() => import("./pages/AdminPage").then((m) => ({ default: m.AdminPage })));
+const CommandsPage = lazy(() => import("./pages/CommandsPage").then((m) => ({ default: m.CommandsPage })));
+const ViewsPage = lazy(() => import("./pages/ViewsPage").then((m) => ({ default: m.ViewsPage })));
+const LoginPage = lazy(() => import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })));
+const GraphPage = lazy(() => import("./pages/GraphPage").then((m) => ({ default: m.GraphPage })));
+const SqlPage = lazy(() => import("./pages/SqlPage").then((m) => ({ default: m.SqlPage })));
+const SetupPage = lazy(() => import("./pages/SetupPage").then((m) => ({ default: m.SetupPage })));
+const SchemaExplorer = lazy(() => import("./pages/SchemaExplorer").then((m) => ({ default: m.SchemaExplorer })));
 
 const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED === "true";
 
@@ -74,16 +71,19 @@ function App() {
           {!setupChecked ? (
             <div className="page"><p>Loading...</p></div>
           ) : needsSetup ? (
-            <Routes>
-              <Route path="*" element={
-                <SetupPage onSetupComplete={() => { setNeedsSetup(false); }} />
-              } />
-            </Routes>
+            <Suspense fallback={<div className="page"><p>Loading...</p></div>}>
+              <Routes>
+                <Route path="*" element={
+                  <SetupPage onSetupComplete={() => { setNeedsSetup(false); }} />
+                } />
+              </Routes>
+            </Suspense>
           ) : (
             <DomainFilterProvider>
               <RequireAuth>
                 <NavBar />
                 <main>
+                <Suspense fallback={<div className="page"><p>Loading...</p></div>}>
                 <Routes>
                   <Route path="/" element={<Navigate to="/query" replace />} />
                   <Route
@@ -212,6 +212,7 @@ function App() {
                     />
                   ))}
                 </Routes>
+                </Suspense>
               </main>
               </RequireAuth>
             </DomainFilterProvider>

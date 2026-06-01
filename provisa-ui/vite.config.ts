@@ -8,69 +8,92 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { defineConfig, createLogger } from 'vite'
+import { defineConfig } from 'vite';
 import type { Plugin } from 'vite';
-import react from '@vitejs/plugin-react'
-import istanbul from 'vite-plugin-istanbul'
-import path from 'path'
-import fs from 'fs'
-import _monacoEditorPluginModule from 'vite-plugin-monaco-editor'
+import react from '@vitejs/plugin-react';
+import { parse } from 'graphql';
+import type { OperationDefinitionNode, FragmentDefinitionNode } from 'graphql';
+import istanbul from 'vite-plugin-istanbul';
+import path from 'path';
+import fs from 'fs';
+import _monacoEditorPluginModule from 'vite-plugin-monaco-editor';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const monacoEditorPlugin: (...args: any[]) => any =
-  (_monacoEditorPluginModule as any).default ?? _monacoEditorPluginModule
+  (_monacoEditorPluginModule as any).default ?? _monacoEditorPluginModule;
 
-const logger = createLogger()
-const origWarn = logger.warn.bind(logger)
-logger.warn = (msg, opts) => {
-  if (msg.includes('monaco-graphql') && msg.includes('sourcemap')) return
-  origWarn(msg, opts)
-}
+const graphqlLoader = (): Plugin => {
+  const cache = new Map<string, string>();
 
-const graphqlLoader = (): Plugin => ({
-  name: 'graphql-module-loader',
-  enforce: 'pre',
+  return {
+    name: 'graphql-module-loader',
+    enforce: 'pre',
 
-  resolveId(id: string): string | undefined {
-    if (id.endsWith('.graphql') || id.endsWith('.gql')) {
-      return id;
-    }
-    return undefined; // explicit, not implicit
-  },
+    resolveId(id: string, importer: string | undefined) {
+      if (id.endsWith('.graphql') || id.endsWith('.gql')) {
+        const resolved = importer
+          ? path.resolve(path.dirname(importer), id)
+          : path.resolve(process.cwd(), id);
+        return resolved;
+      }
+      return undefined;
+    },
 
-  load(id: string): { code: string } | undefined {
-    if (id.endsWith('.graphql') || id.endsWith('.gql')) {
-      const filePath = path.resolve(id);
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const escaped = content.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+    load(id: string) {
+      if (id.endsWith('.graphql') || id.endsWith('.gql')) {
+        if (cache.has(id)) return cache.get(id)!;
 
-      return {
-        code: `
-          import { parse } from 'graphql';
-          const doc = parse(\`${escaped}\`);
-          export default doc;
-        `
-      };
-    }
-    return undefined; // explicit
-  }
-});
+        const content = fs.readFileSync(id, 'utf-8');
+        const ast = parse(content);
 
-export default defineConfig(({ mode }) => ({
-  customLogger: logger,
+        const lines: string[] = [
+          `import { parse } from 'graphql';`,
+          `const _source = \`${content.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`;`,
+          `const _doc = parse(_source);`,
+        ];
+
+        for (const def of ast.definitions) {
+          const named = def as OperationDefinitionNode | FragmentDefinitionNode;
+          if (named.name?.value) {
+            const name = named.name.value;
+            lines.push(
+              `export const ${name} = {`,
+              `  ...(_doc),`,
+              `  definitions: _doc.definitions.filter(`,
+              `    d => !('name' in d) || d.name?.value === '${name}'`,
+              `  )`,
+              `};`
+            );
+          }
+        }
+
+        lines.push(`export default _doc;`);
+        const result = lines.join('\n');
+        cache.set(id, result);
+        return result;
+      }
+      return undefined;
+    },
+  };
+};
+
+export default defineConfig((config) => ({
   plugins: [
     react(),
     graphqlLoader(),
     monacoEditorPlugin({
       languageWorkers: ['editorWorkerService', 'json'],
-      customWorkers: [
-        { label: 'graphql', entry: 'monaco-graphql/esm/graphql.worker' },
-      ],
+      customWorkers: [{ label: 'graphql', entry: 'monaco-graphql/esm/graphql.worker' }],
     }),
-    ...(mode !== 'production'
+    ...(config.mode !== 'production'
       ? [
           istanbul({
             include: 'src/**/*',
-            exclude: ['node_modules', 'e2e/**', 'src/plugins/graphiql-explorer-fork.cjs', 'src/plugins/table-view.tsx'],
+            exclude: [
+              'node_modules',
+              'e2e/**',
+              'src/plugins/graphiql-explorer-fork.cjs',
+              'src/plugins/table-view.tsx',
+            ],
             extension: ['.ts', '.tsx'],
           }),
         ]
@@ -78,10 +101,7 @@ export default defineConfig(({ mode }) => ({
   ],
   resolve: {
     alias: {
-      'graphiql-explorer': path.resolve(
-        __dirname,
-        'src/plugins/graphiql-explorer-fork.cjs'
-      ),
+      'graphiql-explorer': path.resolve(__dirname, 'src/plugins/graphiql-explorer-fork.cjs'),
       '@neo4j-cypher/codemirror/lib/cypher-state-definitions': path.resolve(
         __dirname,
         'node_modules/@neo4j-cypher/codemirror/lib/cypher-state-definitions.js'
@@ -96,10 +116,19 @@ export default defineConfig(({ mode }) => ({
     exclude: ['@neo4j-cypher/codemirror', '@apollo/client'],
   },
   build: {
+    chunkSizeWarningLimit: 6000,
     rollupOptions: {
-      onwarn(warning, warn) {
-        if (warning.code === 'SOURCEMAP_ERROR' && warning.message.includes('monaco-graphql')) return;
-        warn(warning);
+      output: {
+        codeSplitting: true,
+        manualChunks(id) {
+          if (id.includes('node_modules/mermaid')) return 'vendor-mermaid';
+          if (id.includes('node_modules/firebase')) return 'vendor-firebase';
+          if (id.includes('node_modules/@mui') || id.includes('node_modules/@emotion')) return 'vendor-mui';
+          if (id.includes('node_modules/cytoscape')) return 'vendor-cytoscape';
+          if (id.includes('node_modules/monaco-editor') || id.includes('node_modules/monaco-graphql') || id.includes('node_modules/@uiw/react-codemirror') || id.includes('node_modules/@codemirror')) return 'vendor-monaco';
+          if (id.includes('node_modules/@apollo')) return 'vendor-apollo';
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/react-router-dom')) return 'vendor-react';
+        },
       },
     },
   },
@@ -123,4 +152,4 @@ export default defineConfig(({ mode }) => ({
       '/auth': 'http://127.0.0.1:8000',
     },
   },
-}))
+}));
