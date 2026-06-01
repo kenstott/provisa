@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { defineConfig, createLogger } from 'vite'
+import type { Plugin } from 'vite';
 import react from '@vitejs/plugin-react'
 import istanbul from 'vite-plugin-istanbul'
 import path from 'path'
@@ -25,41 +26,40 @@ logger.warn = (msg, opts) => {
   origWarn(msg, opts)
 }
 
+const graphqlLoader = (): Plugin => ({
+  name: 'graphql-module-loader',
+  enforce: 'pre',
+
+  resolveId(id: string): string | undefined {
+    if (id.endsWith('.graphql') || id.endsWith('.gql')) {
+      return id;
+    }
+    return undefined; // explicit, not implicit
+  },
+
+  load(id: string): { code: string } | undefined {
+    if (id.endsWith('.graphql') || id.endsWith('.gql')) {
+      const filePath = path.resolve(id);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const escaped = content.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+
+      return {
+        code: `
+          import { parse } from 'graphql';
+          const doc = parse(\`${escaped}\`);
+          export default doc;
+        `
+      };
+    }
+    return undefined; // explicit
+  }
+});
+
 export default defineConfig(({ mode }) => ({
   customLogger: logger,
   plugins: [
     react(),
-    {
-      name: 'graphql-loader',
-      enforce: 'pre',
-      load(id) {
-        if (id.endsWith('.graphql') || id.endsWith('.gql')) {
-          const content = fs.readFileSync(path.resolve(id), 'utf-8');
-          const escaped = content.replace(/`/g, '\\`').replace(/\$/g, '\\$');
-
-          const operations: string[] = [];
-          const opRegex = /(?:query|mutation|fragment)\s+(\w+)/g;
-          let match;
-          const seen = new Set<string>();
-          while ((match = opRegex.exec(content)) !== null) {
-            if (!seen.has(match[1])) {
-              operations.push(match[1]);
-              seen.add(match[1]);
-            }
-          }
-
-          let output = "import { parse } from 'graphql';\n";
-          output += `const doc = parse(\`${escaped}\`);\n`;
-          output += 'export default doc;\n';
-
-          for (const op of operations) {
-            output += `export const ${op} = doc;\n`;
-          }
-
-          return output;
-        }
-      }
-    },
+    graphqlLoader(),
     monacoEditorPlugin({
       languageWorkers: ['editorWorkerService', 'json'],
       customWorkers: [
