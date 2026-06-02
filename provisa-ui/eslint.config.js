@@ -60,7 +60,6 @@ export default defineConfig([
       'src/components/SqlModelingModal.tsx',
       'src/pages/SourcesPage.tsx',
       'src/pages/TablesPage.tsx',
-      'src/pages/RelationshipsPage.tsx',
       'src/api/admin.ts',
       'src/pages/CommandsPage.tsx',
     ],
