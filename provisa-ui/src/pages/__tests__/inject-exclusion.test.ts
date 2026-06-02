@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { describe, it, expect } from 'vitest';
-import { injectExclusion } from '../GraphFrame';
+import { injectExclusion } from '../../components/graph/graph-model';
 
 describe('injectExclusion', () => {
   describe('WHERE placement before RETURN', () => {

@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { describe, it, expect } from 'vitest';
-import type { GEdge } from '../GraphFrame';
+import type { GEdge } from '../../components/graph/graph-model';
 
 function makeEdge(
   identity: string,

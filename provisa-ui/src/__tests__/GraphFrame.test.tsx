@@ -9,12 +9,12 @@
 // permission from the copyright holder.
 
 /**
- * Unit tests for GraphFrame.tsx pure utility functions:
+ * Unit tests for graph-model.ts pure utility functions:
  * PALETTE, labelColor, isNode, isEdge, extractElements
  */
 
 import { describe, it, expect } from 'vitest';
-import { PALETTE, labelColor, isNode, isEdge, extractElements } from '../pages/GraphFrame';
+import { PALETTE, labelColor, isNode, isEdge, extractElements } from '../components/graph/graph-model';
 
 // ── labelColor ────────────────────────────────────────────────────────────────
 

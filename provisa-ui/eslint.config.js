@@ -46,6 +46,27 @@ export default defineConfig([
       // Allow file-top `/* eslint-disable rule -- reason */` (whole-file intentional
       // patterns, e.g. context Provider+hook modules) without a matching enable.
       '@eslint-community/eslint-comments/disable-enable-pair': ['error', { allowWholeFile: true }],
+      // A file past 1000 lines is a design signal — subdivide into modules
+      // (pure helpers, sub-components, hooks). See react-graphql SKILL.md.
+      'max-lines': ['error', { max: 1000, skipBlankLines: true, skipComments: true }],
     },
+  },
+  // Grandfather list: files that predate the max-lines rule. Each entry is a
+  // debt marker — subdivide the file, then delete its line here. When this list
+  // is empty, max-lines is enforced everywhere with no exceptions.
+  {
+    files: [
+      'src/pages/GraphFrame.tsx',
+      'src/pages/SqlPage.tsx',
+      'src/components/SqlModelingModal.tsx',
+      'src/pages/SourcesPage.tsx',
+      'src/pages/TablesPage.tsx',
+      'src/pages/AdminPage.tsx',
+      'src/pages/GraphPage.tsx',
+      'src/pages/RelationshipsPage.tsx',
+      'src/api/admin.ts',
+      'src/pages/CommandsPage.tsx',
+    ],
+    rules: { 'max-lines': 'off' },
   },
 ])
