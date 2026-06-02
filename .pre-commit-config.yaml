@@ -19,3 +19,8 @@ repos:
         args: ["provisa"]
         pass_filenames: false
         types: [python]
+      - id: eslint-ui
+        name: eslint-ui
+        language: system
+        entry: provisa-ui/scripts/precommit-eslint.sh
+        files: ^provisa-ui/src/.*\.(ts|tsx)$
