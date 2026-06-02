@@ -300,14 +300,24 @@ def otel_spans():
     from opentelemetry.sdk.trace.export import SimpleSpanProcessor
     from opentelemetry import trace
 
+    # set_tracer_provider() is one-shot per process: if any earlier import or
+    # fixture already installed a real SDK provider, a second set is silently
+    # ignored and our exporter would never receive spans. So attach the exporter
+    # to whichever real provider is active; only install a fresh one if the
+    # current provider is still the API default (ProxyTracerProvider).
     exporter = InMemorySpanExporter()
-    provider = TracerProvider()
-    provider.add_span_processor(SimpleSpanProcessor(exporter))
-    old = trace.get_tracer_provider()
-    trace.set_tracer_provider(provider)
-    yield exporter
-    exporter.shutdown()
-    trace.set_tracer_provider(old)
+    processor = SimpleSpanProcessor(exporter)
+    current = trace.get_tracer_provider()
+    if isinstance(current, TracerProvider):
+        current.add_span_processor(processor)
+        yield exporter
+        processor.shutdown()  # drains + disables; provider keeps running for other tests
+    else:
+        provider = TracerProvider()
+        provider.add_span_processor(processor)
+        trace.set_tracer_provider(provider)
+        yield exporter
+        exporter.shutdown()
 
 
 @pytest.fixture

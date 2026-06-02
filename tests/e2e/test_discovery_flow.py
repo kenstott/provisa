@@ -29,8 +29,11 @@ from provisa.discovery.prompt import build_prompt
 
 def _orders_table():
     return TableMeta(
-        table_id=1, source_id="sales-pg", domain_id="sales-analytics",
-        schema_name="public", table_name="orders",
+        table_id=1,
+        source_id="sales-pg",
+        domain_id="sales-analytics",
+        schema_name="public",
+        table_name="orders",
         columns=[
             {"name": "id", "type": "integer"},
             {"name": "customer_id", "type": "integer"},
@@ -45,8 +48,11 @@ def _orders_table():
 
 def _customers_table():
     return TableMeta(
-        table_id=2, source_id="sales-pg", domain_id="sales-analytics",
-        schema_name="public", table_name="customers",
+        table_id=2,
+        source_id="sales-pg",
+        domain_id="sales-analytics",
+        schema_name="public",
+        table_name="customers",
         columns=[
             {"name": "id", "type": "integer"},
             {"name": "name", "type": "varchar"},
@@ -61,8 +67,11 @@ def _customers_table():
 
 def _products_table():
     return TableMeta(
-        table_id=3, source_id="catalog-pg", domain_id="product-catalog",
-        schema_name="public", table_name="products",
+        table_id=3,
+        source_id="catalog-pg",
+        domain_id="product-catalog",
+        schema_name="public",
+        table_name="products",
         columns=[
             {"name": "id", "type": "integer"},
             {"name": "name", "type": "varchar"},
@@ -72,18 +81,16 @@ def _products_table():
     )
 
 
-def _mock_claude_response(candidates: list[dict]) -> MagicMock:
-    content_block = MagicMock()
-    content_block.text = json.dumps(candidates)
-    msg = MagicMock()
-    msg.content = [content_block]
-    return msg
+def _mock_claude_response(candidates: list[dict]) -> str:
+    # analyze() calls ProviasLLMClient.complete_sync(...), which returns the raw
+    # response text. Return the JSON payload as a string.
+    return json.dumps(candidates)
 
 
 class TestTableScopeDiscovery:
     """Trigger table-scope discovery → candidates returned."""
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
+    @patch("provisa.llm.client.ProviasLLMClient")
     def test_table_scope_finds_relationship(self, mock_cls):
         orders = _orders_table()
         customers = _customers_table()
@@ -94,15 +101,19 @@ class TestTableScopeDiscovery:
         )
 
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_claude_response([{
-            "source_table_id": 1,
-            "source_column": "customer_id",
-            "target_table_id": 2,
-            "target_column": "id",
-            "cardinality": "many-to-one",
-            "confidence": 0.95,
-            "reasoning": "orders.customer_id references customers.id",
-        }])
+        mock_client.complete_sync.return_value = _mock_claude_response(
+            [
+                {
+                    "source_table_id": 1,
+                    "source_column": "customer_id",
+                    "target_table_id": 2,
+                    "target_column": "id",
+                    "cardinality": "many-to-one",
+                    "confidence": 0.95,
+                    "reasoning": "orders.customer_id references customers.id",
+                }
+            ]
+        )
         mock_cls.return_value = mock_client
 
         prompt = build_prompt(di)
@@ -119,7 +130,7 @@ class TestTableScopeDiscovery:
 class TestDomainScopeDiscovery:
     """Trigger domain-scope discovery → candidates across domain tables."""
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
+    @patch("provisa.llm.client.ProviasLLMClient")
     def test_domain_scope_prompt_includes_all_domain_tables(self, mock_cls):
         orders = _orders_table()
         customers = _customers_table()
@@ -138,7 +149,7 @@ class TestDomainScopeDiscovery:
 class TestCrossDomainDiscovery:
     """Cross-domain discovery finds relationships across sources."""
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
+    @patch("provisa.llm.client.ProviasLLMClient")
     def test_cross_domain_includes_tables_from_different_domains(self, mock_cls):
         orders = _orders_table()
         products = _products_table()
@@ -152,7 +163,7 @@ class TestCrossDomainDiscovery:
         assert "domain=sales-analytics" in prompt
         assert "domain=product-catalog" in prompt
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
+    @patch("provisa.llm.client.ProviasLLMClient")
     def test_cross_domain_finds_cross_source_relationship(self, mock_cls):
         orders = _orders_table()
         # Add product_id to orders
@@ -165,15 +176,19 @@ class TestCrossDomainDiscovery:
         )
 
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_claude_response([{
-            "source_table_id": 1,
-            "source_column": "product_id",
-            "target_table_id": 3,
-            "target_column": "id",
-            "cardinality": "many-to-one",
-            "confidence": 0.88,
-            "reasoning": "orders.product_id → products.id cross-source FK",
-        }])
+        mock_client.complete_sync.return_value = _mock_claude_response(
+            [
+                {
+                    "source_table_id": 1,
+                    "source_column": "product_id",
+                    "target_table_id": 3,
+                    "target_column": "id",
+                    "cardinality": "many-to-one",
+                    "confidence": 0.88,
+                    "reasoning": "orders.product_id → products.id cross-source FK",
+                }
+            ]
+        )
         mock_cls.return_value = mock_client
 
         prompt = build_prompt(di)
@@ -188,12 +203,17 @@ class TestAcceptCandidateCreatesRelationship:
     @pytest.mark.asyncio
     async def test_store_and_accept_flow(self):
         conn = AsyncMock()
-        candidates = [RelationshipCandidate(
-            source_table_id=1, source_column="customer_id",
-            target_table_id=2, target_column="id",
-            cardinality="many-to-one", confidence=0.95,
-            reasoning="FK pattern",
-        )]
+        candidates = [
+            RelationshipCandidate(
+                source_table_id=1,
+                source_column="customer_id",
+                target_table_id=2,
+                target_column="id",
+                cardinality="many-to-one",
+                confidence=0.95,
+                reasoning="FK pattern",
+            )
+        ]
 
         # Store
         conn.fetchval.return_value = 42
@@ -206,12 +226,17 @@ class TestAcceptCandidateCreatesRelationship:
         class MockRecord(dict):
             pass
 
-        conn.fetchrow.return_value = MockRecord({
-            "id": 42,
-            "source_table_id": 1, "target_table_id": 2,
-            "source_column": "customer_id", "target_column": "id",
-            "cardinality": "many-to-one", "confidence": 0.95,
-        })
+        conn.fetchrow.return_value = MockRecord(
+            {
+                "id": 42,
+                "source_table_id": 1,
+                "target_table_id": 2,
+                "source_column": "customer_id",
+                "target_column": "id",
+                "cardinality": "many-to-one",
+                "confidence": 0.95,
+            }
+        )
         result = await accept(conn, 42)
         assert result["source_column"] == "customer_id"
         assert "relationship_id" in result
@@ -227,12 +252,14 @@ class TestRejectPreventsReSuggestion:
     def test_rejected_pairs_excluded_from_prompt(self):
         orders = _orders_table()
         customers = _customers_table()
-        rejected = [{
-            "source_table_id": 1,
-            "source_column": "customer_id",
-            "target_table_id": 2,
-            "target_column": "id",
-        }]
+        rejected = [
+            {
+                "source_table_id": 1,
+                "source_column": "customer_id",
+                "target_table_id": 2,
+                "target_column": "id",
+            }
+        ]
         di = DiscoveryInput(
             tables=[orders, customers],
             existing_relationships=[],
@@ -242,17 +269,19 @@ class TestRejectPreventsReSuggestion:
         assert "Previously Rejected" in prompt
         assert "source_column=customer_id" in prompt
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
+    @patch("provisa.llm.client.ProviasLLMClient")
     def test_existing_relationship_excluded_from_prompt(self, mock_cls):
         orders = _orders_table()
         customers = _customers_table()
-        existing = [{
-            "source_table_id": 1,
-            "source_column": "customer_id",
-            "target_table_id": 2,
-            "target_column": "id",
-            "cardinality": "many-to-one",
-        }]
+        existing = [
+            {
+                "source_table_id": 1,
+                "source_column": "customer_id",
+                "target_table_id": 2,
+                "target_column": "id",
+                "cardinality": "many-to-one",
+            }
+        ]
         di = DiscoveryInput(
             tables=[orders, customers],
             existing_relationships=existing,
@@ -266,27 +295,37 @@ class TestRejectPreventsReSuggestion:
 class TestConfidenceThreshold:
     """Low-confidence candidates filtered out."""
 
-    @patch("provisa.discovery.analyzer.anthropic.Anthropic")
+    @patch("provisa.llm.client.ProviasLLMClient")
     def test_low_confidence_filtered(self, mock_cls):
         orders = _orders_table()
         customers = _customers_table()
-        di = DiscoveryInput(tables=[orders, customers], existing_relationships=[], rejected_pairs=[])
+        di = DiscoveryInput(
+            tables=[orders, customers], existing_relationships=[], rejected_pairs=[]
+        )
 
         mock_client = MagicMock()
-        mock_client.messages.create.return_value = _mock_claude_response([
-            {
-                "source_table_id": 1, "source_column": "customer_id",
-                "target_table_id": 2, "target_column": "id",
-                "cardinality": "many-to-one", "confidence": 0.3,
-                "reasoning": "weak match",
-            },
-            {
-                "source_table_id": 1, "source_column": "customer_id",
-                "target_table_id": 2, "target_column": "name",
-                "cardinality": "many-to-one", "confidence": 0.85,
-                "reasoning": "strong match",
-            },
-        ])
+        mock_client.complete_sync.return_value = _mock_claude_response(
+            [
+                {
+                    "source_table_id": 1,
+                    "source_column": "customer_id",
+                    "target_table_id": 2,
+                    "target_column": "id",
+                    "cardinality": "many-to-one",
+                    "confidence": 0.3,
+                    "reasoning": "weak match",
+                },
+                {
+                    "source_table_id": 1,
+                    "source_column": "customer_id",
+                    "target_table_id": 2,
+                    "target_column": "name",
+                    "cardinality": "many-to-one",
+                    "confidence": 0.85,
+                    "reasoning": "strong match",
+                },
+            ]
+        )
         mock_cls.return_value = mock_client
 
         results = analyze(build_prompt(di), "fake-key", di, min_confidence=0.7)

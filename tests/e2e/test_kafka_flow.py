@@ -35,61 +35,12 @@ async def client():
             yield c
 
 
-_SUBMIT_MUTATION = """
-mutation SubmitQuery($input: SubmitQueryInput!) {
-  submitQuery(input: $input) { queryId operationName message }
-}
-"""
-
-
-class TestKafkaSinkConfiguration:
-    async def test_submit_query_with_sink(self, client):
-        """Submit a query with Kafka sink configuration."""
-        resp = await client.post(
-            "/admin/graphql",
-            json={
-                "query": _SUBMIT_MUTATION,
-                "variables": {
-                    "input": {
-                        "query": "query KafkaSinkTest { sa__orders(limit: 5) { id amount region } }",
-                        "role": "admin",
-                        "businessPurpose": "E2E Kafka sink test",
-                        "dataSensitivity": "internal",
-                        "sink": {
-                            "topic": "test-sink-orders",
-                            "trigger": "manual",
-                            "keyColumn": "region",
-                        },
-                    }
-                },
-            },
-        )
-        assert resp.status_code == 200
-        body = resp.json()
-        assert "errors" not in body, body.get("errors")
-        result = body["data"]["submitQuery"]
-        assert result["queryId"] > 0
-        assert "KafkaSinkTest" in result["message"]
-
-    async def test_persisted_query_has_sink_config(self, client):
-        """Approved queries with sinks should store the sink configuration."""
-        resp = await client.post(
-            "/admin/graphql",
-            json={"query": "{ governedQueries { id queryText sinkTopic sinkTrigger sinkKeyColumn status } }"},
-        )
-        if resp.status_code != 200:
-            pytest.fail(f"Admin API returned {resp.status_code}: {resp.text}")
-
-        data = resp.json()
-        queries = data.get("data", {}).get("governedQueries", [])
-        sink_queries = [q for q in queries if q.get("sinkTopic")]
-        # At least the one we just submitted (or from previous runs)
-        if not sink_queries:
-            pytest.fail("No queries with sink config found — test_submit_query_with_sink must have failed")
-
-        q = sink_queries[0]
-        assert q["sinkTopic"] is not None
-        assert q["sinkTrigger"] in ("change_event", "schedule", "manual")
+# NOTE: The `submitQuery` mutation / `SubmitQueryInput` type and the
+# `governedQueries` query were removed; Kafka sinks are now configured via the
+# `@sink` GraphQL directive (see provisa/api/data/subscription_sse.py) and
+# executed from the persisted_queries table by provisa.kafka.sink_executor.
+# The former TestKafkaSinkConfiguration tests targeted that removed API and were
+# deleted as no longer valid.
 
 
 class TestKafkaSinkExecution:
@@ -100,6 +51,7 @@ class TestKafkaSinkExecution:
         # This should handle missing Kafka gracefully (log warning, not crash)
         try:
             from provisa.api.app import state
+
             count = await trigger_sinks_for_table("orders", state)
             # count may be 0 if no sinks configured, or > 0 if Kafka is available
             assert isinstance(count, int)
@@ -120,9 +72,6 @@ class TestKafkaSourceRegistration:
 
         data = resp.json()
         tables = data.get("data", {}).get("tables", [])
-        # Check if any tables come from Kafka sources
-        kafka_tables = [t for t in tables if "kafka" in t.get("sourceId", "").lower()
-                       or "ticket" in t.get("tableName", "").lower()]
         # Don't fail if no Kafka tables — just verify the query works
         assert isinstance(tables, list)
 
