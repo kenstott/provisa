@@ -826,8 +826,8 @@ export async function compileQuery(
   flatCypher?: boolean,
   nodeOnlyCypher?: boolean,
 ): Promise<CompileResult | { queries: CompileResult[] }> {
-  const result = await client.query({
-    query: CompileQuery,
+  const result = await client.mutate({
+    mutation: CompileQuery,
     variables: {
       input: {
         query,
@@ -838,7 +838,6 @@ export async function compileQuery(
         nodeOnlyCypher: nodeOnlyCypher ?? false,
       },
     },
-    fetchPolicy: "cache-first",
   });
   const data = result.data as { compileQuery: Record<string, unknown>[] };
   const results = data.compileQuery.map((r) => ({

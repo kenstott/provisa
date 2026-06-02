@@ -5,7 +5,7 @@ fragment MutationResult on MutationResult {
   message
 }
 
-fragment ColumnFields on Column {
+fragment ColumnFields on TableColumnType {
   id
   columnName
   visibleTo
@@ -25,22 +25,12 @@ fragment ColumnFields on Column {
   scope
 }
 
-fragment ColumnPresetFields on ColumnPreset {
+fragment ColumnPresetFields on ColumnPresetType {
   column
   source
   name
   value
   dataType
-}
-
-fragment RLSFilterFields on RLSFilter {
-  id
-  role_id
-  domain
-  table
-  filter_type
-  filter_sql
-  columns
 }
 
 # Queries
@@ -128,12 +118,10 @@ query RelationshipsQuery {
 query RLSRulesQuery {
   rlsRules {
     id
+    tableId
+    domainId
     roleId
-    domain
-    table
-    filters {
-      ...RLSFilterFields
-    }
+    filterExpr
   }
 }
 
@@ -177,7 +165,7 @@ query GenerateTableDescription($tableId: String!) {
   generateTableDescription(tableId: $tableId)
 }
 
-query CompileQuery($input: CompileQueryInput!) {
+mutation CompileQuery($input: CompileQueryInput!) {
   compileQuery(input: $input) {
     sql
     semanticSql

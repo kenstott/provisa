@@ -45,14 +45,24 @@ const cache = new InMemoryCache({
   },
 });
 
+// Bump when the GraphQL schema or any persisted entity shape changes. A
+// mismatch discards the stored snapshot so stale/partial entities (dangling
+// refs, dropped non-null fields) can never be replayed into a live read.
+const CACHE_VERSION = "2";
+const CACHE_KEY = "apollo-cache";
+const CACHE_VERSION_KEY = "apollo-cache-version";
+
 if (typeof window !== "undefined") {
-  const stored = localStorage.getItem("apollo-cache");
-  if (stored) {
+  const stored = localStorage.getItem(CACHE_KEY);
+  if (stored && localStorage.getItem(CACHE_VERSION_KEY) === CACHE_VERSION) {
     try {
       cache.restore(JSON.parse(stored));
     } catch (e) {
       console.warn("Failed to restore Apollo cache:", e);
     }
+  } else {
+    localStorage.removeItem(CACHE_KEY);
+    localStorage.setItem(CACHE_VERSION_KEY, CACHE_VERSION);
   }
 }
 
@@ -73,6 +83,7 @@ export const client = new ApolloClient({
 if (typeof window !== "undefined") {
   setInterval(() => {
     const cacheData = cache.extract();
-    localStorage.setItem("apollo-cache", JSON.stringify(cacheData));
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData));
+    localStorage.setItem(CACHE_VERSION_KEY, CACHE_VERSION);
   }, 5000);
 }

@@ -23,8 +23,6 @@ const monacoEditorPlugin: MonacoPluginFactory =
   (_monacoEditorPluginModule as unknown as MonacoPluginFactory);
 
 const graphqlLoader = (): Plugin => {
-  const cache = new Map<string, string>();
-
   return {
     name: "graphql-module-loader",
     enforce: "pre",
@@ -41,10 +39,41 @@ const graphqlLoader = (): Plugin => {
 
     load(id: string) {
       if (id.endsWith(".graphql") || id.endsWith(".gql")) {
-        if (cache.has(id)) return cache.get(id)!;
-
         const content = fs.readFileSync(id, "utf-8");
         const ast = parse(content);
+
+        // Direct fragment spreads referenced anywhere under a node's selections.
+        const directSpreads = (node: unknown): string[] => {
+          const found: string[] = [];
+          const visit = (n: { kind?: string; name?: { value: string }; selectionSet?: { selections: unknown[] } }) => {
+            if (!n || typeof n !== "object") return;
+            if (n.kind === "FragmentSpread" && n.name) found.push(n.name.value);
+            if (n.selectionSet) for (const s of n.selectionSet.selections) visit(s as typeof n);
+          };
+          visit(node as { selectionSet?: { selections: unknown[] } });
+          return found;
+        };
+
+        const spreadsByFragment = new Map<string, string[]>();
+        for (const def of ast.definitions) {
+          const named = def as OperationDefinitionNode | FragmentDefinitionNode;
+          if (named.kind === "FragmentDefinition" && named.name?.value) {
+            spreadsByFragment.set(named.name.value, directSpreads(named));
+          }
+        }
+
+        // Transitive closure of fragment names a definition depends on.
+        const usedFragments = (def: OperationDefinitionNode | FragmentDefinitionNode): string[] => {
+          const seen = new Set<string>();
+          const stack = [...directSpreads(def)];
+          while (stack.length) {
+            const fragName = stack.pop()!;
+            if (seen.has(fragName)) continue;
+            seen.add(fragName);
+            for (const dep of spreadsByFragment.get(fragName) ?? []) stack.push(dep);
+          }
+          return [...seen];
+        };
 
         const lines: string[] = [
           `import { parse } from 'graphql';`,
@@ -56,11 +85,13 @@ const graphqlLoader = (): Plugin => {
           const named = def as OperationDefinitionNode | FragmentDefinitionNode;
           if (named.name?.value) {
             const name = named.name.value;
+            const keep = new Set([name, ...usedFragments(named)]);
+            const keepJson = JSON.stringify([...keep]);
             lines.push(
               `export const ${name} = {`,
               `  ...(_doc),`,
               `  definitions: _doc.definitions.filter(`,
-              `    d => !('name' in d) || d.name?.value === '${name}'`,
+              `    d => ${keepJson}.includes(d.name?.value)`,
               `  )`,
               `};`,
             );
@@ -68,9 +99,7 @@ const graphqlLoader = (): Plugin => {
         }
 
         lines.push(`export default _doc;`);
-        const result = lines.join("\n");
-        cache.set(id, result);
-        return result;
+        return lines.join("\n");
       }
       return undefined;
     },
