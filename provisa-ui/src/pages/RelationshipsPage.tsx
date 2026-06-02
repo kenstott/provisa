@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Trash2, Pencil, Sparkles, Save, X, ArrowLeftRight, Code2 } from "lucide-react";
+import { Sparkles, Code2 } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
@@ -30,38 +30,14 @@ import {
 import { fetchActions } from "../api/actions";
 import type { TrackedFunction } from "../api/actions";
 import type { Relationship, RegisteredTable } from "../types/admin";
-
-interface Candidate {
-  id: number;
-  source_table_id: number;
-  target_table_id: number;
-  source_column: string;
-  target_column: string;
-  cardinality: string;
-  confidence: number;
-  reasoning: string;
-  suggested_name?: string;
-}
-
-const EMPTY_FORM = {
-  id: "",
-  originalId: "",
-  sourceDomain: "",
-  sourceTableId: "",
-  sourceColumn: "",
-  targetType: "table" as "table" | "function",
-  targetDomain: "",
-  targetTableId: "",
-  targetColumn: "",
-  targetFunctionName: "",
-  functionArg: "",
-  cardinality: "many-to-one",
-  materialize: false,
-  refreshInterval: "300",
-  alias: "",
-  graphqlAlias: "",
-  disableCypher: false,
-};
+import { EMPTY_FORM, type Candidate, type RelForm } from "../components/relationships/relationship-types";
+import { AddRelationshipForm } from "../components/relationships/AddRelationshipForm";
+import { RelationshipRow } from "../components/relationships/RelationshipRow";
+import {
+  ConflictModal,
+  ReverseRelationshipModal,
+} from "../components/relationships/RelationshipModals";
+import { CandidatesTable } from "../components/relationships/CandidatesTable";
 
 export function RelationshipsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -76,10 +52,10 @@ export function RelationshipsPage() {
   const [discoverMsg, setDiscoverMsg] = useState("");
   const [rejectedCount, setRejectedCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(EMPTY_FORM);
+  const [form, setForm] = useState<RelForm>(EMPTY_FORM);
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [editingRel, setEditingRel] = useState<typeof EMPTY_FORM | null>(null);
-  const [reverseForm, setReverseForm] = useState<typeof EMPTY_FORM | null>(null);
+  const [editingRel, setEditingRel] = useState<RelForm | null>(null);
+  const [reverseForm, setReverseForm] = useState<RelForm | null>(null);
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [relPage, setRelPage] = useState(0);
   const PAGE_SIZE = 50;
@@ -273,7 +249,7 @@ export function RelationshipsPage() {
   );
 
   const buildReverse = useCallback(
-    (r: Relationship): typeof EMPTY_FORM => {
+    (r: Relationship): RelForm => {
       const flipCardinality = (c: string) => (c === "many-to-one" ? "one-to-many" : "many-to-one");
       const suggestCqlAlias = (alias: string | null) => {
         if (!alias) return "";
@@ -345,6 +321,25 @@ export function RelationshipsPage() {
 
   if (loading) return <div className="page">Loading relationships...</div>;
 
+  const matchesFilter = (r: Relationship) => {
+    if (remoteTableIds.has(r.sourceTableId)) return false;
+    if (selectedDomain !== "all") {
+      const srcDomain = tableDomainById[r.sourceTableId];
+      const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
+      const ownerDomain = r.ownerDomainId ? normalizeDomain(r.ownerDomainId) : null;
+      if (srcDomain !== selectedDomain && tgtDomain !== selectedDomain && ownerDomain !== selectedDomain)
+        return false;
+    }
+    if (!relSearch.trim()) return true;
+    const q = relSearch.toLowerCase();
+    return (
+      r.sourceTableName.toLowerCase().includes(q) || r.targetTableName.toLowerCase().includes(q)
+    );
+  };
+
+  const filteredForPaging = rels.filter(matchesFilter);
+  const totalPages = Math.max(1, Math.ceil(filteredForPaging.length / PAGE_SIZE));
+
   return (
     <div className="page">
       <div className="page-header">
@@ -393,186 +388,14 @@ export function RelationshipsPage() {
       )}
 
       {showForm && (
-        <div className="form-card">
-          <div className="form-row">
-            <label>
-              ID
-              <input
-                value={form.id}
-                onChange={(e) => setForm({ ...form, id: e.target.value })}
-                placeholder="orders-to-customers"
-              />
-            </label>
-            <label>
-              CQL Alias (UPPER_SNAKE)
-              <input
-                value={form.alias}
-                onChange={(e) => setForm({ ...form, alias: e.target.value })}
-                placeholder="PLACED_BY"
-              />
-            </label>
-            <label>
-              GQL Alias (camelCase)
-              <input
-                value={form.graphqlAlias}
-                onChange={(e) => setForm({ ...form, graphqlAlias: e.target.value })}
-                placeholder="e.g. orders"
-              />
-            </label>
-            <label>
-              Source Table
-              <select
-                value={form.sourceTableId}
-                onChange={(e) => setForm({ ...form, sourceTableId: e.target.value })}
-              >
-                <option value="">Select...</option>
-                {tables.map((t) => (
-                  <option key={t.id} value={t.tableName}>
-                    {t.tableName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Source Column
-              <input
-                value={form.sourceColumn}
-                onChange={(e) => setForm({ ...form, sourceColumn: e.target.value })}
-                placeholder="customer_id"
-              />
-            </label>
-          </div>
-          <div className="form-row">
-            <label>
-              Target Type
-              <select
-                value={form.targetType}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    targetType: e.target.value as "table" | "function",
-                    targetTableId: "",
-                    targetColumn: "",
-                    targetFunctionName: "",
-                    functionArg: "",
-                  })
-                }
-              >
-                <option value="table">Table</option>
-                <option value="function">Function (computed)</option>
-              </select>
-            </label>
-            {form.targetType === "table" ? (
-              <>
-                <label>
-                  Target Table
-                  <select
-                    value={form.targetTableId}
-                    onChange={(e) => setForm({ ...form, targetTableId: e.target.value })}
-                  >
-                    <option value="">Select...</option>
-                    {tables.map((t) => (
-                      <option key={t.id} value={t.tableName}>
-                        {t.tableName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Target Column
-                  <input
-                    value={form.targetColumn}
-                    onChange={(e) => setForm({ ...form, targetColumn: e.target.value })}
-                    placeholder="id"
-                  />
-                </label>
-              </>
-            ) : (
-              <>
-                <label>
-                  Function
-                  <select
-                    value={form.targetFunctionName}
-                    onChange={(e) => setForm({ ...form, targetFunctionName: e.target.value })}
-                  >
-                    <option value="">Select...</option>
-                    {functions.map((f) => (
-                      <option key={f.name} value={f.name}>
-                        {f.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Function Arg (receives source column)
-                  <input
-                    value={form.functionArg}
-                    onChange={(e) => setForm({ ...form, functionArg: e.target.value })}
-                    placeholder="arg name"
-                  />
-                </label>
-              </>
-            )}
-          </div>
-          <div className="form-row">
-            {form.targetType === "table" && (
-              <label>
-                Cardinality
-                <select
-                  value={form.cardinality}
-                  onChange={(e) => setForm({ ...form, cardinality: e.target.value })}
-                >
-                  <option value="many-to-one">many-to-one</option>
-                  <option value="one-to-many">one-to-many</option>
-                </select>
-                {form.cardinality === "many-to-one" && (
-                  <span
-                    style={{
-                      color: "var(--warning, #b45309)",
-                      fontSize: "0.78rem",
-                      marginTop: "0.25rem",
-                      display: "block",
-                    }}
-                  >
-                    Warning: if this join returns more than one row per parent, only the first value
-                    will be used.
-                  </span>
-                )}
-              </label>
-            )}
-          </div>
-          <div className="form-row">
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={form.materialize}
-                onChange={(e) => setForm({ ...form, materialize: e.target.checked })}
-              />
-              Materialize (auto-create MV for cross-source joins)
-            </label>
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={form.disableCypher}
-                onChange={(e) => setForm({ ...form, disableCypher: e.target.checked })}
-              />
-              Exclude from Cypher graph
-            </label>
-            {form.materialize && (
-              <label>
-                Refresh Interval (s)
-                <input
-                  type="number"
-                  value={form.refreshInterval}
-                  onChange={(e) => setForm({ ...form, refreshInterval: e.target.value })}
-                />
-              </label>
-            )}
-            <button className="btn-primary" onClick={handleAdd} disabled={saving === "new"}>
-              Save
-            </button>
-          </div>
-        </div>
+        <AddRelationshipForm
+          form={form}
+          setForm={setForm}
+          tables={tables}
+          functions={functions}
+          saving={saving}
+          onSave={handleAdd}
+        />
       )}
 
       <table className="data-table">
@@ -599,701 +422,68 @@ export function RelationshipsPage() {
               </td>
             </tr>
           ) : (
-            (() => {
-              const filtered = rels.filter((r) => {
+            rels
+              .filter((r) => {
                 if (tableSourceById[r.sourceTableId] === "provisa-admin") return false;
-                if (remoteTableIds.has(r.sourceTableId)) return false;
-                if (selectedDomain !== "all") {
-                  const srcDomain = tableDomainById[r.sourceTableId];
-                  const tgtDomain =
-                    r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
-                  const ownerDomain = r.ownerDomainId ? normalizeDomain(r.ownerDomainId) : null;
-                  if (
-                    srcDomain !== selectedDomain &&
-                    tgtDomain !== selectedDomain &&
-                    ownerDomain !== selectedDomain
-                  )
-                    return false;
-                }
-                if (!relSearch.trim()) return true;
-                const q = relSearch.toLowerCase();
-                return (
-                  r.sourceTableName.toLowerCase().includes(q) ||
-                  r.targetTableName.toLowerCase().includes(q)
-                );
-              });
-              const paged = filtered.slice(relPage * PAGE_SIZE, (relPage + 1) * PAGE_SIZE);
-              return paged.map((r) => {
+                return matchesFilter(r);
+              })
+              .slice(relPage * PAGE_SIZE, (relPage + 1) * PAGE_SIZE)
+              .map((r) => {
                 const id = String(r.id);
-                const isExpanded = expanded === id;
                 return (
-                  <React.Fragment key={r.id}>
-                    <tr
-                      onClick={() => {
-                        setExpanded(isExpanded ? null : id);
-                        setEditingRel(null);
-                      }}
-                      style={{
-                        cursor: "pointer",
-                        background: isExpanded ? "var(--surface)" : undefined,
-                      }}
-                    >
-                      <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                          {r.autoSuggested && (
-                            <span
-                              title="Auto-tracked from FK constraint"
-                              style={{
-                                fontSize: "0.65rem",
-                                fontWeight: 600,
-                                padding: "1px 5px",
-                                borderRadius: 3,
-                                background: "var(--text-muted)",
-                                color: "var(--bg)",
-                                letterSpacing: "0.03em",
-                              }}
-                            >
-                              FK
-                            </span>
-                          )}
-                          {r.id}
-                        </div>
-                      </td>
-                      <td>{tableDomainById[r.sourceTableId] || "—"}</td>
-                      <td>{`${r.sourceTableName}.${r.sourceColumn}`}</td>
-                      <td>
-                        {r.targetFunctionName
-                          ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})`
-                          : `${r.targetTableName}.${r.targetColumn}`}
-                      </td>
-                      <td>
-                        <div style={{ fontSize: "0.8rem", lineHeight: 1.4 }}>
-                          <div>
-                            <span style={{ color: "var(--text-muted)" }}>GQL:</span>{" "}
-                            <code>{r.graphqlAlias ?? "—"}</code>
-                          </div>
-                          <div>
-                            <span style={{ color: "var(--text-muted)" }}>CQL:</span>{" "}
-                            <code>
-                              {r.alias ?? (
-                                <em style={{ color: "var(--text-muted)" }}>
-                                  {r.computedCypherAlias ?? "—"}
-                                </em>
-                              )}
-                            </code>
-                          </div>
-                        </div>
-                      </td>
-                      <td>{r.cardinality}</td>
-                      <td>{r.materialize ? "Yes" : "No"}</td>
-                      <td>{r.materialize ? r.refreshInterval : "—"}</td>
-                    </tr>
-                    {isExpanded && (
-                      <tr>
-                        <td
-                          colSpan={8}
-                          style={{
-                            padding: "0.75rem 1rem",
-                            background: "var(--bg)",
-                            borderTop: "1px solid var(--border)",
-                          }}
-                        >
-                          {!editingRel ? (
-                            <div
-                              style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}
-                            >
-                              <dl
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns: "max-content 1fr",
-                                  gap: "0.25rem 1rem",
-                                  margin: 0,
-                                  color: "var(--text)",
-                                }}
-                              >
-                                <dt style={{ color: "var(--text-muted)" }}>
-                                  <strong>ID</strong>
-                                </dt>
-                                <dd style={{ color: "var(--text)", margin: 0 }}>
-                                  {r.id}
-                                  {r.autoSuggested && (
-                                    <span
-                                      title="Auto-tracked from FK constraint"
-                                      style={{
-                                        marginLeft: 6,
-                                        fontSize: "0.65rem",
-                                        fontWeight: 600,
-                                        padding: "1px 5px",
-                                        borderRadius: 3,
-                                        background: "var(--text-muted)",
-                                        color: "var(--bg)",
-                                      }}
-                                    >
-                                      FK
-                                    </span>
-                                  )}
-                                </dd>
-                                <dt style={{ color: "var(--text-muted)" }}>
-                                  <strong>Source</strong>
-                                </dt>
-                                <dd style={{ color: "var(--text)", margin: 0 }}>
-                                  {tableDomainById[r.sourceTableId]
-                                    ? `${tableDomainById[r.sourceTableId]}.${r.sourceTableName}.${r.sourceColumn}`
-                                    : `${r.sourceTableName}.${r.sourceColumn}`}
-                                </dd>
-                                <dt style={{ color: "var(--text-muted)" }}>
-                                  <strong>Target</strong>
-                                </dt>
-                                <dd style={{ color: "var(--text)", margin: 0 }}>
-                                  {r.targetFunctionName
-                                    ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})`
-                                    : tableDomainById[r.targetTableId!]
-                                      ? `${tableDomainById[r.targetTableId!]}.${r.targetTableName}.${r.targetColumn}`
-                                      : `${r.targetTableName}.${r.targetColumn}`}
-                                </dd>
-                                <dt style={{ color: "var(--text-muted)" }}>
-                                  <strong>GQL Alias</strong>
-                                </dt>
-                                <dd style={{ color: "var(--text)", margin: 0 }}>
-                                  <code>{r.graphqlAlias ?? "—"}</code>
-                                </dd>
-                                <dt style={{ color: "var(--text-muted)" }}>
-                                  <strong>CQL Alias</strong>
-                                </dt>
-                                <dd style={{ color: "var(--text)", margin: 0 }}>
-                                  <code>
-                                    {r.alias ?? (
-                                      <em style={{ color: "var(--text-muted)" }}>
-                                        {r.computedCypherAlias ?? "—"}
-                                      </em>
-                                    )}
-                                  </code>
-                                </dd>
-                                <dt style={{ color: "var(--text-muted)" }}>
-                                  <strong>Cardinality</strong>
-                                </dt>
-                                <dd style={{ color: "var(--text)", margin: 0 }}>{r.cardinality}</dd>
-                                <dt style={{ color: "var(--text-muted)" }}>
-                                  <strong>Materialize</strong>
-                                </dt>
-                                <dd style={{ color: "var(--text)", margin: 0 }}>
-                                  {r.materialize ? "Yes" : "No"}
-                                </dd>
-                                {r.materialize && (
-                                  <>
-                                    <dt style={{ color: "var(--text-muted)" }}>
-                                      <strong>Refresh Interval (s)</strong>
-                                    </dt>
-                                    <dd style={{ color: "var(--text)", margin: 0 }}>
-                                      {r.refreshInterval ?? "—"}
-                                    </dd>
-                                  </>
-                                )}
-                                <dt style={{ color: "var(--text-muted)" }}>
-                                  <strong>Cypher Graph</strong>
-                                </dt>
-                                <dd style={{ color: "var(--text)", margin: 0 }}>
-                                  {r.disableCypher ? (
-                                    <em style={{ color: "var(--text-muted)" }}>excluded</em>
-                                  ) : (
-                                    "included"
-                                  )}
-                                </dd>
-                              </dl>
-                              {canManage && (
-                                <div
-                                  style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}
-                                >
-                                  <button
-                                    className="btn-icon"
-                                    title="Edit"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      startEditing(r);
-                                    }}
-                                  >
-                                    <Pencil size={14} />
-                                  </button>
-                                  <button
-                                    className="btn-icon"
-                                    title="Generate reverse relationship"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setReverseForm(buildReverse(r));
-                                    }}
-                                  >
-                                    <ArrowLeftRight size={14} />
-                                  </button>
-                                  <button
-                                    className="btn-icon-danger"
-                                    title="Delete"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDelete(id);
-                                    }}
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div
-                              style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
-                            >
-                              <div className="form-row">
-                                <label>
-                                  Name
-                                  <input
-                                    value={editingRel.id}
-                                    onChange={(e) =>
-                                      setEditingRel({ ...editingRel, id: e.target.value })
-                                    }
-                                  />
-                                </label>
-                                <label>
-                                  CQL Alias (UPPER_SNAKE)
-                                  <input
-                                    value={editingRel.alias}
-                                    onChange={(e) =>
-                                      setEditingRel({ ...editingRel, alias: e.target.value })
-                                    }
-                                    placeholder={r.computedCypherAlias ?? "PLACED_BY"}
-                                  />
-                                </label>
-                                <label>
-                                  GQL Alias (camelCase)
-                                  <input
-                                    value={editingRel.graphqlAlias}
-                                    onChange={(e) =>
-                                      setEditingRel({ ...editingRel, graphqlAlias: e.target.value })
-                                    }
-                                    placeholder={r.graphqlAlias ?? ""}
-                                  />
-                                </label>
-                              </div>
-                              <div
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns: "1fr 1fr",
-                                  gap: "1rem",
-                                }}
-                              >
-                                {/* Source panel */}
-                                {(() => {
-                                  const uniqueDomains = [
-                                    ...new Set(
-                                      tables
-                                        .map((t) => normalizeDomain(t.domainId))
-                                        .filter(Boolean),
-                                    ),
-                                  ].sort();
-                                  const filteredSrcTables = editingRel.sourceDomain
-                                    ? tables.filter(
-                                        (t) =>
-                                          normalizeDomain(t.domainId) === editingRel.sourceDomain,
-                                      )
-                                    : tables;
-                                  return (
-                                    <div
-                                      style={{
-                                        border: "1px solid var(--border)",
-                                        borderRadius: "4px",
-                                        padding: "0.75rem",
-                                        display: "flex",
-                                        flexDirection: "column",
-                                        gap: "0.5rem",
-                                      }}
-                                    >
-                                      <strong
-                                        style={{
-                                          color: "var(--text-muted)",
-                                          fontSize: "0.75rem",
-                                          textTransform: "uppercase" as const,
-                                        }}
-                                      >
-                                        Source
-                                      </strong>
-                                      <label>
-                                        Domain
-                                        <select
-                                          value={editingRel.sourceDomain}
-                                          onChange={(e) =>
-                                            setEditingRel({
-                                              ...editingRel,
-                                              sourceDomain: e.target.value,
-                                              sourceTableId: "",
-                                            })
-                                          }
-                                        >
-                                          <option value="">All</option>
-                                          {uniqueDomains.map((d) => (
-                                            <option key={d} value={d}>
-                                              {d}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </label>
-                                      <label>
-                                        Table
-                                        <select
-                                          value={editingRel.sourceTableId}
-                                          onChange={(e) =>
-                                            setEditingRel({
-                                              ...editingRel,
-                                              sourceTableId: e.target.value,
-                                            })
-                                          }
-                                        >
-                                          <option value="">Select...</option>
-                                          {filteredSrcTables.map((t) => (
-                                            <option key={t.id} value={t.tableName}>
-                                              {t.tableName}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </label>
-                                      <label>
-                                        Column
-                                        <input
-                                          value={editingRel.sourceColumn}
-                                          onChange={(e) =>
-                                            setEditingRel({
-                                              ...editingRel,
-                                              sourceColumn: e.target.value,
-                                            })
-                                          }
-                                        />
-                                      </label>
-                                    </div>
-                                  );
-                                })()}
-                                {/* Target panel */}
-                                <div
-                                  style={{
-                                    border: "1px solid var(--border)",
-                                    borderRadius: "4px",
-                                    padding: "0.75rem",
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: "0.5rem",
-                                  }}
-                                >
-                                  <strong
-                                    style={{
-                                      color: "var(--text-muted)",
-                                      fontSize: "0.75rem",
-                                      textTransform: "uppercase" as const,
-                                    }}
-                                  >
-                                    Target
-                                  </strong>
-                                  <label>
-                                    Type
-                                    <select
-                                      value={editingRel.targetType}
-                                      onChange={(e) =>
-                                        setEditingRel({
-                                          ...editingRel,
-                                          targetType: e.target.value as "table" | "function",
-                                          targetTableId: "",
-                                          targetColumn: "",
-                                          targetFunctionName: "",
-                                          functionArg: "",
-                                        })
-                                      }
-                                    >
-                                      <option value="table">Table</option>
-                                      <option value="function">Function (computed)</option>
-                                    </select>
-                                  </label>
-                                  {editingRel.targetType === "table" ? (
-                                    (() => {
-                                      const uniqueDomains = [
-                                        ...new Set(
-                                          tables
-                                            .map((t) => normalizeDomain(t.domainId))
-                                            .filter(Boolean),
-                                        ),
-                                      ].sort();
-                                      const filteredTgtTables = editingRel.targetDomain
-                                        ? tables.filter(
-                                            (t) =>
-                                              normalizeDomain(t.domainId) ===
-                                              editingRel.targetDomain,
-                                          )
-                                        : tables;
-                                      return (
-                                        <>
-                                          <label>
-                                            Domain
-                                            <select
-                                              value={editingRel.targetDomain}
-                                              onChange={(e) =>
-                                                setEditingRel({
-                                                  ...editingRel,
-                                                  targetDomain: e.target.value,
-                                                  targetTableId: "",
-                                                })
-                                              }
-                                            >
-                                              <option value="">All</option>
-                                              {uniqueDomains.map((d) => (
-                                                <option key={d} value={d}>
-                                                  {d}
-                                                </option>
-                                              ))}
-                                            </select>
-                                          </label>
-                                          <label>
-                                            Table
-                                            <select
-                                              value={editingRel.targetTableId}
-                                              onChange={(e) =>
-                                                setEditingRel({
-                                                  ...editingRel,
-                                                  targetTableId: e.target.value,
-                                                })
-                                              }
-                                            >
-                                              <option value="">Select...</option>
-                                              {filteredTgtTables.map((t) => (
-                                                <option key={t.id} value={t.tableName}>
-                                                  {t.tableName}
-                                                </option>
-                                              ))}
-                                            </select>
-                                          </label>
-                                          <label>
-                                            Column
-                                            <input
-                                              value={editingRel.targetColumn}
-                                              onChange={(e) =>
-                                                setEditingRel({
-                                                  ...editingRel,
-                                                  targetColumn: e.target.value,
-                                                })
-                                              }
-                                            />
-                                          </label>
-                                        </>
-                                      );
-                                    })()
-                                  ) : (
-                                    <>
-                                      <label>
-                                        Function
-                                        <select
-                                          value={editingRel.targetFunctionName}
-                                          onChange={(e) =>
-                                            setEditingRel({
-                                              ...editingRel,
-                                              targetFunctionName: e.target.value,
-                                            })
-                                          }
-                                        >
-                                          <option value="">Select...</option>
-                                          {functions.map((f) => (
-                                            <option key={f.name} value={f.name}>
-                                              {f.name}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      </label>
-                                      <label>
-                                        Function Arg (receives source column)
-                                        <input
-                                          value={editingRel.functionArg}
-                                          onChange={(e) =>
-                                            setEditingRel({
-                                              ...editingRel,
-                                              functionArg: e.target.value,
-                                            })
-                                          }
-                                          placeholder="arg name"
-                                        />
-                                      </label>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="form-row">
-                                {editingRel.targetType === "table" && (
-                                  <label>
-                                    Cardinality
-                                    <select
-                                      value={editingRel.cardinality}
-                                      onChange={(e) =>
-                                        setEditingRel({
-                                          ...editingRel,
-                                          cardinality: e.target.value,
-                                        })
-                                      }
-                                    >
-                                      <option value="many-to-one">many-to-one</option>
-                                      <option value="one-to-many">one-to-many</option>
-                                    </select>
-                                    {editingRel.cardinality === "many-to-one" && (
-                                      <span
-                                        style={{
-                                          color: "var(--warning, #b45309)",
-                                          fontSize: "0.78rem",
-                                          marginTop: "0.25rem",
-                                          display: "block",
-                                        }}
-                                      >
-                                        Warning: if this join returns more than one row per parent,
-                                        only the first value will be used.
-                                      </span>
-                                    )}
-                                  </label>
-                                )}
-                                <label
-                                  style={{
-                                    flexDirection: "row",
-                                    alignItems: "center",
-                                    gap: "0.5rem",
-                                    whiteSpace: "nowrap",
-                                    flex: "0 0 auto",
-                                  }}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={editingRel.materialize}
-                                    onChange={(e) =>
-                                      setEditingRel({
-                                        ...editingRel,
-                                        materialize: e.target.checked,
-                                      })
-                                    }
-                                    style={{ width: "auto", padding: 0 }}
-                                  />
-                                  Materialize
-                                </label>
-                                <label
-                                  style={{
-                                    flexDirection: "row",
-                                    alignItems: "center",
-                                    gap: "0.5rem",
-                                    whiteSpace: "nowrap",
-                                    flex: "0 0 auto",
-                                  }}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={editingRel.disableCypher}
-                                    onChange={(e) =>
-                                      setEditingRel({
-                                        ...editingRel,
-                                        disableCypher: e.target.checked,
-                                      })
-                                    }
-                                    style={{ width: "auto", padding: 0 }}
-                                  />
-                                  Exclude from Cypher
-                                </label>
-                                {editingRel.materialize && (
-                                  <label>
-                                    Refresh Interval (s)
-                                    <input
-                                      type="number"
-                                      value={editingRel.refreshInterval}
-                                      onChange={(e) =>
-                                        setEditingRel({
-                                          ...editingRel,
-                                          refreshInterval: e.target.value,
-                                        })
-                                      }
-                                    />
-                                  </label>
-                                )}
-                              </div>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  gap: "0.5rem",
-                                  justifyContent: "flex-end",
-                                }}
-                              >
-                                <button
-                                  className="btn-icon"
-                                  title="Cancel"
-                                  onClick={() => setEditingRel(null)}
-                                >
-                                  <X size={14} />
-                                </button>
-                                <button
-                                  className="btn-icon-primary"
-                                  title="Save"
-                                  onClick={handleEditSave}
-                                  disabled={!!saving}
-                                >
-                                  <Save size={14} />
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                  <RelationshipRow
+                    key={r.id}
+                    rel={r}
+                    isExpanded={expanded === id}
+                    onToggle={() => {
+                      setExpanded(expanded === id ? null : id);
+                      setEditingRel(null);
+                    }}
+                    editingRel={editingRel}
+                    setEditingRel={setEditingRel}
+                    canManage={canManage}
+                    onStartEdit={() => startEditing(r)}
+                    onReverse={() => setReverseForm(buildReverse(r))}
+                    onDelete={() => handleDelete(id)}
+                    onEditSave={handleEditSave}
+                    saving={saving}
+                    tables={tables}
+                    functions={functions}
+                    tableDomainById={tableDomainById}
+                    normalizeDomain={normalizeDomain}
+                  />
                 );
-              });
-            })()
+              })
           )}
         </tbody>
       </table>
-      {(() => {
-        const filtered = rels.filter((r) => {
-          if (remoteTableIds.has(r.sourceTableId)) return false;
-          if (selectedDomain !== "all") {
-            const srcDomain = tableDomainById[r.sourceTableId];
-            const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
-            const ownerDomain = r.ownerDomainId ? normalizeDomain(r.ownerDomainId) : null;
-            if (
-              srcDomain !== selectedDomain &&
-              tgtDomain !== selectedDomain &&
-              ownerDomain !== selectedDomain
-            )
-              return false;
-          }
-          if (!relSearch.trim()) return true;
-          const q = relSearch.toLowerCase();
-          return (
-            r.sourceTableName.toLowerCase().includes(q) ||
-            r.targetTableName.toLowerCase().includes(q)
-          );
-        });
-        const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-        if (totalPages === 1) return null;
-        return (
-          <div
-            style={{
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "center",
-              justifyContent: "flex-end",
-              padding: "0.5rem 0",
-            }}
-          >
-            <button onClick={() => setRelPage(0)} disabled={relPage === 0}>
-              «
-            </button>
-            <button onClick={() => setRelPage((p) => p - 1)} disabled={relPage === 0}>
-              ‹
-            </button>
-            <span>
-              Page {relPage + 1} / {totalPages}
-            </span>
-            <button onClick={() => setRelPage((p) => p + 1)} disabled={relPage >= totalPages - 1}>
-              ›
-            </button>
-            <button onClick={() => setRelPage(totalPages - 1)} disabled={relPage >= totalPages - 1}>
-              »
-            </button>
-          </div>
-        );
-      })()}
+      {totalPages > 1 && (
+        <div
+          style={{
+            display: "flex",
+            gap: "0.5rem",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            padding: "0.5rem 0",
+          }}
+        >
+          <button onClick={() => setRelPage(0)} disabled={relPage === 0}>
+            «
+          </button>
+          <button onClick={() => setRelPage((p) => p - 1)} disabled={relPage === 0}>
+            ‹
+          </button>
+          <span>
+            Page {relPage + 1} / {totalPages}
+          </span>
+          <button onClick={() => setRelPage((p) => p + 1)} disabled={relPage >= totalPages - 1}>
+            ›
+          </button>
+          <button onClick={() => setRelPage(totalPages - 1)} disabled={relPage >= totalPages - 1}>
+            »
+          </button>
+        </div>
+      )}
 
       {showModelingModal && (
         <SqlModelingModal
@@ -1336,215 +526,25 @@ export function RelationshipsPage() {
         />
       )}
 
-      {conflictRel && (
-        <div className="modal-overlay" onClick={() => setConflictRel(null)}>
-          <div
-            className="modal"
-            style={{ width: "500px", maxWidth: "500px" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-header">
-              <h3>Relationship Already Exists</h3>
-              <button className="modal-close" onClick={() => setConflictRel(null)}>
-                <X size={14} />
-              </button>
-            </div>
-            <div
-              className="form-card"
-              style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}
-            >
-              <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                A relationship with this source and target already exists:
-              </p>
-              <dl
-                style={{
-                  margin: 0,
-                  display: "grid",
-                  gridTemplateColumns: "auto 1fr",
-                  gap: "0.35rem 1rem",
-                  fontSize: "0.82rem",
-                }}
-              >
-                <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>ID</dt>
-                <dd style={{ margin: 0, fontFamily: "monospace" }}>{conflictRel.id}</dd>
-                <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Source</dt>
-                <dd style={{ margin: 0, fontFamily: "monospace" }}>
-                  {conflictRel.sourceTableName}.{conflictRel.sourceColumn}
-                </dd>
-                <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Target</dt>
-                <dd style={{ margin: 0, fontFamily: "monospace" }}>
-                  {conflictRel.targetTableName}.{conflictRel.targetColumn}
-                </dd>
-                <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Cardinality</dt>
-                <dd style={{ margin: 0 }}>{conflictRel.cardinality}</dd>
-                {conflictRel.alias && (
-                  <>
-                    <dt style={{ color: "var(--text-muted)", fontWeight: 600 }}>Alias</dt>
-                    <dd style={{ margin: 0, fontFamily: "monospace" }}>{conflictRel.alias}</dd>
-                  </>
-                )}
-              </dl>
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <button className="btn-secondary" onClick={() => setConflictRel(null)}>
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {conflictRel && <ConflictModal rel={conflictRel} onClose={() => setConflictRel(null)} />}
 
       {reverseForm && (
-        <div className="modal-overlay" onClick={() => setReverseForm(null)}>
-          <div
-            className="modal"
-            style={{ width: "730px", maxWidth: "730px" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="modal-header">
-              <h3>Generate Reverse Relationship</h3>
-              <button className="modal-close" onClick={() => setReverseForm(null)}>
-                <X size={14} />
-              </button>
-            </div>
-            <div className="form-card">
-              <div className="form-row">
-                <label>
-                  ID
-                  <input
-                    value={reverseForm.id}
-                    onChange={(e) => setReverseForm({ ...reverseForm, id: e.target.value })}
-                  />
-                </label>
-                <label>
-                  CQL Alias (UPPER_SNAKE)
-                  <input
-                    value={reverseForm.alias}
-                    onChange={(e) => setReverseForm({ ...reverseForm, alias: e.target.value })}
-                    placeholder="PLACED_BY"
-                  />
-                </label>
-                <label>
-                  GQL Alias (camelCase)
-                  <input
-                    value={reverseForm.graphqlAlias}
-                    onChange={(e) =>
-                      setReverseForm({ ...reverseForm, graphqlAlias: e.target.value })
-                    }
-                  />
-                </label>
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={reverseForm.materialize}
-                    onChange={(e) =>
-                      setReverseForm({ ...reverseForm, materialize: e.target.checked })
-                    }
-                  />
-                  Materialize
-                </label>
-                {reverseForm.materialize && (
-                  <label>
-                    Refresh Interval (s)
-                    <input
-                      type="number"
-                      value={reverseForm.refreshInterval}
-                      onChange={(e) =>
-                        setReverseForm({ ...reverseForm, refreshInterval: e.target.value })
-                      }
-                    />
-                  </label>
-                )}
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button className="btn-secondary" onClick={() => setReverseForm(null)}>
-                Cancel
-              </button>
-              <button
-                className="btn-primary"
-                onClick={handleReverseAdd}
-                disabled={saving === "reverse"}
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
+        <ReverseRelationshipModal
+          reverseForm={reverseForm}
+          setReverseForm={setReverseForm}
+          saving={saving}
+          onSave={handleReverseAdd}
+        />
       )}
 
       {candidates.length > 0 && (
-        <>
-          <h3 style={{ marginTop: "2rem" }}>AI-Suggested Relationships</h3>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Source</th>
-                <th>Target</th>
-                <th>Cardinality</th>
-                <th>Confidence</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {candidates.map((c) => {
-                const srcDomain = tableDomainById[c.source_table_id];
-                const tgtDomain = tableDomainById[c.target_table_id];
-                const srcTable = tableNameById[c.source_table_id] ?? String(c.source_table_id);
-                const tgtTable = tableNameById[c.target_table_id] ?? String(c.target_table_id);
-                const srcLabel = srcDomain
-                  ? `${srcDomain}.${srcTable}.${c.source_column}`
-                  : `${srcTable}.${c.source_column}`;
-                const tgtLabel = tgtDomain
-                  ? `${tgtDomain}.${tgtTable}.${c.target_column}`
-                  : `${tgtTable}.${c.target_column}`;
-                const suggestedName =
-                  c.suggested_name || `${srcTable}-${c.source_column}-to-${tgtTable}`;
-                return (
-                  <React.Fragment key={c.id}>
-                    <tr>
-                      <td>
-                        <code>{suggestedName}</code>
-                      </td>
-                      <td>{srcLabel}</td>
-                      <td>{tgtLabel}</td>
-                      <td>{c.cardinality}</td>
-                      <td>{(c.confidence * 100).toFixed(0)}%</td>
-                      <td>
-                        <div style={{ display: "flex", gap: "0.5rem" }}>
-                          <button
-                            className="btn-primary"
-                            onClick={() => handleAccept(c.id, suggestedName)}
-                          >
-                            Accept
-                          </button>
-                          <button className="btn-danger" onClick={() => handleReject(c.id)}>
-                            Reject
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td
-                        colSpan={8}
-                        style={{
-                          padding: "0.25rem 1rem 0.75rem",
-                          color: "var(--text-muted)",
-                          fontSize: "0.85rem",
-                          fontStyle: "italic",
-                          borderTop: "none",
-                        }}
-                      >
-                        {c.reasoning}
-                      </td>
-                    </tr>
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </>
+        <CandidatesTable
+          candidates={candidates}
+          tableDomainById={tableDomainById}
+          tableNameById={tableNameById}
+          onAccept={handleAccept}
+          onReject={handleReject}
+        />
       )}
     </div>
   );
