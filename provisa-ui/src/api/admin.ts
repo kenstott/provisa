@@ -201,7 +201,7 @@ export async function fetchRoles(): Promise<Role[]> {
   const data = result.data as { roles: Role[] };
   return data.roles.map((r) => ({
     ...r,
-    domain_access: (r as any).domainAccess ?? r.domain_access,
+    domain_access: (r as { domainAccess?: string[] }).domainAccess ?? r.domain_access,
   }));
 }
 
@@ -652,13 +652,13 @@ export async function discoverRelationships(
   return resp.json();
 }
 
-export async function fetchCandidates(): Promise<any[]> {
+export async function fetchCandidates(): Promise<unknown[]> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates`);
   if (!resp.ok) throw new Error(`Fetch candidates failed: ${resp.status}`);
   return resp.json();
 }
 
-export async function acceptCandidate(id: number, name?: string): Promise<any> {
+export async function acceptCandidate(id: number, name?: string): Promise<unknown> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/${id}/accept`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -840,8 +840,8 @@ export async function compileQuery(
     },
     fetchPolicy: 'cache-first',
   });
-  const data = result.data as { compileQuery: CompileResult[] };
-  const results = data.compileQuery.map((r: any) => ({
+  const data = result.data as { compileQuery: Record<string, unknown>[] };
+  const results = data.compileQuery.map((r) => ({
     ...r,
     semantic_sql: r.semanticSql ?? r.semantic_sql,
     trino_sql: r.trinoSql ?? r.trino_sql,
@@ -851,7 +851,7 @@ export async function compileQuery(
     canonical_field: r.canonicalField ?? r.canonical_field,
     compiled_cypher: r.compiledCypher ?? r.compiled_cypher,
     cypher_error: r.cypherError ?? r.cypher_error,
-    column_aliases: (r.columnAliases ?? r.column_aliases ?? []).map((ca: any) => ({
+    column_aliases: ((r.columnAliases ?? r.column_aliases ?? []) as Record<string, unknown>[]).map((ca) => ({
       field_name: ca.fieldName ?? ca.field_name,
       column: ca.column,
     })),
@@ -879,8 +879,8 @@ export async function runSql(
     const rows: Record<string, unknown>[] = json?.data?.sql ?? [];
     const columns = rows.length > 0 && rows[0] != null ? Object.keys(rows[0] as object) : [];
     return { columns, rows };
-  } catch (e: any) {
-    return { columns: [], rows: [], error: e.message };
+  } catch (e) {
+    return { columns: [], rows: [], error: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -899,8 +899,8 @@ export async function nlToSql(
       return { sql: '', attempts: 0, error: text };
     }
     return await resp.json();
-  } catch (e: any) {
-    return { sql: '', attempts: 0, error: e.message };
+  } catch (e) {
+    return { sql: '', attempts: 0, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
@@ -908,7 +908,7 @@ export async function executeQuery(
   roleId: string,
   query: string,
   variables?: Record<string, unknown>
-): Promise<any> {
+): Promise<unknown> {
   const resp = await fetch(`${API_BASE}/data/graphql`, {
     method: 'POST',
     headers: {

@@ -107,6 +107,8 @@ export function NavBar() {
 
   // When route changes into a group, clear any manual pin so the route drives display
   useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       reset internal pin state in sync with an external system (router pathname) */
     setPinnedGroup(null);
   }, [location.pathname]);
 

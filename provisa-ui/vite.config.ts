@@ -17,9 +17,10 @@ import istanbul from 'vite-plugin-istanbul';
 import path from 'path';
 import fs from 'fs';
 import _monacoEditorPluginModule from 'vite-plugin-monaco-editor';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const monacoEditorPlugin: (...args: any[]) => any =
-  (_monacoEditorPluginModule as any).default ?? _monacoEditorPluginModule;
+type MonacoPluginFactory = (...args: unknown[]) => Plugin;
+const monacoEditorPlugin: MonacoPluginFactory =
+  (_monacoEditorPluginModule as { default?: MonacoPluginFactory }).default ??
+  (_monacoEditorPluginModule as unknown as MonacoPluginFactory);
 
 const graphqlLoader = (): Plugin => {
   const cache = new Map<string, string>();
@@ -136,7 +137,7 @@ export default defineConfig((config) => ({
     port: 3000,
     watch: {
       // macOS creates binary ._* AppleDouble files on exFAT volumes — exclude from watching
-      ignored: ['**\/._*'],
+      ignored: ['**/._*'],
     },
     proxy: {
       '/data': 'http://127.0.0.1:8000',

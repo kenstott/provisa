@@ -19,30 +19,17 @@ const authLink = new ApolloLink((operation, forward) => {
   return forward(operation);
 });
 
+// Always-replace merge: incoming wholly supersedes the cached array.
+const replace = { merge: (_: unknown, incoming: unknown) => incoming };
+
 const cache = new InMemoryCache({
   typePolicies: {
     Query: {
       fields: {
-        domains: {
-          merge(_existing = [], incoming) {
-            return incoming;
-          },
-        },
-        tables: {
-          merge(_existing = [], incoming) {
-            return incoming;
-          },
-        },
-        relationships: {
-          merge(_existing = [], incoming) {
-            return incoming;
-          },
-        },
-        roles: {
-          merge(_existing = [], incoming) {
-            return incoming;
-          },
-        },
+        domains: replace,
+        tables: replace,
+        relationships: replace,
+        roles: replace,
       },
     },
   },

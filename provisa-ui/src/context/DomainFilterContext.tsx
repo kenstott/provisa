@@ -4,6 +4,7 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
+/* eslint-disable react-refresh/only-export-components -- context Provider + hook colocated by design */
 import { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
 
@@ -46,16 +47,19 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
     } else {
       const ds = role.domain_access.filter((d) => d !== "*");
       if (ds.length > 0) {
+        /* eslint-disable-next-line react-hooks/set-state-in-effect --
+           reset domain filter state in sync with an external input (the active role) */
         setDomains(ds);
         setCheckedDomains(new Set(ds));
       }
     }
-  }, [role?.id]);
+  }, [role]);
 
   function toggleDomain(id: string) {
     setCheckedDomains((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }

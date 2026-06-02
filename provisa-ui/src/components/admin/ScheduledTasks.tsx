@@ -25,7 +25,10 @@ export function ScheduledTasks() {
     fetchScheduledTasks().then(setTasks).finally(() => setLoading(false));
   };
 
-  useEffect(load, []);
+  // Initial fetch on mount: loading already starts true, so no synchronous setState here.
+  useEffect(() => {
+    fetchScheduledTasks().then(setTasks).finally(() => setLoading(false));
+  }, []);
 
   const handleToggle = async (id: string, enabled: boolean) => {
     setToggling(id);

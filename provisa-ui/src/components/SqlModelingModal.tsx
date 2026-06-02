@@ -61,6 +61,9 @@ const COL_ROW_H = 27;
 const HISTORY_KEY = "sql_modeling_history";
 const HISTORY_MAX = 50;
 
+const normalizeDomain = (id: string) =>
+  id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
+
 function loadHistory(): HistoryEntry[] {
   try {
     return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]");
@@ -141,7 +144,7 @@ function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: CanvasTa
       </div>
 
       {/* Columns */}
-      {tbl.columns.map((col, _colIdx) => (
+      {tbl.columns.map((col) => (
         <div
           key={col.columnName}
           data-table={ct.tableName}
@@ -206,11 +209,11 @@ function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect }: CanvasTa
 
 // ── JoinCanvas ───────────────────────────────────────────────────────────────
 
-function JoinCanvas({ tables, existingRels: _existingRels, onGenerateSql }: JoinCanvasProps) {
+function JoinCanvas({ tables, onGenerateSql }: JoinCanvasProps) {
   const [canvasTables, setCanvasTables] = useState<CanvasTable[]>([]);
   const [canvasJoins, setCanvasJoins] = useState<CanvasJoin[]>([]);
   const [connectingMouse, setConnectingMouse] = useState<{ x: number; y: number } | null>(null);
-  const connectingRef = useRef<{ tableName: string; colName: string; colIdx: number } | null>(null);
+  const [connecting, setConnecting] = useState<{ tableName: string; colName: string; colIdx: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
   const tableMap = useMemo(() => {
@@ -249,7 +252,8 @@ function JoinCanvas({ tables, existingRels: _existingRels, onGenerateSql }: Join
     if (!tbl) return;
     const colIdx = tbl.columns.findIndex((c) => c.columnName === colName);
     if (colIdx === -1) return;
-    connectingRef.current = { tableName, colName, colIdx };
+    const from = { tableName, colName, colIdx };
+    setConnecting(from);
 
     const onMouseMove = (ev: MouseEvent) => {
       const rect = canvasRef.current?.getBoundingClientRect();
@@ -262,10 +266,9 @@ function JoinCanvas({ tables, existingRels: _existingRels, onGenerateSql }: Join
       document.removeEventListener("mouseup", onMouseUp);
 
       const target = (ev.target as HTMLElement).closest("[data-col]") as HTMLElement | null;
-      if (target && connectingRef.current) {
+      if (target) {
         const toTable = target.dataset.table;
         const toCol = target.dataset.col;
-        const from = connectingRef.current;
         if (toTable && toCol && (toTable !== from.tableName || toCol !== from.colName)) {
           const id = `${from.tableName}-${from.colName}-to-${toTable}-${toCol}`;
           setCanvasJoins((prev) => {
@@ -274,7 +277,7 @@ function JoinCanvas({ tables, existingRels: _existingRels, onGenerateSql }: Join
           });
         }
       }
-      connectingRef.current = null;
+      setConnecting(null);
       setConnectingMouse(null);
     };
 
@@ -317,7 +320,7 @@ function JoinCanvas({ tables, existingRels: _existingRels, onGenerateSql }: Join
     setCanvasTables([]);
     setCanvasJoins([]);
     setConnectingMouse(null);
-    connectingRef.current = null;
+    setConnecting(null);
   };
 
   // Port position helpers
@@ -430,10 +433,10 @@ function JoinCanvas({ tables, existingRels: _existingRels, onGenerateSql }: Join
           })}
 
           {/* In-progress connection preview */}
-          {connectingMouse && connectingRef.current && (() => {
-            const fromCt = canvasTables.find((c) => c.tableName === connectingRef.current!.tableName);
+          {connectingMouse && connecting && (() => {
+            const fromCt = canvasTables.find((c) => c.tableName === connecting.tableName);
             if (!fromCt) return null;
-            const fp = fromPort(fromCt, connectingRef.current.colIdx);
+            const fp = fromPort(fromCt, connecting.colIdx);
             const tp = connectingMouse;
             const dx = Math.max(40, Math.abs(tp.x - fp.x) * 0.5);
             return (
@@ -550,7 +553,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
 
   useEffect(() => {
     fetchRoles().catch(() => []).then((r) => {
-      const ids = r.map((x: any) => x.id);
+      const ids = r.map((x) => x.id);
       if (ids.length) setRoles(ids);
     });
     fetchDomains().catch(() => []).then((ds: Domain[]) => {
@@ -588,9 +591,6 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
     [tables],
   );
 
-  const normalizeDomain = (id: string) =>
-    id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
-
   // Group tables by normalized domain
   const domainGroups = useMemo(() => {
     const groups: Record<string, RegisteredTable[]> = {};
@@ -618,14 +618,14 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   const toggleDomain = (d: string) =>
     setExpandedDomains((prev) => {
       const next = new Set(prev);
-      next.has(d) ? next.delete(d) : next.add(d);
+      if (next.has(d)) next.delete(d); else next.add(d);
       return next;
     });
 
   const toggleTable = (t: string) =>
     setExpandedTables((prev) => {
       const next = new Set(prev);
-      next.has(t) ? next.delete(t) : next.add(t);
+      if (next.has(t)) next.delete(t); else next.add(t);
       return next;
     });
 
@@ -702,8 +702,8 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
       rows.sort((a, b) => {
         for (const { col, dir } of sorts) {
           const av = a[col], bv = b[col];
-          let cmp = 0;
           if (av == null && bv == null) continue;
+          let cmp: number;
           if (av == null) { cmp = 1; }
           else if (bv == null) { cmp = -1; }
           else if (typeof av === "number" && typeof bv === "number") { cmp = av - bv; }

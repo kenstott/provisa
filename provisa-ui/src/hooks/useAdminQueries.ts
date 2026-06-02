@@ -128,7 +128,7 @@ export function useRegisterTable() {
     }
   );
   return {
-    registerTable: async (input: any) => {
+    registerTable: async (input: Record<string, unknown>) => {
       const result = await registerTable({ variables: { input } });
       return (result.data?.registerTable ?? { success: false, message: '' }) as MutationResult;
     },
@@ -141,7 +141,7 @@ export function useUpdateTable() {
     refetchQueries: [{ query: TABLES_QUERY }],
   });
   return {
-    updateTable: async (input: any) => {
+    updateTable: async (input: Record<string, unknown>) => {
       const result = await updateTable({ variables: { input } });
       return (result.data?.updateTable ?? { success: false, message: '' }) as MutationResult;
     },
@@ -170,7 +170,7 @@ export function useUpsertRelationship() {
     }
   );
   return {
-    upsertRelationship: async (input: any) => {
+    upsertRelationship: async (input: Record<string, unknown>) => {
       const result = await upsertRelationship({ variables: { input } });
       return (result.data?.upsertRelationship ?? { success: false, message: '' }) as MutationResult;
     },
@@ -197,7 +197,7 @@ export function useDeleteRelationship() {
 export function useCreateSource() {
   const [createSource, { loading }] = useMutation<{ createSource: MutationResult }>(CreateSource);
   return {
-    createSource: async (input: any) => {
+    createSource: async (input: Record<string, unknown>) => {
       const result = await createSource({ variables: { input } });
       return (result.data?.createSource ?? { success: false, message: '' }) as MutationResult;
     },
@@ -208,7 +208,7 @@ export function useCreateSource() {
 export function useUpdateSource() {
   const [updateSource, { loading }] = useMutation<{ updateSource: MutationResult }>(UpdateSource);
   return {
-    updateSource: async (input: any) => {
+    updateSource: async (input: Record<string, unknown>) => {
       const result = await updateSource({ variables: { input } });
       return (result.data?.updateSource ?? { success: false, message: '' }) as MutationResult;
     },

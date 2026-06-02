@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+/* eslint-disable react-refresh/only-export-components -- context Provider + hook colocated by design */
 import { createContext, useContext, useState, useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import type { Capability, Role, RoleAssignment, AuthState, OrgMembership } from "../types/auth";
@@ -61,7 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     async function init() {
       let allRoles: Role[] = [];
-      let isDev = false;
+      let isDev: boolean;
       let userAssignments: RoleAssignment[] = [];
 
       try {
@@ -130,7 +131,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return [...new Set(domainIds)];
   }, [selectedRole, assignments, allDomainsList]);
 
-  const activeRoles = selectedRole === "all" ? availableRoles : [selectedRole as Role];
+  const activeRoles = useMemo(
+    () => (selectedRole === "all" ? availableRoles : [selectedRole as Role]),
+    [selectedRole, availableRoles]
+  );
   const capabilities = useMemo(() => unionCapabilities(activeRoles), [activeRoles]);
   const domainAccess = availableDomains;
   const role = activeRoles.length > 0 ? activeRoles[0] : null;

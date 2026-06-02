@@ -105,6 +105,8 @@ export function HeadersQuickInsert() {
   // Subscribe to header editor content changes via Monaco API
   useEffect(() => {
     if (!headerEditor) return;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       initial sync of React state from external Monaco header editor before subscribing to its change events */
     setHeadersText(headerEditor.getValue() ?? "");
     const disposable = (headerEditor as unknown as {
       onDidChangeModelContent?: (cb: () => void) => { dispose: () => void };

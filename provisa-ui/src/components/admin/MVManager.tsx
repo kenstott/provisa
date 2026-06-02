@@ -25,7 +25,10 @@ export function MVManager() {
     fetchMVList().then(setMvs).finally(() => setLoading(false));
   };
 
-  useEffect(load, []);
+  // Initial fetch on mount: loading already starts true, so no synchronous setState here.
+  useEffect(() => {
+    fetchMVList().then(setMvs).finally(() => setLoading(false));
+  }, []);
 
   const handleRefresh = async (id: string) => {
     setRefreshing(id);

@@ -545,6 +545,10 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
             );
           })}
 
+          {/* eslint-disable react-hooks/refs --
+              transient connecting-line overlay reads connectingRef.current during
+              render; the read is paired with connectingMouse state, which is updated
+              on every mousemove and drives this re-render, so the ref value is current */}
           {connectingMouse && connectingRef.current && (() => {
             const fromCt = canvasTables.find((c) => c.tableName === connectingRef.current!.tableName);
             if (!fromCt) return null;
@@ -558,6 +562,7 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
               />
             );
           })()}
+          {/* eslint-enable react-hooks/refs */}
         </svg>
 
         {canvasJoins.map((join) => {
@@ -685,7 +690,7 @@ export function SqlPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
-  const pendingAutoRunRef = useRef((location.state as any)?.autoRun === true);
+  const pendingAutoRunRef = useRef((location.state as { autoRun?: boolean } | null)?.autoRun === true);
   const [nlText, setNlText] = useState("");
   const [nlLoading, setNlLoading] = useState(false);
   const [nlError, setNlError] = useState("");
@@ -700,10 +705,13 @@ export function SqlPage() {
     });
   }, []);
 
+  const normalizeDomain = (id: string) =>
+    id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
+
   useEffect(() => {
     localStorage.removeItem("provisa.sql.pending_query");
     fetchRoles().catch(() => []).then((r) => {
-      const ids = r.map((x: any) => x.id);
+      const ids = r.map((x: { id: string }) => x.id);
       if (ids.length) setRoles(ids);
     });
     fetchDomains().catch(() => []).then((ds: Domain[]) => {
@@ -712,9 +720,6 @@ export function SqlPage() {
     fetchTables().catch(() => []).then(setTables);
     fetchRelationships().catch(() => []).then(setExistingRels);
   }, []);
-
-  const normalizeDomain = (id: string) =>
-    id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
 
   const sqlSchema = useMemo(() => {
     const schema: Record<string, string[] | Record<string, string[]>> = {};
@@ -810,7 +815,7 @@ export function SqlPage() {
   const toggleTable = (t: string) =>
     setExpandedTables((prev) => {
       const next = new Set(prev);
-      next.has(t) ? next.delete(t) : next.add(t);
+      if (next.has(t)) next.delete(t); else next.add(t);
       return next;
     });
 
@@ -887,7 +892,7 @@ export function SqlPage() {
       rows.sort((a, b) => {
         for (const { col, dir } of sorts) {
           const av = a[col], bv = b[col];
-          let cmp = 0;
+          let cmp: number;
           if (av == null && bv == null) continue;
           if (av == null) { cmp = 1; }
           else if (bv == null) { cmp = -1; }
@@ -1022,8 +1027,8 @@ export function SqlPage() {
       fetchRelationships().catch(() => []).then(setExistingRels);
       localStorage.setItem("provisa.schema.version", String(Date.now()));
       window.dispatchEvent(new StorageEvent("storage", { key: "provisa.schema.version" }));
-    } catch (e: any) {
-      setViewMsg(`Error: ${e.message}`);
+    } catch (e) {
+      setViewMsg(`Error: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setViewSaving(false);
     }
@@ -1147,6 +1152,12 @@ export function SqlPage() {
           }}>
             <div style={{ width: 210, overflow: "auto", height: "100%", padding: "0.5rem 0" }}>
               <div style={{ padding: "0 0.75rem 0.4rem", fontSize: "0.65rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>Schema</div>
+              {/* eslint-disable react-hooks/refs --
+                  the schema-tree rows wire insertAtCursor (a useCallback that reads
+                  editorViewRef.current to target the live CodeMirror editor) into
+                  deferred onClick/onDoubleClick handlers; the rule flags the
+                  ref-reading callback referenced in this subtree, but it is only ever
+                  invoked from event handlers, never during render */}
               {Object.entries(domainGroups).map(([domain, domainTables]) => {
                 const domainOpen = expandedDomains.has(domain);
                 return (
@@ -1238,6 +1249,7 @@ export function SqlPage() {
                   </div>
                 );
               })}
+              {/* eslint-enable react-hooks/refs */}
             </div>
           </div>
         </div>

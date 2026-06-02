@@ -221,8 +221,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       if (!result.success) throw new Error(result.message);
       setCacheTtlEdits((prev) => ({ ...prev, [tableId]: { ...prev[tableId], dirty: false, saving: false } }));
       reload();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
       setCacheTtlEdits((prev) => ({ ...prev, [tableId]: { ...prev[tableId], saving: false } }));
     }
   };
@@ -233,8 +233,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     try {
       const result = await purgeCacheByTable(tableId);
       if (!result.success) throw new Error(result.message);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setPurging((prev) => ({ ...prev, [tableId]: false }));
     }
@@ -246,8 +246,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     try {
       const result = await invalidateFileSource(tableId);
       if (!result.success) throw new Error(result.message);
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setInvalidating((prev) => ({ ...prev, [tableId]: false }));
     }
@@ -259,8 +259,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       const result = await updateTableNaming(tableId, value === "" ? null : value);
       if (!result.success) throw new Error(result.message);
       reload();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -348,6 +348,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       })
       .catch(() => setColumns([]))
       .finally(() => setLoadingColumns(false));
+    /* eslint-disable-next-line react-hooks/exhaustive-deps --
+       refetch columns only when the table selection changes; roles/sources are read for default seeding and must not retrigger a column fetch */
   }, [sourceId, schemaName, tableName]);
 
   // Reset pagination when filters change
@@ -398,12 +400,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       setTableAlias(""); setTableDescription("");
       setGovernance("pre-approved"); setColumns([]); setWatermarkColumn(""); setDataProduct(false);
       reload();
-    } catch (e: any) { setError(e.message); }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm("Delete this table registration?")) return;
-    try { await deleteTable(id); reload(); } catch (e: any) { setError(e.message); }
+    try { await deleteTable(id); reload(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   };
 
   const handleProfile = async (tableId: number) => {
@@ -411,8 +413,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     try {
       const result = await profileTable(tableId);
       setTableProfiles((prev) => ({ ...prev, [tableId]: result }));
-    } catch (e: any) {
-      setTableProfiles((prev) => ({ ...prev, [tableId]: e.message }));
+    } catch (e) {
+      setTableProfiles((prev) => ({ ...prev, [tableId]: e instanceof Error ? e.message : String(e) }));
     }
   };
 
@@ -511,7 +513,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       if (ttlEdit?.dirty) await handleSaveTableCache(editingTable.id);
       setEditingTable(null);
       reload();
-    } catch (e: any) { setError(e.message); }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setSaving(false); }
   };
 

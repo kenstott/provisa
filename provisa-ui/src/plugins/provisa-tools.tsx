@@ -8,6 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+/* eslint-disable react-refresh/only-export-components -- GraphiQL plugin entry module: the sole export is the provisaToolsPlugin factory (returns a plugin descriptor, not a component); the SqlPanel/CombinedSqlPanel/ProvisaToolsContent components are internal to the plugin and intentionally co-located. Fast-refresh DX is not a correctness concern here. */
+
 /**
  * GraphiQL plugin: Provisa Tools
  *
@@ -26,9 +28,10 @@ import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import * as _neo4jCypherMod from "@neo4j-cypher/codemirror";
 import "@neo4j-cypher/codemirror/css/cypher-codemirror.css";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any --
+   @neo4j-cypher/codemirror ships no type declarations; its named exports must be destructured from an untyped module */
 const { getCypherLanguageExtensions: _getToolsCypherExts, cypherLinter: _toolsCypherLinter } = _neo4jCypherMod as any;
-const _toolsCypherLangExts = _getToolsCypherExts({ cypherLanguage: true } as any);
+const _toolsCypherLangExts = _getToolsCypherExts({ cypherLanguage: true });
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 
@@ -319,6 +322,8 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => {
     if (!query.trim()) {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect --
+         clear async compile result (cannot be pure-derived; it is the output of the compileQuery API call) when the source query becomes empty */
       setCompiled(null);
       return;
     }

@@ -31,6 +31,8 @@ export function SchemaExplorer() {
 
   useEffect(() => {
     if (!role) return;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       data-fetch effect: resets loading/error state before fetching introspection by design */
     setError(null);
     setSrcDoc(null);
     setLoading(true);
@@ -48,9 +50,9 @@ export function SchemaExplorer() {
 <meta charset="utf-8">
 <style>body{margin:0;overflow:hidden}#voyager{height:100vh;width:100vw}</style>
 <link rel="stylesheet" href="/voyager/voyager.css">
-<script src="/voyager/react.production.min.js"><\/script>
-<script src="/voyager/react-dom.production.min.js"><\/script>
-<script src="/voyager/voyager.standalone.js"><\/script>
+<script src="/voyager/react.production.min.js"></script>
+<script src="/voyager/react-dom.production.min.js"></script>
+<script src="/voyager/voyager.standalone.js"></script>
 </head><body>
 <div id="voyager"></div>
 <script>
@@ -62,10 +64,12 @@ setTimeout(function() {
   var link = document.querySelector('a[href*="graphql-voyager"]');
   if (link) link.parentElement.style.display = 'none';
 }, 500);
-<\/script></body></html>`);
+</script></body></html>`);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
+    /* eslint-disable-next-line react-hooks/exhaustive-deps --
+       depend on role.id only; the full role object identity changes on unrelated auth refreshes and would refetch needlessly */
   }, [role?.id, domainParam]);
 
   if (!role) return <div className="page">Select a role to view schema.</div>;

@@ -111,6 +111,7 @@ function getDefaultPort(type: string) {
 
 // File-based source types (path only, no host/port/auth)
 const FILE_SOURCES = new Set(["sqlite", "csv", "parquet"]);
+const DB_DESCRIPTION_TYPES = new Set(["postgresql", "mysql", "mariadb", "sqlserver"]);
 
 // Which source types use simple host/port/db/user/pass
 const SIMPLE_RDBMS = new Set([
@@ -166,15 +167,19 @@ export function SourcesPage() {
   const updateSearch = (v: string) => {
     setSourceSearch(v);
     setPage(0);
-    setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("search", v) : n.delete("search"); return n; }, { replace: true });
+    setSearchParams((p) => { const n = new URLSearchParams(p); if (v) n.set("search", v); else n.delete("search"); return n; }, { replace: true });
   };
   const updateExpanded = (v: string | null) => {
     setExpanded(v);
-    setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("expanded", v) : n.delete("expanded"); return n; }, { replace: true });
+    setSearchParams((p) => { const n = new URLSearchParams(p); if (v) n.set("expanded", v); else n.delete("expanded"); return n; }, { replace: true });
   };
 
   useEffect(() => {
     if (editingSourceId) return;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       autofills a default description from the chosen type/host/database
+       when the user hasn't typed one; cannot be pure-derived because the
+       field stays user-editable after the default is applied */
     setForm((prev) => {
       if (prev.description) return prev;
       const typeLabel = SOURCE_TYPES.find((s) => s.value === prev.type)?.label ?? prev.type;
@@ -185,7 +190,6 @@ export function SourcesPage() {
     });
   }, [form.type, form.host, form.database, editingSourceId]);
 
-  const DB_DESCRIPTION_TYPES = new Set(["postgresql", "mysql", "mariadb", "sqlserver"]);
   useEffect(() => {
     if (editingSourceId) return;
     if (!DB_DESCRIPTION_TYPES.has(form.type)) return;
@@ -210,6 +214,9 @@ export function SourcesPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   };
+  /* eslint-disable-next-line react-hooks/set-state-in-effect --
+     mount data-fetch: load() sets loading state synchronously by design before
+     resolving sources/settings from the network */
   useEffect(load, []);
 
   const getEffectiveTtl = (source: Source): string => {
@@ -310,8 +317,8 @@ export function SourcesPage() {
       }
       handleCancelForm();
       load();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(false);
     }
@@ -328,7 +335,7 @@ export function SourcesPage() {
   const [openapiSpecMode, setOpenapiSpecMode] = useState<"path" | "inline">("path");
   const [openapiBaseUrl, setOpenapiBaseUrl] = useState("");
   const [openapiCacheTtl, setOpenapiCacheTtl] = useState("300");
-  const [openapiPreview, setOpenapiPreview] = useState<{ queries: any[]; mutations: any[]; spec_description?: string } | null>(null);
+  const [openapiPreview, setOpenapiPreview] = useState<{ queries: { operation_id: string }[]; mutations: { operation_id: string }[]; spec_description?: string } | null>(null);
   const [openapiPreviewing, setOpenapiPreviewing] = useState(false);
   const [openapiPreviewError, setOpenapiPreviewError] = useState<string | null>(null);
 
@@ -368,8 +375,8 @@ export function SourcesPage() {
         const body = await resp.json().catch(() => ({ detail: resp.statusText }));
         throw new Error(body.detail ?? resp.statusText);
       }
-    } catch (err: any) {
-      setRefreshError(err.message);
+    } catch (err) {
+      setRefreshError(err instanceof Error ? err.message : String(err));
     } finally {
       setRefreshingSourceId(null);
     }
@@ -398,8 +405,8 @@ export function SourcesPage() {
       if (data.spec_description) {
         setForm((prev) => ({ ...prev, description: prev.description || data.spec_description }));
       }
-    } catch (err: any) {
-      setOpenapiPreviewError(err.message);
+    } catch (err) {
+      setOpenapiPreviewError(err instanceof Error ? err.message : String(err));
     } finally {
       setOpenapiPreviewing(false);
     }
@@ -429,8 +436,8 @@ export function SourcesPage() {
       }
       handleCancelForm();
       load();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -460,8 +467,8 @@ export function SourcesPage() {
       await createSource({ id: form.id, type: form.type, host: form.host, port: form.port, database: form.database, username: form.username, password: form.password, path: null });
       handleCancelForm();
       load();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     }
   };
 

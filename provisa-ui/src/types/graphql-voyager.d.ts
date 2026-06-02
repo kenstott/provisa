@@ -12,7 +12,7 @@ declare module 'graphql-voyager' {
   import { ComponentType } from 'react';
 
   interface VoyagerProps {
-    introspection: (query: string) => any;
+    introspection: (query: string) => unknown;
     displayOptions?: {
       skipRelay?: boolean;
       skipDeprecated?: boolean;

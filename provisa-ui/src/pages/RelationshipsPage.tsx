@@ -93,7 +93,7 @@ export function RelationshipsPage() {
   const updateSearch = (v: string) => {
     setRelSearch(v);
     setRelPage(0);
-    setSearchParams((p) => { const n = new URLSearchParams(p); v ? n.set("search", v) : n.delete("search"); return n; }, { replace: true });
+    setSearchParams((p) => { const n = new URLSearchParams(p); if (v) n.set("search", v); else n.delete("search"); return n; }, { replace: true });
   };
 
   const load = useCallback(async () => {
@@ -108,11 +108,13 @@ export function RelationshipsPage() {
     setRels(r);
     setTables(t);
     setFunctions(actions.functions);
-    setCandidates(c);
+    setCandidates(c as Candidate[]);
     setRejectedCount(rc);
     setLoading(false);
   }, []);
 
+  /* eslint-disable-next-line react-hooks/set-state-in-effect --
+     mount data-fetch: load() sets loading state synchronously by design */
   useEffect(() => { load(); }, [load]);
 
   const tableNameById = Object.fromEntries(
@@ -198,8 +200,8 @@ export function RelationshipsPage() {
       const result = await clearRejectedCandidates();
       setDiscoverMsg(`Cleared ${result.deleted} rejection${result.deleted !== 1 ? "s" : ""}.`);
       setRejectedCount(0);
-    } catch (e: any) {
-      setDiscoverError(e.message);
+    } catch (e) {
+      setDiscoverError(e instanceof Error ? e.message : String(e));
     }
   }, []);
 
@@ -210,12 +212,12 @@ export function RelationshipsPage() {
     try {
       const result = await discoverRelationships("cross-domain");
       const c = await fetchCandidates();
-      setCandidates(c);
+      setCandidates(c as Candidate[]);
       if (result.candidates_found === 0) {
         setDiscoverError(`AI found 0 candidates (check server logs for details)`);
       }
-    } catch (e: any) {
-      setDiscoverError(e.message);
+    } catch (e) {
+      setDiscoverError(e instanceof Error ? e.message : String(e));
     } finally {
       setDiscovering(false);
     }

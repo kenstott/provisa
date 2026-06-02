@@ -31,7 +31,7 @@ import {
   useOptimisticState,
 } from "@graphiql/react";
 
-// @ts-ignore — CJS fork, no type declarations
+// @ts-expect-error -- CJS fork, no type declarations
 import { Explorer } from "graphiql-explorer";
 import { fetchDomains } from "../api/admin";
 import { domainGqlAlias } from "../types/admin";
@@ -283,7 +283,11 @@ export function SyncedExplorerContent() {
   // During a tab switch, liveQuery is still synced to the previous tab's editor.
   // Use tabQuery as the source of truth on the first render after a switch.
   const prevTabIndexRef = useRef(activeTabIndex);
+  /* eslint-disable-next-line react-hooks/refs --
+     sanctioned React render-phase pattern for detecting a prop change (activeTabIndex) to pick the source-of-truth query; the ref is read and updated in the same render with no side effects */
   const isTabSwitching = prevTabIndexRef.current !== activeTabIndex;
+  /* eslint-disable-next-line react-hooks/refs --
+     updating the previous-value ref during render is part of the same sanctioned prop-change detection pattern */
   if (isTabSwitching) prevTabIndexRef.current = activeTabIndex;
   const query = isTabSwitching ? tabQuery : (liveQuery || tabQuery);
 
@@ -472,6 +476,8 @@ export function QueryPage() {
   }, []);
 
   useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       deliberate reset of externally-fetched schema state when prerequisites are absent; the effect's job is to sync domainSchema to a network introspection fetch */
     if (!role || checkedDomains.size === 0 || serverSchemaVersion === null) { setDomainSchema(null); return; }
     const domain = [...checkedDomains].sort().join(",");
     const cacheKey = `introspection:${role.id}:${domain}:${serverSchemaVersion}`;
@@ -502,6 +508,8 @@ export function QueryPage() {
       })
       .catch((err) => { if (err.name !== "AbortError") setSchemaError(err.message ?? "Schema fetch failed"); });
     return () => controller.abort();
+    /* eslint-disable-next-line react-hooks/exhaustive-deps --
+       keyed on role.id only; the full role object identity must not retrigger the introspection fetch */
   }, [role?.id, checkedDomains, serverSchemaVersion]);
 
   const settingsRef = useRef<RedirectSettings>({
@@ -509,6 +517,8 @@ export function QueryPage() {
     threshold: redirectThreshold,
     statsEnabled,
   });
+  /* eslint-disable-next-line react-hooks/refs --
+     latest-value ref: createProvisaFetch reads current redirect settings at request time; the fetcher is memoized on role only and must not be recreated when settings change */
   settingsRef.current = {
     format:
       REDIRECT_FORMAT_OPTIONS.find((o) => o.value === redirectFormat)?.mime ??
@@ -523,6 +533,8 @@ export function QueryPage() {
     const base = createGraphiQLFetcher({
       url: `/data/graphql`,
       headers: { "X-Provisa-Role": roleId },
+      /* eslint-disable-next-line react-hooks/refs --
+         latest-value ref intentionally passed to the fetch wrapper; it is dereferenced per-request inside createProvisaFetch, never during render */
       fetch: createProvisaFetch(settingsRef),
     });
     return async function* (request, opts) {
@@ -587,17 +599,24 @@ export function QueryPage() {
       // Non-subscription: use standard fetcher
       // base() is async, so it returns Promise<AsyncGenerator|ExecutionResult>
       const result = await base(request, opts);
-      if (result && typeof (result as any)[Symbol.asyncIterator] === "function") {
-        yield* result as AsyncIterable<any>;
+      if (
+        result &&
+        typeof (result as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === "function"
+      ) {
+        yield* result as AsyncIterable<unknown>;
       } else {
         yield result;
       }
     };
+    /* eslint-disable-next-line react-hooks/exhaustive-deps --
+       keyed on role.id only; the full role object identity changes on unrelated field updates and must not recreate the fetcher */
   }, [role?.id]);
 
   const provisaPlugin = useMemo(() => {
     if (!role) return null;
     return provisaToolsPlugin(role.id);
+    /* eslint-disable-next-line react-hooks/exhaustive-deps --
+       keyed on role.id only; recreating the plugin on full role identity changes is unnecessary and disruptive */
   }, [role?.id]);
 
   const plugins = useMemo(

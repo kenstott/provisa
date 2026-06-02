@@ -164,9 +164,11 @@ export function SecurityPage() {
     setDomains(d);
     setContextDomains(d.map((x) => x.id));
     setLoading(false);
-  }, []);
+  }, [setContextDomains]);
 
-  useEffect(() => { setSelectedDomain("all"); }, []);
+  useEffect(() => { setSelectedDomain("all"); }, [setSelectedDomain]);
+  /* eslint-disable-next-line react-hooks/set-state-in-effect --
+     mount data-fetch: load() sets loading state synchronously by design */
   useEffect(() => { load(); }, [load]);
 
   const normalizeDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
@@ -195,8 +197,8 @@ export function SecurityPage() {
       setRoleForm({ ...EMPTY_ROLE });
       setEditingRoleInRow(null);
       await load();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -209,8 +211,8 @@ export function SecurityPage() {
       await deleteRole(id);
       if (expandedRole === id) setExpandedRole(null);
       await load();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -261,8 +263,8 @@ export function SecurityPage() {
       setRuleForm({ ...EMPTY_RULE });
       setEditingRuleInRow(null);
       await load();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -275,8 +277,8 @@ export function SecurityPage() {
       await deleteRlsRule(rule.roleId, rule.tableId, rule.domainId);
       if (expandedRule === rule.id) setExpandedRule(null);
       await load();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }

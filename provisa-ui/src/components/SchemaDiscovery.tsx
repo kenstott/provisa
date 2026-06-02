@@ -138,8 +138,8 @@ export function SchemaDiscovery({ sourceId, sourceType, onClose, onRegistered }:
       if (resp.columns.length === 0) {
         setError("No columns discovered. The source may need live connection data, or you can add columns manually.");
       }
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
@@ -197,8 +197,8 @@ export function SchemaDiscovery({ sourceId, sourceType, onClose, onRegistered }:
       if (!result.success) throw new Error(result.message);
       onRegistered?.();
       onClose();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setRegistering(false);
     }

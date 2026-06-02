@@ -192,7 +192,7 @@ export function ResponseTableOverlay() {
     if (!editor) return;
     if (!editor.getValue()) {
       idbGet<string>("provisa.graphql.response").then((saved) => {
-        if (saved) { (editor as any).setValue?.(saved); setResponseText(saved); }
+        if (saved) { (editor as { setValue?: (v: string) => void }).setValue?.(saved); setResponseText(saved); }
       });
     }
   }, [editorContext.responseEditor]);
@@ -201,6 +201,8 @@ export function ResponseTableOverlay() {
   useEffect(() => {
     const editor = editorContext.responseEditor;
     if (!editor) return;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       initial sync of React state from external GraphiQL editor (external-system subscription pattern) */
     setResponseText(editor.getValue() ?? "");
     const cm = (editor as unknown as { editor?: { on?: (event: string, cb: () => void) => void; off?: (event: string, cb: () => void) => void } }).editor;
     const applyStats = (text: string) => {
@@ -219,7 +221,7 @@ export function ResponseTableOverlay() {
           if (strippedText !== text) {
             lastStrippedRef.current = strippedText;
             strippingRef.current = true;
-            (editor as any).setValue?.(strippedText);
+            (editor as { setValue?: (v: string) => void }).setValue?.(strippedText);
             strippingRef.current = false;
           }
         }
@@ -252,15 +254,17 @@ export function ResponseTableOverlay() {
     if (responseText) {
       idbSet("provisa.graphql.response", responseText);
     }
+    /* eslint-disable react-hooks/set-state-in-effect -- reset user interaction state (sort/tab/expansion) when underlying response data changes */
     setSortCol(null);
     setActiveTab(0);
     setExpandedRows(new Set());
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [responseText]);
 
   const tables = useMemo(() => parseResponse(responseText), [responseText]);
   const currentTable = tables[activeTab] ?? null;
   const columns = currentTable?.columns ?? [];
-  const rows = currentTable?.rows ?? [];
+  const rows = useMemo(() => currentTable?.rows ?? [], [currentTable]);
 
   const sortedRows = useMemo(() => {
     if (!sortCol) return rows;
@@ -392,6 +396,8 @@ export function ResponseTableOverlay() {
       responseSection.insertBefore(wrapper, responseSection.firstChild);
     }
     portalRef.current = wrapper;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       portal target DOM node created imperatively on mount; flag triggers the createPortal render */
     setPortalReady(true);
   }, []);
 
@@ -417,6 +423,8 @@ export function ResponseTableOverlay() {
     }
   }, [overlayActive]);
 
+  /* eslint-disable-next-line react-hooks/refs --
+     portal target ref read during render to gate createPortal (standard imperative portal pattern); portalReady forces re-render after assignment */
   if (!portalReady || !portalRef.current) return null;
 
   return createPortal(
@@ -541,7 +549,7 @@ export function ResponseTableOverlay() {
                       className={s.physical_sql ? "stats-row-clickable" : undefined}
                       onClick={s.physical_sql ? () => setExpandedStatRows(prev => {
                         const next = new Set(prev);
-                        next.has(i) ? next.delete(i) : next.add(i);
+                        if (next.has(i)) next.delete(i); else next.add(i);
                         return next;
                       }) : undefined}
                     >
@@ -648,7 +656,7 @@ export function ResponseTableOverlay() {
                       {isExpanded && currentTable?.arrayColumns.map((col) => {
                         const len = parseArrayLen(row[col]);
                         if (!len) return null;
-                        let subItems: Record<string, unknown>[] = [];
+                        let subItems: Record<string, unknown>[];
                         try { subItems = JSON.parse(row[col] as string) as Record<string, unknown>[]; } catch { return null; }
                         const subColSet = new Set<string>();
                         const subRows = subItems.map((item) => {
@@ -684,6 +692,8 @@ export function ResponseTableOverlay() {
         </div>
       )}
     </>,
+    /* eslint-disable-next-line react-hooks/refs --
+       passing the imperatively-created portal container ref to createPortal (standard portal pattern); render gated by portalReady above */
     portalRef.current
   );
 }

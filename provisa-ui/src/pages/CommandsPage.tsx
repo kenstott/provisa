@@ -135,16 +135,20 @@ export function CommandsPage() {
       setSources(srcs);
       setTables(tbls);
       setDomainHints(doms.map((d) => d.id));
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
   }, []);
 
+  /* eslint-disable-next-line react-hooks/set-state-in-effect --
+     mount data-fetch: load() sets loading state synchronously by design */
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       resets the available-functions list synchronously when the selected source changes, before refetching */
     setAvailableFunctions([]);
     const src = sources.find((s) => s.id === form.sourceId);
     if (!src || src.type !== "openapi") return;
@@ -290,8 +294,8 @@ export function CommandsPage() {
       setForm({ ...EMPTY_FORM });
       setEditingName(null);
       load();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
@@ -304,8 +308,8 @@ export function CommandsPage() {
     try {
       const result = await testAction(actionType, name);
       setTestResult({ name, data: result });
-    } catch (e: any) {
-      setError(`Test failed: ${e.message}`);
+    } catch (e) {
+      setError(`Test failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setTesting(null);
     }

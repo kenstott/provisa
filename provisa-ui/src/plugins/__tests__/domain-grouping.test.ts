@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-// @ts-ignore — CJS fork with no type declarations
+// @ts-expect-error -- CJS fork with no type declarations
 import { _renderGroupedFields } from 'graphiql-explorer';
 
 describe('_renderGroupedFields', () => {

@@ -13,7 +13,8 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import CodeMirror from "@uiw/react-codemirror";
 import * as _neo4jCypherMod from "@neo4j-cypher/codemirror";
 import "@neo4j-cypher/codemirror/css/cypher-codemirror.css";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any --
+   @neo4j-cypher/codemirror ships no type declarations; its named exports must be destructured from an untyped module */
 const { getCypherLanguageExtensions, useAutocompleteExtensions, cypherLinter } = _neo4jCypherMod as any;
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap } from "@codemirror/view";
@@ -595,12 +596,14 @@ interface QueryBarProps {
 }
 
 // Polyfill: @neo4j-cypher/codemirror 1.x calls view.newContentVersion() which doesn't exist on current @codemirror/view
-if (!(EditorView.prototype as any).newContentVersion) {
+const _evProto = EditorView.prototype as unknown as { newContentVersion?: () => number };
+if (!_evProto.newContentVersion) {
   let _ver = 0;
-  (EditorView.prototype as any).newContentVersion = function () { return ++_ver; };
+  _evProto.newContentVersion = function () { return ++_ver; };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+/* eslint-disable-next-line @typescript-eslint/no-explicit-any --
+   getCypherLanguageExtensions comes from the untyped @neo4j-cypher/codemirror module and accepts an untyped options object */
 const _cypherLangExts = getCypherLanguageExtensions({ cypherLanguage: true } as any);
 
 function QueryBar({ onRun, initialQuery, onQueryChange, cypherSchema, autoImpute, onToggleAutoImpute }: QueryBarProps) {
@@ -610,13 +613,16 @@ function QueryBar({ onRun, initialQuery, onQueryChange, cypherSchema, autoImpute
   useEffect(() => {
     if (!cypherSchema || !viewRef.current) return;
     try {
-      // editorSupportField is included by getCypherLanguageExtensions
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      // @ts-ignore
+      // editorSupportField is included by getCypherLanguageExtensions, but the
+      // package ships no type declaration for this CommonJS subpath.
+      /* eslint-disable @typescript-eslint/no-require-imports -- optional CommonJS subpath resolved at 
+      runtime inside try/catch; a static import would throw at module load when the subpath is unavailable */
+      // @ts-expect-error -- no type declarations for this codemirror subpath
       const { editorSupportField } = require("@neo4j-cypher/codemirror/lib/cypher-state-definitions") as { editorSupportField: import("@codemirror/state").StateField<{ setSchema: (s: CypherSchema) => void }> };
+      /* eslint-enable @typescript-eslint/no-require-imports */
       const editorSupport = viewRef.current.state.field(editorSupportField, false);
       if (editorSupport) editorSupport.setSchema(cypherSchema);
-    } catch (_) { /* subpath not resolved */ }
+    } catch { /* subpath not resolved */ }
   }, [cypherSchema]);
 
   const handleChange = (val: string) => {
@@ -749,6 +755,8 @@ export function GraphPage() {
       })
       .catch(() => {})
       .finally(() => setSchemaLoading(false));
+    /* eslint-disable-next-line react-hooks/exhaustive-deps --
+       keyed on role.id only; the full role object identity changes on unrelated auth refreshes and must not refetch the graph schema */
   }, [role?.id]);
 
   const runQuery = useCallback(async (query: string) => {
@@ -870,7 +878,7 @@ export function GraphPage() {
     }
 
     // Find a rel where one side is a frame node and the other is the dropped table
-    let sourceVar = "n";
+    let sourceVar: string;
     let relAlias: string | null = null;
     const rel = adminRels.find((r) => {
       const srcMatch = frameNodeLabels.has(r.sourceTableName) && r.targetTableName === droppedTableName;
@@ -907,19 +915,19 @@ export function GraphPage() {
 
   const handleColorChange = useCallback((label: string, color: string) => {
     setColorOverrides((prev) => ({ ...prev, [label]: color }));
-  }, []);
+  }, [setColorOverrides]);
 
   const handleSizeChange = useCallback((label: string, size: number) => {
     setSizeOverrides((prev) => ({ ...prev, [label]: size }));
-  }, []);
+  }, [setSizeOverrides]);
 
   const handleLabelPropertyChange = useCallback((label: string, prop: string) => {
     setLabelProperty((prev) => ({ ...prev, [label]: prop }));
-  }, []);
+  }, [setLabelProperty]);
 
   const handleRelLineChange = useCallback((type: string, override: RelLineOverride) => {
     setRelLineOverrides((prev) => ({ ...prev, [type]: override }));
-  }, []);
+  }, [setRelLineOverrides]);
 
   const handleSaveEdgeAlias = useCallback(async (relId: number, cqlAlias: string, gqlAlias: string) => {
     const rel = adminRels.find((r) => r.id === relId);

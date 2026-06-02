@@ -24,7 +24,9 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   const [provider, setProvider] = useState<string | null>(null);
   const [providerLoading, setProviderLoading] = useState(true);
 
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register">(() =>
+    new URLSearchParams(window.location.search).get("invite") ? "register" : "login"
+  );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -47,7 +49,6 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       fetchInviteInfo(token)
         .then(setInviteInfo)
         .catch((err) => setInviteError(err.message));
-      setMode("register");
     }
   }, []);
 

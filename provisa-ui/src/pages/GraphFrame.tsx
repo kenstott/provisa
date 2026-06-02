@@ -8,34 +8,43 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+/* eslint-disable react-refresh/only-export-components -- this module intentionally co-locates the GraphFrame component with its pure graph-model helpers (PALETTE, labelColor, extractElements, injectExclusion, getStableNodeId, GNode/GEdge guards) that GraphPage and the graph test suite import directly; splitting them out is a separate refactor, and fast-refresh DX is not a correctness concern here */
+/* eslint-disable react-hooks/refs --
+   GraphCanvas is an imperative Cytoscape integration: latest-value refs mirror
+   props/state for cytoscape event callbacks, and prev-value refs gate documented
+   render-phase adjustments. Ref reads during render are intrinsic to driving the
+   imperative graph engine and are intentional throughout this module */
+
 import { useRef, useEffect, useLayoutEffect, useState, useCallback, useMemo } from "react";
 import type { Relationship } from "../types/admin";
 import CodeMirror from "@uiw/react-codemirror";
 import * as _neo4jCypherMod from "@neo4j-cypher/codemirror";
 import "@neo4j-cypher/codemirror/css/cypher-codemirror.css";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const { getCypherLanguageExtensions: _getGFCypherExts, cypherLinter: _gfCypherLinter } = _neo4jCypherMod as any;
-const _gfCypherLangExts = _getGFCypherExts({ cypherLanguage: true } as any);
+const { getCypherLanguageExtensions: _getGFCypherExts, cypherLinter: _gfCypherLinter } =
+  _neo4jCypherMod as unknown as {
+    getCypherLanguageExtensions: (opts: { cypherLanguage: boolean }) => Extension[];
+    cypherLinter: (...args: unknown[]) => Extension;
+  };
+const _gfCypherLangExts = _getGFCypherExts({ cypherLanguage: true });
 import { json as jsonLang } from "@codemirror/lang-json";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView, keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
+import type { Extension } from "@codemirror/state";
 import { createPortal } from "react-dom";
 import { CopySymbolButton } from "../components/CopyButton";
 import cytoscape from "cytoscape";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import fcoseRaw from "cytoscape-fcose";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import layoutUtilitiesRaw from "cytoscape-layout-utilities";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import cytoscapeSvgRaw from "cytoscape-svg";
 // CJS bundles — .default may or may not be present depending on bundler
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const fcose = (fcoseRaw as any).default ?? fcoseRaw;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const layoutUtilities = (layoutUtilitiesRaw as any).default ?? layoutUtilitiesRaw;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const cytoscapeSvg = (cytoscapeSvgRaw as any).default ?? cytoscapeSvgRaw;
+type CyExt = Parameters<typeof cytoscape.use>[0];
+type CyExtModule = { default?: CyExt } | CyExt;
+const _interopExt = (m: CyExtModule): CyExt =>
+  (m as { default?: CyExt }).default ?? (m as CyExt);
+const fcose = _interopExt(fcoseRaw as CyExtModule);
+const layoutUtilities = _interopExt(layoutUtilitiesRaw as CyExtModule);
+const cytoscapeSvg = _interopExt(cytoscapeSvgRaw as CyExtModule);
 try { cytoscape.use(fcose); } catch { /* already registered */ }
 try { cytoscape.use(layoutUtilities); } catch { /* already registered */ }
 try { cytoscape.use(cytoscapeSvg); } catch { /* already registered */ }
@@ -64,6 +73,9 @@ interface CyElement {
   source(): CyElement;
   target(): CyElement;
   neighborhood(): CyCollection;
+  children(): CyNodeCollection;
+  renderedPosition(): { x: number; y: number };
+  renderedWidth(): number;
 }
 interface CyCollection {
   length: number;
@@ -71,6 +83,7 @@ interface CyCollection {
   forEach(fn: (ele: CyElement, i: number) => void): this;
   map<T>(fn: (ele: CyElement, i: number) => T): T[];
   filter(fn: ((ele: CyElement) => boolean) | string): this;
+  not(selector: string): this;
   select(): this;
   unselect(): this;
   remove(): this;
@@ -82,6 +95,7 @@ interface CyCollection {
   addClass(cls: string): this;
   removeClass(cls: string): this;
   neighborhood(selector?: string): CyCollection;
+  children(): CyNodeCollection;
   data(key: string): unknown;
   id(): string;
 }
@@ -116,6 +130,8 @@ interface CyInstance {
   svg(options?: Record<string, unknown>): string;
   destroy(): void;
   style(sheet?: unknown): void;
+  container(): HTMLElement;
+  getElementById(id: string): CyCollection;
 }
 
 function _downloadBlob(blob: Blob, filename: string) {
@@ -159,7 +175,7 @@ function _compositeGraphDownload(
     ctx.drawImage(img, 0, 0);
 
     // viewBox maps hull CSS-pixel coords → PNG physical pixels (handles devicePixelRatio)
-    const container = (cy as any).container() as HTMLElement;
+    const container = cy.container();
     const cssW = container.offsetWidth;
     const cssH = container.offsetHeight;
     const svgClone = hullSvg!.cloneNode(true) as SVGSVGElement;
@@ -424,11 +440,11 @@ export function injectExclusion(
         if (key) relMap.set(key.toUpperCase(), { src: rel.sourceTableName, tgt: rel.targetTableName });
       }
       // Parse all (src)-[r:TYPE]->(tgt) and (src)<-[r:TYPE]-(tgt) patterns
-      const relPatternRe = /\((\w*)\)\s*(?:<-\[(?:\w*):(\w+)\]-|\-\[(?:\w*):(\w+)\]-?>)\s*\((\w*)\)/gi;
+      const relPatternRe = /\((\w*)\)\s*(?:<-\[(?:\w*):(\w+)\]-|-\[(?:\w*):(\w+)\]-?>)\s*\((\w*)\)/gi;
       let found: { varN: string; newQuery: string } | null = null;
       let m: RegExpExecArray | null;
       while ((m = relPatternRe.exec(workingQuery)) !== null) {
-        const [_fullMatch, srcVar, revType, fwdType, tgtVar] = m;
+        const [, srcVar, revType, fwdType, tgtVar] = m;
         const relType = (revType ?? fwdType).toUpperCase();
         const mapping = relMap.get(relType);
         if (!mapping) continue;
@@ -536,7 +552,9 @@ function Inspector({ selected, colorOverrides, onColorChange, onClose, width, on
     return relationships.find((r) => (r.alias ?? r.computedCypherAlias) === edgeType) ?? null;
   }, [selected, relationships]);
 
-  // Sync alias inputs when selection changes
+  // Sync alias inputs when selection changes — React's documented "adjust state
+  // while rendering on prop change" pattern: a prev-value ref gates a render-phase
+  // setState so the inputs reset synchronously without an extra effect pass.
   const prevRelId = useRef<number | null>(null);
   if (matchedRel && matchedRel.id !== prevRelId.current) {
     prevRelId.current = matchedRel.id;
@@ -901,9 +919,12 @@ const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
   } as CyLayoutOptions,
 };
 
-function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, labelSiblings: _labelSiblings, showingChildrenNatural, onToggleChildren: _onToggleChildren, onToggleChildrenBatch, showingChildrenCircular, onToggleChildrenCircular: _onToggleChildrenCircular, showingParents, onToggleParents: _onToggleParents, onToggleParentsBatch, showingParentsCircular, onToggleParentsCircular: _onToggleParentsCircular, onCyReady, clusterLevel, hullSvgRef }: CanvasProps) {
+function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, showingChildrenNatural, onToggleChildrenBatch, showingChildrenCircular, showingParents, onToggleParentsBatch, showingParentsCircular, onCyReady, clusterLevel, hullSvgRef }: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
+  // Latest-value ref mirrors: cytoscape's imperative style/layout callbacks read
+  // these refs (not closures) so they always see current prop values without
+  // rebuilding the graph. Writing them during render is the standard mirror pattern.
   const colorOverridesRef = useRef(colorOverrides);
   colorOverridesRef.current = colorOverrides;
   const sizeOverridesRef = useRef(sizeOverrides);
@@ -942,6 +963,10 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
   clusterLevelRef.current = clusterLevel;
   // Reset collapsed state when cluster level changes
   useEffect(() => {
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       reset collapsed-cluster state synchronously when the clusterLevel prop
+       changes; the previous level's collapse selections are meaningless under
+       a new clustering */
     setCollapsedClusters(new Set());
     collapsedClustersRef.current = new Set();
   }, [clusterLevel]);
@@ -958,24 +983,24 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     if (!cy || clusterLevelRef.current === "none") { setHullCircles([]); return; }
     const collapsed = collapsedClustersRef.current;
     const hulls: Array<{ cid: string; x: number; y: number; r: number }> = [];
-    cy.nodes("[?_cluster]").forEach((cn: any) => {
+    cy.nodes("[?_cluster]").forEach((cn) => {
       const cid = cn.data("_clusterId") as string;
       if (collapsed.has(cid)) return; // collapsed clusters have no hull
-      const children = cn.children() as any;
+      const children = cn.children();
       if (children.length === 0) return;
       let sumX = 0, sumY = 0;
-      children.forEach((c: any) => { const p = c.renderedPosition(); sumX += p.x; sumY += p.y; });
+      children.forEach((c) => { const p = c.renderedPosition(); sumX += p.x; sumY += p.y; });
       const cx = sumX / children.length;
       const cyPos = sumY / children.length;
       let maxR = 30;
-      children.forEach((c: any) => {
+      children.forEach((c) => {
         const p = c.renderedPosition();
         maxR = Math.max(maxR, Math.hypot(p.x - cx, p.y - cyPos) + c.renderedWidth() / 2 + 20);
       });
       hulls.push({ cid, x: cx, y: cyPos, r: maxR });
     });
     setHullCircles(hulls);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       const drag = hullDragRef.current;
@@ -986,7 +1011,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       const dx = (e.clientX - drag.lastX) / zoom;
       const dy = (e.clientY - drag.lastY) / zoom;
       const clusterId = `__cluster_${clusterLevelRef.current}_${_cidToId(drag.cid)}`;
-      (cy as any).getElementById(clusterId).children().forEach((n: any) => {
+      cy.getElementById(clusterId).children().forEach((n) => {
         const pos = n.position();
         n.position({ x: pos.x + dx, y: pos.y + dy });
       });
@@ -1290,9 +1315,11 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             "font-size": 8,
             "color": "#6b6f82",
             "text-background-opacity": 0,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
+               cytoscape style mapper receives an untyped element; the stylesheet function signature is not modeled by our local CyInstance shim */
             "width": ((ele: any) => relLineOverridesRef.current[ele.data("label") as string]?.width ?? 1.5) as any,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
+               cytoscape style mapper receives an untyped element; the stylesheet function signature is not modeled by our local CyInstance shim */
             "line-style": ((ele: any) => relLineOverridesRef.current[ele.data("label") as string]?.style ?? "solid") as any,
           },
         },
@@ -1317,7 +1344,8 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             "text-background-opacity": 0.7,
             "text-background-color": "#1a1d2e",
             "text-background-padding": "2px",
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
+               cytoscape style mapper receives an untyped element; the stylesheet function signature is not modeled by our local CyInstance shim */
             "width": ((ele: any) => Math.min(0.75 + Math.log1p(ele.data("_metaCount") as number) * 0.5, 3)) as any,
             "line-style": "dashed",
             "line-dash-pattern": [6, 3],
@@ -1374,7 +1402,8 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       layout: { name: "null" } as CyLayoutOptions,
       minZoom: 0.05,
       maxZoom: 8,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
+         cytoscape() returns the library's own Core type; we cast through any to our local CyInstance shim which models only the subset of the API this component uses */
     }) as any as CyInstance;
 
     cy.on("tap", "node[?_collapsed]", (evt) => {
@@ -1436,7 +1465,9 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       cy.destroy();
       setHullCircles([]);
     };
-  }, [nodes, edges, overlayEdges, clusterLevel, collapsedClusters]); // eslint-disable-line react-hooks/exhaustive-deps
+    /* eslint-disable-next-line react-hooks/exhaustive-deps --
+       rebuild the cytoscape instance only when graph data or clustering changes; the latest-value style refs and imperative layout helpers are intentionally excluded so the graph is not torn down and rebuilt on unrelated renders */
+  }, [nodes, edges, overlayEdges, clusterLevel, collapsedClusters]);
 
   // Incremental overlay update — adds/removes overlay nodes+edges without full re-layout
   const prevOverlayNodesRef = useRef<Map<string, GNode>>(new Map());
@@ -1549,7 +1580,9 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     prevOverlayNodesRef.current = new Map(overlayNodes);
     prevOverlayEdgesRef.current = new Map(overlayEdges);
     if ((hadNewNodes && !allNewAreCircular) || hadNewEdges) nudgeLayout(newCyIdsForNudge.size > 0 ? newCyIdsForNudge : undefined, true);
-  }, [overlayNodes, overlayEdges, clusterLevel]); // eslint-disable-line react-hooks/exhaustive-deps
+    /* eslint-disable-next-line react-hooks/exhaustive-deps --
+       re-apply overlay nodes/edges only when the overlay data or clustering changes; the imperative apply helpers are stable refs and intentionally excluded */
+  }, [overlayNodes, overlayEdges, clusterLevel]);
 
   // Update node colors when colorOverrides changes without rebuilding the graph
   useEffect(() => {
@@ -1644,8 +1677,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
                 textAnchor="middle" fill={clusterColor(cid)} fontSize={11} fontWeight="bold" fontFamily="sans-serif"
                 style={{ pointerEvents: "all", cursor: "pointer", userSelect: "none" }}
                 onClick={() => toggleCollapse(cid)}
-                {...{ title: "Click to collapse group" } as any}
-              >{cid} ⊟</text>
+              ><title>Click to collapse group</title>{cid} ⊟</text>
             </g>
           ))}
         </svg>
@@ -1667,9 +1699,9 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           onMouseDown={() => {
             nudgeHeldRef.current = true;
             const cy = cyRef.current;
-            const sel = cy ? (cy.nodes(":selected") as any).not("[?_cluster]") : null;
+            const sel = cy ? cy.nodes(":selected").not("[?_cluster]") : null;
             const freeNodes = sel && sel.length > 0
-              ? new Set(sel.map((n: any) => n.id() as string) as string[])
+              ? new Set(sel.map((n) => n.id()))
               : undefined;
             nudgeLayout(freeNodes, true);
           }}
@@ -2075,6 +2107,9 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
   const [editQuery, setEditQuery] = useState(frame.query);
   const editQueryRef = useRef(editQuery);
   editQueryRef.current = editQuery;
+  /* eslint-disable-next-line react-hooks/set-state-in-effect --
+     sync the editable query buffer to the frame.query prop when the frame is
+     re-run or replaced externally */
   useEffect(() => { setEditQuery(frame.query); }, [frame.query]);
   const [overlayData, setOverlayData] = useState<Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>>(new Map);
   const [autoImpute, setAutoImpute] = useState(autoImputeProp);
@@ -2371,6 +2406,9 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
   // When autoImpute is turned off, clear its overlay
   useEffect(() => {
     if (!autoImpute) {
+      /* eslint-disable-next-line react-hooks/set-state-in-effect --
+         clear the imputed-relationships overlay synchronously when the user
+         turns autoImpute off */
       setOverlayData((prev) => { const next = new Map(prev); next.delete("__remaining_rels"); return next; });
     }
   }, [autoImpute]);
@@ -2394,7 +2432,7 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
       }
     });
     return () => { cancelled = true; };
-  }, [autoImpute, frame.status, frame.nodes, pkMap, schemaRels, _fetchNeighbors]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoImpute, frame.status, frame.nodes, pkMap, schemaRels, _fetchNeighbors]);
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
 

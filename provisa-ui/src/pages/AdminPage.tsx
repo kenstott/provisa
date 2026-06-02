@@ -132,6 +132,8 @@ export function AdminPage() {
   // Update state and stats when hook data arrives
   useEffect(() => {
     const loading = sourcesLoading || domainsLoading || tablesLoading || relsLoading || rlsLoading;
+    /* eslint-disable-next-line react-hooks/set-state-in-effect --
+       derived state synced from multiple Apollo query results (documented useState+useEffect derived pattern) */
     setLoading(loading);
 
     if (!loading) {
@@ -943,6 +945,8 @@ function TraceFeed() {
   const [selected, setSelected] = useState<TraceEntry | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const pausedRef = useRef(paused);
+  /* eslint-disable-next-line react-hooks/refs --
+     latest-value ref mirrors `paused` for the async poll callback (standard ref pattern) */
   pausedRef.current = paused;
 
   useEffect(() => {
