@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from '@apollo/client/react';
+import { useQuery, useMutation } from "@apollo/client/react";
 import type {
   Source,
   Domain,
@@ -6,7 +6,7 @@ import type {
   Relationship,
   RLSRule,
   MutationResult,
-} from '../types/admin';
+} from "../types/admin";
 import {
   SourcesQuery as SOURCES_QUERY,
   DomainsQuery as DOMAINS_QUERY,
@@ -29,11 +29,11 @@ import {
   UpdateSourceNaming,
   UpdateTableNaming,
   UpdateSourceAllowedDomains,
-} from './admin.graphql';
+} from "./admin.graphql";
 
 export function useSources() {
   const { data, loading, error, refetch } = useQuery<{ sources: Source[] }>(SOURCES_QUERY, {
-    fetchPolicy: 'cache-and-network',
+    fetchPolicy: "cache-and-network",
   });
   return {
     sources: data?.sources ?? [],
@@ -45,7 +45,7 @@ export function useSources() {
 
 export function useDomains() {
   const { data, loading, error, refetch } = useQuery<{ domains: Domain[] }>(DOMAINS_QUERY, {
-    fetchPolicy: 'cache-and-network',
+    fetchPolicy: "cache-and-network",
   });
   return {
     domains: data?.domains ?? [],
@@ -57,7 +57,7 @@ export function useDomains() {
 
 export function useTables() {
   const { data, loading, error, refetch } = useQuery<{ tables: RegisteredTable[] }>(TABLES_QUERY, {
-    fetchPolicy: 'cache-and-network',
+    fetchPolicy: "cache-and-network",
   });
   return {
     tables: data?.tables ?? [],
@@ -70,7 +70,7 @@ export function useTables() {
 export function useRelationships() {
   const { data, loading, error, refetch } = useQuery<{ relationships: Relationship[] }>(
     RELATIONSHIPS_QUERY,
-    { fetchPolicy: 'cache-and-network' }
+    { fetchPolicy: "cache-and-network" },
   );
   return {
     relationships: data?.relationships ?? [],
@@ -82,7 +82,7 @@ export function useRelationships() {
 
 export function useRLSRules() {
   const { data, loading, error, refetch } = useQuery<{ rlsRules: RLSRule[] }>(RLS_RULES_QUERY, {
-    fetchPolicy: 'cache-and-network',
+    fetchPolicy: "cache-and-network",
   });
   return {
     rlsRules: data?.rlsRules ?? [],
@@ -101,7 +101,7 @@ export function useCreateDomain() {
       const result = await createDomain({
         variables: { id, description, graphqlAlias: graphqlAlias ?? null },
       });
-      return (result.data?.createDomain ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.createDomain ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -114,7 +114,7 @@ export function useDeleteDomain() {
   return {
     deleteDomain: async (id: string) => {
       const result = await deleteDomain({ variables: { id } });
-      return (result.data?.deleteDomain ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.deleteDomain ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -125,12 +125,12 @@ export function useRegisterTable() {
     RegisterTable,
     {
       refetchQueries: [{ query: TABLES_QUERY }],
-    }
+    },
   );
   return {
     registerTable: async (input: Record<string, unknown>) => {
       const result = await registerTable({ variables: { input } });
-      return (result.data?.registerTable ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.registerTable ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -143,7 +143,7 @@ export function useUpdateTable() {
   return {
     updateTable: async (input: Record<string, unknown>) => {
       const result = await updateTable({ variables: { input } });
-      return (result.data?.updateTable ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.updateTable ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -156,7 +156,7 @@ export function useDeleteTable() {
   return {
     deleteTable: async (id: number) => {
       const result = await deleteTable({ variables: { id } });
-      return (result.data?.deleteTable ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.deleteTable ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -167,12 +167,12 @@ export function useUpsertRelationship() {
     UpsertRelationship,
     {
       refetchQueries: [{ query: RELATIONSHIPS_QUERY }],
-    }
+    },
   );
   return {
     upsertRelationship: async (input: Record<string, unknown>) => {
       const result = await upsertRelationship({ variables: { input } });
-      return (result.data?.upsertRelationship ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.upsertRelationship ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -183,12 +183,12 @@ export function useDeleteRelationship() {
     DeleteRelationship,
     {
       refetchQueries: [{ query: RELATIONSHIPS_QUERY }],
-    }
+    },
   );
   return {
     deleteRelationship: async (id: string) => {
       const result = await deleteRelationship({ variables: { id } });
-      return (result.data?.deleteRelationship ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.deleteRelationship ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -199,7 +199,7 @@ export function useCreateSource() {
   return {
     createSource: async (input: Record<string, unknown>) => {
       const result = await createSource({ variables: { input } });
-      return (result.data?.createSource ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.createSource ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -210,7 +210,7 @@ export function useUpdateSource() {
   return {
     updateSource: async (input: Record<string, unknown>) => {
       const result = await updateSource({ variables: { input } });
-      return (result.data?.updateSource ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.updateSource ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -221,7 +221,7 @@ export function useDeleteSource() {
   return {
     deleteSource: async (id: string) => {
       const result = await deleteSource({ variables: { id } });
-      return (result.data?.deleteSource ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.deleteSource ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -232,7 +232,7 @@ export function usePurgeCache() {
   return {
     purgeCache: async () => {
       const result = await purgeCache();
-      return (result.data?.purgeCache ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.purgeCache ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -240,12 +240,12 @@ export function usePurgeCache() {
 
 export function useUpdateSourceCache() {
   const [updateSourceCache, { loading }] = useMutation<{ updateSourceCache: MutationResult }>(
-    UpdateSourceCache
+    UpdateSourceCache,
   );
   return {
     updateSourceCache: async (sourceId: string, cacheEnabled: boolean, cacheTtl: number | null) => {
       const result = await updateSourceCache({ variables: { sourceId, cacheEnabled, cacheTtl } });
-      return (result.data?.updateSourceCache ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.updateSourceCache ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -253,12 +253,12 @@ export function useUpdateSourceCache() {
 
 export function useUpdateTableCache() {
   const [updateTableCache, { loading }] = useMutation<{ updateTableCache: MutationResult }>(
-    UpdateTableCache
+    UpdateTableCache,
   );
   return {
     updateTableCache: async (tableId: number, cacheTtl: number | null) => {
       const result = await updateTableCache({ variables: { tableId, cacheTtl } });
-      return (result.data?.updateTableCache ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.updateTableCache ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -266,12 +266,12 @@ export function useUpdateTableCache() {
 
 export function useUpdateSourceNaming() {
   const [updateSourceNaming, { loading }] = useMutation<{ updateSourceNaming: MutationResult }>(
-    UpdateSourceNaming
+    UpdateSourceNaming,
   );
   return {
     updateSourceNaming: async (sourceId: string, namingConvention: string | null) => {
       const result = await updateSourceNaming({ variables: { sourceId, namingConvention } });
-      return (result.data?.updateSourceNaming ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.updateSourceNaming ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -279,12 +279,12 @@ export function useUpdateSourceNaming() {
 
 export function useUpdateTableNaming() {
   const [updateTableNaming, { loading }] = useMutation<{ updateTableNaming: MutationResult }>(
-    UpdateTableNaming
+    UpdateTableNaming,
   );
   return {
     updateTableNaming: async (tableId: number, namingConvention: string | null) => {
       const result = await updateTableNaming({ variables: { tableId, namingConvention } });
-      return (result.data?.updateTableNaming ?? { success: false, message: '' }) as MutationResult;
+      return (result.data?.updateTableNaming ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };
@@ -299,7 +299,7 @@ export function useUpdateSourceAllowedDomains() {
       const result = await updateSourceAllowedDomains({ variables: { sourceId, allowedDomains } });
       return (result.data?.updateSourceAllowedDomains ?? {
         success: false,
-        message: '',
+        message: "",
       }) as MutationResult;
     },
     loading,

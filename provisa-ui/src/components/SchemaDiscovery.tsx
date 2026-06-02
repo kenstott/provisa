@@ -13,9 +13,19 @@ import { discoverSourceSchema, registerTable } from "../api/admin";
 import type { DiscoveredColumn } from "../api/admin";
 
 const TRINO_TYPES = [
-  "VARCHAR", "INTEGER", "BIGINT", "SMALLINT", "TINYINT",
-  "DOUBLE", "REAL", "DECIMAL", "BOOLEAN", "DATE",
-  "TIMESTAMP", "VARBINARY", "JSON",
+  "VARCHAR",
+  "INTEGER",
+  "BIGINT",
+  "SMALLINT",
+  "TINYINT",
+  "DOUBLE",
+  "REAL",
+  "DECIMAL",
+  "BOOLEAN",
+  "DATE",
+  "TIMESTAMP",
+  "VARBINARY",
+  "JSON",
 ];
 
 interface ColumnRow {
@@ -116,7 +126,12 @@ function DiscoverHints({
   return null;
 }
 
-export function SchemaDiscovery({ sourceId, sourceType, onClose, onRegistered }: SchemaDiscoveryProps) {
+export function SchemaDiscovery({
+  sourceId,
+  sourceType,
+  onClose,
+  onRegistered,
+}: SchemaDiscoveryProps) {
   const [columns, setColumns] = useState<ColumnRow[]>([]);
   const [hints, setHints] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -136,7 +151,9 @@ export function SchemaDiscovery({ sourceId, sourceType, onClose, onRegistered }:
       const resp = await discoverSourceSchema(sourceId, hints);
       setColumns(toColumnRows(resp.columns));
       if (resp.columns.length === 0) {
-        setError("No columns discovered. The source may need live connection data, or you can add columns manually.");
+        setError(
+          "No columns discovered. The source may need live connection data, or you can add columns manually.",
+        );
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -154,14 +171,17 @@ export function SchemaDiscovery({ sourceId, sourceType, onClose, onRegistered }:
   };
 
   const addManualColumn = () => {
-    setColumns([...columns, {
-      selected: true,
-      name: "",
-      type: "VARCHAR",
-      alias: "",
-      description: "",
-      sourcePath: "",
-    }]);
+    setColumns([
+      ...columns,
+      {
+        selected: true,
+        name: "",
+        type: "VARCHAR",
+        alias: "",
+        description: "",
+        sourcePath: "",
+      },
+    ]);
   };
 
   const removeColumn = (idx: number) => {
@@ -210,12 +230,22 @@ export function SchemaDiscovery({ sourceId, sourceType, onClose, onRegistered }:
     <div className="form-card" style={{ marginTop: "1rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h3 style={{ margin: 0 }}>Schema Discovery: {sourceId}</h3>
-        <button onClick={onClose} style={{ padding: "0.25rem 0.5rem" }}>Close</button>
+        <button onClick={onClose} style={{ padding: "0.25rem 0.5rem" }}>
+          Close
+        </button>
       </div>
 
       {error && <div className="error">{error}</div>}
 
-      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end", marginTop: "0.5rem" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: "0.5rem",
+          flexWrap: "wrap",
+          alignItems: "flex-end",
+          marginTop: "0.5rem",
+        }}
+      >
         <DiscoverHints sourceType={sourceType} hints={hints} setHints={setHints} />
         <button onClick={handleDiscover} disabled={loading}>
           {loading ? "Discovering..." : "Discover Schema"}
@@ -268,7 +298,9 @@ export function SchemaDiscovery({ sourceId, sourceType, onClose, onRegistered }:
                       onChange={(e) => updateColumn(idx, { type: e.target.value })}
                     >
                       {TRINO_TYPES.map((t) => (
-                        <option key={t} value={t}>{t}</option>
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
                       ))}
                     </select>
                   </td>

@@ -17,10 +17,22 @@ import { fetchRoles, fetchMe, fetchDomains } from "../api/admin";
 const DEFAULT_ADMIN_ROLE: Role = {
   id: "admin",
   capabilities: [
-    "source_registration", "table_registration", "create_relationship",
-    "access_config", "query_development", "approve_view", "full_results", "admin",
-    "usage", "read_restricted", "approve_relationship", "create_view",
-    "column_grant", "user_management", "masking_config", "superadmin",
+    "source_registration",
+    "table_registration",
+    "create_relationship",
+    "access_config",
+    "query_development",
+    "approve_view",
+    "full_results",
+    "admin",
+    "usage",
+    "read_restricted",
+    "approve_relationship",
+    "create_view",
+    "column_grant",
+    "user_management",
+    "masking_config",
+    "superadmin",
   ] as Capability[],
   domain_access: ["*"],
 };
@@ -53,7 +65,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [devMode, setDevMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const error: string | null = null;
-  const [selectedOrg, setSelectedOrg] = useState<string | null>(() => localStorage.getItem("provisa_org"));
+  const [selectedOrg, setSelectedOrg] = useState<string | null>(() =>
+    localStorage.getItem("provisa_org"),
+  );
   const [orgMemberships, setOrgMemberships] = useState<OrgMembership[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
@@ -123,9 +137,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const availableDomains = useMemo(() => {
     const roleFilter = selectedRole === "all" ? null : (selectedRole as Role).id;
-    const relevant = roleFilter
-      ? assignments.filter((a) => a.role_id === roleFilter)
-      : assignments;
+    const relevant = roleFilter ? assignments.filter((a) => a.role_id === roleFilter) : assignments;
     const domainIds = relevant.map((a) => a.domain_id);
     if (domainIds.includes("*")) return allDomainsList;
     return [...new Set(domainIds)];
@@ -133,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const activeRoles = useMemo(
     () => (selectedRole === "all" ? availableRoles : [selectedRole as Role]),
-    [selectedRole, availableRoles]
+    [selectedRole, availableRoles],
   );
   const capabilities = useMemo(() => unionCapabilities(activeRoles), [activeRoles]);
   const domainAccess = availableDomains;
@@ -155,16 +167,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     else localStorage.removeItem("provisa_org");
   }
 
-  const activeOrgId = selectedOrg ?? (orgMemberships.length === 1 ? orgMemberships[0].org_id : null);
+  const activeOrgId =
+    selectedOrg ?? (orgMemberships.length === 1 ? orgMemberships[0].org_id : null);
 
   return (
-    <AuthContext.Provider value={{
-      role, selectedRoles, capabilities, domainAccess,
-      selectedRole, selectedDomain, selectRole, selectDomain,
-      availableRoles, availableDomains, assignments, devMode, loading, error,
-      activeOrgId, orgMemberships, selectOrg,
-      userId, email, displayName,
-    }}>
+    <AuthContext.Provider
+      value={{
+        role,
+        selectedRoles,
+        capabilities,
+        domainAccess,
+        selectedRole,
+        selectedDomain,
+        selectRole,
+        selectDomain,
+        availableRoles,
+        availableDomains,
+        assignments,
+        devMode,
+        loading,
+        error,
+        activeOrgId,
+        orgMemberships,
+        selectOrg,
+        userId,
+        email,
+        displayName,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

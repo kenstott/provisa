@@ -40,19 +40,34 @@ import cytoscapeSvgRaw from "cytoscape-svg";
 // CJS bundles — .default may or may not be present depending on bundler
 type CyExt = Parameters<typeof cytoscape.use>[0];
 type CyExtModule = { default?: CyExt } | CyExt;
-const _interopExt = (m: CyExtModule): CyExt =>
-  (m as { default?: CyExt }).default ?? (m as CyExt);
+const _interopExt = (m: CyExtModule): CyExt => (m as { default?: CyExt }).default ?? (m as CyExt);
 const fcose = _interopExt(fcoseRaw as CyExtModule);
 const layoutUtilities = _interopExt(layoutUtilitiesRaw as CyExtModule);
 const cytoscapeSvg = _interopExt(cytoscapeSvgRaw as CyExtModule);
-try { cytoscape.use(fcose); } catch { /* already registered */ }
-try { cytoscape.use(layoutUtilities); } catch { /* already registered */ }
-try { cytoscape.use(cytoscapeSvg); } catch { /* already registered */ }
+try {
+  cytoscape.use(fcose);
+} catch {
+  /* already registered */
+}
+try {
+  cytoscape.use(layoutUtilities);
+} catch {
+  /* already registered */
+}
+try {
+  cytoscape.use(cytoscapeSvg);
+} catch {
+  /* already registered */
+}
 
 // Local types for cytoscape — avoids import-resolution issues with the package's
 // legacy export= declarations under moduleResolution "bundler".
 type CyLayoutOptions = { name: string; [key: string]: unknown };
-type CyElementDefinition = { group?: "nodes" | "edges"; data: Record<string, unknown>; [key: string]: unknown };
+type CyElementDefinition = {
+  group?: "nodes" | "edges";
+  data: Record<string, unknown>;
+  [key: string]: unknown;
+};
 // Aliases kept for callers that reference the old names.
 type CyElementDef = CyElementDefinition;
 interface CyElement {
@@ -116,7 +131,11 @@ interface CyInstance {
   add(eles: CyElementDef | CyElementDef[] | CyCollection): CyCollection;
   remove(eles: CyCollection | string): CyCollection;
   batch(fn: () => void): void;
-  layout(options: CyLayoutOptions): { run(): void; stop(): void; one(evt: string, fn: () => void): void };
+  layout(options: CyLayoutOptions): {
+    run(): void;
+    stop(): void;
+    one(evt: string, fn: () => void): void;
+  };
   fit(eles?: CyCollection, padding?: number): void;
   zoom(): number;
   zoom(level: number): void;
@@ -162,9 +181,9 @@ function _compositeGraphDownload(
   }
 
   // Hull coords are renderedPosition()-based (viewport pixels). Capture viewport only.
-  const dataUrl = (format === "jpg"
-    ? cy.jpg({ output: "dataURL", bg })
-    : cy.png({ output: "dataURL", bg })) as string;
+  const dataUrl = (
+    format === "jpg" ? cy.jpg({ output: "dataURL", bg }) : cy.png({ output: "dataURL", bg })
+  ) as string;
 
   const img = new Image();
   img.onload = () => {
@@ -189,9 +208,14 @@ function _compositeGraphDownload(
     const svgImg = new Image();
     const finish = () => {
       URL.revokeObjectURL(svgUrl);
-      canvas.toBlob((b) => { if (b) _downloadBlob(b, filename); }, mimeType);
+      canvas.toBlob((b) => {
+        if (b) _downloadBlob(b, filename);
+      }, mimeType);
     };
-    svgImg.onload = () => { ctx.drawImage(svgImg, 0, 0, img.width, img.height); finish(); };
+    svgImg.onload = () => {
+      ctx.drawImage(svgImg, 0, 0, img.width, img.height);
+      finish();
+    };
     svgImg.onerror = finish;
     svgImg.src = svgUrl;
   };
@@ -215,53 +239,129 @@ function _downloadGraphSvg(cy: CyInstance, hullSvg: SVGSVGElement | null) {
 
 function _toCSV(columns: string[], rows: Record<string, unknown>[]): string {
   const esc = (v: unknown) => {
-    const s = v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
-    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+    const s =
+      v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n")
+      ? `"${s.replace(/"/g, '""')}"`
+      : s;
   };
-  return [columns.map(esc).join(","), ...rows.map((r) => columns.map((c) => esc(r[c])).join(","))].join("\n");
+  return [
+    columns.map(esc).join(","),
+    ...rows.map((r) => columns.map((c) => esc(r[c])).join(",")),
+  ].join("\n");
 }
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 export const PALETTE = [
-  "#6366f1","#22c55e","#f59e0b","#ec4899","#14b8a6",
-  "#f97316","#8b5cf6","#06b6d4","#d946ef","#10b981",
-  "#e11d48","#0ea5e9","#84cc16","#a855f7","#f43f5e",
-  "#3b82f6","#eab308","#d97706","#7c3aed","#059669",
-  "#dc2626","#2563eb","#ca8a04","#9333ea","#16a34a",
-  "#db2777","#0891b2","#65a30d","#7c2d12","#1d4ed8",
-  "#be185d","#0369a1","#4d7c0f","#6d28d9","#047857",
-  "#c2410c","#1e40af","#a16207","#86198f","#064e3b",
-  "#b91c1c","#1e3a8a","#92400e","#581c87","#14532d",
-  "#831843","#164e63","#365314","#3b0764","#052e16",
-  "#ff6b6b","#ffd93d","#6bcb77","#4d96ff","#ff922b",
-  "#cc5de8","#74c0fc","#a9e34b","#ff8787","#63e6be",
+  "#6366f1",
+  "#22c55e",
+  "#f59e0b",
+  "#ec4899",
+  "#14b8a6",
+  "#f97316",
+  "#8b5cf6",
+  "#06b6d4",
+  "#d946ef",
+  "#10b981",
+  "#e11d48",
+  "#0ea5e9",
+  "#84cc16",
+  "#a855f7",
+  "#f43f5e",
+  "#3b82f6",
+  "#eab308",
+  "#d97706",
+  "#7c3aed",
+  "#059669",
+  "#dc2626",
+  "#2563eb",
+  "#ca8a04",
+  "#9333ea",
+  "#16a34a",
+  "#db2777",
+  "#0891b2",
+  "#65a30d",
+  "#7c2d12",
+  "#1d4ed8",
+  "#be185d",
+  "#0369a1",
+  "#4d7c0f",
+  "#6d28d9",
+  "#047857",
+  "#c2410c",
+  "#1e40af",
+  "#a16207",
+  "#86198f",
+  "#064e3b",
+  "#b91c1c",
+  "#1e3a8a",
+  "#92400e",
+  "#581c87",
+  "#14532d",
+  "#831843",
+  "#164e63",
+  "#365314",
+  "#3b0764",
+  "#052e16",
+  "#ff6b6b",
+  "#ffd93d",
+  "#6bcb77",
+  "#4d96ff",
+  "#ff922b",
+  "#cc5de8",
+  "#74c0fc",
+  "#a9e34b",
+  "#ff8787",
+  "#63e6be",
 ];
 
 // ── Stable node ID ────────────────────────────────────────────────────────────
 const LS_IDS = "provisa_stable_node_ids";
 const LS_CTR = "provisa_stable_node_id_counter";
 
-function _stableKey(node: { label: string; properties: Record<string, unknown> }, pkMap: Record<string, string[]>): string {
+function _stableKey(
+  node: { label: string; properties: Record<string, unknown> },
+  pkMap: Record<string, string[]>,
+): string {
   const pkCols = pkMap[node.label] ?? [];
   if (pkCols.length > 0) {
     const pkVal = pkCols.map((c) => String(node.properties[c] ?? "")).join(":");
     return `${node.label}::${pkVal}`;
   }
   // Fallback: hash all property values deterministically
-  const sorted = Object.keys(node.properties).sort().map((k) => `${k}=${String(node.properties[k])}`).join("|");
+  const sorted = Object.keys(node.properties)
+    .sort()
+    .map((k) => `${k}=${String(node.properties[k])}`)
+    .join("|");
   return `${node.label}::${sorted}`;
 }
 
-export function getStableNodeId(node: { label: string; properties: Record<string, unknown> }, pkMap: Record<string, string[]>): number {
+export function getStableNodeId(
+  node: { label: string; properties: Record<string, unknown> },
+  pkMap: Record<string, string[]>,
+): number {
   const key = _stableKey(node, pkMap);
   let map: Record<string, number> = {};
-  try { map = JSON.parse(localStorage.getItem(LS_IDS) ?? "{}"); } catch { /* */ }
+  try {
+    map = JSON.parse(localStorage.getItem(LS_IDS) ?? "{}");
+  } catch {
+    /* */
+  }
   if (key in map) return map[key];
   let ctr = 0;
-  try { ctr = parseInt(localStorage.getItem(LS_CTR) ?? "0", 10) || 0; } catch { /* */ }
+  try {
+    ctr = parseInt(localStorage.getItem(LS_CTR) ?? "0", 10) || 0;
+  } catch {
+    /* */
+  }
   ctr += 1;
   map[key] = ctr;
-  try { localStorage.setItem(LS_IDS, JSON.stringify(map)); localStorage.setItem(LS_CTR, String(ctr)); } catch { /* */ }
+  try {
+    localStorage.setItem(LS_IDS, JSON.stringify(map));
+    localStorage.setItem(LS_CTR, String(ctr));
+  } catch {
+    /* */
+  }
   return ctr;
 }
 
@@ -276,20 +376,37 @@ export function darkenColor(hex: string, factor = 0.5): string {
   const r = parseInt(c.slice(0, 2), 16);
   const g = parseInt(c.slice(2, 4), 16);
   const b = parseInt(c.slice(4, 6), 16);
-  const d = (v: number) => Math.round(v * factor).toString(16).padStart(2, "0");
+  const d = (v: number) =>
+    Math.round(v * factor)
+      .toString(16)
+      .padStart(2, "0");
   return `#${d(r)}${d(g)}${d(b)}`;
 }
 
 const CLUSTER_COLORS = [
-  "#6366f1","#8b5cf6","#ec4899","#f97316","#eab308",
-  "#22c55e","#06b6d4","#3b82f6","#ef4444","#14b8a6",
-  "#a855f7","#f43f5e","#84cc16","#0ea5e9","#d946ef",
+  "#6366f1",
+  "#8b5cf6",
+  "#ec4899",
+  "#f97316",
+  "#eab308",
+  "#22c55e",
+  "#06b6d4",
+  "#3b82f6",
+  "#ef4444",
+  "#14b8a6",
+  "#a855f7",
+  "#f43f5e",
+  "#84cc16",
+  "#0ea5e9",
+  "#d946ef",
 ];
 function clusterColor(id: string): string {
   // Hash the string id to a stable index
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (Math.imul(31, h) + id.charCodeAt(i)) | 0;
-  return CLUSTER_COLORS[((h % CLUSTER_COLORS.length) + CLUSTER_COLORS.length) % CLUSTER_COLORS.length];
+  return CLUSTER_COLORS[
+    ((h % CLUSTER_COLORS.length) + CLUSTER_COLORS.length) % CLUSTER_COLORS.length
+  ];
 }
 
 // ── Relationship line override type ──────────────────────────────────────────
@@ -325,7 +442,10 @@ export function isEdge(v: unknown): v is GEdge {
   return "type" in o && "startNode" in o && "endNode" in o && ("identity" in o || "id" in o);
 }
 
-export function extractElements(rows: unknown[]): { nodes: Map<string, GNode>; edges: Map<string, GEdge> } {
+export function extractElements(rows: unknown[]): {
+  nodes: Map<string, GNode>;
+  edges: Map<string, GEdge>;
+} {
   const nodes = new Map<string, GNode>();
   const edges = new Map<string, GEdge>();
   function walk(v: unknown) {
@@ -365,7 +485,9 @@ export function buildRemainingRelsQueries(
     byLabel.set(n.label, arr);
   });
   const labels = [...byLabel.keys()];
-  const visibleTableLabels = new Set(labels.map(l => l.includes(":") ? l.split(":").pop()! : l));
+  const visibleTableLabels = new Set(
+    labels.map((l) => (l.includes(":") ? l.split(":").pop()! : l)),
+  );
   const queries: string[] = [];
   for (const srcLabel of labels) {
     const srcNodes = byLabel.get(srcLabel) ?? [];
@@ -380,7 +502,7 @@ export function buildRemainingRelsQueries(
       if (!tgtPkCol) continue;
       const tgtIds = tgtNodes.map((n) => _formatId(String(n.id))).join(", ");
       queries.push(
-        `MATCH (a:${tableLabel})-[r]->(b:${tgtTableLabel}) WHERE a.${pkCol} IN [${srcIds}] AND b.${tgtPkCol} IN [${tgtIds}] RETURN a, r, b`
+        `MATCH (a:${tableLabel})-[r]->(b:${tgtTableLabel}) WHERE a.${pkCol} IN [${srcIds}] AND b.${tgtPkCol} IN [${tgtIds}] RETURN a, r, b`,
       );
     }
     // For non-visible targets: generate discovery queries using schema relationships
@@ -391,7 +513,7 @@ export function buildRemainingRelsQueries(
         const tgtTableLabel = rel.target.includes(":") ? rel.target.split(":").pop()! : rel.target;
         if (visibleTableLabels.has(tgtTableLabel)) continue;
         queries.push(
-          `MATCH (a:${tableLabel})-[:${rel.type}]->(b:${tgtTableLabel}) WHERE a.${pkCol} IN [${srcIds}] RETURN a, b`
+          `MATCH (a:${tableLabel})-[:${rel.type}]->(b:${tgtTableLabel}) WHERE a.${pkCol} IN [${srcIds}] RETURN a, b`,
         );
       }
     }
@@ -437,10 +559,12 @@ export function injectExclusion(
       const relMap = new Map<string, { src: string; tgt: string }>();
       for (const rel of relationships) {
         const key = rel.computedCypherAlias ?? rel.alias;
-        if (key) relMap.set(key.toUpperCase(), { src: rel.sourceTableName, tgt: rel.targetTableName });
+        if (key)
+          relMap.set(key.toUpperCase(), { src: rel.sourceTableName, tgt: rel.targetTableName });
       }
       // Parse all (src)-[r:TYPE]->(tgt) and (src)<-[r:TYPE]-(tgt) patterns
-      const relPatternRe = /\((\w*)\)\s*(?:<-\[(?:\w*):(\w+)\]-|-\[(?:\w*):(\w+)\]-?>)\s*\((\w*)\)/gi;
+      const relPatternRe =
+        /\((\w*)\)\s*(?:<-\[(?:\w*):(\w+)\]-|-\[(?:\w*):(\w+)\]-?>)\s*\((\w*)\)/gi;
       let found: { varN: string; newQuery: string } | null = null;
       let m: RegExpExecArray | null;
       while ((m = relPatternRe.exec(workingQuery)) !== null) {
@@ -466,10 +590,14 @@ export function injectExclusion(
         } else {
           const lastIdx = fullText.lastIndexOf(oldToken);
           if (lastIdx === -1) continue;
-          patchedFull = fullText.slice(0, lastIdx) + newToken + fullText.slice(lastIdx + oldToken.length);
+          patchedFull =
+            fullText.slice(0, lastIdx) + newToken + fullText.slice(lastIdx + oldToken.length);
         }
         if (patchedFull === fullText) continue;
-        const patched = workingQuery.slice(0, m.index) + patchedFull + workingQuery.slice(m.index! + fullText.length);
+        const patched =
+          workingQuery.slice(0, m.index) +
+          patchedFull +
+          workingQuery.slice(m.index! + fullText.length);
         found = { varN: assignedVar, newQuery: patched };
         break;
       }
@@ -481,11 +609,13 @@ export function injectExclusion(
 
   const usePk = pkCol !== null && pkValue !== undefined && pkValue !== null;
   const valLit = usePk
-    ? (isNaN(Number(pkValue)) ? `'${String(pkValue).replace(/'/g, "\\'")}'` : String(pkValue))
-    : (isNaN(Number(nodeId)) ? `'${nodeId.replace(/'/g, "\\'")}'` : nodeId);
-  const clause = usePk
-    ? `${varName}.${pkCol} IN [${valLit}]`
-    : `id(${varName}) IN [${valLit}]`;
+    ? isNaN(Number(pkValue))
+      ? `'${String(pkValue).replace(/'/g, "\\'")}'`
+      : String(pkValue)
+    : isNaN(Number(nodeId))
+      ? `'${nodeId.replace(/'/g, "\\'")}'`
+      : nodeId;
+  const clause = usePk ? `${varName}.${pkCol} IN [${valLit}]` : `id(${varName}) IN [${valLit}]`;
 
   // If we already have an exclusion for this variable+column, extend the IN list
   const existingRePk = usePk
@@ -537,7 +667,17 @@ interface InspectorProps {
   pkMap: Record<string, string[]>;
 }
 
-function Inspector({ selected, colorOverrides, onColorChange, onClose, width, onResizeStart, relationships, onSaveEdgeAlias, pkMap }: InspectorProps) {
+function Inspector({
+  selected,
+  colorOverrides,
+  onColorChange,
+  onClose,
+  width,
+  onResizeStart,
+  relationships,
+  onSaveEdgeAlias,
+  pkMap,
+}: InspectorProps) {
   const [inspView, setInspView] = useState<"details" | "json">("details");
   const [showPalette, setShowPalette] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -572,8 +712,12 @@ function Inspector({ selected, colorOverrides, onColorChange, onClose, width, on
   const viewSel = hovered && (
     <div className="gf-insp-viewsel">
       {(["details", "json"] as const).map((v) => (
-        <button key={v} className={`gf-insp-viewbtn ${inspView === v ? "active" : ""}`}
-                onClick={() => setInspView(v)} title={v}>
+        <button
+          key={v}
+          className={`gf-insp-viewbtn ${inspView === v ? "active" : ""}`}
+          onClick={() => setInspView(v)}
+          title={v}
+        >
           {v === "details" ? "⊡" : "{}"}
         </button>
       ))}
@@ -594,9 +738,8 @@ function Inspector({ selected, colorOverrides, onColorChange, onClose, width, on
 
   const pkCols = isN ? (pkMap[(selected.data as GNode).label] ?? []) : [];
   const idColName = pkCols[0] ?? null;
-  const pkEntry: Record<string, unknown> = isN && idColName && !((idColName) in props)
-    ? { [idColName]: (selected.data as GNode).id }
-    : {};
+  const pkEntry: Record<string, unknown> =
+    isN && idColName && !(idColName in props) ? { [idColName]: (selected.data as GNode).id } : {};
 
   const allFields: Record<string, unknown> = isN
     ? {
@@ -609,51 +752,104 @@ function Inspector({ selected, colorOverrides, onColorChange, onClose, width, on
         const e = selected.data as GEdge;
         const srcLabel = e.startNode.label;
         const srcColon = srcLabel.indexOf(":");
-        const edgeDomain = srcColon > 0 ? srcLabel.slice(0, srcColon) : (srcLabel || null);
+        const edgeDomain = srcColon > 0 ? srcLabel.slice(0, srcColon) : srcLabel || null;
         return {
           ...(edgeDomain ? { domain: edgeDomain } : {}),
-          identity: e.identity, start: e.start, end: e.end, type: e.type, ...props,
+          identity: e.identity,
+          start: e.start,
+          end: e.end,
+          type: e.type,
+          ...props,
         };
       })();
 
   return (
-    <div className="gf-inspector" style={{ width }}
-         onMouseEnter={() => setHovered(true)}
-         onMouseLeave={() => { setHovered(false); setShowPalette(false); }}>
+    <div
+      className="gf-inspector"
+      style={{ width }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => {
+        setHovered(false);
+        setShowPalette(false);
+      }}
+    >
       <div className="gf-inspector-resize-handle" onMouseDown={onResizeStart} />
-      <button className="gf-insp-close" onClick={onClose} title="Close">✕</button>
+      <button className="gf-insp-close" onClick={onClose} title="Close">
+        ✕
+      </button>
       {viewSel}
       <div style={{ position: "relative", alignSelf: "flex-start" }}>
-        <div className="gf-inspector-badge" style={{ background: color, cursor: "pointer" }}
-             title="Click to change color" onClick={() => setShowPalette((p) => !p)}>
-          {isN ? (typeName || label) : label}
+        <div
+          className="gf-inspector-badge"
+          style={{ background: color, cursor: "pointer" }}
+          title="Click to change color"
+          onClick={() => setShowPalette((p) => !p)}
+        >
+          {isN ? typeName || label : label}
         </div>
         {showPalette && (
           <div className="gf-color-palette">
             {PALETTE.map((c) => (
-              <button key={c} className="gf-color-swatch"
-                      style={{ background: c, outline: color === c ? "2px solid #fff" : "none" }}
-                      onClick={() => { onColorChange(label, c); setShowPalette(false); }} />
+              <button
+                key={c}
+                className="gf-color-swatch"
+                style={{ background: c, outline: color === c ? "2px solid #fff" : "none" }}
+                onClick={() => {
+                  onColorChange(label, c);
+                  setShowPalette(false);
+                }}
+              />
             ))}
           </div>
         )}
       </div>
       <div className="gf-inspector-kind">{isN ? "Node" : "Relationship"}</div>
-      <div className="gf-inspector-id">&lt;id&gt;: {isN ? stableId : (selected.data as GEdge).identity}</div>
+      <div className="gf-inspector-id">
+        &lt;id&gt;: {isN ? stableId : (selected.data as GEdge).identity}
+      </div>
       {!isN && (
         <>
           <div className="gf-inspector-endpoints">
-            <span style={{ color: colorOverrides[(selected.data as GEdge).startNode.label] ?? labelColor((selected.data as GEdge).startNode.label) }}>
+            <span
+              style={{
+                color:
+                  colorOverrides[(selected.data as GEdge).startNode.label] ??
+                  labelColor((selected.data as GEdge).startNode.label),
+              }}
+            >
               {(selected.data as GEdge).startNode.label || (selected.data as GEdge).start}
             </span>
             {" → "}
-            <span style={{ color: colorOverrides[(selected.data as GEdge).endNode.label] ?? labelColor((selected.data as GEdge).endNode.label) }}>
+            <span
+              style={{
+                color:
+                  colorOverrides[(selected.data as GEdge).endNode.label] ??
+                  labelColor((selected.data as GEdge).endNode.label),
+              }}
+            >
               {(selected.data as GEdge).endNode.label || (selected.data as GEdge).end}
             </span>
           </div>
           {matchedRel && onSaveEdgeAlias && (
-            <div style={{ padding: "0.5rem 0", display: "flex", flexDirection: "column", gap: "0.4rem", borderTop: "1px solid var(--border)", marginTop: "0.25rem" }}>
-              <label style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+            <div
+              style={{
+                padding: "0.5rem 0",
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.4rem",
+                borderTop: "1px solid var(--border)",
+                marginTop: "0.25rem",
+              }}
+            >
+              <label
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--text-muted)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.2rem",
+                }}
+              >
                 CQL Alias (UPPER_SNAKE)
                 <input
                   value={edgeCql}
@@ -662,7 +858,15 @@ function Inspector({ selected, colorOverrides, onColorChange, onClose, width, on
                   style={{ fontSize: "0.8rem", padding: "0.2rem 0.4rem" }}
                 />
               </label>
-              <label style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+              <label
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--text-muted)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.2rem",
+                }}
+              >
                 GQL Alias (camelCase)
                 <input
                   value={edgeGql}
@@ -692,7 +896,13 @@ function Inspector({ selected, colorOverrides, onColorChange, onClose, width, on
             {Object.entries(allFields).map(([k, v]) => (
               <tr key={k}>
                 <td className="gf-prop-key">{k}</td>
-                <td className="gf-prop-val">{v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v)}</td>
+                <td className="gf-prop-val">
+                  {v === null || v === undefined
+                    ? ""
+                    : typeof v === "object"
+                      ? JSON.stringify(v)
+                      : String(v)}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -716,7 +926,9 @@ function Inspector({ selected, colorOverrides, onColorChange, onClose, width, on
 type ClusterLevel = "none" | "l1" | "l2" | "l3" | string;
 
 // Sanitize a property value for use in a Cytoscape element ID
-function _cidToId(val: string): string { return val.replace(/[^a-zA-Z0-9_-]/g, "_"); }
+function _cidToId(val: string): string {
+  return val.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
 
 function buildClusterElements(
   nodes: Map<string, GNode>,
@@ -725,10 +937,14 @@ function buildClusterElements(
   overlayEdges?: Map<string, GEdge>,
   collapsedClusters: Set<string> = new Set(),
 ): CyElementDefinition[] {
-  const clusterKey = level === "l1" || level === "schema_L1" ? "scl1"
-    : level === "l2" || level === "schema_L2" ? "scl2"
-    : level === "l3" || level === "schema_L3" ? "scl3"
-    : level;
+  const clusterKey =
+    level === "l1" || level === "schema_L1"
+      ? "scl1"
+      : level === "l2" || level === "schema_L2"
+        ? "scl2"
+        : level === "l3" || level === "schema_L3"
+          ? "scl3"
+          : level;
 
   // 1. Cluster nodes — compound hull (expanded) or collapsed super-node
   const clusterLabels = new Map<string, Set<string>>();
@@ -737,7 +953,10 @@ function buildClusterElements(
     const raw = n.properties[clusterKey];
     if (raw === null || raw === undefined) return;
     const cid = String(raw);
-    if (!clusterLabels.has(cid)) { clusterLabels.set(cid, new Set()); clusterSizes.set(cid, 0); }
+    if (!clusterLabels.has(cid)) {
+      clusterLabels.set(cid, new Set());
+      clusterSizes.set(cid, 0);
+    }
     clusterLabels.get(cid)!.add(n.label.includes(":") ? n.label.split(":").pop()! : n.label);
     clusterSizes.set(cid, (clusterSizes.get(cid) ?? 0) + 1);
   });
@@ -787,7 +1006,12 @@ function buildClusterElements(
     const parentId = cid !== null ? `__cluster_${level}_${_cidToId(cid)}` : undefined;
     els.push({
       group: "nodes",
-      data: { id: k, label: n.label, _node: n, ...(parentId ? { parent: parentId, _inCluster: true } : {}) },
+      data: {
+        id: k,
+        label: n.label,
+        _node: n,
+        ...(parentId ? { parent: parentId, _inCluster: true } : {}),
+      },
     });
   });
 
@@ -816,7 +1040,10 @@ function buildClusterElements(
     // Same cluster: intra-cluster data edge (expanded) or drop (collapsed)
     if (srcCid !== null && srcCid === tgtCid) {
       if (!collapsedClusters.has(srcCid)) {
-        els.push({ group: "edges", data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e } });
+        els.push({
+          group: "edges",
+          data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e },
+        });
       }
       return;
     }
@@ -826,7 +1053,10 @@ function buildClusterElements(
 
     // Both free: plain data edge
     if (srcRouting === null && tgtRouting === null) {
-      els.push({ group: "edges", data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e } });
+      els.push({
+        group: "edges",
+        data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e },
+      });
       return;
     }
 
@@ -835,8 +1065,11 @@ function buildClusterElements(
     const tgtId = tgtRouting ?? tgtKey;
     const metaKey = `${srcId}→${tgtId}:${e.type}`;
     const existing = metaEdges.get(metaKey);
-    if (existing) { existing.count += 1; }
-    else { metaEdges.set(metaKey, { src: srcId, tgt: tgtId, type: e.type, count: 1 }); }
+    if (existing) {
+      existing.count += 1;
+    } else {
+      metaEdges.set(metaKey, { src: srcId, tgt: tgtId, type: e.type, count: 1 });
+    }
   });
 
   metaEdges.forEach(({ src, tgt, type, count }, metaKey) => {
@@ -889,13 +1122,15 @@ interface CanvasProps {
 
 type LayoutMode = "force" | "hierarchy";
 
-const PIN_SVG = "data:image/svg+xml;utf8," + encodeURIComponent(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>` +
-  `<circle cx='8' cy='6' r='5' fill='%23fbbf24' stroke='%2392400e' stroke-width='1.5'/>` +
-  `<circle cx='8' cy='6' r='2' fill='%2392400e'/>` +
-  `<line x1='8' y1='11' x2='8' y2='16' stroke='%2392400e' stroke-width='1.5' stroke-linecap='round'/>` +
-  `</svg>`
-);
+const PIN_SVG =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>` +
+      `<circle cx='8' cy='6' r='5' fill='%23fbbf24' stroke='%2392400e' stroke-width='1.5'/>` +
+      `<circle cx='8' cy='6' r='2' fill='%2392400e'/>` +
+      `<line x1='8' y1='11' x2='8' y2='16' stroke='%2392400e' stroke-width='1.5' stroke-linecap='round'/>` +
+      `</svg>`,
+  );
 
 const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
   force: {
@@ -919,7 +1154,29 @@ const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
   } as CyLayoutOptions,
 };
 
-function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onExcludeNode, pkMap, relationships, showingChildrenNatural, onToggleChildrenBatch, showingChildrenCircular, showingParents, onToggleParentsBatch, showingParentsCircular, onCyReady, clusterLevel, hullSvgRef }: CanvasProps) {
+function GraphCanvas({
+  nodes,
+  edges,
+  overlayNodes,
+  overlayEdges,
+  onSelect,
+  colorOverrides,
+  sizeOverrides,
+  labelProperty,
+  relLineOverrides,
+  onExcludeNode,
+  pkMap,
+  relationships,
+  showingChildrenNatural,
+  onToggleChildrenBatch,
+  showingChildrenCircular,
+  showingParents,
+  onToggleParentsBatch,
+  showingParentsCircular,
+  onCyReady,
+  clusterLevel,
+  hullSvgRef,
+}: CanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<CyInstance | null>(null);
   // Latest-value ref mirrors: cytoscape's imperative style/layout callbacks read
@@ -955,11 +1212,19 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
   // Stable ref to nudgeLayout so event handlers can call it without stale closure
   const nudgeLayoutRef = useRef<(freeNodes?: Set<string>, aggressive?: boolean) => void>(() => {});
   // SVG hull circles drawn over the canvas for cluster visualization
-  const [hullCircles, setHullCircles] = useState<Array<{ cid: string; x: number; y: number; r: number }>>([]);
+  const [hullCircles, setHullCircles] = useState<
+    Array<{ cid: string; x: number; y: number; r: number }>
+  >([]);
   const [collapsedClusters, setCollapsedClusters] = useState<Set<string>>(new Set());
   const collapsedClustersRef = useRef<Set<string>>(new Set());
   const clusterLevelRef = useRef(clusterLevel);
-  const hullDragRef = useRef<{ cid: string; lastX: number; lastY: number; startX: number; startY: number } | null>(null);
+  const hullDragRef = useRef<{
+    cid: string;
+    lastX: number;
+    lastY: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
   clusterLevelRef.current = clusterLevel;
   // Reset collapsed state when cluster level changes
   useEffect(() => {
@@ -973,14 +1238,18 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
   const toggleCollapse = useCallback((cid: string) => {
     setCollapsedClusters((prev) => {
       const next = new Set(prev);
-      if (next.has(cid)) next.delete(cid); else next.add(cid);
+      if (next.has(cid)) next.delete(cid);
+      else next.add(cid);
       collapsedClustersRef.current = next;
       return next;
     });
   }, []);
   const computeHulls = useCallback(() => {
     const cy = cyRef.current;
-    if (!cy || clusterLevelRef.current === "none") { setHullCircles([]); return; }
+    if (!cy || clusterLevelRef.current === "none") {
+      setHullCircles([]);
+      return;
+    }
     const collapsed = collapsedClustersRef.current;
     const hulls: Array<{ cid: string; x: number; y: number; r: number }> = [];
     cy.nodes("[?_cluster]").forEach((cn) => {
@@ -988,8 +1257,13 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       if (collapsed.has(cid)) return; // collapsed clusters have no hull
       const children = cn.children();
       if (children.length === 0) return;
-      let sumX = 0, sumY = 0;
-      children.forEach((c) => { const p = c.renderedPosition(); sumX += p.x; sumY += p.y; });
+      let sumX = 0,
+        sumY = 0;
+      children.forEach((c) => {
+        const p = c.renderedPosition();
+        sumX += p.x;
+        sumY += p.y;
+      });
       const cx = sumX / children.length;
       const cyPos = sumY / children.length;
       let maxR = 30;
@@ -1011,10 +1285,12 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       const dx = (e.clientX - drag.lastX) / zoom;
       const dy = (e.clientY - drag.lastY) / zoom;
       const clusterId = `__cluster_${clusterLevelRef.current}_${_cidToId(drag.cid)}`;
-      cy.getElementById(clusterId).children().forEach((n) => {
-        const pos = n.position();
-        n.position({ x: pos.x + dx, y: pos.y + dy });
-      });
+      cy.getElementById(clusterId)
+        .children()
+        .forEach((n) => {
+          const pos = n.position();
+          n.position({ x: pos.x + dx, y: pos.y + dy });
+        });
       drag.lastX = e.clientX;
       drag.lastY = e.clientY;
       computeHulls();
@@ -1034,7 +1310,12 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     };
   }, [computeHulls, toggleCollapse]);
   // Node right-click context menu
-  const [nodeCtxMenu, setNodeCtxMenu] = useState<{ x: number; y: number; nodeId: string; selectedNodeIds: string[] } | null>(null);
+  const [nodeCtxMenu, setNodeCtxMenu] = useState<{
+    x: number;
+    y: number;
+    nodeId: string;
+    selectedNodeIds: string[];
+  } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Clamp menu inside canvas-wrap after each render so it never gets clipped
@@ -1067,7 +1348,9 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     layoutRunningRef.current = true;
     const m = mode ?? layoutModeRef.current;
     const anchored = anchoredRef.current;
-    cy.nodes().forEach((n) => { if (anchored.has(n.id())) n.lock(); });
+    cy.nodes().forEach((n) => {
+      if (anchored.has(n.id())) n.lock();
+    });
     // For force mode with no edges, use grid — it fills the canvas rectangle optimally.
     // For force mode with edges, use fcose — clusters connected components.
     // For hierarchy mode, always use breadthfirst.
@@ -1078,7 +1361,14 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       opts = LAYOUT_OPTIONS.hierarchy;
     } else if (cy.edges().length === 0) {
       // No relationships — grid fills the container rectangle by auto-sizing rows/cols
-      opts = { name: "grid", animate: false, fit: true, padding: 30, avoidOverlap: true, avoidOverlapPadding: 12 } as CyLayoutOptions;
+      opts = {
+        name: "grid",
+        animate: false,
+        fit: true,
+        padding: 30,
+        avoidOverlap: true,
+        avoidOverlapPadding: 12,
+      } as CyLayoutOptions;
     } else {
       const inCluster = clusterLevelRef.current !== "none";
       opts = {
@@ -1106,110 +1396,159 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             node.style({ width: sz, height: sz, "text-max-width": `${sz - 4}px` });
             if (n) {
               const prop = labelPropertyRef.current[n.label];
-              node.style("label", prop
-                ? String(n.properties[prop] ?? n.id)
-                : String(n.properties["name"] ?? n.properties["title"] ?? n.id));
+              node.style(
+                "label",
+                prop
+                  ? String(n.properties[prop] ?? n.id)
+                  : String(n.properties["name"] ?? n.properties["title"] ?? n.id),
+              );
             }
             if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
             else node.removeClass("pinned");
           });
         });
-      } catch { /* cy may have been destroyed */ }
+      } catch {
+        /* cy may have been destroyed */
+      }
     };
     const releaseRun = () => {
-      try { cy.nodes().forEach((n) => { if (anchored.has(n.id())) n.unlock(); }); } catch { /* cy may have been destroyed */ }
+      try {
+        cy.nodes().forEach((n) => {
+          if (anchored.has(n.id())) n.unlock();
+        });
+      } catch {
+        /* cy may have been destroyed */
+      }
       layoutRunningRef.current = false;
     };
 
-    const safetyTimer = setTimeout(() => { applyStyles(); releaseRun(); try { cy.fit(undefined, 40); } catch { /* cy may have been destroyed */ } }, 1000);
+    const safetyTimer = setTimeout(() => {
+      applyStyles();
+      releaseRun();
+      try {
+        cy.fit(undefined, 40);
+      } catch {
+        /* cy may have been destroyed */
+      }
+    }, 1000);
     layout.one("layoutstop", () => {
       clearTimeout(safetyTimer);
       applyStyles();
       releaseRun();
-      try { cy.fit(undefined, 40); } catch { /* cy may have been destroyed */ }
+      try {
+        cy.fit(undefined, 40);
+      } catch {
+        /* cy may have been destroyed */
+      }
     });
     layout.run();
   }, []);
 
-  const nudgeLayout = useCallback((freeNodes?: Set<string>, aggressive = false) => {
-    const cy = cyRef.current;
-    if (!cy) return;
-    if (layoutRunningRef.current) return;
-    if (cy.edges().length === 0 || layoutModeRef.current === "hierarchy") {
-      runLayout();
-      return;
-    }
-    layoutRunningRef.current = true;
-    try {
-      const anchored = anchoredRef.current;
-      // When freeNodes is provided, lock everything except those nodes (and unlock anchored after)
-      const tempLocked = new Set<string>();
-      cy.nodes().forEach((n) => {
-        const id = n.id() as string;
-        if (freeNodes && !freeNodes.has(id)) {
-          if (!n.locked()) { n.lock(); tempLocked.add(id); }
-        } else if (anchored.has(id)) {
-          n.lock();
-        }
-      });
-      const opts = {
-        ...LAYOUT_OPTIONS.force,
-        idealEdgeLength: () => edgeDistanceRef.current,
-        randomize: false,
-        animate: true,
-        animationDuration: aggressive ? 2000 : 600,
-        animationEasing: "ease-out" as const,
-        numIter: aggressive ? 2000 : 300,
-        fit: false,
-      } as CyLayoutOptions;
-      const layout = cy.layout(opts);
-      activeLayoutRef.current = layout;
-      const applyStylesNudge = () => {
-        try {
-          cy.batch(() => {
-            cy.nodes().forEach((node) => {
-              if (node.data("_cluster")) return;
-              const lbl = node.data("label") as string;
-              const n = node.data("_node") as GNode | undefined;
-              const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
-              node.style("background-color", base);
-              const base_sz2 = sizeOverridesRef.current[lbl] ?? 44;
-              const sz = node.data("_inCluster") ? base_sz2 / 2 : base_sz2;
-              node.style({ width: sz, height: sz, "text-max-width": `${sz - 4}px` });
-              if (n) {
-                const prop = labelPropertyRef.current[n.label];
-                node.style("label", prop
-                  ? String(n.properties[prop] ?? n.id)
-                  : String(n.properties["name"] ?? n.properties["title"] ?? n.id));
-              }
-              if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
-              else node.removeClass("pinned");
+  const nudgeLayout = useCallback(
+    (freeNodes?: Set<string>, aggressive = false) => {
+      const cy = cyRef.current;
+      if (!cy) return;
+      if (layoutRunningRef.current) return;
+      if (cy.edges().length === 0 || layoutModeRef.current === "hierarchy") {
+        runLayout();
+        return;
+      }
+      layoutRunningRef.current = true;
+      try {
+        const anchored = anchoredRef.current;
+        // When freeNodes is provided, lock everything except those nodes (and unlock anchored after)
+        const tempLocked = new Set<string>();
+        cy.nodes().forEach((n) => {
+          const id = n.id() as string;
+          if (freeNodes && !freeNodes.has(id)) {
+            if (!n.locked()) {
+              n.lock();
+              tempLocked.add(id);
+            }
+          } else if (anchored.has(id)) {
+            n.lock();
+          }
+        });
+        const opts = {
+          ...LAYOUT_OPTIONS.force,
+          idealEdgeLength: () => edgeDistanceRef.current,
+          randomize: false,
+          animate: true,
+          animationDuration: aggressive ? 2000 : 600,
+          animationEasing: "ease-out" as const,
+          numIter: aggressive ? 2000 : 300,
+          fit: false,
+        } as CyLayoutOptions;
+        const layout = cy.layout(opts);
+        activeLayoutRef.current = layout;
+        const applyStylesNudge = () => {
+          try {
+            cy.batch(() => {
+              cy.nodes().forEach((node) => {
+                if (node.data("_cluster")) return;
+                const lbl = node.data("label") as string;
+                const n = node.data("_node") as GNode | undefined;
+                const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
+                node.style("background-color", base);
+                const base_sz2 = sizeOverridesRef.current[lbl] ?? 44;
+                const sz = node.data("_inCluster") ? base_sz2 / 2 : base_sz2;
+                node.style({ width: sz, height: sz, "text-max-width": `${sz - 4}px` });
+                if (n) {
+                  const prop = labelPropertyRef.current[n.label];
+                  node.style(
+                    "label",
+                    prop
+                      ? String(n.properties[prop] ?? n.id)
+                      : String(n.properties["name"] ?? n.properties["title"] ?? n.id),
+                  );
+                }
+                if (anchoredRef.current.has(node.id() as string)) node.addClass("pinned");
+                else node.removeClass("pinned");
+              });
             });
-          });
-        } catch { /* cy may have been destroyed */ }
-      };
-      const releaseNudge = () => {
-        try {
-          tempLocked.forEach((id) => { const n = cy.$id(id); if (n.length > 0) n.unlock(); });
-          cy.nodes().forEach((n) => { if (anchored.has(n.id())) n.unlock(); });
-        } catch { /* cy may have been destroyed */ }
+          } catch {
+            /* cy may have been destroyed */
+          }
+        };
+        const releaseNudge = () => {
+          try {
+            tempLocked.forEach((id) => {
+              const n = cy.$id(id);
+              if (n.length > 0) n.unlock();
+            });
+            cy.nodes().forEach((n) => {
+              if (anchored.has(n.id())) n.unlock();
+            });
+          } catch {
+            /* cy may have been destroyed */
+          }
+          layoutRunningRef.current = false;
+          if (nudgeHeldRef.current) nudgeLayoutRef.current(undefined, true);
+        };
+        const safetyTimerNudge = setTimeout(
+          () => {
+            applyStylesNudge();
+            releaseNudge();
+          },
+          aggressive ? 3000 : 1000,
+        );
+        layout.one("layoutstop", () => {
+          clearTimeout(safetyTimerNudge);
+          applyStylesNudge();
+          releaseNudge();
+        });
+        layout.run();
+      } catch {
         layoutRunningRef.current = false;
-        if (nudgeHeldRef.current) nudgeLayoutRef.current(undefined, true);
-      };
-      const safetyTimerNudge = setTimeout(() => { applyStylesNudge(); releaseNudge(); }, aggressive ? 3000 : 1000);
-      layout.one("layoutstop", () => {
-        clearTimeout(safetyTimerNudge);
-        applyStylesNudge();
-        releaseNudge();
-      });
-      layout.run();
-    } catch {
-      layoutRunningRef.current = false;
-    }
-  }, [runLayout]);
+      }
+    },
+    [runLayout],
+  );
 
   // Keep ref in sync so the cytoscape "free" event always calls the latest nudgeLayout
-  useEffect(() => { nudgeLayoutRef.current = nudgeLayout; }, [nudgeLayout]);
+  useEffect(() => {
+    nudgeLayoutRef.current = nudgeLayout;
+  }, [nudgeLayout]);
 
   const toggleLayout = useCallback(() => {
     setLayoutMode((prev) => {
@@ -1223,22 +1562,29 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
   // Full rebuild — fires only when the base graph (query result) or cluster level changes
   useEffect(() => {
     if (!containerRef.current) return;
-    const els: CyElementDefinition[] = clusterLevel !== "none"
-      ? buildClusterElements(nodes, edges, clusterLevel, overlayEdges, collapsedClusters)
-      : (() => {
-          const _els: CyElementDefinition[] = [];
-          nodes.forEach((n) => {
-            _els.push({ group: "nodes", data: { id: `${n.label}:${n.id}`, label: n.label, _node: n } });
-          });
-          edges.forEach((e) => {
-            const srcKey = `${e.startNode.label}:${e.startNode.id}`;
-            const tgtKey = `${e.endNode.label}:${e.endNode.id}`;
-            if (nodes.has(srcKey) && nodes.has(tgtKey)) {
-              _els.push({ group: "edges", data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e } });
-            }
-          });
-          return _els;
-        })();
+    const els: CyElementDefinition[] =
+      clusterLevel !== "none"
+        ? buildClusterElements(nodes, edges, clusterLevel, overlayEdges, collapsedClusters)
+        : (() => {
+            const _els: CyElementDefinition[] = [];
+            nodes.forEach((n) => {
+              _els.push({
+                group: "nodes",
+                data: { id: `${n.label}:${n.id}`, label: n.label, _node: n },
+              });
+            });
+            edges.forEach((e) => {
+              const srcKey = `${e.startNode.label}:${e.startNode.id}`;
+              const tgtKey = `${e.endNode.label}:${e.endNode.id}`;
+              if (nodes.has(srcKey) && nodes.has(tgtKey)) {
+                _els.push({
+                  group: "edges",
+                  data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e },
+                });
+              }
+            });
+            return _els;
+          })();
 
     const cy = cytoscape({
       container: containerRef.current,
@@ -1251,22 +1597,22 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
               const lbl = ele.data("label") as string;
               return colorOverridesRef.current[lbl] ?? labelColor(lbl);
             },
-            "label": (ele: CyElement) => {
+            label: (ele: CyElement) => {
               const n = ele.data("_node") as GNode | undefined;
               if (!n) return String(ele.data("label") ?? "");
               const prop = labelPropertyRef.current[n.label];
               if (prop) return String(n.properties[prop] ?? n.id);
               return String(n.properties["name"] ?? n.properties["title"] ?? n.id);
             },
-            "color": "#fff",
+            color: "#fff",
             "font-size": 10,
             "text-valign": "center",
             "text-halign": "center",
-            "width": (ele: CyElement) => {
+            width: (ele: CyElement) => {
               const lbl = ele.data("label") as string;
               return sizeOverridesRef.current[lbl] ?? 44;
             },
-            "height": (ele: CyElement) => {
+            height: (ele: CyElement) => {
               const lbl = ele.data("label") as string;
               return sizeOverridesRef.current[lbl] ?? 44;
             },
@@ -1311,16 +1657,16 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             "target-arrow-color": "#3a3d4e",
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
-            "label": "data(label)",
+            label: "data(label)",
             "font-size": 8,
-            "color": "#6b6f82",
+            color: "#6b6f82",
             "text-background-opacity": 0,
-            /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
-               cytoscape style mapper receives an untyped element; the stylesheet function signature is not modeled by our local CyInstance shim */
-            "width": ((ele: any) => relLineOverridesRef.current[ele.data("label") as string]?.width ?? 1.5) as any,
-            /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
-               cytoscape style mapper receives an untyped element; the stylesheet function signature is not modeled by our local CyInstance shim */
-            "line-style": ((ele: any) => relLineOverridesRef.current[ele.data("label") as string]?.style ?? "solid") as any,
+            /* eslint-disable @typescript-eslint/no-explicit-any -- cytoscape style mappers receive untyped elements; the stylesheet function signature is not modeled by our local CyInstance shim */
+            width: ((ele: any) =>
+              relLineOverridesRef.current[ele.data("label") as string]?.width ?? 1.5) as any,
+            "line-style": ((ele: any) =>
+              relLineOverridesRef.current[ele.data("label") as string]?.style ?? "solid") as any,
+            /* eslint-enable @typescript-eslint/no-explicit-any */
           },
         },
         {
@@ -1328,7 +1674,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           style: {
             "line-color": "#6366f1",
             "target-arrow-color": "#6366f1",
-            "width": 2.5,
+            width: 2.5,
           },
         },
         {
@@ -1338,15 +1684,16 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             "target-arrow-color": "#6366f1",
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
-            "label": "data(label)",
+            label: "data(label)",
             "font-size": 9,
-            "color": "#a5b4fc",
+            color: "#a5b4fc",
             "text-background-opacity": 0.7,
             "text-background-color": "#1a1d2e",
             "text-background-padding": "2px",
-            /* eslint-disable-next-line @typescript-eslint/no-explicit-any --
-               cytoscape style mapper receives an untyped element; the stylesheet function signature is not modeled by our local CyInstance shim */
-            "width": ((ele: any) => Math.min(0.75 + Math.log1p(ele.data("_metaCount") as number) * 0.5, 3)) as any,
+            /* eslint-disable @typescript-eslint/no-explicit-any -- cytoscape style mapper receives an untyped element; the stylesheet function signature is not modeled by our local CyInstance shim */
+            width: ((ele: any) =>
+              Math.min(0.75 + Math.log1p(ele.data("_metaCount") as number) * 0.5, 3)) as any,
+            /* eslint-enable @typescript-eslint/no-explicit-any */
             "line-style": "dashed",
             "line-dash-pattern": [6, 3],
           },
@@ -1356,19 +1703,19 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           style: {
             "background-opacity": 0,
             "border-width": 0,
-            "label": "",
-            "padding": "36px",
-            "events": "no" as const,
+            label: "",
+            padding: "36px",
+            events: "no" as const,
           },
         },
         {
           selector: "node[?_inCluster]",
           style: {
-            "width": (ele: CyElement) => {
+            width: (ele: CyElement) => {
               const lbl = ele.data("label") as string;
               return (sizeOverridesRef.current[lbl] ?? 44) / 2;
             },
-            "height": (ele: CyElement) => {
+            height: (ele: CyElement) => {
               const lbl = ele.data("label") as string;
               return (sizeOverridesRef.current[lbl] ?? 44) / 2;
             },
@@ -1390,7 +1737,7 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             "border-opacity": 1,
             width: 64,
             height: 64,
-            "color": "#fff",
+            color: "#fff",
             "font-size": 9,
             "text-wrap": "wrap" as const,
             "text-max-width": "56px",
@@ -1412,7 +1759,8 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     });
     cy.on("tap", "node", (evt) => {
       setNodeCtxMenu(null);
-      if (!evt.target.data("_collapsed")) onSelect({ kind: "node", data: evt.target.data("_node") as GNode });
+      if (!evt.target.data("_collapsed"))
+        onSelect({ kind: "node", data: evt.target.data("_node") as GNode });
     });
     cy.on("tap", "edge", (evt) => {
       setNodeCtxMenu(null);
@@ -1420,13 +1768,17 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
       if (edgeData) onSelect({ kind: "edge", data: edgeData });
     });
     cy.on("tap", (evt) => {
-      if (evt.target === cy) { onSelect(null); setNodeCtxMenu(null); }
+      if (evt.target === cy) {
+        onSelect(null);
+        setNodeCtxMenu(null);
+      }
     });
     cy.on("cxttap", "node", (evt) => {
       const pos = evt.renderedPosition ?? evt.position;
       const clickedId = evt.target.id() as string;
       const selectedIds = cy.$("node:selected").map((n) => n.id() as string);
-      const selectedNodeIds = selectedIds.includes(clickedId) && selectedIds.length > 1 ? selectedIds : [clickedId];
+      const selectedNodeIds =
+        selectedIds.includes(clickedId) && selectedIds.length > 1 ? selectedIds : [clickedId];
       setNodeCtxMenu({ x: pos.x, y: pos.y, nodeId: clickedId, selectedNodeIds });
     });
     cy.on("cxttap", (evt) => {
@@ -1510,7 +1862,10 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             cy.edges(`[source="${srcKey}"][target="${tgtKey}"][label="${e.type}"]`).length > 0 ||
             cy.edges(`[source="${tgtKey}"][target="${srcKey}"][label="${e.type}"]`).length > 0;
           if (!dupExists && cy.$id(srcKey).length > 0 && cy.$id(tgtKey).length > 0) {
-            cy.add({ group: "edges", data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e } });
+            cy.add({
+              group: "edges",
+              data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e },
+            });
           }
         }
       });
@@ -1518,13 +1873,17 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
 
     // Arrange circular children in a ring around their parents; lock so layout won't move them
     const newCyIds = new Set<string>();
-    overlayNodes.forEach((n, k) => { if (!prevNodes.has(k)) newCyIds.add(`${n.label}:${n.id}`); });
+    overlayNodes.forEach((n, k) => {
+      if (!prevNodes.has(k)) newCyIds.add(`${n.label}:${n.id}`);
+    });
     circularChildParentsRef.current.forEach((parentId) => {
       const parentNode = cy.$id(parentId);
       if (parentNode.length === 0) return;
       const pos = parentNode.position();
       const r = edgeDistanceRef.current;
-      const children = parentNode.neighborhood("node").filter((n) => newCyIds.has(n.id() as string));
+      const children = parentNode
+        .neighborhood("node")
+        .filter((n) => newCyIds.has(n.id() as string));
       if (children.length === 0) return;
       children.forEach((node, i) => {
         const angle = (2 * Math.PI * i) / children.length - Math.PI / 2;
@@ -1553,9 +1912,14 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
 
     const hadNewNodes = [...overlayNodes.keys()].some((k) => !prevNodes.has(k));
     const hadNewEdges = [...overlayEdges.keys()].some((k) => !prevOverlayEdgesRef.current.has(k));
-    const allNewAreCircular = hadNewNodes && [...overlayNodes.keys()]
-      .filter((k) => !prevNodes.has(k))
-      .every((k) => { const n = overlayNodes.get(k)!; return cy.$id(`${n.label}:${n.id}`).locked(); });
+    const allNewAreCircular =
+      hadNewNodes &&
+      [...overlayNodes.keys()]
+        .filter((k) => !prevNodes.has(k))
+        .every((k) => {
+          const n = overlayNodes.get(k)!;
+          return cy.$id(`${n.label}:${n.id}`).locked();
+        });
 
     // Position new (non-circular) nodes near their connected parent before nudge
     const newCyIdsForNudge = new Set<string>();
@@ -1567,19 +1931,25 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
         if (cyNode.length === 0 || cyNode.locked()) return;
         newCyIdsForNudge.add(cyId);
         // Find a connected node already on canvas to seed position
-        const connected = cyNode.neighborhood("node").filter((nb: CyElement) => !newCyIdsForNudge.has(nb.id() as string));
+        const connected = cyNode
+          .neighborhood("node")
+          .filter((nb: CyElement) => !newCyIdsForNudge.has(nb.id() as string));
         if (connected.length > 0) {
           const parentPos = connected[0].position();
           const angle = Math.random() * 2 * Math.PI;
           const dist = edgeDistanceRef.current * (0.8 + Math.random() * 0.4);
-          cyNode.position({ x: parentPos.x + dist * Math.cos(angle), y: parentPos.y + dist * Math.sin(angle) });
+          cyNode.position({
+            x: parentPos.x + dist * Math.cos(angle),
+            y: parentPos.y + dist * Math.sin(angle),
+          });
         }
       });
     }
 
     prevOverlayNodesRef.current = new Map(overlayNodes);
     prevOverlayEdgesRef.current = new Map(overlayEdges);
-    if ((hadNewNodes && !allNewAreCircular) || hadNewEdges) nudgeLayout(newCyIdsForNudge.size > 0 ? newCyIdsForNudge : undefined, true);
+    if ((hadNewNodes && !allNewAreCircular) || hadNewEdges)
+      nudgeLayout(newCyIdsForNudge.size > 0 ? newCyIdsForNudge : undefined, true);
     /* eslint-disable-next-line react-hooks/exhaustive-deps --
        re-apply overlay nodes/edges only when the overlay data or clustering changes; the imperative apply helpers are stable refs and intentionally excluded */
   }, [overlayNodes, overlayEdges, clusterLevel]);
@@ -1658,39 +2028,92 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
     >
       <div ref={containerRef} className="gf-canvas" />
       {hullCircles.length > 0 && (
-        <svg ref={hullSvgRef} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+        <svg
+          ref={hullSvgRef}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+          }}
+        >
           {hullCircles.map(({ cid, x, y, r }) => (
             <g key={cid}>
               <circle
-                cx={x} cy={y} r={r}
-                fill={clusterColor(cid)} fillOpacity={0.1}
-                stroke={clusterColor(cid)} strokeWidth={8} strokeOpacity={0}
+                cx={x}
+                cy={y}
+                r={r}
+                fill={clusterColor(cid)}
+                fillOpacity={0.1}
+                stroke={clusterColor(cid)}
+                strokeWidth={8}
+                strokeOpacity={0}
                 style={{ pointerEvents: "stroke", cursor: "grab" }}
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  hullDragRef.current = { cid, lastX: e.clientX, lastY: e.clientY, startX: e.clientX, startY: e.clientY };
+                  hullDragRef.current = {
+                    cid,
+                    lastX: e.clientX,
+                    lastY: e.clientY,
+                    startX: e.clientX,
+                    startY: e.clientY,
+                  };
                 }}
               />
-              <circle cx={x} cy={y} r={r} fill="none" stroke={clusterColor(cid)} strokeWidth={1.5} strokeOpacity={0.75} style={{ pointerEvents: "none" }} />
+              <circle
+                cx={x}
+                cy={y}
+                r={r}
+                fill="none"
+                stroke={clusterColor(cid)}
+                strokeWidth={1.5}
+                strokeOpacity={0.75}
+                style={{ pointerEvents: "none" }}
+              />
               <text
-                x={x} y={y - r - 6}
-                textAnchor="middle" fill={clusterColor(cid)} fontSize={11} fontWeight="bold" fontFamily="sans-serif"
+                x={x}
+                y={y - r - 6}
+                textAnchor="middle"
+                fill={clusterColor(cid)}
+                fontSize={11}
+                fontWeight="bold"
+                fontFamily="sans-serif"
                 style={{ pointerEvents: "all", cursor: "pointer", userSelect: "none" }}
                 onClick={() => toggleCollapse(cid)}
-              ><title>Click to collapse group</title>{cid} ⊟</text>
+              >
+                <title>Click to collapse group</title>
+                {cid} ⊟
+              </text>
             </g>
           ))}
         </svg>
       )}
       <div className="gf-canvas-controls">
-        <button className="gf-ctrl-btn" onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 1.3)} title="Zoom in">+</button>
-        <button className="gf-ctrl-btn" onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 0.77)} title="Zoom out">−</button>
-        <button className="gf-ctrl-btn" onClick={fitView} title="Fit to screen">⤢</button>
+        <button
+          className="gf-ctrl-btn"
+          onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 1.3)}
+          title="Zoom in"
+        >
+          +
+        </button>
+        <button
+          className="gf-ctrl-btn"
+          onClick={() => cyRef.current?.zoom(cyRef.current.zoom() * 0.77)}
+          title="Zoom out"
+        >
+          −
+        </button>
+        <button className="gf-ctrl-btn" onClick={fitView} title="Fit to screen">
+          ⤢
+        </button>
         <div className="gf-ctrl-divider" />
         <button
           className={`gf-ctrl-btn${layoutMode === "hierarchy" ? " active" : ""}`}
           onClick={toggleLayout}
-          title={layoutMode === "force" ? "Switch to hierarchical layout" : "Switch to force layout"}
+          title={
+            layoutMode === "force" ? "Switch to hierarchical layout" : "Switch to force layout"
+          }
         >
           {layoutMode === "force" ? "⋮" : "⊟"}
         </button>
@@ -1700,19 +2123,23 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
             nudgeHeldRef.current = true;
             const cy = cyRef.current;
             const sel = cy ? cy.nodes(":selected").not("[?_cluster]") : null;
-            const freeNodes = sel && sel.length > 0
-              ? new Set(sel.map((n) => n.id()))
-              : undefined;
+            const freeNodes = sel && sel.length > 0 ? new Set(sel.map((n) => n.id())) : undefined;
             nudgeLayout(freeNodes, true);
           }}
-          onMouseUp={() => { nudgeHeldRef.current = false; }}
-          onMouseLeave={() => { nudgeHeldRef.current = false; }}
+          onMouseUp={() => {
+            nudgeHeldRef.current = false;
+          }}
+          onMouseLeave={() => {
+            nudgeHeldRef.current = false;
+          }}
           title="Nudge layout — nudges selected nodes (or all if none selected); hold to keep iterating"
         >
           ⟳
         </button>
         <div className="gf-ctrl-divider" />
-        <label className="gf-ctrl-label" title="Edge length">↔</label>
+        <label className="gf-ctrl-label" title="Edge length">
+          ↔
+        </label>
         <input
           type="range"
           className="gf-ctrl-slider"
@@ -1731,249 +2158,290 @@ function GraphCanvas({ nodes, edges, overlayNodes, overlayEdges, onSelect, color
           title={`Edge length: ${edgeDistance}px`}
         />
       </div>
-      {nodeCtxMenu && (() => {
-        const ctxNode = nodes.get(nodeCtxMenu.nodeId) ?? overlayNodes.get(nodeCtxMenu.nodeId);
-        const ctxLabel = ctxNode?.label ?? "";
-        const tableLabel = ctxLabel.includes(":") ? ctxLabel.split(":").pop()! : ctxLabel;
-        const ctxPkCols = pkMap[ctxLabel] ?? [];
-        const hasPk = ctxPkCols.length > 0;
-        const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
-        const tl = norm(tableLabel);
-        const cl = norm(ctxLabel);
-        const myPkKey = (pkMap[ctxLabel] ?? pkMap[tableLabel] ?? []).join(",");
-        const siblingTls = myPkKey
-          ? Object.entries(pkMap)
-            .filter(([lbl, cols]) => cols.join(",") === myPkKey && lbl !== ctxLabel && lbl !== tableLabel)
-            .map(([lbl]) => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl))
-          : [];
-        const isSource = (r: typeof relationships[0]) =>
-          norm(r.sourceTableName) === tl || norm(r.sourceTableName) === cl || siblingTls.includes(norm(r.sourceTableName));
-        const isTarget = (r: typeof relationships[0]) =>
-          norm(r.targetTableName) === tl || norm(r.targetTableName) === cl || siblingTls.includes(norm(r.targetTableName));
-        const hasChildRels = relationships.some(isSource);
-        const hasParentRels = relationships.some(isTarget);
-        return (
-        <div
-          ref={menuRef}
-          className="gf-node-ctx-menu"
-          style={{ left: nodeCtxMenu.x, top: nodeCtxMenu.y, visibility: "hidden" }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          <button
-            className="gf-node-ctx-item"
-            disabled={!hasPk}
-            title={hasPk ? "Exclude this node from the query" : "No primary key configured — cannot exclude"}
-            style={!hasPk ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-            onClick={() => {
-              if (!hasPk) return;
-              const cy = cyRef.current;
-              nodeCtxMenu.selectedNodeIds.forEach((id) => {
-                anchoredRef.current.delete(id);
-                if (cy) cy.remove(cy.$id(id));
-              });
-              onExcludeNode(nodeCtxMenu.selectedNodeIds);
-              onSelect(null);
-              setNodeCtxMenu(null);
-            }}
-          >
-            Exclude {nodeCtxMenu.selectedNodeIds.length > 1 ? `${nodeCtxMenu.selectedNodeIds.length} nodes` : "from query"}
-          </button>
-          {nodeCtxMenu.selectedNodeIds.some((id) => anchoredRef.current.has(id)) && (
-            <button
-              className="gf-node-ctx-item"
-              onClick={() => {
-                const cy = cyRef.current;
-                nodeCtxMenu.selectedNodeIds.forEach((id) => {
-                  anchoredRef.current.delete(id);
-                  if (cy) { cy.$id(id).unlock(); cy.$id(id).removeClass("pinned"); }
-                });
-                // Stop any in-progress layout and force-reset the gate so nudge can start fresh
-                try { activeLayoutRef.current?.stop(); } catch { /* ignore */ }
-                activeLayoutRef.current = null;
-                layoutRunningRef.current = false;
-                setNodeCtxMenu(null);
-                nudgeLayoutRef.current();
-              }}
+      {nodeCtxMenu &&
+        (() => {
+          const ctxNode = nodes.get(nodeCtxMenu.nodeId) ?? overlayNodes.get(nodeCtxMenu.nodeId);
+          const ctxLabel = ctxNode?.label ?? "";
+          const tableLabel = ctxLabel.includes(":") ? ctxLabel.split(":").pop()! : ctxLabel;
+          const ctxPkCols = pkMap[ctxLabel] ?? [];
+          const hasPk = ctxPkCols.length > 0;
+          const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
+          const tl = norm(tableLabel);
+          const cl = norm(ctxLabel);
+          const myPkKey = (pkMap[ctxLabel] ?? pkMap[tableLabel] ?? []).join(",");
+          const siblingTls = myPkKey
+            ? Object.entries(pkMap)
+                .filter(
+                  ([lbl, cols]) =>
+                    cols.join(",") === myPkKey && lbl !== ctxLabel && lbl !== tableLabel,
+                )
+                .map(([lbl]) => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl))
+            : [];
+          const isSource = (r: (typeof relationships)[0]) =>
+            norm(r.sourceTableName) === tl ||
+            norm(r.sourceTableName) === cl ||
+            siblingTls.includes(norm(r.sourceTableName));
+          const isTarget = (r: (typeof relationships)[0]) =>
+            norm(r.targetTableName) === tl ||
+            norm(r.targetTableName) === cl ||
+            siblingTls.includes(norm(r.targetTableName));
+          const hasChildRels = relationships.some(isSource);
+          const hasParentRels = relationships.some(isTarget);
+          return (
+            <div
+              ref={menuRef}
+              className="gf-node-ctx-menu"
+              style={{ left: nodeCtxMenu.x, top: nodeCtxMenu.y, visibility: "hidden" }}
+              onMouseDown={(e) => e.stopPropagation()}
             >
-              Unfix position
-            </button>
-          )}
-          <button
-            className="gf-node-ctx-item"
-            disabled={!hasChildRels}
-            style={!hasChildRels ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-            title={hasChildRels ? undefined : "No outgoing relationships for this node type"}
-            onClick={() => {
-              if (!hasChildRels) return;
-              onToggleChildrenBatch(nodeCtxMenu.selectedNodeIds, false);
-              setNodeCtxMenu(null);
-            }}
-          >
-            {showingChildrenNatural.has(nodeCtxMenu.nodeId) ? "Hide children" : "Show children"}
-          </button>
-          <button
-            className="gf-node-ctx-item"
-            disabled={!hasChildRels}
-            style={!hasChildRels ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-            title={hasChildRels ? "Arrange children in a ring around this node" : "No outgoing relationships for this node type"}
-            onClick={() => {
-              if (!hasChildRels) return;
-              onToggleChildrenBatch(nodeCtxMenu.selectedNodeIds, true);
-              setNodeCtxMenu(null);
-            }}
-          >
-            {showingChildrenCircular.has(nodeCtxMenu.nodeId) ? "Hide children (circular)" : "Show children (circular)"}
-          </button>
-          <button
-            className="gf-node-ctx-item"
-            disabled={!hasParentRels}
-            style={!hasParentRels ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-            title={hasParentRels ? undefined : "No incoming relationships for this node type"}
-            onClick={() => {
-              if (!hasParentRels) return;
-              onToggleParentsBatch(nodeCtxMenu.selectedNodeIds, false);
-              setNodeCtxMenu(null);
-            }}
-          >
-            {showingParents.has(nodeCtxMenu.nodeId) ? "Hide parents" : "Show parents"}
-          </button>
-          <button
-            className="gf-node-ctx-item"
-            disabled={!hasParentRels}
-            style={!hasParentRels ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
-            title={hasParentRels ? "Arrange parents in a ring around this node" : "No incoming relationships for this node type"}
-            onClick={() => {
-              if (!hasParentRels) return;
-              onToggleParentsBatch(nodeCtxMenu.selectedNodeIds, true);
-              setNodeCtxMenu(null);
-            }}
-          >
-            {showingParentsCircular.has(nodeCtxMenu.nodeId) ? "Hide parents (circular)" : "Show parents (circular)"}
-          </button>
-          <button
-            className="gf-node-ctx-item"
-            onClick={() => {
-              const cy = cyRef.current;
-              if (cy) {
-                const selectedIds = new Set(nodeCtxMenu.selectedNodeIds);
-                cy.nodes().forEach((n) => {
-                  if (selectedIds.has(n.id())) n.unselect();
-                  else n.select();
-                });
-              }
-              onSelect(null);
-              setNodeCtxMenu(null);
-            }}
-          >
-            Invert selection
-          </button>
-          <div className="gf-node-ctx-submenu-wrap">
-            <button className="gf-node-ctx-item gf-node-ctx-item--has-sub">Select</button>
-            <div className="gf-node-ctx-submenu">
               <button
                 className="gf-node-ctx-item"
+                disabled={!hasPk}
+                title={
+                  hasPk
+                    ? "Exclude this node from the query"
+                    : "No primary key configured — cannot exclude"
+                }
+                style={!hasPk ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
                 onClick={() => {
+                  if (!hasPk) return;
                   const cy = cyRef.current;
-                  if (cy) cy.nodes().select();
+                  nodeCtxMenu.selectedNodeIds.forEach((id) => {
+                    anchoredRef.current.delete(id);
+                    if (cy) cy.remove(cy.$id(id));
+                  });
+                  onExcludeNode(nodeCtxMenu.selectedNodeIds);
                   onSelect(null);
                   setNodeCtxMenu(null);
                 }}
               >
-                All
+                Exclude{" "}
+                {nodeCtxMenu.selectedNodeIds.length > 1
+                  ? `${nodeCtxMenu.selectedNodeIds.length} nodes`
+                  : "from query"}
+              </button>
+              {nodeCtxMenu.selectedNodeIds.some((id) => anchoredRef.current.has(id)) && (
+                <button
+                  className="gf-node-ctx-item"
+                  onClick={() => {
+                    const cy = cyRef.current;
+                    nodeCtxMenu.selectedNodeIds.forEach((id) => {
+                      anchoredRef.current.delete(id);
+                      if (cy) {
+                        cy.$id(id).unlock();
+                        cy.$id(id).removeClass("pinned");
+                      }
+                    });
+                    // Stop any in-progress layout and force-reset the gate so nudge can start fresh
+                    try {
+                      activeLayoutRef.current?.stop();
+                    } catch {
+                      /* ignore */
+                    }
+                    activeLayoutRef.current = null;
+                    layoutRunningRef.current = false;
+                    setNodeCtxMenu(null);
+                    nudgeLayoutRef.current();
+                  }}
+                >
+                  Unfix position
+                </button>
+              )}
+              <button
+                className="gf-node-ctx-item"
+                disabled={!hasChildRels}
+                style={!hasChildRels ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                title={hasChildRels ? undefined : "No outgoing relationships for this node type"}
+                onClick={() => {
+                  if (!hasChildRels) return;
+                  onToggleChildrenBatch(nodeCtxMenu.selectedNodeIds, false);
+                  setNodeCtxMenu(null);
+                }}
+              >
+                {showingChildrenNatural.has(nodeCtxMenu.nodeId) ? "Hide children" : "Show children"}
+              </button>
+              <button
+                className="gf-node-ctx-item"
+                disabled={!hasChildRels}
+                style={!hasChildRels ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                title={
+                  hasChildRels
+                    ? "Arrange children in a ring around this node"
+                    : "No outgoing relationships for this node type"
+                }
+                onClick={() => {
+                  if (!hasChildRels) return;
+                  onToggleChildrenBatch(nodeCtxMenu.selectedNodeIds, true);
+                  setNodeCtxMenu(null);
+                }}
+              >
+                {showingChildrenCircular.has(nodeCtxMenu.nodeId)
+                  ? "Hide children (circular)"
+                  : "Show children (circular)"}
+              </button>
+              <button
+                className="gf-node-ctx-item"
+                disabled={!hasParentRels}
+                style={!hasParentRels ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                title={hasParentRels ? undefined : "No incoming relationships for this node type"}
+                onClick={() => {
+                  if (!hasParentRels) return;
+                  onToggleParentsBatch(nodeCtxMenu.selectedNodeIds, false);
+                  setNodeCtxMenu(null);
+                }}
+              >
+                {showingParents.has(nodeCtxMenu.nodeId) ? "Hide parents" : "Show parents"}
+              </button>
+              <button
+                className="gf-node-ctx-item"
+                disabled={!hasParentRels}
+                style={!hasParentRels ? { opacity: 0.4, cursor: "not-allowed" } : undefined}
+                title={
+                  hasParentRels
+                    ? "Arrange parents in a ring around this node"
+                    : "No incoming relationships for this node type"
+                }
+                onClick={() => {
+                  if (!hasParentRels) return;
+                  onToggleParentsBatch(nodeCtxMenu.selectedNodeIds, true);
+                  setNodeCtxMenu(null);
+                }}
+              >
+                {showingParentsCircular.has(nodeCtxMenu.nodeId)
+                  ? "Hide parents (circular)"
+                  : "Show parents (circular)"}
               </button>
               <button
                 className="gf-node-ctx-item"
                 onClick={() => {
                   const cy = cyRef.current;
                   if (cy) {
-                    const targetLabel = ctxNode?.label ?? "";
+                    const selectedIds = new Set(nodeCtxMenu.selectedNodeIds);
                     cy.nodes().forEach((n) => {
-                      if ((n.data("label") as string) === targetLabel) n.select();
-                      else n.unselect();
+                      if (selectedIds.has(n.id())) n.unselect();
+                      else n.select();
                     });
                   }
                   onSelect(null);
                   setNodeCtxMenu(null);
                 }}
               >
-                All of this type
+                Invert selection
               </button>
+              <div className="gf-node-ctx-submenu-wrap">
+                <button className="gf-node-ctx-item gf-node-ctx-item--has-sub">Select</button>
+                <div className="gf-node-ctx-submenu">
+                  <button
+                    className="gf-node-ctx-item"
+                    onClick={() => {
+                      const cy = cyRef.current;
+                      if (cy) cy.nodes().select();
+                      onSelect(null);
+                      setNodeCtxMenu(null);
+                    }}
+                  >
+                    All
+                  </button>
+                  <button
+                    className="gf-node-ctx-item"
+                    onClick={() => {
+                      const cy = cyRef.current;
+                      if (cy) {
+                        const targetLabel = ctxNode?.label ?? "";
+                        cy.nodes().forEach((n) => {
+                          if ((n.data("label") as string) === targetLabel) n.select();
+                          else n.unselect();
+                        });
+                      }
+                      onSelect(null);
+                      setNodeCtxMenu(null);
+                    }}
+                  >
+                    All of this type
+                  </button>
+                  <button
+                    className="gf-node-ctx-item"
+                    onClick={() => {
+                      const cy = cyRef.current;
+                      if (cy) {
+                        cy.nodes().unselect();
+                        nodeCtxMenu.selectedNodeIds.forEach((id) => {
+                          cy.$id(id).neighborhood("node").select();
+                        });
+                      }
+                      onSelect(null);
+                      setNodeCtxMenu(null);
+                    }}
+                  >
+                    Connected
+                  </button>
+                  <button
+                    className="gf-node-ctx-item"
+                    onClick={() => {
+                      const cy = cyRef.current;
+                      if (cy) {
+                        cy.nodes().unselect();
+                        nodeCtxMenu.selectedNodeIds.forEach((id) => {
+                          // outgoing edges → targets
+                          cy.$id(id)
+                            .neighborhood("edge")
+                            .forEach((e) => {
+                              if ((e.source().id() as string) === id) e.target().select();
+                            });
+                        });
+                      }
+                      onSelect(null);
+                      setNodeCtxMenu(null);
+                    }}
+                  >
+                    Children
+                  </button>
+                  <button
+                    className="gf-node-ctx-item"
+                    onClick={() => {
+                      const cy = cyRef.current;
+                      if (cy) {
+                        cy.nodes().unselect();
+                        nodeCtxMenu.selectedNodeIds.forEach((id) => {
+                          // incoming edges → sources
+                          cy.$id(id)
+                            .neighborhood("edge")
+                            .forEach((e) => {
+                              if ((e.target().id() as string) === id) e.source().select();
+                            });
+                        });
+                      }
+                      onSelect(null);
+                      setNodeCtxMenu(null);
+                    }}
+                  >
+                    Parents
+                  </button>
+                </div>
+              </div>
+              <div className="gf-node-ctx-divider" />
               <button
-                className="gf-node-ctx-item"
+                className="gf-node-ctx-item gf-node-ctx-item--danger"
                 onClick={() => {
                   const cy = cyRef.current;
                   if (cy) {
-                    cy.nodes().unselect();
                     nodeCtxMenu.selectedNodeIds.forEach((id) => {
-                      cy.$id(id).neighborhood("node").select();
+                      anchoredRef.current.delete(id);
+                      cy.remove(cy.$id(id));
                     });
                   }
                   onSelect(null);
                   setNodeCtxMenu(null);
                 }}
               >
-                Connected
-              </button>
-              <button
-                className="gf-node-ctx-item"
-                onClick={() => {
-                  const cy = cyRef.current;
-                  if (cy) {
-                    cy.nodes().unselect();
-                    nodeCtxMenu.selectedNodeIds.forEach((id) => {
-                      // outgoing edges → targets
-                      cy.$id(id).neighborhood("edge").forEach((e) => {
-                        if ((e.source().id() as string) === id) e.target().select();
-                      });
-                    });
-                  }
-                  onSelect(null);
-                  setNodeCtxMenu(null);
-                }}
-              >
-                Children
-              </button>
-              <button
-                className="gf-node-ctx-item"
-                onClick={() => {
-                  const cy = cyRef.current;
-                  if (cy) {
-                    cy.nodes().unselect();
-                    nodeCtxMenu.selectedNodeIds.forEach((id) => {
-                      // incoming edges → sources
-                      cy.$id(id).neighborhood("edge").forEach((e) => {
-                        if ((e.target().id() as string) === id) e.source().select();
-                      });
-                    });
-                  }
-                  onSelect(null);
-                  setNodeCtxMenu(null);
-                }}
-              >
-                Parents
+                Remove{" "}
+                {nodeCtxMenu.selectedNodeIds.length > 1
+                  ? `${nodeCtxMenu.selectedNodeIds.length} nodes`
+                  : "node"}
               </button>
             </div>
-          </div>
-          <div className="gf-node-ctx-divider" />
-          <button
-            className="gf-node-ctx-item gf-node-ctx-item--danger"
-            onClick={() => {
-              const cy = cyRef.current;
-              if (cy) {
-                nodeCtxMenu.selectedNodeIds.forEach((id) => {
-                  anchoredRef.current.delete(id);
-                  cy.remove(cy.$id(id));
-                });
-              }
-              onSelect(null);
-              setNodeCtxMenu(null);
-            }}
-          >
-            Remove {nodeCtxMenu.selectedNodeIds.length > 1 ? `${nodeCtxMenu.selectedNodeIds.length} nodes` : "node"}
-          </button>
-        </div>
-        );
-      })()}
+          );
+        })()}
     </div>
   );
 }
@@ -1985,39 +2453,63 @@ function cellText(v: unknown): string {
   return String(v);
 }
 
-function TableView({ columns, rows, wrap, height, colWidths, setColWidths }: { columns: string[]; rows: Record<string, unknown>[]; wrap?: boolean; height?: number; colWidths: number[]; setColWidths: (w: number[]) => void }) {
+function TableView({
+  columns,
+  rows,
+  wrap,
+  height,
+  colWidths,
+  setColWidths,
+}: {
+  columns: string[];
+  rows: Record<string, unknown>[];
+  wrap?: boolean;
+  height?: number;
+  colWidths: number[];
+  setColWidths: (w: number[]) => void;
+}) {
   const dragRef = useRef<{ colIdx: number; startX: number; startW: number } | null>(null);
 
   const colWidthsRef = useRef(colWidths);
   colWidthsRef.current = colWidths;
 
-  const onResizeStart = useCallback((e: React.MouseEvent, idx: number) => {
-    e.preventDefault();
-    dragRef.current = { colIdx: idx, startX: e.clientX, startW: colWidthsRef.current[idx] };
-    const onMove = (me: MouseEvent) => {
-      if (!dragRef.current) return;
-      const delta = me.clientX - dragRef.current.startX;
-      const newW = Math.max(40, dragRef.current.startW + delta);
-      setColWidths(colWidthsRef.current.map((w, i) => i === dragRef.current!.colIdx ? newW : w));
-    };
-    const onUp = () => {
-      dragRef.current = null;
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, [setColWidths]);
+  const onResizeStart = useCallback(
+    (e: React.MouseEvent, idx: number) => {
+      e.preventDefault();
+      dragRef.current = { colIdx: idx, startX: e.clientX, startW: colWidthsRef.current[idx] };
+      const onMove = (me: MouseEvent) => {
+        if (!dragRef.current) return;
+        const delta = me.clientX - dragRef.current.startX;
+        const newW = Math.max(40, dragRef.current.startW + delta);
+        setColWidths(
+          colWidthsRef.current.map((w, i) => (i === dragRef.current!.colIdx ? newW : w)),
+        );
+      };
+      const onUp = () => {
+        dragRef.current = null;
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [setColWidths],
+  );
 
   if (rows.length === 0) return <div className="gf-table-empty">No rows</div>;
   return (
     <div className="gf-table-outer" style={height !== undefined ? { height } : undefined}>
       <CsvCopyButton columns={columns} rows={rows} />
       <div className="gf-table-wrap">
-        <table className="gf-table" style={{ tableLayout: "fixed", width: colWidths.reduce((a, b) => a + b, 0) + 40 }}>
+        <table
+          className="gf-table"
+          style={{ tableLayout: "fixed", width: colWidths.reduce((a, b) => a + b, 0) + 40 }}
+        >
           <colgroup>
             <col style={{ width: 40 }} />
-            {colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}
+            {colWidths.map((w, i) => (
+              <col key={i} style={{ width: w }} />
+            ))}
           </colgroup>
           <thead>
             <tr>
@@ -2025,10 +2517,7 @@ function TableView({ columns, rows, wrap, height, colWidths, setColWidths }: { c
               {columns.map((c, i) => (
                 <th key={c} style={{ position: "relative", width: colWidths[i] }}>
                   <span className="gf-th-label">{c}</span>
-                  <span
-                    className="gf-col-resize"
-                    onMouseDown={(e) => onResizeStart(e, i)}
-                  />
+                  <span className="gf-col-resize" onMouseDown={(e) => onResizeStart(e, i)} />
                 </th>
               ))}
             </tr>
@@ -2038,7 +2527,9 @@ function TableView({ columns, rows, wrap, height, colWidths, setColWidths }: { c
               <tr key={i}>
                 <td className="gf-td-rownum">{i + 1}</td>
                 {columns.map((c) => (
-                  <td key={c} className={wrap ? "gf-td-wrap" : ""}>{cellText(r[c])}</td>
+                  <td key={c} className={wrap ? "gf-td-wrap" : ""}>
+                    {cellText(r[c])}
+                  </td>
                 ))}
               </tr>
             ))}
@@ -2058,7 +2549,11 @@ function CsvCopyButton({ columns, rows }: { columns: string[]; rows: Record<stri
     });
   }, [columns, rows]);
   return (
-    <button className={`gf-tbl-copy-btn${copied ? " copied" : ""}`} onClick={copy} title="Copy as CSV">
+    <button
+      className={`gf-tbl-copy-btn${copied ? " copied" : ""}`}
+      onClick={copy}
+      title="Copy as CSV"
+    >
       {copied ? "✓" : "⎘"}
     </button>
   );
@@ -2073,7 +2568,11 @@ function JsonCopyButton({ text }: { text: string }) {
     });
   }, [text]);
   return (
-    <button className={`gf-json-copy-btn${copied ? " copied" : ""}`} onClick={copy} title="Copy JSON">
+    <button
+      className={`gf-json-copy-btn${copied ? " copied" : ""}`}
+      onClick={copy}
+      title="Copy JSON"
+    >
       {copied ? "✓" : "⎘"}
     </button>
   );
@@ -2097,9 +2596,26 @@ interface GraphFrameProps {
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<void>;
 }
 
-export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverrides, sizeOverrides, labelProperty, relLineOverrides, onColorChange, pkMap, relationships, schemaRels, autoImpute: autoImputeProp = false, onSaveEdgeAlias }: GraphFrameProps) {
+export function GraphFrame({
+  frame,
+  onClose,
+  onRerun,
+  onTableDrop,
+  colorOverrides,
+  sizeOverrides,
+  labelProperty,
+  relLineOverrides,
+  onColorChange,
+  pkMap,
+  relationships,
+  schemaRels,
+  autoImpute: autoImputeProp = false,
+  onSaveEdgeAlias,
+}: GraphFrameProps) {
   const [view, setView] = useState<"graph" | "table" | "json">("graph");
-  const [selected, setSelected] = useState<{ kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null>(null);
+  const [selected, setSelected] = useState<
+    { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null
+  >(null);
   const [collapsed, setCollapsed] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [inspectorWidth, setInspectorWidth] = useState(260);
@@ -2107,21 +2623,29 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
   const [editQuery, setEditQuery] = useState(frame.query);
   const editQueryRef = useRef(editQuery);
   editQueryRef.current = editQuery;
-  /* eslint-disable-next-line react-hooks/set-state-in-effect --
-     sync the editable query buffer to the frame.query prop when the frame is
-     re-run or replaced externally */
-  useEffect(() => { setEditQuery(frame.query); }, [frame.query]);
-  const [overlayData, setOverlayData] = useState<Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>>(new Map);
+  /* eslint-disable react-hooks/set-state-in-effect -- sync the editable query buffer to the frame.query prop when the frame is re-run or replaced externally */
+  useEffect(() => {
+    setEditQuery(frame.query);
+  }, [frame.query]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  const [overlayData, setOverlayData] = useState<
+    Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>
+  >(new Map());
   const [autoImpute, setAutoImpute] = useState(autoImputeProp);
   const [dragOver, setDragOver] = useState(false);
-  const handleRerun = useCallback((id: string, query: string) => {
-    setOverlayData(new Map());
-    onRerun(id, query);
-  }, [onRerun]);
+  const handleRerun = useCallback(
+    (id: string, query: string) => {
+      setOverlayData(new Map());
+      onRerun(id, query);
+    },
+    [onRerun],
+  );
   const [showDlMenu, setShowDlMenu] = useState(false);
   const [clusterLevel, setClusterLevel] = useState<ClusterLevel>("none");
   const [tableWrap, setTableWrap] = useState(false);
-  const [tableColWidths, setTableColWidths] = useState<number[]>(() => frame.columns.map(() => 180));
+  const [tableColWidths, setTableColWidths] = useState<number[]>(() =>
+    frame.columns.map(() => 180),
+  );
   const prevColumnsKey = useRef(frame.columns.join(","));
   if (frame.columns.join(",") !== prevColumnsKey.current) {
     prevColumnsKey.current = frame.columns.join(",");
@@ -2134,203 +2658,362 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
   const graphAreaHeightRef = useRef(graphAreaHeight);
   graphAreaHeightRef.current = graphAreaHeight;
 
-  const _resolveNodeForKey = useCallback((nodeKey: string): GNode | undefined => {
-    let gNode: GNode | undefined = frame.nodes.get(nodeKey);
-    if (!gNode) {
-      for (const d of overlayData.values()) {
-        gNode = d.nodes.get(nodeKey);
-        if (gNode) break;
+  const _resolveNodeForKey = useCallback(
+    (nodeKey: string): GNode | undefined => {
+      let gNode: GNode | undefined = frame.nodes.get(nodeKey);
+      if (!gNode) {
+        for (const d of overlayData.values()) {
+          gNode = d.nodes.get(nodeKey);
+          if (gNode) break;
+        }
       }
-    }
-    return gNode;
-  }, [frame.nodes, overlayData]);
+      return gNode;
+    },
+    [frame.nodes, overlayData],
+  );
 
-  const _fetchNeighbors = useCallback(async (cypherQuery: string): Promise<{ nodes: Map<string, GNode>; edges: Map<string, GEdge> } | null> => {
-    const res = await fetch("/data/cypher", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: cypherQuery, params: {} }),
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      let err: unknown;
-      try { err = JSON.parse(text); } catch { err = text; }
-      console.error("show neighbors query failed (HTTP", res.status, "):", err);
-      return null;
-    }
-    const data = await res.json();
-    const rows: Record<string, unknown>[] = data.rows ?? [];
-    return extractElements(rows);
-  }, []);
+  const _fetchNeighbors = useCallback(
+    async (
+      cypherQuery: string,
+    ): Promise<{ nodes: Map<string, GNode>; edges: Map<string, GEdge> } | null> => {
+      const res = await fetch("/data/cypher", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: cypherQuery, params: {} }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        let err: unknown;
+        try {
+          err = JSON.parse(text);
+        } catch {
+          err = text;
+        }
+        console.error("show neighbors query failed (HTTP", res.status, "):", err);
+        return null;
+      }
+      const data = await res.json();
+      const rows: Record<string, unknown>[] = data.rows ?? [];
+      return extractElements(rows);
+    },
+    [],
+  );
 
   type MergedOverlay = { nodes: Map<string, GNode>; edges: Map<string, GEdge> };
 
-  const _fetchChildrenForNode = useCallback(async (nodeKey: string): Promise<MergedOverlay | null> => {
-    const gNode = _resolveNodeForKey(nodeKey);
-    if (!gNode) return null;
-    const tableLabel = gNode.label.includes(":") ? gNode.label.split(":").pop()! : gNode.label;
-    const pkCols = pkMap[gNode.label] ?? pkMap[tableLabel] ?? [];
-    const pkCol = pkCols[0] ?? null;
-    const pkValue = gNode.properties[pkCol ?? ""] ?? gNode.id;
-    const pkLit = pkValue === null || pkValue === undefined
-      ? null
-      : isNaN(Number(pkValue)) ? `'${String(pkValue).replace(/'/g, "\\'")}'` : String(pkValue);
-    if (!pkLit || !pkCol) return null;
-    const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
-    const tl = norm(tableLabel);
-    const rels = (relationships ?? []).filter((r) => norm(r.sourceTableName) === tl);
-    const myPkKey = pkCols.join(",");
-    const siblingSourceRels = rels.length === 0 ? (() => {
-      const siblingTls = Object.entries(pkMap)
-        .filter(([lbl, cols]) => cols.join(",") === myPkKey && lbl !== gNode.label && lbl !== tableLabel)
-        .map(([lbl]) => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl));
-      return (relationships ?? []).filter(r => siblingTls.includes(norm(r.sourceTableName)));
-    })() : null;
-    const effectiveRels = rels.length > 0 ? rels : (siblingSourceRels ?? []);
-    const effectiveLabel = rels.length > 0 ? tableLabel : (() => {
-      if (!siblingSourceRels || siblingSourceRels.length === 0) return tableLabel;
-      const sib = siblingSourceRels[0];
-      return Object.keys(pkMap).find(lbl => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl) === norm(sib.sourceTableName))?.split(":").pop() ?? sib.sourceTableName;
-    })();
-    if (effectiveRels.length === 0) return null;
-    const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
-    await Promise.all(effectiveRels.map(async (r) => {
-      const relType = (r.alias ?? r.graphqlAlias ?? "").toUpperCase();
-      const q = `MATCH (n:${effectiveLabel})-[r:${relType}]->(child) WHERE n.${pkCol} = ${pkLit} RETURN n, r, child`;
-      const result = await _fetchNeighbors(q);
-      if (result) { result.nodes.forEach((n, k) => merged.nodes.set(k, n)); result.edges.forEach((e, k) => merged.edges.set(k, e)); }
-    }));
-    if (siblingSourceRels && siblingSourceRels.length > 0) {
-      const sibNodeKey = [...merged.nodes.keys()].find((k) => { const n = merged.nodes.get(k)!; return String(n.id) === String(pkValue) && n.label !== gNode.label; });
-      if (sibNodeKey) { merged.nodes.delete(sibNodeKey); merged.edges.forEach((edge) => { if (`${edge.startNode.label}:${edge.startNode.id}` === sibNodeKey) edge.startNode = gNode; }); }
-    }
-    return (merged.nodes.size > 0 || merged.edges.size > 0) ? merged : null;
-  }, [pkMap, relationships, _resolveNodeForKey, _fetchNeighbors]);
-
-  const _fetchParentsForNode = useCallback(async (nodeKey: string): Promise<MergedOverlay | null> => {
-    const gNode = _resolveNodeForKey(nodeKey);
-    if (!gNode) return null;
-    const tableLabel = gNode.label.includes(":") ? gNode.label.split(":").pop()! : gNode.label;
-    const pkCols = pkMap[gNode.label] ?? pkMap[tableLabel] ?? [];
-    const pkCol = pkCols[0] ?? null;
-    const pkValue = gNode.properties[pkCol ?? ""] ?? gNode.id;
-    const pkLit = pkValue === null || pkValue === undefined
-      ? null
-      : isNaN(Number(pkValue)) ? `'${String(pkValue).replace(/'/g, "\\'")}'` : String(pkValue);
-    if (!pkLit || !pkCol) return null;
-    const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
-    const tl = norm(tableLabel);
-    const rels = (relationships ?? []).filter((r) => norm(r.targetTableName) === tl);
-    const myPkKey = pkCols.join(",");
-    const siblingTargetRels = rels.length === 0 ? (() => {
-      const siblingTls = Object.entries(pkMap)
-        .filter(([lbl, cols]) => cols.join(",") === myPkKey && lbl !== gNode.label && lbl !== tableLabel)
-        .map(([lbl]) => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl));
-      return (relationships ?? []).filter(r => siblingTls.includes(norm(r.targetTableName)));
-    })() : null;
-    const effectiveRels = rels.length > 0 ? rels : (siblingTargetRels ?? []);
-    const effectiveLabel = rels.length > 0 ? tableLabel : (() => {
-      if (!siblingTargetRels || siblingTargetRels.length === 0) return tableLabel;
-      const sib = siblingTargetRels[0];
-      return Object.keys(pkMap).find(lbl => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl) === norm(sib.targetTableName))?.split(":").pop() ?? sib.targetTableName;
-    })();
-    if (effectiveRels.length === 0) return null;
-    const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
-    await Promise.all(effectiveRels.map(async (r) => {
-      const relType = (r.alias ?? r.graphqlAlias ?? "").toUpperCase();
-      const q = `MATCH (parent)-[r:${relType}]->(n:${effectiveLabel}) WHERE n.${pkCol} = ${pkLit} RETURN n, r, parent`;
-      const result = await _fetchNeighbors(q);
-      if (result) { result.nodes.forEach((n, k) => merged.nodes.set(k, n)); result.edges.forEach((e, k) => merged.edges.set(k, e)); }
-    }));
-    if (siblingTargetRels && siblingTargetRels.length > 0) {
-      const sibNodeKey = [...merged.nodes.keys()].find((k) => { const n = merged.nodes.get(k)!; return String(n.id) === String(pkValue) && n.label !== gNode.label; });
-      if (sibNodeKey) { merged.nodes.delete(sibNodeKey); merged.edges.forEach((edge) => { if (`${edge.endNode.label}:${edge.endNode.id}` === sibNodeKey) edge.endNode = gNode; }); }
-    }
-    return (merged.nodes.size > 0 || merged.edges.size > 0) ? merged : null;
-  }, [pkMap, relationships, _resolveNodeForKey, _fetchNeighbors]);
-
-  const handleToggleChildren = useCallback(async (nodeKey: string) => {
-    const overlayKey = `${nodeKey}:children`;
-    if (overlayData.has(overlayKey)) { setOverlayData((prev) => { const next = new Map(prev); next.delete(overlayKey); return next; }); return; }
-    const merged = await _fetchChildrenForNode(nodeKey);
-    if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
-  }, [overlayData, _fetchChildrenForNode]);
-
-  const handleToggleChildrenCircular = useCallback(async (nodeKey: string) => {
-    const overlayKey = `${nodeKey}:children:circular`;
-    if (overlayData.has(overlayKey)) { setOverlayData((prev) => { const next = new Map(prev); next.delete(overlayKey); return next; }); return; }
-    const merged = await _fetchChildrenForNode(nodeKey);
-    if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
-  }, [overlayData, _fetchChildrenForNode]);
-
-  const handleToggleChildrenBatch = useCallback(async (nodeKeys: string[], circular = false) => {
-    const suffix = circular ? ":children:circular" : ":children";
-    const toRemove = nodeKeys.filter(id => overlayData.has(`${id}${suffix}`));
-    const toAdd = nodeKeys.filter(id => !overlayData.has(`${id}${suffix}`));
-    if (toAdd.length === 0) {
-      setOverlayData((prev) => { const next = new Map(prev); toRemove.forEach(id => next.delete(`${id}${suffix}`)); return next; });
-      return;
-    }
-    // All nodes fetched in parallel off-screen; single setOverlayData call renders them all at once.
-    const results = await Promise.all(toAdd.map(id => _fetchChildrenForNode(id)));
-    setOverlayData((prev) => {
-      const next = new Map(prev);
-      toRemove.forEach(id => next.delete(`${id}${suffix}`));
-      toAdd.forEach((id, i) => { if (results[i]) next.set(`${id}${suffix}`, results[i]!); });
-      return next;
-    });
-  }, [overlayData, _fetchChildrenForNode]);
-
-  const handleToggleParents = useCallback(async (nodeKey: string) => {
-    const overlayKey = `${nodeKey}:parents`;
-    if (overlayData.has(overlayKey)) { setOverlayData((prev) => { const next = new Map(prev); next.delete(overlayKey); return next; }); return; }
-    const merged = await _fetchParentsForNode(nodeKey);
-    if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
-  }, [overlayData, _fetchParentsForNode]);
-
-  const handleToggleParentsCircular = useCallback(async (nodeKey: string) => {
-    const overlayKey = `${nodeKey}:parents:circular`;
-    if (overlayData.has(overlayKey)) { setOverlayData((prev) => { const next = new Map(prev); next.delete(overlayKey); return next; }); return; }
-    const merged = await _fetchParentsForNode(nodeKey);
-    if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
-  }, [overlayData, _fetchParentsForNode]);
-
-  const handleToggleParentsBatch = useCallback(async (nodeKeys: string[], circular = false) => {
-    const suffix = circular ? ":parents:circular" : ":parents";
-    const toRemove = nodeKeys.filter(id => overlayData.has(`${id}${suffix}`));
-    const toAdd = nodeKeys.filter(id => !overlayData.has(`${id}${suffix}`));
-    if (toAdd.length === 0) {
-      setOverlayData((prev) => { const next = new Map(prev); toRemove.forEach(id => next.delete(`${id}${suffix}`)); return next; });
-      return;
-    }
-    const results = await Promise.all(toAdd.map(id => _fetchParentsForNode(id)));
-    setOverlayData((prev) => {
-      const next = new Map(prev);
-      toRemove.forEach(id => next.delete(`${id}${suffix}`));
-      toAdd.forEach((id, i) => { if (results[i]) next.set(`${id}${suffix}`, results[i]!); });
-      return next;
-    });
-  }, [overlayData, _fetchParentsForNode]);
-
-  const handleExcludeNode = useCallback((nodeKeys: string[]) => {
-    // Chain exclusions across all selected nodes, then only update query text.
-    // Nodes are already removed from canvas by the caller — no relayout or overlay reset needed.
-    let currentQuery = editQueryRef.current;
-    for (const nodeKey of nodeKeys) {
-      const gNode = frame.nodes.get(nodeKey);
-      if (!gNode) continue;
-      const label = gNode.label;
-      const nodeId = String(gNode.id);
-      const pkCols = pkMap[label] ?? [];
+  const _fetchChildrenForNode = useCallback(
+    async (nodeKey: string): Promise<MergedOverlay | null> => {
+      const gNode = _resolveNodeForKey(nodeKey);
+      if (!gNode) return null;
+      const tableLabel = gNode.label.includes(":") ? gNode.label.split(":").pop()! : gNode.label;
+      const pkCols = pkMap[gNode.label] ?? pkMap[tableLabel] ?? [];
       const pkCol = pkCols[0] ?? null;
-      const pkValue = pkCol ? gNode.properties[pkCol] : undefined;
-      const newQuery = injectExclusion(currentQuery, label, nodeId, pkCol, pkValue, relationships);
-      if (newQuery) currentQuery = newQuery;
-    }
-    if (currentQuery !== editQueryRef.current) {
-      setEditQuery(currentQuery);
-    }
-  }, [frame.nodes, pkMap, relationships]);
+      const pkValue = gNode.properties[pkCol ?? ""] ?? gNode.id;
+      const pkLit =
+        pkValue === null || pkValue === undefined
+          ? null
+          : isNaN(Number(pkValue))
+            ? `'${String(pkValue).replace(/'/g, "\\'")}'`
+            : String(pkValue);
+      if (!pkLit || !pkCol) return null;
+      const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
+      const tl = norm(tableLabel);
+      const rels = (relationships ?? []).filter((r) => norm(r.sourceTableName) === tl);
+      const myPkKey = pkCols.join(",");
+      const siblingSourceRels =
+        rels.length === 0
+          ? (() => {
+              const siblingTls = Object.entries(pkMap)
+                .filter(
+                  ([lbl, cols]) =>
+                    cols.join(",") === myPkKey && lbl !== gNode.label && lbl !== tableLabel,
+                )
+                .map(([lbl]) => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl));
+              return (relationships ?? []).filter((r) =>
+                siblingTls.includes(norm(r.sourceTableName)),
+              );
+            })()
+          : null;
+      const effectiveRels = rels.length > 0 ? rels : (siblingSourceRels ?? []);
+      const effectiveLabel =
+        rels.length > 0
+          ? tableLabel
+          : (() => {
+              if (!siblingSourceRels || siblingSourceRels.length === 0) return tableLabel;
+              const sib = siblingSourceRels[0];
+              return (
+                Object.keys(pkMap)
+                  .find(
+                    (lbl) =>
+                      norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl) ===
+                      norm(sib.sourceTableName),
+                  )
+                  ?.split(":")
+                  .pop() ?? sib.sourceTableName
+              );
+            })();
+      if (effectiveRels.length === 0) return null;
+      const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
+      await Promise.all(
+        effectiveRels.map(async (r) => {
+          const relType = (r.alias ?? r.graphqlAlias ?? "").toUpperCase();
+          const q = `MATCH (n:${effectiveLabel})-[r:${relType}]->(child) WHERE n.${pkCol} = ${pkLit} RETURN n, r, child`;
+          const result = await _fetchNeighbors(q);
+          if (result) {
+            result.nodes.forEach((n, k) => merged.nodes.set(k, n));
+            result.edges.forEach((e, k) => merged.edges.set(k, e));
+          }
+        }),
+      );
+      if (siblingSourceRels && siblingSourceRels.length > 0) {
+        const sibNodeKey = [...merged.nodes.keys()].find((k) => {
+          const n = merged.nodes.get(k)!;
+          return String(n.id) === String(pkValue) && n.label !== gNode.label;
+        });
+        if (sibNodeKey) {
+          merged.nodes.delete(sibNodeKey);
+          merged.edges.forEach((edge) => {
+            if (`${edge.startNode.label}:${edge.startNode.id}` === sibNodeKey)
+              edge.startNode = gNode;
+          });
+        }
+      }
+      return merged.nodes.size > 0 || merged.edges.size > 0 ? merged : null;
+    },
+    [pkMap, relationships, _resolveNodeForKey, _fetchNeighbors],
+  );
+
+  const _fetchParentsForNode = useCallback(
+    async (nodeKey: string): Promise<MergedOverlay | null> => {
+      const gNode = _resolveNodeForKey(nodeKey);
+      if (!gNode) return null;
+      const tableLabel = gNode.label.includes(":") ? gNode.label.split(":").pop()! : gNode.label;
+      const pkCols = pkMap[gNode.label] ?? pkMap[tableLabel] ?? [];
+      const pkCol = pkCols[0] ?? null;
+      const pkValue = gNode.properties[pkCol ?? ""] ?? gNode.id;
+      const pkLit =
+        pkValue === null || pkValue === undefined
+          ? null
+          : isNaN(Number(pkValue))
+            ? `'${String(pkValue).replace(/'/g, "\\'")}'`
+            : String(pkValue);
+      if (!pkLit || !pkCol) return null;
+      const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
+      const tl = norm(tableLabel);
+      const rels = (relationships ?? []).filter((r) => norm(r.targetTableName) === tl);
+      const myPkKey = pkCols.join(",");
+      const siblingTargetRels =
+        rels.length === 0
+          ? (() => {
+              const siblingTls = Object.entries(pkMap)
+                .filter(
+                  ([lbl, cols]) =>
+                    cols.join(",") === myPkKey && lbl !== gNode.label && lbl !== tableLabel,
+                )
+                .map(([lbl]) => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl));
+              return (relationships ?? []).filter((r) =>
+                siblingTls.includes(norm(r.targetTableName)),
+              );
+            })()
+          : null;
+      const effectiveRels = rels.length > 0 ? rels : (siblingTargetRels ?? []);
+      const effectiveLabel =
+        rels.length > 0
+          ? tableLabel
+          : (() => {
+              if (!siblingTargetRels || siblingTargetRels.length === 0) return tableLabel;
+              const sib = siblingTargetRels[0];
+              return (
+                Object.keys(pkMap)
+                  .find(
+                    (lbl) =>
+                      norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl) ===
+                      norm(sib.targetTableName),
+                  )
+                  ?.split(":")
+                  .pop() ?? sib.targetTableName
+              );
+            })();
+      if (effectiveRels.length === 0) return null;
+      const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
+      await Promise.all(
+        effectiveRels.map(async (r) => {
+          const relType = (r.alias ?? r.graphqlAlias ?? "").toUpperCase();
+          const q = `MATCH (parent)-[r:${relType}]->(n:${effectiveLabel}) WHERE n.${pkCol} = ${pkLit} RETURN n, r, parent`;
+          const result = await _fetchNeighbors(q);
+          if (result) {
+            result.nodes.forEach((n, k) => merged.nodes.set(k, n));
+            result.edges.forEach((e, k) => merged.edges.set(k, e));
+          }
+        }),
+      );
+      if (siblingTargetRels && siblingTargetRels.length > 0) {
+        const sibNodeKey = [...merged.nodes.keys()].find((k) => {
+          const n = merged.nodes.get(k)!;
+          return String(n.id) === String(pkValue) && n.label !== gNode.label;
+        });
+        if (sibNodeKey) {
+          merged.nodes.delete(sibNodeKey);
+          merged.edges.forEach((edge) => {
+            if (`${edge.endNode.label}:${edge.endNode.id}` === sibNodeKey) edge.endNode = gNode;
+          });
+        }
+      }
+      return merged.nodes.size > 0 || merged.edges.size > 0 ? merged : null;
+    },
+    [pkMap, relationships, _resolveNodeForKey, _fetchNeighbors],
+  );
+
+  const handleToggleChildren = useCallback(
+    async (nodeKey: string) => {
+      const overlayKey = `${nodeKey}:children`;
+      if (overlayData.has(overlayKey)) {
+        setOverlayData((prev) => {
+          const next = new Map(prev);
+          next.delete(overlayKey);
+          return next;
+        });
+        return;
+      }
+      const merged = await _fetchChildrenForNode(nodeKey);
+      if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
+    },
+    [overlayData, _fetchChildrenForNode],
+  );
+
+  const handleToggleChildrenCircular = useCallback(
+    async (nodeKey: string) => {
+      const overlayKey = `${nodeKey}:children:circular`;
+      if (overlayData.has(overlayKey)) {
+        setOverlayData((prev) => {
+          const next = new Map(prev);
+          next.delete(overlayKey);
+          return next;
+        });
+        return;
+      }
+      const merged = await _fetchChildrenForNode(nodeKey);
+      if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
+    },
+    [overlayData, _fetchChildrenForNode],
+  );
+
+  const handleToggleChildrenBatch = useCallback(
+    async (nodeKeys: string[], circular = false) => {
+      const suffix = circular ? ":children:circular" : ":children";
+      const toRemove = nodeKeys.filter((id) => overlayData.has(`${id}${suffix}`));
+      const toAdd = nodeKeys.filter((id) => !overlayData.has(`${id}${suffix}`));
+      if (toAdd.length === 0) {
+        setOverlayData((prev) => {
+          const next = new Map(prev);
+          toRemove.forEach((id) => next.delete(`${id}${suffix}`));
+          return next;
+        });
+        return;
+      }
+      // All nodes fetched in parallel off-screen; single setOverlayData call renders them all at once.
+      const results = await Promise.all(toAdd.map((id) => _fetchChildrenForNode(id)));
+      setOverlayData((prev) => {
+        const next = new Map(prev);
+        toRemove.forEach((id) => next.delete(`${id}${suffix}`));
+        toAdd.forEach((id, i) => {
+          if (results[i]) next.set(`${id}${suffix}`, results[i]!);
+        });
+        return next;
+      });
+    },
+    [overlayData, _fetchChildrenForNode],
+  );
+
+  const handleToggleParents = useCallback(
+    async (nodeKey: string) => {
+      const overlayKey = `${nodeKey}:parents`;
+      if (overlayData.has(overlayKey)) {
+        setOverlayData((prev) => {
+          const next = new Map(prev);
+          next.delete(overlayKey);
+          return next;
+        });
+        return;
+      }
+      const merged = await _fetchParentsForNode(nodeKey);
+      if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
+    },
+    [overlayData, _fetchParentsForNode],
+  );
+
+  const handleToggleParentsCircular = useCallback(
+    async (nodeKey: string) => {
+      const overlayKey = `${nodeKey}:parents:circular`;
+      if (overlayData.has(overlayKey)) {
+        setOverlayData((prev) => {
+          const next = new Map(prev);
+          next.delete(overlayKey);
+          return next;
+        });
+        return;
+      }
+      const merged = await _fetchParentsForNode(nodeKey);
+      if (merged) setOverlayData((prev) => new Map(prev).set(overlayKey, merged));
+    },
+    [overlayData, _fetchParentsForNode],
+  );
+
+  const handleToggleParentsBatch = useCallback(
+    async (nodeKeys: string[], circular = false) => {
+      const suffix = circular ? ":parents:circular" : ":parents";
+      const toRemove = nodeKeys.filter((id) => overlayData.has(`${id}${suffix}`));
+      const toAdd = nodeKeys.filter((id) => !overlayData.has(`${id}${suffix}`));
+      if (toAdd.length === 0) {
+        setOverlayData((prev) => {
+          const next = new Map(prev);
+          toRemove.forEach((id) => next.delete(`${id}${suffix}`));
+          return next;
+        });
+        return;
+      }
+      const results = await Promise.all(toAdd.map((id) => _fetchParentsForNode(id)));
+      setOverlayData((prev) => {
+        const next = new Map(prev);
+        toRemove.forEach((id) => next.delete(`${id}${suffix}`));
+        toAdd.forEach((id, i) => {
+          if (results[i]) next.set(`${id}${suffix}`, results[i]!);
+        });
+        return next;
+      });
+    },
+    [overlayData, _fetchParentsForNode],
+  );
+
+  const handleExcludeNode = useCallback(
+    (nodeKeys: string[]) => {
+      // Chain exclusions across all selected nodes, then only update query text.
+      // Nodes are already removed from canvas by the caller — no relayout or overlay reset needed.
+      let currentQuery = editQueryRef.current;
+      for (const nodeKey of nodeKeys) {
+        const gNode = frame.nodes.get(nodeKey);
+        if (!gNode) continue;
+        const label = gNode.label;
+        const nodeId = String(gNode.id);
+        const pkCols = pkMap[label] ?? [];
+        const pkCol = pkCols[0] ?? null;
+        const pkValue = pkCol ? gNode.properties[pkCol] : undefined;
+        const newQuery = injectExclusion(
+          currentQuery,
+          label,
+          nodeId,
+          pkCol,
+          pkValue,
+          relationships,
+        );
+        if (newQuery) currentQuery = newQuery;
+      }
+      if (currentQuery !== editQueryRef.current) {
+        setEditQuery(currentQuery);
+      }
+    },
+    [frame.nodes, pkMap, relationships],
+  );
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -2365,7 +3048,10 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
   const overlayNodes = useMemo(() => {
     if (overlayData.size === 0) return new Map<string, GNode>();
     const m = new Map<string, GNode>();
-    for (const d of overlayData.values()) d.nodes.forEach((n, k) => { if (!frame.nodes.has(k)) m.set(k, n); });
+    for (const d of overlayData.values())
+      d.nodes.forEach((n, k) => {
+        if (!frame.nodes.has(k)) m.set(k, n);
+      });
     return m;
   }, [frame.nodes, overlayData]);
 
@@ -2374,9 +3060,13 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
     // Dedup against frame edges by both identity key and endpoint+type fingerprint
     const frameFingerprints = new Set<string>();
     frame.edges.forEach((e) => {
-      frameFingerprints.add(`${e.startNode.label}:${e.startNode.id}→${e.endNode.label}:${e.endNode.id}:${e.type}`);
+      frameFingerprints.add(
+        `${e.startNode.label}:${e.startNode.id}→${e.endNode.label}:${e.endNode.id}:${e.type}`,
+      );
       // Also store reversed fingerprint so backward-traversal frame edges match canonical imputed edges
-      frameFingerprints.add(`${e.endNode.label}:${e.endNode.id}→${e.startNode.label}:${e.startNode.id}:${e.type}`);
+      frameFingerprints.add(
+        `${e.endNode.label}:${e.endNode.id}→${e.startNode.label}:${e.startNode.id}:${e.type}`,
+      );
     });
     const m = new Map<string, GEdge>();
     for (const d of overlayData.values()) {
@@ -2390,18 +3080,42 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
     return m;
   }, [frame.edges, overlayData]);
 
-  const showingChildrenNatural = useMemo(() => new Set(
-    Array.from(overlayData.keys()).filter(k => k.endsWith(":children")).map(k => k.slice(0, -":children".length))
-  ), [overlayData]);
-  const showingChildrenCircular = useMemo(() => new Set(
-    Array.from(overlayData.keys()).filter(k => k.endsWith(":children:circular")).map(k => k.slice(0, -":children:circular".length))
-  ), [overlayData]);
-  const showingParents = useMemo(() => new Set(
-    Array.from(overlayData.keys()).filter(k => k.endsWith(":parents")).map(k => k.slice(0, -":parents".length))
-  ), [overlayData]);
-  const showingParentsCircular = useMemo(() => new Set(
-    Array.from(overlayData.keys()).filter(k => k.endsWith(":parents:circular")).map(k => k.slice(0, -":parents:circular".length))
-  ), [overlayData]);
+  const showingChildrenNatural = useMemo(
+    () =>
+      new Set(
+        Array.from(overlayData.keys())
+          .filter((k) => k.endsWith(":children"))
+          .map((k) => k.slice(0, -":children".length)),
+      ),
+    [overlayData],
+  );
+  const showingChildrenCircular = useMemo(
+    () =>
+      new Set(
+        Array.from(overlayData.keys())
+          .filter((k) => k.endsWith(":children:circular"))
+          .map((k) => k.slice(0, -":children:circular".length)),
+      ),
+    [overlayData],
+  );
+  const showingParents = useMemo(
+    () =>
+      new Set(
+        Array.from(overlayData.keys())
+          .filter((k) => k.endsWith(":parents"))
+          .map((k) => k.slice(0, -":parents".length)),
+      ),
+    [overlayData],
+  );
+  const showingParentsCircular = useMemo(
+    () =>
+      new Set(
+        Array.from(overlayData.keys())
+          .filter((k) => k.endsWith(":parents:circular"))
+          .map((k) => k.slice(0, -":parents:circular".length)),
+      ),
+    [overlayData],
+  );
 
   // When autoImpute is turned off, clear its overlay
   useEffect(() => {
@@ -2409,7 +3123,11 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
       /* eslint-disable-next-line react-hooks/set-state-in-effect --
          clear the imputed-relationships overlay synchronously when the user
          turns autoImpute off */
-      setOverlayData((prev) => { const next = new Map(prev); next.delete("__remaining_rels"); return next; });
+      setOverlayData((prev) => {
+        const next = new Map(prev);
+        next.delete("__remaining_rels");
+        return next;
+      });
     }
   }, [autoImpute]);
 
@@ -2419,19 +3137,26 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
     let cancelled = false;
     const queries = buildRemainingRelsQueries(frame.nodes, pkMap, schemaRels);
     if (queries.length === 0) return;
-    const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = { nodes: new Map(), edges: new Map() };
-    Promise.all(queries.map(async (q) => {
-      const result = await _fetchNeighbors(q);
-      if (!cancelled && result) {
-        result.nodes.forEach((n, k) => merged.nodes.set(k, n));
-        result.edges.forEach((e, k) => merged.edges.set(k, e));
-      }
-    })).then(() => {
+    const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = {
+      nodes: new Map(),
+      edges: new Map(),
+    };
+    Promise.all(
+      queries.map(async (q) => {
+        const result = await _fetchNeighbors(q);
+        if (!cancelled && result) {
+          result.nodes.forEach((n, k) => merged.nodes.set(k, n));
+          result.edges.forEach((e, k) => merged.edges.set(k, e));
+        }
+      }),
+    ).then(() => {
       if (!cancelled && (merged.nodes.size > 0 || merged.edges.size > 0)) {
         setOverlayData((prev) => new Map(prev).set("__remaining_rels", merged));
       }
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [autoImpute, frame.status, frame.nodes, pkMap, schemaRels, _fetchNeighbors]);
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
@@ -2442,9 +3167,16 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
     if (frame.nodes.size === 0) return [];
     const SKIP = new Set(["scl1", "scl2", "scl3"]);
     const schemaVirtuals: string[] = [];
-    for (const [virtName, prop] of [["schema_L1", "scl1"], ["schema_L2", "scl2"], ["schema_L3", "scl3"]] as const) {
+    for (const [virtName, prop] of [
+      ["schema_L1", "scl1"],
+      ["schema_L2", "scl2"],
+      ["schema_L3", "scl3"],
+    ] as const) {
       const vals = new Set<string>();
-      frame.nodes.forEach((n) => { const v = n.properties[prop]; if (v !== null && v !== undefined) vals.add(String(v)); });
+      frame.nodes.forEach((n) => {
+        const v = n.properties[prop];
+        if (v !== null && v !== undefined) vals.add(String(v));
+      });
       if (vals.size > 1) schemaVirtuals.push(virtName);
     }
     const counts = new Map<string, Set<string>>();
@@ -2462,7 +3194,11 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
       .map(([k]) => k);
     return [...schemaVirtuals, ...regularAttrs];
   }, [frame.nodes]);
-  const activeView: "graph" | "table" | "json" = hasGraph ? view : (view === "json" ? "json" : "table");
+  const activeView: "graph" | "table" | "json" = hasGraph
+    ? view
+    : view === "json"
+      ? "json"
+      : "table";
 
   const renderHeader = (isModal: boolean) => (
     <div className="gf-header">
@@ -2475,10 +3211,17 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
             ..._gfCypherLangExts,
             _gfCypherLinter({ showErrors: false }),
             EditorView.lineWrapping,
-            Prec.highest(keymap.of([{
-              key: "Enter",
-              run: () => { handleRerun(frame.id, editQuery.trim()); return true; },
-            }])),
+            Prec.highest(
+              keymap.of([
+                {
+                  key: "Enter",
+                  run: () => {
+                    handleRerun(frame.id, editQuery.trim());
+                    return true;
+                  },
+                },
+              ]),
+            ),
           ]}
           onChange={(val) => setEditQuery(val)}
           basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
@@ -2496,13 +3239,25 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
         {frame.status === "error" && <span className="gf-meta-error">Error</span>}
       </div>
       <div className="gf-header-actions">
-        <button className="gf-run-inline-btn" onClick={() => handleRerun(frame.id, editQuery.trim())} title="Run">▶</button>
+        <button
+          className="gf-run-inline-btn"
+          onClick={() => handleRerun(frame.id, editQuery.trim())}
+          title="Run"
+        >
+          ▶
+        </button>
         {hasGraph && frame.status === "done" && (
           <button
             className={`gf-icon-btn${autoImpute ? " gf-icon-btn--on" : ""}`}
-            onClick={() => setAutoImpute(v => !v)}
-            title={autoImpute ? "Auto-impute relationships ON — click to disable" : "Auto-impute relationships between visible nodes"}
-          >⊕</button>
+            onClick={() => setAutoImpute((v) => !v)}
+            title={
+              autoImpute
+                ? "Auto-impute relationships ON — click to disable"
+                : "Auto-impute relationships between visible nodes"
+            }
+          >
+            ⊕
+          </button>
         )}
         {hasGraph && frame.status === "done" && groupableAttrs.length > 0 && (
           <select
@@ -2512,23 +3267,44 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
             title="Group nodes by attribute (double-click a hull to collapse; double-click collapsed node to expand)"
           >
             <option value="">⬡ group</option>
-            {groupableAttrs.map((a) => <option key={a} value={a}>{a}</option>)}
+            {groupableAttrs.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
           </select>
         )}
         {hasGraph && (
-          <button className={`gf-view-btn ${activeView === "graph" ? "active" : ""}`}
-                  onClick={() => setView("graph")} title="Graph">✦</button>
+          <button
+            className={`gf-view-btn ${activeView === "graph" ? "active" : ""}`}
+            onClick={() => setView("graph")}
+            title="Graph"
+          >
+            ✦
+          </button>
         )}
-        <button className={`gf-view-btn ${activeView === "table" ? "active" : ""}`}
-                onClick={() => setView("table")} title="Table">⊞</button>
-        <button className={`gf-view-btn ${activeView === "json" ? "active" : ""}`}
-                onClick={() => setView("json")} title="JSON">{"{}"}</button>
+        <button
+          className={`gf-view-btn ${activeView === "table" ? "active" : ""}`}
+          onClick={() => setView("table")}
+          title="Table"
+        >
+          ⊞
+        </button>
+        <button
+          className={`gf-view-btn ${activeView === "json" ? "active" : ""}`}
+          onClick={() => setView("json")}
+          title="JSON"
+        >
+          {"{}"}
+        </button>
         {activeView === "table" && frame.rows.length > 0 && (
           <button
             className={`gf-icon-btn${tableWrap ? " gf-icon-btn--on" : ""}`}
             title="Wrap cell text"
             onClick={() => setTableWrap((v) => !v)}
-          >⇌</button>
+          >
+            ⇌
+          </button>
         )}
         {frame.status === "done" && (frame.rows.length > 0 || hasGraph) && (
           <div className="gf-dl-wrap">
@@ -2537,67 +3313,112 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
               title="Download"
               onClick={() => setShowDlMenu((v) => !v)}
             >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-                <path d="M8 10.5L4.5 7h2V2h3v5h2L8 10.5z"/>
-                <rect x="2" y="12" width="12" height="1.5" rx="0.75"/>
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="currentColor"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path d="M8 10.5L4.5 7h2V2h3v5h2L8 10.5z" />
+                <rect x="2" y="12" width="12" height="1.5" rx="0.75" />
               </svg>
             </button>
             {showDlMenu && (
               <div className="gf-dl-menu" onMouseLeave={() => setShowDlMenu(false)}>
                 {frame.rows.length > 0 && (
-                  <button className="gf-dl-item" onClick={() => {
-                    const json = JSON.stringify(frame.rows, null, 2);
-                    _downloadBlob(new Blob([json], { type: "application/json" }), "result.json");
-                    setShowDlMenu(false);
-                  }}>JSON</button>
+                  <button
+                    className="gf-dl-item"
+                    onClick={() => {
+                      const json = JSON.stringify(frame.rows, null, 2);
+                      _downloadBlob(new Blob([json], { type: "application/json" }), "result.json");
+                      setShowDlMenu(false);
+                    }}
+                  >
+                    JSON
+                  </button>
                 )}
                 {frame.rows.length > 0 && (
-                  <button className="gf-dl-item" onClick={() => {
-                    const csv = _toCSV(frame.columns, frame.rows);
-                    _downloadBlob(new Blob([csv], { type: "text/csv" }), "result.csv");
-                    setShowDlMenu(false);
-                  }}>CSV</button>
+                  <button
+                    className="gf-dl-item"
+                    onClick={() => {
+                      const csv = _toCSV(frame.columns, frame.rows);
+                      _downloadBlob(new Blob([csv], { type: "text/csv" }), "result.csv");
+                      setShowDlMenu(false);
+                    }}
+                  >
+                    CSV
+                  </button>
                 )}
                 {hasGraph && activeView === "graph" && (
-                  <button className="gf-dl-item" onClick={() => {
-                    const cy = canvasCyRef.current;
-                    if (!cy) return;
-                    _compositeGraphDownload(cy, canvasHullSvgRef.current, "graph.png", "png");
-                    setShowDlMenu(false);
-                  }}>PNG</button>
+                  <button
+                    className="gf-dl-item"
+                    onClick={() => {
+                      const cy = canvasCyRef.current;
+                      if (!cy) return;
+                      _compositeGraphDownload(cy, canvasHullSvgRef.current, "graph.png", "png");
+                      setShowDlMenu(false);
+                    }}
+                  >
+                    PNG
+                  </button>
                 )}
                 {hasGraph && activeView === "graph" && (
-                  <button className="gf-dl-item" onClick={() => {
-                    const cy = canvasCyRef.current;
-                    if (!cy) return;
-                    _compositeGraphDownload(cy, canvasHullSvgRef.current, "graph.jpg", "jpg");
-                    setShowDlMenu(false);
-                  }}>JPG</button>
+                  <button
+                    className="gf-dl-item"
+                    onClick={() => {
+                      const cy = canvasCyRef.current;
+                      if (!cy) return;
+                      _compositeGraphDownload(cy, canvasHullSvgRef.current, "graph.jpg", "jpg");
+                      setShowDlMenu(false);
+                    }}
+                  >
+                    JPG
+                  </button>
                 )}
                 {hasGraph && activeView === "graph" && (
-                  <button className="gf-dl-item" onClick={() => {
-                    const cy = canvasCyRef.current;
-                    if (!cy) return;
-                    _downloadGraphSvg(cy, canvasHullSvgRef.current);
-                    setShowDlMenu(false);
-                  }}>SVG</button>
+                  <button
+                    className="gf-dl-item"
+                    onClick={() => {
+                      const cy = canvasCyRef.current;
+                      if (!cy) return;
+                      _downloadGraphSvg(cy, canvasHullSvgRef.current);
+                      setShowDlMenu(false);
+                    }}
+                  >
+                    SVG
+                  </button>
                 )}
               </div>
             )}
           </div>
         )}
         {!isModal && (
-          <button className="gf-icon-btn" onClick={() => setExpanded(true)} title="Expand">⤢</button>
+          <button className="gf-icon-btn" onClick={() => setExpanded(true)} title="Expand">
+            ⤢
+          </button>
         )}
         {isModal && (
-          <button className="gf-icon-btn" onClick={() => setExpanded(false)} title="Exit full screen">⤡</button>
+          <button
+            className="gf-icon-btn"
+            onClick={() => setExpanded(false)}
+            title="Exit full screen"
+          >
+            ⤡
+          </button>
         )}
         {!isModal && (
-          <button className="gf-icon-btn" onClick={() => setCollapsed((c) => !c)} title={collapsed ? "Expand" : "Collapse"}>
+          <button
+            className="gf-icon-btn"
+            onClick={() => setCollapsed((c) => !c)}
+            title={collapsed ? "Expand" : "Collapse"}
+          >
             {collapsed ? "▼" : "▲"}
           </button>
         )}
-        <button className="gf-icon-btn" onClick={() => onClose(frame.id)} title="Close">✕</button>
+        <button className="gf-icon-btn" onClick={() => onClose(frame.id)} title="Close">
+          ✕
+        </button>
       </div>
     </div>
   );
@@ -2607,39 +3428,89 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
       {frame.status === "error" && (
         <div className="gf-error gf-error--copyable">
           <span className="gf-error-text">{frame.error}</span>
-          <CopySymbolButton text={frame.error ?? ""} className="gf-error-copy-btn" title="Copy error" />
+          <CopySymbolButton
+            text={frame.error ?? ""}
+            className="gf-error-copy-btn"
+            title="Copy error"
+          />
         </div>
       )}
       {frame.status !== "error" && hasGraph && (
-        <div className="gf-graph-area" style={{ height: graphAreaHeight, display: activeView === "graph" ? undefined : "none" }}>
-          <GraphCanvas nodes={frame.nodes} edges={frame.edges} overlayNodes={overlayNodes} overlayEdges={overlayEdges} onSelect={setSelected} colorOverrides={colorOverrides} sizeOverrides={sizeOverrides} labelProperty={labelProperty} relLineOverrides={relLineOverrides} onExcludeNode={handleExcludeNode} pkMap={pkMap} relationships={relationships ?? []} showingChildrenNatural={showingChildrenNatural} onToggleChildren={handleToggleChildren} onToggleChildrenBatch={handleToggleChildrenBatch} showingChildrenCircular={showingChildrenCircular} onToggleChildrenCircular={handleToggleChildrenCircular} showingParents={showingParents} onToggleParents={handleToggleParents} onToggleParentsBatch={handleToggleParentsBatch} showingParentsCircular={showingParentsCircular} onToggleParentsCircular={handleToggleParentsCircular} onCyReady={(cy) => { canvasCyRef.current = cy; }} clusterLevel={clusterLevel} hullSvgRef={canvasHullSvgRef} />
-          <Inspector selected={selected} colorOverrides={colorOverrides} onColorChange={onColorChange}
-                     onClose={() => setSelected(null)}
-                     width={inspectorWidth} onResizeStart={handleResizeStart}
-                     relationships={relationships} onSaveEdgeAlias={onSaveEdgeAlias}
-                     pkMap={pkMap} />
+        <div
+          className="gf-graph-area"
+          style={{ height: graphAreaHeight, display: activeView === "graph" ? undefined : "none" }}
+        >
+          <GraphCanvas
+            nodes={frame.nodes}
+            edges={frame.edges}
+            overlayNodes={overlayNodes}
+            overlayEdges={overlayEdges}
+            onSelect={setSelected}
+            colorOverrides={colorOverrides}
+            sizeOverrides={sizeOverrides}
+            labelProperty={labelProperty}
+            relLineOverrides={relLineOverrides}
+            onExcludeNode={handleExcludeNode}
+            pkMap={pkMap}
+            relationships={relationships ?? []}
+            showingChildrenNatural={showingChildrenNatural}
+            onToggleChildren={handleToggleChildren}
+            onToggleChildrenBatch={handleToggleChildrenBatch}
+            showingChildrenCircular={showingChildrenCircular}
+            onToggleChildrenCircular={handleToggleChildrenCircular}
+            showingParents={showingParents}
+            onToggleParents={handleToggleParents}
+            onToggleParentsBatch={handleToggleParentsBatch}
+            showingParentsCircular={showingParentsCircular}
+            onToggleParentsCircular={handleToggleParentsCircular}
+            onCyReady={(cy) => {
+              canvasCyRef.current = cy;
+            }}
+            clusterLevel={clusterLevel}
+            hullSvgRef={canvasHullSvgRef}
+          />
+          <Inspector
+            selected={selected}
+            colorOverrides={colorOverrides}
+            onColorChange={onColorChange}
+            onClose={() => setSelected(null)}
+            width={inspectorWidth}
+            onResizeStart={handleResizeStart}
+            relationships={relationships}
+            onSaveEdgeAlias={onSaveEdgeAlias}
+            pkMap={pkMap}
+          />
         </div>
       )}
       {frame.status !== "error" && activeView === "table" && (
-        <TableView columns={frame.columns} rows={frame.rows} wrap={tableWrap} height={graphAreaHeight} colWidths={tableColWidths} setColWidths={setTableColWidths} />
+        <TableView
+          columns={frame.columns}
+          rows={frame.rows}
+          wrap={tableWrap}
+          height={graphAreaHeight}
+          colWidths={tableColWidths}
+          setColWidths={setTableColWidths}
+        />
       )}
-      {frame.status !== "error" && activeView === "json" && (() => {
-        const jsonStr = JSON.stringify(frame.rows, null, 2);
-        return (
-          <div className="gf-json-wrap">
-            <CodeMirror
-              className="gf-json-view"
-              value={jsonStr}
-              theme={oneDark}
-              height={`${graphAreaHeight}px`}
-              readOnly
-              basicSetup={{ foldGutter: true, lineNumbers: true }}
-              extensions={[jsonLang(), EditorView.lineWrapping]}
-            />
-            <JsonCopyButton text={jsonStr} />
-          </div>
-        );
-      })()}
+      {frame.status !== "error" &&
+        activeView === "json" &&
+        (() => {
+          const jsonStr = JSON.stringify(frame.rows, null, 2);
+          return (
+            <div className="gf-json-wrap">
+              <CodeMirror
+                className="gf-json-view"
+                value={jsonStr}
+                theme={oneDark}
+                height={`${graphAreaHeight}px`}
+                readOnly
+                basicSetup={{ foldGutter: true, lineNumbers: true }}
+                extensions={[jsonLang(), EditorView.lineWrapping]}
+              />
+              <JsonCopyButton text={jsonStr} />
+            </div>
+          );
+        })()}
     </div>
   );
 
@@ -2647,9 +3518,21 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
     <>
       <div
         className={`gf-frame${expanded ? " gf-expanded" : ""}${dragOver ? " gf-frame--drag-over" : ""}`}
-        onDragOver={(e) => { if (e.dataTransfer.types.includes("text/x-provisa-label")) { e.preventDefault(); setDragOver(true); } }}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes("text/x-provisa-label")) {
+            e.preventDefault();
+            setDragOver(true);
+          }
+        }}
         onDragLeave={() => setDragOver(false)}
-        onDrop={(e) => { setDragOver(false); const label = e.dataTransfer.getData("text/x-provisa-label"); if (label && onTableDrop) { e.preventDefault(); onTableDrop(frame.id, label); } }}
+        onDrop={(e) => {
+          setDragOver(false);
+          const label = e.dataTransfer.getData("text/x-provisa-label");
+          if (label && onTableDrop) {
+            e.preventDefault();
+            onTableDrop(frame.id, label);
+          }
+        }}
       >
         {renderHeader(false)}
         {!collapsed && frameBody}
@@ -2657,14 +3540,15 @@ export function GraphFrame({ frame, onClose, onRerun, onTableDrop, colorOverride
           <div className="gf-frame-resize-handle" onMouseDown={handleFrameResizeStart} />
         )}
       </div>
-      {expanded && createPortal(
-        <div className="gf-modal-overlay" onClick={() => setExpanded(false)}>
-          <div className="gf-modal-frame" onClick={(e) => e.stopPropagation()}>
-            {renderHeader(true)}
-          </div>
-        </div>,
-        document.body
-      )}
+      {expanded &&
+        createPortal(
+          <div className="gf-modal-overlay" onClick={() => setExpanded(false)}>
+            <div className="gf-modal-frame" onClick={(e) => e.stopPropagation()}>
+              {renderHeader(true)}
+            </div>
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

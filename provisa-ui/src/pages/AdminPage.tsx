@@ -11,7 +11,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { Trash2 } from "lucide-react";
-import { useDomains, useTables, useRelationships, useSources, useRLSRules, useCreateDomain, useDeleteDomain } from "../hooks/useAdminQueries";
+import {
+  useDomains,
+  useTables,
+  useRelationships,
+  useSources,
+  useRLSRules,
+  useCreateDomain,
+  useDeleteDomain,
+} from "../hooks/useAdminQueries";
 import {
   fetchRoles,
   downloadConfig,
@@ -147,7 +155,19 @@ export function AdminPage() {
       });
       setAllDomains(domains.filter((d) => d.id !== "").map((d) => d.id));
     }
-  }, [sources, domains, tables, relationships, rlsRules, rlsLoading, domainsLoading, tablesLoading, relsLoading, sourcesLoading, allRoles.length]);
+  }, [
+    sources,
+    domains,
+    tables,
+    relationships,
+    rlsRules,
+    rlsLoading,
+    domainsLoading,
+    tablesLoading,
+    relsLoading,
+    sourcesLoading,
+    allRoles.length,
+  ]);
 
   // Fetch remaining data (non-cached queries and mutations only)
   useEffect(() => {
@@ -158,15 +178,14 @@ export function AdminPage() {
       fetchOrgs().catch(() => [] as Org[]),
       fetchOrgRoles(orgId).catch(() => [] as import("../types/auth").Role[]),
       fetchInvites().catch(() => [] as OrgInvite[]),
-    ])
-      .then(([roles, s, users, orgsResult, rolesResult, invitesResult]) => {
-        setAllRoles(roles.map((r) => r.id));
-        setSettings(s);
-        setLocalUsers(users as LocalUser[]);
-        setOrgs(orgsResult as Org[]);
-        setOrgRoles(rolesResult as import("../types/auth").Role[]);
-        setOrgInvites(invitesResult as OrgInvite[]);
-      });
+    ]).then(([roles, s, users, orgsResult, rolesResult, invitesResult]) => {
+      setAllRoles(roles.map((r) => r.id));
+      setSettings(s);
+      setLocalUsers(users as LocalUser[]);
+      setOrgs(orgsResult as Org[]);
+      setOrgRoles(rolesResult as import("../types/auth").Role[]);
+      setOrgInvites(invitesResult as OrgInvite[]);
+    });
   }, [orgId]);
 
   const handleDownload = async () => {
@@ -302,7 +321,9 @@ export function AdminPage() {
     if (!newOrgId.trim() || !newOrgName.trim()) return;
     await createOrg(newOrgId.trim(), newOrgName.trim());
     setOrgs(await fetchOrgs());
-    setNewOrgId(""); setNewOrgName(""); setOrgMsg(`Created "${newOrgName.trim()}"`);
+    setNewOrgId("");
+    setNewOrgName("");
+    setOrgMsg(`Created "${newOrgName.trim()}"`);
   };
 
   const handleDeleteOrg = async (id: string) => {
@@ -312,7 +333,10 @@ export function AdminPage() {
   };
 
   const handleExpandOrg = async (id: string) => {
-    if (expandedOrgId === id) { setExpandedOrgId(null); return; }
+    if (expandedOrgId === id) {
+      setExpandedOrgId(null);
+      return;
+    }
     setExpandedOrgId(id);
     if (!orgMembers[id]) {
       const members = await fetchOrgMembers(id);
@@ -371,552 +395,958 @@ export function AdminPage() {
       <h2>Admin Dashboard</h2>
 
       <div className="admin-tab-content">
-      {activeTab === "Overview" && (
-        <>
-          <div className="stats-grid">
-            {Object.entries(stats).map(([label, count]) => (
-              <div key={label} className="stat-card">
-                <div className="stat-count">{count}</div>
-                <div className="stat-label">{label}</div>
-              </div>
-            ))}
-          </div>
-
-          <h3>Platform Settings</h3>
-          {settings && (
-            <div className="settings-grid">
-              <div className="settings-section">
-                <h4>Redirect</h4>
-                <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem", whiteSpace: "nowrap" }}>
-                  <input
-                    type="checkbox"
-                    checked={settings.redirect.enabled}
-                    onChange={(e) => updateRedirect("enabled", e.target.checked)}
-                    style={{ width: "auto" }}
-                  />
-                  Enabled
-                </label>
-                <label>
-                  Default Threshold (rows)
-                  <input
-                    type="number"
-                    value={settings.redirect.threshold}
-                    onChange={(e) =>
-                      updateRedirect("threshold", parseInt(e.target.value) || 0)
-                    }
-                  />
-                </label>
-                <label>
-                  Default Format
-                  <select
-                    value={settings.redirect.default_format}
-                    onChange={(e) =>
-                      updateRedirect("default_format", e.target.value)
-                    }
-                  >
-                    {FORMAT_OPTIONS.map((f) => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Presigned URL TTL (seconds)
-                  <input
-                    type="number"
-                    value={settings.redirect.ttl}
-                    onChange={(e) =>
-                      updateRedirect("ttl", parseInt(e.target.value) || 0)
-                    }
-                  />
-                </label>
-              </div>
-              <div className="settings-section">
-                <h4>Naming</h4>
-                <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem", whiteSpace: "nowrap" }}>
-                  <input
-                    type="checkbox"
-                    checked={settings.naming.domain_prefix}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        naming: { ...settings.naming, domain_prefix: e.target.checked },
-                      })
-                    }
-                    style={{ width: "auto" }}
-                  />
-                  Domain prefix (domain_id__ prepended to all names)
-                </label>
-                <label>
-                  Naming Convention
-                  <select
-                    value={settings.naming.convention || "snake_case"}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        naming: {
-                          ...settings.naming,
-                          convention: e.target.value,
-                        },
-                      })
-                    }
-                  >
-                    <option value="none">None (raw DB names)</option>
-                    <option value="snake_case">snake_case</option>
-                    <option value="camelCase">camelCase</option>
-                    <option value="PascalCase">PascalCase</option>
-                  </select>
-                </label>
-              </div>
-              <div className="settings-section">
-                <h4>Sampling</h4>
-                <label>
-                  Default Sample Size
-                  <input
-                    type="number"
-                    value={settings.sampling.default_sample_size}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        sampling: {
-                          default_sample_size: parseInt(e.target.value) || 0,
-                        },
-                      })
-                    }
-                  />
-                </label>
-              </div>
-              <div className="settings-section">
-                <h4>Cache</h4>
-                <label>
-                  Default TTL (seconds)
-                  <input
-                    type="number"
-                    value={settings.cache.default_ttl}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        cache: {
-                          default_ttl: parseInt(e.target.value) || 0,
-                        },
-                      })
-                    }
-                  />
-                </label>
-              </div>
-              <div className="settings-actions">
-                <button
-                  className="btn-primary"
-                  onClick={saveSettings}
-                  disabled={settingsSaving}
-                >
-                  {settingsSaving ? "Saving..." : "Save Settings"}
-                </button>
-                {settingsMsg && (
-                  <span className="upload-msg">{settingsMsg}</span>
-                )}
-              </div>
+        {activeTab === "Overview" && (
+          <>
+            <div className="stats-grid">
+              {Object.entries(stats).map(([label, count]) => (
+                <div key={label} className="stat-card">
+                  <div className="stat-count">{count}</div>
+                  <div className="stat-label">{label}</div>
+                </div>
+              ))}
             </div>
-          )}
 
-          <h3>Configuration File</h3>
-          <div className="config-actions">
-            <button className="btn-secondary" onClick={handleDownload}>
-              Download
-            </button>
-            <button className="btn-secondary" onClick={handleViewConfig}>
-              {configYaml !== null ? "Hide" : "View"}
-            </button>
-            <button
-              className="btn-primary"
-              onClick={handleUploadClick}
-              disabled={uploading}
-            >
-              {uploading ? "Uploading..." : "Upload"}
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".yaml,.yml"
-              style={{ display: "none" }}
-              onChange={handleFileChange}
-            />
-            {uploadMsg && <span className="upload-msg">{uploadMsg}</span>}
-          </div>
-
-          {configYaml !== null && (
-            <pre className="config-preview">{configYaml}</pre>
-          )}
-        </>
-      )}
-
-      {activeTab === "Domains" && (
-        <>
-          {domainMsg && <div className="success" style={{ marginBottom: "0.5rem" }}>{domainMsg}</div>}
-          {(() => {
-            const totalPages = Math.max(1, Math.ceil(domains.length / PAGE_SIZE));
-            const paged = domains.slice(domainPage * PAGE_SIZE, (domainPage + 1) * PAGE_SIZE);
-            return (
-              <div>
-                <table className="data-table" style={{ marginBottom: "1rem" }}>
-                  <thead><tr><th>ID</th><th>Description</th><th>GQL Alias</th><th></th></tr></thead>
-                  <tbody>
-                    {domains.length === 0 && (
-                      <tr><td colSpan={4} style={{ color: "var(--text-muted)", textAlign: "center" }}>No domains defined</td></tr>
-                    )}
-                    {paged.map((d) => (
-                      <tr key={d.id}>
-                        <td>{d.id}</td>
-                        <td>{d.description || "—"}</td>
-                        <td style={{ color: "var(--text-muted)", fontFamily: "monospace" }}>{domainGqlAlias(d)}</td>
-                        <td>
-                          <button className="btn-icon-danger" title="Delete" onClick={() => handleDeleteDomain(d.id)}><Trash2 size={14} /></button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {totalPages > 1 && (
-                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0", marginBottom: "1rem" }}>
-                    <button onClick={() => setDomainPage(0)} disabled={domainPage === 0}>«</button>
-                    <button onClick={() => setDomainPage(p => p - 1)} disabled={domainPage === 0}>‹</button>
-                    <span>Page {domainPage + 1} / {totalPages}</span>
-                    <button onClick={() => setDomainPage(p => p + 1)} disabled={domainPage >= totalPages - 1}>›</button>
-                    <button onClick={() => setDomainPage(totalPages - 1)} disabled={domainPage >= totalPages - 1}>»</button>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-            <input value={newDomainId} onChange={(e) => setNewDomainId(e.target.value)} placeholder="domain-id" style={{ width: "160px", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }} />
-            <input value={newDomainDesc} onChange={(e) => setNewDomainDesc(e.target.value)} placeholder="description (optional)" style={{ flex: 1, background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }} />
-            <input value={newDomainAlias} onChange={(e) => setNewDomainAlias(e.target.value)} placeholder={newDomainId.trim() ? `alias (default: ${domainGqlAlias({ id: newDomainId.trim(), description: "" })})` : "gql alias (optional)"} style={{ width: "180px", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }} />
-            <button className="btn-primary" onClick={handleAddDomain} disabled={!newDomainId.trim()}>Add Domain</button>
-          </div>
-        </>
-      )}
-      {activeTab === "Materialized Views" && <MVManager />}
-      {activeTab === "Cache" && <CacheManager />}
-      {activeTab === "Scheduled Tasks" && <ScheduledTasks />}
-      {activeTab === "System Health" && <SystemHealth />}
-      {activeTab === "Observability" && settings && (
-        <ObservabilityTab settings={settings} setSettings={setSettings} />
-      )}
-      {activeTab === "Local Users" && (
-        <>
-          {userMsg && <div className="success" style={{ marginBottom: "0.5rem" }}>{userMsg}</div>}
-          {(() => {
-            const totalPages = Math.max(1, Math.ceil(localUsers.length / PAGE_SIZE));
-            const paged = localUsers.slice(userPage * PAGE_SIZE, (userPage + 1) * PAGE_SIZE);
-            return (
-              <div>
-                <table className="data-table" style={{ marginBottom: "1rem" }}>
-                  <thead>
-                    <tr><th>Username</th><th>Email</th><th>Display Name</th><th>Active</th><th></th></tr>
-                  </thead>
-                  <tbody>
-                    {localUsers.length === 0 && (
-                      <tr><td colSpan={5} style={{ color: "var(--text-muted)", textAlign: "center" }}>No local users</td></tr>
-                    )}
-                    {paged.map((u) => (
-                <>
-                  <tr key={u.id}>
-                    <td style={{ fontFamily: "monospace" }}>
-                      <button
-                        style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", padding: 0, fontFamily: "monospace" }}
-                        onClick={() => handleExpandUser(u.id)}
-                      >
-                        {expandedUserId === u.id ? "▾" : "▸"} {u.username}
-                      </button>
-                    </td>
-                    <td>{u.email || "—"}</td>
-                    <td>{u.display_name || "—"}</td>
-                    <td>{u.is_active ? "Yes" : "No"}</td>
-                    <td>
-                      <button className="btn-icon-danger" title="Delete" onClick={() => handleDeleteUser(u.id, u.username)}>
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                  {expandedUserId === u.id && (
-                    <tr key={`${u.id}-assign`}>
-                      <td colSpan={5} style={{ paddingLeft: "2rem", background: "var(--bg-alt, var(--bg))" }}>
-                        <div style={{ padding: "0.75rem 0" }}>
-                          <strong style={{ fontSize: "0.85rem" }}>Role:Domain Assignments</strong>
-                          <div style={{ marginTop: "0.5rem", display: "flex", flexWrap: "wrap", gap: "0.4rem" }}>
-                            {(userAssignments[u.id] ?? []).length === 0 && (
-                              <span style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>No assignments</span>
-                            )}
-                            {(userAssignments[u.id] ?? []).map((a) => (
-                              <span key={a.id} style={{ display: "inline-flex", alignItems: "center", gap: "0.25rem", background: "var(--border)", borderRadius: "4px", padding: "0.2rem 0.5rem", fontSize: "0.8rem" }}>
-                                {a.role_id}:{a.domain_id}
-                                <button
-                                  style={{ background: "none", border: "none", color: "var(--danger, #e55)", cursor: "pointer", padding: 0, lineHeight: 1 }}
-                                  onClick={() => handleRemoveAssignment(u.id, a.id)}
-                                  title="Remove"
-                                >×</button>
-                              </span>
-                            ))}
-                          </div>
-                          <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                            <select
-                              value={assignRole}
-                              onChange={(e) => setAssignRole(e.target.value)}
-                              style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.3rem", borderRadius: "4px", fontSize: "0.85rem" }}
-                            >
-                              {allRoles.map((r) => <option key={r} value={r}>{r}</option>)}
-                            </select>
-                            <select
-                              value={assignDomain}
-                              onChange={(e) => setAssignDomain(e.target.value)}
-                              style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.3rem", borderRadius: "4px", fontSize: "0.85rem" }}
-                            >
-                              <option value="*">* (all domains)</option>
-                              {allDomains.map((d) => <option key={d} value={d}>{d}</option>)}
-                            </select>
-                            <button className="btn-primary" style={{ fontSize: "0.8rem", padding: "0.3rem 0.7rem" }} onClick={() => handleAddAssignment(u.id)} disabled={!assignRole}>
-                              Add
-                            </button>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </>
-                    ))}
-                  </tbody>
-                </table>
-                {totalPages > 1 && (
-                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0", marginBottom: "1rem" }}>
-                    <button onClick={() => setUserPage(0)} disabled={userPage === 0}>«</button>
-                    <button onClick={() => setUserPage(p => p - 1)} disabled={userPage === 0}>‹</button>
-                    <span>Page {userPage + 1} / {totalPages}</span>
-                    <button onClick={() => setUserPage(p => p + 1)} disabled={userPage >= totalPages - 1}>›</button>
-                    <button onClick={() => setUserPage(totalPages - 1)} disabled={userPage >= totalPages - 1}>»</button>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-          <h4 style={{ marginBottom: "0.5rem" }}>Create User</h4>
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: "480px" }}>
-            <input
-              value={newUsername}
-              onChange={(e) => setNewUsername(e.target.value)}
-              placeholder="Username *"
-              style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }}
-            />
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Password *"
-              style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }}
-            />
-            <input
-              value={newEmail}
-              onChange={(e) => setNewEmail(e.target.value)}
-              placeholder="Email (optional)"
-              style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }}
-            />
-            <input
-              value={newDisplayName}
-              onChange={(e) => setNewDisplayName(e.target.value)}
-              placeholder="Display name (optional)"
-              style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: "4px" }}
-            />
-            <button
-              className="btn-primary"
-              onClick={handleAddUser}
-              disabled={!newUsername.trim() || !newPassword.trim()}
-              style={{ alignSelf: "flex-start" }}
-            >
-              Create User
-            </button>
-          </div>
-        </>
-      )}
-      {activeTab === "Orgs" && isSuperAdmin && (
-        <div>
-          <h3>Organizations</h3>
-          {orgMsg && <p className="form-msg">{orgMsg}</p>}
-          {(() => {
-            const totalPages = Math.max(1, Math.ceil(orgs.length / PAGE_SIZE));
-            const paged = orgs.slice(orgPage * PAGE_SIZE, (orgPage + 1) * PAGE_SIZE);
-            return (
-              <div>
-                <table className="admin-table">
-                  <thead><tr><th>ID</th><th>Name</th><th>Members</th><th></th></tr></thead>
-                  <tbody>
-                    {paged.map((org) => (
-                <>
-                  <tr key={org.id}>
-                    <td>{org.id}</td>
-                    <td>{org.name}</td>
-                    <td>
-                      <button className="btn-secondary" onClick={() => handleExpandOrg(org.id)}>
-                        {expandedOrgId === org.id ? "Hide" : "Members"}
-                      </button>
-                    </td>
-                    <td>
-                      {org.id !== "root" && (
-                        <button className="btn-danger" onClick={() => handleDeleteOrg(org.id)}>
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                  {expandedOrgId === org.id && (
-                    <tr key={`${org.id}-members`}>
-                      <td colSpan={4}>
-                        <div className="assignment-panel">
-                          {(orgMembers[org.id] ?? []).map((m) => (
-                            <span key={m.user_id} className="assignment-chip">
-                              {m.display_name ?? m.email ?? m.user_id}
-                              <button onClick={() => handleRemoveOrgMember(org.id, m.user_id)}>×</button>
-                            </span>
-                          ))}
-                          <div className="assignment-add">
-                            <input
-                              placeholder="user_id"
-                              value={addMemberUserId}
-                              onChange={(e) => setAddMemberUserId(e.target.value)}
-                            />
-                            <button className="btn-primary" onClick={() => handleAddOrgMember(org.id)}>Add</button>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                    )}
-                  </>
-                ))}
-                  </tbody>
-                </table>
-                {totalPages > 1 && (
-                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0", marginBottom: "1rem" }}>
-                    <button onClick={() => setOrgPage(0)} disabled={orgPage === 0}>«</button>
-                    <button onClick={() => setOrgPage(p => p - 1)} disabled={orgPage === 0}>‹</button>
-                    <span>Page {orgPage + 1} / {totalPages}</span>
-                    <button onClick={() => setOrgPage(p => p + 1)} disabled={orgPage >= totalPages - 1}>›</button>
-                    <button onClick={() => setOrgPage(totalPages - 1)} disabled={orgPage >= totalPages - 1}>»</button>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-          <h4>Create Org</h4>
-          <div className="form-row">
-            <input placeholder="ID (slug)" value={newOrgId} onChange={(e) => setNewOrgId(e.target.value)} />
-            <input placeholder="Name" value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} />
-            <button className="btn-primary" onClick={handleCreateOrg}>Create</button>
-          </div>
-          <h3 style={{ marginTop: 24 }}>Invite Links</h3>
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            <select value={inviteOrgId} onChange={(e) => setInviteOrgId(e.target.value)}>
-              <option value="">Select org...</option>
-              {orgs.map((o) => <option key={o.id} value={o.id}>{o.name} ({o.id})</option>)}
-            </select>
-            <button className="btn-primary" onClick={handleCreateInvite} disabled={!inviteOrgId}>
-              Generate Invite Link
-            </button>
-          </div>
-          {inviteMsg && <div style={{ marginBottom: 8, color: "var(--muted-foreground)", fontSize: 13 }}>{inviteMsg}</div>}
-          {(() => {
-            const totalPages = Math.max(1, Math.ceil(orgInvites.length / PAGE_SIZE));
-            const paged = orgInvites.slice(invitePage * PAGE_SIZE, (invitePage + 1) * PAGE_SIZE);
-            return (
-              <div>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr>
-                      {["Org", "Token", "Created By", "Expires", "Status", ""].map((h) => (
-                        <th key={h} style={{ textAlign: "left", padding: "4px 8px", borderBottom: "1px solid var(--border)" }}>{h}</th>
+            <h3>Platform Settings</h3>
+            {settings && (
+              <div className="settings-grid">
+                <div className="settings-section">
+                  <h4>Redirect</h4>
+                  <label
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={settings.redirect.enabled}
+                      onChange={(e) => updateRedirect("enabled", e.target.checked)}
+                      style={{ width: "auto" }}
+                    />
+                    Enabled
+                  </label>
+                  <label>
+                    Default Threshold (rows)
+                    <input
+                      type="number"
+                      value={settings.redirect.threshold}
+                      onChange={(e) => updateRedirect("threshold", parseInt(e.target.value) || 0)}
+                    />
+                  </label>
+                  <label>
+                    Default Format
+                    <select
+                      value={settings.redirect.default_format}
+                      onChange={(e) => updateRedirect("default_format", e.target.value)}
+                    >
+                      {FORMAT_OPTIONS.map((f) => (
+                        <option key={f} value={f}>
+                          {f}
+                        </option>
                       ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paged.map((inv) => (
-                <tr key={inv.token}>
-                  <td style={{ padding: "4px 8px" }}>{inv.org_name}</td>
-                  <td style={{ padding: "4px 8px", fontFamily: "monospace", fontSize: 11 }}>{inv.token.slice(0, 8)}…</td>
-                  <td style={{ padding: "4px 8px" }}>{inv.created_by}</td>
-                  <td style={{ padding: "4px 8px" }}>{new Date(inv.expires_at).toLocaleDateString()}</td>
-                  <td style={{ padding: "4px 8px" }}>{inv.used_at ? `Used ${new Date(inv.used_at).toLocaleDateString()}` : "Active"}</td>
-                  <td style={{ padding: "4px 8px", display: "flex", gap: 4 }}>
-                    {!inv.used_at && (
-                      <button onClick={() => handleCopyInvite(inv.token)} style={{ fontSize: 12 }}>
-                        {copiedToken === inv.token ? "Copied!" : "Copy"}
-                      </button>
-                    )}
-                    {!inv.used_at && (
-                      <button onClick={() => handleRevokeInvite(inv.token)} style={{ fontSize: 12, color: "var(--destructive)" }}>
-                        Revoke
-                      </button>
-                    )}
-                  </td>
-                </tr>
-                    ))}
-                    {orgInvites.length === 0 && (
-                      <tr><td colSpan={6} style={{ padding: "8px", color: "var(--muted-foreground)" }}>No invites</td></tr>
-                    )}
-                  </tbody>
-                </table>
-                {totalPages > 1 && (
-                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0", marginBottom: "1rem" }}>
-                    <button onClick={() => setInvitePage(0)} disabled={invitePage === 0}>«</button>
-                    <button onClick={() => setInvitePage(p => p - 1)} disabled={invitePage === 0}>‹</button>
-                    <span>Page {invitePage + 1} / {totalPages}</span>
-                    <button onClick={() => setInvitePage(p => p + 1)} disabled={invitePage >= totalPages - 1}>›</button>
-                    <button onClick={() => setInvitePage(totalPages - 1)} disabled={invitePage >= totalPages - 1}>»</button>
-                  </div>
-                )}
+                    </select>
+                  </label>
+                  <label>
+                    Presigned URL TTL (seconds)
+                    <input
+                      type="number"
+                      value={settings.redirect.ttl}
+                      onChange={(e) => updateRedirect("ttl", parseInt(e.target.value) || 0)}
+                    />
+                  </label>
+                </div>
+                <div className="settings-section">
+                  <h4>Naming</h4>
+                  <label
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={settings.naming.domain_prefix}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          naming: { ...settings.naming, domain_prefix: e.target.checked },
+                        })
+                      }
+                      style={{ width: "auto" }}
+                    />
+                    Domain prefix (domain_id__ prepended to all names)
+                  </label>
+                  <label>
+                    Naming Convention
+                    <select
+                      value={settings.naming.convention || "snake_case"}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          naming: {
+                            ...settings.naming,
+                            convention: e.target.value,
+                          },
+                        })
+                      }
+                    >
+                      <option value="none">None (raw DB names)</option>
+                      <option value="snake_case">snake_case</option>
+                      <option value="camelCase">camelCase</option>
+                      <option value="PascalCase">PascalCase</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="settings-section">
+                  <h4>Sampling</h4>
+                  <label>
+                    Default Sample Size
+                    <input
+                      type="number"
+                      value={settings.sampling.default_sample_size}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          sampling: {
+                            default_sample_size: parseInt(e.target.value) || 0,
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="settings-section">
+                  <h4>Cache</h4>
+                  <label>
+                    Default TTL (seconds)
+                    <input
+                      type="number"
+                      value={settings.cache.default_ttl}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          cache: {
+                            default_ttl: parseInt(e.target.value) || 0,
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+                <div className="settings-actions">
+                  <button className="btn-primary" onClick={saveSettings} disabled={settingsSaving}>
+                    {settingsSaving ? "Saving..." : "Save Settings"}
+                  </button>
+                  {settingsMsg && <span className="upload-msg">{settingsMsg}</span>}
+                </div>
               </div>
-            );
-          })()}
-        </div>
-      )}
-      {activeTab === "Roles" && (
-        <div>
-          <h3>Roles — {orgId}</h3>
-          {roleMsg && <p className="form-msg">{roleMsg}</p>}
-          {(() => {
-            const totalPages = Math.max(1, Math.ceil(orgRoles.length / PAGE_SIZE));
-            const paged = orgRoles.slice(rolePage * PAGE_SIZE, (rolePage + 1) * PAGE_SIZE);
-            return (
-              <div>
-                <table className="admin-table">
-                  <thead><tr><th>ID</th><th>Capabilities</th><th>Domain Access</th><th></th></tr></thead>
-                  <tbody>
-                    {paged.map((role) => (
-                <tr key={role.id}>
-                  <td>{role.id}</td>
-                  <td>{role.capabilities.join(", ")}</td>
-                  <td>{role.domain_access.join(", ")}</td>
-                  <td>
-                    <button className="btn-danger" onClick={() => handleDeleteOrgRole(role.id)}>
-                      <Trash2 size={14} />
-                    </button>
-                  </td>
-                </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {totalPages > 1 && (
-                  <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0", marginBottom: "1rem" }}>
-                    <button onClick={() => setRolePage(0)} disabled={rolePage === 0}>«</button>
-                    <button onClick={() => setRolePage(p => p - 1)} disabled={rolePage === 0}>‹</button>
-                    <span>Page {rolePage + 1} / {totalPages}</span>
-                    <button onClick={() => setRolePage(p => p + 1)} disabled={rolePage >= totalPages - 1}>›</button>
-                    <button onClick={() => setRolePage(totalPages - 1)} disabled={rolePage >= totalPages - 1}>»</button>
-                  </div>
-                )}
+            )}
+
+            <h3>Configuration File</h3>
+            <div className="config-actions">
+              <button className="btn-secondary" onClick={handleDownload}>
+                Download
+              </button>
+              <button className="btn-secondary" onClick={handleViewConfig}>
+                {configYaml !== null ? "Hide" : "View"}
+              </button>
+              <button className="btn-primary" onClick={handleUploadClick} disabled={uploading}>
+                {uploading ? "Uploading..." : "Upload"}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".yaml,.yml"
+                style={{ display: "none" }}
+                onChange={handleFileChange}
+              />
+              {uploadMsg && <span className="upload-msg">{uploadMsg}</span>}
+            </div>
+
+            {configYaml !== null && <pre className="config-preview">{configYaml}</pre>}
+          </>
+        )}
+
+        {activeTab === "Domains" && (
+          <>
+            {domainMsg && (
+              <div className="success" style={{ marginBottom: "0.5rem" }}>
+                {domainMsg}
               </div>
-            );
-          })()}
-        </div>
-      )}
+            )}
+            {(() => {
+              const totalPages = Math.max(1, Math.ceil(domains.length / PAGE_SIZE));
+              const paged = domains.slice(domainPage * PAGE_SIZE, (domainPage + 1) * PAGE_SIZE);
+              return (
+                <div>
+                  <table className="data-table" style={{ marginBottom: "1rem" }}>
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Description</th>
+                        <th>GQL Alias</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {domains.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={4}
+                            style={{ color: "var(--text-muted)", textAlign: "center" }}
+                          >
+                            No domains defined
+                          </td>
+                        </tr>
+                      )}
+                      {paged.map((d) => (
+                        <tr key={d.id}>
+                          <td>{d.id}</td>
+                          <td>{d.description || "—"}</td>
+                          <td style={{ color: "var(--text-muted)", fontFamily: "monospace" }}>
+                            {domainGqlAlias(d)}
+                          </td>
+                          <td>
+                            <button
+                              className="btn-icon-danger"
+                              title="Delete"
+                              onClick={() => handleDeleteDomain(d.id)}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {totalPages > 1 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.5rem",
+                        alignItems: "center",
+                        justifyContent: "flex-end",
+                        padding: "0.5rem 0",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      <button onClick={() => setDomainPage(0)} disabled={domainPage === 0}>
+                        «
+                      </button>
+                      <button
+                        onClick={() => setDomainPage((p) => p - 1)}
+                        disabled={domainPage === 0}
+                      >
+                        ‹
+                      </button>
+                      <span>
+                        Page {domainPage + 1} / {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setDomainPage((p) => p + 1)}
+                        disabled={domainPage >= totalPages - 1}
+                      >
+                        ›
+                      </button>
+                      <button
+                        onClick={() => setDomainPage(totalPages - 1)}
+                        disabled={domainPage >= totalPages - 1}
+                      >
+                        »
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+              <input
+                value={newDomainId}
+                onChange={(e) => setNewDomainId(e.target.value)}
+                placeholder="domain-id"
+                style={{
+                  width: "160px",
+                  background: "var(--bg)",
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
+                  padding: "0.5rem",
+                  borderRadius: "4px",
+                }}
+              />
+              <input
+                value={newDomainDesc}
+                onChange={(e) => setNewDomainDesc(e.target.value)}
+                placeholder="description (optional)"
+                style={{
+                  flex: 1,
+                  background: "var(--bg)",
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
+                  padding: "0.5rem",
+                  borderRadius: "4px",
+                }}
+              />
+              <input
+                value={newDomainAlias}
+                onChange={(e) => setNewDomainAlias(e.target.value)}
+                placeholder={
+                  newDomainId.trim()
+                    ? `alias (default: ${domainGqlAlias({ id: newDomainId.trim(), description: "" })})`
+                    : "gql alias (optional)"
+                }
+                style={{
+                  width: "180px",
+                  background: "var(--bg)",
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
+                  padding: "0.5rem",
+                  borderRadius: "4px",
+                }}
+              />
+              <button
+                className="btn-primary"
+                onClick={handleAddDomain}
+                disabled={!newDomainId.trim()}
+              >
+                Add Domain
+              </button>
+            </div>
+          </>
+        )}
+        {activeTab === "Materialized Views" && <MVManager />}
+        {activeTab === "Cache" && <CacheManager />}
+        {activeTab === "Scheduled Tasks" && <ScheduledTasks />}
+        {activeTab === "System Health" && <SystemHealth />}
+        {activeTab === "Observability" && settings && (
+          <ObservabilityTab settings={settings} setSettings={setSettings} />
+        )}
+        {activeTab === "Local Users" && (
+          <>
+            {userMsg && (
+              <div className="success" style={{ marginBottom: "0.5rem" }}>
+                {userMsg}
+              </div>
+            )}
+            {(() => {
+              const totalPages = Math.max(1, Math.ceil(localUsers.length / PAGE_SIZE));
+              const paged = localUsers.slice(userPage * PAGE_SIZE, (userPage + 1) * PAGE_SIZE);
+              return (
+                <div>
+                  <table className="data-table" style={{ marginBottom: "1rem" }}>
+                    <thead>
+                      <tr>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Display Name</th>
+                        <th>Active</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {localUsers.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={5}
+                            style={{ color: "var(--text-muted)", textAlign: "center" }}
+                          >
+                            No local users
+                          </td>
+                        </tr>
+                      )}
+                      {paged.map((u) => (
+                        <>
+                          <tr key={u.id}>
+                            <td style={{ fontFamily: "monospace" }}>
+                              <button
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color: "var(--accent)",
+                                  cursor: "pointer",
+                                  padding: 0,
+                                  fontFamily: "monospace",
+                                }}
+                                onClick={() => handleExpandUser(u.id)}
+                              >
+                                {expandedUserId === u.id ? "▾" : "▸"} {u.username}
+                              </button>
+                            </td>
+                            <td>{u.email || "—"}</td>
+                            <td>{u.display_name || "—"}</td>
+                            <td>{u.is_active ? "Yes" : "No"}</td>
+                            <td>
+                              <button
+                                className="btn-icon-danger"
+                                title="Delete"
+                                onClick={() => handleDeleteUser(u.id, u.username)}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                          {expandedUserId === u.id && (
+                            <tr key={`${u.id}-assign`}>
+                              <td
+                                colSpan={5}
+                                style={{
+                                  paddingLeft: "2rem",
+                                  background: "var(--bg-alt, var(--bg))",
+                                }}
+                              >
+                                <div style={{ padding: "0.75rem 0" }}>
+                                  <strong style={{ fontSize: "0.85rem" }}>
+                                    Role:Domain Assignments
+                                  </strong>
+                                  <div
+                                    style={{
+                                      marginTop: "0.5rem",
+                                      display: "flex",
+                                      flexWrap: "wrap",
+                                      gap: "0.4rem",
+                                    }}
+                                  >
+                                    {(userAssignments[u.id] ?? []).length === 0 && (
+                                      <span
+                                        style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}
+                                      >
+                                        No assignments
+                                      </span>
+                                    )}
+                                    {(userAssignments[u.id] ?? []).map((a) => (
+                                      <span
+                                        key={a.id}
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: "0.25rem",
+                                          background: "var(--border)",
+                                          borderRadius: "4px",
+                                          padding: "0.2rem 0.5rem",
+                                          fontSize: "0.8rem",
+                                        }}
+                                      >
+                                        {a.role_id}:{a.domain_id}
+                                        <button
+                                          style={{
+                                            background: "none",
+                                            border: "none",
+                                            color: "var(--danger, #e55)",
+                                            cursor: "pointer",
+                                            padding: 0,
+                                            lineHeight: 1,
+                                          }}
+                                          onClick={() => handleRemoveAssignment(u.id, a.id)}
+                                          title="Remove"
+                                        >
+                                          ×
+                                        </button>
+                                      </span>
+                                    ))}
+                                  </div>
+                                  <div
+                                    style={{
+                                      marginTop: "0.5rem",
+                                      display: "flex",
+                                      gap: "0.5rem",
+                                      alignItems: "center",
+                                    }}
+                                  >
+                                    <select
+                                      value={assignRole}
+                                      onChange={(e) => setAssignRole(e.target.value)}
+                                      style={{
+                                        background: "var(--bg)",
+                                        color: "var(--text)",
+                                        border: "1px solid var(--border)",
+                                        padding: "0.3rem",
+                                        borderRadius: "4px",
+                                        fontSize: "0.85rem",
+                                      }}
+                                    >
+                                      {allRoles.map((r) => (
+                                        <option key={r} value={r}>
+                                          {r}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <select
+                                      value={assignDomain}
+                                      onChange={(e) => setAssignDomain(e.target.value)}
+                                      style={{
+                                        background: "var(--bg)",
+                                        color: "var(--text)",
+                                        border: "1px solid var(--border)",
+                                        padding: "0.3rem",
+                                        borderRadius: "4px",
+                                        fontSize: "0.85rem",
+                                      }}
+                                    >
+                                      <option value="*">* (all domains)</option>
+                                      {allDomains.map((d) => (
+                                        <option key={d} value={d}>
+                                          {d}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      className="btn-primary"
+                                      style={{ fontSize: "0.8rem", padding: "0.3rem 0.7rem" }}
+                                      onClick={() => handleAddAssignment(u.id)}
+                                      disabled={!assignRole}
+                                    >
+                                      Add
+                                    </button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      ))}
+                    </tbody>
+                  </table>
+                  {totalPages > 1 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.5rem",
+                        alignItems: "center",
+                        justifyContent: "flex-end",
+                        padding: "0.5rem 0",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      <button onClick={() => setUserPage(0)} disabled={userPage === 0}>
+                        «
+                      </button>
+                      <button onClick={() => setUserPage((p) => p - 1)} disabled={userPage === 0}>
+                        ‹
+                      </button>
+                      <span>
+                        Page {userPage + 1} / {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setUserPage((p) => p + 1)}
+                        disabled={userPage >= totalPages - 1}
+                      >
+                        ›
+                      </button>
+                      <button
+                        onClick={() => setUserPage(totalPages - 1)}
+                        disabled={userPage >= totalPages - 1}
+                      >
+                        »
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+            <h4 style={{ marginBottom: "0.5rem" }}>Create User</h4>
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxWidth: "480px" }}
+            >
+              <input
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                placeholder="Username *"
+                style={{
+                  background: "var(--bg)",
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
+                  padding: "0.5rem",
+                  borderRadius: "4px",
+                }}
+              />
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Password *"
+                style={{
+                  background: "var(--bg)",
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
+                  padding: "0.5rem",
+                  borderRadius: "4px",
+                }}
+              />
+              <input
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="Email (optional)"
+                style={{
+                  background: "var(--bg)",
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
+                  padding: "0.5rem",
+                  borderRadius: "4px",
+                }}
+              />
+              <input
+                value={newDisplayName}
+                onChange={(e) => setNewDisplayName(e.target.value)}
+                placeholder="Display name (optional)"
+                style={{
+                  background: "var(--bg)",
+                  color: "var(--text)",
+                  border: "1px solid var(--border)",
+                  padding: "0.5rem",
+                  borderRadius: "4px",
+                }}
+              />
+              <button
+                className="btn-primary"
+                onClick={handleAddUser}
+                disabled={!newUsername.trim() || !newPassword.trim()}
+                style={{ alignSelf: "flex-start" }}
+              >
+                Create User
+              </button>
+            </div>
+          </>
+        )}
+        {activeTab === "Orgs" && isSuperAdmin && (
+          <div>
+            <h3>Organizations</h3>
+            {orgMsg && <p className="form-msg">{orgMsg}</p>}
+            {(() => {
+              const totalPages = Math.max(1, Math.ceil(orgs.length / PAGE_SIZE));
+              const paged = orgs.slice(orgPage * PAGE_SIZE, (orgPage + 1) * PAGE_SIZE);
+              return (
+                <div>
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Members</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paged.map((org) => (
+                        <>
+                          <tr key={org.id}>
+                            <td>{org.id}</td>
+                            <td>{org.name}</td>
+                            <td>
+                              <button
+                                className="btn-secondary"
+                                onClick={() => handleExpandOrg(org.id)}
+                              >
+                                {expandedOrgId === org.id ? "Hide" : "Members"}
+                              </button>
+                            </td>
+                            <td>
+                              {org.id !== "root" && (
+                                <button
+                                  className="btn-danger"
+                                  onClick={() => handleDeleteOrg(org.id)}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                          {expandedOrgId === org.id && (
+                            <tr key={`${org.id}-members`}>
+                              <td colSpan={4}>
+                                <div className="assignment-panel">
+                                  {(orgMembers[org.id] ?? []).map((m) => (
+                                    <span key={m.user_id} className="assignment-chip">
+                                      {m.display_name ?? m.email ?? m.user_id}
+                                      <button
+                                        onClick={() => handleRemoveOrgMember(org.id, m.user_id)}
+                                      >
+                                        ×
+                                      </button>
+                                    </span>
+                                  ))}
+                                  <div className="assignment-add">
+                                    <input
+                                      placeholder="user_id"
+                                      value={addMemberUserId}
+                                      onChange={(e) => setAddMemberUserId(e.target.value)}
+                                    />
+                                    <button
+                                      className="btn-primary"
+                                      onClick={() => handleAddOrgMember(org.id)}
+                                    >
+                                      Add
+                                    </button>
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </>
+                      ))}
+                    </tbody>
+                  </table>
+                  {totalPages > 1 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.5rem",
+                        alignItems: "center",
+                        justifyContent: "flex-end",
+                        padding: "0.5rem 0",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      <button onClick={() => setOrgPage(0)} disabled={orgPage === 0}>
+                        «
+                      </button>
+                      <button onClick={() => setOrgPage((p) => p - 1)} disabled={orgPage === 0}>
+                        ‹
+                      </button>
+                      <span>
+                        Page {orgPage + 1} / {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setOrgPage((p) => p + 1)}
+                        disabled={orgPage >= totalPages - 1}
+                      >
+                        ›
+                      </button>
+                      <button
+                        onClick={() => setOrgPage(totalPages - 1)}
+                        disabled={orgPage >= totalPages - 1}
+                      >
+                        »
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+            <h4>Create Org</h4>
+            <div className="form-row">
+              <input
+                placeholder="ID (slug)"
+                value={newOrgId}
+                onChange={(e) => setNewOrgId(e.target.value)}
+              />
+              <input
+                placeholder="Name"
+                value={newOrgName}
+                onChange={(e) => setNewOrgName(e.target.value)}
+              />
+              <button className="btn-primary" onClick={handleCreateOrg}>
+                Create
+              </button>
+            </div>
+            <h3 style={{ marginTop: 24 }}>Invite Links</h3>
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <select value={inviteOrgId} onChange={(e) => setInviteOrgId(e.target.value)}>
+                <option value="">Select org...</option>
+                {orgs.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name} ({o.id})
+                  </option>
+                ))}
+              </select>
+              <button className="btn-primary" onClick={handleCreateInvite} disabled={!inviteOrgId}>
+                Generate Invite Link
+              </button>
+            </div>
+            {inviteMsg && (
+              <div style={{ marginBottom: 8, color: "var(--muted-foreground)", fontSize: 13 }}>
+                {inviteMsg}
+              </div>
+            )}
+            {(() => {
+              const totalPages = Math.max(1, Math.ceil(orgInvites.length / PAGE_SIZE));
+              const paged = orgInvites.slice(invitePage * PAGE_SIZE, (invitePage + 1) * PAGE_SIZE);
+              return (
+                <div>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                    <thead>
+                      <tr>
+                        {["Org", "Token", "Created By", "Expires", "Status", ""].map((h) => (
+                          <th
+                            key={h}
+                            style={{
+                              textAlign: "left",
+                              padding: "4px 8px",
+                              borderBottom: "1px solid var(--border)",
+                            }}
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paged.map((inv) => (
+                        <tr key={inv.token}>
+                          <td style={{ padding: "4px 8px" }}>{inv.org_name}</td>
+                          <td style={{ padding: "4px 8px", fontFamily: "monospace", fontSize: 11 }}>
+                            {inv.token.slice(0, 8)}…
+                          </td>
+                          <td style={{ padding: "4px 8px" }}>{inv.created_by}</td>
+                          <td style={{ padding: "4px 8px" }}>
+                            {new Date(inv.expires_at).toLocaleDateString()}
+                          </td>
+                          <td style={{ padding: "4px 8px" }}>
+                            {inv.used_at
+                              ? `Used ${new Date(inv.used_at).toLocaleDateString()}`
+                              : "Active"}
+                          </td>
+                          <td style={{ padding: "4px 8px", display: "flex", gap: 4 }}>
+                            {!inv.used_at && (
+                              <button
+                                onClick={() => handleCopyInvite(inv.token)}
+                                style={{ fontSize: 12 }}
+                              >
+                                {copiedToken === inv.token ? "Copied!" : "Copy"}
+                              </button>
+                            )}
+                            {!inv.used_at && (
+                              <button
+                                onClick={() => handleRevokeInvite(inv.token)}
+                                style={{ fontSize: 12, color: "var(--destructive)" }}
+                              >
+                                Revoke
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {orgInvites.length === 0 && (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            style={{ padding: "8px", color: "var(--muted-foreground)" }}
+                          >
+                            No invites
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                  {totalPages > 1 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.5rem",
+                        alignItems: "center",
+                        justifyContent: "flex-end",
+                        padding: "0.5rem 0",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      <button onClick={() => setInvitePage(0)} disabled={invitePage === 0}>
+                        «
+                      </button>
+                      <button
+                        onClick={() => setInvitePage((p) => p - 1)}
+                        disabled={invitePage === 0}
+                      >
+                        ‹
+                      </button>
+                      <span>
+                        Page {invitePage + 1} / {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setInvitePage((p) => p + 1)}
+                        disabled={invitePage >= totalPages - 1}
+                      >
+                        ›
+                      </button>
+                      <button
+                        onClick={() => setInvitePage(totalPages - 1)}
+                        disabled={invitePage >= totalPages - 1}
+                      >
+                        »
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+        {activeTab === "Roles" && (
+          <div>
+            <h3>Roles — {orgId}</h3>
+            {roleMsg && <p className="form-msg">{roleMsg}</p>}
+            {(() => {
+              const totalPages = Math.max(1, Math.ceil(orgRoles.length / PAGE_SIZE));
+              const paged = orgRoles.slice(rolePage * PAGE_SIZE, (rolePage + 1) * PAGE_SIZE);
+              return (
+                <div>
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Capabilities</th>
+                        <th>Domain Access</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paged.map((role) => (
+                        <tr key={role.id}>
+                          <td>{role.id}</td>
+                          <td>{role.capabilities.join(", ")}</td>
+                          <td>{role.domain_access.join(", ")}</td>
+                          <td>
+                            <button
+                              className="btn-danger"
+                              onClick={() => handleDeleteOrgRole(role.id)}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {totalPages > 1 && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "0.5rem",
+                        alignItems: "center",
+                        justifyContent: "flex-end",
+                        padding: "0.5rem 0",
+                        marginBottom: "1rem",
+                      }}
+                    >
+                      <button onClick={() => setRolePage(0)} disabled={rolePage === 0}>
+                        «
+                      </button>
+                      <button onClick={() => setRolePage((p) => p - 1)} disabled={rolePage === 0}>
+                        ‹
+                      </button>
+                      <span>
+                        Page {rolePage + 1} / {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setRolePage((p) => p + 1)}
+                        disabled={rolePage >= totalPages - 1}
+                      >
+                        ›
+                      </button>
+                      <button
+                        onClick={() => setRolePage(totalPages - 1)}
+                        disabled={rolePage >= totalPages - 1}
+                      >
+                        »
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -957,11 +1387,16 @@ function TraceFeed() {
         const resp = await fetch(`${API_BASE}/admin/traces/recent?limit=50`);
         const json = await resp.json();
         if (alive && !pausedRef.current) setTraces(json.traces ?? []);
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     };
     poll();
     const id = setInterval(poll, 2000);
-    return () => { alive = false; clearInterval(id); };
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
   }, []);
 
   const statusColor = (s: string) =>
@@ -990,13 +1425,23 @@ function TraceFeed() {
               onClick={() => setSelected(selected?.span_id === t.span_id ? null : t)}
             >
               <span className="trace-name">{t.name}</span>
-              <span className="trace-status" style={{ color: statusColor(t.status) }}>{t.status}</span>
-              <span className="trace-dur">{t.duration_ms != null ? `${t.duration_ms}ms` : "—"}</span>
+              <span className="trace-status" style={{ color: statusColor(t.status) }}>
+                {t.status}
+              </span>
+              <span className="trace-dur">
+                {t.duration_ms != null ? `${t.duration_ms}ms` : "—"}
+              </span>
               {selected?.span_id === t.span_id && (
                 <div className="trace-detail" onClick={(e) => e.stopPropagation()}>
-                  <div><strong>Trace:</strong> <code>{t.trace_id}</code></div>
-                  <div><strong>Span:</strong> <code>{t.span_id}</code></div>
-                  <div><strong>Time:</strong> {new Date(t.ts * 1000).toLocaleTimeString()}</div>
+                  <div>
+                    <strong>Trace:</strong> <code>{t.trace_id}</code>
+                  </div>
+                  <div>
+                    <strong>Span:</strong> <code>{t.span_id}</code>
+                  </div>
+                  <div>
+                    <strong>Time:</strong> {new Date(t.ts * 1000).toLocaleTimeString()}
+                  </div>
                   {Object.keys(t.attrs).length > 0 && (
                     <pre className="trace-attrs">{JSON.stringify(t.attrs, null, 2)}</pre>
                   )}
@@ -1037,8 +1482,11 @@ function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
       <div className="settings-section">
         <h4>OpenTelemetry Tracing</h4>
         <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", marginBottom: "1rem" }}>
-          Status: <strong style={{ color: active ? "var(--success)" : "var(--text-muted)" }}>
-            {active ? `Exporting → ${settings.otel.endpoint}` : "Active (spans dropped — no collector configured)"}
+          Status:{" "}
+          <strong style={{ color: active ? "var(--success)" : "var(--text-muted)" }}>
+            {active
+              ? `Exporting → ${settings.otel.endpoint}`
+              : "Active (spans dropped — no collector configured)"}
           </strong>
         </p>
         <label>
@@ -1050,7 +1498,8 @@ function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
             placeholder="http://otel-collector:4317"
           />
           <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            Leave empty to generate traces without exporting. Override with OTEL_EXPORTER_OTLP_ENDPOINT env var.
+            Leave empty to generate traces without exporting. Override with
+            OTEL_EXPORTER_OTLP_ENDPOINT env var.
           </span>
         </label>
         <label>
@@ -1086,7 +1535,8 @@ function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
           {msg && <span className="upload-msg">{msg}</span>}
         </div>
         <p style={{ marginTop: "1.5rem", fontSize: "0.8rem", color: "var(--text-muted)" }}>
-          Note: endpoint and service_name changes take effect on next restart. Sample rate is applied immediately.
+          Note: endpoint and service_name changes take effect on next restart. Sample rate is
+          applied immediately.
         </p>
 
         <h4 style={{ marginTop: "1.5rem" }}>Support Telemetry</h4>
@@ -1102,7 +1552,8 @@ function ObservabilityTab({ settings, setSettings }: ObsTabProps) {
             placeholder="https://otel.provisa.io:4318"
           />
           <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-            Leave empty to disable support telemetry. Override with PROVISA_SUPPORT_OTLP_ENDPOINT env var.
+            Leave empty to disable support telemetry. Override with PROVISA_SUPPORT_OTLP_ENDPOINT
+            env var.
           </span>
         </label>
         <label style={{ flexDirection: "row", alignItems: "center", gap: "0.5rem" }}>
@@ -1203,9 +1654,21 @@ function QueryEngineActions() {
           {reclustering ? "Clustering..." : "Recompute Schema Clusters"}
         </button>
       </div>
-      {reloadStatus && <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>{reloadStatus}</span>}
-      {restartStatus && <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>{restartStatus}</span>}
-      {clusterStatus && <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>{clusterStatus}</span>}
+      {reloadStatus && (
+        <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>
+          {reloadStatus}
+        </span>
+      )}
+      {restartStatus && (
+        <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>
+          {restartStatus}
+        </span>
+      )}
+      {clusterStatus && (
+        <span className="upload-msg" style={{ marginTop: "0.5rem", display: "block" }}>
+          {clusterStatus}
+        </span>
+      )}
     </div>
   );
 }

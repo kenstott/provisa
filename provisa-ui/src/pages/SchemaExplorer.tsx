@@ -25,9 +25,10 @@ export function SchemaExplorer() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const domainParam = checkedDomains.size > 0 && checkedDomains.size < domains.length
-    ? `?domain=${encodeURIComponent([...checkedDomains].sort().join(","))}`
-    : "";
+  const domainParam =
+    checkedDomains.size > 0 && checkedDomains.size < domains.length
+      ? `?domain=${encodeURIComponent([...checkedDomains].sort().join(","))}`
+      : "";
 
   useEffect(() => {
     if (!role) return;

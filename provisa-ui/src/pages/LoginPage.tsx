@@ -25,7 +25,7 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   const [providerLoading, setProviderLoading] = useState(true);
 
   const [mode, setMode] = useState<"login" | "register">(() =>
-    new URLSearchParams(window.location.search).get("invite") ? "register" : "login"
+    new URLSearchParams(window.location.search).get("invite") ? "register" : "login",
   );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -62,7 +62,11 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
   }
 
   if (providerLoading) {
-    return <div className="page"><p>Loading...</p></div>;
+    return (
+      <div className="page">
+        <p>Loading...</p>
+      </div>
+    );
   }
 
   const handleBasicLogin = async (e: FormEvent) => {
@@ -147,42 +151,87 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
         <form onSubmit={handleRegister} style={{ maxWidth: 360 }}>
           <div style={{ marginBottom: 12 }}>
             <label htmlFor="reg-username">Username</label>
-            <input id="reg-username" type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-              required autoComplete="username" style={{ display: "block", width: "100%", marginTop: 4 }} />
+            <input
+              id="reg-username"
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              autoComplete="username"
+              style={{ display: "block", width: "100%", marginTop: 4 }}
+            />
           </div>
           <div style={{ marginBottom: 12 }}>
             <label htmlFor="reg-email">Email</label>
-            <input id="reg-email" type="email" value={regEmail} onChange={(e) => setRegEmail(e.target.value)}
-              autoComplete="email" style={{ display: "block", width: "100%", marginTop: 4 }} />
+            <input
+              id="reg-email"
+              type="email"
+              value={regEmail}
+              onChange={(e) => setRegEmail(e.target.value)}
+              autoComplete="email"
+              style={{ display: "block", width: "100%", marginTop: 4 }}
+            />
           </div>
           <div style={{ marginBottom: 12 }}>
             <label htmlFor="reg-displayname">Display Name</label>
-            <input id="reg-displayname" type="text" value={regDisplayName} onChange={(e) => setRegDisplayName(e.target.value)}
-              style={{ display: "block", width: "100%", marginTop: 4 }} />
+            <input
+              id="reg-displayname"
+              type="text"
+              value={regDisplayName}
+              onChange={(e) => setRegDisplayName(e.target.value)}
+              style={{ display: "block", width: "100%", marginTop: 4 }}
+            />
           </div>
           {inviteInfo && (
             <div style={{ marginBottom: 12 }}>
               <label>Organization</label>
-              <input type="text" value={inviteInfo.org_name} readOnly
-                style={{ display: "block", width: "100%", marginTop: 4, opacity: 0.7 }} />
+              <input
+                type="text"
+                value={inviteInfo.org_name}
+                readOnly
+                style={{ display: "block", width: "100%", marginTop: 4, opacity: 0.7 }}
+              />
             </div>
           )}
-          {inviteError && <div style={{ color: "var(--destructive)", marginBottom: 12 }}>{inviteError}</div>}
+          {inviteError && (
+            <div style={{ color: "var(--destructive)", marginBottom: 12 }}>{inviteError}</div>
+          )}
           <div style={{ marginBottom: 12 }}>
             <label htmlFor="reg-password">Password</label>
-            <input id="reg-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              required autoComplete="new-password" style={{ display: "block", width: "100%", marginTop: 4 }} />
+            <input
+              id="reg-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+              style={{ display: "block", width: "100%", marginTop: 4 }}
+            />
           </div>
           <div style={{ marginBottom: 12 }}>
             <label htmlFor="reg-confirm">Confirm Password</label>
-            <input id="reg-confirm" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-              required autoComplete="new-password" style={{ display: "block", width: "100%", marginTop: 4 }} />
+            <input
+              id="reg-confirm"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+              style={{ display: "block", width: "100%", marginTop: 4 }}
+            />
           </div>
           {error && <div style={{ color: "var(--destructive)", marginBottom: 12 }}>{error}</div>}
           <button type="submit" className="btn-primary" disabled={loading}>
             {loading ? "Creating..." : "Create Account"}
           </button>
-          <button type="button" style={{ marginLeft: 8 }} onClick={() => { setMode("login"); setError(null); }}>
+          <button
+            type="button"
+            style={{ marginLeft: 8 }}
+            onClick={() => {
+              setMode("login");
+              setError(null);
+            }}
+          >
             Back to Login
           </button>
         </form>
@@ -196,20 +245,41 @@ export function LoginPage({ onLoginSuccess, authDisabled }: LoginPageProps) {
       <form onSubmit={handleBasicLogin} style={{ maxWidth: 360 }}>
         <div style={{ marginBottom: 12 }}>
           <label htmlFor="username">Username</label>
-          <input id="username" type="text" value={username} onChange={(e) => setUsername(e.target.value)}
-            required autoComplete="username" style={{ display: "block", width: "100%", marginTop: 4 }} />
+          <input
+            id="username"
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            autoComplete="username"
+            style={{ display: "block", width: "100%", marginTop: 4 }}
+          />
         </div>
         <div style={{ marginBottom: 12 }}>
           <label htmlFor="password">Password</label>
-          <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-            required autoComplete="current-password" style={{ display: "block", width: "100%", marginTop: 4 }} />
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            autoComplete="current-password"
+            style={{ display: "block", width: "100%", marginTop: 4 }}
+          />
         </div>
         {error && <div style={{ color: "var(--destructive)", marginBottom: 12 }}>{error}</div>}
         <button type="submit" className="btn-primary" disabled={loading}>
           {loading ? "Logging in..." : "Login"}
         </button>
         {provider === "basic" && (
-          <button type="button" style={{ marginLeft: 8 }} onClick={() => { setMode("register"); setError(null); }}>
+          <button
+            type="button"
+            style={{ marginLeft: 8 }}
+            onClick={() => {
+              setMode("register");
+              setError(null);
+            }}
+          >
             Create Account
           </button>
         )}

@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { gql as gqlTag } from '@apollo/client';
-import type { Role, RoleAssignment, OrgMembership } from '../types/auth';
+import { gql as gqlTag } from "@apollo/client";
+import type { Role, RoleAssignment, OrgMembership } from "../types/auth";
 import type {
   Source,
   Domain,
@@ -17,8 +17,8 @@ import type {
   Relationship,
   RLSRule,
   MutationResult,
-} from '../types/admin';
-import { client } from '../apolloClient';
+} from "../types/admin";
+import { client } from "../apolloClient";
 import {
   RolesQuery,
   SourcesQuery,
@@ -55,9 +55,9 @@ import {
   ToggleScheduledTask,
   PurgeCacheByTable,
   InvalidateFileSource,
-} from '../hooks/admin.graphql';
+} from "../hooks/admin.graphql";
 
-const API_BASE = import.meta.env.VITE_API_BASE || '';
+const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 export async function fetchMe(): Promise<{
   user_id: string;
@@ -68,13 +68,13 @@ export async function fetchMe(): Promise<{
   org_memberships: OrgMembership[];
   assignments: RoleAssignment[];
 }> {
-  const res = await fetch('/auth/me');
-  if (!res.ok) throw new Error('auth/me failed');
+  const res = await fetch("/auth/me");
+  if (!res.ok) throw new Error("auth/me failed");
   return res.json();
 }
 
 export async function fetchProviderType(): Promise<string | null> {
-  const res = await fetch('/auth/provider-type');
+  const res = await fetch("/auth/provider-type");
   if (!res.ok) return null;
   const data = await res.json();
   return data.provider ?? null;
@@ -87,9 +87,9 @@ export async function registerAccount(body: {
   display_name?: string;
   invite_token?: string;
 }): Promise<{ user_id: string; username: string }> {
-  const res = await fetch('/auth/register', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+  const res = await fetch("/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -114,8 +114,8 @@ export async function fetchOrgs(): Promise<Org[]> {
 
 export async function createOrg(id: string, name: string): Promise<Org> {
   const res = await fetch(`${API_BASE}/admin/orgs`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id, name }),
   });
   if (!res.ok) throw new Error(`createOrg failed: ${res.status}`);
@@ -123,7 +123,7 @@ export async function createOrg(id: string, name: string): Promise<Org> {
 }
 
 export async function deleteOrg(orgId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}`, { method: 'DELETE' });
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`deleteOrg failed: ${res.status}`);
 }
 
@@ -142,8 +142,8 @@ export async function fetchOrgMembers(orgId: string): Promise<OrgMember[]> {
 
 export async function addOrgMember(orgId: string, userId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/members`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ user_id: userId }),
   });
   if (!res.ok) throw new Error(`addOrgMember failed: ${res.status}`);
@@ -151,21 +151,21 @@ export async function addOrgMember(orgId: string, userId: string): Promise<void>
 
 export async function removeOrgMember(orgId: string, userId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/members/${userId}`, {
-    method: 'DELETE',
+    method: "DELETE",
   });
   if (!res.ok) throw new Error(`removeOrgMember failed: ${res.status}`);
 }
 
 export async function fetchOrgRoles(orgId: string): Promise<Role[]> {
   const res = await fetch(`${API_BASE}/admin/roles`, {
-    headers: { 'X-Org-Id': orgId },
+    headers: { "X-Org-Id": orgId },
   });
   if (!res.ok) throw new Error(`fetchOrgRoles failed: ${res.status}`);
   const rows: Array<{ id: string; capabilities: string[]; domain_access: string[] }> =
     await res.json();
   return rows.map((r) => ({
     id: r.id,
-    capabilities: r.capabilities as import('../types/auth').Capability[],
+    capabilities: r.capabilities as import("../types/auth").Capability[],
     domain_access: r.domain_access,
   }));
 }
@@ -174,11 +174,11 @@ export async function createOrgRole(
   orgId: string,
   id: string,
   capabilities: string[],
-  domain_access: string[]
+  domain_access: string[],
 ): Promise<Role> {
   const res = await fetch(`${API_BASE}/admin/roles`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Org-Id': orgId },
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Org-Id": orgId },
     body: JSON.stringify({ id, capabilities, domain_access }),
   });
   if (!res.ok) throw new Error(`createOrgRole failed: ${res.status}`);
@@ -187,8 +187,8 @@ export async function createOrgRole(
 
 export async function deleteOrgRole(orgId: string, roleId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/roles/${roleId}`, {
-    method: 'DELETE',
-    headers: { 'X-Org-Id': orgId },
+    method: "DELETE",
+    headers: { "X-Org-Id": orgId },
   });
   if (!res.ok) throw new Error(`deleteOrgRole failed: ${res.status}`);
 }
@@ -196,7 +196,7 @@ export async function deleteOrgRole(orgId: string, roleId: string): Promise<void
 export async function fetchRoles(): Promise<Role[]> {
   const result = await client.query({
     query: RolesQuery,
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { roles: Role[] };
   return data.roles.map((r) => ({
@@ -208,7 +208,7 @@ export async function fetchRoles(): Promise<Role[]> {
 export async function fetchSources(): Promise<Source[]> {
   const result = await client.query({
     query: SourcesQuery,
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { sources: Source[] };
   return data.sources;
@@ -217,7 +217,7 @@ export async function fetchSources(): Promise<Source[]> {
 export async function fetchDomains(): Promise<Domain[]> {
   const result = await client.query({
     query: DomainsQuery,
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { domains: Domain[] };
   return data.domains;
@@ -226,7 +226,7 @@ export async function fetchDomains(): Promise<Domain[]> {
 export async function createDomain(
   id: string,
   description: string,
-  graphqlAlias?: string | null
+  graphqlAlias?: string | null,
 ): Promise<void> {
   await client.mutate({
     mutation: CreateDomain,
@@ -244,7 +244,7 @@ export async function deleteDomain(id: string): Promise<void> {
 export async function fetchTables(): Promise<RegisteredTable[]> {
   const result = await client.query({
     query: TablesQuery,
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { tables: RegisteredTable[] };
   return data.tables;
@@ -253,7 +253,7 @@ export async function fetchTables(): Promise<RegisteredTable[]> {
 export async function fetchRelationships(): Promise<Relationship[]> {
   const result = await client.query({
     query: RelationshipsQuery,
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { relationships: Relationship[] };
   return data.relationships;
@@ -280,7 +280,7 @@ export async function upsertRelationship(input: {
     variables: { input },
     refetchQueries: [{ query: RelationshipsQuery }],
   });
-  return (result.data?.upsertRelationship ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.upsertRelationship ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function deleteRelationship(id: string): Promise<MutationResult> {
@@ -289,13 +289,13 @@ export async function deleteRelationship(id: string): Promise<MutationResult> {
     variables: { id },
     refetchQueries: [{ query: RelationshipsQuery }],
   });
-  return (result.data?.deleteRelationship ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.deleteRelationship ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function fetchRlsRules(): Promise<RLSRule[]> {
   const result = await client.query({
     query: RLSRulesQuery,
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { rlsRules: RLSRule[] };
   return data.rlsRules;
@@ -312,20 +312,20 @@ export async function upsertRlsRule(input: {
     variables: { input },
     refetchQueries: [{ query: RLSRulesQuery }],
   });
-  return (result.data?.upsertRlsRule ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.upsertRlsRule ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function deleteRlsRule(
   roleId: string,
   tableId?: number | null,
-  domainId?: string | null
+  domainId?: string | null,
 ): Promise<MutationResult> {
   const result = await client.mutate<{ deleteRlsRule: MutationResult }>({
     mutation: gqlTag`mutation($roleId: String!, $tableId: Int, $domainId: String) { deleteRlsRule(roleId: $roleId, tableId: $tableId, domainId: $domainId) { success message } }`,
     variables: { roleId, tableId: tableId ?? null, domainId: domainId ?? null },
     refetchQueries: [{ query: RLSRulesQuery }],
   });
-  return (result.data?.deleteRlsRule ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.deleteRlsRule ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function upsertRole(input: {
@@ -337,7 +337,7 @@ export async function upsertRole(input: {
     mutation: gqlTag`mutation($input: RoleInput!) { createRole(input: $input) { success message } }`,
     variables: { input },
   });
-  return (result.data?.createRole ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.createRole ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function deleteRole(id: string): Promise<MutationResult> {
@@ -345,7 +345,7 @@ export async function deleteRole(id: string): Promise<MutationResult> {
     mutation: gqlTag`mutation($id: String!) { deleteRole(id: $id) { success message } }`,
     variables: { id },
   });
-  return (result.data?.deleteRole ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.deleteRole ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function createSource(input: {
@@ -363,7 +363,7 @@ export async function createSource(input: {
     mutation: CreateSource,
     variables: { input },
   });
-  return (result.data?.createSource ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.createSource ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function registerTable(input: {
@@ -408,7 +408,7 @@ export async function registerTable(input: {
     variables: { input },
     refetchQueries: [{ query: TablesQuery }],
   });
-  return (result.data?.registerTable ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.registerTable ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function updateTable(input: {
@@ -453,7 +453,7 @@ export async function updateTable(input: {
     variables: { input },
     refetchQueries: [{ query: TablesQuery }],
   });
-  return (result.data?.updateTable ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.updateTable ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function deployViewToDb(tableId: number): Promise<MutationResult> {
@@ -462,7 +462,7 @@ export async function deployViewToDb(tableId: number): Promise<MutationResult> {
     variables: { tableId },
     refetchQueries: [{ query: TablesQuery }],
   });
-  return (result.data?.deployViewToDb ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.deployViewToDb ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function deleteTable(id: number): Promise<MutationResult> {
@@ -471,13 +471,13 @@ export async function deleteTable(id: number): Promise<MutationResult> {
     variables: { id },
     refetchQueries: [{ query: TablesQuery }],
   });
-  return (result.data?.deleteTable ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.deleteTable ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function profileTable(
-  tableId: number
+  tableId: number,
 ): Promise<{ columns: string[]; rows: Record<string, unknown>[]; rowCount: number }> {
-  const resp = await fetch(`${API_BASE}/admin/tables/${tableId}/profile`, { method: 'POST' });
+  const resp = await fetch(`${API_BASE}/admin/tables/${tableId}/profile`, { method: "POST" });
   if (!resp.ok) {
     const body = await resp.json().catch(() => ({ detail: resp.statusText }));
     throw new Error(body.detail || resp.statusText);
@@ -487,12 +487,12 @@ export async function profileTable(
 
 export async function generateColumnDescription(
   tableId: number,
-  columnName: string
+  columnName: string,
 ): Promise<string> {
   const result = await client.query({
     query: GenerateColumnDescription,
     variables: { tableId: String(tableId), columnName },
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { generateColumnDescription: string };
   return data.generateColumnDescription;
@@ -502,7 +502,7 @@ export async function generateTableDescription(tableId: number): Promise<string>
   const result = await client.query({
     query: GenerateTableDescription,
     variables: { tableId: String(tableId) },
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { generateTableDescription: string };
   return data.generateTableDescription;
@@ -512,7 +512,7 @@ export async function fetchAvailableSchemas(sourceId: string): Promise<string[]>
   const result = await client.query({
     query: AvailableSchemas,
     variables: { sourceId },
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { availableSchemas: string[] };
   return data.availableSchemas;
@@ -525,12 +525,12 @@ export interface TableMetadata {
 
 export async function fetchAvailableTables(
   sourceId: string,
-  schemaName: string = 'public'
+  schemaName: string = "public",
 ): Promise<TableMetadata[]> {
   const result = await client.query({
     query: AvailableTables,
     variables: { sourceId, schemaName },
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { availableTables: TableMetadata[] };
   return data.availableTables;
@@ -539,12 +539,12 @@ export async function fetchAvailableTables(
 export async function fetchAvailableColumns(
   sourceId: string,
   schemaName: string,
-  tableName: string
+  tableName: string,
 ): Promise<string[]> {
   const result = await client.query({
     query: AvailableColumns,
     variables: { sourceId, schemaName, tableName },
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { availableColumns: string[] };
   return data.availableColumns;
@@ -561,12 +561,12 @@ export interface ColumnMetadata {
 export async function fetchAvailableColumnsMetadata(
   sourceId: string,
   schemaName: string,
-  tableName: string
+  tableName: string,
 ): Promise<ColumnMetadata[]> {
   const result = await client.query({
     query: AvailableColumnsMetadata,
     variables: { sourceId, schemaName, tableName },
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { availableColumnsMetadata: ColumnMetadata[] };
   return data.availableColumnsMetadata;
@@ -574,12 +574,12 @@ export async function fetchAvailableColumnsMetadata(
 
 export async function fetchAvailableFunctions(
   sourceId: string,
-  schemaName = 'openapi'
+  schemaName = "openapi",
 ): Promise<TableMetadata[]> {
   const result = await client.query({
     query: AvailableFunctions,
     variables: { sourceId, schemaName },
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { availableFunctions: TableMetadata[] };
   return data.availableFunctions;
@@ -601,7 +601,7 @@ export async function updateSource(input: {
     variables: { input },
     refetchQueries: [{ query: SourcesQuery }],
   });
-  return (result.data?.updateSource ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.updateSource ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function renameSource(oldId: string, newId: string): Promise<MutationResult> {
@@ -610,7 +610,7 @@ export async function renameSource(oldId: string, newId: string): Promise<Mutati
     variables: { oldId, newId },
     refetchQueries: [{ query: SourcesQuery }],
   });
-  return (result.data?.renameSource ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.renameSource ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function deleteSource(id: string): Promise<MutationResult> {
@@ -619,12 +619,12 @@ export async function deleteSource(id: string): Promise<MutationResult> {
     variables: { id },
     refetchQueries: [{ query: SourcesQuery }],
   });
-  return (result.data?.deleteSource ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.deleteSource ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function fetchSdl(roleId: string): Promise<string> {
   const resp = await fetch(`${API_BASE}/data/sdl`, {
-    headers: { 'X-Role': roleId },
+    headers: { "X-Role": roleId },
   });
   if (!resp.ok) throw new Error(`SDL fetch failed: ${resp.status}`);
   return resp.text();
@@ -632,16 +632,16 @@ export async function fetchSdl(roleId: string): Promise<string> {
 
 // --- Discovery ---
 
-const API_BASE_RAW = import.meta.env.VITE_API_BASE || '';
+const API_BASE_RAW = import.meta.env.VITE_API_BASE || "";
 
 export async function discoverRelationships(
   scope: string,
   tableId?: number,
-  domainId?: string
+  domainId?: string,
 ): Promise<{ candidates_found: number; stored_ids: number[] }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/relationships`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       scope,
       table_id: tableId,
@@ -660,8 +660,8 @@ export async function fetchCandidates(): Promise<unknown[]> {
 
 export async function acceptCandidate(id: number, name?: string): Promise<unknown> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/${id}/accept`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: name ?? null }),
   });
   if (!resp.ok) throw new Error(`Accept failed: ${resp.status}`);
@@ -677,7 +677,7 @@ export async function fetchRejectedCount(): Promise<number> {
 
 export async function clearRejectedCandidates(): Promise<{ deleted: number }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/rejected`, {
-    method: 'DELETE',
+    method: "DELETE",
   });
   if (!resp.ok) throw new Error(`Clear rejections failed: ${resp.status}`);
   return resp.json();
@@ -685,8 +685,8 @@ export async function clearRejectedCandidates(): Promise<{ deleted: number }> {
 
 export async function rejectCandidate(id: number, reason: string): Promise<void> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/${id}/reject`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reason }),
   });
   if (!resp.ok) throw new Error(`Reject failed: ${resp.status}`);
@@ -717,11 +717,11 @@ export async function discoverSourceSchema(
     table?: string;
     metric?: string;
     sample_limit?: number;
-  }
+  },
 ): Promise<DiscoverSchemaResponse> {
   const resp = await fetch(`${API_BASE_RAW}/admin/schema-discovery/discover/${sourceId}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(hints ?? {}),
   });
   if (!resp.ok) {
@@ -741,8 +741,8 @@ export async function downloadConfig(): Promise<string> {
 
 export async function uploadConfig(yaml: string): Promise<{ success: boolean; message: string }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/config`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/x-yaml' },
+    method: "PUT",
+    headers: { "Content-Type": "application/x-yaml" },
     body: yaml,
   });
   if (!resp.ok) throw new Error(`Config upload failed: ${resp.status}`);
@@ -785,11 +785,11 @@ export async function fetchSettings(): Promise<PlatformSettings> {
 }
 
 export async function updateSettings(
-  settings: Partial<PlatformSettings>
+  settings: Partial<PlatformSettings>,
 ): Promise<{ success: boolean; updated: string[] }> {
   const resp = await fetch(`${API_BASE_RAW}/admin/settings`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(settings),
   });
   if (!resp.ok) throw new Error(`Settings update failed: ${resp.status}`);
@@ -824,7 +824,7 @@ export async function compileQuery(
   variables?: Record<string, unknown>,
   flatSql?: boolean,
   flatCypher?: boolean,
-  nodeOnlyCypher?: boolean
+  nodeOnlyCypher?: boolean,
 ): Promise<CompileResult | { queries: CompileResult[] }> {
   const result = await client.query({
     query: CompileQuery,
@@ -838,7 +838,7 @@ export async function compileQuery(
         nodeOnlyCypher: nodeOnlyCypher ?? false,
       },
     },
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { compileQuery: Record<string, unknown>[] };
   const results = data.compileQuery.map((r) => ({
@@ -851,10 +851,12 @@ export async function compileQuery(
     canonical_field: r.canonicalField ?? r.canonical_field,
     compiled_cypher: r.compiledCypher ?? r.compiled_cypher,
     cypher_error: r.cypherError ?? r.cypher_error,
-    column_aliases: ((r.columnAliases ?? r.column_aliases ?? []) as Record<string, unknown>[]).map((ca) => ({
-      field_name: ca.fieldName ?? ca.field_name,
-      column: ca.column,
-    })),
+    column_aliases: ((r.columnAliases ?? r.column_aliases ?? []) as Record<string, unknown>[]).map(
+      (ca) => ({
+        field_name: ca.fieldName ?? ca.field_name,
+        column: ca.column,
+      }),
+    ),
   })) as CompileResult[];
   if (results.length === 1) return results[0];
   return { queries: results };
@@ -862,13 +864,13 @@ export async function compileQuery(
 
 export async function runSql(
   sqlText: string,
-  role: string = 'admin',
-  discoveryMode: boolean = false
+  role: string = "admin",
+  discoveryMode: boolean = false,
 ): Promise<{ columns: string[]; rows: Record<string, unknown>[]; error?: string }> {
   try {
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ sql: sqlText, role, ...(discoveryMode && { discovery_mode: true }) }),
     });
     if (!resp.ok) {
@@ -886,34 +888,34 @@ export async function runSql(
 
 export async function nlToSql(
   question: string,
-  role: string = 'admin'
+  role: string = "admin",
 ): Promise<{ sql: string; attempts: number; error?: string }> {
   try {
     const resp = await fetch(`${API_BASE_RAW}/data/nl-to-sql`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question, role }),
     });
     if (!resp.ok) {
       const text = await resp.text();
-      return { sql: '', attempts: 0, error: text };
+      return { sql: "", attempts: 0, error: text };
     }
     return await resp.json();
   } catch (e) {
-    return { sql: '', attempts: 0, error: e instanceof Error ? e.message : String(e) };
+    return { sql: "", attempts: 0, error: e instanceof Error ? e.message : String(e) };
   }
 }
 
 export async function executeQuery(
   roleId: string,
   query: string,
-  variables?: Record<string, unknown>
+  variables?: Record<string, unknown>,
 ): Promise<unknown> {
   const resp = await fetch(`${API_BASE}/data/graphql`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'X-Provisa-Role': roleId,
+      "Content-Type": "application/json",
+      "X-Provisa-Role": roleId,
     },
     body: JSON.stringify({ query, variables }),
   });
@@ -955,7 +957,7 @@ export interface SystemHealth {
 export async function fetchMVList(): Promise<MVInfo[]> {
   const result = await client.query({
     query: MVList,
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { mvList: MVInfo[] };
   return data.mvList;
@@ -964,7 +966,7 @@ export async function fetchMVList(): Promise<MVInfo[]> {
 export async function fetchCacheStats(): Promise<CacheStats> {
   const result = await client.query({
     query: CacheStats,
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { cacheStats: CacheStats };
   return data.cacheStats;
@@ -973,7 +975,7 @@ export async function fetchCacheStats(): Promise<CacheStats> {
 export async function fetchSystemHealth(): Promise<SystemHealth> {
   const result = await client.query({
     query: SystemHealth,
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { systemHealth: SystemHealth };
   return data.systemHealth;
@@ -984,7 +986,7 @@ export async function refreshMV(mvId: string): Promise<MutationResult> {
     mutation: RefreshMv,
     variables: { mvId },
   });
-  return (result.data?.refreshMv ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.refreshMv ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function toggleMV(mvId: string, enabled: boolean): Promise<MutationResult> {
@@ -992,53 +994,53 @@ export async function toggleMV(mvId: string, enabled: boolean): Promise<Mutation
     mutation: ToggleMv,
     variables: { mvId, enabled },
   });
-  return (result.data?.toggleMv ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.toggleMv ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function purgeCache(): Promise<MutationResult> {
   const result = await client.mutate<{ purgeCache: MutationResult }>({
     mutation: gqlTag`mutation { purgeCache { success message } }`,
   });
-  return (result.data?.purgeCache ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.purgeCache ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function updateSourceCache(
   sourceId: string,
   cacheEnabled: boolean,
-  cacheTtl: number | null
+  cacheTtl: number | null,
 ): Promise<MutationResult> {
   const result = await client.mutate<{ updateSourceCache: MutationResult }>({
     mutation: gqlTag`mutation($sourceId: String!, $cacheEnabled: Boolean!, $cacheTtl: Int) { updateSourceCache(sourceId: $sourceId, cacheEnabled: $cacheEnabled, cacheTtl: $cacheTtl) { success message } }`,
     variables: { sourceId, cacheEnabled, cacheTtl },
   });
-  return (result.data?.updateSourceCache ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.updateSourceCache ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function updateTableCache(
   tableId: number,
-  cacheTtl: number | null
+  cacheTtl: number | null,
 ): Promise<MutationResult> {
   const result = await client.mutate<{ updateTableCache: MutationResult }>({
     mutation: gqlTag`mutation($tableId: Int!, $cacheTtl: Int) { updateTableCache(tableId: $tableId, cacheTtl: $cacheTtl) { success message } }`,
     variables: { tableId, cacheTtl },
   });
-  return (result.data?.updateTableCache ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.updateTableCache ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function updateSourceNaming(
   sourceId: string,
-  namingConvention: string | null
+  namingConvention: string | null,
 ): Promise<MutationResult> {
   const result = await client.mutate<{ updateSourceNaming: MutationResult }>({
     mutation: gqlTag`mutation($sourceId: String!, $namingConvention: String) { updateSourceNaming(sourceId: $sourceId, namingConvention: $namingConvention) { success message } }`,
     variables: { sourceId, namingConvention },
   });
-  return (result.data?.updateSourceNaming ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.updateSourceNaming ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function updateSourceAllowedDomains(
   sourceId: string,
-  allowedDomains: string[]
+  allowedDomains: string[],
 ): Promise<MutationResult> {
   const result = await client.mutate<{ updateSourceAllowedDomains: MutationResult }>({
     mutation: gqlTag`mutation($sourceId: String!, $allowedDomains: [String!]!) { updateSourceAllowedDomains(sourceId: $sourceId, allowedDomains: $allowedDomains) { success message } }`,
@@ -1046,19 +1048,19 @@ export async function updateSourceAllowedDomains(
   });
   return (result.data?.updateSourceAllowedDomains ?? {
     success: false,
-    message: '',
+    message: "",
   }) as MutationResult;
 }
 
 export async function updateTableNaming(
   tableId: number,
-  namingConvention: string | null
+  namingConvention: string | null,
 ): Promise<MutationResult> {
   const result = await client.mutate<{ updateTableNaming: MutationResult }>({
     mutation: gqlTag`mutation($tableId: Int!, $namingConvention: String) { updateTableNaming(tableId: $tableId, namingConvention: $namingConvention) { success message } }`,
     variables: { tableId, namingConvention },
   });
-  return (result.data?.updateTableNaming ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.updateTableNaming ?? { success: false, message: "" }) as MutationResult;
 }
 
 // --- Admin: Scheduled Tasks ---
@@ -1076,7 +1078,7 @@ export interface ScheduledTask {
 export async function fetchScheduledTasks(): Promise<ScheduledTask[]> {
   const result = await client.query({
     query: ScheduledTasks,
-    fetchPolicy: 'cache-first',
+    fetchPolicy: "cache-first",
   });
   const data = result.data as { scheduledTasks: ScheduledTask[] };
   return data.scheduledTasks;
@@ -1084,13 +1086,13 @@ export async function fetchScheduledTasks(): Promise<ScheduledTask[]> {
 
 export async function toggleScheduledTask(
   taskId: string,
-  enabled: boolean
+  enabled: boolean,
 ): Promise<MutationResult> {
   const result = await client.mutate<{ toggleScheduledTask: MutationResult }>({
     mutation: ToggleScheduledTask,
     variables: { taskId, enabled },
   });
-  return (result.data?.toggleScheduledTask ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.toggleScheduledTask ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function purgeCacheByTable(tableId: number): Promise<MutationResult> {
@@ -1098,7 +1100,7 @@ export async function purgeCacheByTable(tableId: number): Promise<MutationResult
     mutation: PurgeCacheByTable,
     variables: { tableId },
   });
-  return (result.data?.purgeCacheByTable ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.purgeCacheByTable ?? { success: false, message: "" }) as MutationResult;
 }
 
 export async function invalidateFileSource(tableId: number): Promise<MutationResult> {
@@ -1106,7 +1108,7 @@ export async function invalidateFileSource(tableId: number): Promise<MutationRes
     mutation: InvalidateFileSource,
     variables: { tableId },
   });
-  return (result.data?.invalidateFileSource ?? { success: false, message: '' }) as MutationResult;
+  return (result.data?.invalidateFileSource ?? { success: false, message: "" }) as MutationResult;
 }
 
 export interface LocalUser {
@@ -1135,8 +1137,8 @@ export async function createLocalUser(body: {
   roles?: string[];
 }): Promise<LocalUser> {
   const res = await fetch(`${API_BASE}/admin/users`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -1147,7 +1149,7 @@ export async function createLocalUser(body: {
 }
 
 export async function deleteLocalUser(userId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/admin/users/${userId}`, { method: 'DELETE' });
+  const res = await fetch(`${API_BASE}/admin/users/${userId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`Failed to delete user: ${res.status}`);
 }
 
@@ -1167,11 +1169,11 @@ export async function fetchUserAssignments(userId: string): Promise<UserAssignme
 export async function addUserAssignment(
   userId: string,
   roleId: string,
-  domainId: string
+  domainId: string,
 ): Promise<UserAssignment> {
   const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role_id: roleId, domain_id: domainId }),
   });
   if (!res.ok) {
@@ -1183,7 +1185,7 @@ export async function addUserAssignment(
 
 export async function removeUserAssignment(userId: string, assignmentId: number): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/users/${userId}/assignments/${assignmentId}`, {
-    method: 'DELETE',
+    method: "DELETE",
   });
   if (!res.ok) throw new Error(`Failed to remove assignment: ${res.status}`);
 }
@@ -1216,11 +1218,11 @@ export async function fetchInvites(): Promise<OrgInvite[]> {
 export async function createInvite(
   orgId: string,
   roleId?: string,
-  expiresInDays = 7
+  expiresInDays = 7,
 ): Promise<OrgInvite> {
   const res = await fetch(`${API_BASE}/admin/invites`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       org_id: orgId,
       role_id: roleId ?? null,
@@ -1232,7 +1234,7 @@ export async function createInvite(
 }
 
 export async function revokeInvite(token: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/admin/invites/${token}`, { method: 'DELETE' });
+  const res = await fetch(`${API_BASE}/admin/invites/${token}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`revokeInvite failed: ${res.status}`);
 }
 
@@ -1246,11 +1248,11 @@ export async function fetchInviteInfo(token: string): Promise<InviteInfo> {
 }
 
 export async function reloadQueryEngineCatalog(
-  catalog = 'otel'
+  catalog = "otel",
 ): Promise<{ success: boolean; errors: string[] }> {
   const res = await fetch(
     `${API_BASE}/admin/query-engine/reload-catalog?catalog=${encodeURIComponent(catalog)}`,
-    { method: 'POST' }
+    { method: "POST" },
   );
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
@@ -1264,7 +1266,7 @@ export async function restartQueryEngine(): Promise<{
   container: string;
   output: string;
 }> {
-  const res = await fetch(`${API_BASE}/admin/query-engine/restart`, { method: 'POST' });
+  const res = await fetch(`${API_BASE}/admin/query-engine/restart`, { method: "POST" });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(data.detail || `restart failed: ${res.status}`);
@@ -1276,7 +1278,7 @@ export async function recomputeSchemaClusters(): Promise<{
   success: boolean;
   tables_clustered: number;
 }> {
-  const res = await fetch(`${API_BASE}/admin/schema-clusters/recompute`, { method: 'POST' });
+  const res = await fetch(`${API_BASE}/admin/schema-clusters/recompute`, { method: "POST" });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(data.detail || `recompute failed: ${res.status}`);

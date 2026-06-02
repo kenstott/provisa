@@ -11,13 +11,35 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { get as idbGet, set as idbSet } from "idb-keyval";
-import { Play, ChevronRight, ChevronDown, Table2, Columns3, History, Copy, Check, BarChart2, Network, X, Loader2 } from "lucide-react";
+import {
+  Play,
+  ChevronRight,
+  ChevronDown,
+  Table2,
+  Columns3,
+  History,
+  Copy,
+  Check,
+  BarChart2,
+  Network,
+  X,
+  Loader2,
+} from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { useDomainFilter } from "../context/DomainFilterContext";
-import { runSql, fetchRoles, fetchDomains, fetchTables, fetchRelationships, registerTable, nlToSql, updateTable } from "../api/admin";
+import {
+  runSql,
+  fetchRoles,
+  fetchDomains,
+  fetchTables,
+  fetchRelationships,
+  registerTable,
+  nlToSql,
+  updateTable,
+} from "../api/admin";
 import type { Domain, Relationship, RegisteredTable } from "../types/admin";
 import { useCapability } from "../hooks/useCapability";
 
@@ -34,10 +56,33 @@ interface HistoryEntry {
 }
 
 // Canvas types
-interface CanvasTable { tableName: string; x: number; y: number; }
-interface CanvasJoin { id: string; fromTable: string; fromCol: string; toTable: string; toCol: string; cardinality: "many-to-one" | "one-to-many"; }
-interface JoinCanvasProps { tables: RegisteredTable[]; existingRels: Relationship[]; onGenerateSql: (sql: string) => void; }
-interface CanvasTableCardProps { ct: CanvasTable; tbl: RegisteredTable; onMove: (x: number, y: number) => void; onRemove: () => void; onStartConnect: (colName: string) => void; selectedCols: Set<string>; onToggleCol: (colName: string) => void; }
+interface CanvasTable {
+  tableName: string;
+  x: number;
+  y: number;
+}
+interface CanvasJoin {
+  id: string;
+  fromTable: string;
+  fromCol: string;
+  toTable: string;
+  toCol: string;
+  cardinality: "many-to-one" | "one-to-many";
+}
+interface JoinCanvasProps {
+  tables: RegisteredTable[];
+  existingRels: Relationship[];
+  onGenerateSql: (sql: string) => void;
+}
+interface CanvasTableCardProps {
+  ct: CanvasTable;
+  tbl: RegisteredTable;
+  onMove: (x: number, y: number) => void;
+  onRemove: () => void;
+  onStartConnect: (colName: string) => void;
+  selectedCols: Set<string>;
+  onToggleCol: (colName: string) => void;
+}
 
 const CARD_W = 200;
 const CARD_HEADER_H = 34;
@@ -90,11 +135,16 @@ function autoAliasConflicts(sql: string): string {
 
   // Split items by top-level commas
   const items: string[] = [];
-  let depth = 0, cur = "";
+  let depth = 0,
+    cur = "";
   for (const ch of colList) {
     if (ch === "(") depth++;
     else if (ch === ")") depth--;
-    else if (ch === "," && depth === 0) { items.push(cur.trim()); cur = ""; continue; }
+    else if (ch === "," && depth === 0) {
+      items.push(cur.trim());
+      cur = "";
+      continue;
+    }
     cur += ch;
   }
   if (cur.trim()) items.push(cur.trim());
@@ -105,13 +155,16 @@ function autoAliasConflicts(sql: string): string {
   const parsed = items.map((item) => {
     const alreadyAliased = /\bas\s+\w+/i.test(item) || /^"?\w+"?\."?\w+"?\s+\w+\s*$/i.test(item);
     const match = item.trim().match(colRef);
-    if (!match || alreadyAliased) return { item, colLower: null as string | null, tableAlias: null as string | null };
+    if (!match || alreadyAliased)
+      return { item, colLower: null as string | null, tableAlias: null as string | null };
     return { item, colLower: match[2].toLowerCase(), tableAlias: match[1] };
   });
 
   // Count each bare column name
   const freq = new Map<string, number>();
-  parsed.forEach(({ colLower }) => { if (colLower) freq.set(colLower, (freq.get(colLower) ?? 0) + 1); });
+  parsed.forEach(({ colLower }) => {
+    if (colLower) freq.set(colLower, (freq.get(colLower) ?? 0) + 1);
+  });
 
   // Rebuild, appending alias where needed
   const newItems = parsed.map(({ item, colLower, tableAlias }) => {
@@ -128,7 +181,11 @@ function loadSqlQuery(): string {
 }
 
 function saveSqlQuery(text: string) {
-  try { localStorage.setItem(SQL_QUERY_KEY, text); } catch { /* quota */ }
+  try {
+    localStorage.setItem(SQL_QUERY_KEY, text);
+  } catch {
+    /* quota */
+  }
 }
 
 async function saveSqlResults(results: SqlResults) {
@@ -137,13 +194,31 @@ async function saveSqlResults(results: SqlResults) {
 
 // ── CanvasTableCard ──────────────────────────────────────────────────────────
 
-function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect, selectedCols, onToggleCol }: CanvasTableCardProps) {
-  const dragRef = useRef<{ startMouseX: number; startMouseY: number; startCardX: number; startCardY: number } | null>(null);
+function CanvasTableCard({
+  ct,
+  tbl,
+  onMove,
+  onRemove,
+  onStartConnect,
+  selectedCols,
+  onToggleCol,
+}: CanvasTableCardProps) {
+  const dragRef = useRef<{
+    startMouseX: number;
+    startMouseY: number;
+    startCardX: number;
+    startCardY: number;
+  } | null>(null);
 
   const handleHeaderMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest("[data-col]")) return;
     e.preventDefault();
-    dragRef.current = { startMouseX: e.clientX, startMouseY: e.clientY, startCardX: ct.x, startCardY: ct.y };
+    dragRef.current = {
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startCardX: ct.x,
+      startCardY: ct.y,
+    };
     const onMove_ = (ev: MouseEvent) => {
       if (!dragRef.current) return;
       const dx = ev.clientX - dragRef.current.startMouseX;
@@ -193,12 +268,26 @@ function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect, selectedCo
           fontWeight: 600,
         }}
       >
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{ct.tableName}</span>
+        <span
+          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
+        >
+          {ct.tableName}
+        </span>
         <button
           onMouseDown={(e) => e.stopPropagation()}
           onClick={onRemove}
-          style={{ background: "none", border: "none", color: "rgba(255,255,255,0.7)", cursor: "pointer", padding: "0 0 0 4px", lineHeight: 1, fontSize: "0.75rem" }}
-        >✕</button>
+          style={{
+            background: "none",
+            border: "none",
+            color: "rgba(255,255,255,0.7)",
+            cursor: "pointer",
+            padding: "0 0 0 4px",
+            lineHeight: 1,
+            fontSize: "0.75rem",
+          }}
+        >
+          ✕
+        </button>
       </div>
 
       {tbl.columns.map((col) => (
@@ -249,10 +338,25 @@ function CanvasTableCard({ ct, tbl, onMove, onRemove, onStartConnect, selectedCo
               flexShrink: 0,
               marginRight: 5,
             }}
-          >{selectedCols.has(col.columnName) ? "✓" : ""}</span>
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{col.columnName}</span>
+          >
+            {selectedCols.has(col.columnName) ? "✓" : ""}
+          </span>
+          <span
+            style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}
+          >
+            {col.columnName}
+          </span>
           {col.dataType && (
-            <span style={{ fontSize: "0.6rem", color: "var(--text-muted)", opacity: 0.5, marginLeft: 4 }}>{col.dataType}</span>
+            <span
+              style={{
+                fontSize: "0.6rem",
+                color: "var(--text-muted)",
+                opacity: 0.5,
+                marginLeft: 4,
+              }}
+            >
+              {col.dataType}
+            </span>
           )}
           <div
             onMouseDown={(e) => {
@@ -312,7 +416,8 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
       const newJoins: CanvasJoin[] = [];
       for (const rel of existingRels) {
         const isNew = rel.sourceTableName === tableName || rel.targetTableName === tableName;
-        const otherTable = rel.sourceTableName === tableName ? rel.targetTableName : rel.sourceTableName;
+        const otherTable =
+          rel.sourceTableName === tableName ? rel.targetTableName : rel.sourceTableName;
         if (!isNew || !existingNames.has(otherTable) || !rel.targetColumn) continue;
         // Always orient FK→PK: the FK column (many side) references the PK column (one side).
         // one-to-many: source=parent(PK), target=child(FK) → fromTable=target, fromCol=targetColumn
@@ -324,7 +429,14 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
         const pkCol = isFkOnTarget ? rel.sourceColumn : rel.targetColumn;
         // Canonical join ID normalizes direction so forward+reverse config entries dedup correctly.
         const joinId = `${fkTable}__${fkCol}__${pkTable}__${pkCol}`;
-        newJoins.push({ id: joinId, fromTable: fkTable, fromCol: fkCol, toTable: pkTable, toCol: pkCol, cardinality: "many-to-one" });
+        newJoins.push({
+          id: joinId,
+          fromTable: fkTable,
+          fromCol: fkCol,
+          toTable: pkTable,
+          toCol: pkCol,
+          cardinality: "many-to-one",
+        });
       }
       if (newJoins.length > 0) {
         setCanvasJoins((prevJ) => {
@@ -336,57 +448,80 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
     });
   };
 
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
 
   const handleMoveCard = useCallback((tableName: string, x: number, y: number) => {
-    setCanvasTables((prev) => prev.map((ct) => ct.tableName === tableName ? { ...ct, x, y } : ct));
+    setCanvasTables((prev) =>
+      prev.map((ct) => (ct.tableName === tableName ? { ...ct, x, y } : ct)),
+    );
   }, []);
 
   const handleRemoveCard = useCallback((tableName: string) => {
     setCanvasTables((prev) => prev.filter((ct) => ct.tableName !== tableName));
-    setCanvasJoins((prev) => prev.filter((j) => j.fromTable !== tableName && j.toTable !== tableName));
-    setSelectedColumns((prev) => { const next = new Map(prev); next.delete(tableName); return next; });
+    setCanvasJoins((prev) =>
+      prev.filter((j) => j.fromTable !== tableName && j.toTable !== tableName),
+    );
+    setSelectedColumns((prev) => {
+      const next = new Map(prev);
+      next.delete(tableName);
+      return next;
+    });
   }, []);
 
-  const handleStartConnect = useCallback((tableName: string, colName: string) => {
-    const ct = canvasTables.find((c) => c.tableName === tableName);
-    if (!ct) return;
-    const tbl = tableMap[tableName];
-    if (!tbl) return;
-    const colIdx = tbl.columns.findIndex((c) => c.columnName === colName);
-    if (colIdx === -1) return;
-    connectingRef.current = { tableName, colName, colIdx };
+  const handleStartConnect = useCallback(
+    (tableName: string, colName: string) => {
+      const ct = canvasTables.find((c) => c.tableName === tableName);
+      if (!ct) return;
+      const tbl = tableMap[tableName];
+      if (!tbl) return;
+      const colIdx = tbl.columns.findIndex((c) => c.columnName === colName);
+      if (colIdx === -1) return;
+      connectingRef.current = { tableName, colName, colIdx };
 
-    const onMouseMove = (ev: MouseEvent) => {
-      const rect = canvasRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      setConnectingMouse({ x: ev.clientX - rect.left, y: ev.clientY - rect.top });
-    };
+      const onMouseMove = (ev: MouseEvent) => {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        setConnectingMouse({ x: ev.clientX - rect.left, y: ev.clientY - rect.top });
+      };
 
-    const onMouseUp = (ev: MouseEvent) => {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
+      const onMouseUp = (ev: MouseEvent) => {
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
 
-      const target = (ev.target as HTMLElement).closest("[data-col]") as HTMLElement | null;
-      if (target && connectingRef.current) {
-        const toTable = target.dataset.table;
-        const toCol = target.dataset.col;
-        const from = connectingRef.current;
-        if (toTable && toCol && (toTable !== from.tableName || toCol !== from.colName)) {
-          const id = `${from.tableName}-${from.colName}-to-${toTable}-${toCol}`;
-          setCanvasJoins((prev) => {
-            if (prev.some((j) => j.id === id)) return prev;
-            return [...prev, { id, fromTable: from.tableName, fromCol: from.colName, toTable, toCol, cardinality: "many-to-one" }];
-          });
+        const target = (ev.target as HTMLElement).closest("[data-col]") as HTMLElement | null;
+        if (target && connectingRef.current) {
+          const toTable = target.dataset.table;
+          const toCol = target.dataset.col;
+          const from = connectingRef.current;
+          if (toTable && toCol && (toTable !== from.tableName || toCol !== from.colName)) {
+            const id = `${from.tableName}-${from.colName}-to-${toTable}-${toCol}`;
+            setCanvasJoins((prev) => {
+              if (prev.some((j) => j.id === id)) return prev;
+              return [
+                ...prev,
+                {
+                  id,
+                  fromTable: from.tableName,
+                  fromCol: from.colName,
+                  toTable,
+                  toCol,
+                  cardinality: "many-to-one",
+                },
+              ];
+            });
+          }
         }
-      }
-      connectingRef.current = null;
-      setConnectingMouse(null);
-    };
+        connectingRef.current = null;
+        setConnectingMouse(null);
+      };
 
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  }, [canvasTables, tableMap]);
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    },
+    [canvasTables, tableMap],
+  );
 
   const handleGenerateSql = () => {
     if (canvasTables.length === 0) return;
@@ -399,14 +534,18 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
     // Build SELECT clause: use checked columns if any, otherwise SELECT *.
     // When the same column name appears in multiple checked tables, alias as table_column.
     const checkedEntries = canvasTables.flatMap((ct) =>
-      [...(selectedColumns.get(ct.tableName) ?? [])].map((col) => ({ tbl: ct.tableName, col }))
+      [...(selectedColumns.get(ct.tableName) ?? [])].map((col) => ({ tbl: ct.tableName, col })),
     );
     let selectClause: string;
     if (checkedEntries.length > 0) {
       const colFreq = new Map<string, number>();
       checkedEntries.forEach(({ col }) => colFreq.set(col, (colFreq.get(col) ?? 0) + 1));
       selectClause = checkedEntries
-        .map(({ tbl, col }) => colFreq.get(col)! > 1 ? `${aliasOf(tbl)}."${col}" ${tbl}_${col}` : `${aliasOf(tbl)}."${col}"`)
+        .map(({ tbl, col }) =>
+          colFreq.get(col)! > 1
+            ? `${aliasOf(tbl)}."${col}" ${tbl}_${col}`
+            : `${aliasOf(tbl)}."${col}"`,
+        )
         .join(", ");
     } else {
       selectClause = "*";
@@ -424,11 +563,15 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
       const fromInQuery = inQuery.has(join.fromTable);
       let newTable: string, newCol: string, existingTable: string, existingCol: string;
       if (!toInQuery) {
-        newTable = join.toTable; newCol = join.toCol;
-        existingTable = join.fromTable; existingCol = join.fromCol;
+        newTable = join.toTable;
+        newCol = join.toCol;
+        existingTable = join.fromTable;
+        existingCol = join.fromCol;
       } else if (!fromInQuery) {
-        newTable = join.fromTable; newCol = join.fromCol;
-        existingTable = join.toTable; existingCol = join.toCol;
+        newTable = join.fromTable;
+        newCol = join.fromCol;
+        existingTable = join.toTable;
+        existingCol = join.toCol;
       } else {
         // Both tables already in query — emit AND only if condition is genuinely new.
         const key = condKey(join.fromTable, join.fromCol, join.toTable, join.toCol);
@@ -439,7 +582,7 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
         continue;
       }
       const key = condKey(existingTable, existingCol, newTable, newCol);
-      if (emittedConds.has(key)) continue;  // duplicate join entry — skip
+      if (emittedConds.has(key)) continue; // duplicate join entry — skip
       const newTbl = tableMap[newTable];
       s += `\nJOIN "${schemaOf(newTbl)}"."${newTable}" ${aliasOf(newTable)} ON ${aliasOf(existingTable)}."${existingCol}" = ${aliasOf(newTable)}."${newCol}"`;
       emittedConds.add(key);
@@ -471,31 +614,57 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
 
   const bezierMid = (from: { x: number; y: number }, to: { x: number; y: number }) => {
     const dx = Math.max(40, Math.abs(to.x - from.x) * 0.5);
-    const cp1x = from.x + dx, cp1y = from.y;
-    const cp2x = to.x - dx, cp2y = to.y;
+    const cp1x = from.x + dx,
+      cp1y = from.y;
+    const cp2x = to.x - dx,
+      cp2y = to.y;
     const t = 0.5;
-    const x = Math.pow(1 - t, 3) * from.x + 3 * Math.pow(1 - t, 2) * t * cp1x + 3 * (1 - t) * Math.pow(t, 2) * cp2x + Math.pow(t, 3) * to.x;
-    const y = Math.pow(1 - t, 3) * from.y + 3 * Math.pow(1 - t, 2) * t * cp1y + 3 * (1 - t) * Math.pow(t, 2) * cp2y + Math.pow(t, 3) * to.y;
+    const x =
+      Math.pow(1 - t, 3) * from.x +
+      3 * Math.pow(1 - t, 2) * t * cp1x +
+      3 * (1 - t) * Math.pow(t, 2) * cp2x +
+      Math.pow(t, 3) * to.x;
+    const y =
+      Math.pow(1 - t, 3) * from.y +
+      3 * Math.pow(1 - t, 2) * t * cp1y +
+      3 * (1 - t) * Math.pow(t, 2) * cp2y +
+      Math.pow(t, 3) * to.y;
     return { x, y };
   };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.4rem 0.75rem", borderBottom: "1px solid var(--border)", flexShrink: 0, background: "var(--surface)" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.5rem",
+          padding: "0.4rem 0.75rem",
+          borderBottom: "1px solid var(--border)",
+          flexShrink: 0,
+          background: "var(--surface)",
+        }}
+      >
         <button
           className="btn-primary"
           style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
           onClick={handleGenerateSql}
           disabled={canvasTables.length === 0}
-        >→ SQL</button>
+        >
+          → SQL
+        </button>
         <button
           className="btn-secondary"
           style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
           onClick={handleClear}
           disabled={canvasTables.length === 0}
-        >Clear</button>
+        >
+          Clear
+        </button>
         <span style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginLeft: "0.5rem" }}>
-          {canvasTables.length > 0 ? `${canvasTables.length} table${canvasTables.length !== 1 ? "s" : ""}, ${canvasJoins.length} join${canvasJoins.length !== 1 ? "s" : ""}` : ""}
+          {canvasTables.length > 0
+            ? `${canvasTables.length} table${canvasTables.length !== 1 ? "s" : ""}, ${canvasJoins.length} join${canvasJoins.length !== 1 ? "s" : ""}`
+            : ""}
         </span>
       </div>
 
@@ -521,13 +690,37 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
         />
 
         {canvasTables.length === 0 && (
-          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "0.75rem", color: "var(--text-muted)", pointerEvents: "none" }}>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "0.75rem",
+              color: "var(--text-muted)",
+              pointerEvents: "none",
+            }}
+          >
             <Network size={40} style={{ opacity: 0.3 }} />
-            <span style={{ fontSize: "0.85rem", opacity: 0.6 }}>Drag tables from the sidebar onto this canvas</span>
+            <span style={{ fontSize: "0.85rem", opacity: 0.6 }}>
+              Drag tables from the sidebar onto this canvas
+            </span>
           </div>
         )}
 
-        <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", overflow: "visible", zIndex: 5 }}>
+        <svg
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+            overflow: "visible",
+            zIndex: 5,
+          }}
+        >
           {canvasJoins.map((join) => {
             const fromCt = canvasTables.find((c) => c.tableName === join.fromTable);
             const toCt = canvasTables.find((c) => c.tableName === join.toTable);
@@ -541,7 +734,14 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
             const fp = fromPort(fromCt, fromColIdx);
             const tp = toPort(toCt, toColIdx);
             return (
-              <path key={join.id} d={bezierPath(fp, tp)} fill="none" stroke="var(--primary)" strokeWidth={2} opacity={0.7} />
+              <path
+                key={join.id}
+                d={bezierPath(fp, tp)}
+                fill="none"
+                stroke="var(--primary)"
+                strokeWidth={2}
+                opacity={0.7}
+              />
             );
           })}
 
@@ -549,19 +749,27 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
               transient connecting-line overlay reads connectingRef.current during
               render; the read is paired with connectingMouse state, which is updated
               on every mousemove and drives this re-render, so the ref value is current */}
-          {connectingMouse && connectingRef.current && (() => {
-            const fromCt = canvasTables.find((c) => c.tableName === connectingRef.current!.tableName);
-            if (!fromCt) return null;
-            const fp = fromPort(fromCt, connectingRef.current.colIdx);
-            const tp = connectingMouse;
-            const dx = Math.max(40, Math.abs(tp.x - fp.x) * 0.5);
-            return (
-              <path
-                d={`M ${fp.x},${fp.y} C ${fp.x + dx},${fp.y} ${tp.x - dx},${tp.y} ${tp.x},${tp.y}`}
-                fill="none" stroke="var(--primary)" strokeWidth={1.5} strokeDasharray="5,4" opacity={0.6}
-              />
-            );
-          })()}
+          {connectingMouse &&
+            connectingRef.current &&
+            (() => {
+              const fromCt = canvasTables.find(
+                (c) => c.tableName === connectingRef.current!.tableName,
+              );
+              if (!fromCt) return null;
+              const fp = fromPort(fromCt, connectingRef.current.colIdx);
+              const tp = connectingMouse;
+              const dx = Math.max(40, Math.abs(tp.x - fp.x) * 0.5);
+              return (
+                <path
+                  d={`M ${fp.x},${fp.y} C ${fp.x + dx},${fp.y} ${tp.x - dx},${tp.y} ${tp.x},${tp.y}`}
+                  fill="none"
+                  stroke="var(--primary)"
+                  strokeWidth={1.5}
+                  strokeDasharray="5,4"
+                  opacity={0.6}
+                />
+              );
+            })()}
           {/* eslint-enable react-hooks/refs */}
         </svg>
 
@@ -600,16 +808,41 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
             >
               <select
                 value={join.cardinality}
-                onChange={(e) => setCanvasJoins((prev) => prev.map((j) => j.id === join.id ? { ...j, cardinality: e.target.value as "many-to-one" | "one-to-many" } : j))}
-                style={{ fontSize: "0.68rem", background: "none", border: "none", color: "var(--text)", cursor: "pointer", padding: 0 }}
+                onChange={(e) =>
+                  setCanvasJoins((prev) =>
+                    prev.map((j) =>
+                      j.id === join.id
+                        ? { ...j, cardinality: e.target.value as "many-to-one" | "one-to-many" }
+                        : j,
+                    ),
+                  )
+                }
+                style={{
+                  fontSize: "0.68rem",
+                  background: "none",
+                  border: "none",
+                  color: "var(--text)",
+                  cursor: "pointer",
+                  padding: 0,
+                }}
               >
                 <option value="many-to-one">N:1</option>
                 <option value="one-to-many">1:N</option>
               </select>
               <button
                 onClick={() => setCanvasJoins((prev) => prev.filter((j) => j.id !== join.id))}
-                style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, lineHeight: 1, fontSize: "0.7rem" }}
-              >✕</button>
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--text-muted)",
+                  cursor: "pointer",
+                  padding: 0,
+                  lineHeight: 1,
+                  fontSize: "0.7rem",
+                }}
+              >
+                ✕
+              </button>
             </div>
           );
         })}
@@ -626,13 +859,16 @@ function JoinCanvas({ tables, existingRels, onGenerateSql }: JoinCanvasProps) {
               onRemove={() => handleRemoveCard(ct.tableName)}
               onStartConnect={(colName) => handleStartConnect(ct.tableName, colName)}
               selectedCols={selectedColumns.get(ct.tableName) ?? new Set()}
-              onToggleCol={(colName) => setSelectedColumns((prev) => {
-                const next = new Map(prev);
-                const cols = new Set(next.get(ct.tableName) ?? []);
-                if (cols.has(colName)) cols.delete(colName); else cols.add(colName);
-                next.set(ct.tableName, cols);
-                return next;
-              })}
+              onToggleCol={(colName) =>
+                setSelectedColumns((prev) => {
+                  const next = new Map(prev);
+                  const cols = new Set(next.get(ct.tableName) ?? []);
+                  if (cols.has(colName)) cols.delete(colName);
+                  else cols.add(colName);
+                  next.set(ct.tableName, cols);
+                  return next;
+                })
+              }
             />
           );
         })}
@@ -690,7 +926,9 @@ export function SqlPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
-  const pendingAutoRunRef = useRef((location.state as { autoRun?: boolean } | null)?.autoRun === true);
+  const pendingAutoRunRef = useRef(
+    (location.state as { autoRun?: boolean } | null)?.autoRun === true,
+  );
   const [nlText, setNlText] = useState("");
   const [nlLoading, setNlLoading] = useState(false);
   const [nlError, setNlError] = useState("");
@@ -705,20 +943,27 @@ export function SqlPage() {
     });
   }, []);
 
-  const normalizeDomain = (id: string) =>
-    id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
+  const normalizeDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
 
   useEffect(() => {
     localStorage.removeItem("provisa.sql.pending_query");
-    fetchRoles().catch(() => []).then((r) => {
-      const ids = r.map((x: { id: string }) => x.id);
-      if (ids.length) setRoles(ids);
-    });
-    fetchDomains().catch(() => []).then((ds: Domain[]) => {
-      setDomainMap(Object.fromEntries(ds.map((d) => [normalizeDomain(d.id), d])));
-    });
-    fetchTables().catch(() => []).then(setTables);
-    fetchRelationships().catch(() => []).then(setExistingRels);
+    fetchRoles()
+      .catch(() => [])
+      .then((r) => {
+        const ids = r.map((x: { id: string }) => x.id);
+        if (ids.length) setRoles(ids);
+      });
+    fetchDomains()
+      .catch(() => [])
+      .then((ds: Domain[]) => {
+        setDomainMap(Object.fromEntries(ds.map((d) => [normalizeDomain(d.id), d])));
+      });
+    fetchTables()
+      .catch(() => [])
+      .then(setTables);
+    fetchRelationships()
+      .catch(() => [])
+      .then(setExistingRels);
   }, []);
 
   const sqlSchema = useMemo(() => {
@@ -770,7 +1015,10 @@ export function SqlPage() {
       sql = sql.replace(/\$(\d+)/g, (_, n) => params[parseInt(n)] ?? `$${n}`);
     }
     // Strip trailing LIMIT (and optional OFFSET) — views must not have a fixed limit
-    return sql.replace(/\s+LIMIT\s+\d+(\s+OFFSET\s+\d+)?$/i, "").replace(/\s+OFFSET\s+\d+\s+LIMIT\s+\d+$/i, "").trim();
+    return sql
+      .replace(/\s+LIMIT\s+\d+(\s+OFFSET\s+\d+)?$/i, "")
+      .replace(/\s+OFFSET\s+\d+\s+LIMIT\s+\d+$/i, "")
+      .trim();
   }, [sqlText]);
 
   const viewHasParams = useMemo(() => /\$\d+/.test(viewSqlNormalized), [viewSqlNormalized]);
@@ -779,7 +1027,13 @@ export function SqlPage() {
     const groups: Record<string, RegisteredTable[]> = {};
     for (const t of tables) {
       const isImplicitDomain = t.domainId === "meta" || t.domainId === "ops";
-      if (!isImplicitDomain && checkedDomains.size > 0 && t.domainId && !checkedDomains.has(t.domainId)) continue;
+      if (
+        !isImplicitDomain &&
+        checkedDomains.size > 0 &&
+        t.domainId &&
+        !checkedDomains.has(t.domainId)
+      )
+        continue;
       const d = t.domainId ? normalizeDomain(t.domainId) : "(no domain)";
       (groups[d] = groups[d] || []).push(t);
     }
@@ -805,7 +1059,11 @@ export function SqlPage() {
       const next = new Set(prev);
       if (next.has(d)) {
         next.delete(d);
-        setDomainPages(p => { const n = {...p}; delete n[d]; return n; });
+        setDomainPages((p) => {
+          const n = { ...p };
+          delete n[d];
+          return n;
+        });
       } else {
         next.add(d);
       }
@@ -815,7 +1073,8 @@ export function SqlPage() {
   const toggleTable = (t: string) =>
     setExpandedTables((prev) => {
       const next = new Set(prev);
-      if (next.has(t)) next.delete(t); else next.add(t);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
       return next;
     });
 
@@ -830,7 +1089,8 @@ export function SqlPage() {
     setSorts((prev) => {
       const idx = prev.findIndex((s) => s.col === col);
       if (idx === -1) return [...prev, { col, dir: "asc" }];
-      if (prev[idx].dir === "asc") return prev.map((s, i) => i === idx ? { ...s, dir: "desc" } : s);
+      if (prev[idx].dir === "asc")
+        return prev.map((s, i) => (i === idx ? { ...s, dir: "desc" } : s));
       return prev.filter((_, i) => i !== idx);
     });
   }, []);
@@ -871,7 +1131,10 @@ export function SqlPage() {
         const v = r[col];
         return Math.max(m, v == null ? 4 : String(v).length);
       }, 0);
-      widths[col] = Math.min(COL_MAX, Math.max(COL_MIN, Math.max(headerLen, maxDataLen) * CHAR_PX + 24));
+      widths[col] = Math.min(
+        COL_MAX,
+        Math.max(COL_MIN, Math.max(headerLen, maxDataLen) * CHAR_PX + 24),
+      );
     }
     return widths;
   }, [resultRows, resultColumns]);
@@ -891,13 +1154,19 @@ export function SqlPage() {
     if (sorts.length > 0) {
       rows.sort((a, b) => {
         for (const { col, dir } of sorts) {
-          const av = a[col], bv = b[col];
+          const av = a[col],
+            bv = b[col];
           let cmp: number;
           if (av == null && bv == null) continue;
-          if (av == null) { cmp = 1; }
-          else if (bv == null) { cmp = -1; }
-          else if (typeof av === "number" && typeof bv === "number") { cmp = av - bv; }
-          else { cmp = String(av).localeCompare(String(bv)); }
+          if (av == null) {
+            cmp = 1;
+          } else if (bv == null) {
+            cmp = -1;
+          } else if (typeof av === "number" && typeof bv === "number") {
+            cmp = av - bv;
+          } else {
+            cmp = String(av).localeCompare(String(bv));
+          }
           if (cmp !== 0) return dir === "asc" ? cmp : -cmp;
         }
         return 0;
@@ -918,21 +1187,25 @@ export function SqlPage() {
     const escape = (v: unknown) => {
       const s = v == null ? "" : String(v);
       return s.includes(",") || s.includes('"') || s.includes("\n")
-        ? `"${s.replace(/"/g, '""')}"` : s;
+        ? `"${s.replace(/"/g, '""')}"`
+        : s;
     };
     const lines = [cols.map(escape).join(",")];
     for (const row of displayRows) lines.push(cols.map((c) => escape(row[c])).join(","));
     const blob = new Blob([lines.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = "results.csv"; a.click();
+    a.href = url;
+    a.download = "results.csv";
+    a.click();
     URL.revokeObjectURL(url);
   }, [displayRows, resultColumns, resultRows]);
 
   const handleCopyResults = useCallback(() => {
     const cols = resultColumns.length > 0 ? resultColumns : Object.keys(resultRows[0] ?? {});
     const lines = [cols.join("\t")];
-    for (const row of displayRows) lines.push(cols.map((c) => (row[c] == null ? "" : String(row[c]))).join("\t"));
+    for (const row of displayRows)
+      lines.push(cols.map((c) => (row[c] == null ? "" : String(row[c]))).join("\t"));
     navigator.clipboard.writeText(lines.join("\n")).then(() => {
       setCopiedResults(true);
       setTimeout(() => setCopiedResults(false), 1500);
@@ -975,7 +1248,17 @@ export function SqlPage() {
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
         .map(([value, count]) => ({ value, count }));
-      return { col, nullCount, blankCount, distinctCount, constantValue, min, max, mean, topValues };
+      return {
+        col,
+        nullCount,
+        blankCount,
+        distinctCount,
+        constantValue,
+        min,
+        max,
+        mean,
+        topValues,
+      };
     });
   }, [resultRows, resultColumns]);
 
@@ -983,10 +1266,11 @@ export function SqlPage() {
     const blob = new Blob([JSON.stringify(profile, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = "profile.json"; a.click();
+    a.href = url;
+    a.download = "profile.json";
+    a.click();
     URL.revokeObjectURL(url);
   }, [profile]);
-
 
   const handleSaveView = useCallback(async () => {
     if (!viewId.trim() || !viewDomainId.trim()) return;
@@ -1001,7 +1285,12 @@ export function SqlPage() {
         description: c.description || undefined,
         scope: c.scope,
         visibleTo: c.visibleTo,
-        unmaskedTo: c.unmaskedTo ? c.unmaskedTo.split(",").map((s) => s.trim()).filter(Boolean) : undefined,
+        unmaskedTo: c.unmaskedTo
+          ? c.unmaskedTo
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : undefined,
         maskType: c.maskType || undefined,
         maskPattern: c.maskPattern || undefined,
         maskReplace: c.maskReplace || undefined,
@@ -1023,8 +1312,12 @@ export function SqlPage() {
       const newTableId = idMatch ? parseInt(idMatch[1], 10) : null;
       setViewMsg(canCreateView ? "View created." : "View request submitted.");
       setSavedViewId(newTableId);
-      fetchTables().catch(() => []).then(setTables);
-      fetchRelationships().catch(() => []).then(setExistingRels);
+      fetchTables()
+        .catch(() => [])
+        .then(setTables);
+      fetchRelationships()
+        .catch(() => [])
+        .then(setExistingRels);
       localStorage.setItem("provisa.schema.version", String(Date.now()));
       window.dispatchEvent(new StorageEvent("storage", { key: "provisa.schema.version" }));
     } catch (e) {
@@ -1032,7 +1325,16 @@ export function SqlPage() {
     } finally {
       setViewSaving(false);
     }
-  }, [viewId, viewDescription, viewDomainId, viewSqlNormalized, canCreateView, viewColumns, setTables, setExistingRels]);
+  }, [
+    viewId,
+    viewDescription,
+    viewDomainId,
+    viewSqlNormalized,
+    canCreateView,
+    viewColumns,
+    setTables,
+    setExistingRels,
+  ]);
 
   const handleRun = useCallback(async () => {
     if (!sqlText.trim()) return;
@@ -1044,8 +1346,8 @@ export function SqlPage() {
       sampleMode === "first"
         ? `SELECT * FROM (\n${inner}\n) _sample LIMIT ${sampleSize}`
         : sampleMode === "last"
-        ? `SELECT * FROM (\n${inner}\n) _sample ORDER BY 1 DESC LIMIT ${sampleSize}`
-        : `SELECT * FROM (\n${inner}\n) _sample ORDER BY random() LIMIT ${sampleSize}`;
+          ? `SELECT * FROM (\n${inner}\n) _sample ORDER BY 1 DESC LIMIT ${sampleSize}`
+          : `SELECT * FROM (\n${inner}\n) _sample ORDER BY random() LIMIT ${sampleSize}`;
     const result = await runSql(sampledSql, role);
     const durationMs = Math.round(performance.now() - t0);
     setExecMs(durationMs);
@@ -1088,12 +1390,42 @@ export function SqlPage() {
   }, [sqlText, handleRun]);
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden", background: "var(--bg)" }}>
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        background: "var(--bg)",
+      }}
+    >
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.75rem 1rem", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0.75rem 1rem",
+          borderBottom: "1px solid var(--border)",
+          flexShrink: 0,
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <span style={{ fontWeight: 600, fontSize: "0.9rem", letterSpacing: "0.02em" }}>SQL Explorer</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 0, border: "1px solid var(--border)", borderRadius: "5px", overflow: "hidden", marginLeft: "0.5rem" }}>
+          <span style={{ fontWeight: 600, fontSize: "0.9rem", letterSpacing: "0.02em" }}>
+            SQL Explorer
+          </span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 0,
+              border: "1px solid var(--border)",
+              borderRadius: "5px",
+              overflow: "hidden",
+              marginLeft: "0.5rem",
+            }}
+          >
             {(["sql", "canvas"] as TopTab[]).map((tab) => (
               <button
                 key={tab}
@@ -1108,7 +1440,9 @@ export function SqlPage() {
                   textTransform: "capitalize",
                   fontWeight: topTab === tab ? 600 : 400,
                 }}
-              >{tab}</button>
+              >
+                {tab}
+              </button>
             ))}
           </div>
         </div>
@@ -1116,9 +1450,15 @@ export function SqlPage() {
 
       {/* Body: sidebar + right pane */}
       <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
-
         {/* Schema browser drawer */}
-        <div style={{ display: "flex", flexShrink: 0, borderRight: "1px solid var(--border)", position: "relative" }}>
+        <div
+          style={{
+            display: "flex",
+            flexShrink: 0,
+            borderRight: "1px solid var(--border)",
+            position: "relative",
+          }}
+        >
           <button
             onClick={() => setSidebarOpen((v) => !v)}
             title={sidebarOpen ? "Collapse schema panel" : "Expand schema panel"}
@@ -1142,16 +1482,31 @@ export function SqlPage() {
               color: "var(--text-muted)",
               fontSize: "0.55rem",
             }}
-          >{sidebarOpen ? "‹" : "›"}</button>
+          >
+            {sidebarOpen ? "‹" : "›"}
+          </button>
 
-          <div style={{
-            width: sidebarOpen ? 210 : 0,
-            overflow: "hidden",
-            transition: "width 0.18s ease",
-            background: "var(--bg)",
-          }}>
+          <div
+            style={{
+              width: sidebarOpen ? 210 : 0,
+              overflow: "hidden",
+              transition: "width 0.18s ease",
+              background: "var(--bg)",
+            }}
+          >
             <div style={{ width: 210, overflow: "auto", height: "100%", padding: "0.5rem 0" }}>
-              <div style={{ padding: "0 0.75rem 0.4rem", fontSize: "0.65rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--text-muted)" }}>Schema</div>
+              <div
+                style={{
+                  padding: "0 0.75rem 0.4rem",
+                  fontSize: "0.65rem",
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  color: "var(--text-muted)",
+                }}
+              >
+                Schema
+              </div>
               {/* eslint-disable react-hooks/refs --
                   the schema-tree rows wire insertAtCursor (a useCallback that reads
                   editorViewRef.current to target the live CodeMirror editor) into
@@ -1165,87 +1520,314 @@ export function SqlPage() {
                     <button
                       onClick={() => toggleDomain(domain)}
                       title={domainMap[domain]?.description || undefined}
-                      style={{ width: "100%", textAlign: "left", background: "none", border: "none", cursor: "pointer", padding: "0.2rem 0.75rem", display: "flex", alignItems: "center", gap: "0.25rem", color: "var(--text-muted)", fontSize: "0.75rem", fontWeight: 600 }}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: "0.2rem 0.75rem",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.25rem",
+                        color: "var(--text-muted)",
+                        fontSize: "0.75rem",
+                        fontWeight: 600,
+                      }}
                     >
                       {domainOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-                      <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{domain}</span>
+                      <span
+                        style={{
+                          flex: 1,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {domain}
+                      </span>
                       {domainMap[domain]?.description && (
-                        <span style={{ flexShrink: 0, color: "var(--text-muted)", opacity: 0.5, fontSize: "0.65rem", lineHeight: 1 }}>ⓘ</span>
+                        <span
+                          style={{
+                            flexShrink: 0,
+                            color: "var(--text-muted)",
+                            opacity: 0.5,
+                            fontSize: "0.65rem",
+                            lineHeight: 1,
+                          }}
+                        >
+                          ⓘ
+                        </span>
                       )}
                     </button>
-                    {domainOpen && (() => {
-                      const dp = domainPages[domain] ?? 0;
-                      const totalDomainPages = Math.ceil(domainTables.length / DOMAIN_PAGE_SIZE);
-                      const paged = domainTables.slice(dp * DOMAIN_PAGE_SIZE, (dp + 1) * DOMAIN_PAGE_SIZE);
-                      return (
-                        <>
-                          {paged.map((t) => {
-                            const tOpen = expandedTables.has(t.tableName);
-                            return (
-                              <div key={t.tableName}>
-                          <div style={{ display: "flex", alignItems: "center" }}>
-                            <button
-                              onClick={() => toggleTable(t.tableName)}
-                              draggable={topTab === "canvas"}
-                              onDragStart={topTab === "canvas" ? (e) => e.dataTransfer.setData("tableName", t.tableName) : undefined}
-                              style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", cursor: topTab === "canvas" ? "grab" : "pointer", padding: "0.18rem 0 0.18rem 1.5rem", display: "flex", alignItems: "center", gap: "0.3rem", color: "var(--text)", fontSize: "0.75rem" }}
-                              title={topTab === "canvas" ? "Drag to canvas" : "Double-click to insert qualified name"}
-                              onDoubleClick={topTab === "sql" ? () => insertAtCursor(`"${normalizeDomain(t.domainId || t.schemaName)}"."${t.tableName}"`) : undefined}
-                            >
-                              {tOpen ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
-                              <Table2 size={9} style={{ flexShrink: 0, color: "var(--primary)" }} />
-                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.tableName}</span>
-                            </button>
-                            <button
-                              onClick={() => insertAtCursor(`"${normalizeDomain(t.domainId || t.schemaName)}"."${t.tableName}"`)}
-                              title="Insert table reference in SQL editor"
-                              style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", padding: "0 0.35rem 0 0.1rem", color: "var(--primary)", fontSize: "0.7rem", opacity: 0.6, lineHeight: 1 }}
-                            >→</button>
-                            {t.description && (
-                              <span
-                                title={t.description}
-                                style={{ flexShrink: 0, paddingRight: "0.35rem", color: "var(--primary)", opacity: 0.7, fontSize: "0.65rem", cursor: "default", lineHeight: 1 }}
-                              >ⓘ</span>
-                            )}
-                          </div>
-                          {tOpen && [
-                            ...t.columns.map((col) => ({ columnName: col.columnName, dataType: col.dataType, description: col.description, virtual: false })),
-                            { columnName: "_name_", dataType: "text", description: "Table alias/name", virtual: true },
-                            { columnName: "_domain_", dataType: "text", description: "Domain ID", virtual: true },
-                          ].map((col) => (
-                            <div key={col.columnName} style={{ display: "flex", alignItems: "center" }}>
-                              <button
-                                onClick={() => topTab === "sql" ? insertAtCursor(`"${t.tableName}"."${col.columnName}"`) : undefined}
-                                style={{ flex: 1, minWidth: 0, textAlign: "left", background: "none", border: "none", cursor: topTab === "sql" ? "pointer" : "default", padding: "0.15rem 0 0.15rem 2.5rem", display: "flex", alignItems: "center", gap: "0.3rem", color: col.virtual ? "var(--text-muted)" : "var(--text-muted)", fontSize: "0.72rem", fontFamily: "monospace", opacity: col.virtual ? 0.6 : 1 }}
-                                title={col.description ?? (topTab === "sql" ? "Click to insert quoted column" : undefined)}
+                    {domainOpen &&
+                      (() => {
+                        const dp = domainPages[domain] ?? 0;
+                        const totalDomainPages = Math.ceil(domainTables.length / DOMAIN_PAGE_SIZE);
+                        const paged = domainTables.slice(
+                          dp * DOMAIN_PAGE_SIZE,
+                          (dp + 1) * DOMAIN_PAGE_SIZE,
+                        );
+                        return (
+                          <>
+                            {paged.map((t) => {
+                              const tOpen = expandedTables.has(t.tableName);
+                              return (
+                                <div key={t.tableName}>
+                                  <div style={{ display: "flex", alignItems: "center" }}>
+                                    <button
+                                      onClick={() => toggleTable(t.tableName)}
+                                      draggable={topTab === "canvas"}
+                                      onDragStart={
+                                        topTab === "canvas"
+                                          ? (e) => e.dataTransfer.setData("tableName", t.tableName)
+                                          : undefined
+                                      }
+                                      style={{
+                                        flex: 1,
+                                        minWidth: 0,
+                                        textAlign: "left",
+                                        background: "none",
+                                        border: "none",
+                                        cursor: topTab === "canvas" ? "grab" : "pointer",
+                                        padding: "0.18rem 0 0.18rem 1.5rem",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "0.3rem",
+                                        color: "var(--text)",
+                                        fontSize: "0.75rem",
+                                      }}
+                                      title={
+                                        topTab === "canvas"
+                                          ? "Drag to canvas"
+                                          : "Double-click to insert qualified name"
+                                      }
+                                      onDoubleClick={
+                                        topTab === "sql"
+                                          ? () =>
+                                              insertAtCursor(
+                                                `"${normalizeDomain(t.domainId || t.schemaName)}"."${t.tableName}"`,
+                                              )
+                                          : undefined
+                                      }
+                                    >
+                                      {tOpen ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+                                      <Table2
+                                        size={9}
+                                        style={{ flexShrink: 0, color: "var(--primary)" }}
+                                      />
+                                      <span
+                                        style={{
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap",
+                                        }}
+                                      >
+                                        {t.tableName}
+                                      </span>
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        insertAtCursor(
+                                          `"${normalizeDomain(t.domainId || t.schemaName)}"."${t.tableName}"`,
+                                        )
+                                      }
+                                      title="Insert table reference in SQL editor"
+                                      style={{
+                                        flexShrink: 0,
+                                        background: "none",
+                                        border: "none",
+                                        cursor: "pointer",
+                                        padding: "0 0.35rem 0 0.1rem",
+                                        color: "var(--primary)",
+                                        fontSize: "0.7rem",
+                                        opacity: 0.6,
+                                        lineHeight: 1,
+                                      }}
+                                    >
+                                      →
+                                    </button>
+                                    {t.description && (
+                                      <span
+                                        title={t.description}
+                                        style={{
+                                          flexShrink: 0,
+                                          paddingRight: "0.35rem",
+                                          color: "var(--primary)",
+                                          opacity: 0.7,
+                                          fontSize: "0.65rem",
+                                          cursor: "default",
+                                          lineHeight: 1,
+                                        }}
+                                      >
+                                        ⓘ
+                                      </span>
+                                    )}
+                                  </div>
+                                  {tOpen &&
+                                    [
+                                      ...t.columns.map((col) => ({
+                                        columnName: col.columnName,
+                                        dataType: col.dataType,
+                                        description: col.description,
+                                        virtual: false,
+                                      })),
+                                      {
+                                        columnName: "_name_",
+                                        dataType: "text",
+                                        description: "Table alias/name",
+                                        virtual: true,
+                                      },
+                                      {
+                                        columnName: "_domain_",
+                                        dataType: "text",
+                                        description: "Domain ID",
+                                        virtual: true,
+                                      },
+                                    ].map((col) => (
+                                      <div
+                                        key={col.columnName}
+                                        style={{ display: "flex", alignItems: "center" }}
+                                      >
+                                        <button
+                                          onClick={() =>
+                                            topTab === "sql"
+                                              ? insertAtCursor(
+                                                  `"${t.tableName}"."${col.columnName}"`,
+                                                )
+                                              : undefined
+                                          }
+                                          style={{
+                                            flex: 1,
+                                            minWidth: 0,
+                                            textAlign: "left",
+                                            background: "none",
+                                            border: "none",
+                                            cursor: topTab === "sql" ? "pointer" : "default",
+                                            padding: "0.15rem 0 0.15rem 2.5rem",
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "0.3rem",
+                                            color: col.virtual
+                                              ? "var(--text-muted)"
+                                              : "var(--text-muted)",
+                                            fontSize: "0.72rem",
+                                            fontFamily: "monospace",
+                                            opacity: col.virtual ? 0.6 : 1,
+                                          }}
+                                          title={
+                                            col.description ??
+                                            (topTab === "sql"
+                                              ? "Click to insert quoted column"
+                                              : undefined)
+                                          }
+                                        >
+                                          <Columns3
+                                            size={8}
+                                            style={{
+                                              flexShrink: 0,
+                                              color: col.virtual ? "var(--accent)" : undefined,
+                                            }}
+                                          />
+                                          <span
+                                            style={{
+                                              overflow: "hidden",
+                                              textOverflow: "ellipsis",
+                                              whiteSpace: "nowrap",
+                                              flex: 1,
+                                            }}
+                                          >
+                                            {col.columnName}
+                                          </span>
+                                          {col.dataType && (
+                                            <span
+                                              style={{
+                                                flexShrink: 0,
+                                                fontSize: "0.6rem",
+                                                color: "var(--text-muted)",
+                                                opacity: 0.5,
+                                                fontFamily: "monospace",
+                                                paddingRight: "0.1rem",
+                                              }}
+                                            >
+                                              {col.dataType}
+                                            </span>
+                                          )}
+                                        </button>
+                                        {col.description && (
+                                          <span
+                                            title={col.description}
+                                            style={{
+                                              flexShrink: 0,
+                                              paddingRight: "0.5rem",
+                                              color: "var(--text-muted)",
+                                              opacity: 0.6,
+                                              fontSize: "0.65rem",
+                                              cursor: "default",
+                                              lineHeight: 1,
+                                            }}
+                                          >
+                                            ⓘ
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                </div>
+                              );
+                            })}
+                            {totalDomainPages > 1 && (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "0.25rem",
+                                  padding: "0.2rem 0.75rem",
+                                  fontSize: "0.65rem",
+                                  color: "var(--text-muted)",
+                                }}
                               >
-                                <Columns3 size={8} style={{ flexShrink: 0, color: col.virtual ? "var(--accent)" : undefined }} />
-                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{col.columnName}</span>
-                                {col.dataType && (
-                                  <span style={{ flexShrink: 0, fontSize: "0.6rem", color: "var(--text-muted)", opacity: 0.5, fontFamily: "monospace", paddingRight: "0.1rem" }}>{col.dataType}</span>
-                                )}
-                              </button>
-                              {col.description && (
-                                <span
-                                  title={col.description}
-                                  style={{ flexShrink: 0, paddingRight: "0.5rem", color: "var(--text-muted)", opacity: 0.6, fontSize: "0.65rem", cursor: "default", lineHeight: 1 }}
-                                >ⓘ</span>
-                              )}
-                            </div>
-                          ))}
-                            </div>
-                            );
-                          })}
-                          {totalDomainPages > 1 && (
-                            <div style={{ display: "flex", alignItems: "center", gap: "0.25rem", padding: "0.2rem 0.75rem", fontSize: "0.65rem", color: "var(--text-muted)" }}>
-                              <button onClick={() => setDomainPages(p => ({...p, [domain]: dp - 1}))} disabled={dp === 0} style={{ background: "none", border: "none", cursor: dp > 0 ? "pointer" : "default", padding: "0.1rem 0.2rem", color: "var(--text-muted)", opacity: dp > 0 ? 1 : 0.4 }}>‹</button>
-                              <span>{dp * DOMAIN_PAGE_SIZE + 1}–{Math.min((dp + 1) * DOMAIN_PAGE_SIZE, domainTables.length)} / {domainTables.length}</span>
-                              <button onClick={() => setDomainPages(p => ({...p, [domain]: dp + 1}))} disabled={dp >= totalDomainPages - 1} style={{ background: "none", border: "none", cursor: dp < totalDomainPages - 1 ? "pointer" : "default", padding: "0.1rem 0.2rem", color: "var(--text-muted)", opacity: dp < totalDomainPages - 1 ? 1 : 0.4 }}>›</button>
-                            </div>
-                          )}
-                        </>
-                      );
-                    })()}
+                                <button
+                                  onClick={() =>
+                                    setDomainPages((p) => ({ ...p, [domain]: dp - 1 }))
+                                  }
+                                  disabled={dp === 0}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    cursor: dp > 0 ? "pointer" : "default",
+                                    padding: "0.1rem 0.2rem",
+                                    color: "var(--text-muted)",
+                                    opacity: dp > 0 ? 1 : 0.4,
+                                  }}
+                                >
+                                  ‹
+                                </button>
+                                <span>
+                                  {dp * DOMAIN_PAGE_SIZE + 1}–
+                                  {Math.min((dp + 1) * DOMAIN_PAGE_SIZE, domainTables.length)} /{" "}
+                                  {domainTables.length}
+                                </span>
+                                <button
+                                  onClick={() =>
+                                    setDomainPages((p) => ({ ...p, [domain]: dp + 1 }))
+                                  }
+                                  disabled={dp >= totalDomainPages - 1}
+                                  style={{
+                                    background: "none",
+                                    border: "none",
+                                    cursor: dp < totalDomainPages - 1 ? "pointer" : "default",
+                                    padding: "0.1rem 0.2rem",
+                                    color: "var(--text-muted)",
+                                    opacity: dp < totalDomainPages - 1 ? 1 : 0.4,
+                                  }}
+                                >
+                                  ›
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                   </div>
                 );
               })}
@@ -1256,43 +1838,101 @@ export function SqlPage() {
 
         {/* Right pane */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-
-          <div style={{ display: topTab === "canvas" ? "flex" : "none", flex: 1, overflow: "hidden", flexDirection: "column" }}>
+          <div
+            style={{
+              display: topTab === "canvas" ? "flex" : "none",
+              flex: 1,
+              overflow: "hidden",
+              flexDirection: "column",
+            }}
+          >
             <JoinCanvas
               tables={tables}
               existingRels={existingRels}
-              onGenerateSql={(generatedSql) => { setSqlText(generatedSql); setTopTab("sql"); }}
+              onGenerateSql={(generatedSql) => {
+                setSqlText(generatedSql);
+                setTopTab("sql");
+              }}
             />
           </div>
 
-          <div style={{ display: topTab === "sql" ? "flex" : "none", flex: 1, overflow: "hidden", flexDirection: "column" }}>
+          <div
+            style={{
+              display: topTab === "sql" ? "flex" : "none",
+              flex: 1,
+              overflow: "hidden",
+              flexDirection: "column",
+            }}
+          >
             <>
               {/* NL-to-SQL strip */}
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.35rem 0.75rem", borderBottom: "1px solid var(--border)", background: "var(--surface)", flexShrink: 0 }}>
-                <div className="nl-input-wrap" style={{ flex: 1, position: "relative", display: "flex", alignItems: "center" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  padding: "0.35rem 0.75rem",
+                  borderBottom: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  flexShrink: 0,
+                }}
+              >
+                <div
+                  className="nl-input-wrap"
+                  style={{ flex: 1, position: "relative", display: "flex", alignItems: "center" }}
+                >
                   <input
                     type="text"
                     placeholder="Ask in plain English — generates SQL…"
                     value={nlText}
-                    onChange={(e) => { setNlText(e.target.value); setNlError(""); }}
+                    onChange={(e) => {
+                      setNlText(e.target.value);
+                      setNlError("");
+                    }}
                     onKeyDown={async (e) => {
                       if (e.key === "Enter" && nlText.trim() && !nlLoading) {
                         setNlLoading(true);
                         setNlError("");
                         const result = await nlToSql(nlText.trim(), role);
                         setNlLoading(false);
-                        if (result.error) { setNlError(result.error); }
-                        else { setSqlText(result.sql); }
+                        if (result.error) {
+                          setNlError(result.error);
+                        } else {
+                          setSqlText(result.sql);
+                        }
                       }
                     }}
-                    style={{ width: "100%", fontSize: "0.8rem", padding: "0.25rem 1.6rem 0.25rem 0.5rem", borderRadius: "4px", border: "1px solid var(--border)", background: "var(--bg)", color: "var(--text)", outline: "none" }}
+                    style={{
+                      width: "100%",
+                      fontSize: "0.8rem",
+                      padding: "0.25rem 1.6rem 0.25rem 0.5rem",
+                      borderRadius: "4px",
+                      border: "1px solid var(--border)",
+                      background: "var(--bg)",
+                      color: "var(--text)",
+                      outline: "none",
+                    }}
                   />
                   {nlText && (
                     <button
-                      onClick={() => { setNlText(""); setNlError(""); }}
+                      onClick={() => {
+                        setNlText("");
+                        setNlError("");
+                      }}
                       title="Clear"
                       className="nl-clear-btn"
-                      style={{ position: "absolute", right: "0.3rem", background: "none", border: "none", padding: "0.1rem", cursor: "pointer", color: "var(--text-muted)", display: "flex", alignItems: "center", lineHeight: 1 }}
+                      style={{
+                        position: "absolute",
+                        right: "0.3rem",
+                        background: "none",
+                        border: "none",
+                        padding: "0.1rem",
+                        cursor: "pointer",
+                        color: "var(--text-muted)",
+                        display: "flex",
+                        alignItems: "center",
+                        lineHeight: 1,
+                      }}
                     >
                       <X size={12} />
                     </button>
@@ -1306,24 +1946,77 @@ export function SqlPage() {
                     setNlError("");
                     const result = await nlToSql(nlText.trim(), role);
                     setNlLoading(false);
-                    if (result.error) { setNlError(result.error); }
-                    else { setSqlText(result.sql); }
+                    if (result.error) {
+                      setNlError(result.error);
+                    } else {
+                      setSqlText(result.sql);
+                    }
                   }}
                   style={{ fontSize: "0.8rem", padding: "0.25rem 0.6rem", whiteSpace: "nowrap" }}
                 >
                   {nlLoading ? "Generating…" : "Generate SQL"}
                 </button>
-                {nlError && <span style={{ fontSize: "0.75rem", color: "var(--error)", maxWidth: "300px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={nlError}>{nlError}</span>}
+                {nlError && (
+                  <span
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "var(--error)",
+                      maxWidth: "300px",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                    title={nlError}
+                  >
+                    {nlError}
+                  </span>
+                )}
               </div>
 
               {/* Editor */}
-              <div style={{ flex: "0 0 220px", overflow: "hidden", borderBottom: "1px solid var(--border)", position: "relative" }}
-                onMouseEnter={(e) => { const btn = e.currentTarget.querySelector<HTMLElement>('.copy-sql-btn'); if (btn) btn.style.opacity = '1'; }}
-                onMouseLeave={(e) => { const btn = e.currentTarget.querySelector<HTMLElement>('.copy-sql-btn'); if (btn) btn.style.opacity = '0'; }}
+              <div
+                style={{
+                  flex: "0 0 220px",
+                  overflow: "hidden",
+                  borderBottom: "1px solid var(--border)",
+                  position: "relative",
+                }}
+                onMouseEnter={(e) => {
+                  const btn = e.currentTarget.querySelector<HTMLElement>(".copy-sql-btn");
+                  if (btn) btn.style.opacity = "1";
+                }}
+                onMouseLeave={(e) => {
+                  const btn = e.currentTarget.querySelector<HTMLElement>(".copy-sql-btn");
+                  if (btn) btn.style.opacity = "0";
+                }}
               >
                 {nlLoading && (
-                  <div style={{ position: "absolute", inset: 0, zIndex: 10, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", color: "var(--text-muted)", fontSize: "0.8rem", pointerEvents: "none" }}>
-                    <span style={{ display: "inline-block", width: "14px", height: "14px", border: "2px solid var(--text-muted)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      zIndex: 10,
+                      background: "rgba(0,0,0,0.45)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "0.5rem",
+                      color: "var(--text-muted)",
+                      fontSize: "0.8rem",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: "14px",
+                        height: "14px",
+                        border: "2px solid var(--text-muted)",
+                        borderTopColor: "transparent",
+                        borderRadius: "50%",
+                        animation: "spin 0.7s linear infinite",
+                      }}
+                    />
                     Generating SQL…
                   </div>
                 )}
@@ -1332,36 +2025,84 @@ export function SqlPage() {
                   height="220px"
                   theme={oneDark}
                   extensions={sqlExtensions}
-                  onChange={(v) => { setSqlText(v); saveSqlQuery(v); }}
-                  onCreateEditor={(view) => { editorViewRef.current = view; }}
+                  onChange={(v) => {
+                    setSqlText(v);
+                    saveSqlQuery(v);
+                  }}
+                  onCreateEditor={(view) => {
+                    editorViewRef.current = view;
+                  }}
                   style={{ fontSize: "0.8rem" }}
                 />
                 <button
                   className="copy-sql-btn"
                   onClick={handleCopy}
                   title="Copy SQL"
-                  style={{ position: "absolute", top: "0.4rem", right: "0.4rem", opacity: 0, transition: "opacity 0.15s", background: "rgba(30,30,40,0.85)", border: "1px solid var(--border)", borderRadius: "4px", color: "var(--text-muted)", cursor: "pointer", padding: "0.2rem 0.35rem", display: "flex", alignItems: "center", gap: "0.25rem", fontSize: "0.72rem" }}
+                  style={{
+                    position: "absolute",
+                    top: "0.4rem",
+                    right: "0.4rem",
+                    opacity: 0,
+                    transition: "opacity 0.15s",
+                    background: "rgba(30,30,40,0.85)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "4px",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                    padding: "0.2rem 0.35rem",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.25rem",
+                    fontSize: "0.72rem",
+                  }}
                 >
-                  {copied ? <Check size={11} style={{ color: "var(--approve)" }} /> : <Copy size={11} />}
+                  {copied ? (
+                    <Check size={11} style={{ color: "var(--approve)" }} />
+                  ) : (
+                    <Copy size={11} />
+                  )}
                   {copied ? "Copied" : "Copy"}
                 </button>
               </div>
 
               {/* Toolbar */}
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.4rem 0.75rem", borderBottom: "1px solid var(--border)", flexShrink: 0, background: "var(--surface)" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  padding: "0.4rem 0.75rem",
+                  borderBottom: "1px solid var(--border)",
+                  flexShrink: 0,
+                  background: "var(--surface)",
+                }}
+              >
                 <button
                   className="btn-primary"
-                  style={{ display: "flex", alignItems: "center", gap: "0.3rem", fontSize: "0.8rem", padding: "0.25rem 0.6rem" }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.3rem",
+                    fontSize: "0.8rem",
+                    padding: "0.25rem 0.6rem",
+                  }}
                   onClick={handleRun}
                   disabled={running || !sqlText.trim()}
                 >
-                  <Play size={11} />{running ? "Running…" : "Sample >"}
+                  <Play size={11} />
+                  {running ? "Running…" : "Sample >"}
                 </button>
                 <button
                   className="btn-secondary"
                   style={{ fontSize: "0.8rem", padding: "0.25rem 0.6rem" }}
                   title="Add table_col aliases where column names conflict across tables"
-                  onClick={() => setSqlText((prev) => { const fixed = autoAliasConflicts(prev); saveSqlQuery(fixed); return fixed; })}
+                  onClick={() =>
+                    setSqlText((prev) => {
+                      const fixed = autoAliasConflicts(prev);
+                      saveSqlQuery(fixed);
+                      return fixed;
+                    })
+                  }
                   disabled={!sqlText.trim()}
                 >
                   Auto-alias
@@ -1434,7 +2175,11 @@ export function SqlPage() {
                   onChange={(e) => setRole(e.target.value)}
                   className="toolbar-select"
                 >
-                  {roles.map((r) => <option key={r} value={r}>{r}</option>)}
+                  {roles.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
                 </select>
                 <div style={{ flex: 1 }} />
                 {(canCreateView || canRequestView) && sqlText.trim() && (
@@ -1453,25 +2198,28 @@ export function SqlPage() {
                       for (const t of tables) {
                         for (const c of t.columns) {
                           if (c.description) {
-                            if (!colDescMap.has(c.columnName)) colDescMap.set(c.columnName, c.description);
+                            if (!colDescMap.has(c.columnName))
+                              colDescMap.set(c.columnName, c.description);
                             const aliased = `${t.tableName}_${c.columnName}`;
                             if (!colDescMap.has(aliased)) colDescMap.set(aliased, c.description);
                           }
                         }
                       }
-                      setViewColumns(resultColumns.map((name) => ({
-                        name,
-                        alias: "",
-                        description: colDescMap.get(name) ?? "",
-                        scope: "domain" as const,
-                        visibleTo: roles,
-                        maskType: "" as const,
-                        maskPattern: "",
-                        maskReplace: "",
-                        maskValue: "",
-                        maskPrecision: "",
-                        unmaskedTo: "",
-                      })));
+                      setViewColumns(
+                        resultColumns.map((name) => ({
+                          name,
+                          alias: "",
+                          description: colDescMap.get(name) ?? "",
+                          scope: "domain" as const,
+                          visibleTo: roles,
+                          maskType: "" as const,
+                          maskPattern: "",
+                          maskReplace: "",
+                          maskValue: "",
+                          maskPrecision: "",
+                          unmaskedTo: "",
+                        })),
+                      );
                       setViewModal(true);
                     }}
                   >
@@ -1481,140 +2229,408 @@ export function SqlPage() {
               </div>
 
               {/* Results tabs + content */}
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 0, borderBottom: "1px solid var(--border)", flexShrink: 0, background: "var(--surface)" }}>
+              <div
+                style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0,
+                    borderBottom: "1px solid var(--border)",
+                    flexShrink: 0,
+                    background: "var(--surface)",
+                  }}
+                >
                   {(["results", "profile", "errors", "history"] as ResultTab[]).map((tab) => {
-                    const count = tab === "results" ? resultRows.length : tab === "profile" ? profile.length : tab === "errors" ? errors.length : history.length;
+                    const count =
+                      tab === "results"
+                        ? resultRows.length
+                        : tab === "profile"
+                          ? profile.length
+                          : tab === "errors"
+                            ? errors.length
+                            : history.length;
                     const active = resultTab === tab;
                     return (
                       <button
                         key={tab}
                         onClick={() => setResultTab(tab)}
-                        style={{ padding: "0.35rem 0.8rem", fontSize: "0.75rem", background: "none", border: "none", borderBottom: active ? "2px solid var(--primary)" : "2px solid transparent", color: active ? "var(--text)" : "var(--text-muted)", cursor: "pointer", textTransform: "capitalize", display: "flex", alignItems: "center", gap: "0.3rem" }}
+                        style={{
+                          padding: "0.35rem 0.8rem",
+                          fontSize: "0.75rem",
+                          background: "none",
+                          border: "none",
+                          borderBottom: active
+                            ? "2px solid var(--primary)"
+                            : "2px solid transparent",
+                          color: active ? "var(--text)" : "var(--text-muted)",
+                          cursor: "pointer",
+                          textTransform: "capitalize",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.3rem",
+                        }}
                       >
-                        {tab === "history" ? <History size={11} /> : tab === "profile" ? <BarChart2 size={11} /> : null}
+                        {tab === "history" ? (
+                          <History size={11} />
+                        ) : tab === "profile" ? (
+                          <BarChart2 size={11} />
+                        ) : null}
                         {tab}
                         {count > 0 && (
-                          <span style={{ background: tab === "errors" ? "var(--destructive)" : "var(--primary)", color: "#fff", borderRadius: "8px", fontSize: "0.65rem", padding: "0 0.35rem", lineHeight: "1.4" }}>{count}</span>
+                          <span
+                            style={{
+                              background:
+                                tab === "errors" ? "var(--destructive)" : "var(--primary)",
+                              color: "#fff",
+                              borderRadius: "8px",
+                              fontSize: "0.65rem",
+                              padding: "0 0.35rem",
+                              lineHeight: "1.4",
+                            }}
+                          >
+                            {count}
+                          </span>
                         )}
                       </button>
                     );
                   })}
                   {execMs !== null && (
-                    <span style={{ marginLeft: "auto", paddingRight: "0.75rem", fontSize: "0.7rem", color: "var(--text-muted)" }}>{execMs}ms</span>
+                    <span
+                      style={{
+                        marginLeft: "auto",
+                        paddingRight: "0.75rem",
+                        fontSize: "0.7rem",
+                        color: "var(--text-muted)",
+                      }}
+                    >
+                      {execMs}ms
+                    </span>
                   )}
                 </div>
 
                 <div style={{ flex: 1, overflow: "auto" }}>
-                  {resultTab === "results" && (
-                    resultError ? (
-                      <pre style={{ margin: "0.75rem", fontSize: "0.8rem", color: "var(--destructive)", whiteSpace: "pre-wrap", fontFamily: "monospace" }}>{resultError}</pre>
+                  {resultTab === "results" &&
+                    (resultError ? (
+                      <pre
+                        style={{
+                          margin: "0.75rem",
+                          fontSize: "0.8rem",
+                          color: "var(--destructive)",
+                          whiteSpace: "pre-wrap",
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        {resultError}
+                      </pre>
                     ) : resultRows.length === 0 ? (
-                      <div style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                      <div
+                        style={{
+                          padding: "1.5rem",
+                          textAlign: "center",
+                          color: "var(--text-muted)",
+                          fontSize: "0.85rem",
+                        }}
+                      >
                         {sqlText.trim() ? "No results." : "Write SQL and click Sample to execute."}
                       </div>
-                    ) : (() => {
-                      const displayCols = resultColumns.length > 0
-                        ? resultColumns
-                        : resultRows[0] != null ? Object.keys(resultRows[0] as object) : [];
-                      return (
-                        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.25rem 0.75rem", borderBottom: "1px solid var(--border)", flexShrink: 0, background: "var(--surface)", fontSize: "0.72rem", color: "var(--text-muted)" }}>
-                            <button
-                              onClick={handleDownloadCsv}
-                              style={{ fontSize: "0.72rem", padding: "0.15rem 0.45rem", background: "none", border: "1px solid var(--border)", borderRadius: "3px", color: "var(--text-muted)", cursor: "pointer" }}
+                    ) : (
+                      (() => {
+                        const displayCols =
+                          resultColumns.length > 0
+                            ? resultColumns
+                            : resultRows[0] != null
+                              ? Object.keys(resultRows[0] as object)
+                              : [];
+                        return (
+                          <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.5rem",
+                                padding: "0.25rem 0.75rem",
+                                borderBottom: "1px solid var(--border)",
+                                flexShrink: 0,
+                                background: "var(--surface)",
+                                fontSize: "0.72rem",
+                                color: "var(--text-muted)",
+                              }}
                             >
-                              ↓ CSV
-                            </button>
-                            <button
-                              onClick={handleCopyResults}
-                              title="Copy results as TSV"
-                              style={{ fontSize: "0.72rem", padding: "0.15rem 0.45rem", background: "none", border: "1px solid var(--border)", borderRadius: "3px", color: "var(--text-muted)", cursor: "pointer", display: "flex", alignItems: "center", gap: "0.25rem" }}
-                            >
-                              {copiedResults ? <Check size={11} style={{ color: "var(--approve)" }} /> : <Copy size={11} />}
-                              {copiedResults ? "Copied" : "Copy"}
-                            </button>
-                            <span>{displayRows.length} row{displayRows.length !== 1 ? "s" : ""}{displayRows.length < resultRows.length ? ` (filtered from ${resultRows.length})` : ""}</span>
-                            <div style={{ flex: 1 }} />
-                            {totalPages > 1 && (
-                              <>
-                                <button onClick={() => setPage(0)} disabled={page === 0} style={{ background: "none", border: "none", cursor: "pointer", color: page === 0 ? "var(--text-muted)" : "var(--text)", fontSize: "0.75rem" }}>«</button>
-                                <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} style={{ background: "none", border: "none", cursor: "pointer", color: page === 0 ? "var(--text-muted)" : "var(--text)", fontSize: "0.75rem" }}>‹</button>
-                                <span>Page {page + 1} / {totalPages}</span>
-                                <button onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))} disabled={page >= totalPages - 1} style={{ background: "none", border: "none", cursor: "pointer", color: page >= totalPages - 1 ? "var(--text-muted)" : "var(--text)", fontSize: "0.75rem" }}>›</button>
-                                <button onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1} style={{ background: "none", border: "none", cursor: "pointer", color: page >= totalPages - 1 ? "var(--text-muted)" : "var(--text)", fontSize: "0.75rem" }}>»</button>
-                              </>
-                            )}
-                          </div>
-                          <div style={{ flex: 1, overflow: "auto" }}>
-                            <table className="data-table sql-results-table" style={{ fontSize: "0.78rem", tableLayout: "fixed", width: "max-content", minWidth: "100%" }}>
-                              <thead>
-                                <tr>
-                                  {displayCols.map((c) => {
-                                    const sortIdx = sorts.findIndex((s) => s.col === c);
-                                    const sortEntry = sortIdx !== -1 ? sorts[sortIdx] : null;
-                                    return (
-                                      <th key={c} className={sortEntry ? "col-sorted" : undefined} style={{ width: colWidths[c] ?? autoWidths[c] ?? 140, minWidth: COL_MIN, position: "relative" }}>
-                                        <div className="th-label" onClick={() => handleSort(c)}>
-                                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", flex: 1 }}>{c}</span>
-                                          {sortEntry ? (
-                                            <span style={{ display: "flex", alignItems: "center", gap: "0.1rem", flexShrink: 0, fontSize: "0.62rem", color: "var(--primary)" }}>
-                                              {sorts.length > 1 && <span style={{ opacity: 0.7 }}>{sortIdx + 1}</span>}
-                                              <span>{sortEntry.dir === "asc" ? "▲" : "▼"}</span>
-                                            </span>
-                                          ) : (
-                                            <span style={{ fontSize: "0.6rem", color: "var(--text-muted)", opacity: 0.3 }}>⇅</span>
-                                          )}
-                                        </div>
-                                        <input
-                                          className="th-filter"
-                                          value={filters[c] ?? ""}
-                                          onChange={(e) => { setFilters((prev) => ({ ...prev, [c]: e.target.value })); setPage(0); }}
-                                          onClick={(e) => e.stopPropagation()}
-                                          placeholder="filter…"
-                                        />
-                                        <div
-                                          onMouseDown={(e) => handleResizeStart(c, e)}
-                                          style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: "5px", cursor: "col-resize" }}
-                                        />
-                                      </th>
-                                    );
-                                  })}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {pagedRows.map((row, i) => (
-                                  <tr key={i}>
+                              <button
+                                onClick={handleDownloadCsv}
+                                style={{
+                                  fontSize: "0.72rem",
+                                  padding: "0.15rem 0.45rem",
+                                  background: "none",
+                                  border: "1px solid var(--border)",
+                                  borderRadius: "3px",
+                                  color: "var(--text-muted)",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                ↓ CSV
+                              </button>
+                              <button
+                                onClick={handleCopyResults}
+                                title="Copy results as TSV"
+                                style={{
+                                  fontSize: "0.72rem",
+                                  padding: "0.15rem 0.45rem",
+                                  background: "none",
+                                  border: "1px solid var(--border)",
+                                  borderRadius: "3px",
+                                  color: "var(--text-muted)",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "0.25rem",
+                                }}
+                              >
+                                {copiedResults ? (
+                                  <Check size={11} style={{ color: "var(--approve)" }} />
+                                ) : (
+                                  <Copy size={11} />
+                                )}
+                                {copiedResults ? "Copied" : "Copy"}
+                              </button>
+                              <span>
+                                {displayRows.length} row{displayRows.length !== 1 ? "s" : ""}
+                                {displayRows.length < resultRows.length
+                                  ? ` (filtered from ${resultRows.length})`
+                                  : ""}
+                              </span>
+                              <div style={{ flex: 1 }} />
+                              {totalPages > 1 && (
+                                <>
+                                  <button
+                                    onClick={() => setPage(0)}
+                                    disabled={page === 0}
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      cursor: "pointer",
+                                      color: page === 0 ? "var(--text-muted)" : "var(--text)",
+                                      fontSize: "0.75rem",
+                                    }}
+                                  >
+                                    «
+                                  </button>
+                                  <button
+                                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                                    disabled={page === 0}
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      cursor: "pointer",
+                                      color: page === 0 ? "var(--text-muted)" : "var(--text)",
+                                      fontSize: "0.75rem",
+                                    }}
+                                  >
+                                    ‹
+                                  </button>
+                                  <span>
+                                    Page {page + 1} / {totalPages}
+                                  </span>
+                                  <button
+                                    onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                                    disabled={page >= totalPages - 1}
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      cursor: "pointer",
+                                      color:
+                                        page >= totalPages - 1
+                                          ? "var(--text-muted)"
+                                          : "var(--text)",
+                                      fontSize: "0.75rem",
+                                    }}
+                                  >
+                                    ›
+                                  </button>
+                                  <button
+                                    onClick={() => setPage(totalPages - 1)}
+                                    disabled={page >= totalPages - 1}
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      cursor: "pointer",
+                                      color:
+                                        page >= totalPages - 1
+                                          ? "var(--text-muted)"
+                                          : "var(--text)",
+                                      fontSize: "0.75rem",
+                                    }}
+                                  >
+                                    »
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            <div style={{ flex: 1, overflow: "auto" }}>
+                              <table
+                                className="data-table sql-results-table"
+                                style={{
+                                  fontSize: "0.78rem",
+                                  tableLayout: "fixed",
+                                  width: "max-content",
+                                  minWidth: "100%",
+                                }}
+                              >
+                                <thead>
+                                  <tr>
                                     {displayCols.map((c) => {
-                                      const v = row[c];
-                                      const isNum = typeof v === "number";
+                                      const sortIdx = sorts.findIndex((s) => s.col === c);
+                                      const sortEntry = sortIdx !== -1 ? sorts[sortIdx] : null;
                                       return (
-                                        <td key={c} className={isNum ? "col-num" : undefined} style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                          {v != null ? String(v) : <span className="null-val">null</span>}
-                                        </td>
+                                        <th
+                                          key={c}
+                                          className={sortEntry ? "col-sorted" : undefined}
+                                          style={{
+                                            width: colWidths[c] ?? autoWidths[c] ?? 140,
+                                            minWidth: COL_MIN,
+                                            position: "relative",
+                                          }}
+                                        >
+                                          <div className="th-label" onClick={() => handleSort(c)}>
+                                            <span
+                                              style={{
+                                                overflow: "hidden",
+                                                textOverflow: "ellipsis",
+                                                flex: 1,
+                                              }}
+                                            >
+                                              {c}
+                                            </span>
+                                            {sortEntry ? (
+                                              <span
+                                                style={{
+                                                  display: "flex",
+                                                  alignItems: "center",
+                                                  gap: "0.1rem",
+                                                  flexShrink: 0,
+                                                  fontSize: "0.62rem",
+                                                  color: "var(--primary)",
+                                                }}
+                                              >
+                                                {sorts.length > 1 && (
+                                                  <span style={{ opacity: 0.7 }}>
+                                                    {sortIdx + 1}
+                                                  </span>
+                                                )}
+                                                <span>{sortEntry.dir === "asc" ? "▲" : "▼"}</span>
+                                              </span>
+                                            ) : (
+                                              <span
+                                                style={{
+                                                  fontSize: "0.6rem",
+                                                  color: "var(--text-muted)",
+                                                  opacity: 0.3,
+                                                }}
+                                              >
+                                                ⇅
+                                              </span>
+                                            )}
+                                          </div>
+                                          <input
+                                            className="th-filter"
+                                            value={filters[c] ?? ""}
+                                            onChange={(e) => {
+                                              setFilters((prev) => ({
+                                                ...prev,
+                                                [c]: e.target.value,
+                                              }));
+                                              setPage(0);
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            placeholder="filter…"
+                                          />
+                                          <div
+                                            onMouseDown={(e) => handleResizeStart(c, e)}
+                                            style={{
+                                              position: "absolute",
+                                              right: 0,
+                                              top: 0,
+                                              bottom: 0,
+                                              width: "5px",
+                                              cursor: "col-resize",
+                                            }}
+                                          />
+                                        </th>
                                       );
                                     })}
                                   </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                                </thead>
+                                <tbody>
+                                  {pagedRows.map((row, i) => (
+                                    <tr key={i}>
+                                      {displayCols.map((c) => {
+                                        const v = row[c];
+                                        const isNum = typeof v === "number";
+                                        return (
+                                          <td
+                                            key={c}
+                                            className={isNum ? "col-num" : undefined}
+                                            style={{
+                                              overflow: "hidden",
+                                              textOverflow: "ellipsis",
+                                              whiteSpace: "nowrap",
+                                            }}
+                                          >
+                                            {v != null ? (
+                                              String(v)
+                                            ) : (
+                                              <span className="null-val">null</span>
+                                            )}
+                                          </td>
+                                        );
+                                      })}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })()
-                  )}
+                        );
+                      })()
+                    ))}
 
-                  {resultTab === "profile" && (
-                    profile.length === 0 ? (
-                      <div style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>
+                  {resultTab === "profile" &&
+                    (profile.length === 0 ? (
+                      <div
+                        style={{
+                          padding: "1.5rem",
+                          textAlign: "center",
+                          color: "var(--text-muted)",
+                          fontSize: "0.85rem",
+                        }}
+                      >
                         Sample a query to profile the result columns.
                       </div>
                     ) : (
                       <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                        <div style={{ display: "flex", alignItems: "center", padding: "0.25rem 0.75rem", borderBottom: "1px solid var(--border)", flexShrink: 0, background: "var(--surface)" }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            padding: "0.25rem 0.75rem",
+                            borderBottom: "1px solid var(--border)",
+                            flexShrink: 0,
+                            background: "var(--surface)",
+                          }}
+                        >
                           <button
                             onClick={handleDownloadProfile}
-                            style={{ fontSize: "0.72rem", padding: "0.15rem 0.45rem", background: "none", border: "1px solid var(--border)", borderRadius: "3px", color: "var(--text-muted)", cursor: "pointer" }}
+                            style={{
+                              fontSize: "0.72rem",
+                              padding: "0.15rem 0.45rem",
+                              background: "none",
+                              border: "1px solid var(--border)",
+                              borderRadius: "3px",
+                              color: "var(--text-muted)",
+                              cursor: "pointer",
+                            }}
                           >
                             ↓ JSON
                           </button>
@@ -1637,30 +2653,106 @@ export function SqlPage() {
                             <tbody>
                               {profile.map((p) => {
                                 const total = resultRows.length;
-                                const nullPct = total > 0 ? Math.round(p.nullCount / total * 100) : 0;
+                                const nullPct =
+                                  total > 0 ? Math.round((p.nullCount / total) * 100) : 0;
                                 const isHighNull = nullPct >= 50;
                                 const isConstant = p.constantValue !== undefined;
                                 return (
                                   <tr key={p.col}>
-                                    <td style={{ fontFamily: "monospace", fontWeight: 600 }}>{p.col}</td>
-                                    <td style={{ color: isHighNull ? "var(--destructive)" : p.nullCount > 0 ? "var(--text)" : "var(--text-muted)" }}>
-                                      {p.nullCount > 0 ? `${p.nullCount} (${nullPct}%)` : <span style={{ color: "var(--text-muted)" }}>—</span>}
+                                    <td style={{ fontFamily: "monospace", fontWeight: 600 }}>
+                                      {p.col}
                                     </td>
-                                    <td style={{ color: p.blankCount > 0 ? "var(--text)" : "var(--text-muted)" }}>
-                                      {p.blankCount > 0 ? p.blankCount : <span style={{ color: "var(--text-muted)" }}>—</span>}
+                                    <td
+                                      style={{
+                                        color: isHighNull
+                                          ? "var(--destructive)"
+                                          : p.nullCount > 0
+                                            ? "var(--text)"
+                                            : "var(--text-muted)",
+                                      }}
+                                    >
+                                      {p.nullCount > 0 ? (
+                                        `${p.nullCount} (${nullPct}%)`
+                                      ) : (
+                                        <span style={{ color: "var(--text-muted)" }}>—</span>
+                                      )}
                                     </td>
-                                    <td style={{ color: isConstant ? "var(--text-muted)" : "var(--text)" }}>{p.distinctCount}</td>
-                                    <td style={{ color: isConstant ? "var(--destructive)" : "var(--text-muted)" }}>
-                                      {isConstant ? <span title={String(p.constantValue)}>Yes ({String(p.constantValue).slice(0, 12)})</span> : <span style={{ color: "var(--text-muted)" }}>—</span>}
+                                    <td
+                                      style={{
+                                        color:
+                                          p.blankCount > 0 ? "var(--text)" : "var(--text-muted)",
+                                      }}
+                                    >
+                                      {p.blankCount > 0 ? (
+                                        p.blankCount
+                                      ) : (
+                                        <span style={{ color: "var(--text-muted)" }}>—</span>
+                                      )}
                                     </td>
-                                    <td style={{ fontFamily: "monospace" }}>{p.min !== null ? String(p.min).slice(0, 16) : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
-                                    <td style={{ fontFamily: "monospace" }}>{p.max !== null ? String(p.max).slice(0, 16) : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
-                                    <td style={{ fontFamily: "monospace" }}>{p.mean !== null ? p.mean.toFixed(2) : <span style={{ color: "var(--text-muted)" }}>—</span>}</td>
+                                    <td
+                                      style={{
+                                        color: isConstant ? "var(--text-muted)" : "var(--text)",
+                                      }}
+                                    >
+                                      {p.distinctCount}
+                                    </td>
+                                    <td
+                                      style={{
+                                        color: isConstant
+                                          ? "var(--destructive)"
+                                          : "var(--text-muted)",
+                                      }}
+                                    >
+                                      {isConstant ? (
+                                        <span title={String(p.constantValue)}>
+                                          Yes ({String(p.constantValue).slice(0, 12)})
+                                        </span>
+                                      ) : (
+                                        <span style={{ color: "var(--text-muted)" }}>—</span>
+                                      )}
+                                    </td>
+                                    <td style={{ fontFamily: "monospace" }}>
+                                      {p.min !== null ? (
+                                        String(p.min).slice(0, 16)
+                                      ) : (
+                                        <span style={{ color: "var(--text-muted)" }}>—</span>
+                                      )}
+                                    </td>
+                                    <td style={{ fontFamily: "monospace" }}>
+                                      {p.max !== null ? (
+                                        String(p.max).slice(0, 16)
+                                      ) : (
+                                        <span style={{ color: "var(--text-muted)" }}>—</span>
+                                      )}
+                                    </td>
+                                    <td style={{ fontFamily: "monospace" }}>
+                                      {p.mean !== null ? (
+                                        p.mean.toFixed(2)
+                                      ) : (
+                                        <span style={{ color: "var(--text-muted)" }}>—</span>
+                                      )}
+                                    </td>
                                     <td>
-                                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.2rem" }}>
+                                      <div
+                                        style={{ display: "flex", flexWrap: "wrap", gap: "0.2rem" }}
+                                      >
                                         {p.topValues.map(({ value, count }) => (
-                                          <span key={value} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "3px", padding: "0 0.3rem", fontSize: "0.7rem", fontFamily: "monospace", whiteSpace: "nowrap" }}>
-                                            {value.slice(0, 20)}<span style={{ color: "var(--text-muted)" }}>×{count}</span>
+                                          <span
+                                            key={value}
+                                            style={{
+                                              background: "var(--surface)",
+                                              border: "1px solid var(--border)",
+                                              borderRadius: "3px",
+                                              padding: "0 0.3rem",
+                                              fontSize: "0.7rem",
+                                              fontFamily: "monospace",
+                                              whiteSpace: "nowrap",
+                                            }}
+                                          >
+                                            {value.slice(0, 20)}
+                                            <span style={{ color: "var(--text-muted)" }}>
+                                              ×{count}
+                                            </span>
                                           </span>
                                         ))}
                                       </div>
@@ -1672,27 +2764,69 @@ export function SqlPage() {
                           </table>
                         </div>
                       </div>
-                    )
-                  )}
+                    ))}
 
-                  {resultTab === "errors" && (
-                    errors.length === 0 ? (
-                      <div style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>No unsupported conditions.</div>
+                  {resultTab === "errors" &&
+                    (errors.length === 0 ? (
+                      <div
+                        style={{
+                          padding: "1.5rem",
+                          textAlign: "center",
+                          color: "var(--text-muted)",
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        No unsupported conditions.
+                      </div>
                     ) : (
                       <div style={{ padding: "0.75rem" }}>
-                        <p style={{ color: "var(--destructive)", fontSize: "0.8rem", fontWeight: 600, marginBottom: "0.5rem" }}>Unsupported ON conditions — simplify using a view:</p>
-                        <ul style={{ margin: 0, paddingLeft: "1.25rem", display: "flex", flexDirection: "column", gap: "0.3rem" }}>
+                        <p
+                          style={{
+                            color: "var(--destructive)",
+                            fontSize: "0.8rem",
+                            fontWeight: 600,
+                            marginBottom: "0.5rem",
+                          }}
+                        >
+                          Unsupported ON conditions — simplify using a view:
+                        </p>
+                        <ul
+                          style={{
+                            margin: 0,
+                            paddingLeft: "1.25rem",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "0.3rem",
+                          }}
+                        >
                           {errors.map((e, i) => (
-                            <li key={i} style={{ fontSize: "0.8rem", color: "var(--destructive)", fontFamily: "monospace" }}>{e}</li>
+                            <li
+                              key={i}
+                              style={{
+                                fontSize: "0.8rem",
+                                color: "var(--destructive)",
+                                fontFamily: "monospace",
+                              }}
+                            >
+                              {e}
+                            </li>
                           ))}
                         </ul>
                       </div>
-                    )
-                  )}
+                    ))}
 
-                  {resultTab === "history" && (
-                    history.length === 0 ? (
-                      <div style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>No queries run yet. History persists across sessions.</div>
+                  {resultTab === "history" &&
+                    (history.length === 0 ? (
+                      <div
+                        style={{
+                          padding: "1.5rem",
+                          textAlign: "center",
+                          color: "var(--text-muted)",
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        No queries run yet. History persists across sessions.
+                      </div>
                     ) : (
                       <table className="data-table" style={{ fontSize: "0.75rem" }}>
                         <thead>
@@ -1708,28 +2842,67 @@ export function SqlPage() {
                         <tbody>
                           {history.map((h, i) => {
                             const ts = new Date(h.executedAt);
-                            const timeLabel = ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-                            const dateLabel = ts.toLocaleDateString([], { month: "short", day: "numeric" });
+                            const timeLabel = ts.toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit",
+                            });
+                            const dateLabel = ts.toLocaleDateString([], {
+                              month: "short",
+                              day: "numeric",
+                            });
                             const isToday = ts.toDateString() === new Date().toDateString();
                             return (
                               <tr key={i} style={{ verticalAlign: "top" }}>
                                 <td style={{ whiteSpace: "nowrap", color: "var(--text-muted)" }}>
                                   <div>{timeLabel}</div>
-                                  {!isToday && <div style={{ fontSize: "0.68rem" }}>{dateLabel}</div>}
+                                  {!isToday && (
+                                    <div style={{ fontSize: "0.68rem" }}>{dateLabel}</div>
+                                  )}
                                 </td>
-                                <td style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>{h.role}</td>
-                                <td style={{ whiteSpace: "nowrap", color: h.error ? "var(--destructive)" : "var(--text-muted)" }}>{h.durationMs}ms</td>
-                                <td style={{ whiteSpace: "nowrap", color: h.error ? "var(--destructive)" : "var(--text)" }}>
+                                <td style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                                  {h.role}
+                                </td>
+                                <td
+                                  style={{
+                                    whiteSpace: "nowrap",
+                                    color: h.error ? "var(--destructive)" : "var(--text-muted)",
+                                  }}
+                                >
+                                  {h.durationMs}ms
+                                </td>
+                                <td
+                                  style={{
+                                    whiteSpace: "nowrap",
+                                    color: h.error ? "var(--destructive)" : "var(--text)",
+                                  }}
+                                >
                                   {h.error ? <span title={h.error}>error</span> : h.rowCount}
                                 </td>
                                 <td>
-                                  <pre style={{ margin: 0, fontSize: "0.72rem", whiteSpace: "pre-wrap", wordBreak: "break-all", color: "var(--text)", maxHeight: "4.5em", overflow: "hidden" }}>{h.sql}</pre>
+                                  <pre
+                                    style={{
+                                      margin: 0,
+                                      fontSize: "0.72rem",
+                                      whiteSpace: "pre-wrap",
+                                      wordBreak: "break-all",
+                                      color: "var(--text)",
+                                      maxHeight: "4.5em",
+                                      overflow: "hidden",
+                                    }}
+                                  >
+                                    {h.sql}
+                                  </pre>
                                 </td>
                                 <td style={{ whiteSpace: "nowrap" }}>
                                   <button
                                     className="btn-secondary"
                                     style={{ fontSize: "0.7rem", padding: "0.15rem 0.45rem" }}
-                                    onClick={() => { setSqlText(h.sql); setRole(h.role); setResultTab("results"); }}
+                                    onClick={() => {
+                                      setSqlText(h.sql);
+                                      setRole(h.role);
+                                      setResultTab("results");
+                                    }}
                                   >
                                     Restore
                                   </button>
@@ -1739,8 +2912,7 @@ export function SqlPage() {
                           })}
                         </tbody>
                       </table>
-                    )
-                  )}
+                    ))}
                 </div>
               </div>
             </>
@@ -1750,14 +2922,39 @@ export function SqlPage() {
 
       {viewModal && (
         <div className="modal-overlay" onClick={() => setViewModal(false)}>
-          <div className="modal" style={{ width: "90vw", maxWidth: "90vw", maxHeight: "90vh", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1rem", flexShrink: 0 }}>
+          <div
+            className="modal"
+            style={{
+              width: "90vw",
+              maxWidth: "90vw",
+              maxHeight: "90vh",
+              display: "flex",
+              flexDirection: "column",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: "1rem",
+                flexShrink: 0,
+              }}
+            >
               <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>
                 {canCreateView ? "Create View" : "Request View"}
               </span>
               <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 {viewMsg && (
-                  <span style={{ fontSize: "0.78rem", color: viewMsg.startsWith("Error") ? "var(--destructive)" : "var(--approve)" }}>{viewMsg}</span>
+                  <span
+                    style={{
+                      fontSize: "0.78rem",
+                      color: viewMsg.startsWith("Error") ? "var(--destructive)" : "var(--approve)",
+                    }}
+                  >
+                    {viewMsg}
+                  </span>
                 )}
                 <button
                   className="btn-primary"
@@ -1765,57 +2962,171 @@ export function SqlPage() {
                   disabled={viewSaving || !viewId.trim() || !viewDomainId.trim() || viewHasParams}
                   style={{ fontSize: "0.8rem", padding: "0.3rem 0.75rem" }}
                 >
-                  {viewSaving ? <><Loader2 size={12} style={{ animation: "spin 1s linear infinite", marginRight: 4 }} />Saving…</> : canCreateView ? "Create" : "Submit Request"}
+                  {viewSaving ? (
+                    <>
+                      <Loader2
+                        size={12}
+                        style={{ animation: "spin 1s linear infinite", marginRight: 4 }}
+                      />
+                      Saving…
+                    </>
+                  ) : canCreateView ? (
+                    "Create"
+                  ) : (
+                    "Submit Request"
+                  )}
                 </button>
-                <button className="modal-close" onClick={() => setViewModal(false)}><X size={14} /></button>
+                <button className="modal-close" onClick={() => setViewModal(false)}>
+                  <X size={14} />
+                </button>
               </div>
             </div>
             {!canCreateView && (
-              <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "0.75rem", flexShrink: 0 }}>
-                You do not have <code>create_view</code>. This will be submitted as a suggested view pending approval.
+              <p
+                style={{
+                  fontSize: "0.78rem",
+                  color: "var(--text-muted)",
+                  marginBottom: "0.75rem",
+                  flexShrink: 0,
+                }}
+              >
+                You do not have <code>create_view</code>. This will be submitted as a suggested view
+                pending approval.
               </p>
             )}
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem", overflow: "auto", flex: 1, paddingRight: "1rem", paddingLeft: "2px" }}>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "0.6rem",
+                overflow: "auto",
+                flex: 1,
+                paddingRight: "1rem",
+                paddingLeft: "2px",
+              }}
+            >
               <div style={{ display: "flex", gap: "0.75rem", flexShrink: 0 }}>
-                <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.875rem", color: "var(--text-muted)", flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Alias <span style={{ color: "var(--destructive)" }}>*</span></span>
+                <label
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.25rem",
+                    fontSize: "0.875rem",
+                    color: "var(--text-muted)",
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                    Alias <span style={{ color: "var(--destructive)" }}>*</span>
+                  </span>
                   <input
                     value={viewId}
                     onChange={(e) => setViewId(e.target.value)}
                     placeholder="e.g. my_view"
-                    style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: 4, fontSize: "0.875rem", width: "100%", boxSizing: "border-box" }}
+                    style={{
+                      background: "var(--bg)",
+                      color: "var(--text)",
+                      border: "1px solid var(--border)",
+                      padding: "0.5rem",
+                      borderRadius: 4,
+                      fontSize: "0.875rem",
+                      width: "100%",
+                      boxSizing: "border-box",
+                    }}
                   />
                 </label>
-                <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.875rem", color: "var(--text-muted)", flex: 1, minWidth: 0 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>Domain <span style={{ color: "var(--destructive)" }}>*</span></span>
+                <label
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.25rem",
+                    fontSize: "0.875rem",
+                    color: "var(--text-muted)",
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                    Domain <span style={{ color: "var(--destructive)" }}>*</span>
+                  </span>
                   <select
                     value={viewDomainId}
                     onChange={(e) => setViewDomainId(e.target.value)}
-                    style={{ background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: 4, fontSize: "0.875rem", width: "100%", boxSizing: "border-box" }}
+                    style={{
+                      background: "var(--bg)",
+                      color: "var(--text)",
+                      border: "1px solid var(--border)",
+                      padding: "0.5rem",
+                      borderRadius: 4,
+                      fontSize: "0.875rem",
+                      width: "100%",
+                      boxSizing: "border-box",
+                    }}
                   >
                     <option value="">— select domain —</option>
-                    {Object.values(domainMap).filter((d) => d.id && d.id !== "meta" && d.id !== "ops").map((d) => (
-                      <option key={d.id} value={d.id}>{d.id}{d.description ? ` — ${d.description}` : ""}</option>
-                    ))}
+                    {Object.values(domainMap)
+                      .filter((d) => d.id && d.id !== "meta" && d.id !== "ops")
+                      .map((d) => (
+                        <option key={d.id} value={d.id}>
+                          {d.id}
+                          {d.description ? ` — ${d.description}` : ""}
+                        </option>
+                      ))}
                   </select>
                 </label>
               </div>
-              <label style={{ display: "flex", flexDirection: "column", gap: "0.25rem", fontSize: "0.875rem", color: "var(--text-muted)", flexShrink: 0 }}>
+              <label
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.25rem",
+                  fontSize: "0.875rem",
+                  color: "var(--text-muted)",
+                  flexShrink: 0,
+                }}
+              >
                 Description
                 <textarea
                   value={viewDescription}
                   onChange={(e) => setViewDescription(e.target.value)}
                   placeholder="Optional"
                   rows={2}
-                  style={{ resize: "vertical", background: "var(--bg)", color: "var(--text)", border: "1px solid var(--border)", padding: "0.5rem", borderRadius: 4, fontSize: "0.875rem", width: "100%", boxSizing: "border-box" }}
+                  style={{
+                    resize: "vertical",
+                    background: "var(--bg)",
+                    color: "var(--text)",
+                    border: "1px solid var(--border)",
+                    padding: "0.5rem",
+                    borderRadius: 4,
+                    fontSize: "0.875rem",
+                    width: "100%",
+                    boxSizing: "border-box",
+                  }}
                 />
               </label>
               {viewHasParams && (
-                <p style={{ fontSize: "0.78rem", color: "var(--destructive)", margin: 0, flexShrink: 0 }}>
-                  SQL contains unresolved parameter placeholders ($1, $2, …). Edit the SQL to replace them with literal values.
+                <p
+                  style={{
+                    fontSize: "0.78rem",
+                    color: "var(--destructive)",
+                    margin: 0,
+                    flexShrink: 0,
+                  }}
+                >
+                  SQL contains unresolved parameter placeholders ($1, $2, …). Edit the SQL to
+                  replace them with literal values.
                 </p>
               )}
-              <div style={{ resize: "vertical", overflow: "auto", minHeight: 80, height: 120, flexShrink: 0 }}>
+              <div
+                style={{
+                  resize: "vertical",
+                  overflow: "auto",
+                  minHeight: 80,
+                  height: 120,
+                  flexShrink: 0,
+                }}
+              >
                 <CodeMirror
                   value={viewSqlNormalized}
                   extensions={viewSqlExtensions}
@@ -1830,16 +3141,41 @@ export function SqlPage() {
         </div>
       )}
       {savedViewId !== null && (
-        <div className="modal-overlay" onClick={() => { setSavedViewId(null); setViewModal(false); setViewMsg(""); setViewId(""); setViewDescription(""); setViewDomainId(""); setViewColumns([]); }}>
-          <div className="modal" style={{ width: "400px", padding: "2rem" }} onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onClick={() => {
+            setSavedViewId(null);
+            setViewModal(false);
+            setViewMsg("");
+            setViewId("");
+            setViewDescription("");
+            setViewDomainId("");
+            setViewColumns([]);
+          }}
+        >
+          <div
+            className="modal"
+            style={{ width: "400px", padding: "2rem" }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 style={{ marginTop: 0, marginBottom: "1rem" }}>View Saved</h3>
             <p style={{ marginBottom: "1.5rem", color: "var(--text-muted)" }}>
-              {canCreateView ? `View "${viewId}" has been created and registered.` : `View "${viewId}" has been submitted for approval.`}
+              {canCreateView
+                ? `View "${viewId}" has been created and registered.`
+                : `View "${viewId}" has been submitted for approval.`}
             </p>
             <div style={{ display: "flex", gap: "0.75rem", justifyContent: "flex-end" }}>
               <button
                 className="btn-secondary"
-                onClick={() => { setSavedViewId(null); setViewModal(false); setViewMsg(""); setViewId(""); setViewDescription(""); setViewDomainId(""); setViewColumns([]); }}
+                onClick={() => {
+                  setSavedViewId(null);
+                  setViewModal(false);
+                  setViewMsg("");
+                  setViewId("");
+                  setViewDescription("");
+                  setViewDomainId("");
+                  setViewColumns([]);
+                }}
                 style={{ fontSize: "0.875rem", padding: "0.4rem 1rem" }}
               >
                 Close

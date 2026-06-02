@@ -8,8 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-declare module 'graphql-voyager' {
-  import { ComponentType } from 'react';
+declare module "graphql-voyager" {
+  import { ComponentType } from "react";
 
   interface VoyagerProps {
     introspection: (query: string) => unknown;

@@ -13,14 +13,15 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint .",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx}\"",
     "preview": "vite preview",
     "test:unit": "vitest run --coverage",
     "test:e2e": "npx playwright test",
     "coverage:clean": "rm -rf .nyc_output .nyc_output_flat coverage",
     "coverage:merge": "mkdir -p .nyc_output_flat && cp .nyc_output/vitest/coverage-final.json .nyc_output_flat/vitest.json && cp .nyc_output/playwright/*.json .nyc_output_flat/ && nyc merge .nyc_output_flat coverage/merged.json",
     "coverage:report": "mkdir -p coverage/.nyc_output && cp coverage/merged.json coverage/.nyc_output/coverage-final.json && nyc report --temp-dir coverage/.nyc_output --reporter text --reporter html --report-dir coverage/html",
-    "coverage": "npm run coverage:clean && npm run test:unit && npm run test:e2e && npm run coverage:merge && npm run coverage:report",
-    "format": "prettier --write \"src/**/*.{ts,tsx}\""
+    "coverage": "npm run coverage:clean && npm run test:unit && npm run test:e2e && npm run coverage:merge && npm run coverage:report"
   },
   "dependencies": {
     "@apollo/client": "^4.2.0",
@@ -78,6 +79,7 @@
     "globals": "^17.6.0",
     "jsdom": "^29.1.1",
     "nyc": "^18.0.0",
+    "prettier": "^3.8.3",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.60.0",
     "vite": "^8.0.16",

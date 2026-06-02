@@ -22,12 +22,16 @@ export function MVManager() {
 
   const load = () => {
     setLoading(true);
-    fetchMVList().then(setMvs).finally(() => setLoading(false));
+    fetchMVList()
+      .then(setMvs)
+      .finally(() => setLoading(false));
   };
 
   // Initial fetch on mount: loading already starts true, so no synchronous setState here.
   useEffect(() => {
-    fetchMVList().then(setMvs).finally(() => setLoading(false));
+    fetchMVList()
+      .then(setMvs)
+      .finally(() => setLoading(false));
   }, []);
 
   const handleRefresh = async (id: string) => {
@@ -67,14 +71,22 @@ export function MVManager() {
         <tbody>
           {paged.map((mv) => (
             <tr key={mv.id}>
-              <td><code>{mv.id}</code></td>
+              <td>
+                <code>{mv.id}</code>
+              </td>
               <td>{mv.sourceTables.join(", ")}</td>
-              <td><code>{mv.targetTable}</code></td>
+              <td>
+                <code>{mv.targetTable}</code>
+              </td>
               <td>
                 <span className={`status-badge status-${mv.status}`}>{mv.status}</span>
               </td>
               <td>{mv.rowCount ?? "—"}</td>
-              <td>{mv.lastRefreshAt ? new Date(mv.lastRefreshAt * 1000).toLocaleTimeString() : "never"}</td>
+              <td>
+                {mv.lastRefreshAt
+                  ? new Date(mv.lastRefreshAt * 1000).toLocaleTimeString()
+                  : "never"}
+              </td>
               <td>{mv.refreshInterval}s</td>
               <td className="reasoning-cell" style={{ color: "var(--error)", maxWidth: 200 }}>
                 {mv.lastError || ""}
@@ -101,12 +113,30 @@ export function MVManager() {
         </tbody>
       </table>
       {totalPages > 1 && (
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
-          <button onClick={() => setMvPage(0)} disabled={mvPage === 0}>«</button>
-          <button onClick={() => setMvPage(p => p - 1)} disabled={mvPage === 0}>‹</button>
-          <span>Page {mvPage + 1} / {totalPages}</span>
-          <button onClick={() => setMvPage(p => p + 1)} disabled={mvPage >= totalPages - 1}>›</button>
-          <button onClick={() => setMvPage(totalPages - 1)} disabled={mvPage >= totalPages - 1}>»</button>
+        <div
+          style={{
+            display: "flex",
+            gap: "0.5rem",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            padding: "0.5rem 0",
+          }}
+        >
+          <button onClick={() => setMvPage(0)} disabled={mvPage === 0}>
+            «
+          </button>
+          <button onClick={() => setMvPage((p) => p - 1)} disabled={mvPage === 0}>
+            ‹
+          </button>
+          <span>
+            Page {mvPage + 1} / {totalPages}
+          </span>
+          <button onClick={() => setMvPage((p) => p + 1)} disabled={mvPage >= totalPages - 1}>
+            ›
+          </button>
+          <button onClick={() => setMvPage(totalPages - 1)} disabled={mvPage >= totalPages - 1}>
+            »
+          </button>
         </div>
       )}
     </div>

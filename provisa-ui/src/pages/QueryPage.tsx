@@ -66,7 +66,8 @@ monaco.languages.registerCompletionItemProvider("graphql", {
           label: "@cached",
           insertText: "cached(ttl: ${1:300})",
           detail: "Cache results for N seconds",
-          documentation: "Cache this query's results server-side. ttl is the time-to-live in seconds (0 = disable).",
+          documentation:
+            "Cache this query's results server-side. ttl is the time-to-live in seconds (0 = disable).",
         },
         {
           label: "@route",
@@ -88,19 +89,20 @@ monaco.languages.registerCompletionItemProvider("graphql", {
         },
         {
           label: "@broadcastSize",
-          insertText: "broadcastSize(size: \"${1:512MB}\")",
+          insertText: 'broadcastSize(size: "${1:512MB}")',
           detail: "Max broadcast table size",
           documentation: "Sets Trino join_max_broadcast_table_size session property.",
         },
         {
           label: "@redirect",
-          insertText: "redirect(format: \"${1|parquet,csv,arrow,ndjson,json|}\", threshold: ${2:10000})",
+          insertText:
+            'redirect(format: "${1|parquet,csv,arrow,ndjson,json|}", threshold: ${2:10000})',
           detail: "Redirect large results to object store",
           documentation: "Streams results to MinIO/S3 when row count exceeds threshold.",
         },
         {
           label: "@sink",
-          insertText: "sink(topic: \"${1:topic-name}\")",
+          insertText: 'sink(topic: "${1:topic-name}")',
           detail: "Stream results to Kafka topic",
           documentation: "Publishes query results to the specified Kafka topic.",
         },
@@ -108,7 +110,8 @@ monaco.languages.registerCompletionItemProvider("graphql", {
           label: "@watermark",
           insertText: "watermark",
           detail: "Mark watermark field (field-level)",
-          documentation: "Applied to a field to mark it as the watermark/cursor column for incremental queries.",
+          documentation:
+            "Applied to a field to mark it as the watermark/cursor column for incremental queries.",
         },
       ];
       return {
@@ -146,7 +149,8 @@ monaco.languages.registerCompletionItemProvider("graphql", {
             label: "route=federated",
             kind: monaco.languages.CompletionItemKind.EnumMember,
             detail: "Force federated execution",
-            documentation: "Route this query through the federation engine (Trino) even if a direct driver is available.",
+            documentation:
+              "Route this query through the federation engine (Trino) even if a direct driver is available.",
             insertText: "route=federated",
             range: mkRange(cmdStart),
           },
@@ -154,7 +158,8 @@ monaco.languages.registerCompletionItemProvider("graphql", {
             label: "route=direct",
             kind: monaco.languages.CompletionItemKind.EnumMember,
             detail: "Force direct driver",
-            documentation: "Route this query directly to the source, bypassing federation. Only applies to single-source queries with a native driver.",
+            documentation:
+              "Route this query directly to the source, bypassing federation. Only applies to single-source queries with a native driver.",
             insertText: "route=direct",
             range: mkRange(cmdStart),
           },
@@ -162,7 +167,8 @@ monaco.languages.registerCompletionItemProvider("graphql", {
             label: "join=broadcast",
             kind: monaco.languages.CompletionItemKind.EnumMember,
             detail: "Broadcast join strategy",
-            documentation: "Sets Trino session join_distribution_type=BROADCAST. Broadcasts the smaller table to all nodes — best for small dimension tables.",
+            documentation:
+              "Sets Trino session join_distribution_type=BROADCAST. Broadcasts the smaller table to all nodes — best for small dimension tables.",
             insertText: "join=broadcast",
             range: mkRange(cmdStart),
           },
@@ -170,7 +176,8 @@ monaco.languages.registerCompletionItemProvider("graphql", {
             label: "join=partitioned",
             kind: monaco.languages.CompletionItemKind.EnumMember,
             detail: "Partitioned join strategy",
-            documentation: "Sets Trino session join_distribution_type=PARTITIONED. Hash-partitions both sides — best for large fact-to-fact joins.",
+            documentation:
+              "Sets Trino session join_distribution_type=PARTITIONED. Hash-partitions both sides — best for large fact-to-fact joins.",
             insertText: "join=partitioned",
             range: mkRange(cmdStart),
           },
@@ -178,7 +185,8 @@ monaco.languages.registerCompletionItemProvider("graphql", {
             label: "reorder=off",
             kind: monaco.languages.CompletionItemKind.EnumMember,
             detail: "Disable join reordering",
-            documentation: "Sets Trino session join_reordering_strategy=NONE. Use when Trino's cost-based reordering produces a bad plan.",
+            documentation:
+              "Sets Trino session join_reordering_strategy=NONE. Use when Trino's cost-based reordering produces a bad plan.",
             insertText: "reorder=off",
             range: mkRange(cmdStart),
           },
@@ -186,7 +194,8 @@ monaco.languages.registerCompletionItemProvider("graphql", {
             label: "broadcast_size=",
             kind: monaco.languages.CompletionItemKind.EnumMember,
             detail: "Max broadcast table size",
-            documentation: "Sets Trino session join_max_broadcast_table_size. E.g. broadcast_size=512MB.",
+            documentation:
+              "Sets Trino session join_max_broadcast_table_size. E.g. broadcast_size=512MB.",
             insertText: "broadcast_size=",
             range: mkRange(cmdStart),
           },
@@ -233,28 +242,50 @@ const colors = {
 };
 
 const arrowOpen = (
-  <svg width={5} height={8} viewBox="0 0 5 8" fill="currentColor"
-    style={{ width: "var(--px-16)", transform: "rotate(90deg)" }}>
+  <svg
+    width={5}
+    height={8}
+    viewBox="0 0 5 8"
+    fill="currentColor"
+    style={{ width: "var(--px-16)", transform: "rotate(90deg)" }}
+  >
     <path d="M0 0L5 4L0 8Z" />
   </svg>
 );
 const arrowClosed = (
-  <svg width={5} height={8} viewBox="0 0 5 8" fill="currentColor"
-    style={{ width: "var(--px-16)" }}>
+  <svg width={5} height={8} viewBox="0 0 5 8" fill="currentColor" style={{ width: "var(--px-16)" }}>
     <path d="M0 0L5 4L0 8Z" />
   </svg>
 );
 const checkboxUnchecked = (
-  <svg width={15} height={15} viewBox="0 0 15 15" stroke="currentColor" fill="none"
-    style={{ marginRight: "var(--px-4)" }}>
+  <svg
+    width={15}
+    height={15}
+    viewBox="0 0 15 15"
+    stroke="currentColor"
+    fill="none"
+    style={{ marginRight: "var(--px-4)" }}
+  >
     <rect x="1.5" y="1.5" width="12" height="12" rx="1.5" strokeWidth="1.5" />
   </svg>
 );
 const checkboxChecked = (
-  <svg width={15} height={15} viewBox="0 0 15 15" fill="currentColor"
-    style={{ fill: "hsl(var(--color-info))", marginRight: "var(--px-4)" }}>
+  <svg
+    width={15}
+    height={15}
+    viewBox="0 0 15 15"
+    fill="currentColor"
+    style={{ fill: "hsl(var(--color-info))", marginRight: "var(--px-4)" }}
+  >
     <rect x="1.5" y="1.5" width="12" height="12" rx="1.5" />
-    <path d="M4.5 7.5L6.5 9.5L10.5 5.5" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <path
+      d="M4.5 7.5L6.5 9.5L10.5 5.5"
+      stroke="white"
+      strokeWidth="1.5"
+      fill="none"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
   </svg>
 );
 
@@ -271,11 +302,13 @@ export function SyncedExplorerContent() {
   const activeTabIndex = useGraphiQL((s) => s.activeTabIndex);
   const [domainLabels, setDomainLabels] = useState<Record<string, string>>({});
   useEffect(() => {
-    fetchDomains().then((ds) => {
-      const map: Record<string, string> = {};
-      for (const d of ds) map[domainGqlAlias(d)] = d.id;
-      setDomainLabels(map);
-    }).catch(() => {});
+    fetchDomains()
+      .then((ds) => {
+        const map: Record<string, string> = {};
+        for (const d of ds) map[domainGqlAlias(d)] = d.id;
+        setDomainLabels(map);
+      })
+      .catch(() => {});
   }, []);
   // Canonical per-tab query from the store — reliable during tab switches
   const tabQuery = useGraphiQL((s) => s.tabs[s.activeTabIndex]?.query ?? "");
@@ -289,7 +322,7 @@ export function SyncedExplorerContent() {
   /* eslint-disable-next-line react-hooks/refs --
      updating the previous-value ref during render is part of the same sanctioned prop-change detection pattern */
   if (isTabSwitching) prevTabIndexRef.current = activeTabIndex;
-  const query = isTabSwitching ? tabQuery : (liveQuery || tabQuery);
+  const query = isTabSwitching ? tabQuery : liveQuery || tabQuery;
 
   const handleRunOperation = useCallback(
     (operationName?: string) => {
@@ -325,7 +358,11 @@ const syncedExplorerPlugin = {
     <svg height="1em" strokeWidth={1.5} viewBox="0 0 24 24" stroke="currentColor" fill="none">
       <path d="M18 6H20M22 6H20M20 6V4M20 6V8" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M21.4 20H2.6C2.26863 20 2 19.7314 2 19.4V11H21.4C21.7314 11 22 11.2686 22 11.6V19.4C22 19.7314 21.7314 20 21.4 20Z" />
-      <path d="M2 11V4.6C2 4.26863 2.26863 4 2.6 4H8.77805C8.92127 4 9.05977 4.05124 9.16852 4.14445L12.3315 6.85555C12.4402 6.94876 12.5787 7 12.722 7H14" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M2 11V4.6C2 4.26863 2.26863 4 2.6 4H8.77805C8.92127 4 9.05977 4.05124 9.16852 4.14445L12.3315 6.85555C12.4402 6.94876 12.5787 7 12.722 7H14"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   ),
   content: () => <SyncedExplorerContent />,
@@ -397,9 +434,17 @@ function createProvisaFetch(
       }
       // Multi-field redirects (some or all fields redirected)
       if (body.redirects) {
-        const redirectEntries = Object.entries(body.redirects as Record<string, {
-          redirect_url: string; row_count: number; expires_in: number; content_type: string;
-        }>);
+        const redirectEntries = Object.entries(
+          body.redirects as Record<
+            string,
+            {
+              redirect_url: string;
+              row_count: number;
+              expires_in: number;
+              content_type: string;
+            }
+          >,
+        );
         const redirectData: Record<string, unknown> = {};
         for (const [field, info] of redirectEntries) {
           redirectData[`__redirect_${field}`] = {
@@ -458,14 +503,18 @@ export function QueryPage() {
     const check = () => {
       fetch("/data/schema-version")
         .then((r) => r.json())
-        .then((j) => { if (!cancelled) setServerSchemaVersion(j.version); })
+        .then((j) => {
+          if (!cancelled) setServerSchemaVersion(j.version);
+        })
         .catch(() => {});
     };
     check();
     const timer = setInterval(check, 30_000);
     window.addEventListener("focus", check);
     // Cross-tab: SqlPage writes provisa.schema.version to localStorage on rebuild
-    const onStorage = (e: StorageEvent) => { if (e.key === "provisa.schema.version") check(); };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "provisa.schema.version") check();
+    };
     window.addEventListener("storage", onStorage);
     return () => {
       cancelled = true;
@@ -476,14 +525,23 @@ export function QueryPage() {
   }, []);
 
   useEffect(() => {
-    /* eslint-disable-next-line react-hooks/set-state-in-effect --
-       deliberate reset of externally-fetched schema state when prerequisites are absent; the effect's job is to sync domainSchema to a network introspection fetch */
-    if (!role || checkedDomains.size === 0 || serverSchemaVersion === null) { setDomainSchema(null); return; }
+    /* eslint-disable react-hooks/set-state-in-effect -- deliberate reset of externally-fetched schema state when prerequisites are absent; the effect's job is to sync domainSchema to a network introspection fetch */
+    if (!role || checkedDomains.size === 0 || serverSchemaVersion === null) {
+      setDomainSchema(null);
+      return;
+    }
+    /* eslint-enable react-hooks/set-state-in-effect */
     const domain = [...checkedDomains].sort().join(",");
     const cacheKey = `introspection:${role.id}:${domain}:${serverSchemaVersion}`;
     const cached = sessionStorage.getItem(cacheKey);
     if (cached) {
-      try { setDomainSchema(buildClientSchema(JSON.parse(cached))); setSchemaError(null); return; } catch { sessionStorage.removeItem(cacheKey); }
+      try {
+        setDomainSchema(buildClientSchema(JSON.parse(cached)));
+        setSchemaError(null);
+        return;
+      } catch {
+        sessionStorage.removeItem(cacheKey);
+      }
     }
     const controller = new AbortController();
     setSchemaError(null);
@@ -506,7 +564,9 @@ export function QueryPage() {
           setSchemaError(json.detail ?? "Schema unavailable");
         }
       })
-      .catch((err) => { if (err.name !== "AbortError") setSchemaError(err.message ?? "Schema fetch failed"); });
+      .catch((err) => {
+        if (err.name !== "AbortError") setSchemaError(err.message ?? "Schema fetch failed");
+      });
     return () => controller.abort();
     /* eslint-disable-next-line react-hooks/exhaustive-deps --
        keyed on role.id only; the full role object identity must not retrigger the introspection fetch */
@@ -520,9 +580,7 @@ export function QueryPage() {
   /* eslint-disable-next-line react-hooks/refs --
      latest-value ref: createProvisaFetch reads current redirect settings at request time; the fetcher is memoized on role only and must not be recreated when settings change */
   settingsRef.current = {
-    format:
-      REDIRECT_FORMAT_OPTIONS.find((o) => o.value === redirectFormat)?.mime ??
-      "",
+    format: REDIRECT_FORMAT_OPTIONS.find((o) => o.value === redirectFormat)?.mime ?? "",
     threshold: redirectThreshold,
     statsEnabled,
   };
@@ -625,23 +683,19 @@ export function QueryPage() {
   );
 
   const onFormatChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) =>
-      setRedirectFormat(e.target.value),
+    (e: React.ChangeEvent<HTMLSelectElement>) => setRedirectFormat(e.target.value),
     [],
   );
   const onThresholdChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) =>
-      setRedirectThreshold(e.target.value),
+    (e: React.ChangeEvent<HTMLInputElement>) => setRedirectThreshold(e.target.value),
     [],
   );
   const onStatsChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) =>
-      setStatsEnabled(e.target.checked),
+    (e: React.ChangeEvent<HTMLInputElement>) => setStatsEnabled(e.target.checked),
     [],
   );
 
-  if (!role || !fetcher || !plugins)
-    return <div className="page">Select a role.</div>;
+  if (!role || !fetcher || !plugins) return <div className="page">Select a role.</div>;
 
   return (
     <div className="query-page">
@@ -656,7 +710,10 @@ export function QueryPage() {
             ))}
           </select>
         </label>
-        <label className="query-option" style={{ visibility: redirectFormat ? "visible" : "hidden" }}>
+        <label
+          className="query-option"
+          style={{ visibility: redirectFormat ? "visible" : "hidden" }}
+        >
           Threshold
           <input
             type="number"
@@ -667,7 +724,10 @@ export function QueryPage() {
             className="threshold-input"
           />
         </label>
-        <span className="query-hint" style={{ visibility: redirectFormat && !redirectThreshold ? "visible" : "hidden" }}>
+        <span
+          className="query-hint"
+          style={{ visibility: redirectFormat && !redirectThreshold ? "visible" : "hidden" }}
+        >
           All results redirect to S3
         </span>
         {queryElapsedMs !== null && (
@@ -675,7 +735,10 @@ export function QueryPage() {
             {Math.round(queryElapsedMs)} ms
           </span>
         )}
-        <label className="query-option" style={{ marginLeft: queryElapsedMs !== null ? undefined : "auto" }}>
+        <label
+          className="query-option"
+          style={{ marginLeft: queryElapsedMs !== null ? undefined : "auto" }}
+        >
           <input
             type="checkbox"
             checked={statsEnabled}
@@ -686,7 +749,15 @@ export function QueryPage() {
         </label>
       </div>
       {schemaError && (
-        <div style={{ padding: "6px 12px", background: "#3b1a1a", color: "#f87171", fontSize: 12, borderBottom: "1px solid #5a2020" }}>
+        <div
+          style={{
+            padding: "6px 12px",
+            background: "#3b1a1a",
+            color: "#f87171",
+            fontSize: 12,
+            borderBottom: "1px solid #5a2020",
+          }}
+        >
           Schema error: {schemaError}
         </div>
       )}

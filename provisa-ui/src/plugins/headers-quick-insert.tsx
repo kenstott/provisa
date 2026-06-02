@@ -108,9 +108,11 @@ export function HeadersQuickInsert() {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
        initial sync of React state from external Monaco header editor before subscribing to its change events */
     setHeadersText(headerEditor.getValue() ?? "");
-    const disposable = (headerEditor as unknown as {
-      onDidChangeModelContent?: (cb: () => void) => { dispose: () => void };
-    }).onDidChangeModelContent?.(() => {
+    const disposable = (
+      headerEditor as unknown as {
+        onDidChangeModelContent?: (cb: () => void) => { dispose: () => void };
+      }
+    ).onDidChangeModelContent?.(() => {
       setHeadersText(headerEditor.getValue() ?? "");
     });
     return () => disposable?.dispose();
@@ -144,7 +146,11 @@ export function HeadersQuickInsert() {
       const section = document.querySelector("section.graphiql-editor-tool");
       const watchTarget = section?.parentElement ?? document.body;
       observer = new MutationObserver(updateActive);
-      observer.observe(watchTarget, { attributes: true, subtree: true, attributeFilter: ["aria-label"] });
+      observer.observe(watchTarget, {
+        attributes: true,
+        subtree: true,
+        attributeFilter: ["aria-label"],
+      });
       return true;
     };
 
@@ -160,18 +166,21 @@ export function HeadersQuickInsert() {
     return () => observer?.disconnect();
   }, []);
 
-  const toggle = useCallback((def: HeaderDef) => {
-    if (!headerEditor) return;
-    const current = parseHeaders(headerEditor.getValue() ?? "");
-    if (current[def.key] === def.defaultValue) {
-      delete current[def.key];
-    } else {
-      current[def.key] = def.defaultValue;
-    }
-    const next = Object.keys(current).length ? JSON.stringify(current, null, 2) : "";
-    headerEditor.setValue(next);
-    setHeadersText(next);
-  }, [headerEditor]);
+  const toggle = useCallback(
+    (def: HeaderDef) => {
+      if (!headerEditor) return;
+      const current = parseHeaders(headerEditor.getValue() ?? "");
+      if (current[def.key] === def.defaultValue) {
+        delete current[def.key];
+      } else {
+        current[def.key] = def.defaultValue;
+      }
+      const next = Object.keys(current).length ? JSON.stringify(current, null, 2) : "";
+      headerEditor.setValue(next);
+      setHeadersText(next);
+    },
+    [headerEditor],
+  );
 
   if (!portalTarget || !headersActive) return null;
 

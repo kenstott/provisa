@@ -65,7 +65,16 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
   }
 
   return (
-    <DomainFilterContext.Provider value={{ domains, setDomains, selectedDomain, setSelectedDomain, checkedDomains, toggleDomain }}>
+    <DomainFilterContext.Provider
+      value={{
+        domains,
+        setDomains,
+        selectedDomain,
+        setSelectedDomain,
+        checkedDomains,
+        toggleDomain,
+      }}
+    >
       {children}
     </DomainFilterContext.Provider>
   );

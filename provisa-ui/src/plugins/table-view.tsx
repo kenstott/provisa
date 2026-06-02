@@ -38,13 +38,15 @@ function MermaidDiagram({ chart }: { chart: string }) {
       if (cancelled || !ref.current) return;
       m.default.initialize({ startOnLoad: false, theme: "dark" });
       const renders = charts.map((c, i) =>
-        m.default.render(`${idPrefixRef.current}-${i}`, c).then(({ svg }) => svg)
+        m.default.render(`${idPrefixRef.current}-${i}`, c).then(({ svg }) => svg),
       );
       Promise.all(renders).then((svgs) => {
         if (!cancelled && ref.current) ref.current.innerHTML = svgs.join("");
       });
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [chart]);
   return <div ref={ref} className="stats-mermaid" />;
 }
@@ -63,7 +65,9 @@ function flattenObject(obj: Record<string, unknown>, prefix: string, out: Record
           flattenObject(parsed as Record<string, unknown>, fullKey, out);
           continue;
         }
-      } catch { /* not JSON — treat as plain string */ }
+      } catch {
+        /* not JSON — treat as plain string */
+      }
       out[fullKey] = val;
     } else {
       out[fullKey] = val;
@@ -80,7 +84,11 @@ interface ParsedTable {
 
 function parseArrayLen(val: unknown): number {
   if (!val || typeof val !== "string" || !val.startsWith("[")) return 0;
-  try { return (JSON.parse(val) as unknown[]).length; } catch { return 0; }
+  try {
+    return (JSON.parse(val) as unknown[]).length;
+  } catch {
+    return 0;
+  }
 }
 
 function normalizeForCsv(
@@ -107,7 +115,9 @@ function normalizeForCsv(
             flattenObject(item as Record<string, unknown>, col, flat);
             return flat;
           });
-        } catch { /* leave items empty */ }
+        } catch {
+          /* leave items empty */
+        }
       }
       if (items.length === 0) continue;
       for (const key of Object.keys(items[0] ?? {})) normColSet.add(key);
@@ -123,7 +133,10 @@ function normalizeForCsv(
   return { normColumns: Array.from(normColSet), normRows };
 }
 
-function computeNormalizedRowCount(rows: Record<string, unknown>[], arrayColumns: string[]): number {
+function computeNormalizedRowCount(
+  rows: Record<string, unknown>[],
+  arrayColumns: string[],
+): number {
   return rows.reduce((sum, row) => {
     const product = arrayColumns.reduce((p, col) => p * Math.max(1, parseArrayLen(row[col])), 1);
     return sum + product;
@@ -157,7 +170,7 @@ function parseResponse(text: string): ParsedTable[] {
         allRows.push(flat);
       }
       const columns = Array.from(columnSet).filter(
-        (col) => !Array.from(columnSet).some((other) => other.startsWith(col + "."))
+        (col) => !Array.from(columnSet).some((other) => other.startsWith(col + ".")),
       );
       const arrayColumns = columns.filter((col) => allRows.some((r) => parseArrayLen(r[col]) > 0));
       tables.push({ key: rootKey, columns, rows: allRows, arrayColumns });
@@ -192,7 +205,10 @@ export function ResponseTableOverlay() {
     if (!editor) return;
     if (!editor.getValue()) {
       idbGet<string>("provisa.graphql.response").then((saved) => {
-        if (saved) { (editor as { setValue?: (v: string) => void }).setValue?.(saved); setResponseText(saved); }
+        if (saved) {
+          (editor as { setValue?: (v: string) => void }).setValue?.(saved);
+          setResponseText(saved);
+        }
       });
     }
   }, [editorContext.responseEditor]);
@@ -204,7 +220,14 @@ export function ResponseTableOverlay() {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
        initial sync of React state from external GraphiQL editor (external-system subscription pattern) */
     setResponseText(editor.getValue() ?? "");
-    const cm = (editor as unknown as { editor?: { on?: (event: string, cb: () => void) => void; off?: (event: string, cb: () => void) => void } }).editor;
+    const cm = (
+      editor as unknown as {
+        editor?: {
+          on?: (event: string, cb: () => void) => void;
+          off?: (event: string, cb: () => void) => void;
+        };
+      }
+    ).editor;
     const applyStats = (text: string) => {
       setElapsedMs(lastQueryElapsedMs);
       try {
@@ -214,9 +237,14 @@ export function ResponseTableOverlay() {
         if (stats && parsed.extensions) {
           const ext = { ...parsed.extensions };
           delete ext.provisa_stats;
-          const stripped = Object.keys(ext).length === 0
-            ? (() => { const c = { ...parsed }; delete c.extensions; return c; })()
-            : { ...parsed, extensions: ext };
+          const stripped =
+            Object.keys(ext).length === 0
+              ? (() => {
+                  const c = { ...parsed };
+                  delete c.extensions;
+                  return c;
+                })()
+              : { ...parsed, extensions: ext };
           const strippedText = JSON.stringify(stripped, null, 2);
           if (strippedText !== text) {
             lastStrippedRef.current = strippedText;
@@ -285,7 +313,8 @@ export function ResponseTableOverlay() {
   const handleToggleRow = useCallback((i: number) => {
     setExpandedRows((prev) => {
       const next = new Set(prev);
-      if (next.has(i)) next.delete(i); else next.add(i);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
       return next;
     });
   }, []);
@@ -335,7 +364,9 @@ export function ResponseTableOverlay() {
         : s;
     };
     const header = currentTable.columns.map(escape).join(",");
-    const body = currentTable.rows.map((row) => currentTable.columns.map((col) => escape(row[col])).join(",")).join("\n");
+    const body = currentTable.rows
+      .map((row) => currentTable.columns.map((col) => escape(row[col])).join(","))
+      .join("\n");
     navigator.clipboard.writeText(`${header}\n${body}`).then(() => {
       setCopiedCsv(true);
       setTimeout(() => setCopiedCsv(false), 2000);
@@ -351,7 +382,9 @@ export function ResponseTableOverlay() {
         : s;
     };
     const header = currentTable.columns.map(escape).join(",");
-    const body = currentTable.rows.map((row) => currentTable.columns.map((col) => escape(row[col])).join(",")).join("\n");
+    const body = currentTable.rows
+      .map((row) => currentTable.columns.map((col) => escape(row[col])).join(","))
+      .join("\n");
     const filename = tables.length > 1 ? `${currentTable.key}.csv` : "response.csv";
     downloadFile(`${header}\n${body}`, filename, "text/csv");
   }, [currentTable, tables, downloadFile]);
@@ -362,7 +395,7 @@ export function ResponseTableOverlay() {
     const count = computeNormalizedRowCount(currentTable.rows, currentTable.arrayColumns);
     if (count > 10_000) {
       const ok = window.confirm(
-        `Normalized export will produce ~${count.toLocaleString()} rows. Continue?`
+        `Normalized export will produce ~${count.toLocaleString()} rows. Continue?`,
       );
       if (!ok) return;
     }
@@ -378,7 +411,9 @@ export function ResponseTableOverlay() {
       currentTable.columns,
     );
     const header = normColumns.map(escape).join(",");
-    const body = normRows.map((row) => normColumns.map((col) => escape(row[col])).join(",")).join("\n");
+    const body = normRows
+      .map((row) => normColumns.map((col) => escape(row[col])).join(","))
+      .join("\n");
     const basename = tables.length > 1 ? currentTable.key : "response";
     downloadFile(`${header}\n${body}`, `${basename}.normalized.csv`, "text/csv");
   }, [currentTable, tables, downloadFile]);
@@ -401,7 +436,8 @@ export function ResponseTableOverlay() {
     setPortalReady(true);
   }, []);
 
-  const overlayActive = (viewMode === "table" && hasData) || (viewMode === "stats" && queryStats != null);
+  const overlayActive =
+    (viewMode === "table" && hasData) || (viewMode === "stats" && queryStats != null);
 
   useEffect(() => {
     const responseSection = document.querySelector(".graphiql-response") as HTMLElement | null;
@@ -456,22 +492,14 @@ export function ResponseTableOverlay() {
           ⚡
         </button>
         <span className="response-toggle-separator" />
-        <button
-          onClick={handleDownloadJSON}
-          disabled={!responseText}
-          title="Download JSON"
-        >
+        <button onClick={handleDownloadJSON} disabled={!responseText} title="Download JSON">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
             <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z" />
             <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z" />
           </svg>
           {" JSON"}
         </button>
-        <button
-          onClick={handleCopyJSON}
-          disabled={!responseText}
-          title="Copy JSON to clipboard"
-        >
+        <button onClick={handleCopyJSON} disabled={!responseText} title="Copy JSON to clipboard">
           {copiedJson ? (
             <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
               <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" />
@@ -483,11 +511,7 @@ export function ResponseTableOverlay() {
             </svg>
           )}
         </button>
-        <button
-          onClick={handleDownloadCSV}
-          disabled={!hasData}
-          title="Download CSV"
-        >
+        <button onClick={handleDownloadCSV} disabled={!hasData} title="Download CSV">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
             <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z" />
             <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z" />
@@ -505,11 +529,7 @@ export function ResponseTableOverlay() {
           </svg>
           {" CSV±"}
         </button>
-        <button
-          onClick={handleCopyCSV}
-          disabled={!hasData}
-          title="Copy CSV to clipboard"
-        >
+        <button onClick={handleCopyCSV} disabled={!hasData} title="Copy CSV to clipboard">
           {copiedCsv ? (
             <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
               <path d="M13.854 3.646a.5.5 0 0 1 0 .708l-7 7a.5.5 0 0 1-.708 0l-3.5-3.5a.5.5 0 1 1 .708-.708L6.5 10.293l6.646-6.647a.5.5 0 0 1 .708 0z" />
@@ -547,11 +567,17 @@ export function ResponseTableOverlay() {
                     <tr
                       key={i}
                       className={s.physical_sql ? "stats-row-clickable" : undefined}
-                      onClick={s.physical_sql ? () => setExpandedStatRows(prev => {
-                        const next = new Set(prev);
-                        if (next.has(i)) next.delete(i); else next.add(i);
-                        return next;
-                      }) : undefined}
+                      onClick={
+                        s.physical_sql
+                          ? () =>
+                              setExpandedStatRows((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(i)) next.delete(i);
+                                else next.add(i);
+                                return next;
+                              })
+                          : undefined
+                      }
                     >
                       <td>{s.field}</td>
                       <td>{s.source}</td>
@@ -573,7 +599,9 @@ export function ResponseTableOverlay() {
                                 navigator.clipboard.writeText(s.physical_sql!);
                               }}
                               title="Copy SQL"
-                            ><Copy size={12} /></button>
+                            >
+                              <Copy size={12} />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -593,7 +621,10 @@ export function ResponseTableOverlay() {
                 <button
                   key={t.key}
                   className={`response-table-tab${i === activeTab ? " active" : ""}`}
-                  onClick={() => { setActiveTab(i); setSortCol(null); }}
+                  onClick={() => {
+                    setActiveTab(i);
+                    setSortCol(null);
+                  }}
                 >
                   {t.key}
                   <span className="response-table-tab-count">{t.rows.length}</span>
@@ -631,14 +662,23 @@ export function ResponseTableOverlay() {
               </thead>
               <tbody>
                 {sortedRows.map((row, i) => {
-                  const hasArrays = currentTable?.arrayColumns.length ? currentTable.arrayColumns.some((c) => parseArrayLen(row[c]) > 0) : false;
+                  const hasArrays = currentTable?.arrayColumns.length
+                    ? currentTable.arrayColumns.some((c) => parseArrayLen(row[c]) > 0)
+                    : false;
                   const isExpanded = expandedRows.has(i);
                   return (
                     <>
                       <tr key={i}>
                         {currentTable?.arrayColumns.length ? (
-                          <td style={{ width: 24, cursor: hasArrays ? "pointer" : "default", textAlign: "center", userSelect: "none" }}
-                            onClick={() => hasArrays && handleToggleRow(i)}>
+                          <td
+                            style={{
+                              width: 24,
+                              cursor: hasArrays ? "pointer" : "default",
+                              textAlign: "center",
+                              userSelect: "none",
+                            }}
+                            onClick={() => hasArrays && handleToggleRow(i)}
+                          >
                             {hasArrays ? (isExpanded ? "▼" : "▶") : ""}
                           </td>
                         ) : null}
@@ -646,43 +686,64 @@ export function ResponseTableOverlay() {
                           const len = parseArrayLen(row[col]);
                           return (
                             <td key={col}>
-                              {len > 0
-                                ? <span className="array-badge">[{len} item{len !== 1 ? "s" : ""}]</span>
-                                : row[col] != null ? String(row[col]) : ""}
+                              {len > 0 ? (
+                                <span className="array-badge">
+                                  [{len} item{len !== 1 ? "s" : ""}]
+                                </span>
+                              ) : row[col] != null ? (
+                                String(row[col])
+                              ) : (
+                                ""
+                              )}
                             </td>
                           );
                         })}
                       </tr>
-                      {isExpanded && currentTable?.arrayColumns.map((col) => {
-                        const len = parseArrayLen(row[col]);
-                        if (!len) return null;
-                        let subItems: Record<string, unknown>[];
-                        try { subItems = JSON.parse(row[col] as string) as Record<string, unknown>[]; } catch { return null; }
-                        const subColSet = new Set<string>();
-                        const subRows = subItems.map((item) => {
-                          const flat: Record<string, unknown> = {};
-                          flattenObject(item, "", flat);
-                          Object.keys(flat).forEach((k) => subColSet.add(k));
-                          return flat;
-                        });
-                        const subCols = Array.from(subColSet);
-                        return (
-                          <tr key={`${i}-${col}`}>
-                            <td />
-                            <td colSpan={columns.length} style={{ padding: "4px 8px 8px" }}>
-                              <div className="sub-table-label">{col}</div>
-                              <table className="response-table sub-table">
-                                <thead><tr>{subCols.map((c) => <th key={c}>{c}</th>)}</tr></thead>
-                                <tbody>
-                                  {subRows.map((sr, si) => (
-                                    <tr key={si}>{subCols.map((c) => <td key={c}>{sr[c] != null ? String(sr[c]) : ""}</td>)}</tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                      {isExpanded &&
+                        currentTable?.arrayColumns.map((col) => {
+                          const len = parseArrayLen(row[col]);
+                          if (!len) return null;
+                          let subItems: Record<string, unknown>[];
+                          try {
+                            subItems = JSON.parse(row[col] as string) as Record<string, unknown>[];
+                          } catch {
+                            return null;
+                          }
+                          const subColSet = new Set<string>();
+                          const subRows = subItems.map((item) => {
+                            const flat: Record<string, unknown> = {};
+                            flattenObject(item, "", flat);
+                            Object.keys(flat).forEach((k) => subColSet.add(k));
+                            return flat;
+                          });
+                          const subCols = Array.from(subColSet);
+                          return (
+                            <tr key={`${i}-${col}`}>
+                              <td />
+                              <td colSpan={columns.length} style={{ padding: "4px 8px 8px" }}>
+                                <div className="sub-table-label">{col}</div>
+                                <table className="response-table sub-table">
+                                  <thead>
+                                    <tr>
+                                      {subCols.map((c) => (
+                                        <th key={c}>{c}</th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {subRows.map((sr, si) => (
+                                      <tr key={si}>
+                                        {subCols.map((c) => (
+                                          <td key={c}>{sr[c] != null ? String(sr[c]) : ""}</td>
+                                        ))}
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                          );
+                        })}
                     </>
                   );
                 })}
@@ -694,6 +755,6 @@ export function ResponseTableOverlay() {
     </>,
     /* eslint-disable-next-line react-hooks/refs --
        passing the imperatively-created portal container ref to createPortal (standard portal pattern); render gated by portalReady above */
-    portalRef.current
+    portalRef.current,
   );
 }

@@ -20,8 +20,6 @@ import type { Capability } from "../types/auth";
 
 const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED === "true";
 
-
-
 interface DropdownItem {
   to: string;
   label: string;
@@ -48,9 +46,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: "security",
     label: "Security",
-    items: [
-      { to: "/security", label: "Policies", capability: "access_config" },
-    ],
+    items: [{ to: "/security", label: "Policies", capability: "access_config" }],
   },
   {
     id: "explore",
@@ -82,7 +78,11 @@ const NAV_GROUPS: NavGroup[] = [
 
 function activeGroupId(pathname: string): string | null {
   for (const group of NAV_GROUPS) {
-    if (group.items.some((i) => !i.comingSoon && (pathname === i.to || pathname.startsWith(i.to + "/")))) {
+    if (
+      group.items.some(
+        (i) => !i.comingSoon && (pathname === i.to || pathname.startsWith(i.to + "/")),
+      )
+    ) {
       return group.id;
     }
   }
@@ -114,7 +114,11 @@ export function NavBar() {
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (pinnedGroup && !navRef.current?.contains(e.target as Node) && !subnavRef.current?.contains(e.target as Node)) {
+      if (
+        pinnedGroup &&
+        !navRef.current?.contains(e.target as Node) &&
+        !subnavRef.current?.contains(e.target as Node)
+      ) {
         setPinnedGroup(null);
       }
       if (domainOpen && !domainRef.current?.contains(e.target as Node)) {
@@ -197,7 +201,11 @@ export function NavBar() {
                 <div className="navbar-domain-panel">
                   {domains.map((d) => (
                     <label key={d} className="navbar-domain-item">
-                      <input type="checkbox" checked={checkedDomains.has(d)} onChange={() => toggleDomain(d)} />
+                      <input
+                        type="checkbox"
+                        checked={checkedDomains.has(d)}
+                        onChange={() => toggleDomain(d)}
+                      />
                       {d}
                     </label>
                   ))}
@@ -223,11 +231,23 @@ export function NavBar() {
                     {devMode && <span className="navbar-user-dev">DEV</span>}
                   </div>
                 )}
-                <button className="navbar-user-item" onClick={() => { setProfileOpen(true); setUserMenuOpen(false); }}>
+                <button
+                  className="navbar-user-item"
+                  onClick={() => {
+                    setProfileOpen(true);
+                    setUserMenuOpen(false);
+                  }}
+                >
                   Profile
                 </button>
                 <CapabilityGate capability="admin">
-                  <button className="navbar-user-item" onClick={() => { navigate("/admin/overview"); setUserMenuOpen(false); }}>
+                  <button
+                    className="navbar-user-item"
+                    onClick={() => {
+                      navigate("/admin/overview");
+                      setUserMenuOpen(false);
+                    }}
+                  >
                     Settings
                   </button>
                 </CapabilityGate>

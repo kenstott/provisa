@@ -22,12 +22,16 @@ export function ScheduledTasks() {
 
   const load = () => {
     setLoading(true);
-    fetchScheduledTasks().then(setTasks).finally(() => setLoading(false));
+    fetchScheduledTasks()
+      .then(setTasks)
+      .finally(() => setLoading(false));
   };
 
   // Initial fetch on mount: loading already starts true, so no synchronous setState here.
   useEffect(() => {
-    fetchScheduledTasks().then(setTasks).finally(() => setLoading(false));
+    fetchScheduledTasks()
+      .then(setTasks)
+      .finally(() => setLoading(false));
   }, []);
 
   const handleToggle = async (id: string, enabled: boolean) => {
@@ -61,9 +65,13 @@ export function ScheduledTasks() {
         <tbody>
           {paged.map((task) => (
             <tr key={task.id}>
-              <td><code>{task.id}</code></td>
+              <td>
+                <code>{task.id}</code>
+              </td>
               <td>{task.name}</td>
-              <td><code>{task.cronExpression}</code></td>
+              <td>
+                <code>{task.cronExpression}</code>
+              </td>
               <td className="reasoning-cell" style={{ maxWidth: 250 }}>
                 {task.webhookUrl || "—"}
               </td>
@@ -88,12 +96,30 @@ export function ScheduledTasks() {
         </tbody>
       </table>
       {totalPages > 1 && (
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", justifyContent: "flex-end", padding: "0.5rem 0" }}>
-          <button onClick={() => setTaskPage(0)} disabled={taskPage === 0}>«</button>
-          <button onClick={() => setTaskPage(p => p - 1)} disabled={taskPage === 0}>‹</button>
-          <span>Page {taskPage + 1} / {totalPages}</span>
-          <button onClick={() => setTaskPage(p => p + 1)} disabled={taskPage >= totalPages - 1}>›</button>
-          <button onClick={() => setTaskPage(totalPages - 1)} disabled={taskPage >= totalPages - 1}>»</button>
+        <div
+          style={{
+            display: "flex",
+            gap: "0.5rem",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            padding: "0.5rem 0",
+          }}
+        >
+          <button onClick={() => setTaskPage(0)} disabled={taskPage === 0}>
+            «
+          </button>
+          <button onClick={() => setTaskPage((p) => p - 1)} disabled={taskPage === 0}>
+            ‹
+          </button>
+          <span>
+            Page {taskPage + 1} / {totalPages}
+          </span>
+          <button onClick={() => setTaskPage((p) => p + 1)} disabled={taskPage >= totalPages - 1}>
+            ›
+          </button>
+          <button onClick={() => setTaskPage(totalPages - 1)} disabled={taskPage >= totalPages - 1}>
+            »
+          </button>
         </div>
       )}
     </div>
