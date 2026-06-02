@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 623ac53f-5099-48ff-9a7b-432fe3ea210f
 #
 # Tests asserting layer-to-layer type contracts in the compiler pipeline.
 # REQ-009, REQ-040, REQ-041, REQ-066
@@ -7,7 +8,6 @@
 
 import dataclasses
 
-import pytest
 from graphql import parse, validate
 
 from provisa.compiler.introspect import ColumnMetadata
@@ -24,6 +24,7 @@ from provisa.executor.trino import QueryResult
 
 
 # --- TableMeta field contract ---
+
 
 class TestTableMetaContract:
     def test_has_table_id(self):
@@ -53,6 +54,7 @@ class TestTableMetaContract:
 
 # --- CompilationContext field contract ---
 
+
 class TestCompilationContextContract:
     def test_has_tables_dict(self):
         ctx = CompilationContext()
@@ -72,6 +74,7 @@ class TestCompilationContextContract:
 
 
 # --- RLSContext field contract ---
+
 
 class TestRLSContextContract:
     def test_has_rules_attribute(self):
@@ -95,6 +98,7 @@ class TestRLSContextContract:
 
 # --- QueryResult field contract ---
 
+
 class TestQueryResultContract:
     def test_has_rows(self):
         field_names = {f.name for f in dataclasses.fields(QueryResult)}
@@ -114,6 +118,7 @@ class TestQueryResultContract:
 
 
 # --- CompiledQuery output contract ---
+
 
 class TestCompiledQueryContract:
     def test_has_sql_attribute(self):
@@ -137,6 +142,7 @@ class TestCompiledQueryContract:
 
 # --- Minimal fixture helpers (mirrors test_sql_gen._build_schema_and_ctx) ---
 
+
 def _col(name: str, data_type: str = "varchar(100)") -> ColumnMetadata:
     return ColumnMetadata(column_name=name, data_type=data_type, is_nullable=False)
 
@@ -156,9 +162,7 @@ def _build_minimal_ctx():
             ],
         }
     ]
-    column_types = {
-        1: [_col("id", "integer"), _col("amount", "decimal(10,2)")]
-    }
+    column_types = {1: [_col("id", "integer"), _col("amount", "decimal(10,2)")]}
     role = {"id": "admin", "capabilities": ["query_development"], "domain_access": ["*"]}
     domains = [{"id": "sales", "description": "Sales"}]
     si = SchemaInput(
@@ -175,6 +179,7 @@ def _build_minimal_ctx():
 
 
 # --- Round-trip: CompilationContext → compile_query → CompiledQuery → inject_rls ---
+
 
 class TestRoundTripContracts:
     def test_compile_produces_compiled_query(self):
