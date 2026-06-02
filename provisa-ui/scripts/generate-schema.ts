@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: bd04ee2e-222c-4e2e-8e5e-76981511d274
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 import { getIntrospectionQuery, buildClientSchema, printSchema } from 'graphql';
 import fs from 'fs';
 import path from 'path';
