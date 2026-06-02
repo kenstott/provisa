@@ -70,6 +70,7 @@ dev = [
     "pip-audit",
     "import-linter",
     "syrupy",
+    "respx",
 ]
 
 [build-system]
