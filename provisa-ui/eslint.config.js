@@ -56,13 +56,10 @@ export default defineConfig([
   // is empty, max-lines is enforced everywhere with no exceptions.
   {
     files: [
-      'src/pages/GraphFrame.tsx',
       'src/pages/SqlPage.tsx',
       'src/components/SqlModelingModal.tsx',
       'src/pages/SourcesPage.tsx',
       'src/pages/TablesPage.tsx',
-      'src/pages/AdminPage.tsx',
-      'src/pages/GraphPage.tsx',
       'src/pages/RelationshipsPage.tsx',
       'src/api/admin.ts',
       'src/pages/CommandsPage.tsx',
