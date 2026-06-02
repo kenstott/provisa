@@ -82,21 +82,21 @@ def _discover_sqlite(config: FileSourceConfig) -> list[dict]:
     """Discover all tables and their columns from a SQLite file."""
     conn = sqlite3.connect(config.path)
     try:
-        cursor = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        )
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
         tables = [row[0] for row in cursor.fetchall()]
         columns: list[dict] = []
         for table in tables:
             info = conn.execute(f"PRAGMA table_info({table})").fetchall()  # noqa: S608
             for col in info:
                 # col: (cid, name, type, notnull, default_val, pk)
-                columns.append({
-                    "table": table,
-                    "name": col[1],
-                    "type": _sqlite_type_to_sql(col[2]),
-                    "nullable": col[3] == 0,
-                })
+                columns.append(
+                    {
+                        "table": table,
+                        "name": col[1],
+                        "type": _sqlite_type_to_sql(col[2]),
+                        "nullable": col[3] == 0,
+                    }
+                )
         return columns
     finally:
         conn.close()
@@ -136,16 +136,17 @@ def _discover_parquet(config: FileSourceConfig) -> list[dict]:
 
 def _arrow_schema_to_columns(schema: Any) -> list[dict]:
     """Convert a pyarrow Schema to column definition dicts."""
-    import pyarrow as pa
 
     columns: list[dict] = []
     for i in range(len(schema)):
         field = schema.field(i)
-        columns.append({
-            "name": field.name,
-            "type": _arrow_type_to_sql(field.type),
-            "nullable": field.nullable,
-        })
+        columns.append(
+            {
+                "name": field.name,
+                "type": _arrow_type_to_sql(field.type),
+                "nullable": field.nullable,
+            }
+        )
     return columns
 
 
@@ -245,11 +246,10 @@ def generate_table_definitions(config: FileSourceConfig) -> list[dict]:
     by_table: dict[str, list[dict]] = {}
     for col in columns:
         tbl = col.get("table", Path(config.path).stem)
-        by_table.setdefault(tbl, []).append({
-            "name": col["name"],
-            "type": col["type"],
-        })
-    return [
-        {"tableName": tbl, "columns": cols}
-        for tbl, cols in by_table.items()
-    ]
+        by_table.setdefault(tbl, []).append(
+            {
+                "name": col["name"],
+                "type": col["type"],
+            }
+        )
+    return [{"tableName": tbl, "columns": cols} for tbl, cols in by_table.items()]

@@ -21,19 +21,8 @@ import fnmatch as _fnmatch
 import os as _os
 import re as _re
 
-# Hard cap on rows returned when the caller supplies no explicit LIMIT.
-# Resolved at query time from state.server_limits; falls back to env var then 10000.
-def _get_default_row_limit() -> int:
-    try:
-        from provisa.api.app import state
-        return state.server_limits.get("default_row_limit", int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "10000")))
-    except Exception:
-        return int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "10000"))
-
 from dataclasses import dataclass, field
 from provisa.otel_compat import get_tracer as _get_tracer
-
-_tracer = _get_tracer(__name__)
 
 from graphql import (
     BooleanValueNode,
@@ -53,6 +42,22 @@ from provisa.compiler.naming import rel_field_name as _rel_field_name, source_to
 from provisa.compiler.params import ParamCollector
 from provisa.cache.warm_tables import QueryCounter
 from provisa.core.models import TIME_TRAVEL_SOURCES
+
+_tracer = _get_tracer(__name__)
+
+
+# Hard cap on rows returned when the caller supplies no explicit LIMIT.
+# Resolved at query time from state.server_limits; falls back to env var then 10000.
+def _get_default_row_limit() -> int:
+    try:
+        from provisa.api.app import state
+
+        return state.server_limits.get(
+            "default_row_limit", int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "10000"))
+        )
+    except Exception:
+        return int(_os.environ.get("PROVISA_DEFAULT_ROW_LIMIT", "10000"))
+
 
 # Module-level query counter for warm-table tracking (REQ-AD5)
 query_counter = QueryCounter()
@@ -92,12 +97,20 @@ class JoinMeta:
     cardinality: str  # "many-to-one" or "one-to-many"
     cypher_alias: str | None = None  # Cypher rel type override (e.g. OPENED_BY)
     disable_cypher: bool = False  # when True, suppress this edge in the Cypher graph
-    source_constant: int | str | None = None  # when set, use as literal join value instead of source column
+    source_constant: int | str | None = (
+        None  # when set, use as literal join value instead of source column
+    )
     source_json_key: str | None = None  # when set, extract key from JSON object column via ->>'key'
-    source_expr: str | None = None  # when set, use as raw SQL expression; {alias} is replaced with the current alias
-    target_expr: str | None = None  # when set, use as raw SQL expression on target side; {alias} replaced with join alias
+    source_expr: str | None = (
+        None  # when set, use as raw SQL expression; {alias} is replaced with the current alias
+    )
+    target_expr: str | None = (
+        None  # when set, use as raw SQL expression on target side; {alias} replaced with join alias
+    )
     default_limit: int | None = None  # when set, wrap join target in a LIMIT subquery
-    child_src_val: str | None = None  # when set, propagate as parent_src_val to child joins instead of sub_src
+    child_src_val: str | None = (
+        None  # when set, propagate as parent_src_val to child joins instead of sub_src
+    )
 
 
 @dataclass
@@ -184,6 +197,7 @@ def _lookup_column_type(
     live Trino query when catalog/schema/table are provided.
     """
     from provisa.compiler.schema_gen import SchemaInput
+
     assert isinstance(si, SchemaInput)
     col_metas = si.column_types.get(table_id, [])
     for meta in col_metas:
@@ -191,6 +205,7 @@ def _lookup_column_type(
             return meta.data_type
     if catalog and schema and table:
         from provisa.compiler import schema_service
+
         return schema_service.get_column_type(catalog, schema, table, column_name)
     return "varchar"
 
@@ -216,7 +231,9 @@ def build_context(si: object) -> CompilationContext:
         for d in si.domains
         if domain_gql_alias(d["id"], d.get("graphql_alias"))
     }
-    _assign_names(tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map)
+    _assign_names(
+        tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map
+    )
 
     table_lookup = {t.table_id: t for t in tables}
 
@@ -231,7 +248,8 @@ def build_context(si: object) -> CompilationContext:
             field_name=t.field_name,
             type_name=t.type_name,
             source_id=t.source_id,
-            catalog_name=(si.source_catalogs or {}).get(t.source_id) or source_to_catalog(t.source_id),
+            catalog_name=(si.source_catalogs or {}).get(t.source_id)
+            or source_to_catalog(t.source_id),
             schema_name=t.schema_name,
             table_name=physical_name,
             domain_id=t.domain_id,
@@ -241,6 +259,7 @@ def build_context(si: object) -> CompilationContext:
         )
         ctx.tables[t.field_name] = meta
         from provisa.compiler.naming import domain_to_sql_name as _d2s
+
         _field_part = t.field_name.split("__", 1)[1] if "__" in t.field_name else t.field_name
         ctx.virtual_columns[t.table_id] = {
             "_name_": f"{_d2s(t.domain_id)}.{_field_part}",
@@ -256,7 +275,8 @@ def build_context(si: object) -> CompilationContext:
         # are not physical SQL columns in the materialized Trino table.
         _gql_obj_cols = si.gql_object_columns.get(t.table_name, {})
         _src_rels = [
-            r for r in si.relationships
+            r
+            for r in si.relationships
             if r.get("source_table_id") == t.table_id and r.get("source_column")
         ]
         _covered_blobs = {
@@ -276,8 +296,7 @@ def build_context(si: object) -> CompilationContext:
 
         # Store user-designated PK columns
         ctx.pk_columns[t.table_id] = [
-            col["column_name"] for col in t.visible_columns
-            if col.get("is_primary_key")
+            col["column_name"] for col in t.visible_columns if col.get("is_primary_key")
         ]
 
         # Store native filter column names
@@ -296,7 +315,7 @@ def build_context(si: object) -> CompilationContext:
             if col_path:
                 ctx.column_paths[(t.table_id, gql)] = col_path
 
-        for col_name in (si.gql_object_columns.get(t.table_name) or {}):
+        for col_name in si.gql_object_columns.get(t.table_name) or {}:
             ctx.gql_json_columns.add((t.table_id, col_name))
 
     # Build join metadata from visible relationships
@@ -322,18 +341,24 @@ def build_context(si: object) -> CompilationContext:
             schema_name=tgt_info.schema_name,
             table_name=_tgt_physical_name,
             domain_id=tgt_info.domain_id,
-            original_table_name=tgt_info.table_name if _tgt_physical_name != tgt_info.table_name else "",
+            original_table_name=tgt_info.table_name
+            if _tgt_physical_name != tgt_info.table_name
+            else "",
         )
 
         # Look up column types for the join columns; fall back to schema_service on miss
         src_col_type = _lookup_column_type(
-            si, src_id, rel["source_column"],
+            si,
+            src_id,
+            rel["source_column"],
             catalog=source_to_catalog(src_info.source_id),
             schema=src_info.schema_name,
             table=src_info.table_name,
         )
         tgt_col_type = _lookup_column_type(
-            si, tgt_id, rel["target_column"],
+            si,
+            tgt_id,
+            rel["target_column"],
             catalog=source_to_catalog(tgt_info.source_id),
             schema=tgt_info.schema_name,
             table=tgt_info.table_name,
@@ -366,7 +391,8 @@ def build_context(si: object) -> CompilationContext:
             field_name=meta_rt.field_name,
             type_name=meta_rt.type_name,
             source_id=meta_rt.source_id,
-            catalog_name=(si.source_catalogs or {}).get(meta_rt.source_id) or source_to_catalog(meta_rt.source_id),
+            catalog_name=(si.source_catalogs or {}).get(meta_rt.source_id)
+            or source_to_catalog(meta_rt.source_id),
             schema_name=meta_rt.schema_name,
             table_name=physical_map.get(meta_rt.table_name, meta_rt.table_name),
             domain_id=meta_rt.domain_id,
@@ -402,7 +428,8 @@ def build_context(si: object) -> CompilationContext:
             field_name=ops_t.field_name,
             type_name=ops_t.type_name,
             source_id=ops_t.source_id,
-            catalog_name=(si.source_catalogs or {}).get(ops_t.source_id) or source_to_catalog(ops_t.source_id),
+            catalog_name=(si.source_catalogs or {}).get(ops_t.source_id)
+            or source_to_catalog(ops_t.source_id),
             schema_name=ops_t.schema_name,
             table_name=physical_map.get(ops_t.table_name, ops_t.table_name),
             domain_id=ops_t.domain_id,
@@ -445,10 +472,7 @@ def _extract_value(node: object, variables: dict | None) -> object:
     if isinstance(node, ListValueNode):
         return [_extract_value(v, variables) for v in node.values]
     if isinstance(node, ObjectValueNode):
-        return {
-            f.name.value: _extract_value(f.value, variables)
-            for f in node.fields
-        }
+        return {f.name.value: _extract_value(f.value, variables) for f in node.fields}
     if isinstance(node, VariableNode):
         var_name = node.name.value
         if variables and var_name in variables:
@@ -484,7 +508,7 @@ def _timestamp_literal_or_param(val: object, collector) -> str:
         tz_match = _re.search(r"(Z|[+-]\d{2}:?\d{2})$", normalized)
         if tz_match:
             tz = tz_match.group(1)
-            base = normalized[:tz_match.start()].strip()
+            base = normalized[: tz_match.start()].strip()
             if tz == "Z":
                 tz = "UTC"
             return f"TIMESTAMP '{base} {tz}'"
@@ -610,7 +634,17 @@ def _compile_order_by(
 
 # --- Type coercion for cross-source JOINs ---
 
-_NUMERIC_TYPES = {"tinyint", "smallint", "integer", "int", "bigint", "real", "double", "decimal", "numeric"}
+_NUMERIC_TYPES = {
+    "tinyint",
+    "smallint",
+    "integer",
+    "int",
+    "bigint",
+    "real",
+    "double",
+    "decimal",
+    "numeric",
+}
 _STRING_TYPES = {"varchar", "char", "text", "varbinary", "uuid"}
 _TEMPORAL_TYPES = {"date", "time", "timestamp", "time with time zone", "timestamp with time zone"}
 
@@ -648,15 +682,13 @@ def _sql_str_literal(val: str) -> str:
     return "VARCHAR '" + val.replace("'", "''") + "'"
 
 
-def _join_column_expr_for(
-    alias: str | None, column: str, my_type: str, other_type: str
-) -> str:
+def _join_column_expr_for(alias: str | None, column: str, my_type: str, other_type: str) -> str:
     """Build a column expression, adding CAST only when types are incompatible."""
-    col = _q(column) if alias is None else f'{_q(alias)}.{_q(column)}'
+    col = _q(column) if alias is None else f"{_q(alias)}.{_q(column)}"
     if _types_compatible(my_type, other_type):
         return col
     cast_type = _common_cast_type(my_type, other_type)
-    return f'CAST({col} AS {cast_type})'
+    return f"CAST({col} AS {cast_type})"
 
 
 def _join_column_expr(alias: str, column: str, my_type: str, other_type: str) -> str:
@@ -669,16 +701,17 @@ def _join_column_expr(alias: str, column: str, my_type: str, other_type: str) ->
 def _table_ref(meta: TableMeta, use_catalog: bool) -> str:
     """Build a fully qualified table reference."""
     if use_catalog:
-        return f'{_q(meta.catalog_name)}.{_q(meta.schema_name)}.{_q(meta.table_name)}'
-    return f'{_q(meta.schema_name)}.{_q(meta.table_name)}'
+        return f"{_q(meta.catalog_name)}.{_q(meta.schema_name)}.{_q(meta.table_name)}"
+    return f"{_q(meta.schema_name)}.{_q(meta.table_name)}"
 
 
 def _semantic_table_ref(meta: TableMeta) -> str:
     """Semantic table reference: domain_schema.table_name (as JDBC clients see it)."""
     from provisa.compiler.naming import domain_to_sql_name
+
     # Strip domain prefix (e.g. "ci__") from field_name — the domain is already the schema name
     table = meta.field_name.split("__", 1)[1] if "__" in meta.field_name else meta.field_name
-    return f'{_q(domain_to_sql_name(meta.domain_id))}.{_q(table)}'
+    return f"{_q(domain_to_sql_name(meta.domain_id))}.{_q(table)}"
 
 
 def _apply_replacements(sql: str, replacements: dict[str, str]) -> str:
@@ -742,6 +775,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:
         # Map domain-name schema variant → physical (e.g. "shelter"."shelter__animal_breeds" → "graphql_remote"."shelter__animal_breeds")
         if meta.domain_id:
             from provisa.compiler.naming import domain_to_sql_name
+
             domain_sl = domain_to_sql_name(meta.domain_id).lower()
             if domain_sl != sl:
                 by_schema_name[(domain_sl, nl)] = (meta.schema_name, meta.table_name)
@@ -789,6 +823,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:
 def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
     """Replace semantic (domain.field_name) refs with physical (schema.table) refs."""
     from provisa.compiler.naming import domain_to_sql_name, to_snake_case
+
     replacements: dict[str, str] = {}
     seen: set[tuple[str, str]] = set()
     for meta in ctx.tables.values():
@@ -808,7 +843,7 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
         snake_part = to_snake_case(table_part)
         if snake_part != table_part:
             domain_sql = domain_to_sql_name(meta.domain_id)
-            replacements[f'{_q(domain_sql)}.{_q(snake_part)}'] = physical
+            replacements[f"{_q(domain_sql)}.{_q(snake_part)}"] = physical
     sql = _apply_replacements(sql, replacements)
     return normalize_table_refs(sql, ctx)
 
@@ -904,10 +939,7 @@ def _extract_non_negative_int(value: object, name: str) -> int:
 
 
 def _field_args(field_node: FieldNode, variables: dict | None) -> dict:
-    return {
-        arg.name.value: _extract_value(arg.value, variables)
-        for arg in field_node.arguments
-    }
+    return {arg.name.value: _extract_value(arg.value, variables) for arg in field_node.arguments}
 
 
 def _lateral_join(
@@ -930,8 +962,8 @@ def _lateral_join(
             join_meta.source_column_type,
         )
     sql = (
-        f'LEFT JOIN LATERAL (SELECT * FROM {_table_ref(join_meta.target, use_catalog)}'
-        f' WHERE {_lat_tgt_expr} = {src_expr}'
+        f"LEFT JOIN LATERAL (SELECT * FROM {_table_ref(join_meta.target, use_catalog)}"
+        f" WHERE {_lat_tgt_expr} = {src_expr}"
     )
     if "where" in args:
         where_sql = _compile_where(
@@ -959,9 +991,7 @@ def _lateral_join(
     if "offset" in args:
         offset_value = _extract_non_negative_int(args["offset"], "offset")
         sql += f" OFFSET {collector.add(offset_value)}"
-    return (
-        f'{sql}) {_q(join_alias)} ON TRUE'
-    )
+    return f"{sql}) {_q(join_alias)} ON TRUE"
 
 
 def _emit_agg_subqueries(
@@ -1013,13 +1043,15 @@ def _emit_agg_subqueries(
                 sub_src = sub_join_meta.source_expr.replace("{alias}", _q(current_alias))
             elif sub_join_meta.source_json_key:
                 sub_src = (
-                    f'CAST({_q(current_alias)}.{_q(sub_join_meta.source_column)} AS JSON)'
-                    f'>>\'{sub_join_meta.source_json_key}\''
+                    f"CAST({_q(current_alias)}.{_q(sub_join_meta.source_column)} AS JSON)"
+                    f">>'{sub_join_meta.source_json_key}'"
                 )
             else:
                 sub_src = _join_column_expr(
-                    current_alias, sub_join_meta.source_column,
-                    sub_join_meta.source_column_type, sub_join_meta.target_column_type,
+                    current_alias,
+                    sub_join_meta.source_column,
+                    sub_join_meta.source_column_type,
+                    sub_join_meta.target_column_type,
                 )
             if sub_join_meta.target_expr is not None:
                 sub_tgt = sub_join_meta.target_expr.replace("{alias}", _q(sub_alias))
@@ -1030,66 +1062,81 @@ def _emit_agg_subqueries(
                 sub_tgt = _sql_str_literal(_tvc)
             else:
                 sub_tgt = _join_column_expr(
-                    sub_alias, sub_join_meta.target_column,
-                    sub_join_meta.target_column_type, sub_join_meta.source_column_type,
+                    sub_alias,
+                    sub_join_meta.target_column,
+                    sub_join_meta.target_column_type,
+                    sub_join_meta.source_column_type,
                 )
             new_join = (
-                f'JOIN {_table_ref(sub_join_meta.target, use_catalog)} {_q(sub_alias)}'
-                f' ON {sub_tgt} = {sub_src}'
+                f"JOIN {_table_ref(sub_join_meta.target, use_catalog)} {_q(sub_alias)}"
+                f" ON {sub_tgt} = {sub_src}"
             )
             new_extra = f"{extra_joins} {new_join}".strip() if extra_joins else new_join
             sub_limit = _explicit_limit(sel, variables) or sub_join_meta.default_limit
             alias_counter = _emit_agg_subqueries(
-                sel.selection_set.selections, ctx,
-                sub_join_meta.target.type_name, sub_join_meta.target,
-                from_clause, where_expr, new_extra, sub_alias,
-                f"{nesting_path}.{key}", sub_join_meta.cardinality,
-                sub_limit, use_catalog, alias_counter,
-                select_parts, columns, sources, variables,
+                sel.selection_set.selections,
+                ctx,
+                sub_join_meta.target.type_name,
+                sub_join_meta.target,
+                from_clause,
+                where_expr,
+                new_extra,
+                sub_alias,
+                f"{nesting_path}.{key}",
+                sub_join_meta.cardinality,
+                sub_limit,
+                use_catalog,
+                alias_counter,
+                select_parts,
+                columns,
+                sources,
+                variables,
             )
         else:
             phys_col = ctx.gql_to_physical.get((table_meta.table_id, name), name)
             col_alias = nesting_path.replace(".", "__") + "__" + key
             if extra_joins and agg_limit is not None:
                 select_parts.append(
-                    f'(SELECT ARRAY_AGG({_q(current_alias)}.{_q(phys_col)})'
-                    f' FROM (SELECT {_q(current_alias)}.{_q(phys_col)}'
-                    f' FROM {from_clause} {extra_joins}'
-                    f' WHERE {where_expr}'
-                    f' LIMIT {agg_limit}))'
-                    f' AS {_q(col_alias)}'
+                    f"(SELECT ARRAY_AGG({_q(current_alias)}.{_q(phys_col)})"
+                    f" FROM (SELECT {_q(current_alias)}.{_q(phys_col)}"
+                    f" FROM {from_clause} {extra_joins}"
+                    f" WHERE {where_expr}"
+                    f" LIMIT {agg_limit}))"
+                    f" AS {_q(col_alias)}"
                 )
             elif extra_joins:
                 select_parts.append(
-                    f'(SELECT ARRAY_AGG({_q(current_alias)}.{_q(phys_col)})'
-                    f' FROM {from_clause} {extra_joins}'
-                    f' WHERE {where_expr})'
-                    f' AS {_q(col_alias)}'
+                    f"(SELECT ARRAY_AGG({_q(current_alias)}.{_q(phys_col)})"
+                    f" FROM {from_clause} {extra_joins}"
+                    f" WHERE {where_expr})"
+                    f" AS {_q(col_alias)}"
                 )
             elif agg_limit is not None:
                 select_parts.append(
-                    f'(SELECT ARRAY_AGG({_q(phys_col)})'
-                    f' FROM (SELECT {_q(phys_col)}'
-                    f' FROM {from_clause}'
-                    f' WHERE {where_expr}'
-                    f' LIMIT {agg_limit}))'
-                    f' AS {_q(col_alias)}'
+                    f"(SELECT ARRAY_AGG({_q(phys_col)})"
+                    f" FROM (SELECT {_q(phys_col)}"
+                    f" FROM {from_clause}"
+                    f" WHERE {where_expr}"
+                    f" LIMIT {agg_limit}))"
+                    f" AS {_q(col_alias)}"
                 )
             else:
                 select_parts.append(
-                    f'(SELECT ARRAY_AGG({_q(current_alias)}.{_q(phys_col)})'
-                    f' FROM {from_clause}'
-                    f' WHERE {where_expr})'
-                    f' AS {_q(col_alias)}'
+                    f"(SELECT ARRAY_AGG({_q(current_alias)}.{_q(phys_col)})"
+                    f" FROM {from_clause}"
+                    f" WHERE {where_expr})"
+                    f" AS {_q(col_alias)}"
                 )
-            columns.append(ColumnRef(
-                alias=current_alias,
-                column=phys_col,
-                field_name=key,
-                nested_in=nesting_path,
-                cardinality=cardinality,
-                is_agg=True,
-            ))
+            columns.append(
+                ColumnRef(
+                    alias=current_alias,
+                    column=phys_col,
+                    field_name=key,
+                    nested_in=nesting_path,
+                    cardinality=cardinality,
+                    is_agg=True,
+                )
+            )
     return alias_counter
 
 
@@ -1106,7 +1153,7 @@ def _extract_json_blob_kv(sels, blob_base: str) -> list[str]:
             if sub_pairs:
                 pairs.append(f"KEY '{sk}' VALUE json_object({', '.join(sub_pairs)})")
         else:
-            pairs.append(f"KEY '{sk}' VALUE {blob_base}->>\'{sn}\'")
+            pairs.append(f"KEY '{sk}' VALUE {blob_base}->>'{sn}'")
     return pairs
 
 
@@ -1161,13 +1208,15 @@ def _build_rel_json_kv(
                 )
             elif sub_join_meta.source_json_key:
                 sub_src = (
-                    f'CAST({_q(table_alias)}.{_q(sub_join_meta.source_column)} AS JSON)'
-                    f'>>\'{sub_join_meta.source_json_key}\''
+                    f"CAST({_q(table_alias)}.{_q(sub_join_meta.source_column)} AS JSON)"
+                    f">>'{sub_join_meta.source_json_key}'"
                 )
             else:
                 sub_src = _join_column_expr(
-                    table_alias, sub_join_meta.source_column,
-                    sub_join_meta.source_column_type, sub_join_meta.target_column_type,
+                    table_alias,
+                    sub_join_meta.source_column,
+                    sub_join_meta.source_column_type,
+                    sub_join_meta.target_column_type,
                 )
             if sub_join_meta.target_expr is not None:
                 sub_tgt = sub_join_meta.target_expr.replace("{alias}", _q(sub_alias))
@@ -1178,8 +1227,10 @@ def _build_rel_json_kv(
                 sub_tgt = _sql_str_literal(_tvc)
             else:
                 sub_tgt = _join_column_expr(
-                    sub_alias, sub_join_meta.target_column,
-                    sub_join_meta.target_column_type, sub_join_meta.source_column_type,
+                    sub_alias,
+                    sub_join_meta.target_column,
+                    sub_join_meta.target_column_type,
+                    sub_join_meta.source_column_type,
                 )
             sub_from = f"{_table_ref(sub_join_meta.target, use_catalog)} {_q(sub_alias)}"
             sub_where = f"{sub_tgt} = {sub_src}"
@@ -1193,11 +1244,19 @@ def _build_rel_json_kv(
                 else (sub_src if sub_join_meta.source_column_type != "integer" else None)
             )
             sub_expr, alias_counter = _build_rel_json_expr(
-                sel.selection_set.selections, ctx,
-                sub_join_meta.target.type_name, sub_join_meta.target,
-                sub_alias, sub_from, sub_where,
-                sub_join_meta.cardinality, sub_limit,
-                use_catalog, alias_counter, sources, variables,
+                sel.selection_set.selections,
+                ctx,
+                sub_join_meta.target.type_name,
+                sub_join_meta.target,
+                sub_alias,
+                sub_from,
+                sub_where,
+                sub_join_meta.cardinality,
+                sub_limit,
+                use_catalog,
+                alias_counter,
+                sources,
+                variables,
                 parent_src_val=_next_parent_src,
             )
             kv_pairs.append(f"KEY '{key}' VALUE {sub_expr}")
@@ -1239,19 +1298,21 @@ def _build_rel_json_expr(
     Returns (sql_expr, alias_counter).
     """
     kv_pairs, alias_counter = _build_rel_json_kv(
-        selections, ctx, type_name, table_meta, table_alias,
-        use_catalog, alias_counter, sources, variables,
+        selections,
+        ctx,
+        type_name,
+        table_meta,
+        table_alias,
+        use_catalog,
+        alias_counter,
+        sources,
+        variables,
         parent_src_val=parent_src_val,
     )
     jbo = f"json_object({', '.join(kv_pairs)})"
 
     if cardinality == "many-to-one":
-        expr = (
-            f"(SELECT {jbo}"
-            f" FROM {from_clause}"
-            f" WHERE {where_expr}"
-            f" LIMIT 1)"
-        )
+        expr = f"(SELECT {jbo} FROM {from_clause} WHERE {where_expr} LIMIT 1)"
     elif agg_limit is not None:
         expr = (
             f"(SELECT json_agg(_t)"
@@ -1261,11 +1322,7 @@ def _build_rel_json_expr(
             f" LIMIT {agg_limit}) _sub)"
         )
     else:
-        expr = (
-            f"(SELECT json_agg({jbo})"
-            f" FROM {from_clause}"
-            f" WHERE {where_expr})"
-        )
+        expr = f"(SELECT json_agg({jbo}) FROM {from_clause} WHERE {where_expr})"
 
     return expr, alias_counter
 
@@ -1304,30 +1361,44 @@ def _collect_nested_columns(
             sources.add(nested_join_meta.target.source_id)
 
             if nested_join_meta.source_constant is not None:
-                src_expr = _sql_str_literal(nested_join_meta.source_constant) if isinstance(nested_join_meta.source_constant, str) else str(nested_join_meta.source_constant)
+                src_expr = (
+                    _sql_str_literal(nested_join_meta.source_constant)
+                    if isinstance(nested_join_meta.source_constant, str)
+                    else str(nested_join_meta.source_constant)
+                )
             elif nested_join_meta.source_column in _VIRTUAL_COLS:
-                _svc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(nested_join_meta.source_column, "")
+                _svc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(
+                    nested_join_meta.source_column, ""
+                )
                 src_expr = _sql_str_literal(_svc)
             elif nested_join_meta.source_json_key:
-                src_expr = f'CAST({_q(parent_alias)}.{_q(nested_join_meta.source_column)} AS JSON)->>\'{nested_join_meta.source_json_key}\''
+                src_expr = f"CAST({_q(parent_alias)}.{_q(nested_join_meta.source_column)} AS JSON)->>'{nested_join_meta.source_json_key}'"
             else:
                 src_expr = _join_column_expr(
-                    parent_alias, nested_join_meta.source_column,
-                    nested_join_meta.source_column_type, nested_join_meta.target_column_type,
+                    parent_alias,
+                    nested_join_meta.source_column,
+                    nested_join_meta.source_column_type,
+                    nested_join_meta.target_column_type,
                 )
             if nested_join_meta.target_expr is not None:
                 tgt_expr = nested_join_meta.target_expr.replace("{alias}", _q(nested_alias))
             elif nested_join_meta.target_column in _VIRTUAL_COLS:
-                _tvc = (ctx.virtual_columns.get(nested_join_meta.target.table_id) or {}).get(nested_join_meta.target_column, "")
+                _tvc = (ctx.virtual_columns.get(nested_join_meta.target.table_id) or {}).get(
+                    nested_join_meta.target_column, ""
+                )
                 tgt_expr = _sql_str_literal(_tvc)
             else:
                 tgt_expr = _join_column_expr(
-                    nested_alias, nested_join_meta.target_column,
-                    nested_join_meta.target_column_type, nested_join_meta.source_column_type,
+                    nested_alias,
+                    nested_join_meta.target_column,
+                    nested_join_meta.target_column_type,
+                    nested_join_meta.source_column_type,
                 )
             nested_key = nested_sel.alias.value if nested_sel.alias else nested_name
             _use_agg = not flat and not _has_lateral_force_args(nested_sel)
-            if (nested_join_meta.default_limit is not None or _has_lateral_force_args(nested_sel)) and not _use_agg:
+            if (
+                nested_join_meta.default_limit is not None or _has_lateral_force_args(nested_sel)
+            ) and not _use_agg:
                 if nested_join_meta.default_limit is not None:
                     has_lateral = True
                 join_clauses.append(
@@ -1342,22 +1413,37 @@ def _collect_nested_columns(
                     )
                 )
             elif _use_agg and nested_sel.selection_set:
-                _agg_limit = _explicit_limit(nested_sel, variables) or nested_join_meta.default_limit
-                _from_clause = f"{_table_ref(nested_join_meta.target, use_catalog)} {_q(nested_alias)}"
+                _agg_limit = (
+                    _explicit_limit(nested_sel, variables) or nested_join_meta.default_limit
+                )
+                _from_clause = (
+                    f"{_table_ref(nested_join_meta.target, use_catalog)} {_q(nested_alias)}"
+                )
                 _where_expr = f"{tgt_expr} = {src_expr}"
                 alias_counter = _emit_agg_subqueries(
-                    nested_sel.selection_set.selections, ctx,
-                    nested_join_meta.target.type_name, nested_join_meta.target,
-                    _from_clause, _where_expr, "", nested_alias,
-                    f"{nesting_path}.{nested_key}", nested_join_meta.cardinality,
-                    _agg_limit, use_catalog, alias_counter,
-                    select_parts, columns, sources, variables,
+                    nested_sel.selection_set.selections,
+                    ctx,
+                    nested_join_meta.target.type_name,
+                    nested_join_meta.target,
+                    _from_clause,
+                    _where_expr,
+                    "",
+                    nested_alias,
+                    f"{nesting_path}.{nested_key}",
+                    nested_join_meta.cardinality,
+                    _agg_limit,
+                    use_catalog,
+                    alias_counter,
+                    select_parts,
+                    columns,
+                    sources,
+                    variables,
                 )
             else:
                 join_clauses.append(
-                    f'LEFT JOIN {_table_ref(nested_join_meta.target, use_catalog)}'
-                    f' {_q(nested_alias)}'
-                    f' ON {src_expr} = {tgt_expr}'
+                    f"LEFT JOIN {_table_ref(nested_join_meta.target, use_catalog)}"
+                    f" {_q(nested_alias)}"
+                    f" ON {src_expr} = {tgt_expr}"
                 )
 
             sub_path = f"{nesting_path}.{nested_name}"
@@ -1383,7 +1469,11 @@ def _collect_nested_columns(
                 has_lateral |= _child_lateral
         else:
             # GQL OBJECT column stored as JSON — expand sub-selections recursively via -> / ->>
-            if nested_sel.selection_set and (parent_table.table_id, nested_name) in ctx.gql_json_columns:
+            if (
+                nested_sel.selection_set
+                and (parent_table.table_id, nested_name) in ctx.gql_json_columns
+            ):
+
                 def _emit_json_cols(
                     sels,
                     json_base: str,
@@ -1403,19 +1493,22 @@ def _collect_nested_columns(
                                 f"{nesting}.{sn}",
                             )
                         else:
-                            expr = f"{json_base}->>\'{sn}\'"
+                            expr = f"{json_base}->>'{sn}'"
                             col_alias = f"{col_prefix}__{sn}"
-                            select_parts.append(f'{expr} AS {_q(col_alias)}')
-                            columns.append(ColumnRef(
-                                alias=parent_alias,
-                                column=col_alias,
-                                field_name=sk,
-                                nested_in=nesting,
-                                cardinality=cardinality,
-                            ))
+                            select_parts.append(f"{expr} AS {_q(col_alias)}")
+                            columns.append(
+                                ColumnRef(
+                                    alias=parent_alias,
+                                    column=col_alias,
+                                    field_name=sk,
+                                    nested_in=nesting,
+                                    cardinality=cardinality,
+                                )
+                            )
+
                 _emit_json_cols(
                     nested_sel.selection_set.selections,
-                    f'{_q(parent_alias)}.{_q(nested_name)}',
+                    f"{_q(parent_alias)}.{_q(nested_name)}",
                     nested_name,
                     f"{nesting_path}.{nested_name}",
                 )
@@ -1427,18 +1520,20 @@ def _collect_nested_columns(
                 _nvc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(nested_phys, "")
                 col_expr = _sql_str_literal(_nvc)
             else:
-                col_expr = f'{_q(parent_alias)}.{_q(nested_phys)}'
+                col_expr = f"{_q(parent_alias)}.{_q(nested_phys)}"
             if nested_sel.alias:
-                select_parts.append(f'{col_expr} AS {_q(nested_response_key)}')
+                select_parts.append(f"{col_expr} AS {_q(nested_response_key)}")
             else:
                 select_parts.append(col_expr)
-            columns.append(ColumnRef(
-                alias=parent_alias,
-                column=nested_phys,
-                field_name=nested_response_key,
-                nested_in=nesting_path,
-                cardinality=cardinality,
-            ))
+            columns.append(
+                ColumnRef(
+                    alias=parent_alias,
+                    column=nested_phys,
+                    field_name=nested_response_key,
+                    nested_in=nesting_path,
+                    cardinality=cardinality,
+                )
+            )
     return alias_counter, has_lateral
 
 
@@ -1484,29 +1579,43 @@ def _compile_root_field(
             if join_meta.source_expr is not None:
                 src_expr = join_meta.source_expr.replace("{alias}", _q(root_alias))
             elif join_meta.source_constant is not None:
-                src_expr = _sql_str_literal(join_meta.source_constant) if isinstance(join_meta.source_constant, str) else str(join_meta.source_constant)
+                src_expr = (
+                    _sql_str_literal(join_meta.source_constant)
+                    if isinstance(join_meta.source_constant, str)
+                    else str(join_meta.source_constant)
+                )
             elif join_meta.source_column in _VIRTUAL_COLS:
-                _svc = (ctx.virtual_columns.get(table.table_id) or {}).get(join_meta.source_column, "")
+                _svc = (ctx.virtual_columns.get(table.table_id) or {}).get(
+                    join_meta.source_column, ""
+                )
                 src_expr = _sql_str_literal(_svc)
             elif join_meta.source_json_key:
-                src_expr = f'CAST({_q(root_alias)}.{_q(join_meta.source_column)} AS JSON)->>\'{join_meta.source_json_key}\''
+                src_expr = f"CAST({_q(root_alias)}.{_q(join_meta.source_column)} AS JSON)->>'{join_meta.source_json_key}'"
             else:
                 src_expr = _join_column_expr(
-                    root_alias, join_meta.source_column,
-                    join_meta.source_column_type, join_meta.target_column_type,
+                    root_alias,
+                    join_meta.source_column,
+                    join_meta.source_column_type,
+                    join_meta.target_column_type,
                 )
             if join_meta.target_expr is not None:
                 tgt_expr = join_meta.target_expr.replace("{alias}", _q(join_alias))
             elif join_meta.target_column in _VIRTUAL_COLS:
-                _tvc = (ctx.virtual_columns.get(join_meta.target.table_id) or {}).get(join_meta.target_column, "")
+                _tvc = (ctx.virtual_columns.get(join_meta.target.table_id) or {}).get(
+                    join_meta.target_column, ""
+                )
                 tgt_expr = _sql_str_literal(_tvc)
             else:
                 tgt_expr = _join_column_expr(
-                    join_alias, join_meta.target_column,
-                    join_meta.target_column_type, join_meta.source_column_type,
+                    join_alias,
+                    join_meta.target_column,
+                    join_meta.target_column_type,
+                    join_meta.source_column_type,
                 )
             _use_agg = not flat and not _has_lateral_force_args(sel)
-            if (join_meta.default_limit is not None or _has_lateral_force_args(sel)) and not _use_agg:
+            if (
+                join_meta.default_limit is not None or _has_lateral_force_args(sel)
+            ) and not _use_agg:
                 if join_meta.default_limit is not None:
                     has_lateral_ops_joins = True
                 join_clauses.append(
@@ -1551,23 +1660,37 @@ def _compile_root_field(
                     else (src_expr if join_meta.source_column_type != "integer" else None)
                 )
                 json_expr, alias_counter = _build_rel_json_expr(
-                    sel.selection_set.selections, ctx,
-                    join_meta.target.type_name, join_meta.target,
-                    join_alias, _from_clause, _where_expr,
-                    join_meta.cardinality, _agg_limit,
-                    use_catalog, alias_counter, sources, variables,
+                    sel.selection_set.selections,
+                    ctx,
+                    join_meta.target.type_name,
+                    join_meta.target,
+                    join_alias,
+                    _from_clause,
+                    _where_expr,
+                    join_meta.cardinality,
+                    _agg_limit,
+                    use_catalog,
+                    alias_counter,
+                    sources,
+                    variables,
                     parent_src_val=_pv,
                 )
                 select_parts.append(f"{json_expr} AS {_q(_rel_key)}")
-                columns.append(ColumnRef(
-                    alias=join_alias, column=_rel_key, field_name=_rel_key,
-                    nested_in=None, cardinality=join_meta.cardinality, is_agg=True,
-                ))
+                columns.append(
+                    ColumnRef(
+                        alias=join_alias,
+                        column=_rel_key,
+                        field_name=_rel_key,
+                        nested_in=None,
+                        cardinality=join_meta.cardinality,
+                        is_agg=True,
+                    )
+                )
             else:
                 join_clauses.append(
-                    f'LEFT JOIN {_table_ref(join_meta.target, use_catalog)}'
-                    f' {_q(join_alias)}'
-                    f' ON {src_expr} = {tgt_expr}'
+                    f"LEFT JOIN {_table_ref(join_meta.target, use_catalog)}"
+                    f" {_q(join_alias)}"
+                    f" ON {src_expr} = {tgt_expr}"
                 )
                 if sel.selection_set:
                     alias_counter, _child_lateral = _collect_nested_columns(
@@ -1592,6 +1715,7 @@ def _compile_root_field(
         else:
             # GQL OBJECT column stored as JSON — expand sub-selections recursively via -> / ->>
             if sel.selection_set and (table.table_id, sel_name) in ctx.gql_json_columns:
+
                 def _emit_root_json_cols(
                     sels,
                     json_base: str,
@@ -1611,19 +1735,22 @@ def _compile_root_field(
                                 f"{nesting}.{sn}",
                             )
                         else:
-                            expr = f"{json_base}->>\'{sn}\'"
+                            expr = f"{json_base}->>'{sn}'"
                             col_alias = f"{col_prefix}__{sn}"
-                            select_parts.append(f'{expr} AS {_q(col_alias)}')
-                            columns.append(ColumnRef(
-                                alias=root_alias,
-                                column=col_alias,
-                                field_name=sk,
-                                nested_in=nesting,
-                                cardinality=None,
-                            ))
+                            select_parts.append(f"{expr} AS {_q(col_alias)}")
+                            columns.append(
+                                ColumnRef(
+                                    alias=root_alias,
+                                    column=col_alias,
+                                    field_name=sk,
+                                    nested_in=nesting,
+                                    cardinality=None,
+                                )
+                            )
+
                 if use_aliases:
                     assert root_alias is not None
-                    base = f'{_q(root_alias)}.{_q(sel_name)}'
+                    base = f"{_q(root_alias)}.{_q(sel_name)}"
                 else:
                     base = _q(sel_name)
                 _emit_root_json_cols(sel.selection_set.selections, base, sel_name, sel_name)
@@ -1641,7 +1768,7 @@ def _compile_root_field(
                 keys = path_parts[1:]
                 if use_aliases:
                     assert root_alias is not None
-                    expr = f'{_q(root_alias)}.{_q(source_col)}'
+                    expr = f"{_q(root_alias)}.{_q(source_col)}"
                 else:
                     expr = _q(source_col)
                 # Navigate with -> for intermediate keys, ->> for final (text extract)
@@ -1649,36 +1776,38 @@ def _compile_root_field(
                     op = "->>" if i == len(keys) - 1 else "->"
                     expr = f"{expr}{op}'{key}'"
                 if sel.alias:
-                    expr = f'{expr} AS {_q(response_key)}'
+                    expr = f"{expr} AS {_q(response_key)}"
                 select_parts.append(expr)
             elif phys_name in _VIRTUAL_COLS:
                 vval = (ctx.virtual_columns.get(table.table_id) or {}).get(phys_name, "")
                 expr = _sql_str_literal(vval)
-                select_parts.append(f'{expr} AS {_q(response_key)}')
+                select_parts.append(f"{expr} AS {_q(response_key)}")
             elif use_aliases:
                 assert root_alias is not None
-                col_expr = f'{_q(root_alias)}.{_q(phys_name)}'
+                col_expr = f"{_q(root_alias)}.{_q(phys_name)}"
                 if sel.alias:
-                    select_parts.append(f'{col_expr} AS {_q(response_key)}')
+                    select_parts.append(f"{col_expr} AS {_q(response_key)}")
                 else:
                     select_parts.append(col_expr)
             else:
                 if sel.alias:
-                    select_parts.append(f'{_q(phys_name)} AS {_q(response_key)}')
+                    select_parts.append(f"{_q(phys_name)} AS {_q(response_key)}")
                 else:
                     select_parts.append(_q(phys_name))
-            columns.append(ColumnRef(
-                alias=root_alias if use_aliases else None,
-                column=phys_name,
-                field_name=gql_field_name,
-                nested_in=None,
-            ))
+            columns.append(
+                ColumnRef(
+                    alias=root_alias if use_aliases else None,
+                    column=phys_name,
+                    field_name=gql_field_name,
+                    nested_in=None,
+                )
+            )
 
     # FROM clause
     ref = _table_ref(table, use_catalog)
     if use_aliases:
         assert root_alias is not None
-        from_clause = f'{ref} {_q(root_alias)}'
+        from_clause = f"{ref} {_q(root_alias)}"
     else:
         from_clause = ref
 
@@ -1704,9 +1833,9 @@ def _compile_root_field(
             time_travel_clause = f" FOR TIMESTAMP AS OF TIMESTAMP '{as_of_val}'"
         if use_aliases:
             assert root_alias is not None
-            from_clause = f'{ref}{time_travel_clause} {_q(root_alias)}'
+            from_clause = f"{ref}{time_travel_clause} {_q(root_alias)}"
         else:
-            from_clause = f'{ref}{time_travel_clause}'
+            from_clause = f"{ref}{time_travel_clause}"
 
     # When ops LATERAL joins are present, wrap the base table in a subquery so that
     # the base row count is capped before the lateral Cartesian expansion.
@@ -1717,11 +1846,11 @@ def _compile_root_field(
         result_limit = base_limit if "limit" in args else None
         if use_aliases:
             assert root_alias is not None
-            from_clause = f'(SELECT * FROM {ref} LIMIT {base_limit}) {_q(root_alias)}'
+            from_clause = f"(SELECT * FROM {ref} LIMIT {base_limit}) {_q(root_alias)}"
         else:
-            from_clause = f'(SELECT * FROM {ref} LIMIT {base_limit})'
+            from_clause = f"(SELECT * FROM {ref} LIMIT {base_limit})"
 
-    sql = f'SELECT {", ".join(select_parts)} FROM {from_clause}'
+    sql = f"SELECT {', '.join(select_parts)} FROM {from_clause}"
 
     # JOIN clauses
     for join_clause in join_clauses:
@@ -1733,11 +1862,10 @@ def _compile_root_field(
         if isinstance(distinct_cols, str):
             distinct_cols = [distinct_cols]
         parts_d = [
-            _q(c) if root_alias is None else f"{_q(root_alias)}.{_q(c)}"
-            for c in distinct_cols
+            _q(c) if root_alias is None else f"{_q(root_alias)}.{_q(c)}" for c in distinct_cols
         ]
         distinct_prefix = f"DISTINCT ON ({', '.join(parts_d)}) "
-        sql = f"SELECT {distinct_prefix}{sql[len('SELECT '):]}"
+        sql = f"SELECT {distinct_prefix}{sql[len('SELECT ') :]}"
 
     # WHERE
     if "where" in args:
@@ -1871,8 +1999,8 @@ def _compile_aggregate_field(
     collector = ParamCollector()
     sources: set[str] = {table.source_id}
 
-    has_count, sum_cols, avg_cols, min_cols, max_cols, has_nodes = (
-        _collect_requested_agg_funcs(field_node)
+    has_count, sum_cols, avg_cols, min_cols, max_cols, has_nodes = _collect_requested_agg_funcs(
+        field_node
     )
 
     # Collect aliases for aggregate sub-fields
@@ -1910,44 +2038,60 @@ def _compile_aggregate_field(
     for col_name in sum_cols:
         fn_key = func_aliases.get("sum", "sum")
         field_name = col_aliases.get("sum", {}).get(col_name, col_name)
-        expr = f'SUM({_q(col_name)})'
+        expr = f"SUM({_q(col_name)})"
         if field_name != col_name:
-            expr += f' AS {_q(field_name)}'
+            expr += f" AS {_q(field_name)}"
         select_parts.append(expr)
-        columns.append(ColumnRef(alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"))
+        columns.append(
+            ColumnRef(
+                alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"
+            )
+        )
 
     for col_name in avg_cols:
         fn_key = func_aliases.get("avg", "avg")
         field_name = col_aliases.get("avg", {}).get(col_name, col_name)
-        expr = f'AVG({_q(col_name)})'
+        expr = f"AVG({_q(col_name)})"
         if field_name != col_name:
-            expr += f' AS {_q(field_name)}'
+            expr += f" AS {_q(field_name)}"
         select_parts.append(expr)
-        columns.append(ColumnRef(alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"))
+        columns.append(
+            ColumnRef(
+                alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"
+            )
+        )
 
     for col_name in min_cols:
         fn_key = func_aliases.get("min", "min")
         field_name = col_aliases.get("min", {}).get(col_name, col_name)
-        expr = f'MIN({_q(col_name)})'
+        expr = f"MIN({_q(col_name)})"
         if field_name != col_name:
-            expr += f' AS {_q(field_name)}'
+            expr += f" AS {_q(field_name)}"
         select_parts.append(expr)
-        columns.append(ColumnRef(alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"))
+        columns.append(
+            ColumnRef(
+                alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"
+            )
+        )
 
     for col_name in max_cols:
         fn_key = func_aliases.get("max", "max")
         field_name = col_aliases.get("max", {}).get(col_name, col_name)
-        expr = f'MAX({_q(col_name)})'
+        expr = f"MAX({_q(col_name)})"
         if field_name != col_name:
-            expr += f' AS {_q(field_name)}'
+            expr += f" AS {_q(field_name)}"
         select_parts.append(expr)
-        columns.append(ColumnRef(alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"))
+        columns.append(
+            ColumnRef(
+                alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"
+            )
+        )
 
     if not select_parts:
         select_parts.append("1")
 
     ref = _table_ref(table, use_catalog)
-    sql = f'SELECT {", ".join(select_parts)} FROM {ref}'
+    sql = f"SELECT {', '.join(select_parts)} FROM {ref}"
 
     # Process arguments (where)
     args = {}
@@ -1977,12 +2121,16 @@ def _compile_aggregate_field(
                         continue
                     col_name = node_sel.name.value
                     nodes_select_parts.append(_q(col_name))
-                    nodes_cols.append(ColumnRef(
-                        alias=None, column=col_name,
-                        field_name=col_name, nested_in=None,
-                    ))
+                    nodes_cols.append(
+                        ColumnRef(
+                            alias=None,
+                            column=col_name,
+                            field_name=col_name,
+                            nested_in=None,
+                        )
+                    )
         if nodes_select_parts:
-            nodes_sql = f'SELECT {", ".join(nodes_select_parts)} FROM {ref}'
+            nodes_sql = f"SELECT {', '.join(nodes_select_parts)} FROM {ref}"
             if "where" in args:
                 nodes_collector = ParamCollector()
                 nodes_where_sql = _compile_where(args["where"], nodes_collector, None, _agg_vvals)
@@ -2028,6 +2176,7 @@ def rewrite_hot_joins(compiled: CompiledQuery, hot_manager: object) -> CompiledQ
     since the data travels as constants in the query.
     """
     from provisa.cache.hot_tables import HotTableManager
+
     assert isinstance(hot_manager, HotTableManager)
 
     sql = compiled.sql
@@ -2036,10 +2185,12 @@ def rewrite_hot_joins(compiled: CompiledQuery, hot_manager: object) -> CompiledQ
     # Match LEFT JOIN patterns: LEFT JOIN "schema"."table" "alias" ON ...
     # or LEFT JOIN "catalog"."schema"."table" "alias" ON ...
     join_pattern = _re.compile(
-        r'LEFT JOIN\s+'
-        r'(?:"[^"]+"\.)?' r'"[^"]+"\.' r'"([^"]+)"'  # table name in last segment
+        r"LEFT JOIN\s+"
+        r'(?:"[^"]+"\.)?'
+        r'"[^"]+"\.'
+        r'"([^"]+)"'  # table name in last segment
         r'\s+"([^"]+)"'  # alias
-        r'\s+ON\s+(.+?)(?=\s+(?:LEFT JOIN|WHERE|ORDER BY|LIMIT|OFFSET)\b|\Z)',
+        r"\s+ON\s+(.+?)(?=\s+(?:LEFT JOIN|WHERE|ORDER BY|LIMIT|OFFSET)\b|\Z)",
         _re.IGNORECASE,
     )
 
@@ -2065,17 +2216,12 @@ def rewrite_hot_joins(compiled: CompiledQuery, hot_manager: object) -> CompiledQ
             value_rows.append(f"({', '.join(vals)})")
 
         col_defs = ", ".join(f'"{c}"' for c in col_names)
-        cte_sql = (
-            f"{cte_name}({col_defs}) AS "
-            f"(VALUES {', '.join(value_rows)})"
-        )
+        cte_sql = f"{cte_name}({col_defs}) AS (VALUES {', '.join(value_rows)})"
         ctes.append(cte_sql)
 
         # Replace the JOIN target with the CTE name
-        new_join = (
-            f'LEFT JOIN "{cte_name}" "{alias}" ON {on_clause}'
-        )
-        sql = sql[:match.start()] + new_join + sql[match.end():]
+        new_join = f'LEFT JOIN "{cte_name}" "{alias}" ON {on_clause}'
+        sql = sql[: match.start()] + new_join + sql[match.end() :]
 
     if ctes:
         new_ctes_sql = ", ".join(ctes)
@@ -2150,7 +2296,7 @@ def _compile_connection_field(
             select_parts.append(_q(sc))
             columns.append(ColumnRef(None, sc, sc, None))
 
-    sql = f'SELECT {", ".join(select_parts)} FROM {ref}'
+    sql = f"SELECT {', '.join(select_parts)} FROM {ref}"
 
     where_parts: list[str] = []
     if "where" in args:
@@ -2158,7 +2304,10 @@ def _compile_connection_field(
         where_parts.append(_compile_where(args["where"], collector, None, _conn_vvals))
 
     cursor_where, effective_limit, is_backward = apply_cursor_pagination(
-        args, sort_columns, collector, None,
+        args,
+        sort_columns,
+        collector,
+        None,
     )
     if cursor_where:
         where_parts.append(cursor_where)
@@ -2222,22 +2371,30 @@ def compile_query(
             if isinstance(sel, FieldNode):
                 field_name = sel.name.value
                 if field_name not in ctx.tables:
-                    raise ValueError(
-                        f"Unknown root query field: {field_name!r}"
-                    )
+                    raise ValueError(f"Unknown root query field: {field_name!r}")
                 with _tracer.start_as_current_span("compiler.compile_query") as span:
                     span.set_attribute("graphql.field", field_name)
                     if field_name.endswith("_aggregate"):
                         compiled = _compile_aggregate_field(
-                            sel, ctx, variables, use_catalog,
+                            sel,
+                            ctx,
+                            variables,
+                            use_catalog,
                         )
                     elif field_name.endswith("_connection"):
                         compiled = _compile_connection_field(
-                            sel, ctx, variables, use_catalog,
+                            sel,
+                            ctx,
+                            variables,
+                            use_catalog,
                         )
                     else:
                         compiled = _compile_root_field(
-                            sel, ctx, variables, use_catalog, flat=flat,
+                            sel,
+                            ctx,
+                            variables,
+                            use_catalog,
+                            flat=flat,
                         )
                     span.set_attribute("db.statement", compiled.sql[:1000])
                 # Track source tables for warm-table promotion (REQ-AD5)

@@ -88,7 +88,9 @@ def generate_trino_kafka_properties(source: KafkaSourceConfig) -> str:
     in Trino's catalog directory.
     """
     from provisa.core.auth_models import (
-        KafkaAuthSaslPlain, KafkaAuthSaslScram256, KafkaAuthSaslScram512,
+        KafkaAuthSaslPlain,
+        KafkaAuthSaslScram256,
+        KafkaAuthSaslScram512,
     )
 
     lines = [
@@ -99,9 +101,7 @@ def generate_trino_kafka_properties(source: KafkaSourceConfig) -> str:
     ]
 
     if source.schema_registry_url:
-        lines.append(
-            f"kafka.confluent-schema-registry-url={source.schema_registry_url}"
-        )
+        lines.append(f"kafka.confluent-schema-registry-url={source.schema_registry_url}")
 
     if isinstance(source.auth, (KafkaAuthSaslPlain, KafkaAuthSaslScram256, KafkaAuthSaslScram512)):
         lines.append("kafka.config.resources=/etc/trino/kafka-client.properties")
@@ -112,7 +112,9 @@ def generate_trino_kafka_properties(source: KafkaSourceConfig) -> str:
 def generate_kafka_client_properties(source: KafkaSourceConfig) -> str | None:
     """Generate JAAS config for Kafka SASL auth. Returns None if no auth."""
     from provisa.core.auth_models import (
-        KafkaAuthSaslPlain, KafkaAuthSaslScram256, KafkaAuthSaslScram512,
+        KafkaAuthSaslPlain,
+        KafkaAuthSaslScram256,
+        KafkaAuthSaslScram512,
     )
     from provisa.core.secrets import resolve_secrets
 
@@ -135,11 +137,13 @@ def generate_kafka_client_properties(source: KafkaSourceConfig) -> str | None:
     username = resolve_secrets(auth.username)
     password = resolve_secrets(auth.password)
 
-    return "\n".join([
-        "security.protocol=SASL_PLAINTEXT",
-        f"sasl.mechanism={mechanism}",
-        f'sasl.jaas.config={module} required username="{username}" password="{password}";',
-    ])
+    return "\n".join(
+        [
+            "security.protocol=SASL_PLAINTEXT",
+            f"sasl.mechanism={mechanism}",
+            f'sasl.jaas.config={module} required username="{username}" password="{password}";',
+        ]
+    )
 
 
 def generate_topic_table_names(source: KafkaSourceConfig) -> list[str]:

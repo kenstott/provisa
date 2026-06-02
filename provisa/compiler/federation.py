@@ -16,7 +16,7 @@ Wraps an existing graphql-core schema with Federation v2 directives:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from graphql import (
     GraphQLArgument,
@@ -33,9 +33,7 @@ from graphql import (
 
 from provisa.compiler.introspect import ColumnMetadata
 
-FEDERATION_LINK_URL = (
-    "https://specs.apollo.dev/federation/v2.3"
-)
+FEDERATION_LINK_URL = "https://specs.apollo.dev/federation/v2.3"
 FEDERATION_IMPORTS = ["@key", "@shareable", "@external"]
 
 
@@ -231,26 +229,24 @@ def generate_federation_sdl(
 
     # Add Federation v2 schema extension header
     imports = ", ".join(f'"{imp}"' for imp in FEDERATION_IMPORTS)
-    lines.append(
-        f'extend schema @link(url: "{FEDERATION_LINK_URL}", '
-        f"import: [{imports}])"
-    )
+    lines.append(f'extend schema @link(url: "{FEDERATION_LINK_URL}", import: [{imports}])')
     lines.append("")
 
     if key_directives:
         for line in base_sdl.splitlines():
             # Inject @key directive after type declaration
-            injected = False
             for type_name, key_str in key_directives.items():
                 type_prefix = f"type {type_name} "
                 type_prefix_brace = f"type {type_name} {{"
-                if line.strip().startswith(type_prefix) or line.strip() == type_prefix_brace.strip():
+                if (
+                    line.strip().startswith(type_prefix)
+                    or line.strip() == type_prefix_brace.strip()
+                ):
                     # Replace "type Foo {" with "type Foo @key(fields: "pk") {"
                     line = line.replace(
                         f"type {type_name} {{",
                         f'type {type_name} @key(fields: "{key_str}") {{',
                     )
-                    injected = True
                     break
             lines.append(line)
     else:

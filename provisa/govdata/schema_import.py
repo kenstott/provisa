@@ -22,7 +22,7 @@ Returns three lists that can be merged into ProvisaConfig.tables /
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TypedDict
 
 from provisa.core.models import (
     Cardinality,
@@ -60,6 +60,12 @@ _JDBC_TYPE_MAP: dict[int, str] = {
 }
 
 
+class _ColumnInfo(TypedDict):
+    name: str
+    type_code: int
+    nullable: bool
+
+
 def _jdbc_type_name(type_code: int) -> str:
     return _JDBC_TYPE_MAP.get(type_code, "String")
 
@@ -69,22 +75,22 @@ def _read_tables(meta, schema: str) -> list[tuple[str, str]]:
     rs = meta.getTables(None, schema.upper(), "%", ["TABLE", "VIEW"])
     results = []
     while rs.next():
-        tbl_schema = rs.getString("TABLE_SCHEM") or schema
-        tbl_name = rs.getString("TABLE_NAME")
+        tbl_schema = str(rs.getString("TABLE_SCHEM") or schema)
+        tbl_name = str(rs.getString("TABLE_NAME"))
         results.append((tbl_schema.lower(), tbl_name.lower()))
     rs.close()
     return results
 
 
-def _read_columns(meta, schema: str, table: str) -> list[dict[str, Any]]:
+def _read_columns(meta, schema: str, table: str) -> list[_ColumnInfo]:
     rs = meta.getColumns(None, schema.upper(), table.upper(), "%")
-    cols = []
+    cols: list[_ColumnInfo] = []
     while rs.next():
         cols.append(
             {
-                "name": rs.getString("COLUMN_NAME").lower(),
-                "type_code": rs.getInt("DATA_TYPE"),
-                "nullable": rs.getInt("NULLABLE") != 0,
+                "name": str(rs.getString("COLUMN_NAME")).lower(),
+                "type_code": int(rs.getInt("DATA_TYPE")),
+                "nullable": int(rs.getInt("NULLABLE")) != 0,
             }
         )
     rs.close()
@@ -98,10 +104,10 @@ def _read_fks(meta, schema: str, table: str) -> list[dict[str, str]]:
     while rs.next():
         fks.append(
             {
-                "pk_schema": (rs.getString("PKTABLE_SCHEM") or schema).lower(),
-                "pk_table": rs.getString("PKTABLE_NAME").lower(),
-                "pk_col": rs.getString("PKCOLUMN_NAME").lower(),
-                "fk_col": rs.getString("FKCOLUMN_NAME").lower(),
+                "pk_schema": str(rs.getString("PKTABLE_SCHEM") or schema).lower(),
+                "pk_table": str(rs.getString("PKTABLE_NAME")).lower(),
+                "pk_col": str(rs.getString("PKCOLUMN_NAME")).lower(),
+                "fk_col": str(rs.getString("FKCOLUMN_NAME")).lower(),
             }
         )
     rs.close()

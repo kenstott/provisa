@@ -27,7 +27,6 @@ import sqlglot.expressions as exp
 from provisa.cypher.label_map import CypherLabelMap, RelationshipMapping
 
 
-
 def semantic_sql_to_cypher(
     semantic_sql: str,
     label_map: CypherLabelMap,
@@ -113,7 +112,9 @@ def semantic_sql_to_cypher(
         if isinstance(from_tbl, exp.Subquery):
             inner = from_tbl.this
             inner_from = inner.args.get("from_") if isinstance(inner, exp.Select) else None
-            inner_exprs = inner.args.get("expressions") or [] if isinstance(inner, exp.Select) else []
+            inner_exprs = (
+                inner.args.get("expressions") or [] if isinstance(inner, exp.Select) else []
+            )
             is_star = len(inner_exprs) == 1 and isinstance(inner_exprs[0], exp.Star)
             if inner_from and is_star and isinstance(inner_from.this, exp.Table):
                 inner_tbl = inner_from.this
@@ -156,9 +157,7 @@ def semantic_sql_to_cypher(
             lateral_alias = join_tbl.alias if hasattr(join_tbl, "alias") else None
             inner_tbl = None
             # Unwrap Lateral(Subquery(Select(...))) or bare Subquery(Select(...))
-            subquery_node = (
-                join_tbl.this if isinstance(join_tbl, exp.Lateral) else join_tbl
-            )
+            subquery_node = join_tbl.this if isinstance(join_tbl, exp.Lateral) else join_tbl
             if isinstance(subquery_node, exp.Subquery):
                 inner_select = subquery_node.this
                 if isinstance(inner_select, exp.Select):
@@ -169,7 +168,11 @@ def semantic_sql_to_cypher(
                 tgt_label = _resolve_label(inner_tbl, domain_to_label)
                 if tgt_label is not None:
                     rel_type = label_to_rel.get(tgt_label)
-                    inner_lim_node = inner_select.args.get("limit") if isinstance(inner_select, exp.Select) else None
+                    inner_lim_node = (
+                        inner_select.args.get("limit")
+                        if isinstance(inner_select, exp.Select)
+                        else None
+                    )
                     inner_lim: int | None = None
                     if inner_lim_node is not None:
                         _lim_expr = getattr(inner_lim_node, "expression", None)
@@ -183,9 +186,25 @@ def semantic_sql_to_cypher(
                     # The WHERE condition ties the lateral to its source via a column equality
                     # (e.g. _meta_alias.table_name = lateral_alias.table_name).  The table
                     # qualifier that is NOT the lateral alias is the actual source.
-                    inner_where = inner_select.args.get("where") if isinstance(inner_select, exp.Select) else None
-                    lateral_src_alias = _src_alias_from_on(inner_where, lateral_alias, sql_base_alias)
-                    join_segments.append((True, rel_type, lateral_src_alias, lateral_alias, tgt_label, inner_lim, label_to_many.get(tgt_label, False)))
+                    inner_where = (
+                        inner_select.args.get("where")
+                        if isinstance(inner_select, exp.Select)
+                        else None
+                    )
+                    lateral_src_alias = _src_alias_from_on(
+                        inner_where, lateral_alias, sql_base_alias
+                    )
+                    join_segments.append(
+                        (
+                            True,
+                            rel_type,
+                            lateral_src_alias,
+                            lateral_alias,
+                            tgt_label,
+                            inner_lim,
+                            label_to_many.get(tgt_label, False),
+                        )
+                    )
                     continue
             if lateral_alias:
                 skipped_aliases.add(lateral_alias)
@@ -203,7 +222,17 @@ def semantic_sql_to_cypher(
         # Determine source alias from ON condition table references
         src_sql_alias = _src_alias_from_on(on_expr, tgt_sql_alias, sql_base_alias)
         is_optional = (join.side or "").upper() == "LEFT"
-        join_segments.append((is_optional, rel_type, src_sql_alias, tgt_sql_alias, tgt_label, None, label_to_many.get(tgt_label, False)))
+        join_segments.append(
+            (
+                is_optional,
+                rel_type,
+                src_sql_alias,
+                tgt_sql_alias,
+                tgt_label,
+                None,
+                label_to_many.get(tgt_label, False),
+            )
+        )
 
     # Build short alias map: verbose SQL alias → a, b, c, …
     _letters = list(string.ascii_lowercase)
@@ -239,15 +268,17 @@ def semantic_sql_to_cypher(
     def _remap(text: str) -> str:
         """Replace verbose SQL aliases with short Cypher aliases and sql_col names with cypher prop names."""
         for sql_a in sorted(alias_map, key=len, reverse=True):
-            text = re.sub(rf'\b{re.escape(sql_a)}\b', alias_map[sql_a], text)
+            text = re.sub(rf"\b{re.escape(sql_a)}\b", alias_map[sql_a], text)
         # Rewrite short_alias.sql_col → short_alias.cypherProp using prop map
         prop_lookup: dict[str, dict[str, str]] = {
             alias_map[sql_a]: pm for sql_a, pm in alias_prop_map.items() if sql_a in alias_map
         }
+
         def _col_sub(m: re.Match) -> str:
             node_alias, sql_col = m.group(1), m.group(2)
             return f"{node_alias}.{prop_lookup.get(node_alias, {}).get(sql_col, sql_col)}"
-        text = re.sub(r'(\b\w+)\.(\w+)\b', _col_sub, text)
+
+        text = re.sub(r"(\b\w+)\.(\w+)\b", _col_sub, text)
         return text
 
     # --- Build MATCH pattern ---
@@ -281,8 +312,7 @@ def semantic_sql_to_cypher(
             src_lbl = alias_label.get(src_sql_a, base_label)
             tgt_short = alias_map[tgt_sql_a]
             match_line = (
-                f"OPTIONAL MATCH {_node(src_short, src_lbl)}"
-                f"-{rel_str}->{_node(tgt_short, label)}"
+                f"OPTIONAL MATCH {_node(src_short, src_lbl)}-{rel_str}->{_node(tgt_short, label)}"
             )
             if not flat and not node_only and (inner_lim is not None or is_many):
                 props = alias_needed_props.get(tgt_short, [])
@@ -382,8 +412,7 @@ def semantic_sql_to_cypher(
                 (
                     j.this
                     for j in _inner_joins
-                    if isinstance(j.this, exp.Table)
-                    and (j.this.alias or j.this.name) == _col_table
+                    if isinstance(j.this, exp.Table) and (j.this.alias or j.this.name) == _col_table
                 ),
                 None,
             )
@@ -394,7 +423,11 @@ def semantic_sql_to_cypher(
                 continue
             # Ensure the FROM-table OPTIONAL MATCH is emitted (assignments → …).
             if _inner_sql_alias not in _agg_seen:
-                _arr_short = _letters[_agg_alias_counter] if _agg_alias_counter < len(_letters) else f"n{_agg_alias_counter}"
+                _arr_short = (
+                    _letters[_agg_alias_counter]
+                    if _agg_alias_counter < len(_letters)
+                    else f"n{_agg_alias_counter}"
+                )
                 _agg_alias_counter += 1
                 _agg_seen[_inner_sql_alias] = _arr_short
                 _src_short = alias_map.get(_src_sql, base_alias)
@@ -406,7 +439,11 @@ def semantic_sql_to_cypher(
                 )
             # Emit the JOIN-target OPTIONAL MATCH chained from the FROM-table node.
             if _col_table not in _agg_seen:
-                _join_short = _letters[_agg_alias_counter] if _agg_alias_counter < len(_letters) else f"n{_agg_alias_counter}"
+                _join_short = (
+                    _letters[_agg_alias_counter]
+                    if _agg_alias_counter < len(_letters)
+                    else f"n{_agg_alias_counter}"
+                )
                 _agg_alias_counter += 1
                 _agg_seen[_col_table] = _join_short
                 _from_node_short = _agg_seen[_inner_sql_alias]
@@ -425,7 +462,11 @@ def semantic_sql_to_cypher(
         _cypher_prop = _prop_map_for_label(_tgt_lbl).get(_agg_sql_col, _agg_sql_col)
 
         if _inner_sql_alias not in _agg_seen:
-            _arr_short = _letters[_agg_alias_counter] if _agg_alias_counter < len(_letters) else f"n{_agg_alias_counter}"
+            _arr_short = (
+                _letters[_agg_alias_counter]
+                if _agg_alias_counter < len(_letters)
+                else f"n{_agg_alias_counter}"
+            )
             _agg_alias_counter += 1
             _agg_seen[_inner_sql_alias] = _arr_short
             _src_short = alias_map.get(_src_sql, base_alias)
@@ -514,12 +555,20 @@ def semantic_sql_to_cypher(
             if _where_nd:
                 for _eq in _where_nd.find_all(exp.EQ):
                     for _wc in (_eq.this, _eq.expression):
-                        if isinstance(_wc, exp.Column) and _wc.table and _wc.table != _inner_sql_alias:
+                        if (
+                            isinstance(_wc, exp.Column)
+                            and _wc.table
+                            and _wc.table != _inner_sql_alias
+                        ):
                             _src_sql = _wc.table
                             break
 
             if _inner_sql_alias not in _agg_seen:
-                _arr_short = _letters[_agg_alias_counter] if _agg_alias_counter < len(_letters) else f"n{_agg_alias_counter}"
+                _arr_short = (
+                    _letters[_agg_alias_counter]
+                    if _agg_alias_counter < len(_letters)
+                    else f"n{_agg_alias_counter}"
+                )
                 _agg_alias_counter += 1
                 _agg_seen[_inner_sql_alias] = _arr_short
                 _agg_seen_label[_inner_sql_alias] = _tgt_lbl
@@ -535,8 +584,14 @@ def semantic_sql_to_cypher(
             _sel_exprs = _sel.args.get("expressions") or []
             for _se in _sel_exprs:
                 # Could be JSONObject or Alias(JSONObject)
-                _jbo_node = _se if isinstance(_se, exp.JSONObject) else (
-                    _se.this if isinstance(_se, exp.Alias) and isinstance(_se.this, exp.JSONObject) else None
+                _jbo_node = (
+                    _se
+                    if isinstance(_se, exp.JSONObject)
+                    else (
+                        _se.this
+                        if isinstance(_se, exp.Alias) and isinstance(_se.this, exp.JSONObject)
+                        else None
+                    )
                 )
                 if _jbo_node is None:
                     continue
@@ -573,7 +628,7 @@ def semantic_sql_to_cypher(
         if _top_alias not in array_agg_return:
             # Extract the top-level JSONObject from _jbo_sel to build the map literal.
             _jbo_node_for_ret: exp.JSONObject | None = None
-            for _se in (_jbo_sel.args.get("expressions") or []):
+            for _se in _jbo_sel.args.get("expressions") or []:
                 if isinstance(_se, exp.JSONObject):
                     _jbo_node_for_ret = _se
                     break
@@ -586,7 +641,9 @@ def semantic_sql_to_cypher(
                     break
             # First table alias from _jbo_sel (fallback for flat mode)
             _jbo_from = _jbo_sel.args.get("from_")
-            _jbo_tbl = _jbo_from.this if _jbo_from and isinstance(_jbo_from.this, exp.Table) else None
+            _jbo_tbl = (
+                _jbo_from.this if _jbo_from and isinstance(_jbo_from.this, exp.Table) else None
+            )
             _first_sql_alias = (_jbo_tbl.alias or _jbo_tbl.name) if _jbo_tbl else None
 
             if not flat and _jbo_node_for_ret is not None:
@@ -598,7 +655,9 @@ def semantic_sql_to_cypher(
                 _flat_items = _flat_return_items_from_jbo(
                     _jbo_node_for_ret, _agg_seen, _agg_seen_label, _prop_map_for_label
                 )
-                array_agg_return[_top_alias] = _flat_items or _agg_seen.get(_first_sql_alias or "", base_alias)
+                array_agg_return[_top_alias] = _flat_items or _agg_seen.get(
+                    _first_sql_alias or "", base_alias
+                )
             else:
                 array_agg_return[_top_alias] = _agg_seen.get(_first_sql_alias or "", base_alias)
 
@@ -629,7 +688,16 @@ def semantic_sql_to_cypher(
                 node_aliases.append(short)
         cypher_lines.append(f"RETURN {', '.join(node_aliases)}")
     else:
-        return_items = _build_return(select_exprs, default_sql_alias, alias_map, alias_prop_map, collected_aliases, array_agg_return, alias_label=alias_label, flat_labels=flat)
+        return_items = _build_return(
+            select_exprs,
+            default_sql_alias,
+            alias_map,
+            alias_prop_map,
+            collected_aliases,
+            array_agg_return,
+            alias_label=alias_label,
+            flat_labels=flat,
+        )
         cypher_lines.append(f"RETURN {', '.join(return_items)}" if return_items else "RETURN *")
 
     # --- ORDER BY (skipped in node_only mode — node variables have no stable sort key) ---
@@ -640,7 +708,9 @@ def semantic_sql_to_cypher(
             for o in order.expressions:
                 col_expr = o.this
                 if isinstance(col_expr, exp.Column) and not col_expr.table and default_sql_alias:
-                    prop = alias_prop_map.get(default_sql_alias, {}).get(col_expr.name, col_expr.name)
+                    prop = alias_prop_map.get(default_sql_alias, {}).get(
+                        col_expr.name, col_expr.name
+                    )
                     col_sql = f"{alias_map[default_sql_alias]}.{prop}"
                 else:
                     col_sql = _remap(_sql_to_cypher_expr(col_expr.sql(dialect="postgres")))
@@ -662,10 +732,15 @@ def semantic_sql_to_cypher(
 
     if node_only:
         # Use Neo4j browser default when multiple nodes; original limit for single-node.
-        cypher_lines.append("LIMIT 25" if len(node_aliases) > 1 else (
-            f"LIMIT {override_limit}" if override_limit is not None else
-            (f"LIMIT {_resolve_limit_expr(limit)}" if limit else "LIMIT 25")
-        ))
+        cypher_lines.append(
+            "LIMIT 25"
+            if len(node_aliases) > 1
+            else (
+                f"LIMIT {override_limit}"
+                if override_limit is not None
+                else (f"LIMIT {_resolve_limit_expr(limit)}" if limit else "LIMIT 25")
+            )
+        )
     elif override_limit is not None:
         cypher_lines.append(f"LIMIT {override_limit}")
     elif limit:
@@ -675,6 +750,7 @@ def semantic_sql_to_cypher(
 
 
 # --- Helpers ---
+
 
 def _resolve_label(
     tbl: exp.Table,
@@ -700,9 +776,10 @@ def _rel_type_from_on(
             lc = left.name
             rc = right.name
             rel = (
-                join_to_rel.get((lc, rc, tgt_label))
-                or join_to_rel.get((rc, lc, tgt_label))
-            ) if tgt_label is not None else None
+                (join_to_rel.get((lc, rc, tgt_label)) or join_to_rel.get((rc, lc, tgt_label)))
+                if tgt_label is not None
+                else None
+            )
             if rel:
                 return rel.rel_type
     return None
@@ -759,10 +836,16 @@ def _flat_return_items_from_jbo(
                 nested_jbo = nested_agg
             elif isinstance(nested_agg, exp.Alias) and isinstance(nested_agg.this, exp.JSONObject):
                 nested_jbo = nested_agg.this
-            elif isinstance(nested_agg, exp.JSONArrayAgg) and isinstance(nested_agg.this, exp.JSONObject):
+            elif isinstance(nested_agg, exp.JSONArrayAgg) and isinstance(
+                nested_agg.this, exp.JSONObject
+            ):
                 nested_jbo = nested_agg.this
             if nested_jbo is not None:
-                items.extend(_flat_return_items_from_jbo(nested_jbo, agg_seen, agg_seen_label, prop_map_for_label))
+                items.extend(
+                    _flat_return_items_from_jbo(
+                        nested_jbo, agg_seen, agg_seen_label, prop_map_for_label
+                    )
+                )
     return items
 
 
@@ -805,7 +888,9 @@ def _cypher_map_from_jbo(
                 if isinstance(nested_agg.this, exp.JSONObject):
                     nested_jbo = nested_agg.this
             if nested_jbo is not None:
-                nested_map = _cypher_map_from_jbo(nested_jbo, agg_seen, agg_seen_label, prop_map_for_label, flat)
+                nested_map = _cypher_map_from_jbo(
+                    nested_jbo, agg_seen, agg_seen_label, prop_map_for_label, flat
+                )
                 if is_array and not flat:
                     pairs.append(f"{key}: collect({nested_map})")
                 else:
@@ -865,7 +950,11 @@ def _build_return(
                 if flat_labels and al:
                     lbl = al.get(raw_tbl)
                     lbl_prefix = lbl.lower() if lbl else tbl
-                    items.append(f"{tbl}.{cypher_prop} AS {lbl_prefix}__{cypher_prop}" if tbl else cypher_prop)
+                    items.append(
+                        f"{tbl}.{cypher_prop} AS {lbl_prefix}__{cypher_prop}"
+                        if tbl
+                        else cypher_prop
+                    )
                 else:
                     items.append(f"{tbl}.{cypher_prop}" if tbl else cypher_prop)
         elif isinstance(expr, exp.Alias):
@@ -878,12 +967,12 @@ def _build_return(
             else:
                 raw = _sql_to_cypher_expr(expr.this.sql(dialect="postgres"))
                 for sql_a in sorted(am, key=len, reverse=True):
-                    raw = re.sub(rf'\b{re.escape(sql_a)}\b', am[sql_a], raw)
+                    raw = re.sub(rf"\b{re.escape(sql_a)}\b", am[sql_a], raw)
                 items.append(f"{raw} AS {expr.alias}")
         else:
             raw = _sql_to_cypher_expr(expr.sql(dialect="postgres"))
             for sql_a in sorted(am, key=len, reverse=True):
-                raw = re.sub(rf'\b{re.escape(sql_a)}\b', am[sql_a], raw)
+                raw = re.sub(rf"\b{re.escape(sql_a)}\b", am[sql_a], raw)
             items.append(raw)
     return items or ["*"]
 
@@ -896,14 +985,14 @@ def _offset_aliases(cypher: str, offset: int) -> tuple[str, int]:
     Cypher and the next available offset.
     """
     letters = list(string.ascii_lowercase)
-    defined = sorted(set(re.findall(r'\(([a-z])(?:[:\s)])', cypher)))
+    defined = sorted(set(re.findall(r"\(([a-z])(?:[:\s)])", cypher)))
     rename = {
         old: letters[offset + i] if (offset + i) < len(letters) else f"n{offset + i}"
         for i, old in enumerate(defined)
     }
     result = cypher
     for old in sorted(rename, key=len, reverse=True):
-        result = re.sub(rf'\b{re.escape(old)}\b', rename[old], result)
+        result = re.sub(rf"\b{re.escape(old)}\b", rename[old], result)
     return result, offset + len(defined)
 
 
@@ -930,11 +1019,9 @@ def combine_cypher_queries(cyphers: list[str]) -> str:
             if re.match(r"RETURN\s+", stripped, re.IGNORECASE):
                 items_str = re.sub(r"^RETURN\s+", "", stripped, flags=re.IGNORECASE)
                 if items_str.strip() != "*":
-                    all_return_items.extend(
-                        item.strip() for item in items_str.split(",")
-                    )
+                    all_return_items.extend(item.strip() for item in items_str.split(","))
                 break
-        indented = "\n".join(f"  {l}" for l in lines)
+        indented = "\n".join(f"  {line}" for line in lines)
         wrapped.append(f"CALL {{\n{indented}\n}}")
 
     combined = "\n".join(wrapped)
@@ -949,7 +1036,7 @@ def combine_cypher_queries(cyphers: list[str]) -> str:
 def _sql_to_cypher_expr(sql_expr: str) -> str:
     """Minimally rewrite a SQL expression fragment to Cypher syntax."""
     # Remove double-quote wrapping from identifiers (sqlglot emits them)
-    result = re.sub(r'"(\w+)"', r'\1', sql_expr)
+    result = re.sub(r'"(\w+)"', r"\1", sql_expr)
     result = result.replace(" ILIKE ", " =~ ")
     result = result.replace("TRUE", "true").replace("FALSE", "false")
     return result

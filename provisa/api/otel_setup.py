@@ -15,10 +15,10 @@ from collections import deque
 from threading import Lock
 from typing import Any
 
+import yaml
+
 # Matches SQL string literals ('...') and bare numeric literals outside identifiers.
 _SQL_LITERAL_RE = re.compile(r"'[^']*'|\"[^\"]*\"|\b\d+(\.\d+)?\b")
-
-import yaml
 
 _log_provider: "object | None" = None
 
@@ -77,25 +77,37 @@ def _is_http_endpoint(endpoint: str) -> bool:
 
 def _make_span_exporter(endpoint: str):
     if _is_http_endpoint(endpoint):
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as HTTPSpanExporter
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter as HTTPSpanExporter,
+        )
+
         return HTTPSpanExporter(endpoint=endpoint + "/v1/traces")
     from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
     return OTLPSpanExporter(endpoint=endpoint, insecure=True)
 
 
 def _make_metric_exporter(endpoint: str):
     if _is_http_endpoint(endpoint):
-        from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter as HTTPMetricExporter
+        from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+            OTLPMetricExporter as HTTPMetricExporter,
+        )
+
         return HTTPMetricExporter(endpoint=endpoint + "/v1/metrics")
     from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+
     return OTLPMetricExporter(endpoint=endpoint, insecure=True)
 
 
 def _make_log_exporter(endpoint: str):
     if _is_http_endpoint(endpoint):
-        from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter as HTTPLogExporter
+        from opentelemetry.exporter.otlp.proto.http._log_exporter import (
+            OTLPLogExporter as HTTPLogExporter,
+        )
+
         return HTTPLogExporter(endpoint=endpoint + "/v1/logs")
     from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+
     return OTLPLogExporter(endpoint=endpoint, insecure=True)
 
 
@@ -103,6 +115,7 @@ def attach_otlp_exporters(endpoint: str, service_name: str = "provisa") -> None:
     """Attach OTLP exporters to existing providers when endpoint is set at runtime."""
     import logging
     import provisa.api.otel_setup as _self
+
     _log = logging.getLogger(__name__)
     try:
         from opentelemetry import trace, metrics
@@ -130,14 +143,19 @@ def attach_otlp_exporters(endpoint: str, service_name: str = "provisa") -> None:
         meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
         metrics.set_meter_provider(meter_provider)
         _meter = metrics.get_meter("provisa")
-        _self.query_counter = _meter.create_counter("provisa.query.executed", description="Total queries executed")
-        _self.query_duration = _meter.create_histogram("provisa.query.duration_ms", description="Query execution time in milliseconds", unit="ms")
+        _self.query_counter = _meter.create_counter(
+            "provisa.query.executed", description="Total queries executed"
+        )
+        _self.query_duration = _meter.create_histogram(
+            "provisa.query.duration_ms",
+            description="Query execution time in milliseconds",
+            unit="ms",
+        )
 
         import logging as _logging
+
         log_provider = LoggerProvider(resource=resource)
-        log_provider.add_log_record_processor(
-            BatchLogRecordProcessor(_make_log_exporter(endpoint))
-        )
+        log_provider.add_log_record_processor(BatchLogRecordProcessor(_make_log_exporter(endpoint)))
         set_logger_provider(log_provider)
         handler = LoggingHandler(level=_logging.WARNING, logger_provider=log_provider)
         _logging.getLogger().addHandler(handler)
@@ -150,13 +168,14 @@ def attach_otlp_exporters(endpoint: str, service_name: str = "provisa") -> None:
 def _write_otlp2parquet_toml(max_age_secs: int, config_path: str) -> None:
     """Regenerate observability/otlp2parquet.toml from provisa config values."""
     import logging
+
     _log = logging.getLogger(__name__)
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(config_path)))
     toml_path = os.path.join(project_root, "observability", "otlp2parquet.toml")
     content = (
-        "[storage]\nbackend = \"s3\"\n\n"
-        "[storage.s3]\nbucket = \"provisa-otel\"\n"
-        "endpoint = \"http://minio:9000\"\nregion = \"us-east-1\"\n\n"
+        '[storage]\nbackend = "s3"\n\n'
+        '[storage.s3]\nbucket = "provisa-otel"\n'
+        'endpoint = "http://minio:9000"\nregion = "us-east-1"\n\n'
         f"[batch]\nmax_rows = 200000\nmax_bytes = 134217728\nmax_age_secs = {max_age_secs}\n"
     )
     try:
@@ -193,20 +212,22 @@ def _make_filtering_exporter(
                 for span in spans:
                     attrs = dict(span.attributes or {})
                     clean = _scrub(attrs)
-                    scrubbed.append(ReadableSpan(
-                        name=span.name,
-                        context=span.context,
-                        parent=span.parent,
-                        resource=span.resource,
-                        attributes=clean,
-                        events=span.events,
-                        links=span.links,
-                        kind=span.kind,
-                        instrumentation_scope=span.instrumentation_scope,
-                        status=span.status,
-                        start_time=span.start_time,
-                        end_time=span.end_time,
-                    ))
+                    scrubbed.append(
+                        ReadableSpan(
+                            name=span.name,
+                            context=span.context,
+                            parent=span.parent,
+                            resource=span.resource,
+                            attributes=clean,
+                            events=span.events,
+                            links=span.links,
+                            kind=span.kind,
+                            instrumentation_scope=span.instrumentation_scope,
+                            status=span.status,
+                            start_time=span.start_time,
+                            end_time=span.end_time,
+                        )
+                    )
                 return inner.export(scrubbed)
 
             def shutdown(self) -> None:
@@ -230,6 +251,7 @@ def setup_otel(app: "object") -> None:
     collection by pointing OTEL_EXPORTER_OTLP_ENDPOINT at a collector.
     """
     import logging
+
     _log = logging.getLogger(__name__)
     config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
     _otel_cfg: dict = {}
@@ -242,13 +264,19 @@ def setup_otel(app: "object") -> None:
     service_name = os.environ.get("OTEL_SERVICE_NAME") or _otel_cfg.get("service_name", "provisa")
     sample_rate = float(_otel_cfg.get("sample_rate", 1.0))
     log_level_name = os.environ.get("OTEL_LOG_LEVEL") or _otel_cfg.get("log_level", "WARNING")
-    compact_batch_size = int(os.environ.get("OTEL_COMPACT_BATCH_SIZE") or _otel_cfg.get("compact_batch_size", 10))
-    span_export_delay_millis = int(os.environ.get("OTEL_SPAN_EXPORT_DELAY_MILLIS") or _otel_cfg.get("span_export_delay_millis", 1000))
-    otlp2parquet_max_age_secs = int(os.environ.get("OTLP2PARQUET_MAX_AGE_SECS") or _otel_cfg.get("otlp2parquet_max_age_secs", 5))
+    span_export_delay_millis = int(
+        os.environ.get("OTEL_SPAN_EXPORT_DELAY_MILLIS")
+        or _otel_cfg.get("span_export_delay_millis", 1000)
+    )
+    otlp2parquet_max_age_secs = int(
+        os.environ.get("OTLP2PARQUET_MAX_AGE_SECS") or _otel_cfg.get("otlp2parquet_max_age_secs", 5)
+    )
     _internal_filter = _otel_cfg.get("telemetry_filter", {})
     _internal_redact_sql = bool(_internal_filter.get("redact_sql_literals", False))
     _internal_redact_attrs = list(_internal_filter.get("redact_attributes", []))
-    support_endpoint = os.environ.get("PROVISA_SUPPORT_OTLP_ENDPOINT") or _otel_cfg.get("support_endpoint", "")
+    support_endpoint = os.environ.get("PROVISA_SUPPORT_OTLP_ENDPOINT") or _otel_cfg.get(
+        "support_endpoint", ""
+    )
     _support_filter = _otel_cfg.get("support_telemetry_filter", {})
     _support_redact_sql = bool(_support_filter.get("redact_sql_literals", True))
     _support_redact_attrs = list(_support_filter.get("redact_attributes", []))
@@ -259,46 +287,66 @@ def setup_otel(app: "object") -> None:
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.sampling import TraceIdRatioBased, ParentBased
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
         resource = Resource.create({"service.name": service_name})
         sampler = ParentBased(TraceIdRatioBased(sample_rate)) if sample_rate < 1.0 else None
-        provider = TracerProvider(resource=resource, **({} if sampler is None else {"sampler": sampler}))
+        provider = TracerProvider(
+            resource=resource, **({} if sampler is None else {"sampler": sampler})
+        )
         # Always buffer spans in-memory for the live trace panel
         from opentelemetry.sdk.trace import SpanProcessor
+
         _buf = span_buffer
 
         class _BufferProcessor(SpanProcessor):
             def on_start(self, span: Any, parent_context: Any = None) -> None:  # noqa: ARG002
                 pass
+
             def on_end(self, span: Any) -> None:
                 _buf.push(span)
+
             def shutdown(self) -> None:
                 pass
+
             def force_flush(self, timeout_millis: int = 30000) -> bool:
                 return True
 
         provider.add_span_processor(_BufferProcessor())
         if endpoint:
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
             _internal_exporter = _make_filtering_exporter(
                 _make_span_exporter(endpoint),
                 _internal_redact_sql,
                 _internal_redact_attrs,
             )
             provider.add_span_processor(
-                BatchSpanProcessor(_internal_exporter, schedule_delay_millis=span_export_delay_millis)
+                BatchSpanProcessor(
+                    _internal_exporter, schedule_delay_millis=span_export_delay_millis
+                )
             )
-            _log.info("OTel tracing → %s (service=%s, redact_sql=%s)", endpoint, service_name, _internal_redact_sql)
+            _log.info(
+                "OTel tracing → %s (service=%s, redact_sql=%s)",
+                endpoint,
+                service_name,
+                _internal_redact_sql,
+            )
         if support_endpoint:
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
             _support_exporter = _make_filtering_exporter(
                 _make_span_exporter(support_endpoint),
                 _support_redact_sql,
                 _support_redact_attrs,
             )
             provider.add_span_processor(
-                BatchSpanProcessor(_support_exporter, schedule_delay_millis=span_export_delay_millis)
+                BatchSpanProcessor(
+                    _support_exporter, schedule_delay_millis=span_export_delay_millis
+                )
             )
-            _log.info("OTel support tracing → %s (redact_sql=%s)", support_endpoint, _support_redact_sql)
+            _log.info(
+                "OTel support tracing → %s (redact_sql=%s)", support_endpoint, _support_redact_sql
+            )
         else:
             _log.debug(
                 "OTel tracing active (no collector; spans dropped). "
@@ -311,6 +359,7 @@ def setup_otel(app: "object") -> None:
             from opentelemetry import metrics
             from opentelemetry.sdk.metrics import MeterProvider
             from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+
             metric_reader = PeriodicExportingMetricReader(
                 _make_metric_exporter(endpoint),
                 export_interval_millis=15000,
@@ -320,6 +369,7 @@ def setup_otel(app: "object") -> None:
             _log.info("OTel metrics → %s (service=%s)", endpoint, service_name)
 
             import provisa.api.otel_setup as _self
+
             _meter = metrics.get_meter("provisa")
             _self.query_counter = _meter.create_counter(
                 "provisa.query.executed",
@@ -339,44 +389,57 @@ def setup_otel(app: "object") -> None:
             from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
             from opentelemetry._logs import set_logger_provider
             from opentelemetry.sdk._logs import LoggingHandler
+
             log_provider = LoggerProvider(resource=resource)
             log_provider.add_log_record_processor(
                 BatchLogRecordProcessor(_make_log_exporter(endpoint))
             )
             set_logger_provider(log_provider)
             _log_provider = log_provider
-            handler = LoggingHandler(level=getattr(_logging, log_level_name, _logging.WARNING), logger_provider=log_provider)
+            handler = LoggingHandler(
+                level=getattr(_logging, log_level_name, _logging.WARNING),
+                logger_provider=log_provider,
+            )
             _logging.getLogger().addHandler(handler)
             _log.info("OTel logs → %s (service=%s)", endpoint, service_name)
 
         FastAPIInstrumentor.instrument_app(app)
         try:
             from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
             HTTPXClientInstrumentor().instrument()
         except ImportError:
             pass
         try:
             from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+
             AsyncPGInstrumentor().instrument()
         except ImportError:
             pass
         try:
             from opentelemetry.instrumentation.redis import RedisInstrumentor
+
             RedisInstrumentor().instrument()
         except ImportError:
             pass
         try:
             from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
+
             PymongoInstrumentor().instrument()
         except ImportError:
             pass
         try:
             from opentelemetry.instrumentation.elasticsearch import ElasticsearchInstrumentor
+
             ElasticsearchInstrumentor().instrument()
         except ImportError:
             pass
         try:
-            from opentelemetry.instrumentation.grpc import GrpcInstrumentorClient, GrpcInstrumentorServer
+            from opentelemetry.instrumentation.grpc import (
+                GrpcInstrumentorClient,
+                GrpcInstrumentorServer,
+            )
+
             GrpcInstrumentorClient().instrument()
             GrpcInstrumentorServer().instrument()
         except ImportError:

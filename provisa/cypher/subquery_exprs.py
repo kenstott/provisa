@@ -18,7 +18,7 @@ COLLECT { MATCH ... RETURN expr } → ARRAY(SELECT ...)
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     pass
@@ -63,7 +63,7 @@ class SubqueryExprsMixin:
         return "".join(result)
 
     def _subquery_expr_to_sql(self, keyword: str, body: str) -> str:
-        from provisa.cypher.translator import _Translator, CypherTranslateError
+        from provisa.cypher.translator import _Translator
         from provisa.cypher.parser import parse_cypher
 
         if keyword in ("EXISTS", "COUNT") and "RETURN" not in body.upper():

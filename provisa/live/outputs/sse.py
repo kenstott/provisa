@@ -50,7 +50,9 @@ class SSEFanout(LiveOutput):
         """Register a new client queue and return it."""
         q: asyncio.Queue = asyncio.Queue()
         self._queues.append(q)
-        log.debug("[SSE FANOUT] client subscribed to %s (total=%d)", self.query_id, len(self._queues))
+        log.debug(
+            "[SSE FANOUT] client subscribed to %s (total=%d)", self.query_id, len(self._queues)
+        )
         return q
 
     def unsubscribe(self, queue: asyncio.Queue) -> None:
@@ -59,7 +61,11 @@ class SSEFanout(LiveOutput):
             self._queues.remove(queue)
         except ValueError:
             pass
-        log.debug("[SSE FANOUT] client unsubscribed from %s (remaining=%d)", self.query_id, len(self._queues))
+        log.debug(
+            "[SSE FANOUT] client unsubscribed from %s (remaining=%d)",
+            self.query_id,
+            len(self._queues),
+        )
 
     @property
     def subscriber_count(self) -> int:

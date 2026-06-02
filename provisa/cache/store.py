@@ -121,8 +121,10 @@ class RedisCacheStore(CacheStore):
     async def _connect(self):
         if self._redis is None:
             import redis.asyncio as aioredis
+
             self._redis = aioredis.from_url(
-                self._redis_url, decode_responses=False,
+                self._redis_url,
+                decode_responses=False,
             )
 
     async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:
@@ -139,6 +141,7 @@ class RedisCacheStore(CacheStore):
                     span.set_attribute("cache.hit", False)
                     return None
                 import json
+
                 meta_dict = json.loads(meta)
                 span.set_attribute("cache.hit", True)
                 return CachedResult(
@@ -151,7 +154,14 @@ class RedisCacheStore(CacheStore):
                 span.set_attribute("cache.hit", False)
                 return None
 
-    async def set(self, key: str, data: bytes, ttl: int, tenant_id: str | None = None, table_ids: set[int] | None = None) -> None:
+    async def set(
+        self,
+        key: str,
+        data: bytes,
+        ttl: int,
+        tenant_id: str | None = None,
+        table_ids: set[int] | None = None,
+    ) -> None:
         with _tracer.start_as_current_span("cache.set") as span:
             span.set_attribute("cache.key", key)
             span.set_attribute("cache.ttl", ttl)
@@ -159,6 +169,7 @@ class RedisCacheStore(CacheStore):
             try:
                 await self._connect()
                 import json
+
                 rkey = self._prefixed_key(key, tenant_id)
                 meta = json.dumps({"cached_at": time.time(), "ttl": ttl}).encode()
                 pipe = self._redis.pipeline()
@@ -201,7 +212,7 @@ class RedisCacheStore(CacheStore):
                 pipe.delete(prefix + ck_str)
                 pipe.delete(prefix + ck_str + ":meta")
             pipe.delete(tkey)
-            results = await pipe.execute()
+            await pipe.execute()
             return len(cache_keys)
         except Exception:
             log.warning("Redis invalidate_by_table failed", exc_info=True)

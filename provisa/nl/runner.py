@@ -23,9 +23,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING
 
-from provisa.nl.job import BranchResult, NlJob, NlTarget
+from provisa.nl.job import BranchResult, InMemoryJobStore, NlTarget, RedisJobStore
 from provisa.nl.loop import (
     LLMClient,
     generation_loop,
@@ -34,12 +34,19 @@ from provisa.nl.loop import (
     make_sql_compiler,
 )
 
+if TYPE_CHECKING:
+    from provisa.api.app import AppState
+
+JobStore = InMemoryJobStore | RedisJobStore
+
 log = logging.getLogger(__name__)
 
 _TARGETS: list[NlTarget] = ["cypher", "graphql", "sql"]
 
 
-async def run_nl_job(job_id: str, nl_query: str, role: str, app_state: Any, job_store: Any, llm: LLMClient) -> None:
+async def run_nl_job(
+    job_id: str, nl_query: str, role: str, app_state: AppState, job_store: JobStore, llm: LLMClient
+) -> None:
     """Background coroutine: runs all three generation branches, writes results."""
     await job_store.set_state(job_id, "running")
 
@@ -48,7 +55,9 @@ async def run_nl_job(job_id: str, nl_query: str, role: str, app_state: Any, job_
 
     compilers = {
         "cypher": make_cypher_compiler(),
-        "graphql": make_graphql_compiler(graphql_schema) if graphql_schema else make_cypher_compiler(),
+        "graphql": make_graphql_compiler(graphql_schema)
+        if graphql_schema
+        else make_cypher_compiler(),
         "sql": make_sql_compiler(),
     }
 
@@ -70,19 +79,22 @@ async def run_nl_job(job_id: str, nl_query: str, role: str, app_state: Any, job_
             except Exception as exc:
                 error = str(exc)
                 valid_query = None
-        await job_store.update_branch(job_id, target, BranchResult(query=valid_query, result=result, error=error))
+        await job_store.update_branch(
+            job_id, target, BranchResult(query=valid_query, result=result, error=error)
+        )
         log.debug("Branch %s complete: valid=%s", target, valid_query is not None)
 
     await job_store.set_state(job_id, "complete")
 
 
-def _get_schema_sdl(app_state: Any, role: str) -> str:
+def _get_schema_sdl(app_state: AppState, role: str) -> str:
     """Return role-scoped GraphQL SDL string, or empty string if unavailable."""
     schema = getattr(app_state, "schemas", {}).get(role)
     if schema is None:
         return ""
     try:
         from graphql import print_schema
+
         return print_schema(schema)
     except Exception:
         return ""

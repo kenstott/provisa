@@ -40,13 +40,6 @@ from graphql import (
 )
 from graphql.language import DirectiveLocation
 
-# graphql-core 3.2.x: __new__ returns GraphQLNamedType instead of Self;
-# re-bind scalars with explicit GraphQLScalarType annotation so Pyright narrows correctly.
-GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
-GraphQLInt: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLInt)
-GraphQLBoolean: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLBoolean)
-GraphQLFloat: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLFloat)
-
 from provisa.compiler.aggregate_gen import build_aggregate_types
 from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
 from provisa.compiler.introspect import ColumnMetadata
@@ -60,6 +53,13 @@ from provisa.compiler.naming import (
     to_type_name,
 )
 from provisa.compiler.type_map import FILTER_TYPE_MAP, JSONScalar, trino_to_graphql
+
+# graphql-core 3.2.x: __new__ returns GraphQLNamedType instead of Self;
+# re-bind scalars with explicit GraphQLScalarType annotation so Pyright narrows correctly.
+GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
+GraphQLInt: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLInt)
+GraphQLBoolean: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLBoolean)
+GraphQLFloat: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLFloat)
 
 
 @dataclass
@@ -614,7 +614,9 @@ def _build_order_by_inputs(
                         )
             return fields
 
-        ob_type = cast(GraphQLInputObjectType, GraphQLInputObjectType(f"{t.type_name}OrderBy", make_fields))
+        ob_type = cast(
+            GraphQLInputObjectType, GraphQLInputObjectType(f"{t.type_name}OrderBy", make_fields)
+        )
         order_by_types[t.table_id] = ob_type
 
     return order_by_types
@@ -869,7 +871,9 @@ def _build_action_fields(
                 for f in inline
                 if f.get("name")
             }
-            wh_obj = cast(GraphQLObjectType, GraphQLObjectType(wh_type_name, lambda f=inline_fields: f))
+            wh_obj = cast(
+                GraphQLObjectType, GraphQLObjectType(wh_type_name, lambda f=inline_fields: f)
+            )
             gql_return = GraphQLList(GraphQLNonNull(wh_obj))
             ret_type = None
         else:
@@ -1313,7 +1317,9 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
 
     mutation_type: GraphQLObjectType | None = None
     if mutation_fields:
-        mutation_type = cast(GraphQLObjectType, GraphQLObjectType("Mutation", lambda: mutation_fields))
+        mutation_type = cast(
+            GraphQLObjectType, GraphQLObjectType("Mutation", lambda: mutation_fields)
+        )
 
     subscription_fields = _build_subscription_fields(si, tables, gql_types)
     subscription_type: GraphQLObjectType | None = (

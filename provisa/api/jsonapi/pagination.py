@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 from urllib.parse import urlencode
 
 
@@ -62,6 +61,7 @@ def build_pagination_links(
 
     next is None when result_count < page_size (last page).
     """
+
     def _url(pn: int) -> str:
         p = {"page[number]": str(pn), "page[size]": str(page_size)}
         if extra_params:

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import asyncpg
 import trino
@@ -116,12 +116,6 @@ async def collect_metadata(
     )
     all_tables = [dict(r) for r in all_tables]
 
-    # Fetch sources for catalog name mapping
-    sources = {
-        r["id"]: dict(r)
-        for r in await pg_conn.fetch("SELECT id FROM sources")
-    }
-
     # Filter tables by scope
     if scope == "table":
         target_table = next((t for t in all_tables if t["id"] == scope_id), None)
@@ -147,15 +141,17 @@ async def collect_metadata(
         samples = _fetch_samples(
             trino_conn, catalog, t["schema_name"], t["table_name"], columns, sample_size
         )
-        table_metas.append(TableMeta(
-            table_id=t["id"],
-            source_id=t["source_id"],
-            domain_id=t["domain_id"],
-            schema_name=t["schema_name"],
-            table_name=t["table_name"],
-            columns=columns,
-            sample_values=samples,
-        ))
+        table_metas.append(
+            TableMeta(
+                table_id=t["id"],
+                source_id=t["source_id"],
+                domain_id=t["domain_id"],
+                schema_name=t["schema_name"],
+                table_name=t["table_name"],
+                columns=columns,
+                sample_values=samples,
+            )
+        )
 
     # Fetch existing relationships
     existing = await pg_conn.fetch(
@@ -220,14 +216,16 @@ async def collect_fk_candidates(
             key = (t["id"], fk["column_name"], target["id"], fk["referenced_column"])
             if key in existing:
                 continue
-            candidates.append(RelationshipCandidate(
-                source_table_id=t["id"],
-                source_column=fk["column_name"],
-                target_table_id=target["id"],
-                target_column=fk["referenced_column"],
-                cardinality="many_to_one",
-                confidence=1.0,
-                reasoning="Foreign key constraint",
-                suggested_name=f"{t['table_name']}-{fk['column_name']}-to-{fk['referenced_table']}",
-            ))
+            candidates.append(
+                RelationshipCandidate(
+                    source_table_id=t["id"],
+                    source_column=fk["column_name"],
+                    target_table_id=target["id"],
+                    target_column=fk["referenced_column"],
+                    cardinality="many_to_one",
+                    confidence=1.0,
+                    reasoning="Foreign key constraint",
+                    suggested_name=f"{t['table_name']}-{fk['column_name']}-to-{fk['referenced_table']}",
+                )
+            )
     return candidates

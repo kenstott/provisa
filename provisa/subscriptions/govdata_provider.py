@@ -22,6 +22,7 @@ from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
 log = logging.getLogger(__name__)
 
+
 class GovDataPollingProvider(NotificationProvider):
     """Poll a GovData table using a watermark column.
 
@@ -48,6 +49,7 @@ class GovDataPollingProvider(NotificationProvider):
 
     def _connect(self) -> Any:
         from askamerica.engine import get_connection
+
         os.environ["ASKAMERICA_SCHEMAS"] = self._sources
         return get_connection(self._api_key)
 
@@ -84,15 +86,16 @@ class GovDataPollingProvider(NotificationProvider):
         conn = await loop.run_in_executor(None, self._connect)
         log.info(
             "GovDataPollingProvider: polling %s.%s every %.1fs on %s",
-            self._schema, self._table, self._poll_interval, self._watermark_column,
+            self._schema,
+            self._table,
+            self._poll_interval,
+            self._watermark_column,
         )
         try:
             while self._running:
                 await asyncio.sleep(self._poll_interval)
                 try:
-                    rows = await loop.run_in_executor(
-                        None, self._fetch_new_rows, conn, watermark
-                    )
+                    rows = await loop.run_in_executor(None, self._fetch_new_rows, conn, watermark)
                 except Exception as exc:
                     log.warning("GovDataPollingProvider: query failed: %s", exc)
                     try:
@@ -102,7 +105,6 @@ class GovDataPollingProvider(NotificationProvider):
                     continue
 
                 for row in rows:
-                    ts_raw = row.get(self._watermark_column)
                     ts = datetime.now(timezone.utc)
                     if ts > watermark:
                         watermark = ts

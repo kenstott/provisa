@@ -49,7 +49,9 @@ class ProviasLLMClient:
             self._fallback_vendor: Optional[str] = None
             self._fallback_model: Optional[str] = None
         elif isinstance(op_cfg, dict):
-            defaults = _DEFAULTS.get(operation, {"vendor": "anthropic", "model": "claude-haiku-4-5-20251001"})
+            defaults = _DEFAULTS.get(
+                operation, {"vendor": "anthropic", "model": "claude-haiku-4-5-20251001"}
+            )
             self._vendor = op_cfg.get("vendor") or defaults["vendor"]
             self._model = op_cfg.get("model") or defaults["model"]
             fallback = op_cfg.get("fallback")
@@ -60,7 +62,9 @@ class ProviasLLMClient:
                 self._fallback_vendor = None
                 self._fallback_model = None
         else:
-            defaults = _DEFAULTS.get(operation, {"vendor": "anthropic", "model": "claude-haiku-4-5-20251001"})
+            defaults = _DEFAULTS.get(
+                operation, {"vendor": "anthropic", "model": "claude-haiku-4-5-20251001"}
+            )
             self._vendor = defaults["vendor"]
             self._model = defaults["model"]
             self._fallback_vendor = None
@@ -76,7 +80,9 @@ class ProviasLLMClient:
         messages.append({"role": "user", "content": prompt})
         return messages
 
-    def _complete_sync(self, vendor: str, model: str, prompt: str, system: str, max_tokens: int) -> str:
+    def _complete_sync(
+        self, vendor: str, model: str, prompt: str, system: str, max_tokens: int
+    ) -> str:
         import aisuite as ai
 
         client = ai.Client()
@@ -89,7 +95,9 @@ class ProviasLLMClient:
         )
         return response.choices[0].message.content.strip()
 
-    def complete_sync(self, prompt: str, system: str = "You are a helpful assistant.", max_tokens: int = 1024) -> str:
+    def complete_sync(
+        self, prompt: str, system: str = "You are a helpful assistant.", max_tokens: int = 1024
+    ) -> str:
         """Complete a prompt synchronously.
 
         Tries primary vendor/model first; on failure tries fallback if configured.
@@ -101,7 +109,9 @@ class ProviasLLMClient:
         except Exception as primary_exc:
             log.warning(
                 "LLM primary vendor=%s model=%s failed: %s",
-                self._vendor, self._model, primary_exc,
+                self._vendor,
+                self._model,
+                primary_exc,
             )
             if self._fallback_vendor and self._fallback_model:
                 try:
@@ -112,7 +122,9 @@ class ProviasLLMClient:
                 except Exception as fallback_exc:
                     log.warning(
                         "LLM fallback vendor=%s model=%s failed: %s",
-                        self._fallback_vendor, self._fallback_model, fallback_exc,
+                        self._fallback_vendor,
+                        self._fallback_model,
+                        fallback_exc,
                     )
                     raise fallback_exc
             raise primary_exc

@@ -22,10 +22,14 @@ Each iteration:
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Literal
+from typing import TYPE_CHECKING
 
-from provisa.nl.prompt import build_prompt, NlTarget
+from provisa.nl.prompt import NlTarget, build_prompt
+
+if TYPE_CHECKING:
+    from graphql import GraphQLSchema
 
 log = logging.getLogger(__name__)
 
@@ -89,7 +93,9 @@ async def generation_loop(
             return generated, None
 
         prior_error = result.error
-        log.debug("Iteration %d/%d failed for %s: %s", iteration + 1, max_iterations, target, prior_error)
+        log.debug(
+            "Iteration %d/%d failed for %s: %s", iteration + 1, max_iterations, target, prior_error
+        )
 
     return None, prior_error
 
@@ -98,9 +104,10 @@ async def generation_loop(
 # Compiler validators (thin wrappers over existing pipeline)
 # ---------------------------------------------------------------------------
 
+
 def make_cypher_compiler() -> Callable[[str], CompileResult]:
     """Return a compiler callable that validates Cypher syntax."""
-    from provisa.cypher.parser import parse_cypher, CypherParseError
+    from provisa.cypher.parser import CypherParseError, parse_cypher
 
     def _compile(query: str) -> CompileResult:
         try:
@@ -112,9 +119,10 @@ def make_cypher_compiler() -> Callable[[str], CompileResult]:
     return _compile
 
 
-def make_graphql_compiler(schema: Any) -> Callable[[str], CompileResult]:
+def make_graphql_compiler(schema: GraphQLSchema) -> Callable[[str], CompileResult]:
     """Return a compiler callable that validates a GraphQL query against schema."""
-    from graphql import parse as gql_parse, validate as gql_validate
+    from graphql import parse as gql_parse
+    from graphql import validate as gql_validate
 
     def _compile(query: str) -> CompileResult:
         try:

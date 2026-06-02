@@ -46,6 +46,7 @@ def build_api_source(cfg: SparqlSourceConfig) -> ApiSource:
     """Build an ApiSource record for a SPARQL endpoint."""
     # Strip the path so base_url is just scheme://host:port
     from urllib.parse import urlparse
+
     parsed = urlparse(cfg.endpoint_url)
     base_url = f"{parsed.scheme}://{parsed.netloc}"
     return ApiSource(
@@ -69,6 +70,7 @@ def build_endpoint(
     the SPARQL 1.1 Protocol and uses the sparql_bindings normalizer.
     """
     from urllib.parse import urlparse
+
     parsed = urlparse(cfg.endpoint_url)
     path = parsed.path or "/"
 

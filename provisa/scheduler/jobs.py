@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import httpx
 import pyarrow as pa
@@ -23,6 +23,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 if TYPE_CHECKING:
+    import trino.dbapi
+
     from provisa.core.models import ScheduledTrigger
 
 logger = logging.getLogger(__name__)
@@ -92,7 +94,7 @@ def _compact_signal(
     secret_key: str,
     otel_bucket: str,
     file_chunk: int,
-    trino_conn: Any,
+    trino_conn: trino.dbapi.Connection | None,
 ) -> None:
     """Compact one OTel signal type. Runs entirely in a thread — no event loop blocking."""
     import io
@@ -178,7 +180,9 @@ def _compact_signal(
     logger.info("compact_otel: inserted %d %s rows for %s", total_rows, signal, date_glob)
 
 
-def _insert_otel_iceberg(conn: Any, signal: str, table: pa.Table, dt: datetime) -> None:
+def _insert_otel_iceberg(
+    conn: trino.dbapi.Connection | None, signal: str, table: pa.Table, dt: datetime
+) -> None:
     """Create Iceberg table from schema and INSERT the rows (runs in thread)."""
 
     _PA_TO_TRINO: dict[object, str] = {
@@ -403,7 +407,7 @@ async def watch_trino() -> None:
     logger.error("watch_trino: Trino did not become healthy within 120 s")
 
 
-def _trino_ping(conn: Any) -> None:
+def _trino_ping(conn: trino.dbapi.Connection) -> None:
     cur = conn.cursor()
     cur.execute("SELECT 1")
     cur.fetchone()

@@ -80,8 +80,10 @@ async def stream_nl_result(job_id: str) -> StreamingResponse:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 async def _run_job(job_id: str, nl_query: str, role: str, app_state: object, llm) -> None:
     from provisa.nl.runner import run_nl_job
+
     try:
         await run_nl_job(job_id, nl_query, role, app_state, _job_store, llm)
     except Exception as exc:
@@ -118,10 +120,11 @@ async def _sse_generator(job_id: str) -> AsyncGenerator[str, None]:
 
         await asyncio.sleep(poll_interval)
 
-    yield f"event: timeout\ndata: {{}}\n\n"
+    yield "event: timeout\ndata: {}\n\n"
 
 
 def _get_llm():
     """Build an LLM client from config."""
     from provisa.llm.client import ProviasLLMClient
+
     return ProviasLLMClient("sql_generation")

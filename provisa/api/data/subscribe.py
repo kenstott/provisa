@@ -27,7 +27,6 @@ from typing import AsyncGenerator
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from provisa.subscriptions.base import ChangeEvent
 
 log = logging.getLogger(__name__)
 
@@ -116,6 +115,7 @@ async def _provider_sse_generator(
             raw_payload = hints.get("subscribe_payload")
             if raw_payload:
                 import json as _json
+
                 try:
                     provider_config["subscribe_payload"] = _json.loads(raw_payload)
                 except (ValueError, TypeError):
@@ -145,10 +145,12 @@ async def _provider_sse_generator(
                     if not _rls_matches(event.row, rls_ctx, table):
                         continue
 
-            payload = json.dumps({
-                "op": event.operation.upper(),
-                "row": event.row,
-            })
+            payload = json.dumps(
+                {
+                    "op": event.operation.upper(),
+                    "row": event.row,
+                }
+            )
             yield f"data: {payload}\n\n"
     finally:
         await provider.close()

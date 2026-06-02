@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 log = logging.getLogger(__name__)
 
@@ -76,6 +76,7 @@ def _fetch(catalog: str, schema: str, table: str) -> None:
     if _conn is None:
         return
     from provisa.compiler.introspect import _validate_ident, _escape_literal
+
     try:
         cat = _validate_ident(catalog)
         _validate_ident(schema)
@@ -96,5 +97,8 @@ def _fetch(catalog: str, schema: str, table: str) -> None:
     except Exception as exc:
         log.debug(
             "[schema_service] fetch failed for %s.%s.%s: %s",
-            catalog, schema, table, exc,
+            catalog,
+            schema,
+            table,
+            exc,
         )

@@ -34,7 +34,11 @@ from pydantic import BaseModel
 from provisa.cache.key import cache_key
 from provisa.cache.middleware import build_cache_headers, check_cache, store_result
 from provisa.compiler.hints import extract_graphql_hints
-from provisa.compiler.directives import extract_directives, extract_directives_from_sql_comments, merge_directives
+from provisa.compiler.directives import (
+    extract_directives,
+    extract_directives_from_sql_comments,
+    merge_directives,
+)
 from provisa.compiler.mutation_gen import (
     compile_mutation,
     inject_rls_into_mutation,
@@ -43,8 +47,10 @@ from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defa
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sampling import apply_sampling_if_needed
 from provisa.compiler.sql_gen import (
-    compile_query, make_semantic_sql,
-    rewrite_semantic_to_physical, rewrite_semantic_to_trino_physical,
+    compile_query,
+    make_semantic_sql,
+    rewrite_semantic_to_physical,
+    rewrite_semantic_to_trino_physical,
 )
 from provisa.executor.direct import execute_direct
 from provisa.executor.serialize import serialize_aggregate, serialize_rows, shape_transform
@@ -56,15 +62,21 @@ from provisa.transpiler.router import Route, decide_route
 from provisa.transpiler.transpile import transpile, transpile_to_trino
 
 import os as _os
+import re as _re
 
 log = logging.getLogger(__name__)
+
 
 def _request_timeout() -> float:
     try:
         from provisa.api.app import state
-        return state.server_limits.get("request_timeout", float(_os.environ.get("PROVISA_REQUEST_TIMEOUT", "60")))
+
+        return state.server_limits.get(
+            "request_timeout", float(_os.environ.get("PROVISA_REQUEST_TIMEOUT", "60"))
+        )
     except Exception:
         return float(_os.environ.get("PROVISA_REQUEST_TIMEOUT", "60"))
+
 
 # Source-level hydration expiry: source_id → monotonic expiry.
 # When set, the entire source is skipped (no pool acquire, no PG queries).
@@ -78,7 +90,6 @@ class GraphQLRequest(BaseModel):
     variables: dict | None = None
     role: str = "admin"  # test mode: role passed in request
     extensions: dict | None = None  # APQ: {"persistedQuery": {"sha256Hash": "..."}}
-
 
 
 _ACCEPT_MAP = {
@@ -108,28 +119,30 @@ def _format_response(rows, columns, root_field, output_format, result_limit: int
 
     if output_format == "ndjson":
         from provisa.executor.formats.ndjson import rows_to_ndjson
+
         content = rows_to_ndjson(rows, columns)
         return Response(content=content, media_type="application/x-ndjson")
 
     if output_format == "csv":
         from provisa.executor.formats.tabular import rows_to_csv
+
         content = rows_to_csv(rows, columns)
         return Response(content=content, media_type="text/csv")
 
     if output_format == "parquet":
         from provisa.executor.formats.tabular import rows_to_parquet
+
         content = rows_to_parquet(rows, columns)
         return Response(content=content, media_type="application/vnd.apache.parquet")
 
     if output_format == "arrow":
         from provisa.executor.formats.arrow import rows_to_arrow_ipc
+
         content = rows_to_arrow_ipc(rows, columns)
         return Response(content=content, media_type="application/vnd.apache.arrow.stream")
 
     return serialize_rows(rows, columns, root_field, result_limit=result_limit)
 
-
-import re as _re
 
 def _inject_probe_limit(sql: str, limit: int) -> str:
     """Inject or tighten a LIMIT clause for threshold probing.
@@ -144,7 +157,7 @@ def _inject_probe_limit(sql: str, limit: int) -> str:
     if limit_match:
         existing = int(limit_match.group(1))
         effective = min(existing, limit)
-        return sql[:limit_match.start()] + f"LIMIT {effective}" + sql[limit_match.end():]
+        return sql[: limit_match.start()] + f"LIMIT {effective}" + sql[limit_match.end() :]
     return sql + f" LIMIT {limit}"
 
 
@@ -205,8 +218,12 @@ async def graphql_endpoint(
             return JSONResponse(
                 status_code=200,
                 content={
-                    "errors": [{"message": "PersistedQueryNotFound",
-                                "extensions": {"code": "PERSISTED_QUERY_NOT_FOUND"}}]
+                    "errors": [
+                        {
+                            "message": "PersistedQueryNotFound",
+                            "extensions": {"code": "PERSISTED_QUERY_NOT_FOUND"},
+                        }
+                    ]
                 },
             )
         request = GraphQLRequest(
@@ -217,6 +234,7 @@ async def graphql_endpoint(
     elif apq_hash and request.query:
         # Hash + query: validate hash only here; cache AFTER successful execution (REQ-291)
         from provisa.apq.cache import compute_apq_hash
+
         expected = compute_apq_hash(request.query)
         if expected != apq_hash:
             raise HTTPException(status_code=400, detail="APQ hash mismatch")
@@ -247,7 +265,9 @@ async def graphql_endpoint(
     # Fall back to legacy @provisa comment hints if no directive route set
     if directives.steward_hint is None and _legacy_hints.get("route"):
         raw = _legacy_hints["route"]
-        directives.route = "FEDERATED" if raw == "federated" else "DIRECT" if raw == "direct" else None
+        directives.route = (
+            "FEDERATED" if raw == "federated" else "DIRECT" if raw == "direct" else None
+        )
 
     steward_hint = directives.steward_hint
 
@@ -258,14 +278,13 @@ async def graphql_endpoint(
     # directly against the GraphQL schema instead of compiling to SQL.
     from graphql import execute as gql_execute
     from graphql.language.ast import OperationDefinitionNode
+
     introspection_fields = {"__schema", "__type", "__typename"}
     is_introspection = False
     for defn in document.definitions:
         if isinstance(defn, OperationDefinitionNode) and defn.selection_set:
             field_names = {
-                sel.name.value
-                for sel in defn.selection_set.selections
-                if hasattr(sel, "name")
+                sel.name.value for sel in defn.selection_set.selections if hasattr(sel, "name")
             }
             if field_names and field_names <= introspection_fields:
                 is_introspection = True
@@ -294,17 +313,28 @@ async def graphql_endpoint(
 
     if is_sub:
         from provisa.api.data.subscription_sse import handle_subscription_sse
+
         return await handle_subscription_sse(
-            document, ctx, rls, state, effective_variables, role, role_id, raw_request,
+            document,
+            ctx,
+            rls,
+            state,
+            effective_variables,
+            role,
+            role_id,
+            raw_request,
             directives=directives,
         )
 
     output_format = _parse_accept(accept)
 
     # @redirect directive overrides HTTP headers; headers take precedence if both present
-    directive_redirect_format = _parse_accept(directives.redirect_format) if directives.redirect_format else None
+    directive_redirect_format = (
+        _parse_accept(directives.redirect_format) if directives.redirect_format else None
+    )
     redirect_format = (
-        _parse_accept(x_provisa_redirect_format) if x_provisa_redirect_format
+        _parse_accept(x_provisa_redirect_format)
+        if x_provisa_redirect_format
         else directive_redirect_format
     )
     directive_redirect_threshold = directives.redirect_threshold
@@ -323,11 +353,24 @@ async def graphql_endpoint(
 
     if is_mut:
         response = await _handle_mutation(
-            document, ctx, rls, state, effective_variables, role_id, raw_request,
+            document,
+            ctx,
+            rls,
+            state,
+            effective_variables,
+            role_id,
+            raw_request,
         )
     else:
         response = await _handle_query(
-            document, ctx, rls, state, effective_variables, role, output_format, role_id,
+            document,
+            ctx,
+            rls,
+            state,
+            effective_variables,
+            role,
+            output_format,
+            role_id,
             force_redirect=force_redirect,
             redirect_threshold=effective_threshold,
             redirect_format=redirect_format,
@@ -367,11 +410,13 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
 
     if state.view_sql_map:
         from provisa.compiler.view_expand import expand_views
+
         compiled = expand_views(compiled, state.view_sql_map)
 
     # ABAC approval hook (Phase AE)
     if hasattr(state, "approval_hook") and state.approval_hook is not None:
         from provisa.auth.approval_hook import ApprovalRequest, should_check
+
         table_ids = {m.table_id for m in ctx.tables.values() if m.field_name == compiled.root_field}
         source_ids = compiled.sources
         hook_config = state.approval_hook_config
@@ -379,8 +424,10 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
         source_hooks = getattr(state, "source_approval_hooks", {})
         if should_check(table_ids, source_ids, hook_config, table_hooks, source_hooks):
             req = ApprovalRequest(
-                user=role_id, roles=[role_id] if role_id else [],
-                tables=list(compiled.sources), columns=compiled.columns,
+                user=role_id,
+                roles=[role_id] if role_id else [],
+                tables=list(compiled.sources),
+                columns=compiled.columns,
                 operation="query",
             )
             resp = await state.approval_hook.evaluate(req)
@@ -393,16 +440,25 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
     if mv_used:
         log.info(
             "[QUERY %s] MV optimization applied — sources changed: %s → %s",
-            compiled.root_field, original_sources, compiled.sources,
+            compiled.root_field,
+            original_sources,
+            compiled.sources,
         )
     else:
-        log.debug("[QUERY %s] No MV match, using original sources: %s",
-                  compiled.root_field, compiled.sources)
+        log.debug(
+            "[QUERY %s] No MV match, using original sources: %s",
+            compiled.root_field,
+            compiled.sources,
+        )
 
     if hasattr(state, "kafka_table_configs") and state.kafka_table_configs:
         from provisa.kafka.window import inject_kafka_filters
+
         compiled = inject_kafka_filters(
-            compiled, ctx, state.source_types, state.kafka_table_configs,
+            compiled,
+            ctx,
+            state.source_types,
+            state.kafka_table_configs,
         )
 
     compiled = apply_sampling_if_needed(compiled, role)
@@ -415,6 +471,7 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
     # Validate semantic SQL — V002 (join relationship check) is always skipped for
     # GraphQL because the SDL defines valid relationships by design.
     from provisa.compiler.sql_validator import validate_sql
+
     semantic_sql_for_validation = make_semantic_sql(compiled.sql, ctx)
     _violations = validate_sql(
         semantic_sql_for_validation,
@@ -440,6 +497,7 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
 def _lookup_ep(state, table_name: str):
     """Find API endpoint by table name, tolerating camelCase/snake_case mismatch."""
     from provisa.compiler.naming import to_snake_case
+
     ep_map: dict = getattr(state, "api_endpoints", {})
     ep = ep_map.get(table_name)
     if ep is not None:
@@ -454,21 +512,27 @@ def _lookup_ep(state, table_name: str):
 def _lookup_gql_remote_table(state, table_name: str):
     """Find a graphql_remote table registration by GQL field name or stored name."""
     from provisa.compiler.naming import to_snake_case
+
     gql_srcs = getattr(state, "graphql_remote_sources", {})
     snake_tn = to_snake_case(table_name)
     for reg in gql_srcs.values():
         for tbl in reg.get("tables", []):
-            if (tbl["name"] == table_name
-                    or tbl.get("field_name") == table_name
-                    or to_snake_case(tbl["name"]) == snake_tn
-                    or to_snake_case(tbl.get("field_name", "")) == snake_tn):
+            if (
+                tbl["name"] == table_name
+                or tbl.get("field_name") == table_name
+                or to_snake_case(tbl["name"]) == snake_tn
+                or to_snake_case(tbl.get("field_name", "")) == snake_tn
+            ):
                 return reg, tbl
     return None, None
 
 
-async def _promote_joined_from_pg(state, ep, tn, hot_mgr, col_names, meta_cols, cache_loc, hot_threshold) -> None:
+async def _promote_joined_from_pg(
+    state, ep, tn, hot_mgr, col_names, meta_cols, cache_loc, hot_threshold
+) -> None:
     """Fetch joined API table rows from PG and store in hot_mgr for next-request Values CTE."""
     import json as _json
+
     try:
         async with state.pg_pool.acquire() as _pg_conn:
             _raw = await _pg_conn.fetch(f'SELECT * FROM "default"."{ep.table_name}"')
@@ -490,6 +554,7 @@ async def _promote_joined_from_pg(state, ep, tn, hot_mgr, col_names, meta_cols, 
             rows.append(row)
         if 0 < len(rows) <= hot_threshold:
             from provisa.cache.hot_tables import HotTableEntry
+
             hot_mgr._hot_tables[tn] = HotTableEntry(
                 table_name=tn,
                 catalog=cache_loc.catalog,
@@ -499,7 +564,9 @@ async def _promote_joined_from_pg(state, ep, tn, hot_mgr, col_names, meta_cols, 
                 column_names=col_names,
                 is_api=True,
             )
-            log.warning("[MAT] promoted %s → hot_mgr (%d rows) for next-request Values CTE", tn, len(rows))
+            log.warning(
+                "[MAT] promoted %s → hot_mgr (%d rows) for next-request Values CTE", tn, len(rows)
+            )
     except Exception as exc:
         log.warning("[MAT] _promote_joined_from_pg failed for %s: %s", tn, exc)
 
@@ -516,8 +583,13 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
       values_cte_entries: {physical_table_name: HotTableEntry} — inlined as VALUES CTEs
     """
     from provisa.api_source.trino_cache import (
-        cache_location, cache_table_name, create_and_insert, ensure_cache_schema,
-        schedule_drop, table_exists, table_known_live,
+        cache_location,
+        cache_table_name,
+        create_and_insert,
+        ensure_cache_schema,
+        schedule_drop,
+        table_exists,
+        table_known_live,
     )
     from provisa.compiler.nf_extractor import find_api_table_names
     from provisa.executor.redirect import RedirectConfig
@@ -561,8 +633,11 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
                     type: str
 
                 _GQL_TYPE_MAP = {
-                    "text": "string", "integer": "integer", "numeric": "number",
-                    "boolean": "boolean", "jsonb": "jsonb",
+                    "text": "string",
+                    "integer": "integer",
+                    "numeric": "number",
+                    "boolean": "boolean",
+                    "jsonb": "jsonb",
                 }
                 col_dicts = gql_tbl.get("columns", [])
                 _sb = getattr(state, "schema_build_cache", {})
@@ -570,18 +645,30 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
                 _sb_rels = _sb.get("relationships", [])
                 _tbl_int_id = next((t["id"] for t in _sb_tbls if t.get("table_name") == tn), None)
                 if _tbl_int_id is not None and _sb_rels:
-                    _src_rels = [r for r in _sb_rels if r.get("source_table_id") == _tbl_int_id and r.get("source_column")]
+                    _src_rels = [
+                        r
+                        for r in _sb_rels
+                        if r.get("source_table_id") == _tbl_int_id and r.get("source_column")
+                    ]
                     if _src_rels:
                         _covered = {
-                            c["name"] for c in col_dicts
-                            if c.get("gql_object_type") and not c.get("gql_is_list", False)
-                            and any(r["source_column"].lower().startswith(c["name"].lower()) for r in _src_rels)
+                            c["name"]
+                            for c in col_dicts
+                            if c.get("gql_object_type")
+                            and not c.get("gql_is_list", False)
+                            and any(
+                                r["source_column"].lower().startswith(c["name"].lower())
+                                for r in _src_rels
+                            )
                         }
                         if _covered:
                             col_dicts = [c for c in col_dicts if c["name"] not in _covered]
                 col_names = [c["name"] for c in col_dicts]
                 col_selections = [c.get("gql_selection", c["name"]) for c in col_dicts]
-                col_objs = [_GCol(name=c["name"], type=_GQL_TYPE_MAP.get(c.get("type", "text"), "string")) for c in col_dicts]
+                col_objs = [
+                    _GCol(name=c["name"], type=_GQL_TYPE_MAP.get(c.get("type", "text"), "string"))
+                    for c in col_dicts
+                ]
 
                 gql_cache_loc = cache_location(gql_reg["source_id"], "provisa_admin", "gql_cache")
                 gql_cache_tbl = cache_table_name(gql_reg["source_id"], tn, {})
@@ -611,8 +698,14 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
 
                 # Hydrate to Trino cache (best-effort — never block inline on this)
                 try:
-                    create_and_insert(state.trino_conn, gql_cache_loc, gql_cache_tbl, gql_rows, col_objs)
-                    asyncio.create_task(schedule_drop(state.trino_conn, gql_cache_loc, gql_cache_tbl, 300, redirect_config))
+                    create_and_insert(
+                        state.trino_conn, gql_cache_loc, gql_cache_tbl, gql_rows, col_objs
+                    )
+                    asyncio.create_task(
+                        schedule_drop(
+                            state.trino_conn, gql_cache_loc, gql_cache_tbl, 300, redirect_config
+                        )
+                    )
                 except Exception as cache_exc:
                     log.warning("[GQL REMOTE] cache write failed for %s: %s", tn, cache_exc)
 
@@ -630,10 +723,18 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
                     if hot_mgr is not None:
                         hot_mgr._hot_tables[tn] = entry
                     values_cte_entries[tn] = entry
-                    log.warning("[GQL REMOTE] VALUES CTE inline for %s (%d rows)", tn, len(gql_rows))
+                    log.warning(
+                        "[GQL REMOTE] VALUES CTE inline for %s (%d rows)", tn, len(gql_rows)
+                    )
                 else:
                     cache_rewrites[tn] = (gql_cache_loc, gql_cache_tbl)
-                    log.warning("[GQL REMOTE] %d rows → Trino cache %s.%s.%s", len(gql_rows), gql_cache_loc.catalog, gql_cache_loc.schema, gql_cache_tbl)
+                    log.warning(
+                        "[GQL REMOTE] %d rows → Trino cache %s.%s.%s",
+                        len(gql_rows),
+                        gql_cache_loc.catalog,
+                        gql_cache_loc.schema,
+                        gql_cache_tbl,
+                    )
             continue
         source_id = ep.source_id
         api_source = getattr(state, "api_sources", {}).get(source_id)
@@ -656,21 +757,51 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
         # Priority 2: Trino cache hit — use cache_rewrites; kick off async PG fetch
         # to populate hot_mgr so the NEXT request hits Priority 1 instead.
         if table_known_live(_cache_loc, cache_tbl):
-            log.warning("[MAT] Trino cache hit for %s → %s.%s.%s", tn, _cache_loc.catalog, _cache_loc.schema, cache_tbl)
+            log.warning(
+                "[MAT] Trino cache hit for %s → %s.%s.%s",
+                tn,
+                _cache_loc.catalog,
+                _cache_loc.schema,
+                cache_tbl,
+            )
             cache_rewrites[tn] = (_cache_loc, cache_tbl)
             if hot_mgr is not None and getattr(state, "pg_pool", None) is not None:
-                asyncio.create_task(_promote_joined_from_pg(
-                    state, ep, tn, hot_mgr, col_names, _META_COLS, _cache_loc, _hot_threshold,
-                ))
+                asyncio.create_task(
+                    _promote_joined_from_pg(
+                        state,
+                        ep,
+                        tn,
+                        hot_mgr,
+                        col_names,
+                        _META_COLS,
+                        _cache_loc,
+                        _hot_threshold,
+                    )
+                )
             continue
         ensure_cache_schema(_conn, _cache_loc)
         if table_exists(_conn, _cache_loc, cache_tbl, ttl=ttl):
-            log.warning("[MAT] Trino cache hit for %s → %s.%s.%s", tn, _cache_loc.catalog, _cache_loc.schema, cache_tbl)
+            log.warning(
+                "[MAT] Trino cache hit for %s → %s.%s.%s",
+                tn,
+                _cache_loc.catalog,
+                _cache_loc.schema,
+                cache_tbl,
+            )
             cache_rewrites[tn] = (_cache_loc, cache_tbl)
             if hot_mgr is not None and getattr(state, "pg_pool", None) is not None:
-                asyncio.create_task(_promote_joined_from_pg(
-                    state, ep, tn, hot_mgr, col_names, _META_COLS, _cache_loc, _hot_threshold,
-                ))
+                asyncio.create_task(
+                    _promote_joined_from_pg(
+                        state,
+                        ep,
+                        tn,
+                        hot_mgr,
+                        col_names,
+                        _META_COLS,
+                        _cache_loc,
+                        _hot_threshold,
+                    )
+                )
             continue
 
         # Priority 3: cache miss — hydrate from PG then REST fallback
@@ -702,21 +833,42 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
                 log.warning("[MAT] %s requires path params — skipping", tn)
                 continue
             from provisa.api_source.router_integration import handle_api_query
+
             try:
                 rest_result = await handle_api_query(
-                    ep, {}, _conn,
+                    ep,
+                    {},
+                    _conn,
                     source=api_source,
-                    source_ttl=getattr(state, "source_cache", {}).get(source_id, {}).get("cache_ttl"),
+                    source_ttl=getattr(state, "source_cache", {})
+                    .get(source_id, {})
+                    .get("cache_ttl"),
                     global_ttl=getattr(state, "response_cache_default_ttl", None),
                     loc=_cache_loc,
                 )
-                log.warning("[MAT] REST fallback for %s: from_cache=%s rows=%d", tn, rest_result.from_cache, len(rest_result.rows))
+                log.warning(
+                    "[MAT] REST fallback for %s: from_cache=%s rows=%d",
+                    tn,
+                    rest_result.from_cache,
+                    len(rest_result.rows),
+                )
                 if rest_result.from_cache:
                     cache_rewrites[tn] = (_cache_loc, cache_tbl)
                     continue
                 rows = [
-                    {k: (json.dumps(v) if isinstance(v, (dict, list)) else (None if v is None else (v if isinstance(v, (int, float, bool)) else str(v))))
-                     for k, v in r.items() if k in set(col_names)}
+                    {
+                        k: (
+                            json.dumps(v)
+                            if isinstance(v, (dict, list))
+                            else (
+                                None
+                                if v is None
+                                else (v if isinstance(v, (int, float, bool)) else str(v))
+                            )
+                        )
+                        for k, v in r.items()
+                        if k in set(col_names)
+                    }
                     for r in rest_result.rows
                 ]
             except Exception as rest_exc:
@@ -725,6 +877,7 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
 
         if 0 < len(rows) <= _hot_threshold:
             from provisa.cache.hot_tables import HotTableEntry
+
             entry = HotTableEntry(
                 table_name=tn,
                 catalog=_cache_loc.catalog,
@@ -740,7 +893,13 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
             log.warning("[MAT] VALUES CTE inline for %s (%d rows)", tn, len(rows))
         else:
             cache_rewrites[tn] = (_cache_loc, cache_tbl)
-            log.warning("[MAT] materialized %d rows → Trino cache %s.%s.%s", len(rows), _cache_loc.catalog, _cache_loc.schema, cache_tbl)
+            log.warning(
+                "[MAT] materialized %d rows → Trino cache %s.%s.%s",
+                len(rows),
+                _cache_loc.catalog,
+                _cache_loc.schema,
+                cache_tbl,
+            )
 
         create_and_insert(_conn, _cache_loc, cache_tbl, rows, response_cols)
         asyncio.create_task(schedule_drop(_conn, _cache_loc, cache_tbl, ttl, redirect_config))
@@ -748,7 +907,9 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
     return cache_rewrites, values_cte_entries
 
 
-async def _hydrate_api_tables_before_trino(compiled, ctx, state) -> tuple[set, dict[str, float], dict[str, int], set]:
+async def _hydrate_api_tables_before_trino(
+    compiled, ctx, state
+) -> tuple[set, dict[str, float], dict[str, int], set]:
     """Ensure API-backed PG cache tables are populated before Trino executes.
 
     For each openapi source in compiled.sources:
@@ -798,8 +959,11 @@ async def _hydrate_api_tables_before_trino(compiled, ctx, state) -> tuple[set, d
             for (src_type, _), join_meta in ctx.joins.items():
                 if join_meta.target.table_name == pg_table:
                     target_col = next(
-                        (c for c in endpoint.columns
-                         if c.name == join_meta.target_column and c.param_type == ParamType.query),
+                        (
+                            c
+                            for c in endpoint.columns
+                            if c.name == join_meta.target_column and c.param_type == ParamType.query
+                        ),
                         None,
                     )
                     if target_col:
@@ -817,7 +981,11 @@ async def _hydrate_api_tables_before_trino(compiled, ctx, state) -> tuple[set, d
                 dataloader_sources.add(source_id)
                 async with state.pg_pool.acquire() as pg_conn:
                     p_table = dataloader_parent_table_meta.table_name
-                    p_schema = "default" if p_table in state.api_endpoints else dataloader_parent_table_meta.schema_name
+                    p_schema = (
+                        "default"
+                        if p_table in state.api_endpoints
+                        else dataloader_parent_table_meta.schema_name
+                    )
                     try:
                         rows = await pg_conn.fetch(
                             f'SELECT DISTINCT "{dataloader_parent_join_col}" FROM "{p_schema}"."{p_table}"'
@@ -825,21 +993,31 @@ async def _hydrate_api_tables_before_trino(compiled, ctx, state) -> tuple[set, d
                         )
                         pk_values = [r[0] for r in rows]
                     except Exception as exc:
-                        log.warning("DataLoader: failed to fetch parent PKs for %s: %s", pg_table, exc)
+                        log.warning(
+                            "DataLoader: failed to fetch parent PKs for %s: %s", pg_table, exc
+                        )
                         continue
                     if pk_values:
                         param_name = dataloader_col.param_name or dataloader_col.name
                         n = await fill_api_table(
-                            src.base_url, endpoint.path, {param_name: pk_values},
-                            pg_conn, pg_schema, pg_table, ttl,
-                            endpoint.response_root, endpoint.error_path, endpoint.pk_column,
+                            src.base_url,
+                            endpoint.path,
+                            {param_name: pk_values},
+                            pg_conn,
+                            pg_schema,
+                            pg_table,
+                            ttl,
+                            endpoint.response_root,
+                            endpoint.error_path,
+                            endpoint.pk_column,
                         )
                         hydration_rows[source_id] = hydration_rows.get(source_id, 0) + n
             elif not path_cols:
                 # Collection endpoint: params known upfront — skip pool entirely if mem-fresh.
                 param_name_map = {
                     c.name: (c.param_name or c.name)
-                    for c in endpoint.columns if c.param_type is not None
+                    for c in endpoint.columns
+                    if c.param_type is not None
                 }
                 raw_params = compiled.api_args or {}
                 query_params = {param_name_map.get(k, k): v for k, v in raw_params.items()}
@@ -847,7 +1025,18 @@ async def _hydrate_api_tables_before_trino(compiled, ctx, state) -> tuple[set, d
                     cache_hit_sources.add(source_id)
                     continue
                 async with state.pg_pool.acquire() as pg_conn:
-                    n = await fill_api_table(src.base_url, endpoint.path, query_params, pg_conn, pg_schema, pg_table, ttl, endpoint.response_root, endpoint.error_path, endpoint.pk_column)
+                    n = await fill_api_table(
+                        src.base_url,
+                        endpoint.path,
+                        query_params,
+                        pg_conn,
+                        pg_schema,
+                        pg_table,
+                        ttl,
+                        endpoint.response_root,
+                        endpoint.error_path,
+                        endpoint.pk_column,
+                    )
                     hydration_rows[source_id] = hydration_rows.get(source_id, 0) + n
             else:
                 # Path-param: needs PG to fetch parent PKs — can't skip connection.
@@ -865,12 +1054,18 @@ async def _hydrate_api_tables_before_trino(compiled, ctx, state) -> tuple[set, d
                         break
 
                 if parent_table_meta is None or parent_join_col is None:
-                    log.warning("No parent join for path-param table %s — skipping hydration", pg_table)
+                    log.warning(
+                        "No parent join for path-param table %s — skipping hydration", pg_table
+                    )
                     continue
 
                 async with state.pg_pool.acquire() as pg_conn:
                     p_table = parent_table_meta.table_name
-                    p_schema = "default" if p_table in state.api_endpoints else parent_table_meta.schema_name
+                    p_schema = (
+                        "default"
+                        if p_table in state.api_endpoints
+                        else parent_table_meta.schema_name
+                    )
                     try:
                         rows = await pg_conn.fetch(
                             f'SELECT DISTINCT "{parent_join_col}" FROM "{p_schema}"."{p_table}"'
@@ -883,9 +1078,16 @@ async def _hydrate_api_tables_before_trino(compiled, ctx, state) -> tuple[set, d
 
                     for pk in pk_values:
                         n = await fetch_pk_row(
-                            src.base_url, endpoint.path, path_param_name, pk,
-                            pg_conn, pg_schema, pg_table, ttl,
-                            endpoint.response_root, endpoint.error_path,
+                            src.base_url,
+                            endpoint.path,
+                            path_param_name,
+                            pk,
+                            pg_conn,
+                            pg_schema,
+                            pg_table,
+                            ttl,
+                            endpoint.response_root,
+                            endpoint.error_path,
                         )
                         hydration_rows[source_id] = hydration_rows.get(source_id, 0) + n
 
@@ -910,14 +1112,11 @@ def _count_rows_per_source(field_rows: list, ctx) -> dict[str, int]:
         src_id = join_meta.target.source_id
         if join_meta.cardinality == "one-to-many":
             total = sum(
-                len(row.get(join_field, []) or [])
-                for row in field_rows
-                if isinstance(row, dict)
+                len(row.get(join_field, []) or []) for row in field_rows if isinstance(row, dict)
             )
         else:
             total = sum(
-                1 for row in field_rows
-                if isinstance(row, dict) and row.get(join_field) is not None
+                1 for row in field_rows if isinstance(row, dict) and row.get(join_field) is not None
             )
         counts[src_id] = counts.get(src_id, 0) + total
     return counts
@@ -943,6 +1142,7 @@ def _build_mermaid(
     cache_catalog: Trino catalog used for API cache — shown on cache node label.
     """
     _cache_label = f"{cache_catalog or root_source_id or 'pg'} cache"
+
     def _node_id(s: str) -> str:
         return s.replace("-", "_").replace(".", "_")
 
@@ -953,7 +1153,6 @@ def _build_mermaid(
 
     # When root_source_id is set, only render that source in the main loop.
     # Other sources (join targets from a different source) are handled via join_fields.
-    jf_src_ids = {jt_src_id for _, jt_src_id, _ in join_fields} if join_fields else set()
     render_sources = (
         {s for s in sources if s == root_source_id or root_source_id is None}
         if root_source_id is not None
@@ -972,7 +1171,11 @@ def _build_mermaid(
             if single:
                 elapsed_label = f"{round(h_ms)}ms" if h_ms >= 5 else ""
                 lines.append(f'    result(["{root_field}\\n{result_rows} rows"])')
-                lines.append(f'    pg_{nid} -->|"{elapsed_label}"| result' if elapsed_label else f'    pg_{nid} --> result')
+                lines.append(
+                    f'    pg_{nid} -->|"{elapsed_label}"| result'
+                    if elapsed_label
+                    else f"    pg_{nid} --> result"
+                )
             else:
                 trino_label = f"{round(trino_ms)}ms" if trino_ms is not None else ""
                 lines.append(f'    pg_{nid} -->|"federated {trino_label}"| trino')
@@ -981,7 +1184,11 @@ def _build_mermaid(
                 elapsed_label = f"{round(trino_ms)}ms" if trino_ms is not None else ""
                 lines.append(f'    {nid}["{root_field}\\n({src_id})"]')
                 lines.append(f'    result(["{root_field}\\n{result_rows} rows"])')
-                lines.append(f'    {nid} -->|"federated {elapsed_label}"| result' if elapsed_label else f'    {nid} --> result')
+                lines.append(
+                    f'    {nid} -->|"federated {elapsed_label}"| result'
+                    if elapsed_label
+                    else f"    {nid} --> result"
+                )
             else:
                 trino_label = f"{round(trino_ms)}ms" if trino_ms is not None else ""
                 lines.append(f'    {nid}["{root_field}\\n({src_id})"]')
@@ -1006,7 +1213,7 @@ def _build_mermaid(
     if not single:
         lines.append('    trino{"Virtual\\nJoin"}')
         lines.append(f'    result(["{root_field}\\n{result_rows} rows"])')
-        lines.append('    trino --> result')
+        lines.append("    trino --> result")
 
     return "\n".join(lines)
 
@@ -1024,7 +1231,9 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, ck, o
     """
     from provisa.api_source.router_integration import handle_api_query
     from provisa.api_source.trino_cache import (
-        cache_location, ensure_cache_schema, rewrite_from_cache,
+        cache_location,
+        ensure_cache_schema,
+        rewrite_from_cache,
     )
     from provisa.executor.trino import execute_trino
     from provisa.transpiler.transpile import transpile_to_trino
@@ -1066,6 +1275,7 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, ck, o
         from provisa.compiler.nf_extractor import extract_nf_args
         from provisa.transpiler.transpile import transpile_to_trino
         from provisa.executor.trino import execute_trino
+
         entry = hot_mgr.get_entry(table_name)
         _exec_sql, _exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
         _exec_sql = rewrite_semantic_to_trino_physical(_exec_sql, ctx)
@@ -1075,14 +1285,29 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, ck, o
         _loop = asyncio.get_running_loop()
         _api_conn = state.trino_conn
         _t0 = _time.perf_counter()
-        trino_result = await _loop.run_in_executor(None, lambda: execute_trino(_api_conn, trino_sql, _exec_params))
+        trino_result = await _loop.run_in_executor(
+            None, lambda: execute_trino(_api_conn, trino_sql, _exec_params)
+        )
         phase2_ms = (_time.perf_counter() - _t0) * 1000
-        response_data = _format_response(trino_result.rows, compiled.columns, root_field, output_format, result_limit=compiled.result_limit)
-        field_rows = response_data.get("data", {}).get(root_field, []) if isinstance(response_data, dict) else response_data
+        response_data = _format_response(
+            trino_result.rows,
+            compiled.columns,
+            root_field,
+            output_format,
+            result_limit=compiled.result_limit,
+        )
+        field_rows = (
+            response_data.get("data", {}).get(root_field, [])
+            if isinstance(response_data, dict)
+            else response_data
+        )
         return field_rows, response_data, 0.0, phase2_ms, trino_sql, True
 
     # --- Phase 1: materialize if cache miss ---
-    from provisa.api_source.trino_cache import cache_table_name as _cache_table_name, table_known_live
+    from provisa.api_source.trino_cache import (
+        cache_table_name as _cache_table_name,
+        table_known_live,
+    )
 
     _loop = asyncio.get_running_loop()
     _api_conn_kwargs = getattr(state, "trino_conn_kwargs", None)
@@ -1112,24 +1337,33 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, ck, o
         if result.from_cache:
             log.warning("[API CACHE] hit — %s", cache_tbl)
         else:
-            log.warning("[API CACHE] miss — %d rows from REST, materialized as %s", len(result.rows), cache_tbl)
+            log.warning(
+                "[API CACHE] miss — %d rows from REST, materialized as %s",
+                len(result.rows),
+                cache_tbl,
+            )
             if hot_mgr is not None and result.rows:
                 asyncio.create_task(hot_mgr.maybe_promote_dicts(table_name, result.rows))
         phase1_ms = (_time.perf_counter() - _t_phase1) * 1000
 
     # --- Phase 2: apply WHERE/ORDER BY/LIMIT via Trino ---
     from provisa.compiler.nf_extractor import extract_nf_args
+
     exec_sql, exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
     exec_sql = rewrite_semantic_to_trino_physical(exec_sql, ctx)
     rewritten_sql = rewrite_from_cache(exec_sql, _cache_loc, cache_tbl)
     # Rewrite any joined API table refs → VALUES CTE (hot) or Trino cache
-    _join_rewrites, _join_values_ctes = await _materialize_api_to_trino_cache(rewritten_sql, compiled, state)
+    _join_rewrites, _join_values_ctes = await _materialize_api_to_trino_cache(
+        rewritten_sql, compiled, state
+    )
     if _join_values_ctes:
         from provisa.cache.hot_tables import build_values_cte_sql
+
         for _tn, _entry in _join_values_ctes.items():
             rewritten_sql = build_values_cte_sql(rewritten_sql, _tn, _entry)
     if _join_rewrites:
         from provisa.api_source.trino_cache import rewrite_all_from_cache
+
         rewritten_sql = rewrite_all_from_cache(rewritten_sql, _join_rewrites)
     trino_sql = transpile_to_trino(rewritten_sql)
     log.warning("[API P2] trino_sql=%s", trino_sql[:500])
@@ -1162,7 +1396,9 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
 
     reg = getattr(state, "grpc_remote_sources", {}).get(source_id)
     if reg is None:
-        raise HTTPException(status_code=400, detail=f"gRPC remote source {source_id!r} not registered")
+        raise HTTPException(
+            status_code=400, detail=f"gRPC remote source {source_id!r} not registered"
+        )
 
     table_meta = None
     for meta in state.contexts.values():
@@ -1179,7 +1415,9 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
         None,
     )
     if grpc_query is None:
-        raise HTTPException(status_code=400, detail=f"No gRPC query registered for table {table_name!r}")
+        raise HTTPException(
+            status_code=400, detail=f"No gRPC query registered for table {table_name!r}"
+        )
 
     nf_args: dict = compiled.api_args.copy() if compiled.api_args else {}
 
@@ -1198,7 +1436,9 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     )
     phase1_ms = (_time.perf_counter() - _t0) * 1000
 
-    col_names = [c.name for c in grpc_query.columns] if rows else (list(rows[0].keys()) if rows else [])
+    col_names = (
+        [c.name for c in grpc_query.columns] if rows else (list(rows[0].keys()) if rows else [])
+    )
     entry = HotTableEntry(
         table_name=table_name,
         catalog="",
@@ -1218,19 +1458,35 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
     _api_conn_kwargs = getattr(state, "trino_conn_kwargs", None)
     _api_conn = trino.dbapi.connect(**_api_conn_kwargs) if _api_conn_kwargs else state.trino_conn
     _t2 = _time.perf_counter()
-    trino_result = await _loop.run_in_executor(None, lambda: execute_trino(_api_conn, trino_sql, exec_params))
+    trino_result = await _loop.run_in_executor(
+        None, lambda: execute_trino(_api_conn, trino_sql, exec_params)
+    )
     phase2_ms = (_time.perf_counter() - _t2) * 1000
 
     response_data = _format_response(trino_result.rows, compiled.columns, root_field, output_format)
-    field_rows = response_data.get("data", {}).get(root_field, []) if isinstance(response_data, dict) else response_data
+    field_rows = (
+        response_data.get("data", {}).get(root_field, [])
+        if isinstance(response_data, dict)
+        else response_data
+    )
 
     return field_rows, response_data, phase1_ms, phase2_ms, trino_sql, False
 
 
 async def _execute_one_field(
-    compiled, ctx, rls, state, role, role_id,
-    fresh_mvs, output_format,
-    *, force_redirect, redirect_config, effective_redirect_format, probe_limit,
+    compiled,
+    ctx,
+    rls,
+    state,
+    role,
+    role_id,
+    fresh_mvs,
+    output_format,
+    *,
+    force_redirect,
+    redirect_config,
+    effective_redirect_format,
+    probe_limit,
     steward_hint: str | None = None,
     query_session_props: dict | None = None,
     response_cache_ttl: int | None = None,
@@ -1271,8 +1527,9 @@ async def _execute_one_field(
         Per-source row counts use join cardinality from the result for one-to-many joins.
         """
         from provisa.transpiler.router import Route
+
         joined_rows = _count_rows_per_source(field_rows or [], ctx) if field_rows else {}
-        for src_id in (sources or set()):
+        for src_id in sources or set():
             source_type = getattr(state, "source_types", {}).get(src_id, "")
             if decision is None or decision.route != Route.DIRECT:
                 prefix = "federated"
@@ -1288,14 +1545,33 @@ async def _execute_one_field(
                 hydration = per_source_ms.get(src_id, 0.0)
                 h_rows = (hydration_rows or {}).get(src_id, 0)
                 h_hit = hydration_cache_hits is not None and src_id in hydration_cache_hits
-                _qs_mod.record(field=root_field, source=src_id, strategy="hydration",
-                               elapsed_ms=hydration, rows=h_rows, cache_hit=h_hit)
-                _qs_mod.record(field=root_field, source=src_id, strategy=strategy,
-                               elapsed_ms=trino_ms, rows=src_rows, physical_sql=physical_sql)
+                _qs_mod.record(
+                    field=root_field,
+                    source=src_id,
+                    strategy="hydration",
+                    elapsed_ms=hydration,
+                    rows=h_rows,
+                    cache_hit=h_hit,
+                )
+                _qs_mod.record(
+                    field=root_field,
+                    source=src_id,
+                    strategy=strategy,
+                    elapsed_ms=trino_ms,
+                    rows=src_rows,
+                    physical_sql=physical_sql,
+                )
             else:
                 src_ms = per_source_ms.get(src_id, elapsed_ms) if per_source_ms else elapsed_ms
-                _qs_mod.record(field=root_field, source=src_id, strategy=strategy,
-                               elapsed_ms=src_ms, rows=src_rows, physical_sql=physical_sql)
+                _qs_mod.record(
+                    field=root_field,
+                    source=src_id,
+                    strategy=strategy,
+                    elapsed_ms=src_ms,
+                    rows=src_rows,
+                    physical_sql=physical_sql,
+                )
+
     # Cache check
     rls_rules_for_key = rls.rules if rls.has_rules() else {}
     ck = cache_key(compiled.sql, compiled.params, role_id, rls_rules_for_key)
@@ -1303,10 +1579,14 @@ async def _execute_one_field(
     if cached is not None:
         cached_data = json.loads(cached.data)
         field_rows = cached_data.get("data", {}).get(root_field, [])
-        _qs_mod.record(field=root_field, source="cache", strategy="cache",
-                       elapsed_ms=(_time.perf_counter() - _t0) * 1000,
-                       rows=len(field_rows) if isinstance(field_rows, list) else 0,
-                       cache_hit=True)
+        _qs_mod.record(
+            field=root_field,
+            source="cache",
+            strategy="cache",
+            elapsed_ms=(_time.perf_counter() - _t0) * 1000,
+            rows=len(field_rows) if isinstance(field_rows, list) else 0,
+            cache_hit=True,
+        )
         return root_field, field_rows, None, ck, cached
 
     # Route decision
@@ -1321,8 +1601,10 @@ async def _execute_one_field(
     )
     log.warning(
         "[QUERY %s] Route: %s | source=%s | reason: %s",
-        root_field, decision.route.value,
-        decision.source_id or "(trino)", decision.reason,
+        root_field,
+        decision.route.value,
+        decision.source_id or "(trino)",
+        decision.reason,
     )
 
     # --- API source path: fetch from external API via router_integration ---
@@ -1330,13 +1612,38 @@ async def _execute_one_field(
         _api_source_type = getattr(state, "source_types", {}).get(decision.source_id, "")
         try:
             if _api_source_type == "grpc_remote":
-                field_rows, response_data, _phase1_ms, _phase2_ms, _api_physical_sql, _api_cache_hit = await _execute_grpc_remote_source(
-                    compiled, ctx, state, decision.source_id, root_field, output_format,
+                (
+                    field_rows,
+                    response_data,
+                    _phase1_ms,
+                    _phase2_ms,
+                    _api_physical_sql,
+                    _api_cache_hit,
+                ) = await _execute_grpc_remote_source(
+                    compiled,
+                    ctx,
+                    state,
+                    decision.source_id,
+                    root_field,
+                    output_format,
                 )
                 _api_cache_hit = False
             else:
-                field_rows, response_data, _phase1_ms, _phase2_ms, _api_physical_sql, _api_cache_hit = await _execute_api_source(
-                    compiled, ctx, state, decision.source_id, root_field, ck, output_format,
+                (
+                    field_rows,
+                    response_data,
+                    _phase1_ms,
+                    _phase2_ms,
+                    _api_physical_sql,
+                    _api_cache_hit,
+                ) = await _execute_api_source(
+                    compiled,
+                    ctx,
+                    state,
+                    decision.source_id,
+                    root_field,
+                    ck,
+                    output_format,
                 )
         except HTTPException:
             raise
@@ -1347,17 +1654,23 @@ async def _execute_one_field(
             log.exception("API source execution failed for %s", root_field)
             raise HTTPException(status_code=500, detail=str(e))
         _api_rows = len(field_rows) if isinstance(field_rows, list) else 0
-        _qs_mod.record(field=root_field, source=decision.source_id,
-                       strategy="hydration",
-                       elapsed_ms=_phase1_ms,
-                       rows=0,
-                       cache_hit=_api_cache_hit)
-        _qs_mod.record(field=root_field, source=decision.source_id,
-                       strategy=f"api:{_api_source_type}" if _api_source_type else "api",
-                       elapsed_ms=_phase2_ms,
-                       rows=_api_rows,
-                       cache_hit=False,
-                       physical_sql=_api_physical_sql)
+        _qs_mod.record(
+            field=root_field,
+            source=decision.source_id,
+            strategy="hydration",
+            elapsed_ms=_phase1_ms,
+            rows=0,
+            cache_hit=_api_cache_hit,
+        )
+        _qs_mod.record(
+            field=root_field,
+            source=decision.source_id,
+            strategy=f"api:{_api_source_type}" if _api_source_type else "api",
+            elapsed_ms=_phase2_ms,
+            rows=_api_rows,
+            cache_hit=False,
+            physical_sql=_api_physical_sql,
+        )
         _qs = _qs_mod.current()
         if _qs is not None:
             _source_types = getattr(state, "source_types", {})
@@ -1387,10 +1700,10 @@ async def _execute_one_field(
             _qs.mermaid = f"{_qs.mermaid}\n\n{_api_mermaid}" if _qs.mermaid else _api_mermaid
         if isinstance(response_data, dict):
             from provisa.cache.policy import resolve_policy
+
             _src_cache = state.source_cache.get(decision.source_id, {})
             _table_ids = {
-                meta.table_id for meta in ctx.tables.values()
-                if meta.field_name == root_field
+                meta.table_id for meta in ctx.tables.values() if meta.field_name == root_field
             }
             _table_id = next(iter(_table_ids), None)
             _tbl_cache_ttl = state.table_cache.get(_table_id) if _table_id else None
@@ -1404,8 +1717,11 @@ async def _execute_one_field(
             )
             if _resolved_ttl > 0 and not no_cache:
                 await store_result(
-                    state.response_cache_store, ck, response_data,
-                    ttl=_resolved_ttl, table_ids=_table_ids,
+                    state.response_cache_store,
+                    ck,
+                    response_data,
+                    ttl=_resolved_ttl,
+                    table_ids=_table_ids,
                 )
         return root_field, field_rows, None, ck, None
 
@@ -1417,23 +1733,34 @@ async def _execute_one_field(
     ):
         try:
             from provisa.executor.trino_write import (
-                execute_ctas_redirect, presign_ctas_result,
-                cleanup_result_table, schedule_s3_cleanup,
+                execute_ctas_redirect,
+                presign_ctas_result,
+                cleanup_result_table,
+                schedule_s3_cleanup,
             )
+
             _ctas_hydration_ms: dict[str, float]
-            _, _ctas_hydration_ms, _, _ctas_cache_hits = await _hydrate_api_tables_before_trino(compiled, ctx, state)
+            _, _ctas_hydration_ms, _, _ctas_cache_hits = await _hydrate_api_tables_before_trino(
+                compiled, ctx, state
+            )
             _ctas_exec_sql = rewrite_semantic_to_trino_physical(compiled.sql, ctx)
-            _ctas_rewrites, _ctas_values_ctes = await _materialize_api_to_trino_cache(_ctas_exec_sql, compiled, state)
+            _ctas_rewrites, _ctas_values_ctes = await _materialize_api_to_trino_cache(
+                _ctas_exec_sql, compiled, state
+            )
             if _ctas_values_ctes:
                 from provisa.cache.hot_tables import build_values_cte_sql
+
                 for _tn, _entry in _ctas_values_ctes.items():
                     _ctas_exec_sql = build_values_cte_sql(_ctas_exec_sql, _tn, _entry)
             if _ctas_rewrites:
                 from provisa.api_source.trino_cache import rewrite_all_from_cache
+
                 _ctas_exec_sql = rewrite_all_from_cache(_ctas_exec_sql, _ctas_rewrites)
             trino_sql = transpile_to_trino(_ctas_exec_sql)
             ctas_result = execute_ctas_redirect(
-                state.trino_conn, trino_sql, effective_redirect_format,
+                state.trino_conn,
+                trino_sql,
+                effective_redirect_format,
             )
             url = await presign_ctas_result(ctas_result["s3_prefix"], redirect_config)
             cleanup_result_table(state.trino_conn, ctas_result["table_name"])
@@ -1450,43 +1777,61 @@ async def _execute_one_field(
                 "expires_in": redirect_config.ttl,
                 "content_type": content_type,
             }
-            _record_per_source(compiled.sources, (_time.perf_counter() - _t0) * 1000,
-                               ctas_result["row_count"])
+            _record_per_source(
+                compiled.sources, (_time.perf_counter() - _t0) * 1000, ctas_result["row_count"]
+            )
             return root_field, None, redirect_info, ck, None
         except Exception:
             log.exception("CTAS redirect failed for %s, falling back", root_field)
 
     # --- Standard execution ---
     try:
-        if decision.route == Route.DIRECT and decision.source_id and state.source_pools.has(decision.source_id):
+        if (
+            decision.route == Route.DIRECT
+            and decision.source_id
+            and state.source_pools.has(decision.source_id)
+        ):
             exec_sql = rewrite_semantic_to_physical(compiled.sql, ctx)
             if probe_limit is not None:
                 exec_sql = _inject_probe_limit(exec_sql, probe_limit)
             target_sql = transpile(exec_sql, decision.dialect or "postgres")
             result = await execute_direct(
-                state.source_pools, decision.source_id, target_sql, compiled.params,
+                state.source_pools,
+                decision.source_id,
+                target_sql,
+                compiled.params,
             )
         else:
             if state.trino_conn is None:
                 raise HTTPException(status_code=503, detail="Trino not connected")
-            _dataloader_srcs, _hydration_ms, _hydration_rows, _hydration_cache_hits = await _hydrate_api_tables_before_trino(compiled, ctx, state)
+            (
+                _dataloader_srcs,
+                _hydration_ms,
+                _hydration_rows,
+                _hydration_cache_hits,
+            ) = await _hydrate_api_tables_before_trino(compiled, ctx, state)
             exec_sql = rewrite_semantic_to_trino_physical(compiled.sql, ctx)
             if probe_limit is not None:
                 exec_sql = _inject_probe_limit(exec_sql, probe_limit)
 
             # Materialize API-backed tables into Trino cache (VARCHAR cols) to avoid
             # INVALID_CAST_ARGUMENT from Trino's PG connector exposing JSONB as json type.
-            _api_cache_rewrites, _api_values_ctes = await _materialize_api_to_trino_cache(exec_sql, compiled, state)
+            _api_cache_rewrites, _api_values_ctes = await _materialize_api_to_trino_cache(
+                exec_sql, compiled, state
+            )
             if _api_values_ctes:
                 from provisa.cache.hot_tables import build_values_cte_sql
+
                 for _tn, _entry in _api_values_ctes.items():
                     exec_sql = build_values_cte_sql(exec_sql, _tn, _entry)
             if _api_cache_rewrites:
                 from provisa.api_source.trino_cache import rewrite_all_from_cache
+
                 exec_sql = rewrite_all_from_cache(exec_sql, _api_cache_rewrites)
 
             # AL5: extract comment hints from SQL; AL3: merge source-level federation_hints
             from provisa.compiler.hints import extract_hints
+
             exec_sql, comment_hints = extract_hints(exec_sql)
             session_hints: dict[str, str] = {}
             for sid in compiled.sources:
@@ -1501,8 +1846,7 @@ async def _execute_one_field(
             _trino_ck = getattr(state, "trino_conn_kwargs", None)
             _root_meta = ctx.tables.get(root_field)
             _root_name = (
-                (_root_meta.original_table_name or _root_meta.table_name)
-                if _root_meta else ""
+                (_root_meta.original_table_name or _root_meta.table_name) if _root_meta else ""
             ) or root_field
             _root_domain = _root_meta.domain_id if _root_meta else ""
             _span_attrs: dict[str, str] = {
@@ -1517,7 +1861,9 @@ async def _execute_one_field(
             result = await _loop.run_in_executor(
                 None,
                 lambda: execute_trino(
-                    state.trino_conn, trino_sql, compiled.params,
+                    state.trino_conn,
+                    trino_sql,
+                    compiled.params,
                     session_hints=session_hints or None,
                     conn_kwargs=_trino_ck,
                     span_attrs=_span_attrs,
@@ -1536,9 +1882,7 @@ async def _execute_one_field(
             _hot_mgr = getattr(state, "hot_manager", None)
             if _hot_mgr is not None:
                 _tbl = compiled.canonical_field or root_field
-                asyncio.create_task(
-                    _hot_mgr.maybe_promote(_tbl, result.rows, result.column_names)
-                )
+                asyncio.create_task(_hot_mgr.maybe_promote(_tbl, result.rows, result.column_names))
     except HTTPException:
         raise
     except (MemoryError, ConnectionError) as e:
@@ -1552,32 +1896,48 @@ async def _execute_one_field(
     if probe_limit is not None and len(result.rows) >= probe_limit:
         log.info(
             "[QUERY %s] Probe returned %d rows (threshold %d) — redirecting",
-            root_field, len(result.rows), redirect_config.threshold,
+            root_field,
+            len(result.rows),
+            redirect_config.threshold,
         )
         try:
             # Re-execute without probe limit
             if decision.route == Route.DIRECT and decision.source_id:
-                target_sql = transpile(rewrite_semantic_to_physical(compiled.sql, ctx), decision.dialect or "postgres")
+                target_sql = transpile(
+                    rewrite_semantic_to_physical(compiled.sql, ctx), decision.dialect or "postgres"
+                )
                 full_result = await execute_direct(
-                    state.source_pools, decision.source_id, target_sql, compiled.params,
+                    state.source_pools,
+                    decision.source_id,
+                    target_sql,
+                    compiled.params,
                 )
             else:
-                full_trino_sql = transpile_to_trino(rewrite_semantic_to_trino_physical(compiled.sql, ctx))
+                full_trino_sql = transpile_to_trino(
+                    rewrite_semantic_to_trino_physical(compiled.sql, ctx)
+                )
                 full_result = await asyncio.get_running_loop().run_in_executor(
                     None,
                     lambda: execute_trino(
-                        state.trino_conn, full_trino_sql, compiled.params,
+                        state.trino_conn,
+                        full_trino_sql,
+                        compiled.params,
                         session_hints=session_hints or None,
                         conn_kwargs=getattr(state, "trino_conn_kwargs", None),
                     ),
                 )
             redirect_info = await upload_and_presign(
-                full_result, redirect_config,
+                full_result,
+                redirect_config,
                 output_format=effective_redirect_format,
                 columns=compiled.columns,
             )
-            _record_per_source(compiled.sources, (_time.perf_counter() - _t0) * 1000,
-                               redirect_info.get("row_count", 0), decision)
+            _record_per_source(
+                compiled.sources,
+                (_time.perf_counter() - _t0) * 1000,
+                redirect_info.get("row_count", 0),
+                decision,
+            )
             return root_field, None, redirect_info, ck, None
         except Exception:
             log.exception("Redirect upload failed for %s, returning inline", root_field)
@@ -1586,12 +1946,17 @@ async def _execute_one_field(
     if force_redirect:
         try:
             redirect_info = await upload_and_presign(
-                result, redirect_config,
+                result,
+                redirect_config,
                 output_format=effective_redirect_format,
                 columns=compiled.columns,
             )
-            _record_per_source(compiled.sources, (_time.perf_counter() - _t0) * 1000,
-                               redirect_info.get("row_count", 0), decision)
+            _record_per_source(
+                compiled.sources,
+                (_time.perf_counter() - _t0) * 1000,
+                redirect_info.get("row_count", 0),
+                decision,
+            )
             return root_field, None, redirect_info, ck, None
         except Exception:
             log.exception("Redirect upload failed for %s, returning inline", root_field)
@@ -1602,17 +1967,28 @@ async def _execute_one_field(
     if compiled.nodes_sql is not None:
         try:
             if decision.route == Route.DIRECT and decision.source_id:
-                nodes_target_sql = transpile(rewrite_semantic_to_physical(compiled.nodes_sql, ctx), decision.dialect or "postgres")
+                nodes_target_sql = transpile(
+                    rewrite_semantic_to_physical(compiled.nodes_sql, ctx),
+                    decision.dialect or "postgres",
+                )
                 nodes_result = await execute_direct(
-                    state.source_pools, decision.source_id, nodes_target_sql, compiled.nodes_params,
+                    state.source_pools,
+                    decision.source_id,
+                    nodes_target_sql,
+                    compiled.nodes_params,
                 )
             else:
-                nodes_trino_sql = transpile_to_trino(rewrite_semantic_to_trino_physical(compiled.nodes_sql, ctx))
+                nodes_trino_sql = transpile_to_trino(
+                    rewrite_semantic_to_trino_physical(compiled.nodes_sql, ctx)
+                )
                 nodes_result = await asyncio.get_running_loop().run_in_executor(
-                    None, lambda: execute_trino(
-                        state.trino_conn, nodes_trino_sql, compiled.nodes_params,
+                    None,
+                    lambda: execute_trino(
+                        state.trino_conn,
+                        nodes_trino_sql,
+                        compiled.nodes_params,
                         conn_kwargs=getattr(state, "trino_conn_kwargs", None),
-                    )
+                    ),
                 )
         except (MemoryError, ConnectionError) as e:
             log.error("Nodes query resource error for %s: %s", root_field, e)
@@ -1621,13 +1997,21 @@ async def _execute_one_field(
             log.exception("Nodes query execution failed for %s", root_field)
             raise HTTPException(status_code=500, detail=str(e))
         response_data = serialize_aggregate(
-            result.rows, compiled.columns,
-            nodes_result.rows, compiled.nodes_columns,
+            result.rows,
+            compiled.columns,
+            nodes_result.rows,
+            compiled.nodes_columns,
             root_field,
             agg_alias=compiled.agg_alias,
         )
     else:
-        response_data = _format_response(result.rows, compiled.columns, root_field, output_format, result_limit=compiled.result_limit)
+        response_data = _format_response(
+            result.rows,
+            compiled.columns,
+            root_field,
+            output_format,
+            result_limit=compiled.result_limit,
+        )
 
     # Extract rows from serialized response for merging
     if isinstance(response_data, dict):
@@ -1638,12 +2022,10 @@ async def _execute_one_field(
 
     # Cache store with hierarchical TTL resolution
     if isinstance(response_data, dict):
-        table_ids = {
-            meta.table_id for meta in ctx.tables.values()
-            if meta.field_name == root_field
-        }
+        table_ids = {meta.table_id for meta in ctx.tables.values() if meta.field_name == root_field}
         # Resolve per-source/per-table cache policy
         from provisa.cache.policy import resolve_policy
+
         source_id = next(iter(compiled.sources), None)
         src_cache = state.source_cache.get(source_id, {}) if source_id else {}
         table_id = next(iter(table_ids), None)
@@ -1658,8 +2040,11 @@ async def _execute_one_field(
         )
         if resolved_ttl > 0 and not no_cache:
             await store_result(
-                state.response_cache_store, ck, response_data,
-                ttl=resolved_ttl, table_ids=table_ids,
+                state.response_cache_store,
+                ck,
+                response_data,
+                ttl=resolved_ttl,
+                table_ids=table_ids,
             )
 
     _n_rows = len(field_rows) if isinstance(field_rows, list) else 0
@@ -1702,8 +2087,25 @@ async def _execute_one_field(
     return root_field, field_rows, None, ck, None
 
 
-
-async def _handle_query(document, ctx, rls, state, variables, role, output_format="json", role_id="admin", *, force_redirect=False, redirect_threshold=None, redirect_format=None, steward_hint: str | None = None, query_session_props: dict | None = None, cache_ttl: int | None = None, no_cache: bool = False, query_text: str | None = None):
+async def _handle_query(
+    document,
+    ctx,
+    rls,
+    state,
+    variables,
+    role,
+    output_format="json",
+    role_id="admin",
+    *,
+    force_redirect=False,
+    redirect_threshold=None,
+    redirect_format=None,
+    steward_hint: str | None = None,
+    query_session_props: dict | None = None,
+    cache_ttl: int | None = None,
+    no_cache: bool = False,
+    query_text: str | None = None,
+):
     """Handle a GraphQL query operation with content negotiation.
 
     Pipeline per root field: compile → RLS → masking → MV rewrite → sampling
@@ -1715,7 +2117,9 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
     if action_sels and not regular_names:
         data = {}
         for sel in action_sels:
-            data[sel.name.value] = await _execute_action_field(sel.name.value, sel, state, variables, ctx=ctx)
+            data[sel.name.value] = await _execute_action_field(
+                sel.name.value, sel, state, variables, ctx=ctx
+            )
         return JSONResponse(content={"data": data}, headers=build_cache_headers(None))
 
     if action_sels and regular_names:
@@ -1735,6 +2139,7 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
 
     # Determine redirect config
     from provisa.executor.redirect import RedirectConfig
+
     redirect_config = RedirectConfig.from_env()
     if redirect_threshold is not None:
         redirect_config = RedirectConfig(
@@ -1759,8 +2164,14 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
         try:
             root_field, field_rows, redirect_info, ck, cached_entry = await asyncio.wait_for(
                 _execute_one_field(
-                    prepared[0], ctx, rls, state, role, role_id,
-                    fresh_mvs, output_format,
+                    prepared[0],
+                    ctx,
+                    rls,
+                    state,
+                    role,
+                    role_id,
+                    fresh_mvs,
+                    output_format,
                     force_redirect=force_redirect,
                     redirect_config=redirect_config,
                     effective_redirect_format=effective_redirect_format,
@@ -1774,7 +2185,9 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
                 timeout=_request_timeout(),
             )
         except asyncio.TimeoutError:
-            raise HTTPException(status_code=504, detail=f"Query timed out after {_request_timeout():.0f}s")
+            raise HTTPException(
+                status_code=504, detail=f"Query timed out after {_request_timeout():.0f}s"
+            )
         if cached_entry is not None:
             headers = build_cache_headers(cached_entry)
             return JSONResponse(
@@ -1798,26 +2211,36 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
 
     try:
         results = await asyncio.wait_for(
-            asyncio.gather(*[
-                _execute_one_field(
-                    compiled, ctx, rls, state, role, role_id,
-                    fresh_mvs, "json",  # multi-field always uses JSON
-                    force_redirect=force_redirect,
-                    redirect_config=redirect_config,
-                    effective_redirect_format=effective_redirect_format,
-                    probe_limit=probe_limit,
-                    steward_hint=steward_hint,
-                    query_session_props=query_session_props,
-                    response_cache_ttl=cache_ttl,
-                    no_cache=no_cache,
-                    query_text=query_text,
-                )
-                for compiled in prepared
-            ]),
+            asyncio.gather(
+                *[
+                    _execute_one_field(
+                        compiled,
+                        ctx,
+                        rls,
+                        state,
+                        role,
+                        role_id,
+                        fresh_mvs,
+                        "json",  # multi-field always uses JSON
+                        force_redirect=force_redirect,
+                        redirect_config=redirect_config,
+                        effective_redirect_format=effective_redirect_format,
+                        probe_limit=probe_limit,
+                        steward_hint=steward_hint,
+                        query_session_props=query_session_props,
+                        response_cache_ttl=cache_ttl,
+                        no_cache=no_cache,
+                        query_text=query_text,
+                    )
+                    for compiled in prepared
+                ]
+            ),
             timeout=_request_timeout(),
         )
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail=f"Query timed out after {_request_timeout():.0f}s")
+        raise HTTPException(
+            status_code=504, detail=f"Query timed out after {_request_timeout():.0f}s"
+        )
 
     for root_field, field_rows, redirect_info, ck, cached_entry in results:
         if redirect_info is not None:
@@ -1836,15 +2259,23 @@ async def _handle_query(document, ctx, rls, state, variables, role, output_forma
 
 def _check_writable_by(table_meta, columns: list[str], role_id: str):
     """Raise 403 if any column restricts write access and the role is not allowed."""
-    table_cols = {c["column_name"]: c for c in table_meta.columns} if hasattr(table_meta, "columns") else {}
+    table_cols = (
+        {c["column_name"]: c for c in table_meta.columns} if hasattr(table_meta, "columns") else {}
+    )
     if not table_cols:
         # Fall back to dict-style access (from state.tables)
-        table_cols = {c.get("column_name", c.get("name", "")): c for c in getattr(table_meta, "columns", [])}
+        table_cols = {
+            c.get("column_name", c.get("name", "")): c for c in getattr(table_meta, "columns", [])
+        }
     for col_name in columns:
         col_meta = table_cols.get(col_name)
         if not col_meta:
             continue
-        writable_by = col_meta.get("writable_by", []) if isinstance(col_meta, dict) else getattr(col_meta, "writable_by", [])
+        writable_by = (
+            col_meta.get("writable_by", [])
+            if isinstance(col_meta, dict)
+            else getattr(col_meta, "writable_by", [])
+        )
         if role_id not in writable_by:
             raise HTTPException(
                 status_code=403,
@@ -1912,6 +2343,7 @@ async def _resolve_action_relationships(
                 r[rel_field] = rel_index.get(r.get(src_col))
         else:
             from collections import defaultdict
+
             rel_index_multi: dict = defaultdict(list)
             for rr in rel_rows:
                 child = {k: rr[k] for k in nested_cols if k in rr}
@@ -1926,6 +2358,7 @@ def _apply_action_filters(rows: list[dict], args: dict) -> list[dict]:
     """Apply where/order_by/limit/offset post-processing to action result rows."""
     where = args.get("where")
     if where and isinstance(where, dict):
+
         def _matches(row: dict) -> bool:
             for field, condition in where.items():
                 val = row.get(field)
@@ -1949,17 +2382,21 @@ def _apply_action_filters(rows: list[dict], args: dict) -> list[dict]:
                             return False
                         elif op == "_like" and not (isinstance(val, str) and _like_match(val, cmp)):
                             return False
-                        elif op == "_ilike" and not (isinstance(val, str) and _like_match(val.lower(), (cmp or "").lower())):
+                        elif op == "_ilike" and not (
+                            isinstance(val, str) and _like_match(val.lower(), (cmp or "").lower())
+                        ):
                             return False
                 else:
                     if val != condition:
                         return False
             return True
+
         rows = [r for r in rows if _matches(r)]
 
     order_by = args.get("order_by")
     if order_by and isinstance(order_by, list):
         import re
+
         sort_keys = []
         for spec in order_by:
             if isinstance(spec, str):
@@ -1974,24 +2411,28 @@ def _apply_action_filters(rows: list[dict], args: dict) -> list[dict]:
 
     offset = args.get("offset")
     if offset:
-        rows = rows[int(offset):]
+        rows = rows[int(offset) :]
 
     limit = args.get("limit")
     if limit is not None:
-        rows = rows[:int(limit)]
+        rows = rows[: int(limit)]
 
     return rows
 
 
 def _like_match(value: str, pattern: str) -> bool:
     import re
+
     regex = re.escape(pattern).replace(r"\%", ".*").replace(r"\_", ".")
     return bool(re.fullmatch(regex, value, re.DOTALL))
 
 
-async def _execute_action_field(field_name: str, field_node, state, variables: dict | None, *, ctx=None) -> list:
+async def _execute_action_field(
+    field_name: str, field_node, state, variables: dict | None, *, ctx=None
+) -> list:
     """Execute a tracked function or webhook field, return rows list."""
     from provisa.compiler.sql_gen import _extract_value
+
     raw_args: dict = {}
     if hasattr(field_node, "arguments") and field_node.arguments:
         for arg in field_node.arguments:
@@ -2016,9 +2457,12 @@ async def _execute_action_field(field_name: str, field_node, state, variables: d
             params = []
         result = await state.source_pools.execute(src_id, sql, params)
         from provisa.executor.serialize import _convert_value
+
         cols = result.column_names
         rows = [{c: _convert_value(v) for c, v in zip(cols, r)} for r in result.rows]
-        rows = await _maybe_resolve_relationships(rows, field_node, fn.get("returns", ""), ctx, state)
+        rows = await _maybe_resolve_relationships(
+            rows, field_node, fn.get("returns", ""), ctx, state
+        )
         return _apply_action_filters(rows, filter_args)
 
     wh = state.tracked_webhooks.get(field_name)
@@ -2030,7 +2474,9 @@ async def _execute_action_field(field_name: str, field_node, state, variables: d
             resp = await client.request(method, url, json=args)
         body = resp.json()
         rows = body if isinstance(body, list) else [body]
-        rows = await _maybe_resolve_relationships(rows, field_node, wh.get("returns", ""), ctx, state)
+        rows = await _maybe_resolve_relationships(
+            rows, field_node, wh.get("returns", ""), ctx, state
+        )
         return _apply_action_filters(rows, filter_args)
 
     raise HTTPException(status_code=400, detail=f"Unknown action field: {field_name!r}")
@@ -2050,7 +2496,9 @@ async def _maybe_resolve_relationships(rows, field_node, returns_str: str, ctx, 
             return_type_name = meta.type_name
             break
     if return_type_name:
-        rows = await _resolve_action_relationships(rows, field_node.selection_set, return_type_name, ctx, state)
+        rows = await _resolve_action_relationships(
+            rows, field_node.selection_set, return_type_name, ctx, state
+        )
     return rows
 
 
@@ -2063,6 +2511,7 @@ def _split_action_fields(document, state) -> tuple[list, list]:
             continue
         for sel in defn.selection_set.selections:
             from graphql import FieldNode as _FieldNode
+
             if not isinstance(sel, _FieldNode):
                 continue
             fname = sel.name.value
@@ -2081,7 +2530,9 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id, reques
     if action_sels and not regular_names:
         data = {}
         for sel in action_sels:
-            data[sel.name.value] = await _execute_action_field(sel.name.value, sel, state, variables)
+            data[sel.name.value] = await _execute_action_field(
+                sel.name.value, sel, state, variables
+            )
         return {"data": data}
 
     # Mixed action + regular fields — not supported
@@ -2091,7 +2542,11 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id, reques
     headers = dict(request.headers) if request else None
     try:
         mutations = compile_mutation(
-            document, ctx, state.source_types, variables, headers,
+            document,
+            ctx,
+            state.source_types,
+            variables,
+            headers,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -2116,7 +2571,9 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id, reques
         # Inject RLS into UPDATE/DELETE
         if table_meta and rls.has_rules():
             mutation = inject_rls_into_mutation(
-                mutation, table_meta.table_id, rls.rules,
+                mutation,
+                table_meta.table_id,
+                rls.rules,
             )
 
         # Mutations always route direct
@@ -2132,11 +2589,16 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id, reques
 
         try:
             result = await execute_direct(
-                state.source_pools, source_id, target_sql, mutation.params,
+                state.source_pools,
+                source_id,
+                target_sql,
+                mutation.params,
             )
-            results.append({
-                "affected_rows": len(result.rows),
-            })
+            results.append(
+                {
+                    "affected_rows": len(result.rows),
+                }
+            )
             # Invalidate cache for mutated table (REQ-080)
             if table_meta:
                 await state.response_cache_store.invalidate_by_table(table_meta.table_id)
@@ -2144,15 +2606,18 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id, reques
                 state.mv_registry.mark_stale(table_meta.table_name)
                 # Emit dataset change event (REQ-172)
                 from provisa.kafka.change_events import emit_change_event
+
                 emit_change_event(mutation.table_name, source_id)
                 # Trigger Kafka sinks for this table (REQ-176, fire-and-forget)
                 from provisa.kafka.sink_executor import trigger_sinks_for_table
+
                 asyncio.create_task(
                     trigger_sinks_for_table(mutation.table_name, state),
                 )
                 # Invalidate and reload hot table if applicable (Phase AD6)
                 if state.hot_manager is not None:
                     from provisa.cache.hot_tables import HotTableManager
+
                     hot_mgr = state.hot_manager
                     assert isinstance(hot_mgr, HotTableManager)
                     if hot_mgr.is_hot(table_meta.table_name):

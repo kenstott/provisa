@@ -65,6 +65,7 @@ def _trino_type_to_arrow(trino_type: str) -> pa.DataType:
 @dataclass(frozen=True)
 class CatalogTable:
     """A table in the virtual catalog."""
+
     domain_id: str
     table_name: str
     description: str
@@ -74,6 +75,7 @@ class CatalogTable:
 @dataclass(frozen=True)
 class CatalogColumn:
     """A column in a virtual catalog table."""
+
     name: str
     data_type: str  # Trino type string
     is_nullable: bool
@@ -117,17 +119,15 @@ async def _build_catalog_tables_async(state) -> list[CatalogTable]:
 
     # Get introspected column types from the broadest context
     # We look at whichever role context has the most tables
-    best_ctx = None
     best_count = -1
     for role_id, ctx in state.contexts.items():
         count = len(getattr(ctx, "table_map", {}))
         if count > best_count:
             best_count = count
-            best_ctx = ctx
 
     # Build the column metadata lookup from introspection
-    from provisa.compiler.introspect import ColumnMetadata
-    introspected: dict[int, list[ColumnMetadata]] = {}
+    from provisa.compiler.introspect import ColumnMetadata  # noqa: F401  # retained for type annotation reference
+
     if state.trino_conn:
         # Re-use the compilation context's column types if available
         # They are stored during schema build on AppState indirectly
@@ -149,19 +149,23 @@ async def _build_catalog_tables_async(state) -> list[CatalogTable]:
             col_name = cr["column_name"]
             col_description = cr["description"] or ""
             # Default type — will be overridden if introspection data exists
-            columns.append(CatalogColumn(
-                name=col_name,
-                data_type="varchar",
-                is_nullable=True,
-                description=col_description,
-            ))
+            columns.append(
+                CatalogColumn(
+                    name=col_name,
+                    data_type="varchar",
+                    is_nullable=True,
+                    description=col_description,
+                )
+            )
 
-        tables.append(CatalogTable(
-            domain_id=domain_id,
-            table_name=table_name,
-            description=description,
-            columns=columns,
-        ))
+        tables.append(
+            CatalogTable(
+                domain_id=domain_id,
+                table_name=table_name,
+                description=description,
+                columns=columns,
+            )
+        )
     return tables
 
 
@@ -197,18 +201,22 @@ def build_catalog_tables_from_context(state) -> list[CatalogTable]:
             data_type = getattr(cm, "data_type", "varchar")
             is_nullable = getattr(cm, "is_nullable", True)
             col_description = getattr(cm, "description", "") or ""
-            columns.append(CatalogColumn(
-                name=col_name,
-                data_type=data_type,
-                is_nullable=is_nullable,
-                description=col_description,
-            ))
-        tables.append(CatalogTable(
-            domain_id=domain_id,
-            table_name=gql_name,
-            description=description,
-            columns=columns,
-        ))
+            columns.append(
+                CatalogColumn(
+                    name=col_name,
+                    data_type=data_type,
+                    is_nullable=is_nullable,
+                    description=col_description,
+                )
+            )
+        tables.append(
+            CatalogTable(
+                domain_id=domain_id,
+                table_name=gql_name,
+                description=description,
+                columns=columns,
+            )
+        )
     return tables
 
 
@@ -223,12 +231,14 @@ def catalog_table_to_arrow_schema(table: CatalogTable) -> pa.Schema:
         metadata = {}
         if col.description:
             metadata[b"description"] = col.description.encode("utf-8")
-        fields.append(pa.field(
-            col.name,
-            arrow_type,
-            nullable=col.is_nullable,
-            metadata=metadata,
-        ))
+        fields.append(
+            pa.field(
+                col.name,
+                arrow_type,
+                nullable=col.is_nullable,
+                metadata=metadata,
+            )
+        )
     schema_metadata = {}
     if table.description:
         schema_metadata[b"description"] = table.description.encode("utf-8")
@@ -242,7 +252,8 @@ def catalog_table_to_flight_info(
 ) -> flight.FlightInfo:
     """Build a FlightInfo descriptor for a catalog table."""
     descriptor = flight.FlightDescriptor.for_path(
-        table.domain_id, table.table_name,
+        table.domain_id,
+        table.table_name,
     )
     schema = catalog_table_to_arrow_schema(table)
     endpoints = []

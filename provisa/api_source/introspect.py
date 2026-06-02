@@ -18,7 +18,6 @@ from provisa.api_source.models import (
     ApiColumn,
     ApiColumnType,
     ApiEndpointCandidate,
-    ApiSourceType,
 )
 
 
@@ -112,13 +111,15 @@ async def introspect_openapi(spec_url: str) -> list[ApiEndpointCandidate]:
         if not columns:
             continue
 
-        candidates.append(ApiEndpointCandidate(
-            source_id="",  # set by caller
-            path=path,
-            method="GET",
-            table_name=_path_to_table_name(path),
-            columns=columns,
-        ))
+        candidates.append(
+            ApiEndpointCandidate(
+                source_id="",  # set by caller
+                path=path,
+                method="GET",
+                table_name=_path_to_table_name(path),
+                columns=columns,
+            )
+        )
 
     return candidates
 
@@ -202,13 +203,15 @@ async def introspect_graphql(url: str) -> list[ApiEndpointCandidate]:
         if not columns:
             continue
 
-        candidates.append(ApiEndpointCandidate(
-            source_id="",
-            path=field_name,
-            method="QUERY",
-            table_name=field_name.replace("-", "_"),
-            columns=columns,
-        ))
+        candidates.append(
+            ApiEndpointCandidate(
+                source_id="",
+                path=field_name,
+                method="QUERY",
+                table_name=field_name.replace("-", "_"),
+                columns=columns,
+            )
+        )
 
     return candidates
 
@@ -240,6 +243,7 @@ async def introspect_grpc(host_port: str) -> list[ApiEndpointCandidate]:
         for resp in responses:
             for proto_bytes in resp.file_descriptor_response.file_descriptor_proto:
                 from google.protobuf import descriptor_pb2
+
                 fd = descriptor_pb2.FileDescriptorProto()
                 fd.ParseFromString(proto_bytes)
 
@@ -249,26 +253,28 @@ async def introspect_grpc(host_port: str) -> list[ApiEndpointCandidate]:
                         # Find output message
                         output_name = method.output_type.split(".")[-1]
                         columns = _grpc_message_to_columns(fd, output_name)
-                        candidates.append(ApiEndpointCandidate(
-                            source_id="",
-                            path=f"/{svc.name}/{method.name}",
-                            method="RPC",
-                            table_name=table_name,
-                            columns=columns,
-                        ))
+                        candidates.append(
+                            ApiEndpointCandidate(
+                                source_id="",
+                                path=f"/{svc.name}/{method.name}",
+                                method="RPC",
+                                table_name=table_name,
+                                columns=columns,
+                            )
+                        )
 
     channel.close()
     return candidates
 
 
 _PROTO_TYPE_MAP: dict[int, ApiColumnType] = {
-    1: ApiColumnType.number,    # double
-    2: ApiColumnType.number,    # float
-    3: ApiColumnType.integer,   # int64
-    4: ApiColumnType.integer,   # uint64
-    5: ApiColumnType.integer,   # int32
-    8: ApiColumnType.boolean,   # bool
-    9: ApiColumnType.string,    # string
+    1: ApiColumnType.number,  # double
+    2: ApiColumnType.number,  # float
+    3: ApiColumnType.integer,  # int64
+    4: ApiColumnType.integer,  # uint64
+    5: ApiColumnType.integer,  # int32
+    8: ApiColumnType.boolean,  # bool
+    9: ApiColumnType.string,  # string
     13: ApiColumnType.integer,  # uint32
     17: ApiColumnType.integer,  # sint32
     18: ApiColumnType.integer,  # sint64
@@ -285,8 +291,12 @@ def _grpc_message_to_columns(fd, message_name: str) -> list[ApiColumn]:
                 if field.type == 11:  # MESSAGE type
                     col_type = ApiColumnType.jsonb
                 filterable = col_type != ApiColumnType.jsonb
-                columns.append(ApiColumn(
-                    name=field.name, type=col_type, filterable=filterable,
-                ))
+                columns.append(
+                    ApiColumn(
+                        name=field.name,
+                        type=col_type,
+                        filterable=filterable,
+                    )
+                )
             return columns
     return []

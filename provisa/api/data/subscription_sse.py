@@ -27,9 +27,7 @@ from graphql.language import print_ast
 log = logging.getLogger(__name__)
 
 
-def _collect_related_tables(
-    selection_set: SelectionSetNode, type_name: str, ctx
-) -> set[str]:
+def _collect_related_tables(selection_set: SelectionSetNode, type_name: str, ctx) -> set[str]:
     """Recursively collect physical table names referenced via joins in the selection."""
     tables: set[str] = set()
     for sel in selection_set.selections:
@@ -94,15 +92,19 @@ async def handle_subscription_sse(
 
     # Collect all tables referenced in the selection (root + related via joins)
     ctx = state.contexts[role_id]
-    related_tables = _collect_related_tables(
-        sub_selection.selections[0].selection_set,  # type: ignore[union-attr]
-        table_meta.type_name,
-        ctx,
-    ) if (
-        sub_selection.selections
-        and hasattr(sub_selection.selections[0], "selection_set")
-        and sub_selection.selections[0].selection_set
-    ) else set()
+    related_tables = (
+        _collect_related_tables(
+            sub_selection.selections[0].selection_set,  # type: ignore[union-attr]
+            table_meta.type_name,
+            ctx,
+        )
+        if (
+            sub_selection.selections
+            and hasattr(sub_selection.selections[0], "selection_set")
+            and sub_selection.selections[0].selection_set
+        )
+        else set()
+    )
     all_watch_tables = [table_name] + sorted(related_tables - {table_name})
 
     # Convert subscription selection set → equivalent query string
@@ -113,8 +115,12 @@ async def handle_subscription_sse(
 
     # Resolve directives: extract from AST if not passed in (e.g. direct SSE calls)
     if directives is None:
-        from provisa.compiler.directives import extract_directives, extract_directives_from_sql_comments, merge_directives
-        from graphql.language import print_ast as _print_ast
+        from provisa.compiler.directives import (
+            extract_directives,
+            extract_directives_from_sql_comments,
+            merge_directives,
+        )
+
         _sql_directives = extract_directives_from_sql_comments(print_ast(document))
         directives = merge_directives(_sql_directives, extract_directives(document))
 
@@ -164,6 +170,7 @@ async def handle_subscription_sse(
     async def _run_query() -> dict:
         from provisa.compiler.parser import parse_query as _parse
         from provisa.api.data.endpoint import _handle_query
+
         q_doc = _parse(schema, query_text, variables)
         result = await _handle_query(q_doc, ctx, rls, state, variables, role, "json", role_id)
         # JSONResponse stores serialized bytes in .body
@@ -184,9 +191,8 @@ async def handle_subscription_sse(
                 return
 
             # Effective watermark: @watermark field directive > table registration
-            effective_watermark = (
-                _watermark_override
-                or (state.table_watermarks or {}).get(table_name)
+            effective_watermark = _watermark_override or (state.table_watermarks or {}).get(
+                table_name
             )
 
             # Watch for table changes — pg_notify triggers preferred; poll as fallback
@@ -202,13 +208,11 @@ async def handle_subscription_sse(
             )
 
             provider_config: dict = {}
-            effective_source_type = source_type
             if use_polling_fallback:
-                effective_source_type = "polling_fallback"
                 provider_config["pool"] = state.pg_pool
                 provider_config["watermark_column"] = effective_watermark
             elif use_trino_polling:
-                effective_source_type = "trino_polling"
+                pass
             elif source_type == "postgresql" and state.pg_pool:
                 provider_config["pool"] = state.pg_pool
             elif source_type == "mongodb":
@@ -218,6 +222,7 @@ async def handle_subscription_sse(
             try:
                 if use_polling_fallback:
                     from provisa.subscriptions.polling_provider import PollingNotificationProvider
+
                     provider = PollingNotificationProvider(
                         pool=provider_config["pool"],
                         watermark_column=provider_config["watermark_column"],
@@ -225,6 +230,7 @@ async def handle_subscription_sse(
                 elif use_trino_polling:
                     import os
                     from provisa.subscriptions.trino_polling_provider import TrinoPollingProvider
+
                     provider = TrinoPollingProvider(
                         host=os.environ.get("TRINO_HOST", "localhost"),
                         port=int(os.environ.get("TRINO_PORT", "8080")),
@@ -235,6 +241,7 @@ async def handle_subscription_sse(
                     )
                 else:
                     from provisa.subscriptions.registry import get_provider
+
                     provider = get_provider(source_type, provider_config)
             except Exception as exc:
                 log.warning("Subscription provider unavailable: %s", exc)
@@ -288,6 +295,7 @@ async def handle_subscription_sse(
 def _error_stream(payload: dict) -> StreamingResponse:
     async def _gen() -> AsyncGenerator[str, None]:
         yield f"data: {json.dumps(payload)}\n\n"
+
     return StreamingResponse(
         _gen(),
         media_type="text/event-stream",
@@ -338,6 +346,7 @@ async def _launch_kafka_sink(
     async def _run_query() -> dict:
         from provisa.compiler.parser import parse_query as _parse
         from provisa.api.data.endpoint import _handle_query
+
         q_doc = _parse(schema, query_text, variables)
         result = await _handle_query(q_doc, ctx, rls, state, variables, role, "json", role_id)
         if hasattr(result, "body"):
@@ -346,6 +355,7 @@ async def _launch_kafka_sink(
 
     async def _sink_loop() -> None:
         from provisa.kafka.sink import KafkaProducer
+
         producer = KafkaProducer(bootstrap_servers=broker)
         log.info("Kafka sink started: %s → %s", table_name, topic)
 
@@ -363,12 +373,14 @@ async def _launch_kafka_sink(
         try:
             if use_polling_fallback:
                 from provisa.subscriptions.polling_provider import PollingNotificationProvider
+
                 provider = PollingNotificationProvider(
                     pool=state.pg_pool,
                     watermark_column=state.table_watermarks[table_name],
                 )
             elif use_trino_polling:
                 from provisa.subscriptions.trino_polling_provider import TrinoPollingProvider
+
                 provider = TrinoPollingProvider(
                     host=os.environ.get("TRINO_HOST", "localhost"),
                     port=int(os.environ.get("TRINO_PORT", "8080")),
@@ -379,6 +391,7 @@ async def _launch_kafka_sink(
                 )
             else:
                 from provisa.subscriptions.registry import get_provider
+
                 provider_config: dict = {}
                 if source_type == "postgresql" and state.pg_pool:
                     provider_config["pool"] = state.pg_pool
@@ -399,8 +412,7 @@ async def _launch_kafka_sink(
                 and hasattr(provider, "watch_many")
             )
             watcher = (
-                provider.watch_many(all_watch_tables) if use_many
-                else provider.watch(table_name)
+                provider.watch_many(all_watch_tables) if use_many else provider.watch(table_name)
             )
             async for _event in watcher:
                 try:

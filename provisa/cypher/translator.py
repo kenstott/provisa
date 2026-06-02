@@ -29,12 +29,34 @@ import re
 from enum import Enum
 from typing import Any
 
+import sqlglot.expressions as exp
+import sqlglot
+
+from provisa.cypher.parser import (
+    CypherAST,
+    MatchClause,
+    MatchStep,
+    PathPattern,
+    PathFunction,
+    ReturnItem,
+    UnwindClause,
+    WhereClause,
+    WithClause,
+    OrderItem,
+)
+from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
+from provisa.cypher.comprehension import rewrite_list_comprehensions
+from provisa.cypher.path_functions import PathFunctionsMixin
+from provisa.cypher.path_comprehension import PathComprehensionMixin
+from provisa.cypher.select_builder import SelectBuilderMixin
+from provisa.cypher.correlated_call import CorrelatedCallMixin
+from provisa.cypher.subquery_exprs import SubqueryExprsMixin
+from provisa.cypher.map_projection import MapProjectionMixin
+from provisa.cypher.group_by import GroupByMixin
+
 
 def _safe_alias(expr: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", expr)
-
-import sqlglot.expressions as exp
-import sqlglot
 
 
 def _const_literal(v: int | str) -> exp.Expression:
@@ -92,7 +114,9 @@ def _fold_where_into_optional_joins(
         alias = _join_alias(join["table"])
         if alias in referenced and join["join_type"] == "LEFT":
             existing_on = join["on"]
-            if existing_on is None or (hasattr(existing_on, "sql") and existing_on.sql() in ("TRUE", "true", "1 = 1")):
+            if existing_on is None or (
+                hasattr(existing_on, "sql") and existing_on.sql() in ("TRUE", "true", "1 = 1")
+            ):
                 new_on = where_expr
             else:
                 new_on = exp.And(this=existing_on, expression=where_expr)
@@ -102,28 +126,6 @@ def _fold_where_into_optional_joins(
             modified.append(join)
 
     return modified, (None if folded else where_expr)
-
-from provisa.cypher.parser import (
-    CypherAST,
-    MatchClause,
-    MatchStep,
-    PathPattern,
-    PathFunction,
-    ReturnItem,
-    UnwindClause,
-    WhereClause,
-    WithClause,
-    OrderItem,
-)
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
-from provisa.cypher.comprehension import rewrite_list_comprehensions
-from provisa.cypher.path_functions import PathFunctionsMixin
-from provisa.cypher.path_comprehension import PathComprehensionMixin
-from provisa.cypher.select_builder import SelectBuilderMixin
-from provisa.cypher.correlated_call import CorrelatedCallMixin
-from provisa.cypher.subquery_exprs import SubqueryExprsMixin
-from provisa.cypher.map_projection import MapProjectionMixin
-from provisa.cypher.group_by import GroupByMixin
 
 
 class GraphVarKind(str, Enum):
@@ -139,6 +141,7 @@ class CypherTranslateError(Exception):
 
 class CypherCrossSourceError(CypherTranslateError):
     """Raised when a Cypher query spans multiple incompatible data sources."""
+
     pass
 
 
@@ -171,7 +174,15 @@ def cypher_calls_to_sql_list(
     return results
 
 
-class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin, CorrelatedCallMixin, SubqueryExprsMixin, MapProjectionMixin, GroupByMixin):
+class _Translator(
+    PathFunctionsMixin,
+    PathComprehensionMixin,
+    SelectBuilderMixin,
+    CorrelatedCallMixin,
+    SubqueryExprsMixin,
+    MapProjectionMixin,
+    GroupByMixin,
+):
     def __init__(
         self,
         ast: CypherAST,
@@ -254,7 +265,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
 
             stage_query = exp.select(*select_exprs).from_(from_clause)
             for join in joins:
-                stage_query = stage_query.join(join["table"], on=join["on"], join_type=join["join_type"])
+                stage_query = stage_query.join(
+                    join["table"], on=join["on"], join_type=join["join_type"]
+                )
             if where_expr:
                 stage_query = stage_query.where(where_expr)
             with_group_exprs = self._build_group_by_for_with(with_clause.items)
@@ -265,9 +278,11 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             if with_clause.where is not None:
                 with_where_expr = self._build_where(with_clause.where)
                 if with_where_expr:
-                    stage_query = exp.select(exp.Star()).from_(
-                        exp.alias_(exp.Subquery(this=stage_query), alias="_inner")
-                    ).where(with_where_expr)
+                    stage_query = (
+                        exp.select(exp.Star())
+                        .from_(exp.alias_(exp.Subquery(this=stage_query), alias="_inner"))
+                        .where(with_where_expr)
+                    )
 
             cte_name = f"_w{n}"
             cte_defs.append((cte_name, stage_query))
@@ -322,7 +337,13 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             raw_where = self._build_where(stage_where)
             if raw_where is not None:
                 self._extra_path_branches = [
-                    (bf, _fold_where_into_optional_joins(raw_where, opt_vars, stage_where.expression, bj)[0], bps)
+                    (
+                        bf,
+                        _fold_where_into_optional_joins(
+                            raw_where, opt_vars, stage_where.expression, bj
+                        )[0],
+                        bps,
+                    )
                     for bf, bj, bps in self._extra_path_branches
                 ]
         order_exprs = self._build_order_by(self._ast.order_by)
@@ -346,7 +367,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         for extra_from, extra_joins, extra_path_steps_map in self._extra_path_branches:
             branch_select_exprs = []
             for s_expr in select_exprs:
-                alias_name = getattr(s_expr, 'alias', None)
+                alias_name = getattr(s_expr, "alias", None)
                 if alias_name and alias_name in extra_path_steps_map:
                     sn, se = extra_path_steps_map[alias_name]
                     new_path = self._build_path_json(sn, se)
@@ -410,7 +431,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
 
         return result, self._param_order, self._graph_vars
 
-    def _group_pipeline(self) -> list[tuple[list[MatchStep], list[UnwindClause], WithClause | None]]:
+    def _group_pipeline(
+        self,
+    ) -> list[tuple[list[MatchStep], list[UnwindClause], WithClause | None]]:
         segments: list = []
         current_matches: list[MatchStep] = []
         current_unwinds: list[UnwindClause] = []
@@ -474,7 +497,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 cross_joins.append({"table": unnest, "on": None, "join_type": "CROSS"})
         return from_expr, cross_joins
 
-    def _build_from_joins(self, match_clauses: list[MatchClause]) -> tuple[exp.Expression, list[dict]]:
+    def _build_from_joins(
+        self, match_clauses: list[MatchClause]
+    ) -> tuple[exp.Expression, list[dict]]:
         """Process MATCH clauses → (from_expr, [join_dict])."""
         from_expr: exp.Expression | None = None
         joins: list[dict] = []
@@ -499,6 +524,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         ad_hoc = f"__alt_{node.variable}__"
                         if ad_hoc not in self._lm.domains:
                             from provisa.cypher.label_map import CypherLabelMap
+
                             self._lm = CypherLabelMap(
                                 nodes=self._lm.nodes,
                                 relationships=self._lm.relationships,
@@ -509,7 +535,10 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     elif node.labels:
                         type_label, domain_label = self._resolve_node_type(node.labels)
                         if type_label:
-                            self._var_table[node.variable] = (node.variable, self._lm.nodes[type_label])
+                            self._var_table[node.variable] = (
+                                node.variable,
+                                self._lm.nodes[type_label],
+                            )
                         else:
                             # domain-only: var_table entry has no NodeMapping
                             self._domain_nodes[node.variable] = domain_label  # type: ignore[assignment]
@@ -573,7 +602,12 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     join_table = self._build_domain_union(fv, self._domain_nodes[fv])
                     on_clause = exp.true() if join_type == "LEFT" else None
                     joins.append({"table": join_table, "on": on_clause, "join_type": join_type})
-                elif fv and fv not in self._cte_sources and fv in self._var_table and self._var_table[fv][1]:
+                elif (
+                    fv
+                    and fv not in self._cte_sources
+                    and fv in self._var_table
+                    and self._var_table[fv][1]
+                ):
                     nm = self._var_table[fv][1]
                     join_type = "LEFT" if clause.optional else "CROSS"
                     join_table = exp.alias_(
@@ -654,9 +688,13 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                                 self._domain_nodes.pop(src_var)
                                 from_expr = exp.alias_(
                                     exp.Table(
-                                        this=exp.Identifier(this=src_nm.sql_table_name, quoted=True),
+                                        this=exp.Identifier(
+                                            this=src_nm.sql_table_name, quoted=True
+                                        ),
                                         db=exp.Identifier(this=src_nm.schema_name, quoted=True),
-                                        catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
+                                        catalog=exp.Identifier(
+                                            this=src_nm.catalog_name, quoted=True
+                                        ),
                                     ),
                                     alias=src_var,
                                 )
@@ -685,7 +723,11 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         join_type = "LEFT" if clause.optional else "INNER"
                         tgt_alias = tgt_var
                         join_table = self._build_domain_union(tgt_var, self._domain_nodes[tgt_var])
-                        src_table_ref = self._var_table.get(src_var, (src_var, None))[0] if src_var else src_nm.table_name
+                        src_table_ref = (
+                            self._var_table.get(src_var, (src_var, None))[0]
+                            if src_var
+                            else src_nm.table_name
+                        )
                         if rel_mapping.source_constant is not None:
                             src_col_expr = _const_literal(rel_mapping.source_constant)
                         elif rel_mapping.source_expr is not None:
@@ -695,7 +737,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                             )
                         else:
                             src_col_expr = exp.Column(
-                                this=exp.Identifier(this=rel_mapping.join_source_column, quoted=True),
+                                this=exp.Identifier(
+                                    this=rel_mapping.join_source_column, quoted=True
+                                ),
                                 table=exp.Identifier(this=src_table_ref),
                             )
                         if rel_mapping.target_expr is not None:
@@ -705,7 +749,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                             )
                         else:
                             tgt_col_expr = exp.Column(
-                                this=exp.Identifier(this=rel_mapping.join_target_column, quoted=True),
+                                this=exp.Identifier(
+                                    this=rel_mapping.join_target_column, quoted=True
+                                ),
                                 table=exp.Identifier(this=tgt_alias),
                             )
                         on_cond = exp.EQ(this=src_col_expr, expression=tgt_col_expr)
@@ -754,12 +800,14 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     # column names (e.g. __table_id__) as physical column references.
                     if src_nm is not None and src_nm_explicit and len(alias_matches) > 1:
                         fwd_exact = [
-                            m for m in alias_matches
+                            m
+                            for m in alias_matches
                             if m.source_label == src_nm.type_name
                             and (tgt_nm is None or m.target_label == tgt_nm.type_name)
                         ]
                         bwd_exact = [
-                            m for m in alias_matches
+                            m
+                            for m in alias_matches
                             if m.target_label == src_nm.type_name
                             and (tgt_nm is None or m.source_label == tgt_nm.type_name)
                         ]
@@ -777,7 +825,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                                 return m.source_label != src_nm.type_name
                             return False
                         if src_nm is not None:
-                            canonical_fwd = (m.source_label == src_nm.type_name)
+                            canonical_fwd = m.source_label == src_nm.type_name
                             if tgt_nm is not None and tgt_nm_explicit:
                                 # Arrow direction must match canonical direction for explicitly-typed nodes.
                                 # Mismatch → return None so this candidate is filtered out → empty result.
@@ -788,6 +836,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                                     return None
                             return not canonical_fwd
                         return backward
+
                     candidates: list[tuple] = [
                         (m, bwd) for m in alias_matches if (bwd := _is_bwd(m)) is not None
                     ]
@@ -819,7 +868,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                             alias=tgt_alias,
                         )
                         no_rel_join_type = "LEFT" if clause.optional else "INNER"
-                        joins.append({"table": jt, "on": exp.false(), "join_type": no_rel_join_type})
+                        joins.append(
+                            {"table": jt, "on": exp.false(), "join_type": no_rel_join_type}
+                        )
                     # Register the relationship variable so _build_select emits NULL instead of a
                     # bare column reference (which would cause a column-not-found SQL error).
                     if rel.variable:
@@ -842,6 +893,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         ),
                         alias=tgt_alias,
                     )
+
                     def _tgt_col_expr(alias: str) -> exp.Expression:
                         if rm.target_expr is not None:
                             return exp.maybe_parse(
@@ -880,6 +932,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         elif rm.join_source_column == "_name_" and src_nm is not None:
                             # _name_ is a virtual column — resolve to literal "domain_sql.table_name"
                             from provisa.compiler.naming import domain_to_sql_name as _d2s
+
                             _name_val = f"{_d2s(src_nm.domain_id or src_nm.schema_name or '')}.{src_nm.table_name}"
                             src_col_expr = exp.Literal.string(_name_val)
                         else:
@@ -897,7 +950,13 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                     _src_alias = src_var or (src_nm.table_name if src_nm else None)
                     _tgt_alias = tgt_var or (tgt_nm.table_name if tgt_nm else None)
                     if _src_alias and _tgt_alias and src_nm and tgt_nm:
-                        self._rel_var_endpoints[rel.variable] = (_src_alias, src_nm, _tgt_alias, tgt_nm, primary_bwd)
+                        self._rel_var_endpoints[rel.variable] = (
+                            _src_alias,
+                            src_nm,
+                            _tgt_alias,
+                            tgt_nm,
+                            primary_bwd,
+                        )
 
                 primary_join = _make_rel_join(primary_rm, primary_bwd)
 
@@ -914,9 +973,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 # Bidirectional extra candidates → independent UNION ALL branches
                 for extra_rm, extra_bwd in candidates[1:]:
                     extra_join = _make_rel_join(extra_rm, extra_bwd)
-                    self._extra_path_branches.append(
-                        (from_expr, joins_before + [extra_join], {})
-                    )
+                    self._extra_path_branches.append((from_expr, joins_before + [extra_join], {}))
 
             # Register path variable (e.g. MATCH p = ()-[r:REL]->())
             if clause.variable and nodes:
@@ -941,9 +998,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
 
         return from_expr, joins
 
-
     def _rewrite_cypher_props(self, text: str) -> str:
         """Rewrite var.camelProp → var.sql_col using NodeMapping.properties."""
+
         def _replace(m: re.Match) -> str:
             var, prop = m.group(1), m.group(2)
             info = self._var_table.get(var)
@@ -952,16 +1009,19 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 if sql_col:
                     return f"{var}.{sql_col}"
             return m.group(0)
-        return re.sub(r'\b([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)\b', _replace, text)
+
+        return re.sub(r"\b([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)\b", _replace, text)
 
     def _rewrite_nf_props(self, text: str) -> str:
         """Rewrite var.col or var."col" → var."_nf_col" for native filter columns."""
+
         def _replace(m: re.Match) -> str:
             var, col = m.group(1), m.group(2)
             info = self._var_table.get(var)
             if info and info[1] and col in info[1].native_filter_columns:
                 return f'{var}."_nf_{col}"'
             return m.group(0)
+
         # Match both quoted (var."col") and unquoted with optional spaces (var . col)
         return re.sub(r'\b([A-Za-z_]\w*)\s*\.\s*"?([A-Za-z_]\w*)"?', _replace, text)
 
@@ -988,7 +1048,10 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         except Exception:
             try:
                 from sqlglot.errors import ErrorLevel
-                parsed = sqlglot.parse_one(expr_text, dialect="postgres", error_level=ErrorLevel.IGNORE)
+
+                parsed = sqlglot.parse_one(
+                    expr_text, dialect="postgres", error_level=ErrorLevel.IGNORE
+                )
                 if parsed is not None:
                     return parsed.transform(_rewrite_cypher_fn_node)
             except Exception:
@@ -1007,6 +1070,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
 
     def _rewrite_graph_fns(self, text: str) -> str:
         """Rewrite graph-aware functions using var_table context."""
+
         def _id_repl(m: re.Match) -> str:
             var = m.group(1).strip()
             info = self._var_table.get(var)
@@ -1037,21 +1101,25 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             return m.group(0)
 
         # type(r) → 'REL_TYPE' literal (resolved at compile time from semantic layer)
-        text = re.sub(r'\btype\s*\(\s*([A-Za-z_]\w*)\s*\)', _type_repl, text, flags=re.IGNORECASE)
+        text = re.sub(r"\btype\s*\(\s*([A-Za-z_]\w*)\s*\)", _type_repl, text, flags=re.IGNORECASE)
         # exists(n.prop) → (n.prop) IS NOT NULL
-        text = re.sub(r'\bexists\s*\(([^()]+)\)', r'(\1) IS NOT NULL', text, flags=re.IGNORECASE)
+        text = re.sub(r"\bexists\s*\(([^()]+)\)", r"(\1) IS NOT NULL", text, flags=re.IGNORECASE)
         # id(var) → var."id_col"
-        text = re.sub(r'\bid\s*\(\s*([A-Za-z_]\w*)\s*\)', _id_repl, text)
+        text = re.sub(r"\bid\s*\(\s*([A-Za-z_]\w*)\s*\)", _id_repl, text)
         # labels(var) → ARRAY['Label']
-        text = re.sub(r'\blabels\s*\(\s*([A-Za-z_]\w*)\s*\)', _labels_repl, text, flags=re.IGNORECASE)
+        text = re.sub(
+            r"\blabels\s*\(\s*([A-Za-z_]\w*)\s*\)", _labels_repl, text, flags=re.IGNORECASE
+        )
         # keys(var) → ARRAY['prop1', ...]
-        text = re.sub(r'\bkeys\s*\(\s*([A-Za-z_]\w*)\s*\)', _keys_repl, text, flags=re.IGNORECASE)
+        text = re.sub(r"\bkeys\s*\(\s*([A-Za-z_]\w*)\s*\)", _keys_repl, text, flags=re.IGNORECASE)
         # length(p) for recursive CTE paths → _t.hops; for flat paths → 1
         if self._shortestpath_hops_col is not None:
-            text = re.sub(r'\blength\s*\(\s*[A-Za-z_]\w*\s*\)', '_t.hops', text, flags=re.IGNORECASE)
+            text = re.sub(
+                r"\blength\s*\(\s*[A-Za-z_]\w*\s*\)", "_t.hops", text, flags=re.IGNORECASE
+            )
         else:
             # flat path: length is always 1 (single hop or variable-length flat join)
-            text = re.sub(r'\blength\s*\(\s*[A-Za-z_]\w*\s*\)', '1', text, flags=re.IGNORECASE)
+            text = re.sub(r"\blength\s*\(\s*[A-Za-z_]\w*\s*\)", "1", text, flags=re.IGNORECASE)
         return text
 
     def _parse_expr(self, text: str) -> exp.Expression:
@@ -1075,6 +1143,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         except Exception:
             try:
                 from sqlglot.errors import ErrorLevel
+
                 parsed = sqlglot.parse_one(text, dialect="postgres", error_level=ErrorLevel.IGNORE)
                 if parsed is not None:
                     return parsed.transform(_rewrite_cypher_fn_node)
@@ -1086,7 +1155,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         for var in self._cte_sources:
             sql_alias = self._var_table.get(var, (var, None))[0]
             if sql_alias != var:
-                text = re.sub(rf'\b{re.escape(var)}\.', f'{sql_alias}.', text)
+                text = re.sub(rf"\b{re.escape(var)}\.", f"{sql_alias}.", text)
         return text
 
     def _rewrite_call_bound_vars(self, text: str) -> str:
@@ -1097,7 +1166,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         for var, lateral_alias in self._call_var_to_lateral.items():
             # Match bare var not already table-qualified (not preceded by . or word char)
             text = re.sub(
-                rf'(?<![.\w]){re.escape(var)}\b',
+                rf"(?<![.\w]){re.escape(var)}\b",
                 f'{lateral_alias}."{var}"',
                 text,
             )
@@ -1130,7 +1199,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         for item in items:
             expr_text = item.expression.strip()
             alias = item.alias
-            key = alias or (_safe_alias(expr_text) if not _is_bare_variable(expr_text) else expr_text)
+            key = alias or (
+                _safe_alias(expr_text) if not _is_bare_variable(expr_text) else expr_text
+            )
             if _is_bare_variable(expr_text) and expr_text in self._var_table:
                 original_meta = self._var_table[expr_text][1]
                 new_var_table[key] = (cte_name, original_meta)
@@ -1150,16 +1221,18 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
           (n:SalesAnalytics_Orders)  — legacy full type_name (backward compat)
         """
         # Normalize labels to canonical case before lookup
-        labels = [self._lm.canonical_label(l) for l in labels]
+        labels = [self._lm.canonical_label(label) for label in labels]
         # Classify each label
-        full_type: list[str] = [l for l in labels if l in self._lm.nodes]
-        domain_hits: list[str] = [l for l in labels if l in self._lm.domains]
-        table_hits: list[str] = [l for l in labels if l in self._lm.nodes_by_table]
+        full_type: list[str] = [label for label in labels if label in self._lm.nodes]
+        domain_hits: list[str] = [label for label in labels if label in self._lm.domains]
+        table_hits: list[str] = [label for label in labels if label in self._lm.nodes_by_table]
 
         # Legacy: full type_name used directly (e.g. SalesAnalytics_Orders)
         if full_type:
             if len(full_type) > 1:
-                raise CypherTranslateError(f"Ambiguous labels — multiple full type labels: {full_type}")
+                raise CypherTranslateError(
+                    f"Ambiguous labels — multiple full type labels: {full_type}"
+                )
             return full_type[0], domain_hits[0] if domain_hits else None
 
         # Domain + table (any order): intersect to get unique type_name
@@ -1173,9 +1246,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 raise CypherTranslateError(
                     f"Ambiguous: labels {labels} match multiple types: {sorted(candidates)}"
                 )
-            raise CypherTranslateError(
-                f"No node type found for labels {labels}"
-            )
+            raise CypherTranslateError(f"No node type found for labels {labels}")
 
         # Table only: resolve if unambiguous, otherwise build domain-style union
         if table_hits and not domain_hits:
@@ -1186,6 +1257,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
             ad_hoc = f"__tbl_{table_hits[0]}__"
             if ad_hoc not in self._lm.domains:
                 from provisa.cypher.label_map import CypherLabelMap
+
                 self._lm = CypherLabelMap(
                     nodes=self._lm.nodes,
                     relationships=self._lm.relationships,
@@ -1207,7 +1279,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         property projections, all properties from the domain's node types are
         included so that the domain union subquery exposes them.
         """
-        pattern = re.compile(rf'\b{re.escape(var)}\s*\.\s*([A-Za-z_]\w*)')
+        pattern = re.compile(rf"\b{re.escape(var)}\s*\.\s*([A-Za-z_]\w*)")
         texts: list[str] = []
         for step in self._ast.pipeline:
             if isinstance(step, MatchStep) and step.where:
@@ -1230,10 +1302,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
         # If var is returned bare (RETURN n) and is a domain node, include all
         # domain properties so the union subquery exposes them for JSON serialization.
         if not props and var in self._domain_nodes and self._ast.return_clause:
-            bare_pattern = re.compile(rf'^\s*{re.escape(var)}\s*$')
+            bare_pattern = re.compile(rf"^\s*{re.escape(var)}\s*$")
             is_bare = any(
-                bare_pattern.match(item.expression)
-                for item in self._ast.return_clause.items
+                bare_pattern.match(item.expression) for item in self._ast.return_clause.items
             )
             if is_bare:
                 domain = self._domain_nodes[var]
@@ -1283,14 +1354,30 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 this=exp.Identifier(this=tgt_nm.id_column, quoted=True),
                 table=exp.Identifier(this=ta),
             )
-            src_json = exp.JSONObject(expressions=[
-                exp.JSONKeyValue(this=exp.Literal.string("id"), expression=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR"))),
-                exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(src_nm.label)),
-            ])
-            tgt_json = exp.JSONObject(expressions=[
-                exp.JSONKeyValue(this=exp.Literal.string("id"), expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR"))),
-                exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(tgt_nm.label)),
-            ])
+            src_json = exp.JSONObject(
+                expressions=[
+                    exp.JSONKeyValue(
+                        this=exp.Literal.string("id"),
+                        expression=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR")),
+                    ),
+                    exp.JSONKeyValue(
+                        this=exp.Literal.string("label"),
+                        expression=exp.Literal.string(src_nm.label),
+                    ),
+                ]
+            )
+            tgt_json = exp.JSONObject(
+                expressions=[
+                    exp.JSONKeyValue(
+                        this=exp.Literal.string("id"),
+                        expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR")),
+                    ),
+                    exp.JSONKeyValue(
+                        this=exp.Literal.string("label"),
+                        expression=exp.Literal.string(tgt_nm.label),
+                    ),
+                ]
+            )
             edge_id = exp.DPipe(
                 this=exp.DPipe(
                     this=exp.Cast(this=src_id_col, to=exp.DataType.build("VARCHAR")),
@@ -1298,64 +1385,72 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 ),
                 expression=exp.Cast(this=tgt_id_col, to=exp.DataType.build("VARCHAR")),
             )
-            edge_json = exp.JSONObject(expressions=[
-                exp.JSONKeyValue(this=exp.Literal.string("id"), expression=edge_id),
-                exp.JSONKeyValue(this=exp.Literal.string("type"), expression=exp.Literal.string(rm.rel_type)),
-                exp.JSONKeyValue(this=exp.Literal.string("startNode"), expression=src_json),
-                exp.JSONKeyValue(this=exp.Literal.string("endNode"), expression=tgt_json),
-            ])
+            edge_json = exp.JSONObject(
+                expressions=[
+                    exp.JSONKeyValue(this=exp.Literal.string("id"), expression=edge_id),
+                    exp.JSONKeyValue(
+                        this=exp.Literal.string("type"), expression=exp.Literal.string(rm.rel_type)
+                    ),
+                    exp.JSONKeyValue(this=exp.Literal.string("startNode"), expression=src_json),
+                    exp.JSONKeyValue(this=exp.Literal.string("endNode"), expression=tgt_json),
+                ]
+            )
 
-            branch = exp.select(
-                exp.alias_(src_json, src_col),
-                exp.alias_(edge_json, rel_col),
-                exp.alias_(tgt_json, tgt_col),
-            ).from_(
-                exp.alias_(
-                    exp.Table(
-                        this=exp.Identifier(this=src_nm.sql_table_name, quoted=True),
-                        db=exp.Identifier(this=src_nm.schema_name, quoted=True),
-                        catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
-                    ),
-                    alias=sa,
+            branch = (
+                exp.select(
+                    exp.alias_(src_json, src_col),
+                    exp.alias_(edge_json, rel_col),
+                    exp.alias_(tgt_json, tgt_col),
                 )
-            ).join(
-                exp.alias_(
-                    exp.Table(
-                        this=exp.Identifier(this=tgt_nm.sql_table_name, quoted=True),
-                        db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
-                        catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
+                .from_(
+                    exp.alias_(
+                        exp.Table(
+                            this=exp.Identifier(this=src_nm.sql_table_name, quoted=True),
+                            db=exp.Identifier(this=src_nm.schema_name, quoted=True),
+                            catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
+                        ),
+                        alias=sa,
+                    )
+                )
+                .join(
+                    exp.alias_(
+                        exp.Table(
+                            this=exp.Identifier(this=tgt_nm.sql_table_name, quoted=True),
+                            db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
+                            catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
+                        ),
+                        alias=ta,
                     ),
-                    alias=ta,
-                ),
-                on=exp.EQ(
-                    this=(
-                        _const_literal(rm.source_constant)
-                        if rm.source_constant is not None
-                        else (
+                    on=exp.EQ(
+                        this=(
+                            _const_literal(rm.source_constant)
+                            if rm.source_constant is not None
+                            else (
+                                exp.maybe_parse(
+                                    rm.source_expr.replace("{alias}", sa),
+                                    dialect="trino",
+                                )
+                                if rm.source_expr is not None
+                                else exp.Column(
+                                    this=exp.Identifier(this=rm.join_source_column, quoted=True),
+                                    table=exp.Identifier(this=sa),
+                                )
+                            )
+                        ),
+                        expression=(
                             exp.maybe_parse(
-                                rm.source_expr.replace("{alias}", sa),
+                                rm.target_expr.replace("{alias}", ta),
                                 dialect="trino",
                             )
-                            if rm.source_expr is not None
+                            if rm.target_expr is not None
                             else exp.Column(
-                                this=exp.Identifier(this=rm.join_source_column, quoted=True),
-                                table=exp.Identifier(this=sa),
+                                this=exp.Identifier(this=rm.join_target_column, quoted=True),
+                                table=exp.Identifier(this=ta),
                             )
-                        )
+                        ),
                     ),
-                    expression=(
-                        exp.maybe_parse(
-                            rm.target_expr.replace("{alias}", ta),
-                            dialect="trino",
-                        )
-                        if rm.target_expr is not None
-                        else exp.Column(
-                            this=exp.Identifier(this=rm.join_target_column, quoted=True),
-                            table=exp.Identifier(this=ta),
-                        )
-                    ),
-                ),
-                join_type="INNER",
+                    join_type="INNER",
+                )
             )
             branches.append(branch)
 
@@ -1406,7 +1501,9 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                         )
                     )
                 else:
-                    select_items.append(exp.alias_(exp.null(), alias=exp.Identifier(this=prop, quoted=True)))
+                    select_items.append(
+                        exp.alias_(exp.null(), alias=exp.Identifier(this=prop, quoted=True))
+                    )
             branch = exp.select(*select_items).from_(
                 exp.alias_(
                     exp.Table(
@@ -1429,6 +1526,7 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
 
     def _rewrite_params_in_expr(self, text: str) -> str:
         """Replace $name with positional $N."""
+
         def _replace(m: re.Match) -> str:
             name = m.group(1)
             if name not in self._param_seen:
@@ -1436,9 +1534,8 @@ class _Translator(PathFunctionsMixin, PathComprehensionMixin, SelectBuilderMixin
                 self._param_seen.add(name)
             idx = self._param_order.index(name) + 1
             return f"${idx}"
+
         return re.sub(r"\$([A-Za-z_]\w*)", _replace, text)
-
-
 
 
 def _is_bare_variable(expr: str) -> bool:
@@ -1493,8 +1590,8 @@ _CYPHER_FN_RENAMES: dict[str, str] = {
     "REVERSE": "reverse",
     "REPLACE": "replace",
     "SPLIT": "split",
-    "RANGE": "sequence",    # Cypher range(start, end[, step]) → sequence(start, end[, step])
-    "LOG": "ln",            # Neo4j log() = natural log = Trino ln()
+    "RANGE": "sequence",  # Cypher range(start, end[, step]) → sequence(start, end[, step])
+    "LOG": "ln",  # Neo4j log() = natural log = Trino ln()
     "LOG2": "log2",
     "COLLECT": "array_agg",
     "STDEV": "stddev_samp",
@@ -1561,9 +1658,7 @@ def _rewrite_string_predicates(text: str) -> str:
     return text
 
 
-_ISO_TS_LITERAL_RE = re.compile(
-    r"'(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)'"
-)
+_ISO_TS_LITERAL_RE = re.compile(r"'(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?)'")
 
 
 def _coerce_ts_literals(text: str) -> str:
@@ -1571,17 +1666,15 @@ def _coerce_ts_literals(text: str) -> str:
     return _ISO_TS_LITERAL_RE.sub(lambda m: f"TIMESTAMP {m.group(0)}", text)
 
 
-_IN_LIST_RE = re.compile(r'\bIN\s*\[([^\[\]]*)\]', re.IGNORECASE)
+_IN_LIST_RE = re.compile(r"\bIN\s*\[([^\[\]]*)\]", re.IGNORECASE)
 
 
 def _rewrite_in_list(text: str) -> str:
     """Rewrite Cypher IN [...] literal list to SQL IN (...)."""
-    return _IN_LIST_RE.sub(r'IN (\1)', text)
+    return _IN_LIST_RE.sub(r"IN (\1)", text)
 
 
-_LIST_SLICE_RE = re.compile(
-    r'(\w+\s*\(\s*[^)]*\s*\)|[A-Za-z_]\w*)\s*\[\s*\.\.\s*(\d+)\s*\]'
-)
+_LIST_SLICE_RE = re.compile(r"(\w+\s*\(\s*[^)]*\s*\)|[A-Za-z_]\w*)\s*\[\s*\.\.\s*(\d+)\s*\]")
 
 
 def _rewrite_list_slices(text: str) -> str:
@@ -1590,7 +1683,7 @@ def _rewrite_list_slices(text: str) -> str:
     Cypher's [..n] returns the first n elements (0-indexed, exclusive end).
     Trino's slice(arr, start, length) is 1-indexed with a length argument.
     """
-    return _LIST_SLICE_RE.sub(r'slice(\1, 1, \2)', text)
+    return _LIST_SLICE_RE.sub(r"slice(\1, 1, \2)", text)
 
 
 def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:
@@ -1645,11 +1738,14 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:
         return exp.Anonymous(this="element_at", expressions=[args[0], exp.Literal.number(-1)])
 
     if name == "TAIL" and args:
-        return exp.Anonymous(this="slice", expressions=[
-            args[0],
-            exp.Literal.number(2),
-            exp.Anonymous(this="cardinality", expressions=[args[0]]),
-        ])
+        return exp.Anonymous(
+            this="slice",
+            expressions=[
+                args[0],
+                exp.Literal.number(2),
+                exp.Anonymous(this="cardinality", expressions=[args[0]]),
+            ],
+        )
 
     if name == "ISEMPTY" and args:
         return exp.EQ(

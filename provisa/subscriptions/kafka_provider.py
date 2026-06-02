@@ -14,12 +14,30 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import AsyncGenerator, AsyncIterator
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator
+from typing import Protocol
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
 log = logging.getLogger(__name__)
+
+
+class _KafkaMessage(Protocol):
+    """Structural type for an aiokafka consumer record."""
+
+    value: object
+    timestamp: int
+
+
+class _KafkaConsumer(Protocol):
+    """Structural type for the subset of AIOKafkaConsumer used here."""
+
+    def __aiter__(self) -> AsyncIterator[_KafkaMessage]: ...
+
+    async def start(self) -> None: ...
+
+    async def stop(self) -> None: ...
 
 
 class KafkaNotificationProvider(NotificationProvider):
@@ -29,12 +47,12 @@ class KafkaNotificationProvider(NotificationProvider):
         self,
         bootstrap_servers: str,
         group_id: str = "provisa-subscriptions",
-        **consumer_kwargs: Any,
+        **consumer_kwargs: str | int | bool | None,
     ) -> None:
         self._bootstrap_servers = bootstrap_servers
         self._group_id = group_id
         self._consumer_kwargs = consumer_kwargs
-        self._consumer: Any | None = None
+        self._consumer: _KafkaConsumer | None = None
 
     async def watch(
         self, table: str, filter_expr: str | None = None
@@ -42,20 +60,25 @@ class KafkaNotificationProvider(NotificationProvider):
         from aiokafka import AIOKafkaConsumer  # type: ignore[import-untyped]
 
         topic = table
-        self._consumer = AIOKafkaConsumer(
+        consumer: _KafkaConsumer = AIOKafkaConsumer(
             topic,
             bootstrap_servers=self._bootstrap_servers,
             group_id=self._group_id,
             auto_offset_reset="latest",
-            **self._consumer_kwargs,
+            # reason: arbitrary pass-through Kafka config; each strict aiokafka param
+            # cannot be matched against the heterogeneous kwargs union.
+            **self._consumer_kwargs,  # type: ignore[reportArgumentType]
         )
-        await self._consumer.start()
+        self._consumer = consumer
+        await consumer.start()
         log.info("KafkaProvider: consuming topic %s", topic)
 
         try:
-            async for msg in self._consumer:
+            async for msg in consumer:
                 try:
-                    value = json.loads(msg.value) if isinstance(msg.value, (bytes, str)) else msg.value
+                    value = (
+                        json.loads(msg.value) if isinstance(msg.value, (bytes, str)) else msg.value
+                    )
                 except (json.JSONDecodeError, TypeError):
                     log.warning("KafkaProvider: invalid message on %s", topic)
                     continue
@@ -71,12 +94,12 @@ class KafkaNotificationProvider(NotificationProvider):
                     operation=op,
                     table=table,
                     row=row if isinstance(row, dict) else {"value": row},
-                    timestamp=datetime.fromtimestamp(
-                        msg.timestamp / 1000, tz=timezone.utc
-                    ) if msg.timestamp else datetime.now(timezone.utc),
+                    timestamp=datetime.fromtimestamp(msg.timestamp / 1000, tz=timezone.utc)
+                    if msg.timestamp
+                    else datetime.now(timezone.utc),
                 )
         finally:
-            await self._consumer.stop()
+            await consumer.stop()
             self._consumer = None
 
     async def close(self) -> None:

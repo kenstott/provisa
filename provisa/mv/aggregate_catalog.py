@@ -70,7 +70,6 @@ class AggregateMVCatalog:
         """
         candidates = self._by_table.get(table, [])
         requested = set(agg_columns)
-        query_filters = set(filters)
 
         for mv in candidates:
             mv_cols = set(mv.aggregate_columns)
@@ -80,7 +79,9 @@ class AggregateMVCatalog:
             # We skip filter checking for MVs with no declared filters
             log.debug(
                 "AggregateMVCatalog: MV %s covers table=%s cols=%s",
-                mv.id, table, agg_columns,
+                mv.id,
+                table,
+                agg_columns,
             )
             return mv
 
@@ -100,16 +101,9 @@ class AggregateMVCatalog:
         """
         target = f'"{mv.target_catalog}"."{mv.target_schema}"."{mv.target_table}"'
         select_cols = ", ".join(f'"{c}"' for c in agg_columns) if agg_columns else "*"
-        where_clause = (
-            " WHERE " + " AND ".join(remaining_filters) if remaining_filters else ""
-        )
-        rewritten = (
-            f"/* aggregate_mv: {mv.id} */\n"
-            f"SELECT {select_cols} FROM {target}{where_clause}"
-        )
-        log.info(
-            "Rewrote aggregate query for table=%s to MV %s", mv.source_tables, mv.id
-        )
+        where_clause = " WHERE " + " AND ".join(remaining_filters) if remaining_filters else ""
+        rewritten = f"/* aggregate_mv: {mv.id} */\nSELECT {select_cols} FROM {target}{where_clause}"
+        log.info("Rewrote aggregate query for table=%s to MV %s", mv.source_tables, mv.id)
         return rewritten
 
 

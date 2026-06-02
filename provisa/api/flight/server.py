@@ -23,6 +23,8 @@ import asyncio
 import json
 import logging
 import re
+from collections.abc import Iterable, Iterator
+from typing import TYPE_CHECKING, cast
 
 import pyarrow as pa
 import pyarrow.flight as flight
@@ -37,11 +39,18 @@ from provisa.compiler.parser import parse_query
 from provisa.compiler.rls import RLSContext, inject_rls
 from provisa.compiler.sampling import apply_sampling, get_sample_size
 from provisa.compiler.sql_gen import compile_query
-from provisa.executor.formats.arrow import rows_to_arrow_table
 from provisa.executor.direct import execute_direct
+from provisa.executor.formats.arrow import rows_to_arrow_table
 from provisa.security.rights import Capability, has_capability
 from provisa.transpiler.router import Route, decide_route
 from provisa.transpiler.transpile import transpile, transpile_to_trino
+
+if TYPE_CHECKING:
+    from graphql import DocumentNode, GraphQLSchema
+
+    from provisa.api.app import AppState
+    from provisa.compiler.sql_gen import CompilationContext, CompiledQuery
+    from provisa.transpiler.router import RouteDecision
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +80,7 @@ def _parse_where_variables(sql: str) -> dict:
     Used to map JDBC-style ``SELECT * FROM op WHERE k = v`` filters to
     GraphQL variable values.
     """
-    variables: dict = {}
+    variables: dict[str, str | int | float] = {}
     where_match = re.search(r"\bWHERE\b(.*?)(?:\bLIMIT\b|$)", sql, re.IGNORECASE | re.DOTALL)
     if not where_match:
         return variables
@@ -86,7 +95,7 @@ def _parse_where_variables(sql: str) -> dict:
     return variables
 
 
-def _parse_limit_value(value) -> int | None:
+def _parse_limit_value(value: object) -> int | None:
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int):
@@ -99,7 +108,14 @@ def _parse_limit_value(value) -> int | None:
 class ProvisaFlightServer(flight.FlightServerBase):
     """Arrow Flight server that executes GraphQL queries and streams Arrow data."""
 
-    def __init__(self, state, location="grpc://0.0.0.0:8815", *, main_loop=None, **kwargs):
+    def __init__(
+        self,
+        state: AppState,
+        location: str = "grpc://0.0.0.0:8815",
+        *,
+        main_loop: asyncio.AbstractEventLoop | None = None,
+        **kwargs: object,
+    ) -> None:
         super().__init__(location, **kwargs)
         self._state = state
         # The main event loop owns the asyncpg pools; dispatch coroutines to it.
@@ -111,7 +127,11 @@ class ProvisaFlightServer(flight.FlightServerBase):
     # Flight SQL handshake
     # ------------------------------------------------------------------
 
-    def do_handshake(self, context, payload):
+    def do_handshake(
+        self,
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature
+        payload: Iterable[bytes],
+    ) -> tuple[bytes, list[object]]:
         """Parse role from handshake properties and return a session token."""
         buf = b""
         for chunk in payload:
@@ -128,7 +148,11 @@ class ProvisaFlightServer(flight.FlightServerBase):
     # list_flights — enumerate available data
     # ------------------------------------------------------------------
 
-    def list_flights(self, context, criteria):
+    def list_flights(
+        self,
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature
+        criteria: bytes,  # noqa: ARG002  # required by Flight override signature
+    ) -> Iterator[flight.FlightInfo]:
         """List available flights (catalog tables)."""
         tables = build_catalog_tables(self._state)
         for table in tables:
@@ -138,7 +162,11 @@ class ProvisaFlightServer(flight.FlightServerBase):
     # get_flight_info — metadata for a specific flight
     # ------------------------------------------------------------------
 
-    def get_flight_info(self, context, descriptor):
+    def get_flight_info(
+        self,
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature
+        descriptor: flight.FlightDescriptor,
+    ) -> flight.FlightInfo:
         """Return FlightInfo for a catalog table descriptor.
 
         Descriptor path: [domain_id, table_name].
@@ -160,7 +188,11 @@ class ProvisaFlightServer(flight.FlightServerBase):
     # get_schema — Arrow schema for a catalog table
     # ------------------------------------------------------------------
 
-    def get_schema(self, context, descriptor):
+    def get_schema(
+        self,
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature
+        descriptor: flight.FlightDescriptor,
+    ) -> flight.SchemaResult:
         """Return the Arrow schema for a catalog table.
 
         Descriptor path: [domain_id, table_name].
@@ -184,7 +216,11 @@ class ProvisaFlightServer(flight.FlightServerBase):
     # do_get — execute query or return catalog data
     # ------------------------------------------------------------------
 
-    def do_get(self, context, ticket):
+    def do_get(
+        self,
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature
+        ticket: flight.Ticket,
+    ) -> flight.RecordBatchStream | flight.GeneratorStream:
         """Execute a query from the ticket and return Arrow record batches.
 
         Dispatch logic:
@@ -194,7 +230,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         try:
             request = json.loads(ticket.ticket.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            raise flight.FlightServerError(f"Invalid ticket: {e}")
+            raise flight.FlightServerError(f"Invalid ticket: {e}") from e
 
         if request.get("query"):
             return self._execute_query(request)
@@ -205,7 +241,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _do_get_catalog(self, ticket) -> flight.RecordBatchStream:
+    def _do_get_catalog(self, ticket: flight.Ticket) -> flight.RecordBatchStream:
         """Return catalog metadata as Arrow record batches."""
         request = json.loads(ticket.ticket.decode("utf-8"))
         domain = request.get("domain")
@@ -267,12 +303,22 @@ class ProvisaFlightServer(flight.FlightServerBase):
             }
         )
 
-    def _compile_query(self, ticket_bytes):
+    def _compile_query(
+        self, ticket_bytes: bytes
+    ) -> tuple[
+        DocumentNode,
+        CompilationContext,
+        RLSContext,
+        dict[str, object] | None,
+        CompiledQuery,
+        RouteDecision,
+        dict[str, object] | None,
+    ]:
         """Parse ticket, compile GraphQL to SQL, apply security pipeline."""
         try:
             request = json.loads(ticket_bytes.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            raise flight.FlightServerError(f"Invalid ticket: {e}")
+            raise flight.FlightServerError(f"Invalid ticket: {e}") from e
 
         query_text = request.get("query")
         role_id = request.get("role", "admin")
@@ -284,7 +330,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         if role_id not in self._state.schemas:
             raise flight.FlightServerError(f"No schema for role {role_id!r}")
 
-        schema = self._state.schemas[role_id]
+        schema = cast("GraphQLSchema", self._state.schemas[role_id])
         ctx = self._state.contexts[role_id]
         rls = self._state.rls_contexts.get(role_id, RLSContext.empty())
         role = self._state.roles.get(role_id)
@@ -305,26 +351,37 @@ class ProvisaFlightServer(flight.FlightServerBase):
 
         return document, ctx, rls, role, compiled, decision, variables
 
-    def _do_get_cypher(self, request: dict) -> flight.RecordBatchStream:
+    def _do_get_cypher(self, request: dict[str, object]) -> flight.RecordBatchStream:
         """Execute a Cypher query ticket and return Arrow record batches."""
+        import concurrent.futures
+
         import sqlglot
-        from provisa.cypher.parser import parse_cypher, CypherParseError
+
+        from provisa.compiler.rls import RLSContext
+        from provisa.compiler.sql_gen import (
+            make_semantic_sql,
+            rewrite_semantic_to_trino_physical,
+        )
+        from provisa.compiler.stage2 import apply_governance, build_governance_context
+        from provisa.cypher.assembler import assemble_rows, to_serializable
+        from provisa.cypher.graph_rewriter import apply_graph_rewrites
         from provisa.cypher.label_map import CypherLabelMap
+        from provisa.cypher.params import (
+            CypherParamError,
+            bind_params,
+            collect_param_names,
+        )
+        from provisa.cypher.parser import CypherParseError, parse_cypher
         from provisa.cypher.translator import (
-            cypher_to_sql,
             CypherCrossSourceError,
             CypherTranslateError,
+            cypher_to_sql,
         )
-        from provisa.cypher.graph_rewriter import apply_graph_rewrites
-        from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
-        from provisa.cypher.assembler import assemble_rows, to_serializable
-        from provisa.compiler.rls import RLSContext
-        from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_trino_physical
-        from provisa.compiler.stage2 import apply_governance, build_governance_context
 
-        query_text = request.get("query", "")
-        role_id = request.get("role", "admin")
-        params = request.get("params") or {}
+        query_text = str(request.get("query", ""))
+        role_id = str(request.get("role", "admin"))
+        params_obj = request.get("params") or {}
+        params: dict[str, object] = params_obj if isinstance(params_obj, dict) else {}
 
         if role_id not in self._state.contexts:
             raise flight.FlightServerError(f"No schema for role {role_id!r}")
@@ -335,7 +392,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         try:
             ast = parse_cypher(query_text)
         except CypherParseError as exc:
-            raise flight.FlightServerError(f"Cypher parse error: {exc}")
+            raise flight.FlightServerError(f"Cypher parse error: {exc}") from exc
 
         label_map = CypherLabelMap.from_schema(ctx)
 
@@ -343,19 +400,19 @@ class ProvisaFlightServer(flight.FlightServerBase):
         try:
             bind_params(param_names, params)
         except CypherParamError as exc:
-            raise flight.FlightServerError(f"Cypher param error: {exc}")
+            raise flight.FlightServerError(f"Cypher param error: {exc}") from exc
 
         try:
             sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, params)
         except (CypherCrossSourceError, CypherTranslateError) as exc:
-            raise flight.FlightServerError(f"Cypher translate error: {exc}")
+            raise flight.FlightServerError(f"Cypher translate error: {exc}") from exc
 
         sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
 
         try:
             sql_str = sql_ast.sql(dialect="postgres")
         except Exception as exc:
-            raise flight.FlightServerError(f"Cypher SQL render failed: {exc}")
+            raise flight.FlightServerError(f"Cypher SQL render failed: {exc}") from exc
 
         gov_ctx = build_governance_context(
             role_id,
@@ -371,7 +428,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         try:
             trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
         except Exception as exc:
-            raise flight.FlightServerError(f"Cypher transpile failed: {exc}")
+            raise flight.FlightServerError(f"Cypher transpile failed: {exc}") from exc
 
         resolved_params = [params.get(name) for name in ordered_params]
 
@@ -379,16 +436,14 @@ class ProvisaFlightServer(flight.FlightServerBase):
         if trino_conn is None:
             raise flight.FlightServerError("Federation engine not connected")
 
-        def _run() -> list[dict]:
+        def _run() -> list[dict[str, object]]:
             cursor = trino_conn.cursor()
             try:
                 cursor.execute(trino_sql, resolved_params or [])
                 cols = [d[0] for d in (cursor.description or [])]
-                return [dict(zip(cols, row)) for row in cursor.fetchall()]
+                return [dict(zip(cols, row, strict=False)) for row in cursor.fetchall()]
             finally:
                 cursor.close()
-
-        import concurrent.futures
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             raw_rows = pool.submit(_run).result()
@@ -402,23 +457,25 @@ class ProvisaFlightServer(flight.FlightServerBase):
             return flight.RecordBatchStream(pa.table(empty))
 
         col_names = list(serialized[0].keys())
-        col_data: dict[str, list] = {c: [] for c in col_names}
+        col_data: dict[str, list[object]] = {c: [] for c in col_names}
         for row in serialized:
             for col in col_names:
                 val = row.get(col)
                 col_data[col].append(json.dumps(val) if isinstance(val, (dict, list)) else val)
         return flight.RecordBatchStream(pa.table(col_data))
 
-    def _execute_query(self, request: dict) -> flight.RecordBatchStream:
+    def _execute_query(
+        self, request: dict[str, object]
+    ) -> flight.RecordBatchStream | flight.GeneratorStream:
         """Dispatch a query to the correct handler based on language."""
-        query_text = request.get("query", "")
+        query_text = str(request.get("query", ""))
         if _is_cypher(query_text):
             return self._do_get_cypher(request)
         if _is_sql(query_text):
             return self._do_get_sql_governed(request)
         return self._do_get_graphql(request)
 
-    def _do_get_sql_governed(self, request: dict) -> flight.RecordBatchStream:
+    def _do_get_sql_governed(self, request: dict[str, object]) -> flight.RecordBatchStream:
         """Execute SQL through Stage 2 governance against the full role schema.
 
         Applies RLS, column masking, and visibility rules for the request role
@@ -426,6 +483,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         """
         import sqlglot
         import sqlglot.expressions as exp
+
         from provisa.compiler.rls import RLSContext
         from provisa.compiler.sql_gen import rewrite_semantic_to_physical
         from provisa.compiler.stage2 import (
@@ -436,8 +494,8 @@ class ProvisaFlightServer(flight.FlightServerBase):
         from provisa.executor.direct import execute_direct
         from provisa.executor.trino_flight import execute_trino_flight_arrow
 
-        sql = request.get("query", "")
-        role_id = request.get("role", "admin")
+        sql = str(request.get("query", ""))
+        role_id = str(request.get("role", "admin"))
 
         if role_id not in self._state.contexts:
             raise flight.FlightServerError(f"No schema for role {role_id!r}")
@@ -454,7 +512,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         try:
             parsed_tree = sqlglot.parse_one(sql, read="postgres")
         except Exception as exc:
-            raise flight.FlightServerError(f"SQL parse error: {exc}")
+            raise flight.FlightServerError(f"SQL parse error: {exc}") from exc
 
         gov_ctx = build_governance_context(
             role_id,
@@ -483,7 +541,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
                 for sid, t in self._state.source_types.items()
                 if t in ("postgresql", "mysql", "sqlite")
             ),
-            next(iter(self._state.source_pools), "pg"),
+            next(iter(self._state.source_pools), "pg"),  # type: ignore[call-overload]  # preexisting: SourcePool iteration relied on implicit Any before _state was typed; behavior preserved
         )
         decision = decide_route(
             sources=sources or {_default_source},
@@ -523,9 +581,11 @@ class ProvisaFlightServer(flight.FlightServerBase):
         table = rows_to_arrow_table(result.rows, columns)
         return flight.RecordBatchStream(table)
 
-    def _do_get_graphql(self, request: dict) -> flight.RecordBatchStream:
+    def _do_get_graphql(
+        self, request: dict[str, object]
+    ) -> flight.RecordBatchStream | flight.GeneratorStream:
         """Execute a GraphQL query ticket and return Arrow record batches."""
-        role_id = request.get("role", "")
+        role_id = str(request.get("role", ""))
         _role = self._state.roles.get(role_id)
         if _role and not has_capability(_role, Capability.AD_HOC_QUERY):
             raise flight.FlightServerError(

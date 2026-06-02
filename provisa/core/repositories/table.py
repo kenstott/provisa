@@ -14,7 +14,7 @@ import json
 
 import asyncpg
 
-from provisa.core.models import Column, Table
+from provisa.core.models import Table
 
 
 async def upsert(conn: asyncpg.Connection, table: Table) -> int:

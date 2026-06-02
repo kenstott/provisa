@@ -90,6 +90,7 @@ def new_job_id() -> str:
 # Job store
 # ---------------------------------------------------------------------------
 
+
 class InMemoryJobStore:
     """In-process job store for dev/test."""
 
@@ -118,6 +119,7 @@ class RedisJobStore:
 
     def __init__(self, redis_url: str) -> None:
         import redis.asyncio as aioredis
+
         self._redis = aioredis.from_url(redis_url)
 
     def _key(self, job_id: str) -> str:
@@ -148,6 +150,7 @@ class RedisJobStore:
 def make_job_store(redis_url: str | None = None) -> InMemoryJobStore | RedisJobStore:
     """Return Redis-backed store if URL given, else in-memory."""
     import os
+
     url = redis_url or os.environ.get("REDIS_URL", "")
     if url:
         return RedisJobStore(url)

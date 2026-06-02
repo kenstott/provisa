@@ -18,10 +18,11 @@ applies type coercion, and writes one row to the ingest backing table per event.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import cast
 
 from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 log = logging.getLogger(__name__)
 
@@ -48,19 +49,23 @@ async def ingest_event(
 
     columns = source_tables.get(table)
     if columns is None:
-        raise HTTPException(status_code=404, detail=f"Ingest table {table!r} not found for source {source_id!r}")
+        raise HTTPException(
+            status_code=404, detail=f"Ingest table {table!r} not found for source {source_id!r}"
+        )
 
     engine = state.ingest_engines.get(source_id)
     if engine is None:
-        raise HTTPException(status_code=503, detail=f"No engine available for ingest source {source_id!r}")
+        raise HTTPException(
+            status_code=503, detail=f"No engine available for ingest source {source_id!r}"
+        )
 
     try:
-        body: Any = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Request body must be valid JSON")
+        body: object = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Request body must be valid JSON") from exc
 
     # Support both a single event dict and a list of events
-    events: list[dict] = body if isinstance(body, list) else [body]
+    events: list[object] = body if isinstance(body, list) else [body]
 
     inserted = 0
     for event in events:
@@ -68,7 +73,7 @@ async def ingest_event(
             continue
         row_data = _extract_row(event, columns)
         try:
-            await _insert_row(engine, table, row_data)
+            await _insert_row(cast("AsyncEngine", engine), table, row_data)
             inserted += 1
         except Exception:
             log.warning("Failed to insert ingest row into %s.%s", source_id, table, exc_info=True)
@@ -76,7 +81,7 @@ async def ingest_event(
     return {"status": "accepted", "inserted": str(inserted)}
 
 
-def _extract_row(payload: dict, columns: list[dict]) -> dict:
+def _extract_row(payload: dict[str, object], columns: list[dict[str, object]]) -> dict[str, object]:
     """Extract column values from *payload* using dot-notation paths.
 
     For columns without a ``path``, falls back to top-level key lookup by
@@ -84,17 +89,19 @@ def _extract_row(payload: dict, columns: list[dict]) -> dict:
     """
     from provisa.ingest.ddl import extract_value
 
-    row: dict = {}
+    row: dict[str, object] = {}
     for col in columns:
-        name = col.get("column_name") or col.get("name", "")
+        raw_name = col.get("column_name") or col.get("name", "")
+        name = raw_name if isinstance(raw_name, str) else ""
         if not name or name.startswith("_"):
             continue
-        path = col.get("path") or name
+        raw_path = col.get("path") or name
+        path = raw_path if isinstance(raw_path, str) else name
         row[name] = extract_value(payload, path)
     return row
 
 
-async def _insert_row(engine: Any, table: str, data: dict) -> None:
+async def _insert_row(engine: AsyncEngine, table: str, data: dict[str, object]) -> None:
     if not data:
         return
     cols = ", ".join(data.keys())

@@ -1024,7 +1024,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
     except Exception:
         return sql
 
-    def _transform(node):
+    def _transform(node: exp.Expression) -> exp.Expression:  # type: ignore[reportPrivateImportUsage]  # Expression is the public node base type but sqlglot stubs omit it from __all__
         if isinstance(node, exp.Table):
             db = node.db.lower() if node.db else ""
             name = node.name.lower() if node.name else ""

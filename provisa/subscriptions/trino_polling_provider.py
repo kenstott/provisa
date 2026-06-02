@@ -14,10 +14,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator
+from typing import TYPE_CHECKING
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
+
+if TYPE_CHECKING:
+    from trino.dbapi import Connection
 
 log = logging.getLogger(__name__)
 
@@ -52,8 +56,9 @@ class TrinoPollingProvider(NotificationProvider):
         self._user = user
         self._running = True
 
-    def _connect(self) -> Any:
+    def _connect(self) -> Connection:
         import trino
+
         return trino.dbapi.connect(
             host=self._host,
             port=self._port,
@@ -64,7 +69,7 @@ class TrinoPollingProvider(NotificationProvider):
             request_timeout=30,
         )
 
-    def _fetch_new_rows(self, conn: Any, watermark: datetime) -> list[dict]:
+    def _fetch_new_rows(self, conn: Connection, watermark: datetime) -> list[dict[str, object]]:
         wc = self._watermark_column
         fqt = f'"{self._catalog}"."{self._schema}"."{self._table}"'
         ts = watermark.strftime("%Y-%m-%d %H:%M:%S.%f")
@@ -76,8 +81,8 @@ class TrinoPollingProvider(NotificationProvider):
         )
         cur = conn.cursor()
         cur.execute(sql)
-        cols = [d[0] for d in cur.description] if cur.description else []
-        return [dict(zip(cols, row)) for row in cur.fetchall()]
+        cols: list[str] = [str(d[0]) for d in cur.description] if cur.description else []
+        return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
 
     async def watch(
         self, table: str, filter_expr: str | None = None
@@ -87,16 +92,17 @@ class TrinoPollingProvider(NotificationProvider):
         conn = await loop.run_in_executor(None, self._connect)
         log.info(
             "TrinoPollingProvider: polling %s.%s.%s every %.1fs on %s",
-            self._catalog, self._schema, self._table,
-            self._poll_interval, self._watermark_column,
+            self._catalog,
+            self._schema,
+            self._table,
+            self._poll_interval,
+            self._watermark_column,
         )
         try:
             while self._running:
                 await asyncio.sleep(self._poll_interval)
                 try:
-                    rows = await loop.run_in_executor(
-                        None, self._fetch_new_rows, conn, watermark
-                    )
+                    rows = await loop.run_in_executor(None, self._fetch_new_rows, conn, watermark)
                 except Exception as exc:
                     log.warning("TrinoPollingProvider: query failed: %s", exc)
                     # Reconnect on next cycle

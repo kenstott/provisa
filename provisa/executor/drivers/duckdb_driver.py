@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import asyncio
-from functools import partial
 
 import duckdb
 
@@ -27,8 +26,14 @@ class DuckDBDriver(DirectDriver):
         self._database: str = ":memory:"
 
     async def connect(
-        self, host: str, port: int, database: str,
-        user: str, password: str, min_pool: int = 1, max_pool: int = 5,
+        self,
+        host: str,
+        port: int,
+        database: str,
+        user: str,
+        password: str,
+        min_pool: int = 1,
+        max_pool: int = 5,
     ) -> None:
         # DuckDB: database is a file path or :memory:
         self._database = database

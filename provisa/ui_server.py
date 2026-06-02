@@ -15,12 +15,13 @@ Serves provisa-ui/dist/ on port 3000 and proxies all API calls
 at http://provisa:8000.  This lets the React SPA use relative URLs
 for all API requests regardless of the environment.
 """
+
 import os
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 STATIC_DIR = Path(__file__).parent.parent / "static"
@@ -42,7 +43,11 @@ if monaco_dir.is_dir():
     app.mount("/monacoeditorwork", StaticFiles(directory=monaco_dir), name="monacoeditorwork")
 
 
-@app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"], response_model=None)
+@app.api_route(
+    "/{full_path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+    response_model=None,
+)
 async def handler(request: Request, full_path: str) -> Response:
     # ── Static asset — serve from disk ───────────────────────────────────────
     if any(request.url.path.startswith(p) for p in _STATIC_PREFIXES):
@@ -61,10 +66,20 @@ async def handler(request: Request, full_path: str) -> Response:
     # ── API proxy — forward to provisa container ──────────────────────────────
     # Heuristic: paths with no extension that match known API prefixes are proxied.
     api_prefixes = (
-        "/admin/", "/data/", "/sources", "/tables", "/views",
-        "/domains", "/roles", "/health", "/metrics", "/auth",
+        "/admin/",
+        "/data/",
+        "/sources",
+        "/tables",
+        "/views",
+        "/domains",
+        "/roles",
+        "/health",
+        "/metrics",
+        "/auth",
     )
-    is_api = any(request.url.path == p.rstrip("/") or request.url.path.startswith(p) for p in api_prefixes)
+    is_api = any(
+        request.url.path == p.rstrip("/") or request.url.path.startswith(p) for p in api_prefixes
+    )
 
     if is_api:
         target = f"{API_BASE_URL}/{full_path}"
@@ -73,8 +88,7 @@ async def handler(request: Request, full_path: str) -> Response:
 
         body = await request.body()
         headers = {
-            k: v for k, v in request.headers.items()
-            if k.lower() not in ("host", "content-length")
+            k: v for k, v in request.headers.items() if k.lower() not in ("host", "content-length")
         }
 
         async with httpx.AsyncClient(timeout=120) as client:

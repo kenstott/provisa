@@ -24,10 +24,35 @@ import io
 import logging
 import re
 import struct
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    import pyarrow as pa
     from buenavista.postgres import BVContext
+
+    from provisa.compiler.sql_gen import TableMeta
+    from provisa.executor.trino import QueryResult
+    from provisa.pgwire._pipeline import _Plan
+
+
+class _ByteReader(Protocol):
+    def read(self, size: int = ..., /) -> bytes: ...
+
+
+class _ByteWriter(Protocol):
+    def write(self, data: bytes, /) -> int: ...
+
+    def flush(self) -> None: ...
+
+
+class _CopyTransport(Protocol):
+    """Subset of ProvisaHandler used by CopyHandler for wire I/O."""
+
+    rfile: _ByteReader
+    wfile: _ByteWriter
+
 
 log = logging.getLogger(__name__)
 
@@ -76,7 +101,7 @@ def is_copy_sql(sql: str) -> bool:
     return bool(_COPY_RE.match(sql))
 
 
-def _value_to_copy_text(v) -> str:
+def _value_to_copy_text(v: object) -> str:
     if v is None:
         return r"\N"
     if isinstance(v, bool):
@@ -89,7 +114,7 @@ def _value_to_copy_text(v) -> str:
     return s
 
 
-def _rows_to_copy_text(rows, col_count: int) -> bytes:
+def _rows_to_copy_text(rows: Sequence[Sequence[object]], col_count: int) -> bytes:
     out = io.StringIO()
     for row in rows:
         parts = [_value_to_copy_text(row[i] if i < len(row) else None) for i in range(col_count)]
@@ -98,7 +123,7 @@ def _rows_to_copy_text(rows, col_count: int) -> bytes:
     return out.getvalue().encode("utf-8")
 
 
-def _rows_to_copy_csv(rows, col_count: int) -> bytes:
+def _rows_to_copy_csv(rows: Sequence[Sequence[object]], col_count: int) -> bytes:
     out = io.StringIO()
     w = csv.writer(out, lineterminator="\n")
     for row in rows:
@@ -106,8 +131,7 @@ def _rows_to_copy_csv(rows, col_count: int) -> bytes:
     return out.getvalue().encode("utf-8")
 
 
-def _arrow_table_to_copy_bytes(table, fmt: str) -> bytes:
-
+def _arrow_table_to_copy_bytes(table: pa.Table, fmt: str) -> bytes:
     col_count = table.num_columns
     rows = table.to_pylist()
     col_names = table.column_names
@@ -116,7 +140,7 @@ def _arrow_table_to_copy_bytes(table, fmt: str) -> bytes:
     return _rows_to_copy_text([[row.get(n) for n in col_names] for row in rows], col_count)
 
 
-def _queryresult_to_copy_bytes(result, fmt: str) -> bytes:
+def _queryresult_to_copy_bytes(result: QueryResult, fmt: str) -> bytes:
     col_count = len(result.column_names)
     if fmt == "csv":
         return _rows_to_copy_csv(result.rows, col_count)
@@ -171,7 +195,7 @@ def _parse_copy_data(data: bytes, fmt: str) -> list[list]:
     return _parse_copy_data_text(data)
 
 
-def _find_table_meta(schema: str | None, table: str, role_id: str):
+def _find_table_meta(schema: str | None, table: str, role_id: str) -> tuple[TableMeta, list[str]]:
     """Return (TableMeta, col_names) for the COPY target table."""
     from provisa.api.app import state
     from provisa.compiler.naming import domain_to_sql_name
@@ -183,7 +207,7 @@ def _find_table_meta(schema: str | None, table: str, role_id: str):
     table_lower = table.lower()
     schema_lower = schema.lower() if schema else None
 
-    for type_name, tm in ctx.tables.items():
+    for _type_name, tm in ctx.tables.items():
         tm_schema = domain_to_sql_name(tm.domain_id).lower()
         tm_table = (tm.table_name or tm.original_table_name or "").lower()
         if tm_table != table_lower:
@@ -208,7 +232,7 @@ async def _insert_rows(
 
     col_list = ", ".join(f'"{c}"' for c in col_names)
     placeholders = ", ".join(["?" for _ in col_names])
-    sql = f'INSERT INTO "{schema}"."{table}" ({col_list}) VALUES ({placeholders})'
+    sql = f'INSERT INTO "{schema}"."{table}" ({col_list}) VALUES ({placeholders})'  # noqa: S608  # schema/table/col_names are governed identifiers from TableMeta; values use placeholders
 
     inserted = 0
     for row in rows:
@@ -225,7 +249,7 @@ async def _insert_rows(
 class CopyHandler:
     """Handles COPY TO STDOUT and COPY FROM STDIN for ProvisaHandler."""
 
-    def __init__(self, handler) -> None:
+    def __init__(self, handler: _CopyTransport) -> None:
         self._h = handler  # ProvisaHandler instance
 
     def handle(self, ctx: BVContext, sql: str) -> int:
@@ -242,7 +266,7 @@ class CopyHandler:
             schema = m_to.group("schema")
             table = m_to.group("table")
             fmt = (m_to.group("fmt") or "text").lower()
-            query = f"SELECT * FROM {schema + '.' if schema else ''}{table}"
+            query = f"SELECT * FROM {schema + '.' if schema else ''}{table}"  # noqa: S608  # schema/table matched against [A-Za-z_][A-Za-z0-9_]* regex identifier grammar
             return self._handle_copy_to_query(ctx, query, fmt, role_id)
 
         m_from = _PARSE_FROM_RE.match(sql)
@@ -260,9 +284,9 @@ class CopyHandler:
     # COPY TO STDOUT
     # ------------------------------------------------------------------
 
-    def _handle_copy_to_query(self, ctx: BVContext, query: str, fmt: str, role_id: str) -> int:
-        from provisa.pgwire._pipeline import plan_pgwire_sql
+    def _handle_copy_to_query(self, _ctx: BVContext, query: str, fmt: str, role_id: str) -> int:
         from provisa.pgwire import server as _srv
+        from provisa.pgwire._pipeline import plan_pgwire_sql
         from provisa.transpiler.router import Route
 
         with _srv._loop_lock:
@@ -283,18 +307,20 @@ class CopyHandler:
         self._send_copy_done()
         return nrows
 
-    def _exec_trino_flight(self, plan, fmt: str) -> tuple[bytes, int]:
+    def _exec_trino_flight(self, plan: _Plan, fmt: str) -> tuple[bytes, int]:
         from provisa.api.app import state
         from provisa.executor.trino_flight import execute_trino_flight_arrow
 
         if state.flight_client is None:
             raise RuntimeError("Arrow Flight client not connected")
+        if plan.trino_sql is None:
+            raise RuntimeError("Trino plan missing transpiled SQL")
         table = execute_trino_flight_arrow(state.flight_client, plan.trino_sql, plan.exec_params)
         data_bytes = _arrow_table_to_copy_bytes(table, fmt)
         return data_bytes, table.num_rows
 
     def _exec_direct_plan(
-        self, plan, loop: asyncio.AbstractEventLoop, fmt: str
+        self, plan: _Plan, loop: asyncio.AbstractEventLoop, fmt: str
     ) -> tuple[bytes, int]:
         from provisa.pgwire._pipeline import _execute_plan
 
@@ -303,7 +329,7 @@ class CopyHandler:
         data_bytes = _queryresult_to_copy_bytes(result, fmt)
         return data_bytes, len(result.rows)
 
-    def _send_copy_out_response(self, fmt: str) -> None:
+    def _send_copy_out_response(self, _fmt: str) -> None:
         # overall_format: 0=text, 1=binary; col_count 0 means unknown/variable
         overall = 0
         body = struct.pack("!bh", overall, 0)
@@ -326,7 +352,7 @@ class CopyHandler:
 
     def _handle_copy_from(
         self,
-        ctx: BVContext,
+        _ctx: BVContext,
         schema: str | None,
         table: str,
         explicit_cols: list[str] | None,
@@ -389,7 +415,7 @@ class CopyHandler:
         )
         return future.result(timeout=120)
 
-    def _send_copy_in_response(self, fmt: str) -> None:
+    def _send_copy_in_response(self, _fmt: str) -> None:
         overall = 0
         body = struct.pack("!bh", overall, 0)
         self._h.wfile.write(struct.pack("!ci", _COPY_IN_RESPONSE, len(body) + 4))

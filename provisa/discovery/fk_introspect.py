@@ -26,6 +26,7 @@ Alias naming follows Hasura convention:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import asyncpg
@@ -93,7 +94,14 @@ async def _pg_fks(
         key = (table_name, fk_col, ref_tbl, ref_col)
         if key not in seen:
             seen.add(key)
-            results.append({"fk_table": table_name, "fk_column": fk_col, "ref_table": ref_tbl, "ref_column": ref_col})
+            results.append(
+                {
+                    "fk_table": table_name,
+                    "fk_column": fk_col,
+                    "ref_table": ref_tbl,
+                    "ref_column": ref_col,
+                }
+            )
 
     in_rows = await driver.execute(_PG_INBOUND, [schema_name, table_name])
     for row in in_rows.rows:
@@ -101,7 +109,14 @@ async def _pg_fks(
         key = (fk_tbl, fk_col, table_name, ref_col)
         if key not in seen:
             seen.add(key)
-            results.append({"fk_table": fk_tbl, "fk_column": fk_col, "ref_table": table_name, "ref_column": ref_col})
+            results.append(
+                {
+                    "fk_table": fk_tbl,
+                    "fk_column": fk_col,
+                    "ref_table": table_name,
+                    "ref_column": ref_col,
+                }
+            )
 
     return results
 
@@ -117,7 +132,14 @@ async def _sqlite_fks(
     for row in rows.rows:
         # columns: id, seq, table, from, to, on_update, on_delete, match
         _id, _seq, ref_tbl, fk_col, ref_col = row[0], row[1], row[2], row[3], row[4]
-        results.append({"fk_table": table_name, "fk_column": fk_col, "ref_table": ref_tbl, "ref_column": ref_col or "id"})
+        results.append(
+            {
+                "fk_table": table_name,
+                "fk_column": fk_col,
+                "ref_table": ref_tbl,
+                "ref_column": ref_col or "id",
+            }
+        )
     return results
 
 
@@ -149,7 +171,13 @@ async def _insert_rel(
         VALUES ($1, $2, $3, $4, $5, $6, $7)
         ON CONFLICT DO NOTHING
         """,
-        rel_id, src_id, tgt_id, src_col, tgt_col, cardinality, alias,
+        rel_id,
+        src_id,
+        tgt_id,
+        src_col,
+        tgt_col,
+        cardinality,
+        alias,
     )
     return result == "INSERT 0 1"
 
@@ -175,13 +203,22 @@ async def _govdata_fks(
             api_key=api_key,
         )
         loop = asyncio.get_running_loop()
-        raw = await loop.run_in_executor(None, _fetch_fks, gds, schema_name.lower(), table_name.lower())
+        raw = await loop.run_in_executor(
+            None, _fetch_fks, gds, schema_name.lower(), table_name.lower()
+        )
         return [
-            {"fk_table": table_name, "fk_column": fk["fk_col"], "ref_table": fk["ref_table"], "ref_column": fk["ref_col"]}
+            {
+                "fk_table": table_name,
+                "fk_column": fk["fk_col"],
+                "ref_table": fk["ref_table"],
+                "ref_column": fk["ref_col"],
+            }
             for fk in raw
         ]
     except Exception:
-        _log.debug("govdata FK introspection failed for %s.%s", schema_name, table_name, exc_info=True)
+        _log.debug(
+            "govdata FK introspection failed for %s.%s", schema_name, table_name, exc_info=True
+        )
         return []
 
 
@@ -214,7 +251,13 @@ async def auto_register_fk_relationships(
             else:
                 return 0
         except Exception:
-            _log.debug("FK introspection failed for %s.%s (%s)", schema_name, table_name, source_type, exc_info=True)
+            _log.debug(
+                "FK introspection failed for %s.%s (%s)",
+                schema_name,
+                table_name,
+                source_type,
+                exc_info=True,
+            )
             return 0
 
     if not fk_rows:
@@ -231,11 +274,13 @@ async def auto_register_fk_relationships(
 
         fk_row = await config_conn.fetchrow(
             "SELECT id FROM registered_tables WHERE source_id = $1 AND table_name = $2",
-            source_id, fk_tbl,
+            source_id,
+            fk_tbl,
         )
         ref_row = await config_conn.fetchrow(
             "SELECT id FROM registered_tables WHERE source_id = $1 AND table_name = $2",
-            source_id, ref_tbl,
+            source_id,
+            ref_tbl,
         )
 
         m2o_id = f"fk__{fk_tbl}__{fk_col}__to__{ref_tbl}"
@@ -247,22 +292,44 @@ async def auto_register_fk_relationships(
 
             m2o_aliases_used.setdefault(fk_id, set())
             base_m2o = _m2o_alias(ref_tbl)
-            alias_m2o = base_m2o if base_m2o not in m2o_aliases_used[fk_id] else f"{base_m2o}_by_{fk_col}"
+            alias_m2o = (
+                base_m2o if base_m2o not in m2o_aliases_used[fk_id] else f"{base_m2o}_by_{fk_col}"
+            )
             m2o_aliases_used[fk_id].add(alias_m2o)
 
-            if await _insert_rel(config_conn, m2o_id, fk_id, ref_id, fk_col, ref_col, "many-to-one", alias_m2o):
+            if await _insert_rel(
+                config_conn, m2o_id, fk_id, ref_id, fk_col, ref_col, "many-to-one", alias_m2o
+            ):
                 inserted += 1
-                _log.info("Auto-tracked FK many-to-one: %s.%s → %s.%s (alias: %s)", fk_tbl, fk_col, ref_tbl, ref_col, alias_m2o)
+                _log.info(
+                    "Auto-tracked FK many-to-one: %s.%s → %s.%s (alias: %s)",
+                    fk_tbl,
+                    fk_col,
+                    ref_tbl,
+                    ref_col,
+                    alias_m2o,
+                )
 
             # one-to-many: ref_table.ref_col ← fk_table.fk_col
             o2m_aliases_used.setdefault(ref_id, set())
             base_o2m = _o2m_alias(fk_tbl)
-            alias_o2m = base_o2m if base_o2m not in o2m_aliases_used[ref_id] else f"{base_o2m}_by_{fk_col}"
+            alias_o2m = (
+                base_o2m if base_o2m not in o2m_aliases_used[ref_id] else f"{base_o2m}_by_{fk_col}"
+            )
             o2m_aliases_used[ref_id].add(alias_o2m)
 
-            if await _insert_rel(config_conn, o2m_id, ref_id, fk_id, ref_col, fk_col, "one-to-many", alias_o2m):
+            if await _insert_rel(
+                config_conn, o2m_id, ref_id, fk_id, ref_col, fk_col, "one-to-many", alias_o2m
+            ):
                 inserted += 1
-                _log.info("Auto-tracked FK one-to-many: %s.%s ← %s.%s (alias: %s)", ref_tbl, ref_col, fk_tbl, fk_col, alias_o2m)
+                _log.info(
+                    "Auto-tracked FK one-to-many: %s.%s ← %s.%s (alias: %s)",
+                    ref_tbl,
+                    ref_col,
+                    fk_tbl,
+                    fk_col,
+                    alias_o2m,
+                )
 
         # else: one or both tables not registered — skip; will be created when the missing table is registered
 

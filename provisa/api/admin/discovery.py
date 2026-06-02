@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import logging as _logging
 import os
 
 from fastapi import APIRouter, HTTPException
@@ -48,7 +49,6 @@ def _get_api_key() -> str:
     return key
 
 
-import logging as _logging
 _log = _logging.getLogger(__name__)
 
 
@@ -68,7 +68,10 @@ async def trigger_discovery(body: DiscoverRequest):
     all_candidates = []
     async with state.pg_pool.acquire() as conn:
         fk_candidates = await collect_fk_candidates(
-            state.trino_conn, conn, body.scope, scope_id,
+            state.trino_conn,
+            conn,
+            body.scope,
+            scope_id,
         )
         _log.warning("FK introspection returned %d candidates", len(fk_candidates))
         all_candidates.extend(fk_candidates)
@@ -76,7 +79,10 @@ async def trigger_discovery(body: DiscoverRequest):
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if api_key:
             discovery_input = await collect_metadata(
-                state.trino_conn, conn, body.scope, scope_id,
+                state.trino_conn,
+                conn,
+                body.scope,
+                scope_id,
             )
             _log.warning(
                 "LLM discovery metadata: %d tables, columns per table: %s",

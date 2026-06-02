@@ -13,8 +13,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 # Hasura operator -> SQL operator
 _OPERATORS: dict[str, str] = {
     "_eq": "=",
@@ -33,7 +31,7 @@ _OPERATORS: dict[str, str] = {
 }
 
 
-def _format_value(val: Any) -> str:
+def _format_value(val: object) -> str:
     """Format a value for SQL embedding."""
     if isinstance(val, str):
         if val.startswith("x-hasura-") or val.startswith("X-Hasura-"):
@@ -49,18 +47,20 @@ def _format_value(val: Any) -> str:
     return str(val)
 
 
-def _convert_session_var(val: Any) -> str:
+def _convert_session_var(val: object) -> str:
     """Convert Hasura session variable references."""
     if isinstance(val, dict) and len(val) == 1:
         key = next(iter(val))
-        if key == "x-hasura-user-id" or key == "X-Hasura-User-Id":
+        if not isinstance(key, str):
+            return ""
+        if key in ("x-hasura-user-id", "X-Hasura-User-Id"):
             return "${x-hasura-user-id}"
         if key.startswith("x-hasura-") or key.startswith("X-Hasura-"):
             return f"${{{key}}}"
     return ""
 
 
-def bool_expr_to_sql(expr: dict[str, Any], table_alias: str = "") -> str:
+def bool_expr_to_sql(expr: dict[str, object], table_alias: str = "") -> str:
     """Convert a Hasura boolean expression to a SQL WHERE clause.
 
     Args:
@@ -81,24 +81,33 @@ def _col_ref(col: str, table_alias: str) -> str:
     return col
 
 
-def _convert_node(node: dict[str, Any], table_alias: str) -> str:
+def _convert_node(node: dict[str, object], table_alias: str) -> str:
     parts: list[str] = []
 
     for key, value in node.items():
         if key == "_and":
-            sub = [_convert_node(item, table_alias) for item in value]
+            if not isinstance(value, list):
+                continue
+            sub = [_convert_node(item, table_alias) for item in value if isinstance(item, dict)]
             parts.append("(" + " AND ".join(sub) + ")")
         elif key == "_or":
-            sub = [_convert_node(item, table_alias) for item in value]
+            if not isinstance(value, list):
+                continue
+            sub = [_convert_node(item, table_alias) for item in value if isinstance(item, dict)]
             parts.append("(" + " OR ".join(sub) + ")")
         elif key == "_not":
+            if not isinstance(value, dict):
+                continue
             inner = _convert_node(value, table_alias)
             parts.append(f"NOT ({inner})")
         elif key == "_exists":
+            if not isinstance(value, dict):
+                continue
             tbl = value.get("_table", {})
-            schema = tbl.get("schema", "public")
-            table = tbl.get("name", "unknown")
-            where = _convert_node(value.get("_where", {}), "")
+            schema = tbl.get("schema", "public") if isinstance(tbl, dict) else "public"
+            table = tbl.get("name", "unknown") if isinstance(tbl, dict) else "unknown"
+            where_node = value.get("_where", {})
+            where = _convert_node(where_node, "") if isinstance(where_node, dict) else "TRUE"
             parts.append(f"EXISTS (SELECT 1 FROM {schema}.{table} WHERE {where})")
         elif key.startswith("_"):
             # Unknown operator at top level — skip

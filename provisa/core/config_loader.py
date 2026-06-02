@@ -14,6 +14,23 @@ import logging
 import re
 from pathlib import Path
 
+import asyncpg
+import trino
+import yaml
+
+from provisa.core.models import ProvisaConfig
+from provisa.core.secrets import resolve_secrets
+from provisa.core.repositories import (
+    source as source_repo,
+    domain as domain_repo,
+    table as table_repo,
+    relationship as rel_repo,
+    role as role_repo,
+    rls as rls_repo,
+    function as function_repo,
+)
+from provisa.core import catalog
+
 log = logging.getLogger(__name__)
 
 
@@ -47,23 +64,6 @@ def _default_params_from_spec(spec: dict, path: str) -> dict:
         elif "default" in schema:
             defaults[name] = schema["default"]
     return defaults
-
-import asyncpg
-import trino
-import yaml
-
-from provisa.core.models import ProvisaConfig
-from provisa.core.secrets import resolve_secrets
-from provisa.core.repositories import (
-    source as source_repo,
-    domain as domain_repo,
-    table as table_repo,
-    relationship as rel_repo,
-    role as role_repo,
-    rls as rls_repo,
-    function as function_repo,
-)
-from provisa.core import catalog
 
 
 def parse_config(path: str | Path) -> ProvisaConfig:
@@ -173,6 +173,7 @@ async def _load_config_in_txn(
         if src.type.value == "openapi" and src.path:
             try:
                 from provisa.openapi.loader import load_spec
+
                 openapi_specs[src.id] = load_spec(resolve_secrets(src.path))
             except Exception as _e:
                 log.warning("Failed to load OpenAPI spec for %s: %s", src.id, _e)
@@ -185,8 +186,16 @@ async def _load_config_in_txn(
             if spec:
                 from provisa.openapi.mapper import parse_spec
                 from provisa.openapi.register import _schema_to_columns
+
                 queries, _ = parse_spec(spec)
-                match = next((q for q in queries if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)), None)
+                match = next(
+                    (
+                        q
+                        for q in queries
+                        if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)
+                    ),
+                    None,
+                )
                 if match:
                     spec_cols = _schema_to_columns(match.response_schema)
                     spec_col_map = {c["name"]: c for c in spec_cols}
@@ -199,10 +208,15 @@ async def _load_config_in_txn(
         src = sources_by_id.get(tbl.source_id)
         if src and src.type.value == "sqlite" and src.path:
             from provisa.file_source.pg_migrate import migrate_sqlite_table
+
             try:
-                await migrate_sqlite_table(src.path, tbl.table_name, conn, tbl.schema_name, tbl.table_name)
+                await migrate_sqlite_table(
+                    src.path, tbl.table_name, conn, tbl.schema_name, tbl.table_name
+                )
             except Exception as _e:
-                log.warning("SQLite → PG migration failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e)
+                log.warning(
+                    "SQLite → PG migration failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e
+                )
         elif src and src.type.value == "openapi" and src.base_url:
             resolved_base_url = resolve_secrets(src.base_url)
             spec = openapi_specs.get(src.id, {})
@@ -211,8 +225,16 @@ async def _load_config_in_txn(
                 from provisa.openapi.mapper import parse_spec
                 from provisa.openapi.pg_cache import cache_openapi_table
                 from provisa.openapi.register import _openapi_to_provisa_type, _schema_to_columns
+
                 queries, _ = parse_spec(spec)
-                match = next((q for q in queries if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)), None)
+                match = next(
+                    (
+                        q
+                        for q in queries
+                        if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)
+                    ),
+                    None,
+                )
                 if match:
                     default_params = _default_params_from_spec(spec, match.path)
                     fallback_cols = [(c.name, "TEXT") for c in tbl.columns] if tbl.columns else None
@@ -228,7 +250,9 @@ async def _load_config_in_txn(
                             fallback_cols,
                         )
                     except Exception as _e:
-                        log.warning("OpenAPI cache failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e)
+                        log.warning(
+                            "OpenAPI cache failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e
+                        )
                     # Register in api_sources + api_endpoints for runtime hydration
                     try:
                         await conn.execute(
@@ -237,35 +261,47 @@ async def _load_config_in_txn(
                             VALUES ($1, 'openapi', $2, $3)
                             ON CONFLICT (id) DO UPDATE SET base_url = EXCLUDED.base_url
                             """,
-                            src.id, resolved_base_url, None,
+                            src.id,
+                            resolved_base_url,
+                            None,
                         )
-                        resp_col_names = {c["name"] for c in _schema_to_columns(match.response_schema)}
+                        resp_col_names = {
+                            c["name"] for c in _schema_to_columns(match.response_schema)
+                        }
                         api_columns = [
                             {
                                 "name": c["name"],
                                 "type": c["type"],
                                 "filterable": True,
-                                **({"object_fields": c["object_fields"]} if c.get("object_fields") else {}),
+                                **(
+                                    {"object_fields": c["object_fields"]}
+                                    if c.get("object_fields")
+                                    else {}
+                                ),
                             }
                             for c in _schema_to_columns(match.response_schema)
                         ]
                         for p in match.path_params:
-                            api_columns.append({
-                                "name": p["name"],
-                                "type": _openapi_to_provisa_type(p.get("type")),
-                                "filterable": False,
-                                "param_type": "path",
-                                "param_name": p["name"],
-                            })
-                        for p in match.query_params:
-                            if p["name"] not in resp_col_names:
-                                api_columns.append({
+                            api_columns.append(
+                                {
                                     "name": p["name"],
                                     "type": _openapi_to_provisa_type(p.get("type")),
                                     "filterable": False,
-                                    "param_type": "query",
+                                    "param_type": "path",
                                     "param_name": p["name"],
-                                })
+                                }
+                            )
+                        for p in match.query_params:
+                            if p["name"] not in resp_col_names:
+                                api_columns.append(
+                                    {
+                                        "name": p["name"],
+                                        "type": _openapi_to_provisa_type(p.get("type")),
+                                        "filterable": False,
+                                        "param_type": "query",
+                                        "param_name": p["name"],
+                                    }
+                                )
                         await conn.execute(
                             """
                             INSERT INTO api_endpoints
@@ -278,8 +314,11 @@ async def _load_config_in_txn(
                                 ttl           = EXCLUDED.ttl,
                                 default_params = EXCLUDED.default_params
                             """,
-                            src.id, match.path, tbl.table_name,
-                            _json.dumps(api_columns), src.cache_ttl or 300,
+                            src.id,
+                            match.path,
+                            tbl.table_name,
+                            _json.dumps(api_columns),
+                            src.cache_ttl or 300,
                             _json.dumps(default_params) if default_params else None,
                         )
                         # Backfill object_fields into table_columns — YAML columns don't carry them
@@ -294,12 +333,23 @@ async def _load_config_in_txn(
                                          AND rt.table_name = $3
                                          AND tc.column_name = $4""",
                                     _json.dumps(col_data["object_fields"]),
-                                    tbl.source_id, tbl.table_name, col_data["name"],
+                                    tbl.source_id,
+                                    tbl.table_name,
+                                    col_data["name"],
                                 )
                     except Exception as _e:
-                        log.warning("api_endpoints registration failed for %s.%s: %s", src.id, tbl.table_name, _e)
+                        log.warning(
+                            "api_endpoints registration failed for %s.%s: %s",
+                            src.id,
+                            tbl.table_name,
+                            _e,
+                        )
                 else:
-                    log.warning("No matching OpenAPI operation for table %s (source %s)", tbl.table_name, tbl.source_id)
+                    log.warning(
+                        "No matching OpenAPI operation for table %s (source %s)",
+                        tbl.table_name,
+                        tbl.source_id,
+                    )
 
     # 5a. Purge registered_tables rows whose table_name is no longer in config (handles renames)
     tables_by_source: dict[str, list[str]] = {}

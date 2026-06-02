@@ -12,12 +12,16 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import strawberry
 
 from provisa.compiler.naming import source_to_catalog
 from provisa.api.admin._config_io import config_path as _config_path, read_config
+from provisa.api.admin.db_queries import derive_graphql_alias as _derive_graphql_alias_fn
+from provisa.api.admin.db_queries import derive_cypher_alias as _derive_cypher_alias_fn
+from provisa.core.config_loader import _normalize_op_id
 from provisa.api.admin.types import (
     AvailableColumnType,
     AvailableTableType,
@@ -49,12 +53,14 @@ from provisa.api.admin.types import (
 
 async def _get_pool():
     from provisa.api.app import state
+
     return state.pg_pool
 
 
 async def _ensure_openapi_spec(source_id: str) -> bool:
     """Lazy-load an OpenAPI spec into state from the DB source record if missing."""
     from provisa.api.app import state
+
     if getattr(state, "openapi_specs", {}).get(source_id):
         return True
     pool = await _get_pool()
@@ -66,6 +72,7 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         return False
     try:
         from provisa.openapi.loader import load_spec
+
         spec = load_spec(row["path"])
         servers = spec.get("servers", [])
         base_url = servers[0].get("url", "") if servers else ""
@@ -84,7 +91,6 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         return False
 
 
-
 async def _govdata_columns(
     source_id: str,
     schema_name: str,
@@ -96,7 +102,10 @@ async def _govdata_columns(
 
     from provisa.core.models import GovDataSource, GovDataSubject
     from provisa.core.secrets import resolve_secrets as _resolve_secrets
-    from provisa.govdata.source import fetch_columns as _fetch_columns, fetch_primary_keys as _fetch_pks
+    from provisa.govdata.source import (
+        fetch_columns as _fetch_columns,
+        fetch_primary_keys as _fetch_pks,
+    )
 
     schema_lower = schema_name.lower()
     table_lower = table_name.lower()
@@ -120,29 +129,41 @@ async def _govdata_columns(
         pks_fut = loop.run_in_executor(None, _fetch_pks, gds, schema_lower, table_lower)
         rows, pk_cols = await _asyncio.gather(cols_fut, pks_fut)
         return [
-            AvailableColumnType(name=col, data_type=typ, comment=rem or None, is_primary_key=col in pk_cols)
+            AvailableColumnType(
+                name=col, data_type=typ, comment=rem or None, is_primary_key=col in pk_cols
+            )
             for col, typ, rem in rows
         ]
     except Exception as _e:
         _logging.getLogger(__name__).error(
-            "govdata _govdata_columns failed for %s.%s: %s", schema_name, table_name, _e, exc_info=True
+            "govdata _govdata_columns failed for %s.%s: %s",
+            schema_name,
+            table_name,
+            _e,
+            exc_info=True,
         )
         return []
 
 
 async def _rebuild_schemas():
     import logging
+
     logging.getLogger(__name__).warning("[DEBUG] _rebuild_schemas called")
     from provisa.api.app import _rebuild_schemas as rebuild
+
     await rebuild()
     logging.getLogger(__name__).warning("[DEBUG] _rebuild_schemas completed")
 
 
 def _source_from_row(row) -> SourceType:
     return SourceType(
-        id=row["id"], type=row["type"], host=row["host"],
-        port=row["port"], database=row["database"],
-        username=row["username"], dialect=row["dialect"],
+        id=row["id"],
+        type=row["type"],
+        host=row["host"],
+        port=row["port"],
+        database=row["database"],
+        username=row["username"],
+        dialect=row["dialect"],
         cache_enabled=row.get("cache_enabled", True),
         cache_ttl=row.get("cache_ttl"),
         naming_convention=row.get("naming_convention"),
@@ -153,22 +174,22 @@ def _source_from_row(row) -> SourceType:
 
 
 def _domain_from_row(row) -> DomainType:
-    return DomainType(id=row["id"], description=row["description"], graphql_alias=row["graphql_alias"])
+    return DomainType(
+        id=row["id"], description=row["description"], graphql_alias=row["graphql_alias"]
+    )
 
 
 def _role_from_row(row) -> RoleType:
     return RoleType(
-        id=row["id"], capabilities=list(row["capabilities"]),
+        id=row["id"],
+        capabilities=list(row["capabilities"]),
         domain_access=list(row["domain_access"]),
     )
 
 
-from provisa.api.admin.db_queries import derive_graphql_alias as _derive_graphql_alias_fn
-from provisa.api.admin.db_queries import derive_cypher_alias as _derive_cypher_alias_fn
-from provisa.core.config_loader import _normalize_op_id
-
-
-def _derive_graphql_alias(target_table_name: str, cardinality: str, alias: str | None, convention: str = "apollo_graphql") -> str | None:
+def _derive_graphql_alias(
+    target_table_name: str, cardinality: str, alias: str | None, convention: str = "apollo_graphql"
+) -> str | None:
     return _derive_graphql_alias_fn(target_table_name, cardinality, convention)
 
 
@@ -178,10 +199,13 @@ def _rel_from_row(row, convention: str = "apollo_graphql") -> RelationshipType:
     source_column = row.get("source_column") or ""
     alias = row.get("alias")
     persisted_graphql_alias = row.get("graphql_alias") or None
-    graphql_alias = persisted_graphql_alias or _derive_graphql_alias(target_table_name, cardinality, alias, convention)
+    graphql_alias = persisted_graphql_alias or _derive_graphql_alias(
+        target_table_name, cardinality, alias, convention
+    )
     computed_cypher_alias = None if alias else _derive_cypher_alias_fn(source_column, cardinality)
     return RelationshipType(
-        id=row["id"], source_table_id=row["source_table_id"],
+        id=row["id"],
+        source_table_id=row["source_table_id"],
         target_table_id=row.get("target_table_id"),
         source_table_name=row.get("source_table_name", ""),
         target_table_name=target_table_name,
@@ -214,11 +238,13 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         "SELECT id, column_name, visible_to, writable_by, unmasked_to, "
         "mask_type, mask_pattern, mask_replace, mask_value, mask_precision, "
         "alias, description, data_type, native_filter_type, is_primary_key, is_foreign_key, is_alternate_key, scope "
-        "FROM table_columns WHERE table_id = $1 ORDER BY id", row["id"],
+        "FROM table_columns WHERE table_id = $1 ORDER BY id",
+        row["id"],
     )
     columns = [
         TableColumnType(
-            id=r["id"], column_name=r["column_name"],
+            id=r["id"],
+            column_name=r["column_name"],
             visible_to=list(r["visible_to"]),
             writable_by=list(r.get("writable_by") or []),
             unmasked_to=list(r.get("unmasked_to") or []),
@@ -227,7 +253,8 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
             mask_replace=r.get("mask_replace"),
             mask_value=r.get("mask_value"),
             mask_precision=r.get("mask_precision"),
-            alias=r.get("alias"), description=r.get("description"),
+            alias=r.get("alias"),
+            description=r.get("description"),
             data_type=r.get("data_type"),
             native_filter_type=r.get("native_filter_type"),
             is_primary_key=bool(r.get("is_primary_key") or False),
@@ -238,7 +265,13 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         for r in col_rows
     ]
     presets = [
-        ColumnPresetType(column=p["column"], source=p["source"], name=p.get("name"), value=p.get("value"), data_type=p.get("data_type"))
+        ColumnPresetType(
+            column=p["column"],
+            source=p["source"],
+            name=p.get("name"),
+            value=p.get("value"),
+            data_type=p.get("data_type"),
+        )
         for p in (row.get("column_presets") or [])
     ]
 
@@ -247,23 +280,35 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         try:
             from provisa.api.app import state
             from provisa.openapi.mapper import parse_spec
+
             spec_info = state.openapi_specs.get(row["source_id"], {})
             spec = spec_info.get("spec", {})
             base_url = spec_info.get("base_url", "")
             queries, _ = parse_spec(spec)
 
             table_name = row["table_name"]
-            q = next((q for q in queries if _normalize_op_id(q.operation_id) == _normalize_op_id(table_name)), None)
+            q = next(
+                (
+                    q
+                    for q in queries
+                    if _normalize_op_id(q.operation_id) == _normalize_op_id(table_name)
+                ),
+                None,
+            )
             if q:
                 api_endpoint = f"[{q.method.upper()}] {base_url.rstrip('/')}{q.path}"
         except Exception:
             pass
 
     return RegisteredTableType(
-        id=row["id"], source_id=row["source_id"],
-        domain_id=row["domain_id"], schema_name=row["schema_name"],
-        table_name=row["table_name"], governance=row["governance"],
-        alias=row.get("alias"), description=row.get("description"),
+        id=row["id"],
+        source_id=row["source_id"],
+        domain_id=row["domain_id"],
+        schema_name=row["schema_name"],
+        table_name=row["table_name"],
+        governance=row["governance"],
+        alias=row.get("alias"),
+        description=row.get("description"),
         cache_ttl=row.get("cache_ttl"),
         naming_convention=row.get("naming_convention"),
         watermark_column=row.get("watermark_column"),
@@ -277,14 +322,20 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
 
 async def _call_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
     from provisa.llm.client import ProviasLLMClient
+
     client = ProviasLLMClient(operation)
-    return await client.complete(prompt, system="You are a data catalog assistant.", max_tokens=max_tokens)
+    return await client.complete(
+        prompt, system="You are a data catalog assistant.", max_tokens=max_tokens
+    )
 
 
-async def _maybe_migrate_sqlite(src_row, conn, source_id: str, table_name: str, schema_name: str, table_id: int | None = None) -> None:
+async def _maybe_migrate_sqlite(
+    src_row, conn, source_id: str, table_name: str, schema_name: str, table_id: int | None = None
+) -> None:
     if src_row and src_row["type"] == "sqlite" and src_row["path"]:
         import logging as _logging
         from provisa.file_source.pg_migrate import migrate_sqlite_table, record_mtime
+
         _log = _logging.getLogger(__name__)
         try:
             await migrate_sqlite_table(src_row["path"], table_name, conn, schema_name, table_name)
@@ -296,6 +347,7 @@ async def _maybe_migrate_sqlite(src_row, conn, source_id: str, table_name: str, 
 
 def _build_column_models(columns: list) -> list:
     from provisa.core.models import Column as ColumnModel
+
     return [
         ColumnModel(
             name=c.name,
@@ -326,11 +378,16 @@ class Query:
         """Returns SHA256 hash of current schema state for cache validation."""
         import hashlib
         import json
+
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            domains = await conn.fetch("SELECT id, description, graphql_alias FROM domains ORDER BY id")
+            domains = await conn.fetch(
+                "SELECT id, description, graphql_alias FROM domains ORDER BY id"
+            )
             tables = await conn.fetch("SELECT id FROM registered_tables ORDER BY id")
-            rels = await conn.fetch("SELECT id FROM relationships WHERE id NOT LIKE 'gql_auto__%' ORDER BY id")
+            rels = await conn.fetch(
+                "SELECT id FROM relationships WHERE id NOT LIKE 'gql_auto__%' ORDER BY id"
+            )
 
         # Hash the schema state
         schema_data = {
@@ -367,14 +424,13 @@ class Query:
     async def tables(self) -> list[RegisteredTableType]:
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT * FROM registered_tables ORDER BY id"
-            )
+            rows = await conn.fetch("SELECT * FROM registered_tables ORDER BY id")
             return [await _fetch_table_with_columns(conn, r) for r in rows]
 
     @strawberry.field
     async def relationships(self) -> list[RelationshipType]:
         from provisa.api.app import state
+
         convention = state.global_naming_convention
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -409,13 +465,16 @@ class Query:
         """List schemas available in a source, using native introspection first."""
         from provisa.api.app import state
         from provisa.api.admin.introspect import native_schemas
+
         source_type = state.source_types.get(source_id, "")
         if source_type == "openapi":
             await _ensure_openapi_spec(source_id)
         pool = await _get_pool()
         async with pool.acquire() as config_conn:
             try:
-                result = await native_schemas(source_id, source_type, state.source_pools, config_conn)
+                result = await native_schemas(
+                    source_id, source_type, state.source_pools, config_conn
+                )
             except Exception:
                 result = None
         if result is not None:
@@ -426,18 +485,19 @@ class Query:
         try:
             cursor = state.trino_conn.cursor()
             cursor.execute(
-                f"SELECT schema_name FROM \"{catalog}\".information_schema.schemata "
+                f'SELECT schema_name FROM "{catalog}".information_schema.schemata '
                 f"ORDER BY schema_name"
             )
             return [
-                row[0].lower() for row in cursor.fetchall()
-                if row[0].lower() not in _HIDDEN_SCHEMAS
+                row[0].lower() for row in cursor.fetchall() if row[0].lower() not in _HIDDEN_SCHEMAS
             ]
         except Exception:
             return []
 
     @strawberry.field
-    async def available_tables(self, source_id: str, schema_name: str = "public") -> list[AvailableTableType]:
+    async def available_tables(
+        self, source_id: str, schema_name: str = "public"
+    ) -> list[AvailableTableType]:
         """List tables available in a source, using native introspection first.
 
         Returns table names with comments from the physical database.
@@ -448,6 +508,7 @@ class Query:
         """
         from provisa.api.app import state
         from provisa.api.admin.introspect import native_tables
+
         source_type = state.source_types.get(source_id, "")
         if source_type == "openapi":
             await _ensure_openapi_spec(source_id)
@@ -455,8 +516,12 @@ class Query:
         async with pool.acquire() as config_conn:
             try:
                 result = await native_tables(
-                    source_id, source_type, schema_name,
-                    state.source_pools, config_conn, state,
+                    source_id,
+                    source_type,
+                    schema_name,
+                    state.source_pools,
+                    config_conn,
+                    state,
                 )
             except Exception:
                 result = None
@@ -465,18 +530,32 @@ class Query:
         # Trino fallback
         catalog = source_to_catalog(source_id)
         _ADMIN_TABLES = {
-            "sources", "domains", "naming_rules", "registered_tables",
-            "table_columns", "relationships", "roles", "rls_rules",
-            "materialized_views", "mv_refresh_log", "column_masking_rules",
-            "persisted_queries", "approval_log", "relationship_candidates",
-            "kafka_sources", "kafka_topics", "kafka_sinks",
-            "api_sources", "api_endpoints", "api_endpoint_candidates",
+            "sources",
+            "domains",
+            "naming_rules",
+            "registered_tables",
+            "table_columns",
+            "relationships",
+            "roles",
+            "rls_rules",
+            "materialized_views",
+            "mv_refresh_log",
+            "column_masking_rules",
+            "persisted_queries",
+            "approval_log",
+            "relationship_candidates",
+            "kafka_sources",
+            "kafka_topics",
+            "kafka_sinks",
+            "api_sources",
+            "api_endpoints",
+            "api_endpoint_candidates",
             "tracked_webhooks",
         }
         try:
             cursor = state.trino_conn.cursor()
             cursor.execute(
-                f"SELECT table_name FROM \"{catalog}\".information_schema.tables "
+                f'SELECT table_name FROM "{catalog}".information_schema.tables '
                 f"WHERE lower(table_schema) = lower('{schema_name}') "
                 f"AND table_type = 'BASE TABLE' "
                 f"ORDER BY table_name"
@@ -498,8 +577,10 @@ class Query:
         For OpenAPI sources: returns non-GET operations (POST/PUT/PATCH/DELETE).
         """
         from provisa.api.app import state
+
         if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
             from provisa.openapi.mapper import parse_spec
+
             spec = state.openapi_specs[source_id]["spec"]
             _, mutations = parse_spec(spec)
             return [
@@ -517,6 +598,7 @@ class Query:
     ) -> list[str]:
         """List columns for a table in a source's Trino catalog."""
         from provisa.api.app import state
+
         source_type = state.source_types.get(source_id, "")
         if source_type == "govdata":
             cols = await _govdata_columns(source_id, schema_name, table_name, None)
@@ -525,7 +607,7 @@ class Query:
         try:
             cursor = state.trino_conn.cursor()
             cursor.execute(
-                f"SELECT column_name FROM \"{catalog}\".information_schema.columns "
+                f'SELECT column_name FROM "{catalog}".information_schema.columns '
                 f"WHERE table_schema = '{schema_name}' "
                 f"AND table_name = '{table_name}' "
                 f"ORDER BY ordinal_position"
@@ -543,12 +625,14 @@ class Query:
         For OpenAPI sources: derives columns from the operation's response schema + params.
         """
         from provisa.api.app import state
+
         source_type = state.source_types.get(source_id, "")
         if source_type == "govdata":
             return await _govdata_columns(source_id, schema_name, table_name, None)
         if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
             from provisa.openapi.mapper import parse_spec
             from provisa.openapi.register import _schema_to_columns
+
             spec = state.openapi_specs[source_id]["spec"]
             queries, _ = parse_spec(spec)
             q = next((q for q in queries if q.operation_id == table_name), None)
@@ -559,29 +643,49 @@ class Query:
             for p in q.path_params:
                 nf_name = f"_nf_{p['name']}"
                 if nf_name not in existing:
-                    cols.append({"name": nf_name, "type": p.get("type", "string"), "native_filter_type": "path_param"})
+                    cols.append(
+                        {
+                            "name": nf_name,
+                            "type": p.get("type", "string"),
+                            "native_filter_type": "path_param",
+                        }
+                    )
             for p in q.query_params:
                 nf_name = f"_nf_{p['name']}"
                 if nf_name not in existing:
-                    cols.append({"name": nf_name, "type": p.get("type", "string"), "native_filter_type": "query_param"})
+                    cols.append(
+                        {
+                            "name": nf_name,
+                            "type": p.get("type", "string"),
+                            "native_filter_type": "query_param",
+                        }
+                    )
             return [
-                AvailableColumnType(name=c["name"], data_type=c["type"], comment=c.get("description"), native_filter_type=c.get("native_filter_type"))
+                AvailableColumnType(
+                    name=c["name"],
+                    data_type=c["type"],
+                    comment=c.get("description"),
+                    native_filter_type=c.get("native_filter_type"),
+                )
                 for c in cols
             ]
         catalog = source_to_catalog(source_id)
         try:
             from provisa.compiler.introspect import introspect_pk_columns
+
             pk_cols = introspect_pk_columns(state.trino_conn, catalog, schema_name, table_name)
             cursor = state.trino_conn.cursor()
             cursor.execute(
                 f"SELECT column_name, data_type, comment "
-                f"FROM \"{catalog}\".information_schema.columns "
+                f'FROM "{catalog}".information_schema.columns '
                 f"WHERE table_schema = '{schema_name}' "
                 f"AND table_name = '{table_name}' "
                 f"ORDER BY ordinal_position"
             )
             return [
-                AvailableColumnType(name=row[0], data_type=row[1], comment=row[2], is_primary_key=row[0] in pk_cols)
+                AvailableColumnType(
+                    name=row[0], data_type=row[1], comment=row[2], is_primary_key=row[0] in pk_cols
+                )
                 for row in cursor.fetchall()
             ]
         except Exception:
@@ -593,6 +697,7 @@ class Query:
     async def mv_list(self) -> list[MVType]:
         """List all materialized views with status."""
         from provisa.api.app import state
+
         return [
             MVType(
                 id=mv.id,
@@ -615,6 +720,7 @@ class Query:
         """Return cache statistics."""
         from provisa.api.app import state
         from provisa.cache.store import RedisCacheStore
+
         store = state.response_cache_store
         if isinstance(store, RedisCacheStore):
             try:
@@ -646,9 +752,7 @@ class Query:
                 cursor.execute("SELECT 1")
                 cursor.fetchone()
                 trino_ok = True
-                cursor.execute(
-                    "SELECT state, count(*) FROM system.runtime.nodes GROUP BY state"
-                )
+                cursor.execute("SELECT state, count(*) FROM system.runtime.nodes GROUP BY state")
                 for row in cursor.fetchall():
                     node_state, cnt = row[0], int(row[1])
                     trino_worker_count += cnt
@@ -680,9 +784,9 @@ class Query:
             pg_pool_free=pg_free,
             cache_connected=cache_ok,
             flight_server_running=flight_ok,
-            mv_refresh_loop_running=hasattr(state, "_mv_refresh_task") and state._mv_refresh_task is not None,
+            mv_refresh_loop_running=hasattr(state, "_mv_refresh_task")
+            and state._mv_refresh_task is not None,
         )
-
 
     # ── Admin: Scheduled Tasks ──
 
@@ -700,6 +804,7 @@ class Query:
         job_map: dict[str, object] = {}
         try:
             from provisa.api.app import state
+
             scheduler = getattr(state, "scheduler", None)
             if scheduler is not None:
                 for job in scheduler.get_jobs():
@@ -714,15 +819,17 @@ class Query:
             next_run = None
             if job is not None and job.next_run_time is not None:
                 next_run = job.next_run_time.isoformat()
-            result.append(ScheduledTaskType(
-                id=tid,
-                name=t.get("name", tid),
-                cron_expression=t["cron"],
-                webhook_url=t.get("url"),
-                enabled=t.get("enabled", True),
-                last_run_at=None,
-                next_run_at=next_run,
-            ))
+            result.append(
+                ScheduledTaskType(
+                    id=tid,
+                    name=t.get("name", tid),
+                    cron_expression=t["cron"],
+                    webhook_url=t.get("url"),
+                    enabled=t.get("enabled", True),
+                    last_run_at=None,
+                    next_run_at=next_run,
+                )
+            )
         return result
 
     # ── AI: Generate table description ──
@@ -731,14 +838,23 @@ class Query:
     async def generate_table_description(self, table_id: str) -> str:
         """Use LLM to generate a description for a registered table."""
         import sys
-        print(f"[DEBUG] generate_table_description called: table_id={table_id}", file=sys.stderr, flush=True)
+
+        print(
+            f"[DEBUG] generate_table_description called: table_id={table_id}",
+            file=sys.stderr,
+            flush=True,
+        )
         try:
             pool = await _get_pool()
             tid = int(table_id)
             async with pool.acquire() as conn:
                 row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", tid)
                 if row is None:
-                    print(f"[DEBUG] table {table_id} not found — save the view/table first", file=sys.stderr, flush=True)
+                    print(
+                        f"[DEBUG] table {table_id} not found — save the view/table first",
+                        file=sys.stderr,
+                        flush=True,
+                    )
                     return "Save the view first before generating descriptions"
                 col_rows = await conn.fetch(
                     "SELECT column_name FROM table_columns WHERE table_id = $1 ORDER BY id", tid
@@ -755,24 +871,35 @@ class Query:
                 f"Respond with only the description text, no preamble."
             )
             result = await _call_llm(prompt, "table_description", max_tokens=256)
-            log.info("generateTableDescription result: %s", result[:100] if result else "(empty)")
+            logging.getLogger(__name__).info(
+                "generateTableDescription result: %s", result[:100] if result else "(empty)"
+            )
             return result
         except Exception as e:
-            log.exception("generateTableDescription failed: %s", e)
+            logging.getLogger(__name__).exception("generateTableDescription failed: %s", e)
             return ""
 
     @strawberry.field
     async def generate_column_description(self, table_id: str, column_name: str) -> str:
         """Use LLM to generate a description for a single column."""
         import sys
-        print(f"[DEBUG] generate_column_description called: table_id={table_id}, column_name={column_name}", file=sys.stderr, flush=True)
+
+        print(
+            f"[DEBUG] generate_column_description called: table_id={table_id}, column_name={column_name}",
+            file=sys.stderr,
+            flush=True,
+        )
         try:
             pool = await _get_pool()
             tid = int(table_id)
             async with pool.acquire() as conn:
                 row = await conn.fetchrow("SELECT * FROM registered_tables WHERE id = $1", tid)
                 if row is None:
-                    print(f"[DEBUG] table {table_id} not found — save the view/table first", file=sys.stderr, flush=True)
+                    print(
+                        f"[DEBUG] table {table_id} not found — save the view/table first",
+                        file=sys.stderr,
+                        flush=True,
+                    )
                     return "Save the view first before generating descriptions"
                 col_rows = await conn.fetch(
                     "SELECT column_name FROM table_columns WHERE table_id = $1 ORDER BY id", tid
@@ -788,11 +915,16 @@ class Query:
                 f"Respond with only the description text, no preamble."
             )
             result = await _call_llm(prompt, "column_description", max_tokens=128)
-            print(f"[DEBUG] _call_llm result: {result[:100] if result else '(empty)'}", file=sys.stderr, flush=True)
+            print(
+                f"[DEBUG] _call_llm result: {result[:100] if result else '(empty)'}",
+                file=sys.stderr,
+                flush=True,
+            )
             return result
         except Exception as e:
             print(f"[DEBUG] Exception: {e}", file=sys.stderr, flush=True)
             import traceback
+
             traceback.print_exc(file=sys.stderr)
             return ""
 
@@ -800,8 +932,11 @@ class Query:
 @strawberry.type
 class Mutation:
     @strawberry.mutation
-    async def create_source(self, info: strawberry.types.Info, input: SourceInput) -> MutationResult:
+    async def create_source(
+        self, info: strawberry.types.Info, input: SourceInput
+    ) -> MutationResult:
         from provisa.api.admin.capabilities import require_capability
+
         require_capability(info, "source_registration")
         from provisa.core.models import Source as SourceModel
         from provisa.core.repositories import source as source_repo
@@ -835,10 +970,15 @@ class Mutation:
 
         pool = await _get_pool()
         model = SourceModel(
-            id=input.id, type=input.type, host=input.host,
-            port=input.port, database=input.database,
-            username=input.username, password=input.password,
-            path=input.path, description=input.description,
+            id=input.id,
+            type=input.type,
+            host=input.host,
+            port=input.port,
+            database=input.database,
+            username=input.username,
+            password=input.password,
+            path=input.path,
+            description=input.description,
         )
         async with pool.acquire() as conn:
             await source_repo.upsert(conn, model)
@@ -846,12 +986,14 @@ class Mutation:
             if _domains:
                 await conn.execute(
                     "UPDATE sources SET allowed_domains = $1 WHERE id = $2",
-                    _domains, input.id,
+                    _domains,
+                    input.id,
                 )
 
         if input.type == "govdata" and input.username:
             import os as _os
             from provisa.core.secrets import resolve_secrets as _rs
+
             _os.environ.setdefault("AWS_ACCESS_KEY_ID", _rs(input.username))
             if input.password:
                 _os.environ.setdefault("AWS_SECRET_ACCESS_KEY", _rs(input.password))
@@ -861,6 +1003,7 @@ class Mutation:
         from provisa.api.app import state
         from provisa.executor.drivers.registry import has_driver
         from provisa.core.secrets import resolve_secrets
+
         _domains = [d for d in (input.allowed_domains or []) if d.strip()]
         if _domains:
             state.source_allowed_domains[input.id] = _domains
@@ -877,9 +1020,11 @@ class Mutation:
                 )
             except Exception as _pool_err:
                 import logging as _log
+
                 _log.getLogger(__name__).warning(
                     "Direct pool for %r failed: %s — Trino-routed queries still work.",
-                    input.id, _pool_err,
+                    input.id,
+                    _pool_err,
                 )
         state.source_types[input.id] = input.type
         state.source_dialects[input.id] = ""
@@ -888,6 +1033,7 @@ class Mutation:
         if state.trino_conn is not None:
             from provisa.core.catalog import create_catalog
             from provisa.core.secrets import resolve_secrets
+
             try:
                 create_catalog(
                     state.trino_conn,
@@ -896,6 +1042,7 @@ class Mutation:
                 )
             except Exception as _cat_err:
                 import logging as _log
+
                 _log.getLogger(__name__).warning(
                     "Trino catalog creation for %r failed: %s", input.id, _cat_err
                 )
@@ -944,18 +1091,26 @@ class Mutation:
         # Fire background catalog indexing for NL table search (REQ-464)
         import asyncio as _asyncio
         from provisa.discovery.catalog_cache import index_source as _index_source
+
         _asyncio.create_task(
             _index_source(
-                input.id, pool, state.trino_conn,
-                state.source_pools, state.source_types, state,
+                input.id,
+                pool,
+                state.trino_conn,
+                state.source_pools,
+                state.source_types,
+                state,
             )
         )
 
         return MutationResult(success=True, message=f"Source {input.id!r} created")
 
     @strawberry.mutation
-    async def update_source(self, info: strawberry.types.Info, input: SourceInput) -> MutationResult:
+    async def update_source(
+        self, info: strawberry.types.Info, input: SourceInput
+    ) -> MutationResult:
         from provisa.api.admin.capabilities import require_capability
+
         require_capability(info, "source_registration")
         from provisa.core.models import Source as SourceModel
         from provisa.core.repositories import source as source_repo
@@ -966,21 +1121,28 @@ class Mutation:
             if existing is None:
                 return MutationResult(success=False, message=f"Source {input.id!r} not found")
             model = SourceModel(
-                id=input.id, type=input.type, host=input.host,
-                port=input.port, database=input.database,
-                username=input.username, password=input.password,
-                path=input.path, description=input.description,
+                id=input.id,
+                type=input.type,
+                host=input.host,
+                port=input.port,
+                database=input.database,
+                username=input.username,
+                password=input.password,
+                path=input.path,
+                description=input.description,
             )
             await source_repo.upsert(conn, model)
             if input.allowed_domains is not None:
                 await conn.execute(
                     "UPDATE sources SET allowed_domains = $1 WHERE id = $2",
-                    input.allowed_domains, input.id,
+                    input.allowed_domains,
+                    input.id,
                 )
 
         if input.type == "govdata" and input.username:
             import os as _os
             from provisa.core.secrets import resolve_secrets as _rs
+
             _os.environ["AWS_ACCESS_KEY_ID"] = _rs(input.username)
             if input.password:
                 _os.environ["AWS_SECRET_ACCESS_KEY"] = _rs(input.password)
@@ -990,6 +1152,7 @@ class Mutation:
         from provisa.api.app import state
         from provisa.executor.drivers.registry import has_driver
         from provisa.core.secrets import resolve_secrets
+
         if has_driver(input.type):
             await state.source_pools.remove(input.id)
             try:
@@ -1004,9 +1167,11 @@ class Mutation:
                 )
             except Exception as _pool_err:
                 import logging as _log
+
                 _log.getLogger(__name__).warning(
                     "Direct pool for %r failed: %s — Trino-routed queries still work.",
-                    input.id, _pool_err,
+                    input.id,
+                    _pool_err,
                 )
         state.source_types[input.id] = input.type
         state.source_dialects[input.id] = ""
@@ -1015,13 +1180,20 @@ class Mutation:
 
         # Invalidate and re-index catalog cache (REQ-464)
         import asyncio as _asyncio
-        from provisa.discovery.catalog_cache import invalidate_source as _invalidate, index_source as _index_source
+        from provisa.discovery.catalog_cache import (
+            invalidate_source as _invalidate,
+            index_source as _index_source,
+        )
 
         async def _reindex():
             await _invalidate(pool, input.id)
             await _index_source(
-                input.id, pool, state.trino_conn,
-                state.source_pools, state.source_types, state,
+                input.id,
+                pool,
+                state.trino_conn,
+                state.source_pools,
+                state.source_types,
+                state,
             )
 
         _asyncio.create_task(_reindex())
@@ -1058,7 +1230,9 @@ class Mutation:
         from provisa.core.repositories import domain as domain_repo
 
         pool = await _get_pool()
-        model = DomainModel(id=input.id, description=input.description, graphql_alias=input.graphql_alias or None)
+        model = DomainModel(
+            id=input.id, description=input.description, graphql_alias=input.graphql_alias or None
+        )
         async with pool.acquire() as conn:
             await domain_repo.upsert(conn, model)
         return MutationResult(success=True, message=f"Domain {input.id!r} created")
@@ -1081,7 +1255,8 @@ class Mutation:
 
         pool = await _get_pool()
         model = RoleModel(
-            id=input.id, capabilities=input.capabilities,
+            id=input.id,
+            capabilities=input.capabilities,
             domain_access=input.domain_access,
         )
         async with pool.acquire() as conn:
@@ -1089,19 +1264,31 @@ class Mutation:
         return MutationResult(success=True, message=f"Role {input.id!r} created")
 
     @strawberry.mutation
-    async def register_table(self, info: strawberry.types.Info, input: TableInput) -> MutationResult:
+    async def register_table(
+        self, info: strawberry.types.Info, input: TableInput
+    ) -> MutationResult:
         import logging
-        logging.getLogger(__name__).warning("[DEBUG] register_table called: table_name=%s, source_id=%s, domain_id=%s", input.table_name, input.source_id, input.domain_id)
+
+        logging.getLogger(__name__).warning(
+            "[DEBUG] register_table called: table_name=%s, source_id=%s, domain_id=%s",
+            input.table_name,
+            input.source_id,
+            input.domain_id,
+        )
         from provisa.api.admin.capabilities import require_capability
+
         if input.view_sql:
             # view registration: create_view or query_development suffice
             from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
             from provisa.api.app import state as _cap_state
+
             identity = _identity_from_info(info)
             if identity is not None and getattr(identity, "user_id", "anonymous") != "anonymous":
                 caps = _resolved_capabilities(identity, _cap_state)
                 if not (caps & {"create_view", "query_development", "admin", "superadmin"}):
-                    raise PermissionError("Missing capability: 'create_view' or 'query_development'")
+                    raise PermissionError(
+                        "Missing capability: 'create_view' or 'query_development'"
+                    )
         else:
             require_capability(info, "table_registration", domain_id=input.domain_id)
         from provisa.core.models import (
@@ -1122,14 +1309,24 @@ class Mutation:
         alias = input.alias or None
         if not alias:
             from provisa.compiler.naming import apply_convention
+
             async with pool.acquire() as conn:
-                src = await conn.fetchrow("SELECT naming_convention FROM sources WHERE id = $1", input.source_id)
+                src = await conn.fetchrow(
+                    "SELECT naming_convention FROM sources WHERE id = $1", input.source_id
+                )
             convention = (src["naming_convention"] if src else None) or "apollo_graphql"
             alias = apply_convention(input.table_name, convention)
 
         from provisa.core.models import ColumnPreset as ColumnPresetModel
+
         presets = [
-            ColumnPresetModel(column=cp.column, source=cp.source, name=cp.name, value=cp.value, data_type=cp.data_type)
+            ColumnPresetModel(
+                column=cp.column,
+                source=cp.source,
+                name=cp.name,
+                value=cp.value,
+                data_type=cp.data_type,
+            )
             for cp in input.column_presets
         ]
         model = TableModel(
@@ -1156,8 +1353,12 @@ class Mutation:
                     """
                 )
             table_id = await table_repo.upsert(conn, model)
-            src_row = await conn.fetchrow("SELECT type, path FROM sources WHERE id = $1", input.source_id)
-            await _maybe_migrate_sqlite(src_row, conn, input.source_id, input.table_name, input.schema_name)
+            src_row = await conn.fetchrow(
+                "SELECT type, path FROM sources WHERE id = $1", input.source_id
+            )
+            await _maybe_migrate_sqlite(
+                src_row, conn, input.source_id, input.table_name, input.schema_name
+            )
             if input.domain_id != "meta":
                 meta_rt_id = await conn.fetchval(
                     "SELECT id FROM registered_tables WHERE source_id = 'provisa-admin' AND domain_id = 'meta' AND table_name = 'registered_tables'"
@@ -1165,23 +1366,33 @@ class Mutation:
                 if meta_rt_id:
                     await conn.execute(
                         "INSERT INTO table_meta_links (source_table_id, target_table_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-                        table_id, meta_rt_id,
+                        table_id,
+                        meta_rt_id,
                     )
 
             import os as _os
+
             if _os.environ.get("PROVISA_AUTO_TRACK_FK", "true").lower() not in ("0", "false", "no"):
                 from provisa.discovery.fk_introspect import auto_register_fk_relationships
                 from provisa.api.app import state as _state
+
                 source_type = (src_row["type"] if src_row else None) or ""
                 fk_count = await auto_register_fk_relationships(
-                    _state.source_pools, source_type, input.source_id,
-                    input.schema_name, input.table_name, conn,
+                    _state.source_pools,
+                    source_type,
+                    input.source_id,
+                    input.schema_name,
+                    input.table_name,
+                    conn,
                 )
                 if fk_count:
                     import logging as _logging
+
                     _logging.getLogger(__name__).info(
                         "Auto-tracked %d FK relationship(s) for %s.%s",
-                        fk_count, input.schema_name, input.table_name,
+                        fk_count,
+                        input.schema_name,
+                        input.table_name,
                     )
 
         await _rebuild_schemas()
@@ -1194,6 +1405,7 @@ class Mutation:
     async def update_table(self, info: strawberry.types.Info, input: TableInput) -> MutationResult:
         """Update an existing table's alias, description, and column metadata."""
         from provisa.api.admin.capabilities import require_capability
+
         require_capability(info, "table_registration", domain_id=input.domain_id)
         from provisa.core.models import (
             GovernanceLevel,
@@ -1211,8 +1423,15 @@ class Mutation:
             )
         columns = _build_column_models(input.columns)
         from provisa.core.models import ColumnPreset as ColumnPresetModel
+
         presets = [
-            ColumnPresetModel(column=cp.column, source=cp.source, name=cp.name, value=cp.value, data_type=cp.data_type)
+            ColumnPresetModel(
+                column=cp.column,
+                source=cp.source,
+                name=cp.name,
+                value=cp.value,
+                data_type=cp.data_type,
+            )
             for cp in input.column_presets
         ]
         model = TableModel(
@@ -1231,8 +1450,12 @@ class Mutation:
         )
         async with pool.acquire() as conn:
             table_id = await table_repo.upsert(conn, model)
-            src_row = await conn.fetchrow("SELECT type, path FROM sources WHERE id = $1", input.source_id)
-            await _maybe_migrate_sqlite(src_row, conn, input.source_id, input.table_name, input.schema_name)
+            src_row = await conn.fetchrow(
+                "SELECT type, path FROM sources WHERE id = $1", input.source_id
+            )
+            await _maybe_migrate_sqlite(
+                src_row, conn, input.source_id, input.table_name, input.schema_name
+            )
         await _rebuild_schemas()
         return MutationResult(
             success=True,
@@ -1302,8 +1525,11 @@ class Mutation:
         return MutationResult(success=False, message="RLS rule not found")
 
     @strawberry.mutation
-    async def upsert_relationship(self, info: strawberry.types.Info, input: RelationshipInput) -> MutationResult:
+    async def upsert_relationship(
+        self, info: strawberry.types.Info, input: RelationshipInput
+    ) -> MutationResult:
         from provisa.api.admin.capabilities import require_capability
+
         require_capability(info, "create_relationship")
         from provisa.core.models import Relationship as RelModel, Cardinality
         from provisa.core.repositories import relationship as rel_repo
@@ -1349,13 +1575,17 @@ class Mutation:
                         DO UPDATE SET status = 'accepted', confidence = 1.0,
                                       reasoning = 'SQL modeling (admin)'
                         """,
-                        rel_row["source_table_id"], rel_row["target_table_id"],
-                        input.source_column, input.target_column or None,
-                        input.cardinality, input.id,
+                        rel_row["source_table_id"],
+                        rel_row["target_table_id"],
+                        input.source_column,
+                        input.target_column or None,
+                        input.cardinality,
+                        input.id,
                     )
         await _rebuild_schemas()
         return MutationResult(
-            success=True, message=f"Relationship {input.id!r} saved",
+            success=True,
+            message=f"Relationship {input.id!r} saved",
         )
 
     @strawberry.mutation
@@ -1373,26 +1603,35 @@ class Mutation:
     # ── Admin: Cache Configuration ──
 
     @strawberry.mutation
-    async def update_source_cache(self, source_id: str, cache_enabled: bool, cache_ttl: int | None = None) -> MutationResult:
+    async def update_source_cache(
+        self, source_id: str, cache_enabled: bool, cache_ttl: int | None = None
+    ) -> MutationResult:
         """Update cache settings for a source."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute(
                 "UPDATE sources SET cache_enabled = $1, cache_ttl = $2 WHERE id = $3",
-                cache_enabled, cache_ttl, source_id,
+                cache_enabled,
+                cache_ttl,
+                source_id,
             )
             if result == "UPDATE 0":
                 return MutationResult(success=False, message=f"Source {source_id!r} not found")
-        return MutationResult(success=True, message=f"Cache settings updated for source {source_id!r}")
+        return MutationResult(
+            success=True, message=f"Cache settings updated for source {source_id!r}"
+        )
 
     @strawberry.mutation
-    async def update_table_cache(self, table_id: int, cache_ttl: int | None = None) -> MutationResult:
+    async def update_table_cache(
+        self, table_id: int, cache_ttl: int | None = None
+    ) -> MutationResult:
         """Update cache TTL for a registered table."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute(
                 "UPDATE registered_tables SET cache_ttl = $1 WHERE id = $2",
-                cache_ttl, table_id,
+                cache_ttl,
+                table_id,
             )
             if result == "UPDATE 0":
                 return MutationResult(success=False, message=f"Table {table_id} not found")
@@ -1404,56 +1643,73 @@ class Mutation:
     async def update_naming_convention(self, convention: str) -> MutationResult:
         """Set the global naming convention and rebuild schemas for all roles."""
         from provisa.api.app import state
+
         state.global_naming_convention = convention
         await _rebuild_schemas()
         return MutationResult(success=True, message=f"Naming convention set to {convention!r}")
 
     @strawberry.mutation
-    async def update_source_naming(self, source_id: str, naming_convention: Optional[str] = None) -> MutationResult:
+    async def update_source_naming(
+        self, source_id: str, naming_convention: Optional[str] = None
+    ) -> MutationResult:
         """Update naming convention for a source."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute(
                 "UPDATE sources SET naming_convention = $1 WHERE id = $2",
-                naming_convention, source_id,
+                naming_convention,
+                source_id,
             )
             if result == "UPDATE 0":
                 return MutationResult(success=False, message=f"Source {source_id!r} not found")
         await _rebuild_schemas()
-        return MutationResult(success=True, message=f"Naming convention updated for source {source_id!r}")
+        return MutationResult(
+            success=True, message=f"Naming convention updated for source {source_id!r}"
+        )
 
     @strawberry.mutation
-    async def update_source_allowed_domains(self, source_id: str, allowed_domains: list[str]) -> MutationResult:
+    async def update_source_allowed_domains(
+        self, source_id: str, allowed_domains: list[str]
+    ) -> MutationResult:
         """Set the allowed domain list for a source (empty list = unrestricted)."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute(
                 "UPDATE sources SET allowed_domains = $1 WHERE id = $2",
-                allowed_domains, source_id,
+                allowed_domains,
+                source_id,
             )
             if result == "UPDATE 0":
                 return MutationResult(success=False, message=f"Source {source_id!r} not found")
         from provisa.api.app import state
+
         if allowed_domains:
             state.source_allowed_domains[source_id] = list(allowed_domains)
         else:
             state.source_allowed_domains.pop(source_id, None)
         await _rebuild_schemas()
-        return MutationResult(success=True, message=f"Allowed domains updated for source {source_id!r}")
+        return MutationResult(
+            success=True, message=f"Allowed domains updated for source {source_id!r}"
+        )
 
     @strawberry.mutation
-    async def update_table_naming(self, table_id: int, naming_convention: Optional[str] = None) -> MutationResult:
+    async def update_table_naming(
+        self, table_id: int, naming_convention: Optional[str] = None
+    ) -> MutationResult:
         """Update naming convention for a registered table."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute(
                 "UPDATE registered_tables SET naming_convention = $1 WHERE id = $2",
-                naming_convention, table_id,
+                naming_convention,
+                table_id,
             )
             if result == "UPDATE 0":
                 return MutationResult(success=False, message=f"Table {table_id} not found")
         await _rebuild_schemas()
-        return MutationResult(success=True, message=f"Naming convention updated for table {table_id}")
+        return MutationResult(
+            success=True, message=f"Naming convention updated for table {table_id}"
+        )
 
     # ── Admin: MV Management ──
 
@@ -1461,11 +1717,13 @@ class Mutation:
     async def refresh_mv(self, mv_id: str) -> MutationResult:
         """Trigger a manual refresh of a materialized view."""
         from provisa.api.app import state
+
         mv = state.mv_registry.get(mv_id)
         if mv is None:
             return MutationResult(success=False, message=f"MV {mv_id!r} not found")
         try:
             from provisa.mv.refresh import refresh_mv
+
             await refresh_mv(mv, state)
             return MutationResult(success=True, message=f"MV {mv_id!r} refreshed")
         except Exception as e:
@@ -1476,6 +1734,7 @@ class Mutation:
         """Enable or disable a materialized view."""
         from provisa.api.app import state
         from provisa.mv.models import MVStatus
+
         mv = state.mv_registry.get(mv_id)
         if mv is None:
             return MutationResult(success=False, message=f"MV {mv_id!r} not found")
@@ -1484,7 +1743,9 @@ class Mutation:
             mv.status = MVStatus.DISABLED
         elif mv.status == MVStatus.DISABLED:
             mv.status = MVStatus.STALE
-        return MutationResult(success=True, message=f"MV {mv_id!r} {'enabled' if enabled else 'disabled'}")
+        return MutationResult(
+            success=True, message=f"MV {mv_id!r} {'enabled' if enabled else 'disabled'}"
+        )
 
     # ── Admin: Cache Management ──
 
@@ -1492,6 +1753,7 @@ class Mutation:
     async def purge_cache(self) -> MutationResult:
         """Purge all cached query results."""
         from provisa.api.app import state
+
         try:
             count = await state.response_cache_store.invalidate_by_pattern("provisa:cache:*")
             return MutationResult(success=True, message=f"Purged {count} cache entries")
@@ -1502,9 +1764,12 @@ class Mutation:
     async def purge_cache_by_table(self, table_id: int) -> MutationResult:
         """Purge cached results for a specific table."""
         from provisa.api.app import state
+
         try:
             count = await state.response_cache_store.invalidate_by_table(table_id)
-            return MutationResult(success=True, message=f"Purged {count} cache entries for table {table_id}")
+            return MutationResult(
+                success=True, message=f"Purged {count} cache entries for table {table_id}"
+            )
         except Exception as e:
             return MutationResult(success=False, message=str(e))
 
@@ -1523,15 +1788,20 @@ class Mutation:
             if not row:
                 return MutationResult(success=False, message=f"Table {table_id} not found")
             if row["type"] != "sqlite":
-                return MutationResult(success=False, message=f"Source type {row['type']!r} is not sqlite")
-            from provisa.file_source.pg_migrate import migrate_sqlite_table, record_mtime
-            try:
-                await conn.execute(
-                    "DELETE FROM file_source_mtimes WHERE table_id = $1", table_id
+                return MutationResult(
+                    success=False, message=f"Source type {row['type']!r} is not sqlite"
                 )
-                await migrate_sqlite_table(row["path"], row["table_name"], conn, row["schema_name"], row["table_name"])
+            from provisa.file_source.pg_migrate import migrate_sqlite_table, record_mtime
+
+            try:
+                await conn.execute("DELETE FROM file_source_mtimes WHERE table_id = $1", table_id)
+                await migrate_sqlite_table(
+                    row["path"], row["table_name"], conn, row["schema_name"], row["table_name"]
+                )
                 await record_mtime(table_id, row["path"], conn)
-                return MutationResult(success=True, message=f"Re-migrated {row['source_id']}.{row['table_name']}")
+                return MutationResult(
+                    success=True, message=f"Re-migrated {row['source_id']}.{row['table_name']}"
+                )
             except Exception as e:
                 return MutationResult(success=False, message=str(e))
 
@@ -1616,48 +1886,58 @@ class Mutation:
             message=f"ANALYZE completed for {len(analyzed)} table(s) on source {source_id!r}",
         )
 
-
     @strawberry.mutation
     async def compile_query(self, input: CompileQueryInput) -> list[CompileQueryResult]:
         from provisa.api.admin import dev_queries
+
         variables = dict(input.variables) if input.variables else None
-        results = await dev_queries.compile_query(input.role, input.query, variables, flat_sql=input.flat_sql, flat_cypher=input.flat_cypher, node_only_cypher=input.node_only_cypher)
+        results = await dev_queries.compile_query(
+            input.role,
+            input.query,
+            variables,
+            flat_sql=input.flat_sql,
+            flat_cypher=input.flat_cypher,
+            node_only_cypher=input.node_only_cypher,
+        )
         out = []
         for r in results:
             enf = r["enforcement"]
-            out.append(CompileQueryResult(
-                sql=r["sql"],
-                semantic_sql=r["semantic_sql"],
-                trino_sql=r.get("trino_sql"),
-                direct_sql=r.get("direct_sql"),
-                route=r["route"],
-                route_reason=r["route_reason"],
-                sources=r["sources"],
-                root_field=r["root_field"],
-                canonical_field=r["canonical_field"],
-                column_aliases=[
-                    ColumnAliasType(field_name=a["field_name"], column=a["column"])
-                    for a in r["column_aliases"]
-                ],
-                enforcement=EnforcementType(
-                    rls_filters_applied=enf.rls_filters_applied,
-                    columns_excluded=enf.columns_excluded,
-                    schema_scope=enf.schema_scope,
-                    masking_applied=enf.masking_applied,
-                    ceiling_applied=enf.ceiling_applied,
-                    route=enf.route,
-                ),
-                optimizations=r["optimizations"],
-                warnings=r["warnings"],
-                compiled_cypher=r.get("compiled_cypher"),
-                cypher_error=r.get("cypher_error"),
-            ))
+            out.append(
+                CompileQueryResult(
+                    sql=r["sql"],
+                    semantic_sql=r["semantic_sql"],
+                    trino_sql=r.get("trino_sql"),
+                    direct_sql=r.get("direct_sql"),
+                    route=r["route"],
+                    route_reason=r["route_reason"],
+                    sources=r["sources"],
+                    root_field=r["root_field"],
+                    canonical_field=r["canonical_field"],
+                    column_aliases=[
+                        ColumnAliasType(field_name=a["field_name"], column=a["column"])
+                        for a in r["column_aliases"]
+                    ],
+                    enforcement=EnforcementType(
+                        rls_filters_applied=enf.rls_filters_applied,
+                        columns_excluded=enf.columns_excluded,
+                        schema_scope=enf.schema_scope,
+                        masking_applied=enf.masking_applied,
+                        ceiling_applied=enf.ceiling_applied,
+                        route=enf.route,
+                    ),
+                    optimizations=r["optimizations"],
+                    warnings=r["warnings"],
+                    compiled_cypher=r.get("compiled_cypher"),
+                    cypher_error=r.get("cypher_error"),
+                )
+            )
         return out
 
     @strawberry.mutation
     async def deploy_view_to_db(self, info: strawberry.types.Info, table_id: int) -> MutationResult:
         """Promote a virtual Provisa view to a real database view on its underlying native source."""
         from provisa.api.admin.capabilities import require_capability
+
         require_capability(info, "table_registration")
 
         from provisa.api.app import state
@@ -1673,7 +1953,10 @@ class Mutation:
         if not row:
             return MutationResult(success=False, message=f"Table {table_id} not found")
         if row["source_id"] != "__provisa__":
-            return MutationResult(success=False, message="Table is not a virtual Provisa view (source_id != '__provisa__')")
+            return MutationResult(
+                success=False,
+                message="Table is not a virtual Provisa view (source_id != '__provisa__')",
+            )
         if not row["view_sql"]:
             return MutationResult(success=False, message="Table has no view_sql")
 
@@ -1692,7 +1975,9 @@ class Mutation:
 
         # Build replacement dict: virtual ref → physical ref, tracking source_ids hit
         # Sort by length descending so longest match wins
-        replacements: list[tuple[str, str, str, str]] = []  # (virtual_ref, physical_ref, source_id, schema_name)
+        replacements: list[
+            tuple[str, str, str, str]
+        ] = []  # (virtual_ref, physical_ref, source_id, schema_name)
         for t in all_tables:
             domain_sql = domain_to_sql_name(t["domain_id"])
             alias_or_name = t["alias"] or t["table_name"]
@@ -1722,7 +2007,9 @@ class Mutation:
         target_schema = hit_sources[target_source_id]
 
         if not state.source_pools.has(target_source_id):
-            return MutationResult(success=False, message=f"source {target_source_id!r} has no active connection")
+            return MutationResult(
+                success=False, message=f"source {target_source_id!r} has no active connection"
+            )
 
         dialect = state.source_pools.dialect_for(target_source_id) or "postgres"
         native_sql = transpile(physical_sql, dialect)

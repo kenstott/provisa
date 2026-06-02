@@ -56,16 +56,18 @@ def _extract_join_info(sql: str) -> list[dict]:
     matches = re.findall(join_pattern, sql, re.IGNORECASE)
     result = []
     for full_clause, right_table, right_alias, left_alias, left_col, ra2, right_col in matches:
-        join_type_match = re.match(r'(LEFT|INNER|RIGHT)', full_clause, re.IGNORECASE)
-        result.append({
-            "join_type": (join_type_match.group(1) if join_type_match else "LEFT").lower(),
-            "right_table": right_table,
-            "right_alias": right_alias,
-            "left_alias": left_alias,
-            "left_column": left_col,
-            "right_column": right_col,
-            "full_clause": full_clause,
-        })
+        join_type_match = re.match(r"(LEFT|INNER|RIGHT)", full_clause, re.IGNORECASE)
+        result.append(
+            {
+                "join_type": (join_type_match.group(1) if join_type_match else "LEFT").lower(),
+                "right_table": right_table,
+                "right_alias": right_alias,
+                "left_alias": left_alias,
+                "left_column": left_col,
+                "right_column": right_col,
+                "full_clause": full_clause,
+            }
+        )
     return result
 
 
@@ -73,7 +75,8 @@ def _find_root_table(sql: str) -> tuple[str, str, str] | None:
     """Extract (schema, table_name, alias) from the FROM clause."""
     match = re.search(
         r'FROM\s+"([^"]+)"\."([^"]+)"(?:\s+"(t\d+)")?',
-        sql, re.IGNORECASE,
+        sql,
+        re.IGNORECASE,
     )
     if match:
         return match.group(1), match.group(2), match.group(3) or ""
@@ -90,17 +93,13 @@ def _match_join_to_mv(
     if not jp:
         return False
 
-    tables_match = (
-        (root_table == jp.left_table and join["right_table"] == jp.right_table)
-        or (root_table == jp.right_table and join["right_table"] == jp.left_table)
+    tables_match = (root_table == jp.left_table and join["right_table"] == jp.right_table) or (
+        root_table == jp.right_table and join["right_table"] == jp.left_table
     )
     if not tables_match:
         return False
 
-    cols_match = (
-        {join["left_column"], join["right_column"]}
-        == {jp.left_column, jp.right_column}
-    )
+    cols_match = {join["left_column"], join["right_column"]} == {jp.left_column, jp.right_column}
     return cols_match
 
 
@@ -158,7 +157,9 @@ def rewrite_if_mv_match(
                 # Partial match (REQ-083) — rewrite covered portion, keep rest
                 log.info(
                     "MV %s partially matches query (%d/%d joins), rewriting",
-                    mv.id, len(matched_indices), len(joins),
+                    mv.id,
+                    len(matched_indices),
+                    len(joins),
                 )
                 span.set_attribute("mv.hit", True)
                 span.set_attribute("mv.id", str(mv.id))
@@ -186,7 +187,9 @@ def _rewrite_to_mv(
     # Build alias → table name mapping from the SQL
     alias_to_table: dict[str, str] = {}
     from_match = re.search(
-        r'FROM\s+"[^"]+"\."([^"]+)"\s+"(t\d+)"', sql, re.IGNORECASE,
+        r'FROM\s+"[^"]+"\."([^"]+)"\s+"(t\d+)"',
+        sql,
+        re.IGNORECASE,
     )
     if from_match:
         alias_to_table[from_match.group(2)] = from_match.group(1)
@@ -200,7 +203,7 @@ def _rewrite_to_mv(
     sql = re.sub(
         r'\s+(?:LEFT|INNER|RIGHT)?\s*JOIN\s+"[^"]+"\."[^"]+"\s+"t\d+"\s+ON\s+'
         r'(?:CAST\([^)]+\)|"[^"]+"\."[^"]+")\s*=\s*(?:CAST\([^)]+\)|"[^"]+"\."[^"]+")',
-        '',
+        "",
         sql,
         flags=re.IGNORECASE,
     )
@@ -209,7 +212,7 @@ def _rewrite_to_mv(
     mv_ref = f'"{mv.target_catalog}"."{mv.target_schema}"."{mv.target_table}"'
     sql = re.sub(
         r'FROM\s+"[^"]+"\."[^"]+"\s*(?:"t0")?',
-        f'FROM {mv_ref}',
+        f"FROM {mv_ref}",
         sql,
         count=1,
         flags=re.IGNORECASE,
@@ -255,12 +258,13 @@ def _partial_rewrite_to_mv(
     - Root-table (t0) column refs stay as "t0"."col" since we alias the MV as t0
     """
     sql = compiled.sql
-    matched_set = set(matched_indices)
 
     # Build alias → table name mapping
     alias_to_table: dict[str, str] = {}
     from_match = re.search(
-        r'FROM\s+"[^"]+"\."([^"]+)"\s+"(t\d+)"', sql, re.IGNORECASE,
+        r'FROM\s+"[^"]+"\."([^"]+)"\s+"(t\d+)"',
+        sql,
+        re.IGNORECASE,
     )
     if from_match:
         alias_to_table[from_match.group(2)] = from_match.group(1)
@@ -275,7 +279,7 @@ def _partial_rewrite_to_mv(
         join = joins[i]
         # Escape the full clause for regex
         escaped = re.escape(join["full_clause"])
-        sql = re.sub(r'\s+' + escaped, '', sql, count=1)
+        sql = re.sub(r"\s+" + escaped, "", sql, count=1)
 
     # Replace FROM clause with MV target table, keeping "t0" alias
     mv_ref = f'"{mv.target_catalog}"."{mv.target_schema}"."{mv.target_table}"'

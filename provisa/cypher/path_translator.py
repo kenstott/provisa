@@ -21,7 +21,7 @@ Rejects unbounded [*] (enforced at parse time, also checked here).
 
 from __future__ import annotations
 
-from provisa.cypher.parser import CypherParseError, PathFunction, RelPattern
+from provisa.cypher.parser import CypherParseError, PathFunction
 from provisa.cypher.label_map import CypherLabelMap, RelationshipMapping
 
 

@@ -127,23 +127,23 @@ def _serialize_for_redirect(
 
     if output_format in ("parquet",) and columns is not None:
         from provisa.executor.formats.tabular import rows_to_parquet
+
         return rows_to_parquet(result.rows, columns), content_type, ext
 
     if output_format == "arrow" and columns is not None:
         from provisa.executor.formats.arrow import rows_to_arrow_ipc
+
         return rows_to_arrow_ipc(result.rows, columns), content_type, ext
 
     if output_format == "csv" and columns is not None:
         from provisa.executor.formats.tabular import rows_to_csv
+
         body = rows_to_csv(result.rows, columns)
         return body.encode("utf-8"), content_type, ext
 
     # JSON / NDJSON — works with plain column_names, no ColumnRef needed
     col_names = result.column_names
-    rows_as_dicts = [
-        {col_names[i]: v for i, v in enumerate(row)}
-        for row in result.rows
-    ]
+    rows_as_dicts = [{col_names[i]: v for i, v in enumerate(row)} for row in result.rows]
 
     if output_format == "json":
         body = json.dumps(rows_as_dicts, cls=_Encoder)
@@ -163,7 +163,6 @@ def _serialize_arrow_table(
 
     Avoids the round-trip through Python tuples when data is already in Arrow.
     """
-    import io
     import pyarrow as pa
     import pyarrow.parquet as pq
 
@@ -183,6 +182,7 @@ def _serialize_arrow_table(
 
     if output_format == "csv":
         import pyarrow.csv as pcsv
+
         buf = io.BytesIO()
         pcsv.write_csv(table, buf)
         return buf.getvalue(), "text/csv", ".csv"
@@ -267,12 +267,15 @@ async def upload_and_presign(
 
     if arrow_table is not None:
         body_bytes, content_type, ext = _serialize_arrow_table(
-            arrow_table, output_format,
+            arrow_table,
+            output_format,
         )
         row_count = arrow_table.num_rows
     else:
         body_bytes, content_type, ext = _serialize_for_redirect(
-            result, columns, output_format,
+            result,
+            columns,
+            output_format,
         )
         row_count = len(result.rows)
 

@@ -108,8 +108,7 @@ def validate_masking_rule(
     elif rule.mask_type == MaskType.constant:
         if rule.value is None and not is_nullable:
             raise MaskingValidationError(
-                f"Column {column_name!r} is NOT NULL: "
-                f"cannot use NULL as constant mask value"
+                f"Column {column_name!r} is NOT NULL: cannot use NULL as constant mask value"
             )
 
 

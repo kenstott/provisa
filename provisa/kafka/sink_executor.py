@@ -17,11 +17,14 @@ to the configured Kafka topic.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import os
 from decimal import Decimal
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from provisa.api.app import AppState
 
 log = logging.getLogger(__name__)
 
@@ -30,12 +33,12 @@ class _Encoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, Decimal):
             return float(o)
-        if hasattr(o, 'isoformat'):
+        if hasattr(o, "isoformat"):
             return o.isoformat()
         return str(o)
 
 
-async def trigger_sinks_for_table(table_name: str, state) -> int:
+async def trigger_sinks_for_table(table_name: str, state: AppState) -> int:
     """Find and execute sinks triggered by a change to the given table.
 
     Returns the number of sinks triggered.
@@ -77,11 +80,13 @@ async def trigger_sinks_for_table(table_name: str, state) -> int:
             triggered += 1
             log.info(
                 "Sink triggered: query %s → topic %s",
-                row["stable_id"], row["sink_topic"],
+                row["stable_id"],
+                row["sink_topic"],
             )
         except Exception:
             log.exception(
-                "Sink execution failed for query %s", row["stable_id"],
+                "Sink execution failed for query %s",
+                row["stable_id"],
             )
 
     return triggered
@@ -92,9 +97,13 @@ async def _execute_and_publish(
     sink_topic: str,
     key_column: str | None,
     stable_id: str,
-    state,
+    state: AppState,
 ) -> None:
     """Execute a query and publish results to Kafka."""
+    from typing import cast
+
+    from graphql import GraphQLSchema
+
     from provisa.compiler.parser import parse_query
     from provisa.compiler.rls import RLSContext, inject_rls
     from provisa.compiler.sql_gen import compile_query
@@ -107,7 +116,7 @@ async def _execute_and_publish(
         log.warning("Admin role not available for sink execution")
         return
 
-    schema = state.schemas[role_id]
+    schema = cast("GraphQLSchema", state.schemas[role_id])
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
 
@@ -140,6 +149,7 @@ async def _execute_and_publish(
         return
 
     from confluent_kafka import Producer
+
     producer = Producer({"bootstrap.servers": bootstrap})
 
     for row in result.rows:
@@ -156,5 +166,7 @@ async def _execute_and_publish(
     producer.flush(timeout=10)
     log.info(
         "Sink published %d rows to %s (query %s)",
-        len(result.rows), sink_topic, stable_id,
+        len(result.rows),
+        sink_topic,
+        stable_id,
     )

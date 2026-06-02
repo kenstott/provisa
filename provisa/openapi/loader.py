@@ -9,6 +9,7 @@
 # permission from the copyright holder.
 
 """Load an OpenAPI spec from a local file or remote URL."""
+
 from __future__ import annotations
 import json
 import pathlib

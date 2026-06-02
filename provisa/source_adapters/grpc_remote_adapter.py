@@ -9,6 +9,7 @@
 # permission from the copyright holder.
 
 """Source adapter for gRPC Remote sources — cache-aside execution (Phase AR)."""
+
 from __future__ import annotations
 
 import hashlib
@@ -24,9 +25,7 @@ log = logging.getLogger(__name__)
 
 
 def _args_hash(args: dict) -> str:
-    return hashlib.sha256(
-        json.dumps(sorted(args.items()), default=str).encode()
-    ).hexdigest()[:12]
+    return hashlib.sha256(json.dumps(sorted(args.items()), default=str).encode()).hexdigest()[:12]
 
 
 def _get_channel(grpc_remote_sources: dict, source_id: str) -> grpc.aio.Channel:
@@ -53,9 +52,7 @@ async def fetch(
     server_streaming: bool = False,
 ) -> list[dict]:
     """Execute a gRPC query method with cache-aside. Returns rows as list of dicts."""
-    cache_key = (
-        f"grpc_remote:{source_id}:{full_method_path}:{_args_hash(args)}:{role}"
-    )
+    cache_key = f"grpc_remote:{source_id}:{full_method_path}:{_args_hash(args)}:{role}"
 
     cached = await response_cache_store.get(cache_key)
     if cached is not None:

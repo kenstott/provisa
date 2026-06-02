@@ -28,12 +28,11 @@ Mixed into _Translator; relies on _lm, _var_table, _param_order, _param_seen.
 
 from __future__ import annotations
 
-from typing import Any
 
 import sqlglot.expressions as exp
 
-from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
-from provisa.cypher.parser import CallSubquery, MatchClause, PathPattern
+from provisa.cypher.label_map import CypherLabelMap
+from provisa.cypher.parser import CallSubquery
 
 
 class CorrelatedCallMixin:
@@ -57,11 +56,13 @@ class CorrelatedCallMixin:
             lateral_alias = f"_call{i}"
             lateral_expr = self._build_lateral(call, lateral_alias)
             if lateral_expr is not None:
-                lateral_joins.append({
-                    "table": lateral_expr,
-                    "on": None,
-                    "join_type": "CROSS",
-                })
+                lateral_joins.append(
+                    {
+                        "table": lateral_expr,
+                        "on": None,
+                        "join_type": "CROSS",
+                    }
+                )
                 # Register return variables so the outer RETURN can qualify them
                 if call.body.return_clause:
                     for item in call.body.return_clause.items:
@@ -79,11 +80,7 @@ class CorrelatedCallMixin:
         from provisa.cypher.translator import _Translator, CypherTranslateError
 
         # Build inner translator with outer _var_table pre-loaded for imported vars
-        outer_bindings = {
-            v: self._var_table[v]
-            for v in call.imported_vars
-            if v in self._var_table
-        }
+        outer_bindings = {v: self._var_table[v] for v in call.imported_vars if v in self._var_table}
         if not outer_bindings:
             return None
 

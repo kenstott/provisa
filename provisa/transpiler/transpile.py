@@ -594,8 +594,9 @@ def _is_aggregate_expr(expr: exp.Expression) -> bool:
     _AGG_NAMES = {"COUNT", "SUM", "MIN", "MAX", "AVG", "JSON_AGG", "ARRAY_AGG", "ARBITRARY"}
     if isinstance(expr, exp.Anonymous):
         return expr.name.upper() in _AGG_NAMES
-    if isinstance(expr, (exp.Count, exp.Sum, exp.Min, exp.Max, exp.Avg,
-                         exp.ArrayAgg, exp.JSONArrayAgg)):
+    if isinstance(
+        expr, (exp.Count, exp.Sum, exp.Min, exp.Max, exp.Avg, exp.ArrayAgg, exp.JSONArrayAgg)
+    ):
         return True
     return False
 
@@ -721,9 +722,7 @@ def _try_lift_subquery(
     if not where:
         return None
 
-    correlated_pairs, local_conditions = _split_where_conditions_general(
-        where.this, {inner_alias}
-    )
+    correlated_pairs, local_conditions = _split_where_conditions_general(where.this, {inner_alias})
     if not correlated_pairs:
         return None
 
@@ -741,7 +740,9 @@ def _try_lift_subquery(
     def _make_join_cond(pairs: list[tuple[exp.Expression, exp.Expression]]) -> exp.Expression:
         cond: exp.Expression = exp.EQ(this=pairs[0][0].copy(), expression=pairs[0][1].copy())
         for jk, outer_ref in pairs[1:]:
-            cond = exp.And(this=cond, expression=exp.EQ(this=jk.copy(), expression=outer_ref.copy()))
+            cond = exp.And(
+                this=cond, expression=exp.EQ(this=jk.copy(), expression=outer_ref.copy())
+            )
         return cond
 
     cte_name = f"_grel_{cte_counter[0]}"
@@ -755,9 +756,7 @@ def _try_lift_subquery(
     ]
 
     if is_agg:
-        cte_select_exprs.append(
-            exp.Alias(this=flat_expr.copy(), alias=exp.to_identifier("_val"))
-        )
+        cte_select_exprs.append(exp.Alias(this=flat_expr.copy(), alias=exp.to_identifier("_val")))
         cte_sel = exp.Select(expressions=cte_select_exprs).from_(inner_table_expr.copy())
         for ej in extra_joins:
             cte_sel = cte_sel.join(ej.copy(), append=True)
@@ -766,24 +765,20 @@ def _try_lift_subquery(
             for lc in local_conditions[1:]:
                 local_where = exp.And(this=local_where, expression=lc)
             cte_sel = cte_sel.where(local_where)
-        group_cols = [
-            exp.Column(this=exp.to_identifier(jk_aliases[i]), table=exp.to_identifier(cte_name))
-            for i in range(len(correlated_pairs))
-        ]
         # group by positional index to avoid quoting issues
-        cte_sel = cte_sel.group_by(*[
-            exp.Column(this=exp.to_identifier(jk_aliases[i]))
-            for i in range(len(correlated_pairs))
-        ])
+        cte_sel = cte_sel.group_by(
+            *[
+                exp.Column(this=exp.to_identifier(jk_aliases[i]))
+                for i in range(len(correlated_pairs))
+            ]
+        )
     else:
         # Wrap in ARBITRARY() for dedup when LIMIT 1 semantics are needed
         user_limit = inner.args.get("limit")
         if user_limit is None:
             # No LIMIT set — use ARBITRARY() to deduplicate
             arb_val = exp.Anonymous(this="ARBITRARY", expressions=[flat_expr.copy()])
-            cte_select_exprs.append(
-                exp.Alias(this=arb_val, alias=exp.to_identifier("_val"))
-            )
+            cte_select_exprs.append(exp.Alias(this=arb_val, alias=exp.to_identifier("_val")))
             cte_sel = exp.Select(expressions=cte_select_exprs).from_(inner_table_expr.copy())
             for ej in extra_joins:
                 cte_sel = cte_sel.join(ej.copy(), append=True)
@@ -792,10 +787,12 @@ def _try_lift_subquery(
                 for lc in local_conditions[1:]:
                     local_where = exp.And(this=local_where, expression=lc)
                 cte_sel = cte_sel.where(local_where)
-            cte_sel = cte_sel.group_by(*[
-                exp.Column(this=exp.to_identifier(jk_aliases[i]))
-                for i in range(len(correlated_pairs))
-            ])
+            cte_sel = cte_sel.group_by(
+                *[
+                    exp.Column(this=exp.to_identifier(jk_aliases[i]))
+                    for i in range(len(correlated_pairs))
+                ]
+            )
         else:
             # User specified LIMIT — select raw value, use ROW_NUMBER to pick top-N
             cte_select_exprs.append(
@@ -818,10 +815,15 @@ def _try_lift_subquery(
 
     # Build LEFT JOIN ON condition using outer references
     join_cond = _make_join_cond(
-        [(
-            exp.Column(this=exp.to_identifier(jk_aliases[i]), table=exp.to_identifier(cte_name)),
-            outer_ref,
-        ) for i, (_, outer_ref) in enumerate(correlated_pairs)]
+        [
+            (
+                exp.Column(
+                    this=exp.to_identifier(jk_aliases[i]), table=exp.to_identifier(cte_name)
+                ),
+                outer_ref,
+            )
+            for i, (_, outer_ref) in enumerate(correlated_pairs)
+        ]
     )
     join = exp.Join(
         this=exp.Table(this=exp.to_identifier(cte_name)),
@@ -903,7 +905,6 @@ def _flatten_nested_in_expr(
     Uses a simple inline CTE counter (nested CTEs not needed — joins suffice here).
     Returns rewritten expr, or None if unchanged.
     """
-    counter = [0]
 
     def _walk(node: exp.Expression) -> exp.Expression | None:
         if isinstance(node, exp.Alias):
@@ -981,9 +982,7 @@ def _flatten_nested_in_expr(
             flat_nested = _flatten_nested_in_expr(nested_select_expr, {nested_alias}, deeper_joins)
             if flat_nested is None:
                 flat_nested = nested_select_expr
-            join_cond: exp.Expression = exp.EQ(
-                this=corr[0][0].copy(), expression=corr[0][1].copy()
-            )
+            join_cond: exp.Expression = exp.EQ(this=corr[0][0].copy(), expression=corr[0][1].copy())
             for jk2, outer2 in corr[1:]:
                 join_cond = exp.And(
                     this=join_cond,

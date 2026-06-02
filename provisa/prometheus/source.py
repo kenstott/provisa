@@ -78,9 +78,7 @@ def generate_table_definitions(config: PrometheusSourceConfig) -> list[dict]:
     return definitions
 
 
-def discover_schema(
-    metric_metadata: dict, metric_name: str
-) -> list[dict]:
+def discover_schema(metric_metadata: dict, metric_name: str) -> list[dict]:
     """Infer columns from Prometheus metric metadata.
 
     Args:

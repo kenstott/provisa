@@ -77,7 +77,6 @@ class ESSourceConfig:
 
 def generate_catalog_properties(config: ESSourceConfig) -> dict[str, str]:
     """Generate Trino Elasticsearch connector catalog properties."""
-    scheme = "https" if config.tls else "http"
     props = {
         "connector.name": "elasticsearch",
         "elasticsearch.host": config.host,
@@ -129,9 +128,7 @@ def discover_schema(index_mapping: dict) -> list[dict]:
     return columns
 
 
-def _flatten_mapping(
-    properties: dict, prefix: str, columns: list[dict]
-) -> None:
+def _flatten_mapping(properties: dict, prefix: str, columns: list[dict]) -> None:
     """Recursively flatten nested ES mapping properties."""
     for field_name, field_def in sorted(properties.items()):
         full_path = f"{prefix}{field_name}" if not prefix else f"{prefix}{field_name}"
@@ -144,8 +141,10 @@ def _flatten_mapping(
 
         es_type = field_def.get("type", "object")
         trino_type = ES_TYPE_TO_TRINO.get(es_type, "VARCHAR")
-        columns.append({
-            "name": full_path.replace(".", "_"),
-            "type": trino_type,
-            "sourcePath": full_path,
-        })
+        columns.append(
+            {
+                "name": full_path.replace(".", "_"),
+                "type": trino_type,
+                "sourcePath": full_path,
+            }
+        )

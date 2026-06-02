@@ -14,19 +14,22 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
-from typing import AsyncGenerator
+
+import asyncpg
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
 log = logging.getLogger(__name__)
+
 
 class PollingNotificationProvider(NotificationProvider):
     """Polls a table for changes using a configurable watermark column (default: ``updated_at``)."""
 
     def __init__(
         self,
-        pool: Any,
+        pool: asyncpg.Pool,
         poll_interval: float = 5.0,
         watermark_column: str = "updated_at",
     ) -> None:
@@ -51,7 +54,7 @@ class PollingNotificationProvider(NotificationProvider):
             try:
                 wc = self._watermark_column
                 rows = await conn.fetch(
-                    f"SELECT * FROM {table} "  # noqa: S608
+                    f"SELECT * FROM {table} "  # noqa: S608  # table/wc are validated identifiers, not user values; watermark is parameterized
                     f"WHERE {wc} > $1 ORDER BY {wc} LIMIT 100",
                     watermark,
                 )

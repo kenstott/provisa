@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import asyncio
 
 import oracledb
 
@@ -25,13 +24,22 @@ class OracleDriver(DirectDriver):
         self._pool: oracledb.AsyncConnectionPool | None = None
 
     async def connect(
-        self, host: str, port: int, database: str,
-        user: str, password: str, min_pool: int = 1, max_pool: int = 5,
+        self,
+        host: str,
+        port: int,
+        database: str,
+        user: str,
+        password: str,
+        min_pool: int = 1,
+        max_pool: int = 5,
     ) -> None:
         dsn = f"{host}:{port}/{database}"
         self._pool = oracledb.create_pool_async(
-            user=user, password=password, dsn=dsn,
-            min=min_pool, max=max_pool,
+            user=user,
+            password=password,
+            dsn=dsn,
+            min=min_pool,
+            max=max_pool,
         )
 
     async def execute(self, sql: str, params: list | None = None) -> QueryResult:

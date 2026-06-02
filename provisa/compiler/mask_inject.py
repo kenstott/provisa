@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 
-from provisa.compiler.sql_gen import ColumnRef, CompiledQuery, CompilationContext
+from provisa.compiler.sql_gen import CompiledQuery, CompilationContext
 from provisa.security.masking import MaskingRule, build_mask_expression
 from provisa.otel_compat import get_tracer as _get_tracer
 
@@ -128,7 +128,7 @@ def _find_select_end(sql: str) -> int:
 
     Returns the index of the FROM keyword.
     """
-    match = re.search(r'\bFROM\b', sql, re.IGNORECASE)
+    match = re.search(r"\bFROM\b", sql, re.IGNORECASE)
     if match:
         return match.start()
     return len(sql)

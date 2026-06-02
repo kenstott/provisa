@@ -38,7 +38,7 @@ _TARGET_INSTRUCTIONS: dict[NlTarget, str] = {
     ),
     "sql": (
         "Generate a read-only SQL SELECT statement using semantic table references.\n"
-        "Table references must use the form \"domain\".\"field_name\" exactly as shown in the schema SDL.\n"
+        'Table references must use the form "domain"."field_name" exactly as shown in the schema SDL.\n'
         "Use only tables and columns present in the schema SDL below.\n"
         "Do not use vendor-specific syntax; write standard SQL (postgres dialect).\n"
         "Return only the SQL statement — no explanation, no markdown fences."

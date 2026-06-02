@@ -31,16 +31,19 @@ from pydantic import BaseModel
 if TYPE_CHECKING:
     from provisa.cypher.label_map import CypherLabelMap  # noqa: F401
 
+import re as _re
+
+import trino.exceptions as _trino_exc
+
 from provisa.executor import stats as _qs_mod
 
 log = logging.getLogger(__name__)
 
 router = APIRouter()
 
-import re as _re
-import trino.exceptions as _trino_exc
-
-_PROC_RE = _re.compile(r"^\s*CALL\s+(db\.labels|db\.relationshipTypes|db\.propertyKeys)\s*\(\s*\)\s*$", _re.IGNORECASE)
+_PROC_RE = _re.compile(
+    r"^\s*CALL\s+(db\.labels|db\.relationshipTypes|db\.propertyKeys)\s*\(\s*\)\s*$", _re.IGNORECASE
+)
 
 
 def _span_attrs_from_semantic_sql(
@@ -55,6 +58,7 @@ def _span_attrs_from_semantic_sql(
     """
     import sqlglot
     import sqlglot.expressions as _sge
+
     tables: set[str] = set()
     domains: set[str] = set()
     try:
@@ -116,17 +120,28 @@ async def cypher_query(
 
     if query_id:
         from provisa.api.data.endpoint_dev import QueryRequest, unified_query_endpoint
-        queries: list[dict] = (getattr(state, "schema_build_cache", {}) or {}).get("approved_queries", [])
+
+        queries: list[dict] = (getattr(state, "schema_build_cache", {}) or {}).get(
+            "approved_queries", []
+        )
         matched = next((q for q in queries if q.get("stable_id") == query_id), None)
         if matched is None:
-            return JSONResponse(status_code=404, content={"error": f"Approved query not found: {query_id!r}"})
-        query_req = QueryRequest(query=matched.get("query_text") or "", role=_resolve_role_id(request, state))
+            return JSONResponse(
+                status_code=404, content={"error": f"Approved query not found: {query_id!r}"}
+            )
+        query_req = QueryRequest(
+            query=matched.get("query_text") or "", role=_resolve_role_id(request, state)
+        )
         result = await unified_query_endpoint(request, query_req, x_provisa_role=None)
         return result  # type: ignore[return-value]
 
     try:
         from provisa.cypher.parser import parse_cypher, CypherParseError
-        from provisa.cypher.translator import cypher_to_sql, CypherCrossSourceError, CypherTranslateError
+        from provisa.cypher.translator import (
+            cypher_to_sql,
+            CypherCrossSourceError,
+            CypherTranslateError,
+        )
         from provisa.cypher.graph_rewriter import apply_graph_rewrites
         from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
         from provisa.cypher.assembler import assemble_rows, to_serializable
@@ -158,7 +173,10 @@ async def cypher_query(
             rows = [{"label": lbl} for lbl in sorted(all_labels)]
             return JSONResponse(content={"columns": ["label"], "rows": rows})
         if _proc == "db.relationshiptypes":
-            rows = [{"relationshipType": r.rel_type} for r in sorted(label_map.relationships.values(), key=lambda x: x.rel_type)]
+            rows = [
+                {"relationshipType": r.rel_type}
+                for r in sorted(label_map.relationships.values(), key=lambda x: x.rel_type)
+            ]
             return JSONResponse(content={"columns": ["relationshipType"], "rows": rows})
         if _proc == "db.propertykeys":
             keys: set[str] = set()
@@ -194,7 +212,9 @@ async def cypher_query(
             )
         except Exception as exc:
             log.exception("Cypher governance setup failed")
-            return JSONResponse(status_code=500, content={"error": f"Governance setup failed: {exc}"})
+            return JSONResponse(
+                status_code=500, content={"error": f"Governance setup failed: {exc}"}
+            )
 
         all_rows: list[list[dict]] = []
         merged_graph_vars: dict = {}
@@ -243,6 +263,7 @@ async def cypher_query(
     # Render to SQL string (postgres dialect; make_semantic_sql handles catalog-qualified refs)
     try:
         import sqlglot
+
         sql_str = sql_ast.sql(dialect="postgres")
         if ast.comments:
             prefix = "\n".join(f"-- {c}" for c in ast.comments)
@@ -261,7 +282,8 @@ async def cypher_query(
 
         # Validate against role-scoped GraphQL-equivalent rules
         from provisa.compiler.sql_validator import validate_sql
-        _role_dict = (state.roles.get(role_id) or {})
+
+        _role_dict = state.roles.get(role_id) or {}
         _violations = validate_sql(
             semantic_sql,
             ctx,
@@ -274,7 +296,9 @@ async def cypher_query(
         if _violations:
             return JSONResponse(
                 status_code=403,
-                content={"violations": [{"code": v.code, "message": v.message} for v in _violations]},
+                content={
+                    "violations": [{"code": v.code, "message": v.message} for v in _violations]
+                },
             )
 
         governed_sql = apply_governance(semantic_sql, gov_ctx)
@@ -301,19 +325,16 @@ async def cypher_query(
 
     # Stage 5: Execute — extract _nf_* native filter args before Trino execution
     from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
+
     clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)
 
     # Route through REST+cache whenever any table is API-backed, even with no nf_args.
     # This ensures JSONB columns (exposed as json by Trino's PG connector) are always
     # accessed as VARCHAR from the Trino cache, avoiding INVALID_CAST_ARGUMENT errors.
     _api_table_names = find_api_table_names(governed_sql)
-    _has_api_tables = any(
-        _lookup_api_endpoint(state, tn) is not None
-        for tn in _api_table_names
-    )
+    _has_api_tables = any(_lookup_api_endpoint(state, tn) is not None for tn in _api_table_names)
     _has_gql_remote = any(
-        _lookup_gql_remote_table(state, tn) is not None
-        for tn in _api_table_names
+        _lookup_gql_remote_table(state, tn) is not None for tn in _api_table_names
     )
 
     # Build span attrs from semantic SQL table refs (already normalized: pet_store.pets)
@@ -328,12 +349,15 @@ async def cypher_query(
 
     import asyncio as _asyncio
     from provisa.api.data.endpoint import _request_timeout
+
     _timeout = _request_timeout()
     log.info("Cypher final SQL: %s", trino_sql)
     try:
         if _has_gql_remote:
             rows = await _asyncio.wait_for(
-                _execute_with_gql_remote(clean_exec_sql, clean_params, nf_args, state, _cypher_span_attrs),
+                _execute_with_gql_remote(
+                    clean_exec_sql, clean_params, nf_args, state, _cypher_span_attrs
+                ),
                 timeout=_timeout,
             )
         elif nf_args or _has_api_tables:
@@ -347,10 +371,16 @@ async def cypher_query(
                 timeout=_timeout,
             )
     except _asyncio.TimeoutError:
-        return JSONResponse(status_code=504, content={"error": f"Query timed out after {_timeout:.0f}s", "sql": trino_sql})
+        return JSONResponse(
+            status_code=504,
+            content={"error": f"Query timed out after {_timeout:.0f}s", "sql": trino_sql},
+        )
     except Exception as exc:
         log.exception("Cypher execution failed: %s", trino_sql)
-        return JSONResponse(status_code=500, content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql})
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql},
+        )
 
     # Assemble
     try:
@@ -367,10 +397,14 @@ async def cypher_query(
 
     content: dict = {"columns": columns, "rows": serializable_rows}
     if stats_enabled:
-        _qs_mod.record(field="cypher", source="trino", strategy="federated",
-                       elapsed_ms=(_time.perf_counter() - _t0) * 1000,
-                       rows=len(serializable_rows),
-                       physical_sql=trino_sql)
+        _qs_mod.record(
+            field="cypher",
+            source="trino",
+            strategy="federated",
+            elapsed_ms=(_time.perf_counter() - _t0) * 1000,
+            rows=len(serializable_rows),
+            physical_sql=trino_sql,
+        )
         qs = _qs_mod.current()
         if qs is not None:
             content["provisa_stats"] = qs.to_dict()
@@ -390,6 +424,7 @@ async def graph_schema(request: Request) -> JSONResponse:
     label_map = _build_label_map(ctx, role_id, state)
     all_tables: list[dict] = getattr(state, "schema_build_cache", {}).get("tables", [])
     from provisa.cypher.label_map import _table_label_from_table_name
+
     cluster_by_name: dict[str, dict] = {
         _table_label_from_table_name(t["table_name"], t.get("domain_id")): {
             "scl1": t.get("l1_cluster"),
@@ -398,31 +433,35 @@ async def graph_schema(request: Request) -> JSONResponse:
         }
         for t in all_tables
     }
-    return JSONResponse(content={
-        "node_labels": [
-            {
-                "label": n.label,
-                "domain_label": n.domain_label,
-                "domain_id": n.domain_id,
-                "table_label": n.table_label,
-                "properties": list(n.properties.keys()),
-                "pk_columns": n.pk_columns,
-                "id_column": n.id_column,
-                "native_filter_columns": sorted(n.native_filter_columns),
-                "traversal_only": n.traversal_only,
-                **cluster_by_name.get(n.table_label, {"scl1": None, "scl2": None, "scl3": None}),
-            }
-            for n in label_map.nodes.values()
-        ],
-        "relationship_types": [
-            {
-                "type": r.rel_type,
-                "source": r.source_label,
-                "target": r.target_label,
-            }
-            for r in label_map.relationships.values()
-        ],
-    })
+    return JSONResponse(
+        content={
+            "node_labels": [
+                {
+                    "label": n.label,
+                    "domain_label": n.domain_label,
+                    "domain_id": n.domain_id,
+                    "table_label": n.table_label,
+                    "properties": list(n.properties.keys()),
+                    "pk_columns": n.pk_columns,
+                    "id_column": n.id_column,
+                    "native_filter_columns": sorted(n.native_filter_columns),
+                    "traversal_only": n.traversal_only,
+                    **cluster_by_name.get(
+                        n.table_label, {"scl1": None, "scl2": None, "scl3": None}
+                    ),
+                }
+                for n in label_map.nodes.values()
+            ],
+            "relationship_types": [
+                {
+                    "type": r.rel_type,
+                    "source": r.source_label,
+                    "target": r.target_label,
+                }
+                for r in label_map.relationships.values()
+            ],
+        }
+    )
 
 
 def _resolve_role_id(request: Request, state: object) -> str:
@@ -439,6 +478,7 @@ def _resolve_role_id(request: Request, state: object) -> str:
 def _build_label_map(ctx: object, role_id: str, state: object) -> CypherLabelMap:
     """Build CypherLabelMap with cross-domain traversal nodes for the given role."""
     from provisa.cypher.label_map import CypherLabelMap
+
     role = getattr(state, "roles", {}).get(role_id, {})
     cache = getattr(state, "schema_build_cache", {})
     return CypherLabelMap.from_schema(
@@ -459,6 +499,7 @@ def _lookup_api_endpoint(state: object, table_name: str):
     Try exact match first, then snake_case conversion of the key, then camelCase conversion.
     """
     from provisa.compiler.naming import to_snake_case
+
     ep_map: dict = getattr(state, "api_endpoints", {})
     ep = ep_map.get(table_name)
     if ep is not None:
@@ -507,8 +548,12 @@ async def _execute_with_api(
     import asyncio
     from provisa.api_source.router_integration import handle_api_query
     from provisa.api_source.trino_cache import (
-        cache_table_name, cache_location, ensure_cache_schema, table_exists,
-        rewrite_all_from_cache, schedule_drop,
+        cache_table_name,
+        cache_location,
+        ensure_cache_schema,
+        table_exists,
+        rewrite_all_from_cache,
+        schedule_drop,
     )
     from provisa.executor.trino import execute_trino
     from provisa.transpiler.transpile import transpile_to_trino
@@ -531,6 +576,7 @@ async def _execute_with_api(
         table_name, endpoint = api_endpoints_in_sql[0]
         if hot_mgr is not None and hot_mgr.is_hot(table_name):
             from provisa.cache.hot_tables import build_values_cte_sql
+
             entry = hot_mgr.get_entry(table_name)
             hot_sql = build_values_cte_sql(exec_sql, table_name, entry)
             trino_sql = transpile_to_trino(hot_sql)
@@ -539,6 +585,7 @@ async def _execute_with_api(
             return [dict(zip(trino_result.column_names, row)) for row in trino_result.rows]
 
     from provisa.executor.redirect import RedirectConfig
+
     redirect_config = RedirectConfig.from_env()
 
     # Materialize every API-backed table into its Trino cache slot.
@@ -568,6 +615,7 @@ async def _execute_with_api(
 
         def _check_schema_and_exists() -> bool:
             import trino as _trino
+
             conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
             try:
                 ensure_cache_schema(conn, _cache_loc)
@@ -591,7 +639,9 @@ async def _execute_with_api(
                 or getattr(state, "response_cache_default_ttl", None)
                 or endpoint.ttl
             )
-            asyncio.create_task(schedule_drop(state.trino_conn, _cache_loc, cache_tbl, ttl, redirect_config))
+            asyncio.create_task(
+                schedule_drop(state.trino_conn, _cache_loc, cache_tbl, ttl, redirect_config)
+            )
 
             if hot_mgr is not None and result.rows:
                 asyncio.create_task(hot_mgr.maybe_promote_dicts(table_name, result.rows))
@@ -603,6 +653,7 @@ async def _execute_with_api(
 
     def _run_query() -> list[dict]:
         import trino as _trino
+
         conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
         try:
             result = execute_trino(conn, trino_sql, params, span_attrs=span_attrs)
@@ -625,8 +676,13 @@ async def _execute_with_gql_remote(
     from dataclasses import dataclass
     from provisa.graphql_remote.executor import execute_remote
     from provisa.api_source.trino_cache import (
-        cache_table_name, cache_location, ensure_cache_schema, table_exists,
-        create_and_insert, rewrite_all_from_cache, schedule_drop,
+        cache_table_name,
+        cache_location,
+        ensure_cache_schema,
+        table_exists,
+        create_and_insert,
+        rewrite_all_from_cache,
+        schedule_drop,
     )
     from provisa.executor.trino import execute_trino
     from provisa.transpiler.transpile import transpile_to_trino
@@ -638,8 +694,11 @@ async def _execute_with_gql_remote(
         type: str
 
     _GQL_TO_CACHE_TYPE = {
-        "text": "string", "integer": "integer", "numeric": "number",
-        "boolean": "boolean", "jsonb": "jsonb",
+        "text": "string",
+        "integer": "integer",
+        "numeric": "number",
+        "boolean": "boolean",
+        "jsonb": "jsonb",
     }
 
     table_names = find_api_table_names(exec_sql)
@@ -669,6 +728,7 @@ async def _execute_with_gql_remote(
 
         def _check_or_create_cache(fetch_rows: list | None) -> bool:
             import trino as _trino
+
             conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
             try:
                 ensure_cache_schema(conn, cache_loc)
@@ -676,7 +736,10 @@ async def _execute_with_gql_remote(
                     return True
                 if fetch_rows is not None:
                     col_objs = [
-                        _Col(name=c["name"], type=_GQL_TO_CACHE_TYPE.get(c.get("type", "text"), "string"))
+                        _Col(
+                            name=c["name"],
+                            type=_GQL_TO_CACHE_TYPE.get(c.get("type", "text"), "string"),
+                        )
                         for c in _info_columns
                     ]
                     create_and_insert(conn, cache_loc, cache_tbl, fetch_rows, col_objs)
@@ -710,6 +773,7 @@ async def _execute_with_gql_remote(
 
     def _run_query() -> list[dict]:
         import trino as _trino
+
         conn = _trino.dbapi.connect(**state.trino_conn_kwargs)
         try:
             result = execute_trino(conn, trino_sql, params, span_attrs=span_attrs)
@@ -720,9 +784,12 @@ async def _execute_with_gql_remote(
     return await asyncio.get_event_loop().run_in_executor(None, _run_query)
 
 
-async def _execute(sql: str, params: list, state: Any, span_attrs: dict[str, str] | None = None) -> list[dict]:
+async def _execute(
+    sql: str, params: list, state: Any, span_attrs: dict[str, str] | None = None
+) -> list[dict]:
     """Execute SQL against the federation engine and return rows as dicts."""
     from provisa.executor.trino import execute_trino
+
     trino_conn = getattr(state, "trino_conn", None)
     if trino_conn is None:
         raise RuntimeError("Federation engine not connected")
@@ -771,7 +838,9 @@ async def _execute_call_body(
     if nf_args or has_api:
         rows = await _execute_with_api(clean_exec_sql, clean_params, nf_args, state, _cb_span_attrs)
     elif has_gql_remote:
-        rows = await _execute_with_gql_remote(exec_sql, resolved_params, nf_args, state, _cb_span_attrs)
+        rows = await _execute_with_gql_remote(
+            exec_sql, resolved_params, nf_args, state, _cb_span_attrs
+        )
     else:
         rows = await _execute(trino_sql, resolved_params, state, _cb_span_attrs)
 

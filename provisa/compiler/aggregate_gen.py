@@ -16,7 +16,6 @@ Generates <Table>_aggregate root query fields with count, sum, avg, min, max.
 from __future__ import annotations
 
 from graphql import (
-    GraphQLArgument,
     GraphQLField,
     GraphQLFloat,
     GraphQLInt,
@@ -30,13 +29,24 @@ from provisa.compiler.type_map import trino_to_graphql
 
 # Trino types eligible for SUM/AVG (numeric only)
 NUMERIC_TRINO_TYPES = {
-    "tinyint", "smallint", "integer", "int", "bigint",
-    "real", "double", "decimal", "numeric",
+    "tinyint",
+    "smallint",
+    "integer",
+    "int",
+    "bigint",
+    "real",
+    "double",
+    "decimal",
+    "numeric",
 }
 
 # Trino types eligible for MIN/MAX (numeric + comparable string/temporal)
 COMPARABLE_TRINO_TYPES = NUMERIC_TRINO_TYPES | {
-    "varchar", "char", "date", "timestamp", "timestamp with time zone",
+    "varchar",
+    "char",
+    "date",
+    "timestamp",
+    "timestamp with time zone",
 }
 
 

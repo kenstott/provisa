@@ -19,7 +19,6 @@ import httpx
 
 from provisa.api_source.models import (
     ApiEndpoint,
-    ApiSourceType,
     PaginationType,
 )
 
@@ -87,14 +86,19 @@ async def _request_with_retry(
     """Make an HTTP request with retry on 429/5xx."""
     for attempt in range(_MAX_RETRIES):
         resp = await client.request(
-            method, url, params=params, headers=headers,
-            json=json_body, data=form_body, timeout=timeout,
+            method,
+            url,
+            params=params,
+            headers=headers,
+            json=json_body,
+            data=form_body,
+            timeout=timeout,
         )
         if resp.status_code == 404:
             raise ApiNotFoundError(f"404 Not Found: {resp.url}")
         if resp.status_code == 429 or resp.status_code >= 500:
             if attempt < _MAX_RETRIES - 1:
-                wait = _RETRY_BACKOFF_BASE * (2 ** attempt)
+                wait = _RETRY_BACKOFF_BASE * (2**attempt)
                 await asyncio.sleep(wait)
                 continue
             raise ApiCallError(
@@ -120,8 +124,14 @@ async def _paginate(
     pagination = endpoint.pagination
     if pagination is None:
         resp = await _request_with_retry(
-            client, endpoint.method, url, params, headers,
-            json_body=body, form_body=form_body, timeout=timeout,
+            client,
+            endpoint.method,
+            url,
+            params,
+            headers,
+            json_body=body,
+            form_body=form_body,
+            timeout=timeout,
         )
         return [resp.json()]
 
@@ -134,8 +144,14 @@ async def _paginate(
             if next_url is None:
                 break
             resp = await _request_with_retry(
-                client, endpoint.method, next_url, params, headers,
-                json_body=body, form_body=form_body, timeout=timeout,
+                client,
+                endpoint.method,
+                next_url,
+                params,
+                headers,
+                json_body=body,
+                form_body=form_body,
+                timeout=timeout,
             )
             pages.append(resp.json())
             link = resp.headers.get("link", "")
@@ -148,8 +164,14 @@ async def _paginate(
         cursor_field = pagination.cursor_field or "next_cursor"
         for _ in range(max_pages):
             resp = await _request_with_retry(
-                client, endpoint.method, url, params, headers,
-                json_body=body, form_body=form_body, timeout=timeout,
+                client,
+                endpoint.method,
+                url,
+                params,
+                headers,
+                json_body=body,
+                form_body=form_body,
+                timeout=timeout,
             )
             data = resp.json()
             pages.append(data)
@@ -169,8 +191,14 @@ async def _paginate(
             p[page_size_param] = page_size
             p[offset_param] = offset
             resp = await _request_with_retry(
-                client, endpoint.method, url, p, headers,
-                json_body=body, form_body=form_body, timeout=timeout,
+                client,
+                endpoint.method,
+                url,
+                p,
+                headers,
+                json_body=body,
+                form_body=form_body,
+                timeout=timeout,
             )
             data = resp.json()
             pages.append(data)
@@ -188,8 +216,14 @@ async def _paginate(
             p[page_param] = page_num
             p[page_size_param] = page_size
             resp = await _request_with_retry(
-                client, endpoint.method, url, p, headers,
-                json_body=body, form_body=form_body, timeout=timeout,
+                client,
+                endpoint.method,
+                url,
+                p,
+                headers,
+                json_body=body,
+                form_body=form_body,
+                timeout=timeout,
             )
             data = resp.json()
             pages.append(data)
@@ -205,8 +239,11 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:
         return
 
     from provisa.core.auth_models import (
-        ApiAuthBearer, ApiAuthBasic, ApiAuthApiKey,
-        ApiAuthOAuth2ClientCredentials, ApiAuthCustomHeaders,
+        ApiAuthBearer,
+        ApiAuthBasic,
+        ApiAuthApiKey,
+        ApiAuthOAuth2ClientCredentials,
+        ApiAuthCustomHeaders,
         ApiKeyLocation,
     )
     from provisa.core.secrets import resolve_secrets
@@ -227,9 +264,8 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:
             headers["Authorization"] = f"Bearer {resolve_secrets(token)}"
         case ApiAuthBasic(username=u, password=p):
             import base64
-            cred = base64.b64encode(
-                f"{resolve_secrets(u)}:{resolve_secrets(p)}".encode()
-            ).decode()
+
+            cred = base64.b64encode(f"{resolve_secrets(u)}:{resolve_secrets(p)}".encode()).decode()
             headers["Authorization"] = f"Basic {cred}"
         case ApiAuthApiKey(key=key, name=name, location=loc):
             resolved_key = resolve_secrets(key)
@@ -301,30 +337,33 @@ async def call_api(
     if endpoint.method == "QUERY":
         body = body or {}
         json_body = {"query": endpoint.path, "variables": body}
-        method = "POST"
     elif endpoint.method == "RPC":
         return await _call_grpc(endpoint, resolved_params, base_url)
     elif endpoint.body_encoding == "json":
         # Neo4j HTTP API: POST with JSON body containing the Cypher statement
         json_body = {"statement": endpoint.query_template} if endpoint.query_template else body
-        method = endpoint.method
     elif endpoint.body_encoding == "form":
         # SPARQL 1.1: POST with form-encoded query parameter
         form_body = {"query": endpoint.query_template} if endpoint.query_template else {}
         if body:
             form_body.update(body)
-        method = endpoint.method
     else:
         json_body = body
-        method = endpoint.method
 
     import logging as _logging
+
     _log = _logging.getLogger(__name__)
     async with httpx.AsyncClient() as client:
         try:
             pages = await _paginate(
-                client, endpoint, url, query_params, headers,
-                body=json_body, timeout=timeout, form_body=form_body,
+                client,
+                endpoint,
+                url,
+                query_params,
+                headers,
+                body=json_body,
+                timeout=timeout,
+                form_body=form_body,
             )
         except ApiNotFoundError:
             _log.debug("API 404 for %s — returning empty result", url)
@@ -354,6 +393,7 @@ async def _call_grpc(
 
     # Use reflection to get method descriptor and make call
     from grpc_reflection.v1alpha import reflection_pb2 as refl_pb2, reflection_pb2_grpc
+
     stub = reflection_pb2_grpc.ServerReflectionStub(channel)
 
     req = refl_pb2.ServerReflectionRequest(file_containing_symbol=service_name)
@@ -364,13 +404,14 @@ async def _call_grpc(
             fd = descriptor_pb2.FileDescriptorProto()
             fd.ParseFromString(proto_bytes)
             # Build request message from resolved_params
-            from google.protobuf import descriptor as proto_descriptor
             from google.protobuf.message_factory import MessageFactory
 
             pool = descriptor_pool.DescriptorPool()
             pool.Add(fd)
 
-            svc_desc = pool.FindServiceByName(f"{fd.package}.{service_name}" if fd.package else service_name)
+            svc_desc = pool.FindServiceByName(
+                f"{fd.package}.{service_name}" if fd.package else service_name
+            )
             method_desc = svc_desc.FindMethodByName(method_name)
 
             factory = MessageFactory(pool)

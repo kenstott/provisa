@@ -9,17 +9,23 @@
 # permission from the copyright holder.
 
 """Source adapter for OpenAPI sources — cache-aside HTTP execution."""
+
 from __future__ import annotations
+
 import hashlib
 import json
 import logging
+from typing import cast
+
 import httpx
-from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation
+
+from provisa.cache.store import CacheStore
+from provisa.openapi.mapper import OpenAPIMutation, OpenAPIQuery
 
 log = logging.getLogger(__name__)
 
 
-def _build_auth_headers(auth_config: dict | None) -> dict:
+def _build_auth_headers(auth_config: dict[str, str] | None) -> dict[str, str]:
     if not auth_config:
         return {}
     auth_type = auth_config.get("type", "none")
@@ -27,6 +33,7 @@ def _build_auth_headers(auth_config: dict | None) -> dict:
         return {"Authorization": f"Bearer {auth_config.get('token', '')}"}
     if auth_type == "basic":
         import base64
+
         creds = base64.b64encode(
             f"{auth_config.get('username', '')}:{auth_config.get('password', '')}".encode()
         ).decode()
@@ -40,9 +47,9 @@ def _build_auth_headers(auth_config: dict | None) -> dict:
 async def fetch(
     base_url: str,
     query: OpenAPIQuery,
-    args: dict,
-    auth_config: dict | None,
-    response_cache_store,
+    args: dict[str, object],
+    auth_config: dict[str, str] | None,
+    response_cache_store: CacheStore,
     source_id: str,
     role: str = "",
     ttl: int = 300,
@@ -54,15 +61,20 @@ async def fetch(
     cached = await response_cache_store.get(cache_key)
     if cached is not None:
         log.debug("Cache hit for %s", cache_key)
-        return json.loads(cached)
+        return json.loads(cached.data)
 
     url = base_url.rstrip("/") + query.path
     path_params = {p["name"] for p in query.path_params}
+
     # Args may have leading '_' on keys when name collides with a visible column (schema_gen renames)
-    def _get_arg(name: str):
+    def _get_arg(name: str) -> object:
         return args.get(name, args.get(f"_{name}"))
-    query_params = {k.lstrip("_") if k.lstrip("_") in path_params else k: v
-                   for k, v in args.items() if k.lstrip("_") not in path_params}
+
+    query_params: dict[str, object] = {
+        k.lstrip("_") if k.lstrip("_") in path_params else k: v
+        for k, v in args.items()
+        if k.lstrip("_") not in path_params
+    }
     for p_name in path_params:
         val = _get_arg(p_name)
         if val is not None:
@@ -70,20 +82,26 @@ async def fetch(
 
     headers = _build_auth_headers(auth_config)
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(url, params=query_params, headers=headers)
+        # httpx accepts primitive query values at runtime; args carry GraphQL
+        # primitives whose static type is opaque (object).
+        resp = await client.get(
+            url,
+            params=cast("httpx.QueryParams", query_params),
+            headers=headers,
+        )
         resp.raise_for_status()
         data = resp.json()
 
     rows = data if isinstance(data, list) else [data]
-    await response_cache_store.set(cache_key, json.dumps(rows), ttl=ttl)
+    await response_cache_store.set(cache_key, json.dumps(rows).encode(), ttl=ttl)
     return rows
 
 
 async def execute(
     base_url: str,
     mutation: OpenAPIMutation,
-    input_data: dict,
-    auth_config: dict | None,
+    input_data: dict[str, object],
+    auth_config: dict[str, str] | None,
 ) -> dict:
     """Execute a non-GET operation (not cached)."""
     url = base_url.rstrip("/") + mutation.path

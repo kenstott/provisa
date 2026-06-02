@@ -48,7 +48,7 @@ class InsufficientRightsError(Exception):
 
 
 def check_capability(
-    role: dict,
+    role: dict[str, object],
     required: Capability,
 ) -> None:
     """Check that a role has the required capability.
@@ -56,11 +56,16 @@ def check_capability(
     Raises InsufficientRightsError if not.
     """
     capabilities = role.get("capabilities", [])
+    if not isinstance(capabilities, (list, tuple, set, frozenset)):
+        capabilities = []
     if required.value not in capabilities and Capability.ADMIN.value not in capabilities:
-        raise InsufficientRightsError(role["id"], required)
+        role_id = role["id"]
+        raise InsufficientRightsError(str(role_id), required)
 
 
-def has_capability(role: dict, capability: Capability) -> bool:
+def has_capability(role: dict[str, object], capability: Capability) -> bool:
     """Check without raising."""
     capabilities = role.get("capabilities", [])
+    if not isinstance(capabilities, (list, tuple, set, frozenset)):
+        capabilities = []
     return capability.value in capabilities or Capability.ADMIN.value in capabilities

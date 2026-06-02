@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import time
 
-import httpx
 import jwt
 
 from provisa.auth.models import AuthIdentity, AuthProvider
@@ -34,9 +33,7 @@ class KeycloakAuthProvider(AuthProvider):
         self._realm = realm
         self._client_id = client_id
         self._client_secret = client_secret
-        self._jwks_uri = (
-            f"{self._server_url}/realms/{realm}/protocol/openid-connect/certs"
-        )
+        self._jwks_uri = f"{self._server_url}/realms/{realm}/protocol/openid-connect/certs"
         self._jwks_client: jwt.PyJWKClient | None = None
         self._jwks_fetched_at: float = 0.0
         self._jwks_ttl: float = 3600.0

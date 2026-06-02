@@ -75,7 +75,10 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
     # Governance
     rls = getattr(app_state, "rls_contexts", {}).get(role, RLSContext.empty())
     gov_ctx = build_governance_context(
-        role, rls, getattr(app_state, "masking_rules", {}), ctx,
+        role,
+        rls,
+        getattr(app_state, "masking_rules", {}),
+        ctx,
         getattr(app_state, "tables", []),
     )
     governed_sql = apply_governance(make_semantic_sql(sql_str, ctx), gov_ctx)
@@ -88,10 +91,11 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
 
 
 async def _execute_graphql(query: str, role: str, app_state: Any) -> dict:
+    from graphql import GraphQLSchema
     from graphql import graphql as gql_execute, parse as gql_parse
 
     schema = app_state.schemas.get(role)
-    if schema is None:
+    if not isinstance(schema, GraphQLSchema):
         raise RuntimeError(f"No GraphQL schema for role: {role}")
     doc = gql_parse(query)
     result = await gql_execute(schema, source=doc)
@@ -109,7 +113,10 @@ async def _execute_sql(query: str, role: str, app_state: Any) -> dict:
     ctx = _get_ctx(app_state, role)
     rls = getattr(app_state, "rls_contexts", {}).get(role, RLSContext.empty())
     gov_ctx = build_governance_context(
-        role, rls, getattr(app_state, "masking_rules", {}), ctx,
+        role,
+        rls,
+        getattr(app_state, "masking_rules", {}),
+        ctx,
         getattr(app_state, "tables", []),
     )
     governed_sql = apply_governance(make_semantic_sql(query, ctx), gov_ctx)
@@ -129,6 +136,7 @@ def _get_ctx(app_state: Any, role: str) -> Any:
 
 async def _run_trino(sql: str, params: list, app_state: Any) -> list[dict]:
     import asyncio
+
     trino_conn = getattr(app_state, "trino_conn", None)
     if trino_conn is None:
         raise RuntimeError("Federation engine not connected")

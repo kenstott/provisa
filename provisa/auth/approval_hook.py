@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
@@ -128,9 +128,7 @@ class WebhookApprovalHook(ApprovalHook):
         payload = _request_to_dict(request)
         try:
             async with httpx.AsyncClient() as client:
-                resp = await client.post(
-                    self._url, json=payload, timeout=self._timeout
-                )
+                resp = await client.post(self._url, json=payload, timeout=self._timeout)
                 resp.raise_for_status()
                 data = resp.json()
                 self._breaker.record_success()
@@ -224,9 +222,7 @@ class UnixSocketApprovalHook(ApprovalHook):
         try:
             transport = httpx.AsyncHTTPTransport(uds=self._socket_path)
             async with httpx.AsyncClient(transport=transport) as client:
-                resp = await client.post(
-                    self._url, json=payload, timeout=self._timeout
-                )
+                resp = await client.post(self._url, json=payload, timeout=self._timeout)
                 resp.raise_for_status()
                 data = resp.json()
                 self._breaker.record_success()

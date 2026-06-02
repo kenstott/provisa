@@ -13,13 +13,12 @@
 import logging
 import os
 import re
-import signal
 
 import trino
 
-log = logging.getLogger(__name__)
-
 from provisa.core.models import Source
+
+log = logging.getLogger(__name__)
 
 _VALID_IDENTIFIER = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
@@ -120,9 +119,7 @@ def create_catalog(conn: trino.dbapi.Connection, source: Source, resolved_passwo
         # Some source types (e.g., DuckDB) don't have Trino connectors
         return
 
-    props_sql = ", ".join(
-        f'"{k}" = \'{_escape_sql_string(v)}\'' for k, v in props.items()
-    )
+    props_sql = ", ".join(f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in props.items())
     sql = f"CREATE CATALOG IF NOT EXISTS {catalog_name} USING {connector} WITH ({props_sql})"
 
     try:
@@ -133,7 +130,9 @@ def create_catalog(conn: trino.dbapi.Connection, source: Source, resolved_passwo
         log.warning(
             "Catalog creation failed for %s (connector=%s): %s. "
             "Source may need static catalog config or manual setup.",
-            catalog_name, connector, e,
+            catalog_name,
+            connector,
+            e,
         )
 
 
