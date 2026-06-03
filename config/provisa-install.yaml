@@ -1,133 +1,110 @@
-# Provisa config — demo environment pointing at Docker Compose PG.
+# Provisa install-simulation config — pet store demo.
+# Used by start-ui-install.sh via PROVISA_CONFIG env var.
+# Federates the Petstore public API (OpenAPI), internal inventory (PG), and
+# customer inquiries (SQLite) into one virtual database. The graphql-demo
+# (shelter) source is registered dynamically by the demo, not from this file.
 sources:
-  - id: sales-pg
+  - id: pet-store-pg
     type: postgresql
     host: ${env:POSTGRES_HOST:-postgres}
     port: 5432
     database: provisa
     username: provisa
     password: ${env:PG_PASSWORD:-provisa}
-    description: Operational sales database — orders placed by customers, regional revenue tracking, and the product catalog managed by the sales and operations teams
-  - id: kafka-support
-    type: kafka
-    host: ${env:KAFKA_HOST:-kafka}
-    port: 9092
-    description: Live support ticket stream from the customer helpdesk — captures issue submissions and status changes in real time for support operations and SLA tracking
+    description: Internal pet inventory database — animals on hand, breed, pricing, and availability maintained by the inventory department
+  - id: petstore-api
+    type: openapi
+    path: https://petstore3.swagger.io/api/v3/openapi.json
+    base_url: https://petstore3.swagger.io/api/v3
+    cache_ttl: 300
+    auth_config:
+      type: none
+    description: Petstore public REST API (OpenAPI) — external catalog of pets exposed by the Swagger Petstore service
+  - id: inquiries-sqlite
+    type: sqlite
+    path: ./demo/files/inquiries.sqlite
+    description: Customer adoption inquiries — front-desk/CRM submissions stored in a local SQLite file
 
 domains:
-  - id: sales-analytics
-    description: Sales operational and analytical data
-  - id: product-catalog
-    description: Product catalog data
   - id: pet-store
-    description: Pet store inventory — animals available for adoption or purchase
+    description: Pet store — Petstore public API (OpenAPI), internal inventory (PG), and customer inquiries (SQLite) federated into one virtual database
 
 naming:
   domain_prefix: true
-  rules:
-    - pattern: "^prod_pg_"
-      replace: ""
+  rules: []
 
 tables:
-  - source_id: sales-pg
-    domain_id: sales-analytics
-    schema: public
-    table: orders
-    governance: pre-approved
-    description: Customer purchase orders — records every transaction placed through the sales channel, including amount, region, and fulfillment status
-    columns:
-      - name: id
-        data_type: integer
-        visible_to: [admin, analyst]
-      - name: customer_id
-        data_type: integer
-        visible_to: [admin, analyst]
-      - name: product_id
-        data_type: integer
-        visible_to: [admin]
-      - name: amount
-        data_type: decimal(10,2)
-        visible_to: [admin]
-      - name: region
-        data_type: varchar(50)
-        visible_to: [admin, analyst]
-      - name: status
-        data_type: varchar(20)
-        visible_to: [admin, analyst]
-      - name: created_at
-        data_type: timestamp(6)
-        visible_to: [admin, analyst]
-  - source_id: sales-pg
-    domain_id: sales-analytics
-    schema: public
-    table: customers
-    governance: pre-approved
-    description: Customer master — accounts registered with the business, including contact details and regional assignment used for sales territory reporting
-    columns:
-      - name: id
-        data_type: integer
-        visible_to: [admin, analyst]
-      - name: name
-        data_type: varchar(100)
-        visible_to: [admin, analyst]
-      - name: email
-        data_type: varchar(200)
-        visible_to: [admin]
-      - name: region
-        data_type: varchar(50)
-        visible_to: [admin, analyst]
-  - source_id: sales-pg
-    domain_id: product-catalog
-    schema: public
-    table: products
-    governance: registry-required
-    description: Product catalog — all SKUs offered for sale, with pricing and category classification maintained by the product management team
-    columns:
-      - name: id
-        data_type: integer
-        visible_to: [admin, analyst]
-      - name: name
-        data_type: varchar(200)
-        visible_to: [admin, analyst]
-      - name: price
-        data_type: decimal(10,2)
-        visible_to: [admin]
-      - name: category
-        data_type: varchar(100)
-        visible_to: [admin, analyst]
-  - source_id: sales-pg
+  - source_id: pet-store-pg
     domain_id: pet-store
     schema: pet_store
     table: pets
     governance: pre-approved
-    description: Pet inventory — animals available for adoption or purchase, including breed and pricing information
+    description: Pet inventory — animals available for adoption or purchase, managed by the inventory department
     columns:
       - name: id
-        data_type: integer
         visible_to: [admin, analyst]
       - name: name
-        data_type: varchar(100)
         visible_to: [admin, analyst]
       - name: species
-        data_type: varchar(50)
         visible_to: [admin, analyst]
       - name: breed_name
-        data_type: varchar(100)
         visible_to: [admin, analyst]
       - name: price
-        data_type: decimal(10,2)
         visible_to: [admin]
       - name: available
-        data_type: boolean
+        visible_to: [admin, analyst]
+  - source_id: petstore-api
+    domain_id: pet-store
+    schema: default
+    table: pet
+    governance: pre-approved
+    description: Pet catalog from the Petstore public API (OpenAPI)
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: name
+        visible_to: [admin, analyst]
+      - name: status
+        visible_to: [admin, analyst]
+      - name: photoUrls
+        visible_to: [admin, analyst]
+  - source_id: inquiries-sqlite
+    domain_id: pet-store
+    schema: default
+    table: inquiries
+    governance: pre-approved
+    description: Customer adoption inquiries — managed by the front-desk/CRM team
+    columns:
+      - name: id
+        visible_to: [admin, analyst]
+      - name: pet_id
+        visible_to: [admin, analyst]
+      - name: customer_name
+        visible_to: [admin, analyst]
+      - name: email
+        visible_to: [admin]
+      - name: inquiry_type
+        visible_to: [admin, analyst]
+      - name: message
+        visible_to: [admin, analyst]
+      - name: submitted_at
         visible_to: [admin, analyst]
 
 relationships:
-  - id: orders-to-customers
-    source_table_id: orders
-    target_table_id: customers
-    source_column: customer_id
-    target_column: id
+  - id: pets-to-api
+    source_table_id: pets
+    target_table_id: pet
+    source_column: name
+    target_column: name
     cardinality: many-to-one
+    alias: LISTED_AS
+  - id: pets-to-inquiries
+    source_table_id: pets
+    target_table_id: inquiries
+    source_column: id
+    target_column: pet_id
+    cardinality: one-to-many
+    alias: HAS_INQUIRY
 
 roles:
   - id: admin
@@ -144,58 +121,12 @@ roles:
     capabilities:
       - query_development
     domain_access:
-      - sales-analytics
-
-rls_rules:
-  - table_id: orders
-    role_id: analyst
-    filter: "region = current_setting('provisa.user_region')"
+      - pet-store
 
 cache:
   enabled: true
   redis_url: redis://${env:REDIS_HOST:-localhost}:6379
   default_ttl: 300
-
-kafka_sources:
-  - id: kafka-support
-    topics:
-      - id: tickets
-        topic: support.tickets
-        domain_id: sales-analytics
-        description: Inbound support tickets — real-time issue submissions from customers routed through the helpdesk platform for triage and resolution tracking
-        default_window: 1h
-        columns:
-          - name: id
-          - name: subject
-          - name: status
-          - name: created_at
-
-functions:
-  - name: get_customers_by_region
-    source_id: sales-pg
-    schema: public
-    function_name: get_customers_by_region
-    returns: customers
-    domain_id: sales-analytics
-    description: "Returns customers filtered by region — pass no argument to return all"
-    visible_to: [admin, analyst]
-    kind: query
-    arguments:
-      - name: p_region
-        type: String
-
-webhooks:
-  - name: notify_support
-    url: http://localhost:9999/notify
-    method: POST
-    timeout_ms: 3000
-    domain_id: sales-analytics
-    description: "Send a support notification (example webhook)"
-    visible_to: [admin]
-    kind: mutation
-    arguments:
-      - name: message
-        type: String
 
 auth:
   provider: firebase
