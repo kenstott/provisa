@@ -79,7 +79,7 @@ def write_trino_config(config_path: str) -> None:
 
     heap_gb = int(cfg.get("jvm_heap_gb", 8))
     spill_enabled = str(cfg.get("spill_enabled", True)).lower()
-    spill_path = cfg.get("spill_path", "/tmp/provisa-spill")
+    spill_path = cfg.get("spill_path", "/tmp/provisa-spill")  # nosec B108 - Trino spill dir default, config-overridable
     query_max_memory = cfg.get("query_max_memory", "4GB")
     query_max_memory_per_node = cfg.get("query_max_memory_per_node", "2GB")
     query_max_total_memory = cfg.get("query_max_total_memory", "8GB")

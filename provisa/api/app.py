@@ -2182,7 +2182,7 @@ async def lifespan(app: FastAPI):
                 _ssl_ctx.load_cert_chain(_cert, _key)
 
             start_pgwire_server(
-                host="0.0.0.0",
+                host="0.0.0.0",  # nosec B104 - pgwire server intentionally binds all interfaces
                 port=pgwire_port,
                 ssl_ctx=_ssl_ctx,
                 loop=asyncio.get_running_loop(),
