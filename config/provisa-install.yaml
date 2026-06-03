@@ -42,16 +42,22 @@ tables:
     description: Pet inventory — animals available for adoption or purchase, managed by the inventory department
     columns:
       - name: id
+        data_type: integer
         visible_to: [admin, analyst]
       - name: name
+        data_type: varchar(100)
         visible_to: [admin, analyst]
       - name: species
+        data_type: varchar(50)
         visible_to: [admin, analyst]
       - name: breed_name
+        data_type: varchar(100)
         visible_to: [admin, analyst]
       - name: price
+        data_type: decimal(10,2)
         visible_to: [admin]
       - name: available
+        data_type: boolean
         visible_to: [admin, analyst]
   - source_id: petstore-api
     domain_id: pet-store
@@ -61,12 +67,16 @@ tables:
     description: Pet catalog from the Petstore public API (OpenAPI)
     columns:
       - name: id
+        data_type: bigint
         visible_to: [admin, analyst]
       - name: name
+        data_type: varchar
         visible_to: [admin, analyst]
       - name: status
+        data_type: varchar
         visible_to: [admin, analyst]
       - name: photoUrls
+        data_type: varchar
         visible_to: [admin, analyst]
   - source_id: inquiries-sqlite
     domain_id: pet-store
@@ -76,18 +86,25 @@ tables:
     description: Customer adoption inquiries — managed by the front-desk/CRM team
     columns:
       - name: id
+        data_type: bigint
         visible_to: [admin, analyst]
       - name: pet_id
+        data_type: bigint
         visible_to: [admin, analyst]
-      - name: customer_name
+      - name: user_id
+        data_type: bigint
         visible_to: [admin, analyst]
-      - name: email
-        visible_to: [admin]
       - name: inquiry_type
+        data_type: varchar
         visible_to: [admin, analyst]
       - name: message
+        data_type: varchar
+        visible_to: [admin, analyst]
+      - name: status
+        data_type: varchar
         visible_to: [admin, analyst]
       - name: submitted_at
+        data_type: varchar
         visible_to: [admin, analyst]
 
 relationships:
