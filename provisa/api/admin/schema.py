@@ -371,6 +371,48 @@ def _build_column_models(columns: list) -> list:
     ]
 
 
+async def _introspect_view_columns(conn, view_sql: str, default_roles: list[str]) -> list:
+    """Derive a view's columns from its SQL when the caller supplies none.
+
+    Output column names come from the SELECT projection (SQLGlot). Each column's
+    data_type is resolved from the stored columns of the registered tables the view
+    references (by name match), falling back to varchar for expressions/aggregates the
+    type can't be traced to. visible_to defaults to all roles. This makes a view's
+    schema self-describing — the view SQL is the source of truth for its columns.
+    """
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.core.models import Column as ColumnModel
+
+    try:
+        tree = sqlglot.parse_one(view_sql, read="postgres")
+    except Exception:
+        return []
+    output_names = list(getattr(tree, "named_selects", []) or [])
+    if not output_names:
+        return []
+
+    # Resolve types from the registered tables referenced in the view (by table name/alias).
+    ref_names = {t.name for t in tree.find_all(exp.Table) if t.name}
+    type_map: dict[str, str] = {}
+    if ref_names:
+        rows = await conn.fetch(
+            """SELECT tc.column_name, tc.data_type
+               FROM table_columns tc JOIN registered_tables rt ON rt.id = tc.table_id
+               WHERE (rt.table_name = ANY($1::text[]) OR rt.alias = ANY($1::text[]))
+                 AND tc.data_type IS NOT NULL""",
+            list(ref_names),
+        )
+        for r in rows:
+            type_map.setdefault(r["column_name"], r["data_type"])
+
+    return [
+        ColumnModel(name=n, data_type=type_map.get(n, "varchar"), visible_to=list(default_roles))
+        for n in output_names
+    ]
+
+
 @strawberry.type
 class Query:
     @strawberry.field
@@ -1306,6 +1348,15 @@ class Mutation:
                 message=f"Invalid governance level: {input.governance!r}",
             )
         columns = _build_column_models(input.columns)
+        # A view's columns are defined by its SQL — if the caller supplied none
+        # (e.g. the SQL was edited after the column snapshot), derive them from the
+        # view_sql so the view is never registered with an empty schema.
+        if input.view_sql and not columns:
+            async with pool.acquire() as _vc:
+                _roles = [r["id"] for r in await _vc.fetch("SELECT id FROM roles")]
+                columns = await _introspect_view_columns(
+                    _vc, input.view_sql, _roles or ["admin"]
+                )
         alias = input.alias or None
         if not alias:
             from provisa.compiler.naming import apply_convention
@@ -1422,6 +1473,14 @@ class Mutation:
                 message=f"Invalid governance level: {input.governance!r}",
             )
         columns = _build_column_models(input.columns)
+        # Re-derive a view's columns from its SQL when none are supplied (e.g. the SQL
+        # was edited without re-running it), so an edit can't leave the view schema-less.
+        if input.view_sql and not columns:
+            async with pool.acquire() as _vc:
+                _roles = [r["id"] for r in await _vc.fetch("SELECT id FROM roles")]
+                columns = await _introspect_view_columns(
+                    _vc, input.view_sql, _roles or ["admin"]
+                )
         from provisa.core.models import ColumnPreset as ColumnPresetModel
 
         presets = [
