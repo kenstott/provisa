@@ -245,6 +245,9 @@ class ObjectField(BaseModel):
 
 class Column(BaseModel):
     name: str
+    data_type: str | None = (
+        None  # source column type (e.g. "varchar", "integer"); lets startup skip Trino introspection
+    )
     visible_to: list[str]
     writable_by: list[str] = []  # roles allowed to mutate this column
     unmasked_to: list[str] = []  # roles that see unmasked data

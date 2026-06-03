@@ -37,18 +37,25 @@ tables:
     description: Customer purchase orders — records every transaction placed through the sales channel, including amount, region, and fulfillment status
     columns:
       - name: id
+        data_type: integer
         visible_to: [admin, analyst]
       - name: customer_id
+        data_type: integer
         visible_to: [admin, analyst]
       - name: product_id
+        data_type: integer
         visible_to: [admin]
       - name: amount
+        data_type: decimal(10,2)
         visible_to: [admin]
       - name: region
+        data_type: varchar(50)
         visible_to: [admin, analyst]
       - name: status
+        data_type: varchar(20)
         visible_to: [admin, analyst]
       - name: created_at
+        data_type: timestamp(6)
         visible_to: [admin, analyst]
   - source_id: sales-pg
     domain_id: sales-analytics
@@ -58,12 +65,16 @@ tables:
     description: Customer master — accounts registered with the business, including contact details and regional assignment used for sales territory reporting
     columns:
       - name: id
+        data_type: integer
         visible_to: [admin, analyst]
       - name: name
+        data_type: varchar(100)
         visible_to: [admin, analyst]
       - name: email
+        data_type: varchar(200)
         visible_to: [admin]
       - name: region
+        data_type: varchar(50)
         visible_to: [admin, analyst]
   - source_id: sales-pg
     domain_id: product-catalog
@@ -73,12 +84,16 @@ tables:
     description: Product catalog — all SKUs offered for sale, with pricing and category classification maintained by the product management team
     columns:
       - name: id
+        data_type: integer
         visible_to: [admin, analyst]
       - name: name
+        data_type: varchar(200)
         visible_to: [admin, analyst]
       - name: price
+        data_type: decimal(10,2)
         visible_to: [admin]
       - name: category
+        data_type: varchar(100)
         visible_to: [admin, analyst]
   - source_id: sales-pg
     domain_id: pet-store
@@ -88,16 +103,22 @@ tables:
     description: Pet inventory — animals available for adoption or purchase, including breed and pricing information
     columns:
       - name: id
+        data_type: integer
         visible_to: [admin, analyst]
       - name: name
+        data_type: varchar(100)
         visible_to: [admin, analyst]
       - name: species
+        data_type: varchar(50)
         visible_to: [admin, analyst]
       - name: breed_name
+        data_type: varchar(100)
         visible_to: [admin, analyst]
       - name: price
+        data_type: decimal(10,2)
         visible_to: [admin]
       - name: available
+        data_type: boolean
         visible_to: [admin, analyst]
 
 relationships:

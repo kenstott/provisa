@@ -633,6 +633,26 @@ async def _load_and_build(config_path: str | None = None) -> None:
     if config_path is None:
         config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
 
+    import logging as _startup_logging
+    import time as _startup_time
+
+    # Use uvicorn's console logger — the root logger's only handler is the OTLP
+    # exporter, so provisa.* logs never reach the console / backend.log.
+    _startup_log = _startup_logging.getLogger("uvicorn.error")
+    _startup_marks = [_startup_time.perf_counter()]
+
+    def _mark(name: str) -> None:
+        now = _startup_time.perf_counter()
+        _startup_log.warning(
+            "startup phase %-20s +%6.2fs (total %6.2fs)",
+            name,
+            now - _startup_marks[-1],
+            now - _startup_marks[0],
+        )
+        _startup_marks.append(now)
+
+    _startup_log.warning("startup phase %-20s begin", "lifespan")
+
     # Connect to PG and init schema unconditionally — pool must be available
     # even before a config file exists (admin UI needs it on first start).
     pg_host = os.environ.get("PG_HOST", "localhost")
@@ -653,6 +673,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
         max_size=pg_pool_max,
     )
 
+    _mark("pg-pool")
+
     schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
     if schema_sql_path.exists():
         schema_sql = schema_sql_path.read_text()
@@ -665,6 +687,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
     from provisa.api.billing.tenant_db import init_billing_schema
 
     await init_billing_schema(state.pg_pool)
+
+    _mark("schema-init")
 
     # Seed built-in sources so the Data Sources page is never empty on first start.
     trino_host_early = os.environ.get("TRINO_HOST", "localhost")
@@ -705,6 +729,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
         )
         if needs_clusters:
             await _compute_and_store_clusters(_pg_conn)
+
+    _mark("pg+schema+seed")
 
     path = Path(config_path)
     if not path.exists():
@@ -756,17 +782,10 @@ async def _load_and_build(config_path: str | None = None) -> None:
 
     _seed_ops_trino(state.trino_conn, getattr(state, "otel_snapshot_retention_hours", None))
 
-    # Create Arrow Flight SQL connection via Zaychik proxy
-    zaychik_host = os.environ.get("ZAYCHIK_HOST", "localhost")
-    zaychik_port = int(os.environ.get("ZAYCHIK_PORT", "8480"))
-    from provisa.executor.trino_flight import create_flight_connection
+    _mark("trino-connect")
 
-    state.flight_client = create_flight_connection(
-        host=zaychik_host,
-        port=zaychik_port,
-    )
-
-    # Fault-Tolerant Execution (FTE) — env var > server.federation_fte config > disabled
+    # Fault-Tolerant Execution (FTE) — env var > server.federation_fte config > disabled.
+    # Pure CPU; no I/O, so it stays inline.
     _fte_cfg = state.server_cfg.get("federation_fte", {})
     _fte_enabled = os.environ.get(
         "TRINO_FTE_ENABLED", str(_fte_cfg.get("enabled", False))
@@ -782,50 +801,67 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 continue
             state.trino_fte_hints.setdefault(_k, str(_v))
 
-    # Ensure MinIO results bucket exists (REQ-171)
-    from provisa.executor.redirect import RedirectConfig, ensure_results_bucket
+    # Flight (Zaychik), the MinIO buckets, and the Trino results schema are mutually
+    # independent network setup. Run them concurrently to cut startup latency — the
+    # blocking calls go on threads so the event loop can overlap them.
+    async def _connect_flight() -> None:
+        from provisa.executor.trino_flight import create_flight_connection
 
-    await ensure_results_bucket(RedirectConfig.from_env())
-
-    # Ensure MinIO OTEL bucket exists for otlp2parquet
-    try:
-        import logging as _lb_log
-        import boto3
-        from botocore.config import Config as BotoConfig
-
-        _otel_endpoint = os.environ.get("PROVISA_OTEL_S3_ENDPOINT", "http://minio:9000")
-        _otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
-        _s3 = boto3.client(
-            "s3",
-            endpoint_url=_otel_endpoint,
-            aws_access_key_id=os.environ.get("PROVISA_OTEL_S3_ACCESS_KEY", "minioadmin"),
-            aws_secret_access_key=os.environ.get("PROVISA_OTEL_S3_SECRET_KEY", "minioadmin"),
-            region_name="us-east-1",
-            config=BotoConfig(signature_version="s3v4"),
+        zaychik_host = os.environ.get("ZAYCHIK_HOST", "localhost")
+        zaychik_port = int(os.environ.get("ZAYCHIK_PORT", "8480"))
+        state.flight_client = await asyncio.to_thread(
+            create_flight_connection, host=zaychik_host, port=zaychik_port
         )
-        existing = [b["Name"] for b in _s3.list_buckets().get("Buckets", [])]
-        if _otel_bucket not in existing:
-            _s3.create_bucket(Bucket=_otel_bucket)
-            _lb_log.getLogger(__name__).info("Created MinIO bucket: %s", _otel_bucket)
-    except Exception:
-        import logging as _lb_log2
+        _mark("flight-connect")
 
-        _lb_log2.getLogger(__name__).warning(
-            "Could not ensure OTEL bucket — otlp2parquet storage may fail", exc_info=True
-        )
+    async def _setup_object_store() -> None:
+        import logging as _os_log
 
-    # Ensure results schema exists for CTAS redirects
-    try:
-        from provisa.executor.trino_write import ensure_results_schema
+        # MinIO results bucket (REQ-171) — already async.
+        from provisa.executor.redirect import RedirectConfig, ensure_results_bucket
 
-        ensure_results_schema(state.trino_conn)
-    except Exception:
-        import logging
+        await ensure_results_bucket(RedirectConfig.from_env())
 
-        logging.getLogger(__name__).warning(
-            "Could not create results schema — CTAS redirect unavailable",
-            exc_info=True,
-        )
+        # MinIO OTEL bucket for otlp2parquet (blocking boto3 → thread).
+        def _ensure_otel_bucket() -> None:
+            import boto3
+            from botocore.config import Config as BotoConfig
+
+            _otel_endpoint = os.environ.get("PROVISA_OTEL_S3_ENDPOINT", "http://minio:9000")
+            _otel_bucket = os.environ.get("PROVISA_OTEL_BUCKET", "provisa-otel")
+            _s3 = boto3.client(
+                "s3",
+                endpoint_url=_otel_endpoint,
+                aws_access_key_id=os.environ.get("PROVISA_OTEL_S3_ACCESS_KEY", "minioadmin"),
+                aws_secret_access_key=os.environ.get("PROVISA_OTEL_S3_SECRET_KEY", "minioadmin"),
+                region_name="us-east-1",
+                config=BotoConfig(signature_version="s3v4"),
+            )
+            existing = [b["Name"] for b in _s3.list_buckets().get("Buckets", [])]
+            if _otel_bucket not in existing:
+                _s3.create_bucket(Bucket=_otel_bucket)
+                _os_log.getLogger(__name__).info("Created MinIO bucket: %s", _otel_bucket)
+
+        try:
+            await asyncio.to_thread(_ensure_otel_bucket)
+        except Exception:
+            _os_log.getLogger(__name__).warning(
+                "Could not ensure OTEL bucket — otlp2parquet storage may fail", exc_info=True
+            )
+
+        # Results schema for CTAS redirects (blocking Trino → thread).
+        try:
+            from provisa.executor.trino_write import ensure_results_schema
+
+            await asyncio.to_thread(ensure_results_schema, state.trino_conn)
+        except Exception:
+            _os_log.getLogger(__name__).warning(
+                "Could not create results schema — CTAS redirect unavailable", exc_info=True
+            )
+
+    await asyncio.gather(_connect_flight(), _setup_object_store())
+
+    _mark("infra: flight/minio/results")
 
     # Load Kafka source configs and auto-register tables
     # Each topic config with a discriminator becomes a separate table.
@@ -930,6 +966,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
         await load_config(
             config, cast(asyncpg.Connection, conn), state.trino_conn, replace=_replace_mode
         )
+
+    _mark("load_config")
 
     # Seed system source catalogs (not in config.sources, so must be explicit).
     state.source_catalogs["provisa-admin"] = source_to_catalog("provisa-admin")  # provisa_admin
@@ -1286,7 +1324,11 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 except ValueError:
                     pass
 
+    _mark("source-pools+ingest+remote")
+
     await _rebuild_schemas(raw_config)
+
+    _mark("rebuild_schemas")
 
     # Initialize hot tables (Phase AD6)
     from provisa.cache.hot_tables import init_hot_tables
@@ -1294,6 +1336,8 @@ async def _load_and_build(config_path: str | None = None) -> None:
     hot_mgr = await init_hot_tables(raw_config, state.trino_conn)
     if hot_mgr is not None:
         state.hot_manager = hot_mgr
+
+    _mark("hot_tables")
 
 
 def _filter_tables_by_schema_cfg(

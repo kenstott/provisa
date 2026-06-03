@@ -11,12 +11,9 @@
 """Query Trino INFORMATION_SCHEMA for registered table column metadata."""
 
 import re
-import time
 from dataclasses import dataclass
 
 import trino
-
-from provisa.compiler.naming import source_to_catalog
 
 _SAFE_IDENT = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
@@ -84,6 +81,16 @@ def introspect_tables(
     Returns:
         {table_id: [ColumnMetadata]}.
     """
+    import logging as _itlog
+    import time as _ittime
+
+    _intro_log = _itlog.getLogger("uvicorn.error")
+    _intro_t0 = _ittime.perf_counter()
+    _intro_synth_count = 0
+    _intro_stored_count = 0
+    _intro_total = len(registered_tables)
+    _intro_log.warning("introspect_tables: %d registered tables", _intro_total)
+
     result: dict[int, list[ColumnMetadata]] = {}
     _GQL_TYPE_MAP = {
         "text": "varchar",
@@ -115,48 +122,27 @@ def introspect_tables(
                 for c in table.get("columns", [])
                 if not c.get("native_filter_type")
             ]
+            _intro_synth_count += 1
             continue
-        source = sources[table["source_id"]]
-        catalog_name = str(source.get("database") or source_to_catalog(source["id"]))
-        # Use physical table name if mapped (e.g., Kafka discriminated tables)
-        trino_table_name = str(table["table_name"])
-        if physical_table_map:
-            trino_table_name = physical_table_map.get(trino_table_name, trino_table_name)
-        import logging
-
-        _log = logging.getLogger(__name__)
-        last_exc: Exception | None = None
-        for attempt in range(6):
-            try:
-                columns = introspect_table_columns(
-                    conn, catalog_name, str(table["schema_name"]), trino_table_name
-                )
-                result[table["id"]] = columns
-                last_exc = None
-                break
-            except trino.exceptions.TrinoUserError as e:
-                if "CATALOG_NOT_FOUND" in str(e) and attempt < 5:
-                    _log.info(
-                        "Catalog '%s' not yet ready, retrying in 3s (attempt %d/5)…",
-                        catalog_name,
-                        attempt + 1,
-                    )
-                    time.sleep(3)
-                    last_exc = e
-                else:
-                    last_exc = e
-                    break
-            except Exception as e:
-                last_exc = e
-                break
-        if last_exc is not None:
-            _log.warning(
-                "Failed to introspect %s.%s.%s: %s. Table will be skipped.",
-                catalog_name,
-                table["schema_name"],
-                trino_table_name,
-                last_exc,
+        # SQL-catalog tables: column types are captured at registration time
+        # (mapped to Trino types) and persisted in table_columns. That store is
+        # authoritative — build from it; startup does NOT introspect Trino.
+        result[table["id"]] = [
+            ColumnMetadata(
+                column_name=c["column_name"],
+                data_type=c["data_type"].lower(),
+                is_nullable=not c.get("is_primary_key", False),
             )
+            for c in table["columns"]
+        ]
+        _intro_stored_count += 1
+    _intro_log.warning(
+        "introspect_tables done: %d from stored types, %d synthesized, %d total in %.2fs",
+        _intro_stored_count,
+        _intro_synth_count,
+        _intro_total,
+        _ittime.perf_counter() - _intro_t0,
+    )
     return result
 
 

@@ -23,25 +23,31 @@ tables:
   description: "Pet inventory \u2014 managed by the inventory department"
   columns:
   - name: id
+    data_type: integer
     visible_to:
     - admin
     - analyst
   - name: name
+    data_type: varchar(100)
     visible_to:
     - admin
     - analyst
   - name: species
+    data_type: varchar(50)
     visible_to:
     - admin
     - analyst
   - name: breed_name
+    data_type: varchar(100)
     visible_to:
     - admin
     - analyst
   - name: price
+    data_type: decimal(10,2)
     visible_to:
     - admin
   - name: available
+    data_type: boolean
     visible_to:
     - admin
     - analyst
