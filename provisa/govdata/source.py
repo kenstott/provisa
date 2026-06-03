@@ -88,7 +88,7 @@ def fetch_primary_keys(source: GovDataSource, schema: str, table: str) -> set[st
         return _pk_cache[key]
     conn = connect(source)
     meta = conn.getMetaData()
-    rs = meta.getPrimaryKeys(None, schema.upper(), table.upper())
+    rs = meta.getPrimaryKeys(None, schema, table)
     pks: set[str] = set()
     while rs.next():
         pks.add(str(rs.getString("COLUMN_NAME")).lower())
@@ -107,7 +107,7 @@ def fetch_foreign_keys(source: GovDataSource, schema: str, table: str) -> list[d
         return _fk_cache[key]
     conn = connect(source)
     meta = conn.getMetaData()
-    rs = meta.getImportedKeys(None, schema.upper(), table.upper())
+    rs = meta.getImportedKeys(None, schema, table)
     fks: list[dict[str, str]] = []
     while rs.next():
         fks.append(

@@ -18,7 +18,7 @@ import asyncpg
 import trino
 import yaml
 
-from provisa.core.models import ProvisaConfig
+from provisa.core.models import ProvisaConfig, SourceType
 from provisa.core.secrets import resolve_secrets
 from provisa.core.repositories import (
     source as source_repo,
@@ -32,6 +32,23 @@ from provisa.core.repositories import (
 from provisa.core import catalog
 
 log = logging.getLogger(__name__)
+
+# Source types whose Trino catalog exposes PRIMARY KEY constraints via
+# information_schema.table_constraints. For these, a config table's columns inherit
+# the database's PK automatically — YAML need not restate `is_primary_key`.
+_PK_INTROSPECT_TYPES = frozenset(
+    {
+        SourceType.postgresql,
+        SourceType.mysql,
+        SourceType.mariadb,
+        SourceType.singlestore,
+        SourceType.sqlserver,
+        SourceType.oracle,
+        SourceType.redshift,
+        SourceType.snowflake,
+        SourceType.duckdb,
+    }
+)
 
 
 def _normalize_op_id(s: str) -> str:
@@ -204,8 +221,23 @@ async def _load_config_in_txn(
                         if col.name in spec_col_map and not col.description:
                             col.description = spec_col_map[col.name].get("description")
 
-        await table_repo.upsert(conn, tbl)
+        # Honor the source's PRIMARY KEY: for SQL-catalog sources, mark any config
+        # column that participates in the DB's PK constraint. The database constraint
+        # is authoritative, so YAML need not restate `is_primary_key`. Columns the YAML
+        # already marks stay marked (we only ever set True, never clear it).
         src = sources_by_id.get(tbl.source_id)
+        if trino_conn is not None and tbl.columns and src and src.type in _PK_INTROSPECT_TYPES:
+            from provisa.compiler.introspect import introspect_pk_columns
+            from provisa.compiler.naming import source_to_catalog
+
+            pk_cols = introspect_pk_columns(
+                trino_conn, source_to_catalog(tbl.source_id), tbl.schema_name, tbl.table_name
+            )
+            for col in tbl.columns:
+                if col.name in pk_cols:
+                    col.is_primary_key = True
+
+        await table_repo.upsert(conn, tbl)
         if src and src.type.value == "sqlite" and src.path:
             from provisa.file_source.pg_migrate import migrate_sqlite_table
 
