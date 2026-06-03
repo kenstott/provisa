@@ -48,7 +48,7 @@ const cache = new InMemoryCache({
 // Bump when the GraphQL schema or any persisted entity shape changes. A
 // mismatch discards the stored snapshot so stale/partial entities (dangling
 // refs, dropped non-null fields) can never be replayed into a live read.
-const CACHE_VERSION = "2";
+const CACHE_VERSION = "3";
 const CACHE_KEY = "apollo-cache";
 const CACHE_VERSION_KEY = "apollo-cache-version";
 

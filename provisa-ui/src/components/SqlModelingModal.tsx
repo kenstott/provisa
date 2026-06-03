@@ -9,7 +9,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useRef } from "react";
 import {
   X,
   Play,
@@ -27,7 +27,8 @@ import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
 import type { EditorView } from "@codemirror/view";
-import { runSql, fetchRoles, fetchDomains } from "../api/admin";
+import { runSql } from "../api/admin";
+import { useRoles, useDomains } from "../hooks/useAdminQueries";
 import type { Domain, Relationship, RegisteredTable } from "../types/admin";
 
 interface ModelingCandidate {
@@ -699,8 +700,16 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   const [topTab, setTopTab] = useState<TopTab>("sql");
   const [sqlText, setSqlText] = useState("");
   const [role, setRole] = useState("admin");
-  const [roles, setRoles] = useState<string[]>(["admin"]);
-  const [domainMap, setDomainMap] = useState<Record<string, Domain>>({});
+  const { roles: roleObjs } = useRoles();
+  const { domains } = useDomains();
+  const roles = useMemo(() => {
+    const ids = roleObjs.map((r) => r.id);
+    return ids.length ? ids : ["admin"];
+  }, [roleObjs]);
+  const domainMap = useMemo(
+    () => Object.fromEntries(domains.map((d: Domain) => [normalizeDomain(d.id), d])),
+    [domains],
+  );
   const [running, setRunning] = useState(false);
   const [sampleMode, setSampleMode] = useState<"first" | "last" | "random">("first");
   const [sampleSize, setSampleSize] = useState(100);
@@ -721,20 +730,6 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
-
-  useEffect(() => {
-    fetchRoles()
-      .catch(() => [])
-      .then((r) => {
-        const ids = r.map((x) => x.id);
-        if (ids.length) setRoles(ids);
-      });
-    fetchDomains()
-      .catch(() => [])
-      .then((ds: Domain[]) => {
-        setDomainMap(Object.fromEntries(ds.map((d) => [normalizeDomain(d.id), d])));
-      });
-  }, []);
 
   const sqlSchema = useMemo(() => {
     const schema: Record<string, string[] | Record<string, string[]>> = {};

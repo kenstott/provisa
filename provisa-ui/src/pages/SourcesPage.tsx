@@ -12,18 +12,18 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Trash2, Pencil, Save, X, ArrowRight } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
-import {
-  fetchSources,
-  deleteSource,
-  createSource,
-  updateSource,
-  renameSource,
-  updateSourceCache,
-  updateSourceNaming,
-  updateSourceAllowedDomains,
-  fetchSettings,
-} from "../api/admin";
+import { fetchSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
+import {
+  useSources,
+  useCreateSource,
+  useUpdateSource,
+  useRenameSource,
+  useDeleteSource,
+  useUpdateSourceCache,
+  useUpdateSourceNaming,
+  useUpdateSourceAllowedDomains,
+} from "../hooks/useAdminQueries";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { SchemaDiscovery } from "../components/SchemaDiscovery";
 import { TableMappingBuilder } from "../components/TableMappingBuilder";
@@ -190,8 +190,15 @@ function AuthUserPass({
 export function SourcesPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [sources, setSources] = useState<Source[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { sources, loading: sourcesLoading, refetch: refetchSources } = useSources();
+  const { createSource } = useCreateSource();
+  const { updateSource } = useUpdateSource();
+  const { renameSource } = useRenameSource();
+  const { deleteSource } = useDeleteSource();
+  const { updateSourceCache } = useUpdateSourceCache();
+  const { updateSourceNaming } = useUpdateSourceNaming();
+  const { updateSourceAllowedDomains } = useUpdateSourceAllowedDomains();
+  const [settingsLoading, setSettingsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(() => searchParams.get("expanded"));
@@ -297,20 +304,23 @@ export function SourcesPage() {
   ]);
 
   const load = () => {
-    setLoading(true);
+    setSettingsLoading(true);
     setError(null);
-    Promise.all([fetchSources(), fetchSettings()])
-      .then(([s, st]) => {
-        setSources(s);
+    Promise.all([refetchSources(), fetchSettings()])
+      .then(([, st]) => {
         setSettings(st);
       })
       .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .finally(() => setSettingsLoading(false));
   };
-  /* eslint-disable-next-line react-hooks/set-state-in-effect --
-     mount data-fetch: load() sets loading state synchronously by design before
-     resolving sources/settings from the network */
-  useEffect(load, []);
+  useEffect(() => {
+    fetchSettings()
+      .then(setSettings)
+      .catch((e) => setError(e.message))
+      .finally(() => setSettingsLoading(false));
+  }, []);
+
+  const loading = sourcesLoading || settingsLoading;
 
   const getEffectiveTtl = (source: Source): string => {
     if (source.cacheTtl != null) return `${source.cacheTtl}s (custom)`;

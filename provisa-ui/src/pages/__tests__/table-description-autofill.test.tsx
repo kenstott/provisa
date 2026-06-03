@@ -11,6 +11,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Fragment } from "react";
+
+// react-router-dom 7 ships .mjs files under a package.json without "type":"module",
+// so the vmThreads pool loads them as CommonJS and throws. TablesPage only needs
+// useNavigate/useSearchParams; stub them (and a no-op MemoryRouter) to avoid the load.
+vi.mock("react-router-dom", () => ({
+  MemoryRouter: ({ children }: { children: React.ReactNode }) => <Fragment>{children}</Fragment>,
+  useNavigate: () => vi.fn(),
+  useSearchParams: () => [new URLSearchParams(), vi.fn()],
+}));
+
 import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../../context/DomainFilterContext", () => ({
@@ -25,43 +36,79 @@ vi.mock("../../components/admin/FilterInput", () => ({
   FilterInput: () => null,
 }));
 
+// Only the REST helpers (fetch(), not GraphQL) remain imperative in TablesPage.
 vi.mock("../../api/admin", () => ({
-  fetchTables: vi.fn().mockResolvedValue([]),
-  fetchSources: vi.fn().mockResolvedValue([
-    { id: "sales-pg", type: "postgresql", host: "localhost", port: 5432, database: "sales", username: "admin", dialect: "postgresql", cacheEnabled: false, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "" },
-  ]),
-  fetchDomains: vi.fn().mockResolvedValue([{ id: "sales", description: "Sales data" }]),
-  fetchRoles: vi.fn().mockResolvedValue([{ id: "admin", capabilities: ["admin"], domainAccess: ["*"] }]),
   fetchSettings: vi.fn().mockResolvedValue({
     redirect: { enabled: false, threshold: 10000, default_format: "json", ttl: 3600 },
     sampling: { default_sample_size: 1000 },
     cache: { default_ttl: 300 },
     naming: { domain_prefix: false, convention: "none" },
   }),
-  fetchAvailableSchemas: vi.fn().mockResolvedValue(["public"]),
-  fetchAvailableTables: vi.fn().mockResolvedValue([
-    { name: "customers", comment: "Registered customer accounts" },
-    { name: "orders", comment: "Customer purchase orders" },
-    { name: "products", comment: null },
-  ]),
-  fetchAvailableColumnsMetadata: vi.fn().mockResolvedValue([
-    { name: "id", dataType: "integer", comment: "Primary key", nativeFilterType: null, isPrimaryKey: true },
-    { name: "name", dataType: "varchar", comment: "Customer name", nativeFilterType: null, isPrimaryKey: false },
-  ]),
-  registerTable: vi.fn().mockResolvedValue({ success: true, message: "Registered" }),
-  deleteTable: vi.fn().mockResolvedValue({ success: true, message: "Deleted" }),
-  updateTable: vi.fn().mockResolvedValue({ success: true, message: "Updated" }),
-  updateTableCache: vi.fn().mockResolvedValue({ success: true, message: "Updated" }),
-  purgeCacheByTable: vi.fn().mockResolvedValue({ success: true, message: "Purged" }),
-  invalidateFileSource: vi.fn().mockResolvedValue({ success: true, message: "Invalidated" }),
-  updateTableNaming: vi.fn().mockResolvedValue({ success: true, message: "Updated" }),
   profileTable: vi.fn().mockResolvedValue({ columns: [], rows: [], rowCount: 0 }),
-  generateTableDescription: vi.fn().mockResolvedValue(""),
-  generateColumnDescription: vi.fn().mockResolvedValue(""),
+}));
+
+// Module-level lazy-hook spies so tests can assert call args directly.
+const getAvailableSchemas = vi.fn().mockResolvedValue(["public"]);
+const getAvailableTables = vi.fn().mockResolvedValue([
+  { name: "customers", comment: "Registered customer accounts" },
+  { name: "orders", comment: "Customer purchase orders" },
+  { name: "products", comment: null },
+]);
+const getAvailableColumnsMetadata = vi.fn().mockResolvedValue([
+  { name: "id", dataType: "integer", comment: "Primary key", nativeFilterType: null, isPrimaryKey: true },
+  { name: "name", dataType: "varchar", comment: "Customer name", nativeFilterType: null, isPrimaryKey: false },
+]);
+
+const SALES_PG_SOURCE = {
+  id: "sales-pg", type: "postgresql", host: "localhost", port: 5432, database: "sales", username: "admin", dialect: "postgresql", cacheEnabled: false, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "",
+};
+// Mutable so individual tests can override the source list for one render.
+let sourcesData: Array<Record<string, unknown>> = [SALES_PG_SOURCE];
+
+const mutationOk = () => ({ success: true, message: "" });
+
+// Stable identities across renders. TablesPage's reload() is a useCallback keyed on
+// the refetch fns and runs in an effect, so a fresh fn each render would loop forever.
+// Likewise an effect keyed on `tables` re-runs setState on every new array identity.
+const EMPTY_TABLES: never[] = [];
+const ROLES = [{ id: "admin", capabilities: ["admin"], domainAccess: ["*"] }];
+const DOMAINS = [{ id: "sales", description: "Sales data" }];
+const refetchTables = vi.fn();
+const refetchSources = vi.fn();
+const refetchDomains = vi.fn();
+const refetchRoles = vi.fn();
+const generateTableDescription = vi.fn().mockResolvedValue("");
+const generateColumnDescription = vi.fn().mockResolvedValue("");
+const registerTable = vi.fn().mockResolvedValue(mutationOk());
+const updateTable = vi.fn().mockResolvedValue(mutationOk());
+const deleteTable = vi.fn().mockResolvedValue(mutationOk());
+const updateTableCache = vi.fn().mockResolvedValue(mutationOk());
+const updateTableNaming = vi.fn().mockResolvedValue(mutationOk());
+const purgeCacheByTable = vi.fn().mockResolvedValue(mutationOk());
+const invalidateFileSource = vi.fn().mockResolvedValue(mutationOk());
+const deployViewToDb = vi.fn().mockResolvedValue(mutationOk());
+
+vi.mock("../../hooks/useAdminQueries", () => ({
+  useTables: () => ({ tables: EMPTY_TABLES, loading: false, refetch: refetchTables }),
+  useSources: () => ({ sources: sourcesData, loading: false, refetch: refetchSources }),
+  useDomains: () => ({ domains: DOMAINS, loading: false, refetch: refetchDomains }),
+  useRoles: () => ({ roles: ROLES, loading: false, refetch: refetchRoles }),
+  useAvailableSchemasLazy: () => getAvailableSchemas,
+  useAvailableTablesLazy: () => getAvailableTables,
+  useAvailableColumnsMetadataLazy: () => getAvailableColumnsMetadata,
+  useGenerateTableDescription: () => ({ generateTableDescription, loading: false }),
+  useGenerateColumnDescription: () => ({ generateColumnDescription, loading: false }),
+  useRegisterTable: () => ({ registerTable, loading: false }),
+  useUpdateTable: () => ({ updateTable, loading: false }),
+  useDeleteTable: () => ({ deleteTable, loading: false }),
+  useUpdateTableCache: () => ({ updateTableCache, loading: false }),
+  useUpdateTableNaming: () => ({ updateTableNaming, loading: false }),
+  usePurgeCacheByTable: () => ({ purgeCacheByTable, loading: false }),
+  useInvalidateFileSource: () => ({ invalidateFileSource, loading: false }),
+  useDeployViewToDb: () => ({ deployViewToDb, loading: false }),
 }));
 
 import { TablesPage } from "../TablesPage";
-import * as adminApi from "../../api/admin";
 
 function renderPage() {
   return render(
@@ -71,9 +118,26 @@ function renderPage() {
   );
 }
 
+// clearAllMocks wipes implementations too, so re-seed the module-level lazy-hook
+// spies (and reset the per-test source override) before each test.
+function resetSpies() {
+  vi.clearAllMocks();
+  sourcesData = [SALES_PG_SOURCE];
+  getAvailableSchemas.mockResolvedValue(["public"]);
+  getAvailableTables.mockResolvedValue([
+    { name: "customers", comment: "Registered customer accounts" },
+    { name: "orders", comment: "Customer purchase orders" },
+    { name: "products", comment: null },
+  ]);
+  getAvailableColumnsMetadata.mockResolvedValue([
+    { name: "id", dataType: "integer", comment: "Primary key", nativeFilterType: null, isPrimaryKey: true },
+    { name: "name", dataType: "varchar", comment: "Customer name", nativeFilterType: null, isPrimaryKey: false },
+  ]);
+}
+
 describe("Table description auto-fill from physical database", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    resetSpies();
   });
 
   it("prefills table description from comment when table is selected", async () => {
@@ -171,10 +235,10 @@ describe("Table description auto-fill from physical database", () => {
 
 describe("Schema population — source type routing", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    resetSpies();
   });
 
-  it("calls fetchAvailableSchemas for RDBMS sources", async () => {
+  it("calls available-schemas for RDBMS sources", async () => {
     renderPage();
 
     await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
@@ -184,7 +248,7 @@ describe("Schema population — source type routing", () => {
     await userEvent.selectOptions(selects[0], "sales-pg");
 
     await waitFor(() => {
-      expect(adminApi.fetchAvailableSchemas).toHaveBeenCalledWith("sales-pg");
+      expect(getAvailableSchemas).toHaveBeenCalledWith("sales-pg");
     });
   });
 
@@ -203,10 +267,10 @@ describe("Schema population — source type routing", () => {
     });
   });
 
-  it("does NOT call fetchAvailableSchemas for graphql sources (uses fixed schema)", async () => {
-    vi.mocked(adminApi.fetchSources).mockResolvedValueOnce([
+  it("does NOT call available-schemas for graphql sources (uses fixed schema)", async () => {
+    sourcesData = [
       { id: "my-gql", type: "graphql", host: "", port: 0, database: "", username: "", dialect: "graphql", cacheEnabled: false, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "" },
-    ]);
+    ];
 
     renderPage();
 
@@ -220,13 +284,13 @@ describe("Schema population — source type routing", () => {
       const schemaOpts = screen.getAllByRole("option", { name: "default" });
       expect(schemaOpts.length).toBeGreaterThan(0);
     });
-    expect(adminApi.fetchAvailableSchemas).not.toHaveBeenCalled();
+    expect(getAvailableSchemas).not.toHaveBeenCalled();
   });
 
-  it("does NOT call fetchAvailableSchemas for kafka sources (uses fixed schema)", async () => {
-    vi.mocked(adminApi.fetchSources).mockResolvedValueOnce([
+  it("does NOT call available-schemas for kafka sources (uses fixed schema)", async () => {
+    sourcesData = [
       { id: "my-kafka", type: "kafka", host: "", port: 0, database: "", username: "", dialect: "kafka", cacheEnabled: false, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "" },
-    ]);
+    ];
 
     renderPage();
 
@@ -240,7 +304,7 @@ describe("Schema population — source type routing", () => {
       const schemaOpts = screen.getAllByRole("option", { name: "default" });
       expect(schemaOpts.length).toBeGreaterThan(0);
     });
-    expect(adminApi.fetchAvailableSchemas).not.toHaveBeenCalled();
+    expect(getAvailableSchemas).not.toHaveBeenCalled();
   });
 
   it("resets schema and table when source changes", async () => {

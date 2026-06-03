@@ -33,7 +33,7 @@ import {
 
 // @ts-expect-error -- CJS fork, no type declarations
 import { Explorer } from "graphiql-explorer";
-import { fetchDomains } from "../api/admin";
+import { useDomains } from "../hooks/useAdminQueries";
 import { domainGqlAlias } from "../types/admin";
 
 /** Register # @provisa hint completions in the GraphQL Monaco editor. */
@@ -300,16 +300,12 @@ export function SyncedExplorerContent() {
   const { setOperationName, run } = useGraphiQLActions();
   const schema = useGraphiQL((s) => s.schema);
   const activeTabIndex = useGraphiQL((s) => s.activeTabIndex);
-  const [domainLabels, setDomainLabels] = useState<Record<string, string>>({});
-  useEffect(() => {
-    fetchDomains()
-      .then((ds) => {
-        const map: Record<string, string> = {};
-        for (const d of ds) map[domainGqlAlias(d)] = d.id;
-        setDomainLabels(map);
-      })
-      .catch(() => {});
-  }, []);
+  const { domains } = useDomains();
+  const domainLabels = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const d of domains) map[domainGqlAlias(d)] = d.id;
+    return map;
+  }, [domains]);
   // Canonical per-tab query from the store — reliable during tab switches
   const tabQuery = useGraphiQL((s) => s.tabs[s.activeTabIndex]?.query ?? "");
   const [liveQuery, setQuery] = useOptimisticState(useOperationsEditorState());

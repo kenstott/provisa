@@ -20,7 +20,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useOperationsEditorState } from "@graphiql/react";
-import { compileQuery } from "../api/admin";
+import { useCompileQuery } from "../hooks/useAdminQueries";
 import type { CompileResult } from "../api/admin";
 import { format as formatSql } from "sql-formatter";
 import type { GraphiQLPlugin } from "@graphiql/react";
@@ -378,6 +378,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const [aggregatedCypher, setAggregatedCypher] = useState(true);
   const [includeFields, setIncludeFields] = useState(false);
   const navigate = useNavigate();
+  const { compileQuery } = useCompileQuery();
 
   const cypherExtensions = useMemo(
     () => [
@@ -423,7 +424,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
       }
     }, 600);
     return () => clearTimeout(debounceRef.current);
-  }, [roleId, query, aggregatedSql, aggregatedCypher, includeFields]);
+  }, [roleId, query, aggregatedSql, aggregatedCypher, includeFields, compileQuery]);
 
   return (
     <div className="provisa-tools">

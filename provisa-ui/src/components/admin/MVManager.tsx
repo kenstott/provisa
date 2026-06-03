@@ -8,42 +8,26 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect } from "react";
-import { fetchMVList, refreshMV, toggleMV } from "../../api/admin";
-import type { MVInfo } from "../../api/admin";
+import { useState } from "react";
+import { useMVList, useRefreshMV, useToggleMV } from "../../hooks/useAdminQueries";
 
 const PAGE_SIZE = 50;
 
 export function MVManager() {
-  const [mvs, setMvs] = useState<MVInfo[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { mvList: mvs, loading } = useMVList();
+  const { refreshMV } = useRefreshMV();
+  const { toggleMV } = useToggleMV();
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [mvPage, setMvPage] = useState(0);
-
-  const load = () => {
-    setLoading(true);
-    fetchMVList()
-      .then(setMvs)
-      .finally(() => setLoading(false));
-  };
-
-  // Initial fetch on mount: loading already starts true, so no synchronous setState here.
-  useEffect(() => {
-    fetchMVList()
-      .then(setMvs)
-      .finally(() => setLoading(false));
-  }, []);
 
   const handleRefresh = async (id: string) => {
     setRefreshing(id);
     await refreshMV(id);
-    load();
     setRefreshing(null);
   };
 
   const handleToggle = async (id: string, enabled: boolean) => {
     await toggleMV(id, enabled);
-    load();
   };
 
   if (loading) return <p>Loading materialized views...</p>;

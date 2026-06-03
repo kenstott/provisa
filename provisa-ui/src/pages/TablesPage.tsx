@@ -13,31 +13,29 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Trash2, Pencil, Sparkles, Save, X, Loader2 } from "lucide-react";
 import { CopyButton } from "../components/CopyButton";
 import { MultiSelect } from "../components/MultiSelect";
-import {
-  fetchTables,
-  fetchSources,
-  fetchDomains,
-  fetchRoles,
-  fetchAvailableSchemas,
-  fetchAvailableTables,
-  fetchAvailableColumnsMetadata,
-  registerTable,
-  deleteTable,
-  updateTable,
-  updateTableCache,
-  updateTableNaming,
-  purgeCacheByTable,
-  invalidateFileSource,
-  fetchSettings,
-  generateTableDescription,
-  generateColumnDescription,
-  profileTable,
-  deployViewToDb,
-} from "../api/admin";
+import { fetchSettings, profileTable } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import type { TableMetadata } from "../api/admin";
-import type { RegisteredTable, Source } from "../types/admin";
-import type { Role } from "../types/auth";
+import {
+  useTables,
+  useSources,
+  useDomains,
+  useRoles,
+  useAvailableSchemasLazy,
+  useAvailableTablesLazy,
+  useAvailableColumnsMetadataLazy,
+  useGenerateTableDescription,
+  useGenerateColumnDescription,
+  useRegisterTable,
+  useUpdateTable,
+  useDeleteTable,
+  useUpdateTableCache,
+  useUpdateTableNaming,
+  usePurgeCacheByTable,
+  useInvalidateFileSource,
+  useDeployViewToDb,
+} from "../hooks/useAdminQueries";
+import type { RegisteredTable } from "../types/admin";
 import { ColumnPresetsEditor } from "../components/admin/ColumnPresetsEditor";
 import { FilterInput } from "../components/admin/FilterInput";
 import { useDomainFilter } from "../context/DomainFilterContext";
@@ -185,10 +183,29 @@ interface ColumnForm {
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [tables, setTables] = useState<RegisteredTable[]>([]);
-  const [sources, setSources] = useState<Source[]>([]);
-  const [domainHints, setDomainHints] = useState<string[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
+  // Reactive subscriber to the tables cache (cache-and-network). Table mutations in
+  // api/admin.ts carry refetchQueries:[{query: TablesQuery}], so create/update/delete
+  // re-render this list automatically — no manual setTables. Replaces the former
+  // one-shot fetchTables() (client.query), which replayed stale localStorage-persisted
+  // cache and never revalidated (e.g. a column's isPrimaryKey stuck false).
+  const { tables, refetch: refetchTables } = useTables();
+  const { sources, refetch: refetchSources } = useSources();
+  const { domains, refetch: refetchDomains } = useDomains();
+  const { roles, refetch: refetchRoles } = useRoles();
+  const domainHints = domains.map((d) => d.id);
+  const getAvailableSchemas = useAvailableSchemasLazy();
+  const getAvailableTables = useAvailableTablesLazy();
+  const getAvailableColumnsMetadata = useAvailableColumnsMetadataLazy();
+  const { generateTableDescription } = useGenerateTableDescription();
+  const { generateColumnDescription } = useGenerateColumnDescription();
+  const { registerTable } = useRegisterTable();
+  const { updateTable } = useUpdateTable();
+  const { deleteTable } = useDeleteTable();
+  const { updateTableCache } = useUpdateTableCache();
+  const { updateTableNaming } = useUpdateTableNaming();
+  const { purgeCacheByTable } = usePurgeCacheByTable();
+  const { invalidateFileSource } = useInvalidateFileSource();
+  const { deployViewToDb } = useDeployViewToDb();
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -247,26 +264,36 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
   const reload = useCallback(() => {
     setLoading(true);
-    Promise.all([fetchTables(), fetchSources(), fetchDomains(), fetchRoles(), fetchSettings()])
-      .then(([t, s, doms, r, st]) => {
-        const domIds = doms.map((d) => d.id);
-        setTables(t);
-        setSources(s);
-        setDomainHints(domIds);
-        setRoles(r);
-        setSettings(st);
-        const edits: Record<number, { value: string; dirty: boolean; saving: boolean }> = {};
-        for (const tbl of t) {
-          edits[tbl.id] = {
-            value: tbl.cacheTtl != null ? String(tbl.cacheTtl) : "",
-            dirty: false,
-            saving: false,
-          };
-        }
-        setCacheTtlEdits(edits);
-      })
+    // tables/sources/domains/roles come from useQuery subscribers; refetch revalidates
+    // their caches. Settings is still an imperative REST read (fetch(), not GraphQL).
+    refetchTables();
+    refetchSources();
+    refetchDomains();
+    refetchRoles();
+    fetchSettings()
+      .then((st) => setSettings(st))
       .finally(() => setLoading(false));
-  }, []);
+  }, [refetchTables, refetchSources, refetchDomains, refetchRoles]);
+
+  // Seed/refresh per-table TTL edits whenever the tables list changes. Preserve any
+  // in-progress dirty edit so a background cache-and-network refetch can't clobber it.
+  useEffect(() => {
+    setCacheTtlEdits((prev) => {
+      const next: Record<number, { value: string; dirty: boolean; saving: boolean }> = {};
+      for (const tbl of tables) {
+        const existing = prev[tbl.id];
+        next[tbl.id] =
+          existing && existing.dirty
+            ? existing
+            : {
+                value: tbl.cacheTtl != null ? String(tbl.cacheTtl) : "",
+                dirty: false,
+                saving: false,
+              };
+      }
+      return next;
+    });
+  }, [tables]);
 
   const getEffectiveTableTtl = (t: RegisteredTable): string => {
     if (t.cacheTtl != null) return `${t.cacheTtl}s (custom)`;
@@ -353,10 +380,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       return;
     }
     setLoadingSchemas(true);
-    fetchAvailableSchemas(sourceId)
+    getAvailableSchemas(sourceId)
       .then(setAvailableSchemas)
       .catch(() => setAvailableSchemas([]))
       .finally(() => setLoadingSchemas(false));
+    /* eslint-disable-next-line react-hooks/exhaustive-deps --
+       getAvailableSchemas is a fresh lazy-query trigger each render; including it would loop. Refetch only on source change. */
   }, [sourceId, sources]);
 
   useEffect(() => {
@@ -366,10 +395,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setAvailableTables([]);
     if (!sourceId || !schemaName) return;
     setLoadingTables(true);
-    fetchAvailableTables(sourceId, schemaName)
+    getAvailableTables(sourceId, schemaName)
       .then(setAvailableTables)
       .catch(() => setAvailableTables([]))
       .finally(() => setLoadingTables(false));
+    /* eslint-disable-next-line react-hooks/exhaustive-deps --
+       getAvailableTables is a fresh lazy-query trigger each render; including it would loop. Refetch only on source/schema change. */
   }, [sourceId, schemaName]);
 
   // Auto-populate table description from physical database comment
@@ -395,7 +426,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setWatermarkColumn("");
     if (!sourceId || !schemaName || !tableName) return;
     setLoadingColumns(true);
-    fetchAvailableColumnsMetadata(sourceId, schemaName, tableName)
+    getAvailableColumnsMetadata(sourceId, schemaName, tableName)
       .then((cols) => {
         const formed = cols.map((c) => {
           const snake = toSnakeCase(c.name);
@@ -569,7 +600,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const startEditing = (t: RegisteredTable) => {
     setEditingTable(JSON.parse(JSON.stringify(t)));
     setEditingColumnTypes({});
-    fetchAvailableColumnsMetadata(t.sourceId, t.schemaName, t.tableName)
+    getAvailableColumnsMetadata(t.sourceId, t.schemaName, t.tableName)
       .then((meta) => {
         const map: Record<string, string> = {};
         for (const c of meta) map[c.name] = c.dataType;

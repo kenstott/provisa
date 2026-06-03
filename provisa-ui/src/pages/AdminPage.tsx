@@ -17,10 +17,11 @@ import {
   useRelationships,
   useSources,
   useRLSRules,
+  useRoles,
   useCreateDomain,
   useDeleteDomain,
 } from "../hooks/useAdminQueries";
-import { fetchRoles, downloadConfig, uploadConfig, fetchSettings, updateSettings } from "../api/admin";
+import { downloadConfig, uploadConfig, fetchSettings, updateSettings } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
 import { domainGqlAlias } from "../types/admin";
@@ -68,7 +69,6 @@ export function AdminPage() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [allRoles, setAllRoles] = useState<string[]>([]);
   const [allDomains, setAllDomains] = useState<string[]>([]);
 
   // Pagination state
@@ -81,8 +81,10 @@ export function AdminPage() {
   const { tables, loading: tablesLoading } = useTables();
   const { relationships, loading: relsLoading } = useRelationships();
   const { rlsRules, loading: rlsLoading } = useRLSRules();
+  const { roles } = useRoles();
   const { createDomain } = useCreateDomain();
   const { deleteDomain } = useDeleteDomain();
+  const allRoles = roles.map((r) => r.id);
 
   // Update state and stats when hook data arrives
   useEffect(() => {
@@ -116,12 +118,9 @@ export function AdminPage() {
     allRoles.length,
   ]);
 
-  // Platform roles (for stats) and settings; per-tab data is loaded by each tab component.
+  // Platform settings (REST); per-tab data is loaded by each tab component.
   useEffect(() => {
-    Promise.all([fetchRoles(), fetchSettings()]).then(([roles, s]) => {
-      setAllRoles(roles.map((r) => r.id));
-      setSettings(s);
-    });
+    fetchSettings().then(setSettings);
   }, []);
 
   const handleDownload = async () => {

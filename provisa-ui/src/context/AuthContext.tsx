@@ -12,7 +12,8 @@
 import { createContext, useContext, useState, useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import type { Capability, Role, RoleAssignment, AuthState, OrgMembership } from "../types/auth";
-import { fetchRoles, fetchMe, fetchDomains } from "../api/admin";
+import { fetchMe } from "../api/admin";
+import { useRoles, useDomains } from "../hooks/useAdminQueries";
 
 const DEFAULT_ADMIN_ROLE: Role = {
   id: "admin",
@@ -72,6 +73,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const { refetch: refetchRoles } = useRoles();
+  const { refetch: refetchDomains } = useDomains();
 
   useEffect(() => {
     async function init() {
@@ -97,7 +100,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const roles = await fetchRoles();
+        const { data } = await refetchRoles();
+        // refetch returns RAW query data; the GraphQL field is camelCase `domainAccess`,
+        // but the rest of the app reads snake_case `domain_access` (e.g. DomainFilterContext).
+        // Apply the same mapping useRoles()'s return value does.
+        const roles = (data?.roles ?? []).map((r) => ({
+          ...r,
+          domain_access: (r as { domainAccess?: string[] }).domainAccess ?? r.domain_access,
+        }));
         if (roles.length > 0) {
           if (isDev) {
             allRoles = roles;
@@ -120,8 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const hasWildcard = userAssignments.some((a) => a.domain_id === "*");
       if (hasWildcard) {
         try {
-          const domains = await fetchDomains();
-          setAllDomainsList(domains.map((d) => d.id));
+          const { data } = await refetchDomains();
+          setAllDomainsList((data?.domains ?? []).map((d) => d.id));
         } catch {
           setAllDomainsList([]);
         }
@@ -133,7 +143,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     init().finally(() => setLoading(false));
-  }, []);
+  }, [refetchRoles, refetchDomains]);
 
   const availableDomains = useMemo(() => {
     const roleFilter = selectedRole === "all" ? null : (selectedRole as Role).id;

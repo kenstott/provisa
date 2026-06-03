@@ -8,7 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useQuery, useMutation } from "@apollo/client/react";
+import { useCallback } from "react";
+import { useQuery, useLazyQuery, useMutation } from "@apollo/client/react";
+import type { Role } from "../types/auth";
 import type {
   Source,
   Domain,
@@ -17,22 +19,54 @@ import type {
   RLSRule,
   MutationResult,
 } from "../types/admin";
+import type {
+  MVInfo,
+  CacheStats,
+  SystemHealth,
+  ScheduledTask,
+  CompileResult,
+  TableMetadata,
+  ColumnMetadata,
+} from "../api/admin";
 import {
+  RolesQuery as ROLES_QUERY,
   SourcesQuery as SOURCES_QUERY,
   DomainsQuery as DOMAINS_QUERY,
   TablesQuery as TABLES_QUERY,
   RelationshipsQuery as RELATIONSHIPS_QUERY,
   RLSRulesQuery as RLS_RULES_QUERY,
+  MVList as MV_LIST_QUERY,
+  CacheStats as CACHE_STATS_QUERY,
+  SystemHealth as SYSTEM_HEALTH_QUERY,
+  ScheduledTasks as SCHEDULED_TASKS_QUERY,
+  AvailableSchemas,
+  AvailableTables,
+  AvailableColumnsMetadata,
+  AvailableFunctions,
+  GenerateColumnDescription,
+  GenerateTableDescription,
+  CompileQuery,
   CreateDomain,
   DeleteDomain,
   RegisterTable,
   UpdateTable,
   DeleteTable,
+  DeployViewToDb,
   UpsertRelationship,
   DeleteRelationship,
   CreateSource,
   UpdateSource,
   DeleteSource,
+  RenameSource,
+  UpsertRlsRule,
+  DeleteRlsRule,
+  CreateRole,
+  DeleteRole,
+  RefreshMv,
+  ToggleMv,
+  ToggleScheduledTask,
+  PurgeCacheByTable,
+  InvalidateFileSource,
   PurgeCache,
   UpdateSourceCache,
   UpdateTableCache,
@@ -308,6 +342,348 @@ export function useUpdateSourceAllowedDomains() {
     updateSourceAllowedDomains: async (sourceId: string, allowedDomains: string[]) => {
       const result = await updateSourceAllowedDomains({ variables: { sourceId, allowedDomains } });
       return (result.data?.updateSourceAllowedDomains ?? {
+        success: false,
+        message: "",
+      }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+// ── Query hooks ──
+
+export function useRoles() {
+  const { data, loading, error, refetch } = useQuery<{ roles: Role[] }>(ROLES_QUERY, {
+    fetchPolicy: "cache-and-network",
+  });
+  const roles = (data?.roles ?? []).map((r) => ({
+    ...r,
+    domain_access: (r as { domainAccess?: string[] }).domainAccess ?? r.domain_access,
+  }));
+  return { roles, loading, error, refetch };
+}
+
+export function useMVList() {
+  const { data, loading, error, refetch } = useQuery<{ mvList: MVInfo[] }>(MV_LIST_QUERY, {
+    fetchPolicy: "cache-and-network",
+  });
+  return { mvList: data?.mvList ?? [], loading, error, refetch };
+}
+
+export function useCacheStats() {
+  const { data, loading, error, refetch } = useQuery<{ cacheStats: CacheStats }>(CACHE_STATS_QUERY, {
+    fetchPolicy: "cache-and-network",
+  });
+  return { cacheStats: data?.cacheStats ?? null, loading, error, refetch };
+}
+
+export function useSystemHealth() {
+  const { data, loading, error, refetch } = useQuery<{ systemHealth: SystemHealth }>(
+    SYSTEM_HEALTH_QUERY,
+    { fetchPolicy: "cache-and-network" },
+  );
+  return { systemHealth: data?.systemHealth ?? null, loading, error, refetch };
+}
+
+export function useScheduledTasks() {
+  const { data, loading, error, refetch } = useQuery<{ scheduledTasks: ScheduledTask[] }>(
+    SCHEDULED_TASKS_QUERY,
+    { fetchPolicy: "cache-and-network" },
+  );
+  return { scheduledTasks: data?.scheduledTasks ?? [], loading, error, refetch };
+}
+
+// ── Lazy (on-demand) query hooks: imperative trigger that still participates in the cache ──
+
+// The lazy executors returned below are wrapped in useCallback so they have a
+// STABLE identity across renders. Callers list them in effect deps; without this,
+// every render produces a new function, re-running the effect → infinite loop.
+
+export function useAvailableSchemasLazy() {
+  const [run] = useLazyQuery<{ availableSchemas: string[] }>(AvailableSchemas, {
+    fetchPolicy: "cache-first",
+  });
+  return useCallback(
+    async (sourceId: string): Promise<string[]> => {
+      const { data } = await run({ variables: { sourceId } });
+      return data?.availableSchemas ?? [];
+    },
+    [run],
+  );
+}
+
+export function useAvailableTablesLazy() {
+  const [run] = useLazyQuery<{ availableTables: TableMetadata[] }>(AvailableTables, {
+    fetchPolicy: "cache-first",
+  });
+  return useCallback(
+    async (sourceId: string, schemaName = "public"): Promise<TableMetadata[]> => {
+      const { data } = await run({ variables: { sourceId, schemaName } });
+      return data?.availableTables ?? [];
+    },
+    [run],
+  );
+}
+
+export function useAvailableColumnsMetadataLazy() {
+  const [run] = useLazyQuery<{ availableColumnsMetadata: ColumnMetadata[] }>(
+    AvailableColumnsMetadata,
+    { fetchPolicy: "cache-first" },
+  );
+  return useCallback(
+    async (sourceId: string, schemaName: string, tableName: string): Promise<ColumnMetadata[]> => {
+      const { data } = await run({ variables: { sourceId, schemaName, tableName } });
+      return data?.availableColumnsMetadata ?? [];
+    },
+    [run],
+  );
+}
+
+export function useAvailableFunctionsLazy() {
+  const [run] = useLazyQuery<{ availableFunctions: TableMetadata[] }>(AvailableFunctions, {
+    fetchPolicy: "cache-first",
+  });
+  return useCallback(
+    async (sourceId: string, schemaName = "openapi"): Promise<TableMetadata[]> => {
+      const { data } = await run({ variables: { sourceId, schemaName } });
+      return data?.availableFunctions ?? [];
+    },
+    [run],
+  );
+}
+
+export function useGenerateColumnDescription() {
+  const [run, { loading }] = useLazyQuery<{ generateColumnDescription: string }>(
+    GenerateColumnDescription,
+    { fetchPolicy: "network-only" },
+  );
+  return {
+    generateColumnDescription: async (tableId: number, columnName: string): Promise<string> => {
+      const { data } = await run({ variables: { tableId: String(tableId), columnName } });
+      return data?.generateColumnDescription ?? "";
+    },
+    loading,
+  };
+}
+
+export function useGenerateTableDescription() {
+  const [run, { loading }] = useLazyQuery<{ generateTableDescription: string }>(
+    GenerateTableDescription,
+    { fetchPolicy: "network-only" },
+  );
+  return {
+    generateTableDescription: async (tableId: number): Promise<string> => {
+      const { data } = await run({ variables: { tableId: String(tableId) } });
+      return data?.generateTableDescription ?? "";
+    },
+    loading,
+  };
+}
+
+// ── Mutation hooks (previously imperative client.mutate in api/admin.ts) ──
+
+export function useCompileQuery() {
+  const [compile, { loading }] = useMutation<{ compileQuery: Record<string, unknown>[] }>(
+    CompileQuery,
+  );
+  // Stable identity so callers can list it in effect deps without re-running.
+  const compileQuery = useCallback(
+    async (
+      roleId: string,
+      query: string,
+      variables?: Record<string, unknown>,
+      flatSql?: boolean,
+      flatCypher?: boolean,
+      nodeOnlyCypher?: boolean,
+    ): Promise<CompileResult | { queries: CompileResult[] }> => {
+      const result = await compile({
+        variables: {
+          input: {
+            query,
+            role: roleId,
+            variables: variables ?? null,
+            flatSql: flatSql ?? false,
+            flatCypher: flatCypher ?? false,
+            nodeOnlyCypher: nodeOnlyCypher ?? false,
+          },
+        },
+      });
+      const rows = (result.data?.compileQuery ?? []) as Record<string, unknown>[];
+      const results = rows.map((r) => ({
+        ...r,
+        semantic_sql: r.semanticSql ?? r.semantic_sql,
+        trino_sql: r.trinoSql ?? r.trino_sql,
+        direct_sql: r.directSql ?? r.direct_sql,
+        route_reason: r.routeReason ?? r.route_reason,
+        root_field: r.rootField ?? r.root_field,
+        canonical_field: r.canonicalField ?? r.canonical_field,
+        compiled_cypher: r.compiledCypher ?? r.compiled_cypher,
+        cypher_error: r.cypherError ?? r.cypher_error,
+        column_aliases: (
+          (r.columnAliases ?? r.column_aliases ?? []) as Record<string, unknown>[]
+        ).map((ca) => ({ field_name: ca.fieldName ?? ca.field_name, column: ca.column })),
+      })) as CompileResult[];
+      return results.length === 1 ? results[0] : { queries: results };
+    },
+    [compile],
+  );
+  return { compileQuery, loading };
+}
+
+export function useUpsertRlsRule() {
+  const [upsertRlsRule, { loading }] = useMutation<{ upsertRlsRule: MutationResult }>(UpsertRlsRule, {
+    refetchQueries: [{ query: RLS_RULES_QUERY }],
+  });
+  return {
+    upsertRlsRule: async (input: {
+      tableId?: string | null;
+      domainId?: string | null;
+      roleId: string;
+      filterExpr: string;
+    }) => {
+      const result = await upsertRlsRule({ variables: { input } });
+      return (result.data?.upsertRlsRule ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useDeleteRlsRule() {
+  const [deleteRlsRule, { loading }] = useMutation<{ deleteRlsRule: MutationResult }>(DeleteRlsRule, {
+    refetchQueries: [{ query: RLS_RULES_QUERY }],
+  });
+  return {
+    deleteRlsRule: async (
+      roleId: string,
+      tableId?: number | null,
+      domainId?: string | null,
+    ) => {
+      const result = await deleteRlsRule({
+        variables: { roleId, tableId: tableId ?? null, domainId: domainId ?? null },
+      });
+      return (result.data?.deleteRlsRule ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useUpsertRole() {
+  const [createRole, { loading }] = useMutation<{ createRole: MutationResult }>(CreateRole, {
+    refetchQueries: [{ query: ROLES_QUERY }],
+  });
+  return {
+    upsertRole: async (input: { id: string; capabilities: string[]; domainAccess: string[] }) => {
+      const result = await createRole({ variables: { input } });
+      return (result.data?.createRole ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useDeleteRole() {
+  const [deleteRole, { loading }] = useMutation<{ deleteRole: MutationResult }>(DeleteRole, {
+    refetchQueries: [{ query: ROLES_QUERY }],
+  });
+  return {
+    deleteRole: async (id: string) => {
+      const result = await deleteRole({ variables: { id } });
+      return (result.data?.deleteRole ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useRenameSource() {
+  const [renameSource, { loading }] = useMutation<{ renameSource: MutationResult }>(RenameSource, {
+    refetchQueries: [{ query: SOURCES_QUERY }],
+  });
+  return {
+    renameSource: async (oldId: string, newId: string) => {
+      const result = await renameSource({ variables: { oldId, newId } });
+      return (result.data?.renameSource ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useDeployViewToDb() {
+  const [deployViewToDb, { loading }] = useMutation<{ deployViewToDb: MutationResult }>(
+    DeployViewToDb,
+    { refetchQueries: [{ query: TABLES_QUERY }] },
+  );
+  return {
+    deployViewToDb: async (tableId: number) => {
+      const result = await deployViewToDb({ variables: { tableId } });
+      return (result.data?.deployViewToDb ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useRefreshMV() {
+  const [refreshMv, { loading }] = useMutation<{ refreshMv: MutationResult }>(RefreshMv, {
+    refetchQueries: [{ query: MV_LIST_QUERY }],
+  });
+  return {
+    refreshMV: async (mvId: string) => {
+      const result = await refreshMv({ variables: { mvId } });
+      return (result.data?.refreshMv ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useToggleMV() {
+  const [toggleMv, { loading }] = useMutation<{ toggleMv: MutationResult }>(ToggleMv, {
+    refetchQueries: [{ query: MV_LIST_QUERY }],
+  });
+  return {
+    toggleMV: async (mvId: string, enabled: boolean) => {
+      const result = await toggleMv({ variables: { mvId, enabled } });
+      return (result.data?.toggleMv ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useToggleScheduledTask() {
+  const [toggleScheduledTask, { loading }] = useMutation<{ toggleScheduledTask: MutationResult }>(
+    ToggleScheduledTask,
+    { refetchQueries: [{ query: SCHEDULED_TASKS_QUERY }] },
+  );
+  return {
+    toggleScheduledTask: async (taskId: string, enabled: boolean) => {
+      const result = await toggleScheduledTask({ variables: { taskId, enabled } });
+      return (result.data?.toggleScheduledTask ?? {
+        success: false,
+        message: "",
+      }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function usePurgeCacheByTable() {
+  const [purgeCacheByTable, { loading }] = useMutation<{ purgeCacheByTable: MutationResult }>(
+    PurgeCacheByTable,
+  );
+  return {
+    purgeCacheByTable: async (tableId: number) => {
+      const result = await purgeCacheByTable({ variables: { tableId } });
+      return (result.data?.purgeCacheByTable ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+export function useInvalidateFileSource() {
+  const [invalidateFileSource, { loading }] = useMutation<{ invalidateFileSource: MutationResult }>(
+    InvalidateFileSource,
+  );
+  return {
+    invalidateFileSource: async (tableId: number) => {
+      const result = await invalidateFileSource({ variables: { tableId } });
+      return (result.data?.invalidateFileSource ?? {
         success: false,
         message: "",
       }) as MutationResult;

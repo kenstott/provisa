@@ -8,28 +8,24 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect } from "react";
-import { fetchCacheStats, purgeCache, purgeCacheByTable, fetchTables } from "../../api/admin";
-import type { CacheStats } from "../../api/admin";
-import type { RegisteredTable } from "../../types/admin";
+import { useState } from "react";
+import {
+  useCacheStats,
+  usePurgeCache,
+  usePurgeCacheByTable,
+  useTables,
+} from "../../hooks/useAdminQueries";
 
 const PAGE_SIZE = 50;
 
 export function CacheManager() {
-  const [stats, setStats] = useState<CacheStats | null>(null);
-  const [tables, setTables] = useState<RegisteredTable[]>([]);
+  const { cacheStats: stats, refetch: refetchStats } = useCacheStats();
+  const { tables } = useTables();
+  const { purgeCache } = usePurgeCache();
+  const { purgeCacheByTable } = usePurgeCacheByTable();
   const [purging, setPurging] = useState(false);
   const [msg, setMsg] = useState("");
   const [tablePage, setTablePage] = useState(0);
-
-  const load = () => {
-    Promise.all([fetchCacheStats(), fetchTables()]).then(([s, t]) => {
-      setStats(s);
-      setTables(t);
-    });
-  };
-
-  useEffect(load, []);
 
   const handlePurgeAll = async () => {
     setPurging(true);
@@ -37,14 +33,14 @@ export function CacheManager() {
     const result = await purgeCache();
     setMsg(result.message);
     setPurging(false);
-    load();
+    await refetchStats();
   };
 
   const handlePurgeTable = async (tableId: number, tableName: string) => {
     setMsg("");
     const result = await purgeCacheByTable(tableId);
     setMsg(`${tableName}: ${result.message}`);
-    load();
+    await refetchStats();
   };
 
   if (!stats) return <p>Loading cache stats...</p>;

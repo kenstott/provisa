@@ -31,17 +31,16 @@ import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import { useDomainFilter } from "../context/DomainFilterContext";
+import { runSql, nlToSql } from "../api/admin";
 import {
-  runSql,
-  fetchRoles,
-  fetchDomains,
-  fetchTables,
-  fetchRelationships,
-  registerTable,
-  nlToSql,
-  updateTable,
-} from "../api/admin";
-import type { Domain, Relationship, RegisteredTable } from "../types/admin";
+  useRoles,
+  useDomains,
+  useTables,
+  useRelationships,
+  useRegisterTable,
+  useUpdateTable,
+} from "../hooks/useAdminQueries";
+import type { Relationship, RegisteredTable } from "../types/admin";
 import { useCapability } from "../hooks/useCapability";
 
 type ResultTab = "results" | "profile" | "errors" | "history";
@@ -886,6 +885,12 @@ export function SqlPage() {
   const navigate = useNavigate();
   const canCreateView = useCapability("create_view");
   const canRequestView = useCapability("query_development");
+  const { roles: rolesData } = useRoles();
+  const { domains: domainsData } = useDomains();
+  const { tables: tablesData, refetch: refetchTables } = useTables();
+  const { relationships: relsData, refetch: refetchRelationships } = useRelationships();
+  const { registerTable } = useRegisterTable();
+  const { updateTable } = useUpdateTable();
   const [viewModal, setViewModal] = useState(false);
   const [viewId, setViewId] = useState("");
   const [viewDescription, setViewDescription] = useState("");
@@ -894,8 +899,8 @@ export function SqlPage() {
   const [viewMsg, setViewMsg] = useState("");
   const [viewColumns, setViewColumns] = useState<ViewColumnConfig[]>([]);
   const [savedViewId, setSavedViewId] = useState<number | null>(null);
-  const [tables, setTables] = useState<RegisteredTable[]>([]);
-  const [existingRels, setExistingRels] = useState<Relationship[]>([]);
+  const tables = tablesData;
+  const existingRels = relsData;
   const [topTab, setTopTab] = useState<TopTab>("sql");
   const viewTable = (location.state as { viewTable?: RegisteredTable } | null)?.viewTable ?? null;
   const [sqlText, setSqlText] = useState(() => {
@@ -903,8 +908,10 @@ export function SqlPage() {
     return locSql ?? loadSqlQuery();
   });
   const [role, setRole] = useState("admin");
-  const [roles, setRoles] = useState<string[]>(["admin"]);
-  const [domainMap, setDomainMap] = useState<Record<string, Domain>>({});
+  const roles = useMemo(
+    () => (rolesData.length ? rolesData.map((r) => r.id) : ["admin"]),
+    [rolesData],
+  );
   const [running, setRunning] = useState(false);
   const [sampleMode, setSampleMode] = useState<"first" | "last" | "random">("first");
   const [sampleSize, setSampleSize] = useState(100);
@@ -948,24 +955,12 @@ export function SqlPage() {
 
   useEffect(() => {
     localStorage.removeItem("provisa.sql.pending_query");
-    fetchRoles()
-      .catch(() => [])
-      .then((r) => {
-        const ids = r.map((x: { id: string }) => x.id);
-        if (ids.length) setRoles(ids);
-      });
-    fetchDomains()
-      .catch(() => [])
-      .then((ds: Domain[]) => {
-        setDomainMap(Object.fromEntries(ds.map((d) => [normalizeDomain(d.id), d])));
-      });
-    fetchTables()
-      .catch(() => [])
-      .then(setTables);
-    fetchRelationships()
-      .catch(() => [])
-      .then(setExistingRels);
   }, []);
+
+  const domainMap = useMemo(
+    () => Object.fromEntries(domainsData.map((d) => [normalizeDomain(d.id), d])),
+    [domainsData],
+  );
 
   const sqlSchema = useMemo(() => {
     const schema: Record<string, string[] | Record<string, string[]>> = {};
@@ -1313,12 +1308,8 @@ export function SqlPage() {
       const newTableId = idMatch ? parseInt(idMatch[1], 10) : null;
       setViewMsg(canCreateView ? "View created." : "View request submitted.");
       setSavedViewId(newTableId);
-      fetchTables()
-        .catch(() => [])
-        .then(setTables);
-      fetchRelationships()
-        .catch(() => [])
-        .then(setExistingRels);
+      refetchTables();
+      refetchRelationships();
       localStorage.setItem("provisa.schema.version", String(Date.now()));
       window.dispatchEvent(new StorageEvent("storage", { key: "provisa.schema.version" }));
     } catch (e) {
@@ -1333,8 +1324,9 @@ export function SqlPage() {
     viewSqlNormalized,
     canCreateView,
     viewColumns,
-    setTables,
-    setExistingRels,
+    registerTable,
+    refetchTables,
+    refetchRelationships,
   ]);
 
   const handleRun = useCallback(async () => {

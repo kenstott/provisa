@@ -8,36 +8,20 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect } from "react";
-import { fetchScheduledTasks, toggleScheduledTask } from "../../api/admin";
-import type { ScheduledTask } from "../../api/admin";
+import { useState } from "react";
+import { useScheduledTasks, useToggleScheduledTask } from "../../hooks/useAdminQueries";
 
 const PAGE_SIZE = 50;
 
 export function ScheduledTasks() {
-  const [tasks, setTasks] = useState<ScheduledTask[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { scheduledTasks: tasks, loading } = useScheduledTasks();
+  const { toggleScheduledTask } = useToggleScheduledTask();
   const [toggling, setToggling] = useState<string | null>(null);
   const [taskPage, setTaskPage] = useState(0);
-
-  const load = () => {
-    setLoading(true);
-    fetchScheduledTasks()
-      .then(setTasks)
-      .finally(() => setLoading(false));
-  };
-
-  // Initial fetch on mount: loading already starts true, so no synchronous setState here.
-  useEffect(() => {
-    fetchScheduledTasks()
-      .then(setTasks)
-      .finally(() => setLoading(false));
-  }, []);
 
   const handleToggle = async (id: string, enabled: boolean) => {
     setToggling(id);
     await toggleScheduledTask(id, enabled);
-    load();
     setToggling(null);
   };
 

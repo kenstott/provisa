@@ -16,9 +16,8 @@ import {
   type FrameData,
   type RelLineOverride,
 } from "../components/graph/graph-model";
-import { fetchRelationships, upsertRelationship } from "../api/admin";
+import { useRelationships, useUpsertRelationship } from "../hooks/useAdminQueries";
 import { useAuth } from "../context/AuthContext";
-import type { Relationship } from "../types/admin";
 import "./GraphPage.css";
 import { useLocalStorage, graphState, saveGraphState } from "../components/graph/graph-persistence";
 import type {
@@ -58,7 +57,8 @@ export function GraphPage() {
     "provisa.graph.relLineOverrides",
     {},
   );
-  const [adminRels, setAdminRels] = useState<Relationship[]>([]);
+  const { relationships: adminRels, refetch: refetchRelationships } = useRelationships();
+  const { upsertRelationship } = useUpsertRelationship();
   const [nfModal, setNfModal] = useState<{
     label: string;
     compoundLabel: string;
@@ -70,13 +70,6 @@ export function GraphPage() {
   const clusterMapRef = useRef<
     Record<string, { scl1: number | null; scl2: number | null; scl3: number | null }>
   >({});
-
-  // Fetch admin relationships for edge alias editing
-  useEffect(() => {
-    fetchRelationships()
-      .then(setAdminRels)
-      .catch(() => {});
-  }, []);
 
   // Fetch schema when role changes via dedicated graph-schema endpoint
   useEffect(() => {
@@ -465,10 +458,9 @@ export function GraphPage() {
         alias: cqlAlias || null,
         graphqlAlias: gqlAlias || null,
       });
-      const updated = await fetchRelationships();
-      setAdminRels(updated);
+      await refetchRelationships();
     },
-    [adminRels],
+    [adminRels, upsertRelationship, refetchRelationships],
   );
 
   // Build pkMap: compound label (e.g. "SalesAnalytics:Orders") → pk_columns

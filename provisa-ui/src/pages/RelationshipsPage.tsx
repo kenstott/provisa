@@ -16,10 +16,6 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { SqlModelingModal } from "../components/SqlModelingModal";
 import {
-  fetchRelationships,
-  fetchTables,
-  upsertRelationship,
-  deleteRelationship,
   discoverRelationships,
   fetchCandidates,
   fetchRejectedCount,
@@ -27,9 +23,15 @@ import {
   rejectCandidate,
   clearRejectedCandidates,
 } from "../api/admin";
+import {
+  useRelationships,
+  useTables,
+  useUpsertRelationship,
+  useDeleteRelationship,
+} from "../hooks/useAdminQueries";
 import { fetchActions } from "../api/actions";
 import type { TrackedFunction } from "../api/actions";
-import type { Relationship, RegisteredTable } from "../types/admin";
+import type { Relationship } from "../types/admin";
 import { EMPTY_FORM, type Candidate, type RelForm } from "../components/relationships/relationship-types";
 import { AddRelationshipForm } from "../components/relationships/AddRelationshipForm";
 import { RelationshipRow } from "../components/relationships/RelationshipRow";
@@ -41,11 +43,13 @@ import { CandidatesTable } from "../components/relationships/CandidatesTable";
 
 export function RelationshipsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [rels, setRels] = useState<Relationship[]>([]);
-  const [tables, setTables] = useState<RegisteredTable[]>([]);
+  const { relationships: rels, loading: relsLoading, refetch: refetchRels } = useRelationships();
+  const { tables, loading: tablesLoading } = useTables();
+  const { upsertRelationship } = useUpsertRelationship();
+  const { deleteRelationship } = useDeleteRelationship();
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [restLoading, setRestLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [discovering, setDiscovering] = useState(false);
   const [discoverError, setDiscoverError] = useState("");
@@ -81,20 +85,16 @@ export function RelationshipsPage() {
   };
 
   const load = useCallback(async () => {
-    setLoading(true);
-    const [r, t, actions, c, rc] = await Promise.all([
-      fetchRelationships(),
-      fetchTables(),
+    setRestLoading(true);
+    const [actions, c, rc] = await Promise.all([
       fetchActions().catch(() => ({ functions: [], webhooks: [] })),
       fetchCandidates().catch(() => []),
       fetchRejectedCount().catch(() => 0),
     ]);
-    setRels(r);
-    setTables(t);
     setFunctions(actions.functions);
     setCandidates(c as Candidate[]);
     setRejectedCount(rc);
-    setLoading(false);
+    setRestLoading(false);
   }, []);
 
   /* eslint-disable react-hooks/set-state-in-effect -- mount data-fetch: load() sets loading state synchronously by design */
@@ -102,6 +102,8 @@ export function RelationshipsPage() {
     load();
   }, [load]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  const loading = relsLoading || tablesLoading || restLoading;
 
   const tableNameById = Object.fromEntries(tables.map((t) => [t.id, t.tableName]));
   const normalizeDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
@@ -120,9 +122,8 @@ export function RelationshipsPage() {
       await deleteRelationship(id);
       setExpanded((prev) => (prev === id ? null : prev));
       setEditingRel(null);
-      load();
     },
-    [load],
+    [deleteRelationship],
   );
 
   const handleAdd = useCallback(async () => {
@@ -148,8 +149,7 @@ export function RelationshipsPage() {
     setSaving(null);
     setForm(EMPTY_FORM);
     setShowForm(false);
-    load();
-  }, [form, load]);
+  }, [form, upsertRelationship]);
 
   const handleEditSave = useCallback(async () => {
     if (!editingRel?.id) return;
@@ -175,8 +175,7 @@ export function RelationshipsPage() {
     }
     setSaving(null);
     setEditingRel(null);
-    load();
-  }, [editingRel, load]);
+  }, [editingRel, upsertRelationship, deleteRelationship]);
 
   const handleClearRejections = useCallback(async () => {
     setDiscoverError("");
@@ -211,9 +210,10 @@ export function RelationshipsPage() {
   const handleAccept = useCallback(
     async (id: number, name: string) => {
       await acceptCandidate(id, name);
+      await refetchRels();
       load();
     },
-    [load],
+    [load, refetchRels],
   );
 
   const handleReject = useCallback(async (id: number) => {
@@ -316,8 +316,7 @@ export function RelationshipsPage() {
     });
     setSaving(null);
     setReverseForm(null);
-    load();
-  }, [reverseForm, load]);
+  }, [reverseForm, upsertRelationship]);
 
   if (loading) return <div className="page">Loading relationships...</div>;
 
@@ -519,7 +518,6 @@ export function RelationshipsPage() {
                     graphqlAlias: null,
                     recordCandidate: true,
                   });
-                  load();
                 }
               : undefined
           }

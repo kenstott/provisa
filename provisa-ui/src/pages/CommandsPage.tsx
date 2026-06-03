@@ -20,9 +20,13 @@ import {
   testAction,
 } from "../api/actions";
 import type { TrackedFunction, TrackedWebhook, ActionArg, InlineField } from "../api/actions";
-import { fetchSources, fetchTables, fetchDomains, fetchAvailableFunctions } from "../api/admin";
+import {
+  useSources,
+  useTables,
+  useDomains,
+  useAvailableFunctionsLazy,
+} from "../hooks/useAdminQueries";
 import type { TableMetadata } from "../api/admin";
-import type { Source, RegisteredTable } from "../types/admin";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 
 const GRAPHQL_TYPES = ["String", "Int", "Float", "Boolean", "DateTime", "Date", "BigInt", "JSON"];
@@ -111,11 +115,13 @@ function inferJsonSchema(jsonStr: string): string {
 }
 
 export function CommandsPage() {
+  const { sources } = useSources();
+  const { tables } = useTables();
+  const { domains } = useDomains();
+  const getAvailableFunctions = useAvailableFunctionsLazy();
+  const domainHints = domains.map((d) => d.id);
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
   const [webhooks, setWebhooks] = useState<TrackedWebhook[]>([]);
-  const [sources, setSources] = useState<Source[]>([]);
-  const [tables, setTables] = useState<RegisteredTable[]>([]);
-  const [domainHints, setDomainHints] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
@@ -138,18 +144,9 @@ export function CommandsPage() {
     setLoading(true);
     setError("");
     try {
-      const [fns, whs, srcs, tbls, doms] = await Promise.all([
-        fetchActions().then((a) => a.functions),
-        fetchActions().then((a) => a.webhooks),
-        fetchSources(),
-        fetchTables(),
-        fetchDomains(),
-      ]);
-      setFunctions(fns);
-      setWebhooks(whs);
-      setSources(srcs);
-      setTables(tbls);
-      setDomainHints(doms.map((d) => d.id));
+      const actions = await fetchActions();
+      setFunctions(actions.functions);
+      setWebhooks(actions.webhooks);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -170,11 +167,11 @@ export function CommandsPage() {
     const src = sources.find((s) => s.id === form.sourceId);
     if (!src || src.type !== "openapi") return;
     setLoadingFunctions(true);
-    fetchAvailableFunctions(form.sourceId)
+    getAvailableFunctions(form.sourceId)
       .then(setAvailableFunctions)
       .catch(() => setAvailableFunctions([]))
       .finally(() => setLoadingFunctions(false));
-  }, [form.sourceId, sources]);
+  }, [form.sourceId, sources, getAvailableFunctions]);
 
   // Physical options: schema.table — used for DB functions (returns within the source)
   const physicalTableOptions = (sourceId: string) =>

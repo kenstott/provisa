@@ -8,9 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState, useEffect } from "react";
-import { fetchSystemHealth } from "../../api/admin";
-import type { SystemHealth as HealthInfo } from "../../api/admin";
+import { useEffect } from "react";
+import { useSystemHealth } from "../../hooks/useAdminQueries";
 
 function StatusDot({ ok }: { ok: boolean }) {
   return (
@@ -26,13 +25,12 @@ function StatusDot({ ok }: { ok: boolean }) {
 }
 
 export function SystemHealth() {
-  const [health, setHealth] = useState<HealthInfo | null>(null);
+  const { systemHealth: health, refetch } = useSystemHealth();
 
   useEffect(() => {
-    fetchSystemHealth().then(setHealth);
-    const interval = setInterval(() => fetchSystemHealth().then(setHealth), 10000);
+    const interval = setInterval(() => refetch(), 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [refetch]);
 
   if (!health) return <p>Loading system health...</p>;
 

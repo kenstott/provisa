@@ -9,8 +9,9 @@
 // permission from the copyright holder.
 
 import { useState } from "react";
-import { discoverSourceSchema, registerTable } from "../api/admin";
+import { discoverSourceSchema } from "../api/admin";
 import type { DiscoveredColumn } from "../api/admin";
+import { useRegisterTable } from "../hooks/useAdminQueries";
 
 const TRINO_TYPES = [
   "VARCHAR",
@@ -143,6 +144,7 @@ export function SchemaDiscovery({
     governance: "open",
   });
   const [registering, setRegistering] = useState(false);
+  const { registerTable } = useRegisterTable();
 
   const handleDiscover = async () => {
     setLoading(true);

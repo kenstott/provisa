@@ -14,17 +14,17 @@ import { Trash2, Pencil, Save, X } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import { createPortal } from "react-dom";
 import {
-  fetchRoles,
-  fetchRlsRules,
-  fetchTables,
-  fetchDomains,
-  upsertRole,
-  deleteRole,
-  upsertRlsRule,
-  deleteRlsRule,
-} from "../api/admin";
+  useRoles,
+  useRLSRules,
+  useTables,
+  useDomains,
+  useUpsertRole,
+  useDeleteRole,
+  useUpsertRlsRule,
+  useDeleteRlsRule,
+} from "../hooks/useAdminQueries";
 import type { Role, Capability } from "../types/auth";
-import type { RLSRule, RegisteredTable, Domain } from "../types/admin";
+import type { RLSRule } from "../types/admin";
 import { useDomainFilter } from "../context/DomainFilterContext";
 
 function MultiSelect({
@@ -144,11 +144,15 @@ const EMPTY_RULE = {
 export function SecurityPage() {
   const location = useLocation();
   const { selectedDomain, setDomains: setContextDomains, setSelectedDomain } = useDomainFilter();
-  const [roles, setRoles] = useState<Role[]>([]);
-  const [rules, setRules] = useState<RLSRule[]>([]);
-  const [tables, setTables] = useState<RegisteredTable[]>([]);
-  const [domains, setDomains] = useState<Domain[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { roles, loading: rolesLoading, refetch: refetchRoles } = useRoles();
+  const { rlsRules: rules, loading: rulesLoading, refetch: refetchRules } = useRLSRules();
+  const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
+  const { domains, loading: domainsLoading, refetch: refetchDomains } = useDomains();
+  const { upsertRole } = useUpsertRole();
+  const { deleteRole } = useDeleteRole();
+  const { upsertRlsRule } = useUpsertRlsRule();
+  const { deleteRlsRule } = useDeleteRlsRule();
+  const loading = rolesLoading || rulesLoading || tablesLoading || domainsLoading;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -168,30 +172,17 @@ export function SecurityPage() {
     (location.state as { tableFilter?: string } | null)?.tableFilter ?? "",
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const [r, rls, t, d] = await Promise.all([
-      fetchRoles(),
-      fetchRlsRules(),
-      fetchTables(),
-      fetchDomains(),
-    ]);
-    setRoles(r);
-    setRules(rls);
-    setTables(t);
-    setDomains(d);
-    setContextDomains(d.map((x) => x.id));
-    setLoading(false);
-  }, [setContextDomains]);
+  const reload = useCallback(async () => {
+    await Promise.all([refetchRoles(), refetchRules(), refetchTables(), refetchDomains()]);
+  }, [refetchRoles, refetchRules, refetchTables, refetchDomains]);
 
   useEffect(() => {
     setSelectedDomain("all");
   }, [setSelectedDomain]);
-  /* eslint-disable react-hooks/set-state-in-effect -- mount data-fetch: load() sets loading state synchronously by design */
+
   useEffect(() => {
-    load();
-  }, [load]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+    setContextDomains(domains.map((x) => x.id));
+  }, [domains, setContextDomains]);
 
   const normalizeDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
   const tableNameById = Object.fromEntries(tables.map((t) => [t.id, t.tableName]));
@@ -219,7 +210,7 @@ export function SecurityPage() {
       setShowRoleForm(false);
       setRoleForm({ ...EMPTY_ROLE });
       setEditingRoleInRow(null);
-      await load();
+      await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -233,7 +224,7 @@ export function SecurityPage() {
     try {
       await deleteRole(id);
       if (expandedRole === id) setExpandedRole(null);
-      await load();
+      await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -288,7 +279,7 @@ export function SecurityPage() {
       setShowRuleForm(false);
       setRuleForm({ ...EMPTY_RULE });
       setEditingRuleInRow(null);
-      await load();
+      await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -302,7 +293,7 @@ export function SecurityPage() {
     try {
       await deleteRlsRule(rule.roleId, rule.tableId, rule.domainId);
       if (expandedRule === rule.id) setExpandedRule(null);
-      await load();
+      await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
