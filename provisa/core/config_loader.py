@@ -34,6 +34,31 @@ from provisa.core import catalog
 log = logging.getLogger(__name__)
 
 
+async def _fill_null_column_types(
+    conn: asyncpg.Connection, source_id: str, schema: str, table: str, types: dict[str, str]
+) -> None:
+    """Set table_columns.data_type for columns the YAML left null, from `types`
+    (column_name -> data_type). Never overrides an explicit YAML-declared type."""
+    if not types:
+        return
+    table_id = await conn.fetchval(
+        "SELECT id FROM registered_tables WHERE source_id=$1 AND schema_name=$2 AND table_name=$3",
+        source_id,
+        schema,
+        table,
+    )
+    if table_id is None:
+        return
+    for _col, _dt in types.items():
+        await conn.execute(
+            "UPDATE table_columns SET data_type=$1 "
+            "WHERE table_id=$2 AND column_name=$3 AND data_type IS NULL",
+            _dt,
+            table_id,
+            _col,
+        )
+
+
 def _normalize_op_id(s: str) -> str:
     return re.sub(r"[_-]", "", s).lower()
 
@@ -204,23 +229,6 @@ async def _load_config_in_txn(
                         if col.name in spec_col_map and not col.description:
                             col.description = spec_col_map[col.name].get("description")
 
-        # Inherit column types from Trino's normalized information_schema.columns so
-        # YAML need not restate data_type. Trino owns type normalization (unlike
-        # constraints, which it does not model — those are resolved natively in a later
-        # pass). Only fills columns the YAML left unset; sources with no Trino catalog
-        # columns (openapi, whose columns come from the spec) keep their declared types.
-        if trino_conn is not None and tbl.columns:
-            from provisa.compiler.introspect import introspect_column_types
-            from provisa.compiler.naming import source_to_catalog
-
-            _col_types = introspect_column_types(
-                trino_conn, source_to_catalog(tbl.source_id), tbl.schema_name, tbl.table_name
-            )
-            if _col_types:
-                for _col in tbl.columns:
-                    if not getattr(_col, "data_type", None) and _col.name in _col_types:
-                        _col.data_type = _col_types[_col.name]
-
         await table_repo.upsert(conn, tbl)
         src = sources_by_id.get(tbl.source_id)
         if src and src.type.value == "sqlite" and src.path:
@@ -354,6 +362,30 @@ async def _load_config_in_txn(
                                     tbl.table_name,
                                     col_data["name"],
                                 )
+                        # Persist column data_type from the spec. OpenAPI tables are
+                        # API-backed: their cached response may be empty (so Trino can't
+                        # introspect every column), and native-filter params (_nf_*) never
+                        # appear in the response at all. The spec is authoritative for
+                        # both. introspect_tables trusts stored types — fill any null.
+                        _OAPI_TRINO = {
+                            "string": "varchar",
+                            "integer": "integer",
+                            "number": "double",
+                            "boolean": "boolean",
+                            "array": "json",
+                            "object": "json",
+                            "jsonb": "json",
+                        }
+                        _oapi_types: dict[str, str] = {}
+                        for _sc in _schema_to_columns(match.response_schema):
+                            _oapi_types[_sc["name"]] = _OAPI_TRINO.get(_sc.get("type") or "string", "varchar")
+                        for _p in match.path_params + match.query_params:
+                            _pt = _OAPI_TRINO.get(_p.get("type") or "string", "varchar")
+                            _oapi_types[_p["name"]] = _pt
+                            _oapi_types["_nf_" + _p["name"]] = _pt
+                        await _fill_null_column_types(
+                            conn, tbl.source_id, tbl.schema_name, tbl.table_name, _oapi_types
+                        )
                     except Exception as _e:
                         log.warning(
                             "api_endpoints registration failed for %s.%s: %s",
@@ -367,6 +399,24 @@ async def _load_config_in_txn(
                         tbl.table_name,
                         tbl.source_id,
                     )
+
+        # Resolve column types now that the table is materialized — postgres is live in
+        # Trino, sqlite has been migrated into PG, and openapi responses are cached; all
+        # are exposed through Trino's normalized information_schema.columns. introspect_
+        # tables trusts stored types, so fill any the YAML left null (never overrides).
+        if trino_conn is not None and tbl.columns:
+            from provisa.compiler.introspect import introspect_column_types
+            from provisa.compiler.naming import source_to_catalog
+
+            await _fill_null_column_types(
+                conn,
+                tbl.source_id,
+                tbl.schema_name,
+                tbl.table_name,
+                introspect_column_types(
+                    trino_conn, source_to_catalog(tbl.source_id), tbl.schema_name, tbl.table_name
+                ),
+            )
 
     # 5a. Purge registered_tables rows whose table_name is no longer in config (handles renames)
     tables_by_source: dict[str, list[str]] = {}
