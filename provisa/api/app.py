@@ -1129,22 +1129,26 @@ async def _load_and_build(config_path: str | None = None) -> None:
     # information_schema.table_constraints in a Trino catalog), so PKs are read here
     # through the source driver directly, now that the source pools are built. The DB
     # constraint is authoritative — config YAML need not restate is_primary_key.
-    _PK_SOURCE_TYPES = ("postgresql", "mysql", "mariadb", "singlestore", "sqlserver", "redshift")
+    # RDBMS sources expose their PK via the source's own information_schema, read through
+    # the source driver. SQLite sources have no driver in the pool — they migrate into
+    # the main Postgres (schema_name.table_name) with the PK preserved (see
+    # file_source.pg_migrate), so their PK is read from _pk_conn directly.
+    _PK_RDBMS_TYPES = ("postgresql", "mysql", "mariadb", "singlestore", "sqlserver", "redshift")
+    _PK_SOURCE_TYPES = _PK_RDBMS_TYPES + ("sqlite",)
     async with state.pg_pool.acquire() as _pk_conn:
         _pk_rows = await _pk_conn.fetch(
-            "SELECT rt.id, rt.source_id, rt.schema_name, rt.table_name "
+            "SELECT rt.id, rt.source_id, rt.schema_name, rt.table_name, s.type AS source_type "
             "FROM registered_tables rt JOIN sources s ON s.id = rt.source_id "
             "WHERE s.type = ANY($1::text[])",
             list(_PK_SOURCE_TYPES),
         )
         for _pk_t in _pk_rows:
-            if not state.source_pools.has(_pk_t["source_id"]):
-                continue
             _sch = _pk_t["schema_name"].replace("'", "''")
             _tbl = _pk_t["table_name"].replace("'", "''")
             # Standard information_schema constraint query — valid on postgres, mysql,
-            # mariadb, singlestore, sqlserver, redshift. Schema/table are escaped
-            # identifiers from registered_tables (not user input).
+            # mariadb, singlestore, sqlserver, redshift, and the main PG that holds
+            # migrated SQLite tables. Schema/table are escaped identifiers from
+            # registered_tables (not user input).
             _pk_sql = (
                 "SELECT kcu.column_name "
                 "FROM information_schema.table_constraints tc "
@@ -1155,7 +1159,13 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 f"  AND tc.table_schema = '{_sch}' AND tc.table_name = '{_tbl}'"
             )
             try:
-                _pk_res = await state.source_pools.execute(_pk_t["source_id"], _pk_sql, None)
+                if _pk_t["source_type"] == "sqlite":
+                    _pk_cols = [_r[0] for _r in await _pk_conn.fetch(_pk_sql)]
+                elif state.source_pools.has(_pk_t["source_id"]):
+                    _pk_res = await state.source_pools.execute(_pk_t["source_id"], _pk_sql, None)
+                    _pk_cols = [_row[0] for _row in _pk_res.rows]
+                else:
+                    continue
             except Exception:
                 _startup_log.warning(
                     "PK resolve failed for %s.%s.%s",
@@ -1165,7 +1175,6 @@ async def _load_and_build(config_path: str | None = None) -> None:
                     exc_info=True,
                 )
                 continue
-            _pk_cols = [_row[0] for _row in _pk_res.rows]
             if _pk_cols:
                 await _pk_conn.execute(
                     "UPDATE table_columns SET is_primary_key = true "

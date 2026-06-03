@@ -65,6 +65,13 @@ async def migrate_sqlite_table(
         col_defs = ", ".join(
             f'"{row[1]}" {_to_pg_type(row[2])}' for row in info
         )
+        # PRAGMA table_info columns: (cid, name, type, notnull, dflt_value, pk).
+        # pk > 0 marks PRIMARY KEY membership (value = 1-based position for composites).
+        # Preserve it so the migrated PG table carries the constraint — the PK
+        # resolution pass reads it from there (SQLite has no Trino/native driver path).
+        pk_cols = [r[1] for r in sorted((r for r in info if r[5]), key=lambda r: r[5])]
+        if pk_cols:
+            col_defs += ", PRIMARY KEY (" + ", ".join(f'"{c}"' for c in pk_cols) + ")"
 
         await pg_conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{pg_schema}"')
         await pg_conn.execute(f'DROP TABLE IF EXISTS "{pg_schema}"."{pg_table}"')
