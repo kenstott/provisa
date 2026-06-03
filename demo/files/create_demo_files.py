@@ -302,8 +302,17 @@ def create_inquiries_sqlite() -> None:
 
 
 if __name__ == "__main__":
-    create_products_parquet()
-    create_orders_sqlite()
-    create_inquiries_sqlite()
-    create_pgwire_cert()
+    from concurrent.futures import ThreadPoolExecutor
+
+    # Independent outputs (separate files); the heavy work (pyarrow, sqlite3, RSA
+    # keygen) releases the GIL, so threads overlap. Run them concurrently.
+    _tasks = (
+        create_products_parquet,
+        create_orders_sqlite,
+        create_inquiries_sqlite,
+        create_pgwire_cert,
+    )
+    with ThreadPoolExecutor(max_workers=len(_tasks)) as _ex:
+        for _f in [_ex.submit(_t) for _t in _tasks]:
+            _f.result()  # propagate any exception
     print("Done.")
