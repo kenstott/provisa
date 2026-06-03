@@ -26,6 +26,21 @@ _log_provider: "object | None" = None
 def shutdown_otel() -> None:
     """Flush and shut down OTel log provider before interpreter teardown."""
     global _log_provider
+    # Detach the OTLP LoggingHandler from the root logger first. Otherwise Python's
+    # atexit logging.shutdown() flushes it during interpreter teardown, and the
+    # BatchLogRecordProcessor's flush() tries to start a thread — which raises
+    # "can't create new thread at interpreter shutdown".
+    try:
+        import logging as _logging
+
+        from opentelemetry.sdk._logs import LoggingHandler
+
+        _root = _logging.getLogger()
+        for _h in list(_root.handlers):
+            if isinstance(_h, LoggingHandler):
+                _root.removeHandler(_h)
+    except Exception:
+        pass
     if _log_provider is not None:
         try:
             _log_provider.shutdown()  # type: ignore[union-attr]
