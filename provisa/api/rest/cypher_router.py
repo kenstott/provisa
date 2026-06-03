@@ -309,6 +309,13 @@ async def cypher_query(
     # Stage 4: Rewrite to Trino-physical (catalog.schema.table)
     try:
         exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
+        # Inline non-materialized views — their refs resolve to the synthetic
+        # '__provisa__' source which is not a Trino catalog. expand into the
+        # view's (already physical) defining SQL, same as the GraphQL/SQL path.
+        if state.view_sql_map:
+            from provisa.compiler.view_expand import expand_view_refs
+
+            exec_sql = expand_view_refs(exec_sql, state.view_sql_map)
     except Exception as exc:
         log.exception("Cypher physical rewrite failed")
         return JSONResponse(status_code=500, content={"error": f"Physical rewrite failed: {exc}"})

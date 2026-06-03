@@ -16,6 +16,31 @@ import re
 from provisa.compiler.sql_gen import CompiledQuery
 
 
+def expand_view_refs(sql: str, view_sql_map: dict[str, str]) -> str:
+    """Replace view-table references in a SQL string with inline subqueries.
+
+    For each view table in view_sql_map, replaces a catalog- or schema-qualified
+    reference  "catalog"."schema"."view_table" [alias]  with  (view_sql) [alias].
+    Shared by the GraphQL/SQL path (via expand_views) and the Cypher path.
+    """
+    if not view_sql_map:
+        return sql
+    for view_table, view_sql in view_sql_map.items():
+        # Catalog-qualified: "catalog"."schema"."view_table" "alias"
+        sql = re.sub(
+            rf'"[^"]+"\."[^"]+"\."({re.escape(view_table)})"(\s+"t\d+")?',
+            lambda m: f"({view_sql}){m.group(2) or ''}",
+            sql,
+        )
+        # Schema-qualified: "schema"."view_table" "alias"
+        sql = re.sub(
+            rf'"[^"]+"\."({re.escape(view_table)})"(\s+"t\d+")?',
+            lambda m: f"({view_sql}){m.group(2) or ''}",
+            sql,
+        )
+    return sql
+
+
 def expand_views(
     compiled: CompiledQuery,
     view_sql_map: dict[str, str],
@@ -33,20 +58,7 @@ def expand_views(
     if not view_sql_map:
         return compiled
 
-    sql = compiled.sql
-    for view_table, view_sql in view_sql_map.items():
-        # Catalog-qualified: "catalog"."schema"."view_table" "alias"
-        sql = re.sub(
-            rf'"[^"]+"\."[^"]+"\."({re.escape(view_table)})"(\s+"t\d+")?',
-            lambda m: f"({view_sql}){m.group(2) or ''}",
-            sql,
-        )
-        # Schema-qualified: "schema"."view_table" "alias"
-        sql = re.sub(
-            rf'"[^"]+"\."({re.escape(view_table)})"(\s+"t\d+")?',
-            lambda m: f"({view_sql}){m.group(2) or ''}",
-            sql,
-        )
+    sql = expand_view_refs(compiled.sql, view_sql_map)
 
     if sql == compiled.sql:
         return compiled
