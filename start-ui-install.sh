@@ -34,7 +34,10 @@ mkdir -p "$LOG_DIR"
 lsof_pids() {
   local port="$1" tmp lp _w
   tmp=$(mktemp 2>/dev/null) || tmp="${TMPDIR:-/tmp}/.provisa-lsof.$$"
-  lsof -bnP -i ":$port" -t >"$tmp" 2>/dev/null &
+  # -S 2: bound lsof's own kernel stat/readlink calls with a 2s alarm so a stalled
+  # network mount (smbfs) can't wedge it in uninterruptible (U) state — without this,
+  # lsof scanning a process with an fd on a hung SMB share becomes an unkillable zombie.
+  lsof -S 2 -bnP -i ":$port" -t >"$tmp" 2>/dev/null &
   lp=$!
   for _w in $(seq 1 6); do
     kill -0 "$lp" 2>/dev/null || break
@@ -43,6 +46,27 @@ lsof_pids() {
   kill -9 "$lp" 2>/dev/null || true   # may be uninterruptible; never wait on it
   cat "$tmp" 2>/dev/null || true
   rm -f "$tmp" 2>/dev/null || true
+}
+
+# True (0) if something is listening on 127.0.0.1:$1. Uses an `nc -z` connect probe
+# (1s timeout) — it touches only the loopback socket, never the process/fd table, so
+# a stalled network mount (smbfs) cannot wedge it the way `lsof -i` can. This is the
+# preferred "is the port free yet?" check; lsof_pids() is reserved for the rare case
+# where we must map a still-occupied port to an unknown PID to evict it.
+port_in_use() {
+  local port="$1"
+  nc -z -G 1 127.0.0.1 "$port" >/dev/null 2>&1
+}
+
+# Wait up to $2 seconds for port $1 to become free, probing once per second without
+# scanning fds. Returns 0 when free, 1 on timeout.
+wait_port_free() {
+  local port="$1" secs="$2" _i
+  for _i in $(seq 1 "$secs"); do
+    port_in_use "$port" || return 0
+    sleep 1
+  done
+  ! port_in_use "$port"
 }
 
 # True if the given path lives on an exFAT volume (where macOS AppleDouble "._*"
@@ -320,14 +344,17 @@ for _pid in $(pgrep -f "uvicorn main:app" 2>/dev/null); do
   pkill -9 -P "$_pid" 2>/dev/null || true   # multiprocessing worker children
   kill -9 "$_pid" 2>/dev/null || true       # the reloader itself
 done
-# Un-stop and kill any prior Vite/UI process group holding port 3000.
+# Un-stop and kill any prior Vite/UI process group holding port 3000 by name (no fd
+# scan). Only fall back to the lsof PID-by-port lookup if the port is STILL held —
+# i.e. an orphan we can't match by command — so a normal restart never scans SMB.
 pkill -CONT -f "node.*vite" 2>/dev/null || true
-lsof_pids 3000 | xargs kill -9 2>/dev/null || true
-# With the stopped processes gone, lsof no longer hangs; sweep any straggler
-# (e.g. a reload worker re-parented to PID 1) still holding port 8000.
-lsof_pids 8000 | xargs kill -9 2>/dev/null || true
+pkill -9 -f "node.*vite" 2>/dev/null || true
+port_in_use 3000 && lsof_pids 3000 | xargs kill -9 2>/dev/null || true
+# Same for port 8000: the uvicorn pattern-kill above handles the common case; only
+# probe-then-lsof if a straggler (e.g. a reload worker re-parented to PID 1) lingers.
+port_in_use 8000 && lsof_pids 8000 | xargs kill -9 2>/dev/null || true
 for _i in $(seq 1 10); do
-  [ -z "$(lsof_pids 8000)" ] && break
+  port_in_use 8000 || break
   echo -n "."
   sleep 1
 done
@@ -386,12 +413,11 @@ restart_backend() {
   pkill -9 -P "$BACKEND_PID" 2>/dev/null || true
   kill -9 "$BACKEND_PID" 2>/dev/null || true
   wait "$BACKEND_PID" 2>/dev/null || true
-  # Kill orphaned workers re-parented to PID 1 that still hold port 8000
-  lsof_pids 8000 | xargs kill -9 2>/dev/null || true
-  for _i in $(seq 1 10); do
-    [ -z "$(lsof_pids 8000)" ] && break
-    sleep 1
-  done
+  # We just killed BACKEND_PID and its workers by PID above; only reach for the
+  # fd-scanning lsof lookup if port 8000 is somehow still held (orphan re-parented
+  # to PID 1). Probe with /dev/tcp first so the common path never scans SMB.
+  port_in_use 8000 && lsof_pids 8000 | xargs kill -9 2>/dev/null || true
+  wait_port_free 8000 10 || true
   start_backend
   echo "Backend restarted (PID $BACKEND_PID)."
 }
@@ -403,8 +429,12 @@ start_backend
 # Stream the backend's startup-phase log lines to the console so the wait isn't a
 # silent black box (the backend logs to backend.log, not this terminal).
 echo "Waiting for Provisa backend — startup phases:"
-tail -n0 -f "$LOG_DIR/backend.log" 2>/dev/null \
-  | grep --line-buffered -E "startup phase|introspect_tables|Catalog .* not yet ready|Application startup complete" &
+# Wrap the tail|grep pipeline in a subshell so $! is the subshell (the pipeline's
+# parent). `$!` on a bare `tail | grep &` captures grep, not tail — leaking the tail
+# follower as a live child that the final `wait` then blocks on forever. Killing the
+# subshell's children (below) reaps both tail and grep.
+( tail -n0 -f "$LOG_DIR/backend.log" 2>/dev/null \
+  | grep --line-buffered -E "startup phase|introspect_tables|Catalog .* not yet ready|Application startup complete" ) &
 BACKEND_TAIL_PID=$!
 _backend_ok=false
 for i in $(seq 1 90); do
@@ -413,6 +443,7 @@ for i in $(seq 1 90); do
     break
   fi
   if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+    pkill -P "$BACKEND_TAIL_PID" 2>/dev/null || true
     kill "$BACKEND_TAIL_PID" 2>/dev/null || true
     echo "Backend crashed. Last logs:"
     tail -20 "$LOG_DIR/backend.log"
@@ -420,6 +451,7 @@ for i in $(seq 1 90); do
   fi
   sleep 2
 done
+pkill -P "$BACKEND_TAIL_PID" 2>/dev/null || true   # reap the tail+grep inside the subshell
 kill "$BACKEND_TAIL_PID" 2>/dev/null || true
 wait "$BACKEND_TAIL_PID" 2>/dev/null || true
 BACKEND_TAIL_PID=""
@@ -443,7 +475,7 @@ fi
 start_ui() {
   cd "$SCRIPT_DIR/provisa-ui"
   : > "$LOG_DIR/ui.log"
-  VITE_AUTH_ENABLED="${IDP:+true}" npx vite --host 0.0.0.0 --force \
+  VITE_AUTH_ENABLED="${IDP:+true}" npx vite --host 0.0.0.0 \
     >> "$LOG_DIR/ui.log" 2>&1 &
   UI_PID=$!
 }
@@ -476,8 +508,9 @@ restart_ui() {
   echo "Restarting UI with clean Vite cache (Ctrl-U)..."
   kill "$UI_PID" 2>/dev/null || true
   wait "$UI_PID" 2>/dev/null || true
-  # Kill any orphan still holding port 3000
-  lsof_pids 3000 | xargs kill -9 2>/dev/null || true
+  pkill -9 -f "node.*vite" 2>/dev/null || true
+  # Only scan fds (lsof) if the port is still held after the name-based kill above.
+  port_in_use 3000 && lsof_pids 3000 | xargs kill -9 2>/dev/null || true
   # Clear Vite's compiled-config temp and dep-optimization cache so the next
   # start recompiles vite.config.ts and re-bundles deps from scratch.
   rm -rf "$SCRIPT_DIR/provisa-ui/node_modules/.vite-temp" \
@@ -520,6 +553,9 @@ cleanup() {
   trap - EXIT INT TERM
   echo ""
   echo "Shutting down..."
+  # Reap children of the backend-tail subshell (tail+grep) before killing it, else
+  # the `tail -f` follower survives as an orphan.
+  [ -n "${BACKEND_TAIL_PID:-}" ] && pkill -P "$BACKEND_TAIL_PID" 2>/dev/null || true
   kill $UI_PID "${UI_TAIL_PID:-}" "${BACKEND_TAIL_PID:-}" "${KEY_READER_PID:-}" "${VERSION_WATCHER_PID:-}" "$BACKEND_PID" 2>/dev/null || true
   wait $UI_PID "$BACKEND_PID" 2>/dev/null || true
   if [ "$KEEP_DOCKER" = true ]; then
