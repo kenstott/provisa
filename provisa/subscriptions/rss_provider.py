@@ -20,6 +20,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import xml.etree.ElementTree as ET
+
+from defusedxml.ElementTree import fromstring as _safe_fromstring
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import AsyncGenerator
@@ -101,7 +103,7 @@ def _parse_atom(root: ET.Element) -> list[dict]:
 
 def parse_feed(xml_bytes: bytes) -> list[dict]:
     """Parse RSS 2.0 or Atom feed bytes into a list of item dicts."""
-    root = ET.fromstring(xml_bytes)
+    root = _safe_fromstring(xml_bytes)
     tag = _strip_ns(root.tag).lower()
     if tag == "rss":
         return _parse_rss(root)
