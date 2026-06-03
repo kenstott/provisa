@@ -8,10 +8,30 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "@testing-library/react";
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
+
+// react-router 7 ships .mjs under a package.json without "type":"module", so the
+// vmThreads pool can't load it ("Cannot use import statement outside a module").
+// QueryPage's subtree (provisa-tools) only needs these router primitives; stub them.
+// Factory must be self-contained (vi.mock is hoisted above all top-level vars).
+vi.mock("react-router-dom", () => {
+  const passthrough = ({ children }: { children?: React.ReactNode }) =>
+    React.createElement(React.Fragment, null, children);
+  return {
+    useNavigate: () => vi.fn(),
+    useSearchParams: () => [new URLSearchParams(), vi.fn()],
+    useParams: () => ({}),
+    useLocation: () => ({ pathname: "/", search: "", hash: "", state: null }),
+    Link: passthrough,
+    NavLink: passthrough,
+    MemoryRouter: passthrough,
+    Outlet: passthrough,
+  };
+});
 
 let mockLiveQuery = "";
 let mockSchema: unknown = null;
@@ -45,6 +65,14 @@ vi.mock("graphiql-explorer", () => ({
     lastExplorerQuery = props.query;
     return null;
   }),
+}));
+
+// Mock the admin-queries hooks so importing QueryPage doesn't pull the real
+// `.graphql` document module (Vitest's SSR transform can't parse it). The
+// explorer logic under test doesn't depend on domains.
+vi.mock("../../hooks/useAdminQueries", () => ({
+  useDomains: () => ({ domains: [], loading: false, refetch: vi.fn() }),
+  useCompileQuery: () => ({ compileQuery: vi.fn().mockResolvedValue({ queries: [] }), loading: false }),
 }));
 
 // ── Import after mocks ────────────────────────────────────────────────────────
