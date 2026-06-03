@@ -146,6 +146,35 @@ def introspect_tables(
     return result
 
 
+def introspect_column_types(
+    conn: trino.dbapi.Connection,
+    catalog: str,
+    schema: str,
+    table: str,
+) -> dict[str, str]:
+    """Return {column_name: trino_data_type} from INFORMATION_SCHEMA.COLUMNS.
+
+    Trino normalizes each source's column types into its own type system here — unlike
+    constraints, which Trino does not model. Used so config tables inherit types from
+    the source and YAML need not restate `data_type`. Returns {} if the catalog exposes
+    no columns for the table (e.g. the openapi connector, whose columns come from the
+    spec, not a Trino catalog).
+    """
+    cat = _validate_ident(catalog)
+    sch = _escape_literal(schema)
+    tbl = _escape_literal(table)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            f"SELECT column_name, data_type "
+            f"FROM {cat}.information_schema.columns "
+            f"WHERE table_schema = '{sch}' AND table_name = '{tbl}'"
+        )
+        return {row[0]: row[1] for row in cur.fetchall()}
+    except trino.exceptions.TrinoUserError:
+        return {}
+
+
 def introspect_pk_columns(
     conn: trino.dbapi.Connection,
     catalog: str,

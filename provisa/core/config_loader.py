@@ -204,6 +204,23 @@ async def _load_config_in_txn(
                         if col.name in spec_col_map and not col.description:
                             col.description = spec_col_map[col.name].get("description")
 
+        # Inherit column types from Trino's normalized information_schema.columns so
+        # YAML need not restate data_type. Trino owns type normalization (unlike
+        # constraints, which it does not model — those are resolved natively in a later
+        # pass). Only fills columns the YAML left unset; sources with no Trino catalog
+        # columns (openapi, whose columns come from the spec) keep their declared types.
+        if trino_conn is not None and tbl.columns:
+            from provisa.compiler.introspect import introspect_column_types
+            from provisa.compiler.naming import source_to_catalog
+
+            _col_types = introspect_column_types(
+                trino_conn, source_to_catalog(tbl.source_id), tbl.schema_name, tbl.table_name
+            )
+            if _col_types:
+                for _col in tbl.columns:
+                    if not getattr(_col, "data_type", None) and _col.name in _col_types:
+                        _col.data_type = _col_types[_col.name]
+
         await table_repo.upsert(conn, tbl)
         src = sources_by_id.get(tbl.source_id)
         if src and src.type.value == "sqlite" and src.path:
