@@ -1123,6 +1123,57 @@ async def _load_and_build(config_path: str | None = None) -> None:
                     pass
     state.pg_enum_types = build_enum_types(_enum_registry)
 
+    # Second pass — resolve PRIMARY KEYs from each native RDBMS source's own
+    # information_schema. Trino normalizes column types and layers Provisa governance
+    # on top, but its metadata model omits source constraints (there is no
+    # information_schema.table_constraints in a Trino catalog), so PKs are read here
+    # through the source driver directly, now that the source pools are built. The DB
+    # constraint is authoritative — config YAML need not restate is_primary_key.
+    _PK_SOURCE_TYPES = ("postgresql", "mysql", "mariadb", "singlestore", "sqlserver", "redshift")
+    async with state.pg_pool.acquire() as _pk_conn:
+        _pk_rows = await _pk_conn.fetch(
+            "SELECT rt.id, rt.source_id, rt.schema_name, rt.table_name "
+            "FROM registered_tables rt JOIN sources s ON s.id = rt.source_id "
+            "WHERE s.type = ANY($1::text[])",
+            list(_PK_SOURCE_TYPES),
+        )
+        for _pk_t in _pk_rows:
+            if not state.source_pools.has(_pk_t["source_id"]):
+                continue
+            _sch = _pk_t["schema_name"].replace("'", "''")
+            _tbl = _pk_t["table_name"].replace("'", "''")
+            # Standard information_schema constraint query — valid on postgres, mysql,
+            # mariadb, singlestore, sqlserver, redshift. Schema/table are escaped
+            # identifiers from registered_tables (not user input).
+            _pk_sql = (
+                "SELECT kcu.column_name "
+                "FROM information_schema.table_constraints tc "
+                "JOIN information_schema.key_column_usage kcu "
+                "  ON tc.constraint_name = kcu.constraint_name "
+                "  AND tc.table_schema = kcu.table_schema "
+                "WHERE tc.constraint_type = 'PRIMARY KEY' "
+                f"  AND tc.table_schema = '{_sch}' AND tc.table_name = '{_tbl}'"
+            )
+            try:
+                _pk_res = await state.source_pools.execute(_pk_t["source_id"], _pk_sql, None)
+            except Exception:
+                _startup_log.warning(
+                    "PK resolve failed for %s.%s.%s",
+                    _pk_t["source_id"],
+                    _pk_t["schema_name"],
+                    _pk_t["table_name"],
+                    exc_info=True,
+                )
+                continue
+            _pk_cols = [_row[0] for _row in _pk_res.rows]
+            if _pk_cols:
+                await _pk_conn.execute(
+                    "UPDATE table_columns SET is_primary_key = true "
+                    "WHERE table_id = $1 AND column_name = ANY($2::text[])",
+                    _pk_t["id"],
+                    _pk_cols,
+                )
+
     # Reload OpenAPI specs from DB into state (survives hot reloads and restarts)
     async with state.pg_pool.acquire() as conn:
         openapi_rows = await conn.fetch(
