@@ -60,29 +60,39 @@ BigInt = GraphQLScalarType(
 _TYPE_MAP: dict[str, GraphQLScalarType] = {
     # String types
     "varchar": GraphQLString,
+    "text": GraphQLString,  # views cast array/jsonb/json columns to text (see app.py)
     "char": GraphQLString,
+    "bpchar": GraphQLString,  # postgres blank-padded char
+    "name": GraphQLString,  # postgres internal identifier type
     "varbinary": GraphQLString,
     "uuid": GraphQLString,
     # Integer types
     "tinyint": GraphQLInt,
     "smallint": GraphQLInt,
+    "int2": GraphQLInt,  # postgres smallint alias
     "integer": GraphQLInt,
     "int": GraphQLInt,
+    "int4": GraphQLInt,  # postgres integer alias
     # Large integer
     "bigint": BigInt,
+    "int8": BigInt,  # postgres bigint alias
     # Floating point
     "real": GraphQLFloat,
+    "float4": GraphQLFloat,  # postgres real alias
     "double": GraphQLFloat,
+    "float8": GraphQLFloat,  # postgres double precision alias
     "decimal": GraphQLFloat,
     "numeric": GraphQLFloat,
     # Boolean
     "boolean": GraphQLBoolean,
+    "bool": GraphQLBoolean,  # postgres boolean alias
     # Date/time
     "date": Date,
     "time": GraphQLString,
     "time with time zone": GraphQLString,
     "timestamp": DateTime,
     "timestamp with time zone": DateTime,
+    "timestamptz": DateTime,  # postgres timestamp with time zone alias
     # JSON
     "json": JSONScalar,
     "jsonb": JSONScalar,
