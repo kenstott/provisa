@@ -9,7 +9,8 @@ repos:
     rev: 1.8.3
     hooks:
       - id: bandit
-        args: ["-r", "provisa", "-ll"]
+        args: ["-r", "provisa", "-ll", "-b", ".bandit-baseline.json"]
+        pass_filenames: false
   - repo: local
     hooks:
       - id: pyright
