@@ -26,6 +26,53 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/.logs"
 mkdir -p "$LOG_DIR"
 
+# Print PIDs holding a TCP port. macOS ships no `timeout` binary and `lsof -i`
+# can block while scanning a process whose fds are stuck on a hung mount — such
+# an lsof enters uninterruptible (U) state and ignores SIGKILL, so we must NOT
+# `wait` on it. Poll for completion up to ~3s, then move on (empty on timeout),
+# leaking the stuck lsof rather than hanging the script.
+lsof_pids() {
+  local port="$1" tmp lp _w
+  tmp=$(mktemp 2>/dev/null) || tmp="${TMPDIR:-/tmp}/.provisa-lsof.$$"
+  lsof -bnP -i ":$port" -t >"$tmp" 2>/dev/null &
+  lp=$!
+  for _w in $(seq 1 6); do
+    kill -0 "$lp" 2>/dev/null || break
+    sleep 0.5
+  done
+  kill -9 "$lp" 2>/dev/null || true   # may be uninterruptible; never wait on it
+  cat "$tmp" 2>/dev/null || true
+  rm -f "$tmp" 2>/dev/null || true
+}
+
+# True if the given path lives on an exFAT volume (where macOS AppleDouble "._*"
+# files are created and break Docker build contexts). APFS/HFS+ don't need cleanup.
+is_exfat() {
+  case "$(uname -s)" in
+    Darwin)
+      local dev
+      dev=$(df "$1" 2>/dev/null | awk 'NR==2 {print $1}')
+      [ -n "$dev" ] && diskutil info "$dev" 2>/dev/null | grep -qiE "Personality:.*ExFAT|Bundle\): *exfat"
+      ;;
+    *)
+      # Linux/BSD: GNU stat reports the filesystem type name directly.
+      [ "$(stat -f -c %T "$1" 2>/dev/null)" = "exfat" ]
+      ;;
+  esac
+}
+
+# Singleton: a second copy of this script would share ~/.provisa-server-version,
+# and each instance's version watcher cross-triggers backend restarts in the others
+# (restart storm). Kill any previous instance and the process group it owns
+# (backend + UI + watchers) before starting.
+for _other in $(pgrep -f "start-ui-install.sh" 2>/dev/null); do
+  [ "$_other" = "$$" ] && continue
+  echo "Stopping previous start-ui-install.sh instance (PID $_other) and its services..."
+  kill -CONT "-$_other" 2>/dev/null || true   # un-stop the process group if suspended
+  kill -9 "-$_other" 2>/dev/null || true       # kill whole group: script + uvicorn + vite + watchers
+  kill -9 "$_other" 2>/dev/null || true         # and the leader directly, if not a group leader
+done
+
 # Download GovData JAR from GitHub Packages if not present
 GOVDATA_JAR="$SCRIPT_DIR/lib/calcite-govdata-all.jar"
 if [ ! -f "$GOVDATA_JAR" ]; then
@@ -86,10 +133,14 @@ if [ "$DEMO" = true ]; then
   fi
 fi
 
-# Remove macOS AppleDouble metadata files that break Docker builds on exFAT volumes
-for _build_ctx in "$SCRIPT_DIR" "$SCRIPT_DIR/zaychik" "$SCRIPT_DIR/demo/graphql_server"; do
-  [ -d "$_build_ctx" ] && find "$_build_ctx" -name "._*" -not -path "*/.git/*" -not -path "*/.claude/*" -not -path "*/node_modules/*" -maxdepth 5 -delete 2>/dev/null || true
-done
+# Remove macOS AppleDouble metadata files that break Docker builds — only on exFAT
+# volumes, where they're created. Skips the (slow) recursive find on APFS/HFS+.
+if is_exfat "$SCRIPT_DIR"; then
+  echo "exFAT volume detected — clearing AppleDouble (._*) files from build contexts..."
+  for _build_ctx in "$SCRIPT_DIR" "$SCRIPT_DIR/zaychik" "$SCRIPT_DIR/demo/graphql_server"; do
+    [ -d "$_build_ctx" ] && find "$_build_ctx" -name "._*" -not -path "*/.git/*" -not -path "*/.claude/*" -not -path "*/node_modules/*" -maxdepth 5 -delete 2>/dev/null || true
+  done
+fi
 
 if [ "$DEMO" = true ]; then
   echo "Starting Docker Compose services (core + observability + demo)..."
@@ -260,22 +311,27 @@ fi
 # uvicorn --reload spawns a reloader parent + a multiprocessing-forked worker child.
 # The worker has a different cmdline so pattern-kill on "uvicorn main:app" misses it.
 # If the reloader is already dead the worker is re-parented to PID 1 — must kill by port.
-lsof -i :3000 -P -t 2>/dev/null | xargs kill -9 2>/dev/null || true
-_UVICORN_PID=$(pgrep -f "uvicorn main:app.*--port 8000" 2>/dev/null || true)
-if [ -n "$_UVICORN_PID" ]; then
-  pkill -9 -P "$_UVICORN_PID" 2>/dev/null || true
-  kill -9 "$_UVICORN_PID" 2>/dev/null || true
-  for _i in $(seq 1 10); do
-    kill -0 "$_UVICORN_PID" 2>/dev/null || break
-    sleep 1
-  done
-fi
-# Kill any orphaned worker still holding port 8000 (re-parented to PID 1 after reloader dies)
-lsof -i :8000 -P -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+echo -n "Stopping any previous UI/backend processes (ports 3000/8000)"
+# A prior run suspended with Ctrl-Z leaves its backend + reload worker STOPPED
+# (T state) but still bound to port 8000. SIGCONT first so they can actually
+# die, then kill every reloader AND its worker children (there may be several).
+pkill -CONT -f "uvicorn main:app" 2>/dev/null || true
+for _pid in $(pgrep -f "uvicorn main:app" 2>/dev/null); do
+  pkill -9 -P "$_pid" 2>/dev/null || true   # multiprocessing worker children
+  kill -9 "$_pid" 2>/dev/null || true       # the reloader itself
+done
+# Un-stop and kill any prior Vite/UI process group holding port 3000.
+pkill -CONT -f "node.*vite" 2>/dev/null || true
+lsof_pids 3000 | xargs kill -9 2>/dev/null || true
+# With the stopped processes gone, lsof no longer hangs; sweep any straggler
+# (e.g. a reload worker re-parented to PID 1) still holding port 8000.
+lsof_pids 8000 | xargs kill -9 2>/dev/null || true
 for _i in $(seq 1 10); do
-  lsof -i :8000 -P -t 2>/dev/null | grep -q . || break
+  [ -z "$(lsof_pids 8000)" ] && break
+  echo -n "."
   sleep 1
 done
+echo " OK"
 
 BACKEND_PID=""
 
@@ -331,9 +387,9 @@ restart_backend() {
   kill -9 "$BACKEND_PID" 2>/dev/null || true
   wait "$BACKEND_PID" 2>/dev/null || true
   # Kill orphaned workers re-parented to PID 1 that still hold port 8000
-  lsof -i :8000 -P -t 2>/dev/null | xargs kill -9 2>/dev/null || true
+  lsof_pids 8000 | xargs kill -9 2>/dev/null || true
   for _i in $(seq 1 10); do
-    lsof -i :8000 -P -t 2>/dev/null | grep -q . || break
+    [ -z "$(lsof_pids 8000)" ] && break
     sleep 1
   done
   start_backend
@@ -344,30 +400,39 @@ trap restart_backend USR1
 echo "Starting Provisa backend on port 8000..."
 start_backend
 
-echo -n "Waiting for Provisa backend"
+# Stream the backend's startup-phase log lines to the console so the wait isn't a
+# silent black box (the backend logs to backend.log, not this terminal).
+echo "Waiting for Provisa backend — startup phases:"
+tail -n0 -f "$LOG_DIR/backend.log" 2>/dev/null \
+  | grep --line-buffered -E "startup phase|introspect_tables|Catalog .* not yet ready|Application startup complete" &
+BACKEND_TAIL_PID=$!
+_backend_ok=false
 for i in $(seq 1 90); do
   if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-    echo " OK (PID $BACKEND_PID)"
+    _backend_ok=true
     break
   fi
   if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
-    echo " FAILED"
+    kill "$BACKEND_TAIL_PID" 2>/dev/null || true
     echo "Backend crashed. Last logs:"
     tail -20 "$LOG_DIR/backend.log"
     exit 1
   fi
-  if [ "$i" -eq 90 ]; then
-    echo " TIMEOUT"
-    echo "Backend did not become healthy. Last logs:"
-    tail -20 "$LOG_DIR/backend.log"
-    exit 1
-  fi
-  echo -n "."
   sleep 2
 done
+kill "$BACKEND_TAIL_PID" 2>/dev/null || true
+wait "$BACKEND_TAIL_PID" 2>/dev/null || true
+BACKEND_TAIL_PID=""
+if [ "$_backend_ok" = true ]; then
+  echo "Backend healthy (PID $BACKEND_PID)"
+else
+  echo "Backend did not become healthy. Last logs:"
+  tail -20 "$LOG_DIR/backend.log"
+  exit 1
+fi
 
 echo "Starting Provisa UI on port 3000..."
-find "$SCRIPT_DIR/provisa-ui" -name "._*" -delete 2>/dev/null || true
+is_exfat "$SCRIPT_DIR/provisa-ui" && find "$SCRIPT_DIR/provisa-ui" -name "._*" -delete 2>/dev/null || true
 # Load nvm and switch to the Node version specified in .nvmrc (requires Node 20.19+ or 22+)
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 # shellcheck disable=SC1091
@@ -375,24 +440,58 @@ export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 if command -v nvm >/dev/null 2>&1; then
   nvm use 2>/dev/null || nvm use 22 2>/dev/null || true
 fi
-cd "$SCRIPT_DIR/provisa-ui"
-VITE_AUTH_ENABLED="${IDP:+true}" npx vite --host 0.0.0.0 --force &
-UI_PID=$!
+start_ui() {
+  cd "$SCRIPT_DIR/provisa-ui"
+  : > "$LOG_DIR/ui.log"
+  VITE_AUTH_ENABLED="${IDP:+true}" npx vite --host 0.0.0.0 --force \
+    >> "$LOG_DIR/ui.log" 2>&1 &
+  UI_PID=$!
+}
 
-echo -n "  Waiting for UI"
-for i in $(seq 1 15); do
-  if curl -sf http://localhost:3000 > /dev/null 2>&1; then
-    echo " OK (PID $UI_PID)"
-    break
-  fi
-  if ! kill -0 $UI_PID 2>/dev/null; then
-    echo " FAILED"
-    echo "UI dev server crashed."
-    exit 1
-  fi
-  echo -n "."
-  sleep 1
-done
+# Stream Vite's build output live while polling port 3000. Returns 0 when the
+# dev server answers, 1 if the process died, 2 on timeout (still building).
+wait_for_ui() {
+  echo "Building UI with Vite (live output below)..."
+  tail -n +1 -f "$LOG_DIR/ui.log" 2>/dev/null &
+  UI_TAIL_PID=$!
+  local rc=2
+  for _i in $(seq 1 60); do
+    if curl -sf http://localhost:3000 > /dev/null 2>&1; then rc=0; break; fi
+    if ! kill -0 "$UI_PID" 2>/dev/null; then rc=1; break; fi
+    sleep 1
+  done
+  kill "$UI_TAIL_PID" 2>/dev/null || true
+  wait "$UI_TAIL_PID" 2>/dev/null || true
+  UI_TAIL_PID=""
+  case "$rc" in
+    0) echo "UI ready on http://localhost:3000 (PID $UI_PID)" ;;
+    1) echo "UI dev server crashed — see $LOG_DIR/ui.log" ;;
+    2) echo "UI still building after 60s — continuing; see $LOG_DIR/ui.log" ;;
+  esac
+  return "$rc"
+}
+
+restart_ui() {
+  echo ""
+  echo "Restarting UI with clean Vite cache (Ctrl-U)..."
+  kill "$UI_PID" 2>/dev/null || true
+  wait "$UI_PID" 2>/dev/null || true
+  # Kill any orphan still holding port 3000
+  lsof_pids 3000 | xargs kill -9 2>/dev/null || true
+  # Clear Vite's compiled-config temp and dep-optimization cache so the next
+  # start recompiles vite.config.ts and re-bundles deps from scratch.
+  rm -rf "$SCRIPT_DIR/provisa-ui/node_modules/.vite-temp" \
+         "$SCRIPT_DIR/provisa-ui/node_modules/.vite"
+  echo "Vite cache cleared."
+  start_ui
+  wait_for_ui || true
+}
+trap restart_ui USR2
+
+start_ui
+_ui_rc=0
+wait_for_ui || _ui_rc=$?
+[ "$_ui_rc" -eq 1 ] && exit 1
 
 echo ""
 if [ "$DEMO" = true ]; then
@@ -415,13 +514,13 @@ else
   echo "No demo services started. Use --demo to include petstore-mock, graphql-demo, and SQLite ETL."
 fi
 echo ""
-echo "Press Ctrl+C to stop. Press Ctrl+R to restart backend. Run 'touch ~/.provisa-server-version' to restart after Python edits."
+echo "Press Ctrl+C to stop (and tear down Docker). Press Ctrl+E to stop the Python + UI servers but leave Docker running. Press Ctrl+R to restart backend. Press Ctrl+U to clear the Vite cache and restart the UI. Run 'touch ~/.provisa-server-version' to restart after Python edits."
 
 cleanup() {
   trap - EXIT INT TERM
   echo ""
   echo "Shutting down..."
-  kill $UI_PID "${KEY_READER_PID:-}" "${VERSION_WATCHER_PID:-}" "$BACKEND_PID" 2>/dev/null || true
+  kill $UI_PID "${UI_TAIL_PID:-}" "${BACKEND_TAIL_PID:-}" "${KEY_READER_PID:-}" "${VERSION_WATCHER_PID:-}" "$BACKEND_PID" 2>/dev/null || true
   wait $UI_PID "$BACKEND_PID" 2>/dev/null || true
   if [ "$KEEP_DOCKER" = true ]; then
     echo "Leaving Docker Compose services running (--keep-docker)."
@@ -436,11 +535,25 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# Ctrl-E: stop the Python + UI servers but leave the Docker services running.
+# Sets KEEP_DOCKER so the EXIT trap (cleanup) skips `docker compose down`.
+stop_servers_keep_docker() {
+  echo ""
+  echo "Stopping Python + UI servers (Ctrl-E), leaving Docker services running..."
+  KEEP_DOCKER=true
+  exit 0
+}
+trap stop_servers_keep_docker HUP
+
 _key_reader() {
   local key
   while true; do
     IFS= read -rsn1 -t 1 key </dev/tty 2>/dev/null || continue
-    [[ "$key" == $'\x12' ]] && kill -USR1 $$ 2>/dev/null || true
+    case "$key" in
+      $'\x12') kill -USR1 $$ 2>/dev/null || true ;;  # Ctrl-R: restart backend
+      $'\x15') kill -USR2 $$ 2>/dev/null || true ;;  # Ctrl-U: clear Vite cache + restart UI
+      $'\x05') kill -HUP  $$ 2>/dev/null || true ;;  # Ctrl-E: stop servers, keep Docker
+    esac
   done
 }
 _key_reader &
