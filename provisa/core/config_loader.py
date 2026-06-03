@@ -117,7 +117,10 @@ async def _load_config_in_txn(
     # Serialize concurrent config loads to prevent deadlocks when multiple
     # processes (e.g. parallel test app lifespans) upsert the same rows.
     await conn.execute("SELECT pg_advisory_xact_lock(7261748190)")
-    _SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel"]
+    # __provisa__ is the synthetic source for user-created views (and other
+    # UI-registered provisa-managed tables) — preserve them across config reloads
+    # in replace mode; they are not declared in the YAML config.
+    _SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel", "__provisa__"]
     _SYSTEM_DOMAIN_IDS = ["", "meta", "ops"]
     if replace:
         new_source_ids = list({src.id for src in config.sources} | set(_SYSTEM_SOURCE_IDS))
