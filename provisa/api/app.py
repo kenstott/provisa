@@ -1611,57 +1611,24 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         # if _seed_ops_trino failed at startup because the otel catalog wasn't ready yet.
         _seed_ops_trino(state.trino_conn, getattr(state, "otel_snapshot_retention_hours", None))
 
-        # Create __provisa__ views in Trino before introspection so column metadata is available
+        # Register user-created views (source __provisa__) for inline expansion — the
+        # same mechanism as config views. Their references resolve to the synthetic
+        # __provisa__ source, which is not a Trino catalog, so they are inlined into
+        # queries (rewritten to physical refs below, then expanded at query time by
+        # expand_views / expand_view_refs) rather than materialized as physical Trino
+        # views (which would require a writable view catalog and physicalized SQL).
         import logging as _prov_log
 
         _prov_logger = _prov_log.getLogger(__name__)
-        _view_catalog = os.environ.get("PROVISA_VIEW_CATALOG", "memory")
-        _prov_logger.warning("[PROVISA-VIEW] Starting view creation, catalog=%s", _view_catalog)
         try:
             _view_rows = await _pg.fetch(
-                "SELECT schema_name, table_name, view_sql FROM registered_tables"
+                "SELECT table_name, view_sql FROM registered_tables"
                 " WHERE source_id = '__provisa__' AND view_sql IS NOT NULL"
             )
-            _prov_logger.warning("[PROVISA-VIEW] Query returned %d rows", len(_view_rows))
             for _vr in _view_rows:
-                _schema = _vr["schema_name"]
-                _name = _vr["table_name"]
-                _sql = _vr["view_sql"].rstrip().rstrip(";")
-                _fqn = f"{_view_catalog}.{_schema}.{_name}"
-                _prov_logger.warning(
-                    "[PROVISA-VIEW] Processing: %s (schema=%s, table=%s)", _fqn, _schema, _name
-                )
-                try:
-                    _prov_logger.warning(
-                        "[PROVISA-VIEW] Step 1: CREATE SCHEMA IF NOT EXISTS %s.%s",
-                        _view_catalog,
-                        _schema,
-                    )
-                    _cur = state.trino_conn.cursor()
-                    _cur.execute(f"CREATE SCHEMA IF NOT EXISTS {_view_catalog}.{_schema}")
-                    _res1 = _cur.fetchall()
-                    _prov_logger.warning("[PROVISA-VIEW] Step 1 result: %s", _res1)
-
-                    _prov_logger.warning("[PROVISA-VIEW] Step 2: DROP VIEW IF EXISTS %s", _fqn)
-                    _cur = state.trino_conn.cursor()
-                    _cur.execute(f"DROP VIEW IF EXISTS {_fqn}")
-                    _res2 = _cur.fetchall()
-                    _prov_logger.warning("[PROVISA-VIEW] Step 2 result: %s", _res2)
-
-                    _prov_logger.warning("[PROVISA-VIEW] Step 3: CREATE VIEW %s", _fqn)
-                    _cur = state.trino_conn.cursor()
-                    _cur.execute(f"CREATE VIEW {_fqn} AS {_sql}")
-                    _res3 = _cur.fetchall()
-                    _prov_logger.warning("[PROVISA-VIEW] Step 3 result: %s", _res3)
-                    _prov_logger.warning("[PROVISA-VIEW] Successfully created view: %s", _fqn)
-                except Exception as _e:
-                    _prov_logger.warning(
-                        "[PROVISA-VIEW] Failed to create %s: %s", _fqn, str(_e), exc_info=True
-                    )
+                state.view_sql_map[_vr["table_name"]] = _vr["view_sql"].rstrip().rstrip(";")
         except Exception as _e:
-            _prov_logger.warning(
-                "[PROVISA-VIEW] Error querying views from DB: %s", str(_e), exc_info=True
-            )
+            _prov_logger.warning("Failed to load user views for inline expansion: %s", _e)
 
         # Introspect Trino metadata
         kafka_physical = getattr(state, "kafka_table_physical", {})

@@ -304,6 +304,13 @@ async def sql_endpoint(
             from provisa.api_source.trino_cache import rewrite_all_from_cache
 
             _qualified = qualify_with_catalogs(governed_physical, ctx)
+            # Inline non-materialized views — their refs carry the synthetic '__provisa__'
+            # source which is not a Trino catalog; expand into the view's defining SQL
+            # (same as the GraphQL path's expand_views).
+            if state.view_sql_map:
+                from provisa.compiler.view_expand import expand_view_refs
+
+                _qualified = expand_view_refs(_qualified, state.view_sql_map)
             _rewrites, _values_ctes = await _materialize_api_to_trino_cache(_qualified, None, state)
             for _tn, _entry in _values_ctes.items():
                 _qualified = build_values_cte_sql(_qualified, _tn, _entry)
