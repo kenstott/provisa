@@ -347,6 +347,52 @@ async def sql_endpoint(
     return _format_response(result.rows, columns, "sql", output_format)
 
 
+def _check_qualifier_binding(tree) -> str | None:
+    """Return an error if any column's table qualifier binds to no FROM relation.
+
+    sqlglot accepts undefined aliases (e.g. SELECT u.name with no `u` table) as
+    valid syntax. Collect every table name, table alias, CTE name and derived-table
+    alias across the tree, then flag column qualifiers that match none of them.
+    Comparison is case-insensitive (unquoted SQL identifiers fold case), and the
+    binding set is a tree-wide over-approximation, so only genuinely-undefined
+    qualifiers are reported.
+    """
+    from sqlglot import exp
+
+    bindings: set[str] = set()
+    for t in tree.find_all(exp.Table):
+        bindings.add(t.alias_or_name.lower())
+    for cte in tree.find_all(exp.CTE):
+        bindings.add(cte.alias_or_name.lower())
+    for sub in tree.find_all(exp.Subquery):
+        if sub.alias:
+            bindings.add(sub.alias.lower())
+
+    unresolved: set[str] = set()
+    schema_qualified: set[str] = set()
+    for col in tree.find_all(exp.Column):
+        # A column carrying a schema/catalog part (schema.table.column) embeds the
+        # semantic domain prefix, which is not rewritten in column position and will
+        # not match the physical relation. Columns must use the bare table name.
+        if col.args.get("db"):
+            schema_qualified.add(col.sql(dialect="postgres"))
+        elif col.table and col.table.lower() not in bindings:
+            unresolved.add(col.table)
+    if schema_qualified:
+        names = ", ".join(sorted(schema_qualified))
+        return (
+            f"Schema-qualified column reference(s): {names}. Qualify columns with the "
+            "bare table name only (e.g. inquiries.user_id), never the domain/schema prefix."
+        )
+    if unresolved:
+        names = ", ".join(sorted(unresolved))
+        return (
+            f"Unknown table qualifier(s): {names}. Every column must be qualified by a "
+            "table name that appears in the FROM/JOIN clauses (no aliases)."
+        )
+    return None
+
+
 class NLToSQLRequest(BaseModel):
     question: str
     role: str = "admin"
@@ -515,7 +561,14 @@ async def nl_to_sql_endpoint(
         "3. JOINs: use ONLY the 'Approved JOIN' conditions listed above, character for character. "
         "Never write a JOIN ON condition that is not in the list above.\n"
         "4. Include a LIMIT clause (default 100).\n"
-        "5. Output only the SQL statement."
+        "5. Never use table aliases. In SELECT, ON, and WHERE, qualify every column "
+        "with the BARE table name only — never the domain/schema prefix. Use "
+        "table.column exactly as written in the approved joins (e.g. inquiries.user_id "
+        "and shelter__animalBreeds.name — NOT pet_store.inquiries.user_id, NOT ab.name). "
+        "The domain prefix (pet_store., shelter.) is used ONLY in FROM/JOIN table refs, "
+        "never in a column reference. A FROM/JOIN clause must not introduce an alias "
+        "either (write 'JOIN pet_store.pets ON ...', never 'JOIN pet_store.pets p ON ...').\n"
+        "6. Output only the SQL statement."
     )
 
     _sql_gen = ProviasLLMClient("sql_generation")
@@ -543,9 +596,16 @@ async def nl_to_sql_endpoint(
 
         # Validate syntax
         try:
-            sqlglot.parse_one(last_sql, read="postgres")
+            tree = sqlglot.parse_one(last_sql, read="postgres")
         except Exception as exc:
             last_error = str(exc)
+            continue
+
+        # Validate column qualifiers bind to a FROM table/alias (sqlglot parses
+        # undefined aliases as valid syntax; catch them so the retry self-corrects).
+        binding_error = _check_qualifier_binding(tree)
+        if binding_error:
+            last_error = binding_error
             continue
 
         # Validate governance (column names, join conditions, table access)
