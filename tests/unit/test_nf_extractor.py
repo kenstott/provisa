@@ -13,7 +13,22 @@
 
 import pytest
 
-from provisa.compiler.nf_extractor import extract_nf_args
+from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
+
+
+def test_find_api_tables_surfaces_inlined_view_tables():
+    """Regression: a view inlines API/graphql_remote tables in its body. The Cypher
+    path must detect them from the EXPANDED SQL (not the outer view-name-only SQL) so
+    it routes through the remote-materialization path instead of plain Trino."""
+    expanded = (
+        'SELECT n FROM ('
+        '  SELECT a.id FROM "inquiries_sqlite"."default"."inquiries" a'
+        '  JOIN "graphql_demo"."graphql_remote"."shelter__animalBreeds" b ON a.x = b.y'
+        ') AS n'
+    )
+    names = find_api_table_names(expanded)
+    assert "shelter__animalBreeds" in names
+    assert "inquiries" in names
 
 
 def test_nf_prefix_extracted():

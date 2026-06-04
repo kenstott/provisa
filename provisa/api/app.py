@@ -1515,6 +1515,27 @@ async def _load_graphql_remote_sources_from_db() -> None:
         log.warning("Failed to load graphql_remote sources from DB", exc_info=True)
 
 
+def _assert_domain_table_unique(tables: list[dict]) -> None:
+    """Enforce (domain_id, table_name) uniqueness across all registered tables.
+
+    The DB constraint only guarantees uniqueness per (source_id, schema_name, table_name),
+    but every higher layer (GraphQL, Cypher, view SQL) addresses a table as domain.table —
+    so two same-named tables in one domain make that reference ambiguous. Fail loud rather
+    than build an unresolvable schema; a manual DB/config edit must be corrected upstream.
+    """
+    locs: dict[tuple[str, str], list[str]] = {}
+    for t in tables:
+        locs.setdefault((t["domain_id"], t["table_name"]), []).append(
+            f"{t['source_id']}.{t['schema_name']}"
+        )
+    dupes = {k: v for k, v in locs.items() if len(v) > 1}
+    if dupes:
+        detail = "; ".join(
+            f"{dom}.{tbl} ← {sorted(srcs)}" for (dom, tbl), srcs in sorted(dupes.items())
+        )
+        raise RuntimeError(f"Duplicate domain+table registration (must be unique): {detail}")
+
+
 async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     """Re-introspect Trino and rebuild schemas for all roles from current DB state.
 
@@ -1552,6 +1573,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
     async with state.pg_pool.acquire() as conn:
         _pg = cast(asyncpg.Connection, conn)
         tables = await _fetch_tables(_pg)
+        _assert_domain_table_unique(tables)
         relationships = await _fetch_relationships(_pg)
 
         # Apply schema visibility filters (schema.include_ops / schema.include_metrics)
@@ -2000,11 +2022,18 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
 
     # Compile inline view SQLs now that a context is available
     if state.view_sql_map and state.contexts:
-        from provisa.compiler.sql_gen import rewrite_semantic_to_trino_physical
+        from provisa.compiler.sql_gen import (
+            normalize_table_refs,
+            rewrite_semantic_to_trino_physical,
+        )
 
         ctx = next(iter(state.contexts.values()))
+        # User-authored view SQL uses unquoted semantic refs (e.g. pet_store.inquiries).
+        # rewrite_semantic_to_trino_physical only literal-matches quoted refs, so normalize
+        # first (sqlglot parse-based) to resolve domain-qualified names to quoted physical
+        # refs the Trino rewrite can catalog-qualify.
         state.view_sql_map = {
-            name: rewrite_semantic_to_trino_physical(sql, ctx)
+            name: rewrite_semantic_to_trino_physical(normalize_table_refs(sql, ctx), ctx)
             for name, sql in state.view_sql_map.items()
         }
 

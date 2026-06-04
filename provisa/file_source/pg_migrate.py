@@ -41,6 +41,37 @@ def _to_pg_type(sqlite_declared: str) -> str:
     return _PG_TYPE_MAP.get(sql_type, "TEXT")
 
 
+# SQL type (from _sqlite_type_to_sql) → Trino type name, matching what Trino's
+# information_schema.columns reports for the migrated PG table. Used to persist
+# column types from the authoritative SQLite schema instead of introspecting
+# Trino — the migration runs inside the config-load transaction, so Trino (a
+# separate JDBC connection) cannot see the uncommitted PG table.
+_TRINO_TYPE_MAP = {
+    "VARCHAR": "varchar",
+    "BIGINT": "bigint",
+    "INTEGER": "integer",
+    "SMALLINT": "smallint",
+    "DOUBLE": "double",
+    "REAL": "real",
+    "BOOLEAN": "boolean",
+    "TIMESTAMP": "timestamp(6)",
+    "DATE": "date",
+    "VARBINARY": "varbinary",
+}
+
+
+def sqlite_column_trino_types(source_path: str, sqlite_table: str) -> dict[str, str]:
+    """Return {column_name: trino_type} for a SQLite table from its declared schema."""
+    sq = sqlite3.connect(source_path)
+    try:
+        info = sq.execute(f'PRAGMA table_info("{sqlite_table}")').fetchall()
+    finally:
+        sq.close()
+    return {
+        row[1]: _TRINO_TYPE_MAP.get(_sqlite_type_to_sql(row[2]), "varchar") for row in info
+    }
+
+
 async def migrate_sqlite_table(
     source_path: str,
     sqlite_table: str,

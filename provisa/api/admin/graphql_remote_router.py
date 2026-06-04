@@ -97,6 +97,18 @@ def _build_object_fields(raw_fields: list) -> list:
     return result
 
 
+# Mapper provisa type → Trino type. Stored as table_columns.data_type so the type
+# is valid for BOTH the graphql synth path (introspect._GQL_TYPE_MAP keys on these
+# Trino names) and the SQL-catalog path used when a view references these columns.
+_PROVISA_TO_TRINO_TYPE = {
+    "text": "varchar",
+    "integer": "integer",
+    "numeric": "double",
+    "boolean": "boolean",
+    "jsonb": "json",
+}
+
+
 async def _upsert_tables_to_semantic_layer(
     source_id: str,
     domain_id: str,
@@ -123,6 +135,7 @@ async def _upsert_tables_to_semantic_layer(
                         name=c["name"],
                         visible_to=[],
                         description=c.get("description"),
+                        data_type=_PROVISA_TO_TRINO_TYPE.get(c.get("type") or "text", "varchar"),
                         object_fields=_build_object_fields(c.get("gql_object_fields") or []),
                     )
                     for c in t.get("columns", [])

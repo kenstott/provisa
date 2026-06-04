@@ -152,6 +152,44 @@ class TestSqliteTypeMapping:
 
 
 # ---------------------------------------------------------------------------
+# TestSqliteColumnTrinoTypes
+# ---------------------------------------------------------------------------
+
+
+class TestSqliteColumnTrinoTypes:
+    """Regression: column types must be derivable from the SQLite schema alone.
+
+    The config-load transaction migrates SQLite into PG and then introspects
+    types via Trino — but Trino (a separate JDBC connection) cannot see the
+    uncommitted PG table, so on a first boot every type came back null and
+    startup crashed. The SQLite schema is the authoritative fallback-free source.
+    """
+
+    def test_maps_each_column_to_trino_type(self, sqlite_db: Path):
+        from provisa.file_source.pg_migrate import sqlite_column_trino_types
+
+        types = sqlite_column_trino_types(str(sqlite_db), "orders")
+        assert types == {
+            "id": "bigint",
+            "customer_id": "bigint",
+            "amount": "double",
+            "status": "varchar",
+        }
+
+    def test_boolean_and_text(self, sqlite_db: Path):
+        from provisa.file_source.pg_migrate import sqlite_column_trino_types
+
+        types = sqlite_column_trino_types(str(sqlite_db), "customers")
+        assert types == {"id": "bigint", "name": "varchar", "active": "boolean"}
+
+    def test_no_null_types(self, sqlite_db: Path):
+        from provisa.file_source.pg_migrate import sqlite_column_trino_types
+
+        types = sqlite_column_trino_types(str(sqlite_db), "orders")
+        assert all(v for v in types.values())
+
+
+# ---------------------------------------------------------------------------
 # TestArrowTypeMapping
 # ---------------------------------------------------------------------------
 

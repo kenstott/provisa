@@ -338,7 +338,9 @@ async def cypher_query(
     # Route through REST+cache whenever any table is API-backed, even with no nf_args.
     # This ensures JSONB columns (exposed as json by Trino's PG connector) are always
     # accessed as VARCHAR from the Trino cache, avoiding INVALID_CAST_ARGUMENT errors.
-    _api_table_names = find_api_table_names(governed_sql)
+    # Scan the expanded exec_sql, not governed_sql: a view's body inlines API/graphql_remote
+    # tables that the outer (view-name-only) governed_sql never names.
+    _api_table_names = find_api_table_names(clean_exec_sql)
     _has_api_tables = any(_lookup_api_endpoint(state, tn) is not None for tn in _api_table_names)
     _has_gql_remote = any(
         _lookup_gql_remote_table(state, tn) is not None for tn in _api_table_names

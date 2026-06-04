@@ -59,6 +59,47 @@ async def _fill_null_column_types(
         )
 
 
+# PG information_schema.data_type → Trino type name. Mirrors what Trino's
+# information_schema.columns reports for a PG-backed catalog, so types read via
+# the (same-connection, uncommitted-visible) asyncpg path match the Trino path.
+_PG_TO_TRINO_TYPE = {
+    "text": "varchar",
+    "character varying": "varchar",
+    "bigint": "bigint",
+    "integer": "integer",
+    "smallint": "smallint",
+    "double precision": "double",
+    "real": "real",
+    "boolean": "boolean",
+    "json": "json",
+    "jsonb": "json",
+    "date": "date",
+    "timestamp without time zone": "timestamp(6)",
+    "timestamp with time zone": "timestamp(6) with time zone",
+    "bytea": "varbinary",
+    "numeric": "decimal",
+}
+
+
+async def _pg_column_trino_types(
+    conn: asyncpg.Connection, pg_schema: str, pg_table: str
+) -> dict[str, str]:
+    """Return {column_name: trino_type} for a PG table read over the same asyncpg
+    connection — sees uncommitted writes (e.g. an OpenAPI cache table just created
+    in this transaction), which a separate Trino JDBC connection cannot."""
+    rows = await conn.fetch(
+        "SELECT column_name, data_type FROM information_schema.columns "
+        "WHERE table_schema=$1 AND table_name=$2",
+        pg_schema,
+        pg_table,
+    )
+    return {
+        r["column_name"]: _PG_TO_TRINO_TYPE[r["data_type"]]
+        for r in rows
+        if r["data_type"] in _PG_TO_TRINO_TYPE
+    }
+
+
 def _normalize_op_id(s: str) -> str:
     return re.sub(r"[_-]", "", s).lower()
 
@@ -235,11 +276,24 @@ async def _load_config_in_txn(
         await table_repo.upsert(conn, tbl)
         src = sources_by_id.get(tbl.source_id)
         if src and src.type.value == "sqlite" and src.path:
-            from provisa.file_source.pg_migrate import migrate_sqlite_table
+            from provisa.file_source.pg_migrate import (
+                migrate_sqlite_table,
+                sqlite_column_trino_types,
+            )
 
             try:
                 await migrate_sqlite_table(
                     src.path, tbl.table_name, conn, tbl.schema_name, tbl.table_name
+                )
+                # The migration runs inside this transaction, so the introspect-from-Trino
+                # pass below (a separate JDBC connection) cannot see the uncommitted PG
+                # table. The SQLite schema is authoritative — fill null types from it.
+                await _fill_null_column_types(
+                    conn,
+                    tbl.source_id,
+                    tbl.schema_name,
+                    tbl.table_name,
+                    sqlite_column_trino_types(src.path, tbl.table_name),
                 )
             except Exception as _e:
                 log.warning(
@@ -379,6 +433,20 @@ async def _load_config_in_txn(
                             "object": "json",
                             "jsonb": "json",
                         }
+                        # The cache table (built above, in this transaction) is
+                        # authoritative for response columns — including map-typed
+                        # responses (e.g. status→count) the spec schema has no
+                        # properties for. Read it over this same connection, which
+                        # sees the uncommitted table; the Trino pass below cannot.
+                        await _fill_null_column_types(
+                            conn,
+                            tbl.source_id,
+                            tbl.schema_name,
+                            tbl.table_name,
+                            await _pg_column_trino_types(conn, tbl.schema_name, tbl.table_name),
+                        )
+                        # Spec is authoritative for native-filter params (_nf_*),
+                        # which never appear in the cached response at all.
                         _oapi_types: dict[str, str] = {}
                         for _sc in _schema_to_columns(match.response_schema):
                             _oapi_types[_sc["name"]] = _OAPI_TRINO.get(_sc.get("type") or "string", "varchar")

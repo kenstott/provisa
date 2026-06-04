@@ -80,11 +80,17 @@ export function RelationshipRow({
           </div>
         </td>
         <td>{tableDomainById[r.sourceTableId] || "—"}</td>
-        <td>{`${r.sourceTableName}.${r.sourceColumn}`}</td>
+        <td>
+          {tableDomainById[r.sourceTableId]
+            ? `${tableDomainById[r.sourceTableId]}.${r.sourceTableName}.${r.sourceColumn}`
+            : `${r.sourceTableName}.${r.sourceColumn}`}
+        </td>
         <td>
           {r.targetFunctionName
             ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})`
-            : `${r.targetTableName}.${r.targetColumn}`}
+            : tableDomainById[r.targetTableId!]
+              ? `${tableDomainById[r.targetTableId!]}.${r.targetTableName}.${r.targetColumn}`
+              : `${r.targetTableName}.${r.targetColumn}`}
         </td>
         <td>
           <div style={{ fontSize: "0.8rem", lineHeight: 1.4 }}>

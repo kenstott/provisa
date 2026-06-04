@@ -115,6 +115,48 @@ def schema_and_ctx():
     return _build_schema_and_ctx()
 
 
+class TestViewSqlPhysicalRewrite:
+    """Regression: user-authored view SQL uses UNQUOTED semantic refs (domain.table).
+
+    view_sql_map is compiled with rewrite_semantic_to_trino_physical, which only
+    literal-matches QUOTED refs, so an unquoted `sales.orders` survived into the
+    executed SQL → Trino 'Schema sales does not exist'. Normalizing first (sqlglot
+    parse-based) resolves the domain-qualified ref to a quoted physical ref the
+    Trino rewrite can catalog-qualify.
+    """
+
+    def test_plain_rewrite_misses_unquoted_semantic_ref(self, schema_and_ctx):
+        from provisa.compiler.sql_gen import rewrite_semantic_to_trino_physical
+
+        _, ctx = schema_and_ctx
+        sql = "SELECT id FROM sales.orders"
+        # Without normalization the unquoted ref is left untouched (the bug).
+        assert "sales.orders" in rewrite_semantic_to_trino_physical(sql, ctx)
+
+    def test_normalize_then_rewrite_resolves_unquoted_ref(self, schema_and_ctx):
+        from provisa.compiler.sql_gen import (
+            normalize_table_refs,
+            rewrite_semantic_to_trino_physical,
+        )
+
+        _, ctx = schema_and_ctx
+        sql = "SELECT id FROM sales.orders"
+        out = rewrite_semantic_to_trino_physical(normalize_table_refs(sql, ctx), ctx)
+        assert "sales.orders" not in out
+        assert '"sales_pg"."public"."orders"' in out
+
+    def test_quoted_physical_ref_still_catalog_qualified(self, schema_and_ctx):
+        from provisa.compiler.sql_gen import (
+            normalize_table_refs,
+            rewrite_semantic_to_trino_physical,
+        )
+
+        _, ctx = schema_and_ctx
+        sql = 'SELECT id FROM "public"."orders"'
+        out = rewrite_semantic_to_trino_physical(normalize_table_refs(sql, ctx), ctx)
+        assert '"sales_pg"."public"."orders"' in out
+
+
 class TestSimpleSelect:
     def test_select_fields(self, schema_and_ctx):
         schema, ctx = schema_and_ctx

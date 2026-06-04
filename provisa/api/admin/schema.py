@@ -413,6 +413,66 @@ async def _introspect_view_columns(conn, view_sql: str, default_roles: list[str]
     ]
 
 
+async def _domain_table_conflict(
+    conn, domain_id: str, table_name: str, source_id: str, schema_name: str
+) -> str | None:
+    """Return an error message if (domain_id, table_name) is already registered to a
+    DIFFERENT physical table. Domain+table must be unique: every query layer (GraphQL,
+    Cypher, view SQL) addresses a table as domain.table, so a collision is unresolvable.
+    Re-registering the same physical table (same source+schema) is allowed (upsert)."""
+    row = await conn.fetchrow(
+        "SELECT source_id, schema_name FROM registered_tables "
+        "WHERE domain_id = $1 AND table_name = $2 "
+        "AND NOT (source_id = $3 AND schema_name = $4) LIMIT 1",
+        domain_id,
+        table_name,
+        source_id,
+        schema_name,
+    )
+    if row:
+        return (
+            f"Table {table_name!r} is already registered in domain {domain_id!r} "
+            f"from {row['source_id']}.{row['schema_name']} — domain + table must be unique."
+        )
+    return None
+
+
+async def _ensure_view_column_types(conn, view_sql: str, columns: list) -> list:
+    """Fill any null/empty data_type on caller-supplied view columns.
+
+    The admin UI snapshots a view's columns by running its SQL; a column whose type
+    can't be traced (e.g. it references a source not yet introspected) arrives with
+    data_type=None. introspect_tables requires every SQL-catalog column to have a
+    type, so resolve nulls the same way _introspect_view_columns does — from the
+    referenced tables, else varchar — so a view can never be persisted schema-broken.
+    """
+    if not any(getattr(c, "data_type", None) in (None, "") for c in columns):
+        return columns
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    try:
+        tree = sqlglot.parse_one(view_sql, read="postgres")
+    except Exception:
+        tree = None
+    type_map: dict[str, str] = {}
+    ref_names = {t.name for t in tree.find_all(exp.Table) if t.name} if tree else set()
+    if ref_names:
+        rows = await conn.fetch(
+            """SELECT tc.column_name, tc.data_type
+               FROM table_columns tc JOIN registered_tables rt ON rt.id = tc.table_id
+               WHERE (rt.table_name = ANY($1::text[]) OR rt.alias = ANY($1::text[]))
+                 AND tc.data_type IS NOT NULL""",
+            list(ref_names),
+        )
+        for r in rows:
+            type_map.setdefault(r["column_name"], r["data_type"])
+    for c in columns:
+        if getattr(c, "data_type", None) in (None, ""):
+            c.data_type = type_map.get(c.name, "varchar")
+    return columns
+
+
 @strawberry.type
 class Query:
     @strawberry.field
@@ -1357,6 +1417,9 @@ class Mutation:
                 columns = await _introspect_view_columns(
                     _vc, input.view_sql, _roles or ["admin"]
                 )
+        elif input.view_sql and columns:
+            async with pool.acquire() as _vc:
+                columns = await _ensure_view_column_types(_vc, input.view_sql, columns)
         alias = input.alias or None
         if not alias:
             from provisa.compiler.naming import apply_convention
@@ -1395,6 +1458,11 @@ class Mutation:
             data_product=input.data_product,
         )
         async with pool.acquire() as conn:
+            _conflict = await _domain_table_conflict(
+                conn, model.domain_id, model.table_name, model.source_id, model.schema_name
+            )
+            if _conflict:
+                return MutationResult(success=False, message=_conflict)
             if input.source_id == "__provisa__":
                 await conn.execute(
                     """
@@ -1481,6 +1549,9 @@ class Mutation:
                 columns = await _introspect_view_columns(
                     _vc, input.view_sql, _roles or ["admin"]
                 )
+        elif input.view_sql and columns:
+            async with pool.acquire() as _vc:
+                columns = await _ensure_view_column_types(_vc, input.view_sql, columns)
         from provisa.core.models import ColumnPreset as ColumnPresetModel
 
         presets = [
@@ -1508,6 +1579,11 @@ class Mutation:
             data_product=input.data_product,
         )
         async with pool.acquire() as conn:
+            _conflict = await _domain_table_conflict(
+                conn, model.domain_id, model.table_name, model.source_id, model.schema_name
+            )
+            if _conflict:
+                return MutationResult(success=False, message=_conflict)
             table_id = await table_repo.upsert(conn, model)
             src_row = await conn.fetchrow(
                 "SELECT type, path FROM sources WHERE id = $1", input.source_id
