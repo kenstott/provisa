@@ -261,7 +261,13 @@ def rewrite_all_from_cache(
         tree = sqlglot.parse_one(sql, dialect="postgres")
         for tbl in tree.find_all(exp.Table):
             if tbl.name in cache_rewrites:
-                loc, cache_tbl = cache_rewrites[tbl.name]
+                orig_name = tbl.name
+                loc, cache_tbl = cache_rewrites[orig_name]
+                # Preserve the original table name as an alias when the ref is
+                # unaliased, so column qualifiers (e.g. shelter__animalBreeds.name)
+                # still resolve after the relation is renamed to the cache table.
+                if not tbl.alias:
+                    tbl.set("alias", exp.TableAlias(this=exp.to_identifier(orig_name)))
                 tbl.set("catalog", exp.to_identifier(loc.catalog))
                 tbl.set("db", exp.to_identifier(loc.schema))
                 tbl.set("this", exp.to_identifier(cache_tbl, quoted=True))

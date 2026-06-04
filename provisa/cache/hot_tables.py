@@ -90,6 +90,11 @@ def build_values_cte_sql(sql: str, table_name: str, entry: "HotTableEntry") -> s
         tree = sqlglot.parse_one(sql, dialect="postgres")
         for tbl in tree.find_all(exp.Table):
             if tbl.name == table_name:
+                # Preserve the original table name as an alias when the ref is
+                # unaliased, so column qualifiers (e.g. shelter__animalBreeds.name)
+                # still resolve after the relation is renamed to the CTE.
+                if not tbl.alias:
+                    tbl.set("alias", exp.TableAlias(this=exp.to_identifier(table_name)))
                 tbl.set("catalog", None)
                 tbl.set("db", None)
                 tbl.set("this", exp.to_identifier(cte_name))

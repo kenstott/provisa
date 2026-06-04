@@ -11,7 +11,7 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { get as idbGet, set as idbSet } from "idb-keyval";
+import { get as idbGet, set as idbSet, del as idbDel } from "idb-keyval";
 import {
   Play,
   ChevronRight,
@@ -90,13 +90,28 @@ const COL_ROW_H = 27;
 
 const HISTORY_KEY = "sql_modeling_history";
 const HISTORY_MAX = 50;
-const SQL_QUERY_KEY = "provisa.sql.query";
-const SQL_RESULTS_KEY = "provisa.sql.results";
+const SQL_QUERY_KEY = "provisa.sql.query"; // legacy single-doc key (migration source)
+const NL_PROMPT_KEY = "provisa.sql.nl_prompt"; // legacy single-doc key (migration source)
+const TABS_KEY = "provisa.sql.tabs";
+const tabSqlKey = (id: string) => `provisa.sql.tab.${id}`;
+const tabNlKey = (id: string) => `provisa.sql.tab.${id}.nl`;
+const tabResultsKey = (id: string) => `provisa.sql.tab.${id}.results`;
 
 interface SqlResults {
   columns: string[];
   rows: Record<string, unknown>[];
   error: string;
+}
+
+interface SqlTab {
+  id: string;
+  title: string;
+  sqlText: string;
+  nlText: string;
+  resultColumns: string[];
+  resultRows: Record<string, unknown>[];
+  resultError: string;
+  execMs: number | null;
 }
 
 interface ViewColumnConfig {
@@ -176,20 +191,65 @@ function autoAliasConflicts(sql: string): string {
   return sql.replace(selectRe, `SELECT ${newItems.join(", ")} FROM`);
 }
 
-function loadSqlQuery(): string {
-  return localStorage.getItem(SQL_QUERY_KEY) ?? "";
+function newTabId(): string {
+  return crypto?.randomUUID?.() ?? `tab-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 }
 
-function saveSqlQuery(text: string) {
+function emptyTab(id: string, title: string, sqlText = "", nlText = ""): SqlTab {
+  return { id, title, sqlText, nlText, resultColumns: [], resultRows: [], resultError: "", execMs: null };
+}
+
+/** Load tab metadata + per-tab sql/nl from localStorage. Results hydrate later from IndexedDB. */
+function loadTabsMeta(): { tabs: SqlTab[]; activeId: string } {
+  let meta: { tabs: { id: string; title: string }[]; activeId: string } | null = null;
   try {
-    localStorage.setItem(SQL_QUERY_KEY, text);
+    meta = JSON.parse(localStorage.getItem(TABS_KEY) ?? "null");
+  } catch {
+    meta = null;
+  }
+  if (!meta || !meta.tabs?.length) {
+    // Migrate legacy single-doc query/prompt into the first tab.
+    const id = newTabId();
+    const legacySql = localStorage.getItem(SQL_QUERY_KEY) ?? "";
+    const legacyNl = localStorage.getItem(NL_PROMPT_KEY) ?? "";
+    return { tabs: [emptyTab(id, "Query 1", legacySql, legacyNl)], activeId: id };
+  }
+  const tabs = meta.tabs.map((m) =>
+    emptyTab(
+      m.id,
+      m.title,
+      localStorage.getItem(tabSqlKey(m.id)) ?? "",
+      localStorage.getItem(tabNlKey(m.id)) ?? "",
+    ),
+  );
+  const activeId = tabs.some((t) => t.id === meta!.activeId) ? meta.activeId : tabs[0].id;
+  return { tabs, activeId };
+}
+
+function persistTabsMeta(tabs: SqlTab[], activeId: string) {
+  try {
+    localStorage.setItem(
+      TABS_KEY,
+      JSON.stringify({ tabs: tabs.map((t) => ({ id: t.id, title: t.title })), activeId }),
+    );
+    for (const t of tabs) {
+      localStorage.setItem(tabSqlKey(t.id), t.sqlText);
+      localStorage.setItem(tabNlKey(t.id), t.nlText);
+    }
   } catch {
     /* quota */
   }
 }
 
-async function saveSqlResults(results: SqlResults) {
-  await idbSet(SQL_RESULTS_KEY, results);
+function nextTabTitle(tabs: SqlTab[]): string {
+  const used = new Set(tabs.map((t) => t.title));
+  let n = tabs.length + 1;
+  let title = `Query ${n}`;
+  while (used.has(title)) {
+    n++;
+    title = `Query ${n}`;
+  }
+  return title;
 }
 
 // ── CanvasTableCard ──────────────────────────────────────────────────────────
@@ -903,10 +963,27 @@ export function SqlPage() {
   const existingRels = relsData;
   const [topTab, setTopTab] = useState<TopTab>("sql");
   const viewTable = (location.state as { viewTable?: RegisteredTable } | null)?.viewTable ?? null;
-  const [sqlText, setSqlText] = useState(() => {
+
+  // Query tabs. Working state (sqlText/nlText/result*) mirrors the active tab; inactive
+  // tabs retain their content in the `tabs` array and are persisted per-tab.
+  const initialTabs = useMemo(() => {
+    const loaded = loadTabsMeta();
     const locSql = (location.state as { sql?: string } | null)?.sql;
-    return locSql ?? loadSqlQuery();
-  });
+    if (locSql != null) {
+      loaded.tabs = loaded.tabs.map((t) =>
+        t.id === loaded.activeId ? { ...t, sqlText: locSql } : t,
+      );
+    }
+    return loaded;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const active0 = initialTabs.tabs.find((t) => t.id === initialTabs.activeId)!;
+  const [tabs, setTabs] = useState<SqlTab[]>(initialTabs.tabs);
+  const [activeTabId, setActiveTabId] = useState<string>(initialTabs.activeId);
+  const [editingTabId, setEditingTabId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState("");
+
+  const [sqlText, setSqlText] = useState(active0.sqlText);
   const [role, setRole] = useState("admin");
   const roles = useMemo(
     () => (rolesData.length ? rolesData.map((r) => r.id) : ["admin"]),
@@ -916,10 +993,10 @@ export function SqlPage() {
   const [sampleMode, setSampleMode] = useState<"first" | "last" | "random">("first");
   const [sampleSize, setSampleSize] = useState(100);
   const [resultTab, setResultTab] = useState<ResultTab>("results");
-  const [resultColumns, setResultColumns] = useState<string[]>([]);
-  const [resultRows, setResultRows] = useState<Record<string, unknown>[]>([]);
-  const [resultError, setResultError] = useState("");
-  const [execMs, setExecMs] = useState<number | null>(null);
+  const [resultColumns, setResultColumns] = useState<string[]>(active0.resultColumns);
+  const [resultRows, setResultRows] = useState<Record<string, unknown>[]>(active0.resultRows);
+  const [resultError, setResultError] = useState(active0.resultError);
+  const [execMs, setExecMs] = useState<number | null>(active0.execMs);
   const [errors, _setErrors] = useState<string[]>([]);
   const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
   const [expandedTables, setExpandedTables] = useState<Set<string>>(new Set());
@@ -937,18 +1014,41 @@ export function SqlPage() {
   const pendingAutoRunRef = useRef(
     (location.state as { autoRun?: boolean } | null)?.autoRun === true,
   );
-  const [nlText, setNlText] = useState("");
+  const [nlText, setNlText] = useState(active0.nlText);
   const [nlLoading, setNlLoading] = useState(false);
   const [nlError, setNlError] = useState("");
+  const resultsHydrated = useRef(false);
 
+  // Hydrate each tab's last-run results from IndexedDB on mount.
   useEffect(() => {
-    idbGet<SqlResults>(SQL_RESULTS_KEY).then((saved) => {
-      if (saved) {
-        setResultColumns(saved.columns);
-        setResultRows(saved.rows);
-        setResultError(saved.error);
+    let cancelled = false;
+    Promise.all(
+      initialTabs.tabs.map((t) =>
+        idbGet<SqlResults>(tabResultsKey(t.id)).then((r) => ({ id: t.id, r })),
+      ),
+    ).then((loaded) => {
+      if (cancelled) return;
+      const byId = new Map(loaded.map((x) => [x.id, x.r]));
+      setTabs((prev) =>
+        prev.map((t) => {
+          const r = byId.get(t.id);
+          return r
+            ? { ...t, resultColumns: r.columns, resultRows: r.rows, resultError: r.error }
+            : t;
+        }),
+      );
+      const ar = byId.get(initialTabs.activeId);
+      if (ar) {
+        setResultColumns(ar.columns);
+        setResultRows(ar.rows);
+        setResultError(ar.error);
       }
+      resultsHydrated.current = true;
     });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const normalizeDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
@@ -956,6 +1056,14 @@ export function SqlPage() {
   useEffect(() => {
     localStorage.removeItem("provisa.sql.pending_query");
   }, []);
+
+  // Persist tab metadata + per-tab sql/nl whenever the active tab's text changes.
+  useEffect(() => {
+    const merged = tabs.map((t) =>
+      t.id === activeTabId ? { ...t, sqlText, nlText } : t,
+    );
+    persistTabsMeta(merged, activeTabId);
+  }, [tabs, activeTabId, sqlText, nlText]);
 
   const domainMap = useMemo(
     () => Object.fromEntries(domainsData.map((d) => [normalizeDomain(d.id), d])),
@@ -1113,6 +1221,85 @@ export function SqlPage() {
   }, []);
 
   const [page, setPage] = useState(0);
+
+  // ----- Query tab actions -----
+  const mergeActive = useCallback(
+    (): SqlTab[] =>
+      tabs.map((t) =>
+        t.id === activeTabId
+          ? { ...t, sqlText, nlText, resultColumns, resultRows, resultError, execMs }
+          : t,
+      ),
+    [tabs, activeTabId, sqlText, nlText, resultColumns, resultRows, resultError, execMs],
+  );
+
+  const loadTabIntoWorkingState = useCallback((t: SqlTab) => {
+    setSqlText(t.sqlText);
+    setNlText(t.nlText);
+    setResultColumns(t.resultColumns);
+    setResultRows(t.resultRows);
+    setResultError(t.resultError);
+    setExecMs(t.execMs);
+    setNlError("");
+    setSorts([]);
+    setFilters({});
+    setColWidths({});
+    setPage(0);
+    setResultTab("results");
+  }, []);
+
+  const switchTab = useCallback(
+    (id: string) => {
+      if (id === activeTabId) return;
+      const merged = mergeActive();
+      const target = merged.find((t) => t.id === id);
+      if (!target) return;
+      setTabs(merged);
+      setActiveTabId(id);
+      loadTabIntoWorkingState(target);
+    },
+    [activeTabId, mergeActive, loadTabIntoWorkingState],
+  );
+
+  const addTab = useCallback(() => {
+    const merged = mergeActive();
+    const tab = emptyTab(newTabId(), nextTabTitle(merged));
+    setTabs([...merged, tab]);
+    setActiveTabId(tab.id);
+    loadTabIntoWorkingState(tab);
+  }, [mergeActive, loadTabIntoWorkingState]);
+
+  const closeTab = useCallback(
+    (id: string) => {
+      const merged = mergeActive();
+      if (merged.length <= 1) {
+        // Never drop the last tab — reset it to blank instead.
+        const blank = emptyTab(merged[0].id, merged[0].title);
+        setTabs([blank]);
+        setActiveTabId(blank.id);
+        loadTabIntoWorkingState(blank);
+        idbDel(tabResultsKey(blank.id));
+        return;
+      }
+      const idx = merged.findIndex((t) => t.id === id);
+      const remaining = merged.filter((t) => t.id !== id);
+      localStorage.removeItem(tabSqlKey(id));
+      localStorage.removeItem(tabNlKey(id));
+      idbDel(tabResultsKey(id));
+      if (id === activeTabId) {
+        const next = remaining[Math.min(idx, remaining.length - 1)];
+        setActiveTabId(next.id);
+        loadTabIntoWorkingState(next);
+      }
+      setTabs(remaining);
+    },
+    [activeTabId, mergeActive, loadTabIntoWorkingState],
+  );
+
+  const renameTab = useCallback((id: string, title: string) => {
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, title } : t)));
+  }, []);
+
   const PAGE_SIZE = 100;
   const COL_MAX = 280;
   const COL_MIN = 60;
@@ -1348,11 +1535,11 @@ export function SqlPage() {
       setResultError(result.error);
       setResultColumns([]);
       setResultRows([]);
-      saveSqlResults({ columns: [], rows: [], error: result.error });
+      idbSet(tabResultsKey(activeTabId), { columns: [], rows: [], error: result.error });
     } else {
       setResultColumns(result.columns);
       setResultRows(result.rows);
-      saveSqlResults({ columns: result.columns, rows: result.rows, error: "" });
+      idbSet(tabResultsKey(activeTabId), { columns: result.columns, rows: result.rows, error: "" });
     }
     setSorts([]);
     setFilters({});
@@ -1373,7 +1560,7 @@ export function SqlPage() {
       saveHistory(next);
       return next;
     });
-  }, [sqlText, role, sampleMode, sampleSize]);
+  }, [sqlText, role, sampleMode, sampleSize, activeTabId]);
 
   useEffect(() => {
     if (pendingAutoRunRef.current && sqlText.trim()) {
@@ -1858,6 +2045,119 @@ export function SqlPage() {
             }}
           >
             <>
+              {/* Query tab strip */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "stretch",
+                  gap: "2px",
+                  padding: "0.25rem 0.5rem 0",
+                  borderBottom: "1px solid var(--border)",
+                  background: "var(--surface)",
+                  flexShrink: 0,
+                  overflowX: "auto",
+                }}
+              >
+                {tabs.map((t) => {
+                  const isActive = t.id === activeTabId;
+                  return (
+                    <div
+                      key={t.id}
+                      onClick={() => switchTab(t.id)}
+                      onDoubleClick={() => {
+                        setEditingTabId(t.id);
+                        setEditingTitle(t.title);
+                      }}
+                      title="Double-click to rename"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.35rem",
+                        padding: "0.25rem 0.5rem",
+                        fontSize: "0.75rem",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        borderTopLeftRadius: "5px",
+                        borderTopRightRadius: "5px",
+                        border: "1px solid var(--border)",
+                        borderBottom: isActive ? "1px solid var(--bg)" : "1px solid var(--border)",
+                        marginBottom: "-1px",
+                        background: isActive ? "var(--bg)" : "transparent",
+                        color: isActive ? "var(--text)" : "var(--text-muted)",
+                        fontWeight: isActive ? 600 : 400,
+                      }}
+                    >
+                      {editingTabId === t.id ? (
+                        <input
+                          autoFocus
+                          value={editingTitle}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => setEditingTitle(e.target.value)}
+                          onBlur={() => {
+                            const v = editingTitle.trim();
+                            if (v) renameTab(t.id, v);
+                            setEditingTabId(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const v = editingTitle.trim();
+                              if (v) renameTab(t.id, v);
+                              setEditingTabId(null);
+                            } else if (e.key === "Escape") {
+                              setEditingTabId(null);
+                            }
+                          }}
+                          style={{
+                            width: "80px",
+                            fontSize: "0.75rem",
+                            padding: "0 0.2rem",
+                            border: "1px solid var(--primary)",
+                            borderRadius: "3px",
+                            background: "var(--bg)",
+                            color: "var(--text)",
+                            outline: "none",
+                          }}
+                        />
+                      ) : (
+                        <span>{t.title}</span>
+                      )}
+                      <span
+                        role="button"
+                        aria-label={`Close ${t.title}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          closeTab(t.id);
+                        }}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          opacity: 0.6,
+                          borderRadius: "3px",
+                        }}
+                      >
+                        <X size={11} />
+                      </span>
+                    </div>
+                  );
+                })}
+                <button
+                  onClick={addTab}
+                  aria-label="New query tab"
+                  title="New query tab"
+                  style={{
+                    padding: "0.25rem 0.5rem",
+                    fontSize: "0.85rem",
+                    lineHeight: 1,
+                    background: "none",
+                    border: "none",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                  }}
+                >
+                  +
+                </button>
+              </div>
+
               {/* NL-to-SQL strip */}
               <div
                 style={{
@@ -2020,7 +2320,6 @@ export function SqlPage() {
                   extensions={sqlExtensions}
                   onChange={(v) => {
                     setSqlText(v);
-                    saveSqlQuery(v);
                   }}
                   onCreateEditor={(view) => {
                     editorViewRef.current = view;
@@ -2090,11 +2389,7 @@ export function SqlPage() {
                   style={{ fontSize: "0.8rem", padding: "0.25rem 0.6rem" }}
                   title="Add table_col aliases where column names conflict across tables"
                   onClick={() =>
-                    setSqlText((prev) => {
-                      const fixed = autoAliasConflicts(prev);
-                      saveSqlQuery(fixed);
-                      return fixed;
-                    })
+                    setSqlText((prev) => autoAliasConflicts(prev))
                   }
                   disabled={!sqlText.trim()}
                 >
