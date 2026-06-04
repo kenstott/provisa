@@ -15,6 +15,39 @@ import re
 
 from provisa.compiler.sql_gen import CompiledQuery
 
+# Keywords that can follow a table reference; never consume one as an alias.
+_KW_AFTER_TABLE = (
+    "ON|WHERE|GROUP|ORDER|LIMIT|OFFSET|HAVING|JOIN|LEFT|RIGHT|INNER|"
+    "OUTER|FULL|CROSS|UNION|EXCEPT|INTERSECT|USING|NATURAL|LATERAL"
+)
+# Optional table alias: quoted ("t0", "ab") or a bare identifier that is not a
+# trailing SQL keyword. `AS` is optional.
+_ALIAS = (
+    rf'(?P<alias>\s+(?:AS\s+)?(?:"[^"]+"|(?!(?i:{_KW_AFTER_TABLE})\b)[A-Za-z_]\w*))?'
+)
+
+
+def _expand_one(sql: str, view_table: str, view_sql: str) -> str:
+    """Replace catalog- and schema-qualified refs to one view table.
+
+    Preserves an explicit alias when present; otherwise injects the view-table
+    name as the subquery alias so column references qualified by that name (e.g.
+    ``shelter__animalBreeds.name``) still resolve after expansion.
+    """
+
+    def repl(m: re.Match) -> str:
+        alias = m.group("alias")
+        if alias:
+            return f"({view_sql}){alias}"
+        return f"({view_sql}) {view_table}"
+
+    vt = re.escape(view_table)
+    # Catalog-qualified: "catalog"."schema"."view_table" [alias]
+    sql = re.sub(rf'"[^"]+"\."[^"]+"\."{vt}"{_ALIAS}', repl, sql)
+    # Schema-qualified: "schema"."view_table" [alias]
+    sql = re.sub(rf'"[^"]+"\."{vt}"{_ALIAS}', repl, sql)
+    return sql
+
 
 def expand_view_refs(sql: str, view_sql_map: dict[str, str]) -> str:
     """Replace view-table references in a SQL string with inline subqueries.
@@ -26,18 +59,7 @@ def expand_view_refs(sql: str, view_sql_map: dict[str, str]) -> str:
     if not view_sql_map:
         return sql
     for view_table, view_sql in view_sql_map.items():
-        # Catalog-qualified: "catalog"."schema"."view_table" "alias"
-        sql = re.sub(
-            rf'"[^"]+"\."[^"]+"\."({re.escape(view_table)})"(\s+"t\d+")?',
-            lambda m: f"({view_sql}){m.group(2) or ''}",
-            sql,
-        )
-        # Schema-qualified: "schema"."view_table" "alias"
-        sql = re.sub(
-            rf'"[^"]+"\."({re.escape(view_table)})"(\s+"t\d+")?',
-            lambda m: f"({view_sql}){m.group(2) or ''}",
-            sql,
-        )
+        sql = _expand_one(sql, view_table, view_sql)
     return sql
 
 
