@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useQuery, useLazyQuery, useMutation } from "@apollo/client/react";
 import type { Role } from "../types/auth";
 import type {
@@ -75,12 +75,18 @@ import {
   UpdateSourceAllowedDomains,
 } from "./admin.graphql";
 
+const NO_SOURCES: Source[] = [];
+const NO_DOMAINS: Domain[] = [];
+const NO_TABLES: RegisteredTable[] = [];
+const NO_RELATIONSHIPS: Relationship[] = [];
+const NO_RLS_RULES: RLSRule[] = [];
+
 export function useSources() {
   const { data, loading, error, refetch } = useQuery<{ sources: Source[] }>(SOURCES_QUERY, {
     fetchPolicy: "cache-and-network",
   });
   return {
-    sources: data?.sources ?? [],
+    sources: data?.sources ?? NO_SOURCES,
     loading,
     error,
     refetch,
@@ -92,7 +98,7 @@ export function useDomains() {
     fetchPolicy: "cache-and-network",
   });
   return {
-    domains: data?.domains ?? [],
+    domains: data?.domains ?? NO_DOMAINS,
     loading,
     error,
     refetch,
@@ -104,7 +110,7 @@ export function useTables() {
     fetchPolicy: "cache-and-network",
   });
   return {
-    tables: data?.tables ?? [],
+    tables: data?.tables ?? NO_TABLES,
     loading,
     error,
     refetch,
@@ -117,7 +123,7 @@ export function useRelationships() {
     { fetchPolicy: "cache-and-network" },
   );
   return {
-    relationships: data?.relationships ?? [],
+    relationships: data?.relationships ?? NO_RELATIONSHIPS,
     loading,
     error,
     refetch,
@@ -129,7 +135,7 @@ export function useRLSRules() {
     fetchPolicy: "cache-and-network",
   });
   return {
-    rlsRules: data?.rlsRules ?? [],
+    rlsRules: data?.rlsRules ?? NO_RLS_RULES,
     loading,
     error,
     refetch,
@@ -352,14 +358,21 @@ export function useUpdateSourceAllowedDomains() {
 
 // ── Query hooks ──
 
+const NO_ROLES: Role[] = [];
+
 export function useRoles() {
   const { data, loading, error, refetch } = useQuery<{ roles: Role[] }>(ROLES_QUERY, {
     fetchPolicy: "cache-and-network",
   });
-  const roles = (data?.roles ?? []).map((r) => ({
-    ...r,
-    domain_access: (r as { domainAccess?: string[] }).domainAccess ?? r.domain_access,
-  }));
+  const rawRoles = data?.roles ?? NO_ROLES;
+  const roles = useMemo(
+    () =>
+      rawRoles.map((r) => ({
+        ...r,
+        domain_access: (r as { domainAccess?: string[] }).domainAccess ?? r.domain_access,
+      })),
+    [rawRoles],
+  );
   return { roles, loading, error, refetch };
 }
 

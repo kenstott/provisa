@@ -397,6 +397,7 @@ export function RelationshipsPage() {
         />
       )}
 
+      <div style={{ overflowX: "auto" }}>
       <table className="data-table">
         <thead>
           <tr>
@@ -456,6 +457,7 @@ export function RelationshipsPage() {
           )}
         </tbody>
       </table>
+      </div>
       {totalPages > 1 && (
         <div
           style={{

@@ -143,7 +143,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     init().finally(() => setLoading(false));
-  }, [refetchRoles, refetchDomains]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const availableDomains = useMemo(() => {
     const roleFilter = selectedRole === "all" ? null : (selectedRole as Role).id;

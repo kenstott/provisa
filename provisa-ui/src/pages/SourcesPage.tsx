@@ -1879,19 +1879,21 @@ export function SourcesPage() {
           onChange={updateSearch}
           placeholder="Filter by source ID or type…"
         />
-        {!editingSourceId && (
-          <button
-            onClick={() => {
-              if (showForm) {
-                handleCancelForm();
-              } else {
-                setShowForm(true);
-              }
-            }}
-          >
-            {showForm ? "Cancel" : "+ Source"}
-          </button>
-        )}
+        <div className="page-actions">
+          {!editingSourceId && (
+            <button
+              onClick={() => {
+                if (showForm) {
+                  handleCancelForm();
+                } else {
+                  setShowForm(true);
+                }
+              }}
+            >
+              {showForm ? "Cancel" : "+ Source"}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <div className="error">{error}</div>}

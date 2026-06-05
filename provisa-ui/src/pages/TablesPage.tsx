@@ -362,7 +362,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
   useEffect(() => {
     reload();
-  }, [reload]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     setSchemaName("");
@@ -684,12 +685,14 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           onChange={setTableSearch}
           placeholder={viewsOnly ? "Filter views…" : "Filter by source, domain, or table…"}
         />
-        {!viewsOnly && (
-          <button onClick={() => setShowForm(!showForm)}>{showForm ? "Cancel" : "+ Table"}</button>
-        )}
-        <button onClick={() => navigate("/sql")} title="Create a new view in the SQL Explorer">
-          + View
-        </button>
+        <div className="page-actions">
+          {!viewsOnly && (
+            <button onClick={() => setShowForm(!showForm)}>{showForm ? "Cancel" : "+ Table"}</button>
+          )}
+          <button onClick={() => navigate("/sql")} title="Create a new view in the SQL Explorer">
+            + View
+          </button>
+        </div>
       </div>
 
       {error && <div className="error">{error}</div>}

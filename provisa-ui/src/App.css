@@ -318,7 +318,9 @@ main {
 /* Page layout */
 .page { padding: 1.5rem; width: 100%; max-width: 1200px; box-sizing: border-box; margin: 0 auto; }
 .page h2 { margin-bottom: 1rem; }
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.page-header { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-bottom: 1rem; }
+.page-header h2 { margin-bottom: 0; justify-self: start; }
+.page-header .page-actions { justify-self: end; }
 
 /* Buttons — scoped to .page to avoid clobbering GraphiQL */
 .page button {
