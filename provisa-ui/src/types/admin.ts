@@ -90,6 +90,7 @@ export interface RegisteredTable {
   apiEndpoint: string | null;
   viewSql: string | null;
   dataProduct: boolean;
+  canDeployToDb: boolean;
 }
 
 export interface Relationship {

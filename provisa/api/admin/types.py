@@ -66,6 +66,7 @@ class RegisteredTableType:
     api_endpoint: str | None = None
     view_sql: str | None = None
     data_product: bool = False
+    can_deploy_to_db: bool = False
 
 
 @strawberry.type

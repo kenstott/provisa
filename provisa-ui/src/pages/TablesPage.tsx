@@ -1268,7 +1268,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                   {viewsOnly ? "Edit SQL" : "Open in Explorer"}
                                 </button>
                               )}
-                              {t.viewSql && (
+                              {t.canDeployToDb && (
                                 <button
                                   onClick={async (e) => {
                                     e.stopPropagation();

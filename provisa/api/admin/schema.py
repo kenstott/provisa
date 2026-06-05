@@ -98,7 +98,7 @@ async def _govdata_columns(
     source_id: str,
     schema_name: str,
     table_name: str,
-    _config_conn,
+    _config_conn,  # noqa: ARG001
 ) -> list["AvailableColumnType"]:
     import asyncio as _asyncio
     import logging as _logging
@@ -236,7 +236,36 @@ def _rls_from_row(row) -> RLSRuleType:
     )
 
 
-async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
+def _compute_can_deploy_to_db(
+    view_sql: str,
+    all_tables: list,
+) -> bool:
+    """Return True iff view_sql references tables from exactly one source that has an active pool."""
+    from provisa.api.app import state
+    from provisa.compiler.naming import domain_to_sql_name
+
+    replacements: list[tuple[str, str, str]] = []
+    for t in all_tables:
+        domain_sql = domain_to_sql_name(t["domain_id"])
+        alias_or_name = t["alias"] or t["table_name"]
+        virtual_ref = f'"{domain_sql}"."{alias_or_name}"'
+        replacements.append((virtual_ref, t["source_id"], t["schema_name"]))
+
+    hit_sources: dict[str, str] = {}
+    for virtual_ref, source_id, schema_name in sorted(
+        replacements, key=lambda x: len(x[0]), reverse=True
+    ):
+        if virtual_ref in view_sql:
+            hit_sources[source_id] = schema_name
+
+    if not hit_sources or len(hit_sources) != 1:
+        return False
+
+    target_source_id = next(iter(hit_sources))
+    return state.source_pools.has(target_source_id)
+
+
+async def _fetch_table_with_columns(conn, row, all_tables: list | None = None, user_can_deploy: bool = True) -> RegisteredTableType:
     col_rows = await conn.fetch(
         "SELECT id, column_name, visible_to, writable_by, unmasked_to, "
         "mask_type, mask_pattern, mask_replace, mask_value, mask_precision, "
@@ -303,6 +332,11 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         except Exception:
             pass
 
+    view_sql = row.get("view_sql")
+    can_deploy = False
+    if user_can_deploy and row["source_id"] == "__provisa__" and view_sql and all_tables is not None:
+        can_deploy = _compute_can_deploy_to_db(view_sql, all_tables)
+
     return RegisteredTableType(
         id=row["id"],
         source_id=row["source_id"],
@@ -318,8 +352,9 @@ async def _fetch_table_with_columns(conn, row) -> RegisteredTableType:
         columns=columns,
         column_presets=presets,
         api_endpoint=api_endpoint,
-        view_sql=row.get("view_sql"),
+        view_sql=view_sql,
         data_product=bool(row.get("data_product", False)),
+        can_deploy_to_db=can_deploy,
     )
 
 
@@ -526,11 +561,29 @@ class Query:
             return [_domain_from_row(r) for r in rows]
 
     @strawberry.field
-    async def tables(self) -> list[RegisteredTableType]:
+    async def tables(self, info: StrawberryInfo) -> list[RegisteredTableType]:
+        from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
+        from provisa.api.app import state as _state
+
+        identity = _identity_from_info(info)
+        if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
+            user_can_deploy = True  # dev mode — no auth, allow all
+        else:
+            caps = _resolved_capabilities(identity, _state)
+            user_can_deploy = bool(caps & {"table_registration", "admin", "superadmin"})
+
         pool = await _get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch("SELECT * FROM registered_tables ORDER BY id")
-            return [await _fetch_table_with_columns(conn, r) for r in rows]
+            all_tables = await conn.fetch(
+                """SELECT rt.source_id, rt.domain_id, rt.schema_name, rt.table_name, rt.alias
+                   FROM registered_tables rt
+                   WHERE rt.source_id != '__provisa__'""",
+            )
+            return [
+                await _fetch_table_with_columns(conn, r, list(all_tables), user_can_deploy)
+                for r in rows
+            ]
 
     @strawberry.field
     async def relationships(self) -> list[RelationshipType]:

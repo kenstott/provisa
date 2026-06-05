@@ -84,6 +84,7 @@ query TablesQuery {
     apiEndpoint
     viewSql
     dataProduct
+    canDeployToDb
     columns {
       ...ColumnFields
     }
