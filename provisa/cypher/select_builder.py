@@ -40,10 +40,14 @@ class SelectBuilderMixin:
     _var_table: dict
     _graph_vars: dict
     _path_vars: dict
-    _shortestpath_hops_col: exp.Expression | None
+    _shortestpath_hops_col: exp.Expression | None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     _lm: CypherLabelMap
     _rel_var_types: dict
     _rel_var_endpoints: dict
+    _domain_nodes: dict[str, str]
+
+    def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        ...
 
     def _build_edge_object(
         self,
@@ -53,7 +57,7 @@ class SelectBuilderMixin:
         tgt_alias: str,
         tgt_nm: NodeMapping,
         is_reversed: bool = False,
-    ) -> exp.Expression:
+    ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Emit a JSON edge object for RETURN r.
 
         Neo4j-compatible format:
@@ -102,7 +106,7 @@ class SelectBuilderMixin:
         )
         empty_props = exp.Anonymous(this="JSON_OBJECT", expressions=[])
 
-        def _node_props_expr(alias: str, nm: NodeMapping) -> exp.Expression:
+        def _node_props_expr(alias: str, nm: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             """Build JSON_OBJECT(...) for all node properties, or empty if none defined."""
             if not nm.properties:
                 return empty_props
@@ -165,7 +169,7 @@ class SelectBuilderMixin:
             ],
         )
 
-    def _build_path_object(self, path_var: str) -> exp.Expression:
+    def _build_path_object(self, path_var: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Emit a JSON path object for RETURN p.
 
         Flat-JOIN paths: full {nodes:[...], edges:[...]} JSON via _build_path_json.
@@ -190,7 +194,7 @@ class SelectBuilderMixin:
                 this=exp.Identifier(this="cur_id"),
                 table=exp.Identifier(this="_t"),
             )
-            length_val: exp.Expression = self._shortestpath_hops_col
+            length_val: exp.Expression = self._shortestpath_hops_col  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         else:
             tgt_id = exp.Column(
                 this=exp.Identifier(this=tgt_id_col_name, quoted=True),
@@ -213,11 +217,11 @@ class SelectBuilderMixin:
         self,
         step_nodes: list,
         step_edges: list,
-    ) -> exp.Expression:
+    ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build JSON_OBJECT('nodes', JSON_ARRAY(...), 'edges', JSON_ARRAY(...)) for a flat-JOIN path."""
 
-        def _node_obj(alias: str, nm: "NodeMapping") -> exp.Expression:
-            props_exprs: list[exp.Expression] = []
+        def _node_obj(alias: str, nm: "NodeMapping") -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            props_exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             for prop_name, col_name in nm.properties.items():
                 props_exprs.append(exp.Literal.string(prop_name))
                 props_exprs.append(
@@ -250,7 +254,7 @@ class SelectBuilderMixin:
             tgt_alias: str,
             tgt_nm: "NodeMapping",
             is_reversed: bool = False,
-        ) -> exp.Expression:
+        ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             src_id_col = exp.Column(
                 this=exp.Identifier(this=src_nm.id_column, quoted=True),
                 table=exp.Identifier(this=src_alias),
@@ -329,7 +333,7 @@ class SelectBuilderMixin:
         alias: str | None,
         graph_var_kind_edge: GraphVarKind,
         graph_var_kind_passthrough: GraphVarKind,
-    ) -> exp.Expression:
+    ) -> exp.Expr:
         """Emit SELECT expression for a passthrough variable from _all_rels subquery."""
         all_rels_alias = getattr(self, "_all_rels_alias", "_all_rels")
         rel_var_types = getattr(self, "_rel_var_types", {})
@@ -348,7 +352,7 @@ class SelectBuilderMixin:
         expr_text: str,
         alias: str | None,
         graph_var_kind_path: GraphVarKind,
-    ) -> exp.Expression:
+    ) -> exp.Expr:
         """Emit SELECT expression for a path variable."""
         self._graph_vars[alias or expr_text] = graph_var_kind_path
         path_expr = self._build_path_object(expr_text)
@@ -359,14 +363,14 @@ class SelectBuilderMixin:
         expr_text: str,
         alias: str | None,
         graph_var_kind_edge: GraphVarKind,
-    ) -> exp.Expression:
+    ) -> exp.Expr:
         """Emit SELECT expression for a bare relationship variable."""
         self._graph_vars[alias or expr_text] = graph_var_kind_edge
         endpoints = getattr(self, "_rel_var_endpoints", {}).get(expr_text)
         if endpoints:
             src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
             rel_type = self._rel_var_types[expr_text]
-            edge_expr: exp.Expression = self._build_edge_object(
+            edge_expr: exp.Expression = self._build_edge_object(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 rel_type, src_alias, src_nm, tgt_alias, tgt_nm, is_reversed
             )
         else:
@@ -378,7 +382,7 @@ class SelectBuilderMixin:
         expr_text: str,
         alias: str | None,
         graph_var_kind_node: GraphVarKind,
-    ) -> exp.Expression | None:
+    ) -> exp.Expr | None:
         """Emit SELECT expression for a bare node variable. Returns None if not handled."""
         var_info = self._var_table[expr_text]
         if var_info[1] is not None:
@@ -402,7 +406,7 @@ class SelectBuilderMixin:
             return tbl_col
         return None
 
-    def _select_prop_expr(self, expr_text: str, alias: str | None) -> exp.Expression:
+    def _select_prop_expr(self, expr_text: str, alias: str | None) -> exp.Expr:
         """Emit SELECT expression for a property access or arbitrary expression."""
         import re as _re
 
@@ -420,10 +424,10 @@ class SelectBuilderMixin:
             return exp.alias_(parsed, _cypher_alias)
         return parsed
 
-    def _build_select(self, return_clause: ReturnClause) -> list[exp.Expression]:
+    def _build_select(self, return_clause: ReturnClause) -> list[exp.Expr]:
         from provisa.cypher.translator import GraphVarKind  # avoid circular at module level
 
-        exprs: list[exp.Expression] = []
+        exprs: list[exp.Expr] = []
         passthrough_vars = getattr(self, "_passthrough_vars", set())
 
         for item in return_clause.items:

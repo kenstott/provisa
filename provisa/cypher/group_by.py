@@ -31,7 +31,7 @@ def _has_aggregate(text: str) -> bool:
 class GroupByMixin:
     """Mixin for _Translator: builds implicit GROUP BY for aggregating queries."""
 
-    def _build_group_by(self, return_clause: ReturnClause) -> list[exp.Expression]:
+    def _build_group_by(self, return_clause: ReturnClause) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         items = return_clause.items
         if not any(_has_aggregate(item.expression) for item in items):
             return []
@@ -41,7 +41,7 @@ class GroupByMixin:
             if not _has_aggregate(item.expression)
         ]
 
-    def _build_group_by_for_with(self, items: list[ReturnItem]) -> list[exp.Expression]:
+    def _build_group_by_for_with(self, items: list[ReturnItem]) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if not any(_has_aggregate(item.expression) for item in items):
             return []
         return [

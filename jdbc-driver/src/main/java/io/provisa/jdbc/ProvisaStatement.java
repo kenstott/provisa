@@ -1,9 +1,8 @@
 package io.provisa.jdbc;
 
 import com.google.gson.*;
-import java.io.*;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.*;
@@ -129,7 +128,7 @@ public class ProvisaStatement extends AbstractStatement {
         }
 
         HttpURLConnection http = (HttpURLConnection)
-            new URL(conn.baseUrl + "/data/graphql").openConnection();
+            URI.create(conn.baseUrl + "/data/graphql").toURL().openConnection();
         http.setRequestMethod("POST");
         http.setRequestProperty("Content-Type", "application/json");
         http.setRequestProperty("X-Provisa-Role", conn.role);
@@ -170,7 +169,7 @@ public class ProvisaStatement extends AbstractStatement {
     }
 
     private ResultSet streamArrow(String redirectUrl) throws Exception {
-        HttpURLConnection arrowConn = (HttpURLConnection) new URL(redirectUrl).openConnection();
+        HttpURLConnection arrowConn = (HttpURLConnection) URI.create(redirectUrl).toURL().openConnection();
         arrowConn.setRequestMethod("GET");
         if (arrowConn.getResponseCode() != 200) {
             throw new SQLException("Failed to fetch Arrow data: " + arrowConn.getResponseCode());

@@ -95,17 +95,17 @@ def _parse_where_variables(sql: str) -> dict:
     return variables
 
 
-def _parse_limit_value(value: object) -> int | None:
+def _parse_limit_value(value: object) -> int | None:  # object-ok: value comes from a JSON-parsed dict with heterogeneous value types
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int):
-        raise flight.FlightServerError("limit must be a non-negative integer")
+        raise flight.FlightServerError("limit must be a non-negative integer")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     if value < 0:
-        raise flight.FlightServerError("limit must be a non-negative integer")
+        raise flight.FlightServerError("limit must be a non-negative integer")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     return value
 
 
-class ProvisaFlightServer(flight.FlightServerBase):
+class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Arrow Flight server that executes GraphQL queries and streams Arrow data."""
 
     def __init__(
@@ -114,7 +114,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         location: str = "grpc://0.0.0.0:8815",
         *,
         main_loop: asyncio.AbstractEventLoop | None = None,
-        **kwargs: object,
+        **kwargs: object,  # object-ok: forwarded verbatim to FlightServerBase.__init__ which accepts arbitrary keyword args  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> None:
         super().__init__(location, **kwargs)
         self._state = state
@@ -129,7 +129,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
 
     def do_handshake(
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         payload: Iterable[bytes],
     ) -> tuple[bytes, list[object]]:
         """Parse role from handshake properties and return a session token."""
@@ -150,9 +150,9 @@ class ProvisaFlightServer(flight.FlightServerBase):
 
     def list_flights(
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         criteria: bytes,  # noqa: ARG002  # required by Flight override signature
-    ) -> Iterator[flight.FlightInfo]:
+    ) -> Iterator[flight.FlightInfo]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """List available flights (catalog tables)."""
         tables = build_catalog_tables(self._state)
         for table in tables:
@@ -164,10 +164,10 @@ class ProvisaFlightServer(flight.FlightServerBase):
 
     def get_flight_info(
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature
-        descriptor: flight.FlightDescriptor,
-    ) -> flight.FlightInfo:
-        """Return FlightInfo for a catalog table descriptor.
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """Return FlightInfo for a catalog table descriptor.  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         Descriptor path: [domain_id, table_name].
         """
@@ -180,9 +180,9 @@ class ProvisaFlightServer(flight.FlightServerBase):
             for t in tables:
                 if t.domain_id == domain_id and t.table_name == table_name:
                     return catalog_table_to_flight_info(t)
-            raise flight.FlightServerError(f"Table not found: {domain_id}.{table_name}")
+            raise flight.FlightServerError(f"Table not found: {domain_id}.{table_name}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        raise flight.FlightServerError(f"Invalid descriptor path: {path}")
+        raise flight.FlightServerError(f"Invalid descriptor path: {path}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     # ------------------------------------------------------------------
     # get_schema — Arrow schema for a catalog table
@@ -190,16 +190,16 @@ class ProvisaFlightServer(flight.FlightServerBase):
 
     def get_schema(
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature
-        descriptor: flight.FlightDescriptor,
-    ) -> flight.SchemaResult:
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        descriptor: flight.FlightDescriptor,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> flight.SchemaResult:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Return the Arrow schema for a catalog table.
 
         Descriptor path: [domain_id, table_name].
         """
         path = list(descriptor.path)
         if len(path) != 2:
-            raise flight.FlightServerError(f"get_schema requires path [domain, table], got {path}")
+            raise flight.FlightServerError(f"get_schema requires path [domain, table], got {path}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         domain_id = path[0].decode("utf-8") if isinstance(path[0], bytes) else path[0]
         table_name = path[1].decode("utf-8") if isinstance(path[1], bytes) else path[1]
@@ -208,9 +208,9 @@ class ProvisaFlightServer(flight.FlightServerBase):
         for t in tables:
             if t.domain_id == domain_id and t.table_name == table_name:
                 schema = catalog_table_to_arrow_schema(t)
-                return flight.SchemaResult(schema)
+                return flight.SchemaResult(schema)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        raise flight.FlightServerError(f"Table not found: {domain_id}.{table_name}")
+        raise flight.FlightServerError(f"Table not found: {domain_id}.{table_name}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     # ------------------------------------------------------------------
     # do_get — execute query or return catalog data
@@ -218,9 +218,9 @@ class ProvisaFlightServer(flight.FlightServerBase):
 
     def do_get(
         self,
-        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature
-        ticket: flight.Ticket,
-    ) -> flight.RecordBatchStream | flight.GeneratorStream:
+        context: flight.ServerCallContext,  # noqa: ARG002  # required by Flight override signature  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        ticket: flight.Ticket,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute a query from the ticket and return Arrow record batches.
 
         Dispatch logic:
@@ -230,7 +230,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         try:
             request = json.loads(ticket.ticket.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            raise flight.FlightServerError(f"Invalid ticket: {e}") from e
+            raise flight.FlightServerError(f"Invalid ticket: {e}") from e  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         if request.get("query"):
             return self._execute_query(request)
@@ -241,7 +241,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _do_get_catalog(self, ticket: flight.Ticket) -> flight.RecordBatchStream:
+    def _do_get_catalog(self, ticket: flight.Ticket) -> flight.RecordBatchStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Return catalog metadata as Arrow record batches."""
         request = json.loads(ticket.ticket.decode("utf-8"))
         domain = request.get("domain")
@@ -253,11 +253,11 @@ class ProvisaFlightServer(flight.FlightServerBase):
             # Return schema info for a specific table as rows
             for t in tables:
                 if t.domain_id == domain and t.table_name == table_name:
-                    return flight.RecordBatchStream(self._build_columns_table(t))
-            raise flight.FlightServerError(f"Table not found: {domain}.{table_name}")
+                    return flight.RecordBatchStream(self._build_columns_table(t))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            raise flight.FlightServerError(f"Table not found: {domain}.{table_name}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         # Return all tables as rows
-        return flight.RecordBatchStream(self._build_catalog_table(tables, domain))
+        return flight.RecordBatchStream(self._build_catalog_table(tables, domain))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     @staticmethod
     def _build_catalog_table(
@@ -318,17 +318,17 @@ class ProvisaFlightServer(flight.FlightServerBase):
         try:
             request = json.loads(ticket_bytes.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            raise flight.FlightServerError(f"Invalid ticket: {e}") from e
+            raise flight.FlightServerError(f"Invalid ticket: {e}") from e  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         query_text = request.get("query")
         role_id = request.get("role", "admin")
         variables = request.get("variables")
 
         if not query_text:
-            raise flight.FlightServerError("Ticket must include 'query'")
+            raise flight.FlightServerError("Ticket must include 'query'")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         if role_id not in self._state.schemas:
-            raise flight.FlightServerError(f"No schema for role {role_id!r}")
+            raise flight.FlightServerError(f"No schema for role {role_id!r}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         schema = cast("GraphQLSchema", self._state.schemas[role_id])
         ctx = self._state.contexts[role_id]
@@ -338,7 +338,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         document = parse_query(schema, query_text, variables)
         compiled_queries = compile_query(document, ctx, variables)
         if not compiled_queries:
-            raise flight.FlightServerError("No query fields found")
+            raise flight.FlightServerError("No query fields found")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         compiled = compiled_queries[0]
 
@@ -351,7 +351,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
 
         return document, ctx, rls, role, compiled, decision, variables
 
-    def _do_get_cypher(self, request: dict[str, object]) -> flight.RecordBatchStream:
+    def _do_get_cypher(self, request: dict[str, object]) -> flight.RecordBatchStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute a Cypher query ticket and return Arrow record batches."""
         import concurrent.futures
 
@@ -384,7 +384,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         params: dict[str, object] = params_obj if isinstance(params_obj, dict) else {}
 
         if role_id not in self._state.contexts:
-            raise flight.FlightServerError(f"No schema for role {role_id!r}")
+            raise flight.FlightServerError(f"No schema for role {role_id!r}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         ctx = self._state.contexts[role_id]
         rls = self._state.rls_contexts.get(role_id, RLSContext.empty())
@@ -392,7 +392,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         try:
             ast = parse_cypher(query_text)
         except CypherParseError as exc:
-            raise flight.FlightServerError(f"Cypher parse error: {exc}") from exc
+            raise flight.FlightServerError(f"Cypher parse error: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         label_map = CypherLabelMap.from_schema(ctx)
 
@@ -400,19 +400,19 @@ class ProvisaFlightServer(flight.FlightServerBase):
         try:
             bind_params(param_names, params)
         except CypherParamError as exc:
-            raise flight.FlightServerError(f"Cypher param error: {exc}") from exc
+            raise flight.FlightServerError(f"Cypher param error: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         try:
             sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, params)
         except (CypherCrossSourceError, CypherTranslateError) as exc:
-            raise flight.FlightServerError(f"Cypher translate error: {exc}") from exc
+            raise flight.FlightServerError(f"Cypher translate error: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
 
         try:
             sql_str = sql_ast.sql(dialect="postgres")
         except Exception as exc:
-            raise flight.FlightServerError(f"Cypher SQL render failed: {exc}") from exc
+            raise flight.FlightServerError(f"Cypher SQL render failed: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         gov_ctx = build_governance_context(
             role_id,
@@ -428,13 +428,13 @@ class ProvisaFlightServer(flight.FlightServerBase):
         try:
             trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
         except Exception as exc:
-            raise flight.FlightServerError(f"Cypher transpile failed: {exc}") from exc
+            raise flight.FlightServerError(f"Cypher transpile failed: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         resolved_params = [params.get(name) for name in ordered_params]
 
         trino_conn = getattr(self._state, "trino_conn", None)
         if trino_conn is None:
-            raise flight.FlightServerError("Federation engine not connected")
+            raise flight.FlightServerError("Federation engine not connected")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         def _run() -> list[dict[str, object]]:
             cursor = trino_conn.cursor()
@@ -454,7 +454,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         if not serialized:
             columns = list(graph_vars.keys()) if graph_vars else []
             empty = {col: pa.array([], type=pa.utf8()) for col in columns}
-            return flight.RecordBatchStream(pa.table(empty))
+            return flight.RecordBatchStream(pa.table(empty))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         col_names = list(serialized[0].keys())
         col_data: dict[str, list[object]] = {c: [] for c in col_names}
@@ -462,11 +462,11 @@ class ProvisaFlightServer(flight.FlightServerBase):
             for col in col_names:
                 val = row.get(col)
                 col_data[col].append(json.dumps(val) if isinstance(val, (dict, list)) else val)
-        return flight.RecordBatchStream(pa.table(col_data))
+        return flight.RecordBatchStream(pa.table(col_data))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     def _execute_query(
         self, request: dict[str, object]
-    ) -> flight.RecordBatchStream | flight.GeneratorStream:
+    ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Dispatch a query to the correct handler based on language."""
         query_text = str(request.get("query", ""))
         if _is_cypher(query_text):
@@ -475,7 +475,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
             return self._do_get_sql_governed(request)
         return self._do_get_graphql(request)
 
-    def _do_get_sql_governed(self, request: dict[str, object]) -> flight.RecordBatchStream:
+    def _do_get_sql_governed(self, request: dict[str, object]) -> flight.RecordBatchStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute SQL through Stage 2 governance against the full role schema.
 
         Applies RLS, column masking, and visibility rules for the request role
@@ -498,21 +498,21 @@ class ProvisaFlightServer(flight.FlightServerBase):
         role_id = str(request.get("role", "admin"))
 
         if role_id not in self._state.contexts:
-            raise flight.FlightServerError(f"No schema for role {role_id!r}")
+            raise flight.FlightServerError(f"No schema for role {role_id!r}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         ctx = self._state.contexts[role_id]
         rls = self._state.rls_contexts.get(role_id, RLSContext.empty())
         role = self._state.roles.get(role_id)
 
         if role and not has_capability(role, Capability.AD_HOC_QUERY):
-            raise flight.FlightServerError(
+            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 f"Role {role_id!r} lacks required capability: ad_hoc_query"
             )
 
         try:
             parsed_tree = sqlglot.parse_one(sql, read="postgres")
         except Exception as exc:
-            raise flight.FlightServerError(f"SQL parse error: {exc}") from exc
+            raise flight.FlightServerError(f"SQL parse error: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         gov_ctx = build_governance_context(
             role_id,
@@ -529,7 +529,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
             and t.name not in gov_ctx.table_map
         ]
         if forbidden:
-            raise flight.FlightServerError(
+            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 f"Tables not accessible for role {role_id!r}: {', '.join(forbidden)}"
             )
 
@@ -554,12 +554,12 @@ class ProvisaFlightServer(flight.FlightServerBase):
         if decision.route == Route.TRINO:
             sql_to_run = transpile_to_trino(physical)
             if self._state.flight_client is None:
-                raise flight.FlightServerError(
+                raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                     "Zaychik Flight SQL proxy is not configured. "
                     "Set ZAYCHIK_HOST/ZAYCHIK_PORT and ensure the service is running."
                 )
             table = execute_trino_flight_arrow(self._state.flight_client, sql_to_run, [])
-            return flight.RecordBatchStream(table)
+            return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         else:
             sql_to_run = transpile(physical, decision.dialect or "postgres")
             result = asyncio.run_coroutine_threadsafe(
@@ -579,16 +579,16 @@ class ProvisaFlightServer(flight.FlightServerBase):
             for c in result.column_names
         ]
         table = rows_to_arrow_table(result.rows, columns)
-        return flight.RecordBatchStream(table)
+        return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     def _do_get_graphql(
         self, request: dict[str, object]
-    ) -> flight.RecordBatchStream | flight.GeneratorStream:
+    ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute a GraphQL query ticket and return Arrow record batches."""
         role_id = str(request.get("role", ""))
         _role = self._state.roles.get(role_id)
         if _role and not has_capability(_role, Capability.AD_HOC_QUERY):
-            raise flight.FlightServerError(
+            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 f"Role {role_id!r} lacks required capability: ad_hoc_query"
             )
 
@@ -617,7 +617,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
                 self._main_loop,
             ).result()
             table = rows_to_arrow_table(result.rows, compiled.columns)
-            return flight.RecordBatchStream(table)
+            return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         compiled_for_exec = compile_query(
             document,
@@ -631,7 +631,7 @@ class ProvisaFlightServer(flight.FlightServerBase):
         trino_sql = transpile_to_trino(compiled_for_exec.sql)
 
         if self._state.flight_client is None:
-            raise flight.FlightServerError(
+            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 "Zaychik Flight SQL proxy is not configured. "
                 "Set ZAYCHIK_HOST/ZAYCHIK_PORT and ensure the service is running."
             )
@@ -642,4 +642,4 @@ class ProvisaFlightServer(flight.FlightServerBase):
             trino_sql,
             compiled_for_exec.params,
         )
-        return flight.GeneratorStream(arrow_schema, batch_gen)
+        return flight.GeneratorStream(arrow_schema, batch_gen)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

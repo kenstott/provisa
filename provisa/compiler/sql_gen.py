@@ -21,9 +21,13 @@ import fnmatch as _fnmatch
 import os as _os
 import re as _re
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from provisa.otel_compat import get_tracer as _get_tracer
+
+if TYPE_CHECKING:
+    from provisa.compiler.introspect import ColumnMetadata
 
 from graphql import (
     BooleanValueNode,
@@ -66,11 +70,6 @@ query_counter = QueryCounter()
 _VIRTUAL_COLS = frozenset({"_name_", "_domain_"})
 
 
-# Protocol mirroring schema_gen.ColumnMetadata — avoids circular import.
-class _ColumnMetaProto(Protocol):
-    data_type: str
-
-
 # Protocol mirroring schema_gen._TableInfo — avoids a circular import while
 # giving pyright full attribute visibility on the visible-table objects.
 class _TableInfoProto(Protocol):
@@ -82,7 +81,7 @@ class _TableInfoProto(Protocol):
     schema_name: str
     table_name: str
     visible_columns: list[dict]
-    column_metadata: dict[str, _ColumnMetaProto]
+    column_metadata: dict[str, ColumnMetadata]
     native_filter_columns: list[dict]
 
 
@@ -314,7 +313,7 @@ def _register_table_in_ctx(
 def _register_relationship_joins(
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     ctx: CompilationContext,
-    table_lookup: dict[int, _TableInfoProto],
+    table_lookup: Mapping[int, _TableInfoProto],
     physical_map: dict[str, str],
 ) -> None:
     """Register JoinMeta entries for all explicit relationships."""
@@ -383,7 +382,7 @@ def _register_relationship_joins(
 def _register_meta_synthetic_joins(
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     ctx: CompilationContext,
-    tables: list[_TableInfoProto],
+    tables: Sequence[_TableInfoProto],
     physical_map: dict[str, str],
 ) -> _TableInfoProto | None:
     """Inject synthetic _meta join for every non-meta table → meta:registered_tables."""
@@ -429,7 +428,7 @@ def _register_meta_synthetic_joins(
 def _register_ops_synthetic_joins(
     si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     ctx: CompilationContext,
-    tables: list[_TableInfoProto],
+    tables: Sequence[_TableInfoProto],
     physical_map: dict[str, str],
     meta_rt: _TableInfoProto | None,
 ) -> None:
@@ -842,8 +841,8 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:
         by_name.setdefault(nl, []).append((meta.schema_name, meta.table_name))
         by_schema_name[(sl, nl)] = (meta.schema_name, meta.table_name)
         # Also map pre-alias name → physical name (e.g. "registered_tables" → "registered_tables_meta")
-        if meta.original_table_name:
-            orig_nl = meta.original_table_name.lower()
+        orig_nl: str | None = meta.original_table_name.lower() if meta.original_table_name else None
+        if orig_nl is not None:
             by_name.setdefault(orig_nl, []).append((meta.schema_name, meta.table_name))
             by_schema_name[(sl, orig_nl)] = (meta.schema_name, meta.table_name)
         # Map domain-name schema variant → physical (e.g. "shelter"."shelter__animal_breeds" → "graphql_remote"."shelter__animal_breeds")
@@ -853,7 +852,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:
             domain_sl = domain_to_sql_name(meta.domain_id).lower()
             if domain_sl != sl:
                 by_schema_name[(domain_sl, nl)] = (meta.schema_name, meta.table_name)
-                if meta.original_table_name:
+                if orig_nl is not None:
                     by_schema_name[(domain_sl, orig_nl)] = (meta.schema_name, meta.table_name)
 
     try:

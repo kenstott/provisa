@@ -54,7 +54,7 @@ def _rewrite_json_arrayagg_for_trino(sql: str) -> str:
 
     json_type = exp.DataType(this=exp.DataType.Type.JSON)
 
-    def _transform(node: exp.Expression) -> exp.Expression:
+    def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         inner = None
         if (
             isinstance(node, exp.Anonymous)
@@ -156,7 +156,7 @@ def _rewrite_correlated_json_to_ctes(sql: str) -> str:
     cte_defs: list[exp.CTE] = []
     cte_counter = [0]
     new_joins: list[exp.Join] = []
-    new_exprs: list[exp.Expression] = []
+    new_exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     modified = False
 
     for expr in tree.args.get("expressions") or []:
@@ -187,11 +187,11 @@ def _rewrite_correlated_json_to_ctes(sql: str) -> str:
 
 
 def _try_rewrite_to_cte(
-    expr: exp.Expression,
+    expr: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     cte_defs: list[exp.CTE],
     new_joins: list[exp.Join],
     cte_counter: list[int],
-) -> exp.Expression | None:
+) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Attempt to rewrite a correlated json subquery SELECT expression to a CTE join.
 
     Returns the replacement SELECT expression, or None if not applicable.
@@ -228,7 +228,7 @@ def _try_rewrite_to_cte(
     from_expr = from_clause.this
     if isinstance(from_expr, exp.Subquery):
         inner_alias = from_expr.alias or from_expr.alias_or_name
-        inner_table_expr: exp.Expression = from_expr
+        inner_table_expr: exp.Expression = from_expr  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     elif isinstance(from_expr, exp.Table):
         inner_alias = from_expr.alias or from_expr.name
         inner_table_expr = from_expr
@@ -397,7 +397,7 @@ def _flatten_json_subqueries(
         from_expr = from_clause.this
         if isinstance(from_expr, exp.Table):
             nested_alias = from_expr.alias or from_expr.name
-            nested_table: exp.Expression = from_expr
+            nested_table: exp.Expression = from_expr  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         elif isinstance(from_expr, exp.Subquery):
             nested_alias = from_expr.alias or from_expr.alias_or_name
             nested_table = from_expr
@@ -454,9 +454,9 @@ def _flatten_json_subqueries(
 
 
 def _split_eq_condition(
-    cond: exp.Expression,
+    cond: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     inner_alias: str,
-) -> tuple[exp.Expression | None, exp.Expression | None]:
+) -> tuple[exp.Expression | None, exp.Expression | None]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Split an EQ condition into (inner_table_expr, outer_expr).
 
     Identifies which side references inner_alias and which is the outer correlation.
@@ -467,7 +467,7 @@ def _split_eq_condition(
 
     left, right = cond.this, cond.expression
 
-    def _references_alias(e: exp.Expression, alias: str) -> bool:
+    def _references_alias(e: exp.Expression, alias: str) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if isinstance(e, exp.Column):
             tbl = e.args.get("table")
             if tbl is not None:
@@ -542,7 +542,7 @@ def rewrite_correlated_subqueries_for_trino(sql: str) -> str:
     cte_defs: list[exp.CTE] = []
     cte_counter = [0]
     new_joins: list[exp.Join] = []
-    new_exprs: list[exp.Expression] = []
+    new_exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     modified = False
 
     for expr in tree.args.get("expressions") or []:
@@ -591,7 +591,7 @@ def _collect_select_aliases(select: exp.Select) -> set[str]:
     return aliases
 
 
-def _is_aggregate_expr(expr: exp.Expression) -> bool:
+def _is_aggregate_expr(expr: exp.Expression) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Return True if expr is an aggregate function call."""
     _AGG_NAMES = {"COUNT", "SUM", "MIN", "MAX", "AVG", "JSON_AGG", "ARRAY_AGG", "ARBITRARY"}
     if isinstance(expr, exp.Anonymous):
@@ -604,12 +604,12 @@ def _is_aggregate_expr(expr: exp.Expression) -> bool:
 
 
 def _lift_correlated_in_expr(
-    expr: exp.Expression,
+    expr: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     outer_aliases: set[str],
     cte_defs: list[exp.CTE],
     new_joins: list[exp.Join],
     cte_counter: list[int],
-) -> exp.Expression | None:
+) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Walk expr, lifting any correlated Subquery nodes to CTEs.
 
     Returns a rewritten copy of expr, or None if nothing changed.
@@ -692,7 +692,7 @@ def _try_lift_subquery(
     cte_defs: list[exp.CTE],
     new_joins: list[exp.Join],
     cte_counter: list[int],
-) -> exp.Expression | None:
+) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Lift a correlated Subquery to a CTE + LEFT JOIN.
 
     Returns a Column reference to the CTE's output column, or None if not correlated
@@ -713,7 +713,7 @@ def _try_lift_subquery(
     from_expr = from_clause.this
     if isinstance(from_expr, exp.Table):
         inner_alias = from_expr.alias or from_expr.name
-        inner_table_expr: exp.Expression = from_expr
+        inner_table_expr: exp.Expression = from_expr  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     elif isinstance(from_expr, exp.Subquery):
         inner_alias = from_expr.alias or from_expr.alias_or_name
         inner_table_expr = from_expr
@@ -739,8 +739,8 @@ def _try_lift_subquery(
         flat_expr = inner_select_expr
 
     # Build ON condition: AND of all correlated pairs
-    def _make_join_cond(pairs: list[tuple[exp.Expression, exp.Expression]]) -> exp.Expression:
-        cond: exp.Expression = exp.EQ(this=pairs[0][0].copy(), expression=pairs[0][1].copy())
+    def _make_join_cond(pairs: list[tuple[exp.Expression, exp.Expression]]) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        cond: exp.Expression = exp.EQ(this=pairs[0][0].copy(), expression=pairs[0][1].copy())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for jk, outer_ref in pairs[1:]:
             cond = exp.And(
                 this=cond, expression=exp.EQ(this=jk.copy(), expression=outer_ref.copy())
@@ -752,7 +752,7 @@ def _try_lift_subquery(
 
     # CTE SELECT: join keys + value column
     jk_aliases = [f"_jk{i}" for i in range(len(correlated_pairs))]
-    cte_select_exprs: list[exp.Expression] = [
+    cte_select_exprs: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         exp.Alias(this=jk.copy(), alias=exp.to_identifier(jk_aliases[i]))
         for i, (jk, _) in enumerate(correlated_pairs)
     ]
@@ -763,7 +763,7 @@ def _try_lift_subquery(
         for ej in extra_joins:
             cte_sel = cte_sel.join(ej.copy(), append=True)
         if local_conditions:
-            local_where: exp.Expression = local_conditions[0]
+            local_where: exp.Expression = local_conditions[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             for lc in local_conditions[1:]:
                 local_where = exp.And(this=local_where, expression=lc)
             cte_sel = cte_sel.where(local_where)
@@ -841,19 +841,19 @@ def _try_lift_subquery(
 
 
 def _split_where_conditions_general(
-    cond: exp.Expression,
+    cond: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     inner_aliases: set[str],
-) -> tuple[list[tuple[exp.Expression, exp.Expression]], list[exp.Expression]]:
+) -> tuple[list[tuple[exp.Expression, exp.Expression]], list[exp.Expression]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Walk an AND-tree, returning (correlated_eq_pairs, local_conditions).
 
     correlated_eq_pairs: list of (inner_col, outer_col) for EQ conditions where
         one side references inner_aliases and the other does not.
     local_conditions: remaining non-correlated conditions (passed into CTE WHERE).
     """
-    correlated: list[tuple[exp.Expression, exp.Expression]] = []
-    local: list[exp.Expression] = []
+    correlated: list[tuple[exp.Expression, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    local: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-    def _walk(node: exp.Expression) -> None:
+    def _walk(node: exp.Expression) -> None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if isinstance(node, exp.And):
             _walk(node.this)
             _walk(node.expression)
@@ -875,7 +875,7 @@ def _split_where_conditions_general(
     return correlated, local
 
 
-def _col_references_any(expr: exp.Expression, aliases: set[str]) -> bool:
+def _col_references_any(expr: exp.Expression, aliases: set[str]) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Return True if expr is a Column whose table qualifier is in aliases."""
     if isinstance(expr, exp.Column):
         tbl = expr.args.get("table")
@@ -884,7 +884,7 @@ def _col_references_any(expr: exp.Expression, aliases: set[str]) -> bool:
     return False
 
 
-def _is_qualified_outer_col(expr: exp.Expression, inner_aliases: set[str]) -> bool:
+def _is_qualified_outer_col(expr: exp.Expression, inner_aliases: set[str]) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Return True if expr is a Column with a table qualifier not in inner_aliases.
 
     Literals, unqualified columns, and inner-table columns all return False.
@@ -899,8 +899,8 @@ def _is_qualified_outer_col(expr: exp.Expression, inner_aliases: set[str]) -> bo
 
 def _flatten_walk_alias(
     node: exp.Alias,
-    walk: "Callable[[exp.Expression], exp.Expression | None]",
-) -> exp.Expression | None:
+    walk: "Callable[[exp.Expression], exp.Expression | None]",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     inner_rw = walk(node.this)
     if inner_rw is not None:
         new_n = node.copy()
@@ -911,8 +911,8 @@ def _flatten_walk_alias(
 
 def _flatten_walk_json_object(
     node: exp.JSONObject,
-    walk: "Callable[[exp.Expression], exp.Expression | None]",
-) -> exp.Expression | None:
+    walk: "Callable[[exp.Expression], exp.Expression | None]",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     new_kvs: list[exp.JSONKeyValue] = []
     changed = False
     for kv in node.expressions or []:
@@ -934,8 +934,8 @@ def _flatten_walk_json_object(
 
 def _flatten_walk_agg(
     node: exp.Anonymous,
-    walk: "Callable[[exp.Expression], exp.Expression | None]",
-) -> exp.Expression | None:
+    walk: "Callable[[exp.Expression], exp.Expression | None]",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     children = node.expressions or []
     if children:
         rw = walk(children[0])
@@ -948,8 +948,8 @@ def _flatten_walk_agg(
 
 def _flatten_walk_json_array_agg(
     node: exp.JSONArrayAgg,
-    walk: "Callable[[exp.Expression], exp.Expression | None]",
-) -> exp.Expression | None:
+    walk: "Callable[[exp.Expression], exp.Expression | None]",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     rw = walk(node.this)
     if rw is not None:
         new_n = node.copy()
@@ -958,7 +958,7 @@ def _flatten_walk_json_array_agg(
     return None
 
 
-def _resolve_nested_from(from_expr: exp.Expression) -> tuple[str, exp.Expression] | None:
+def _resolve_nested_from(from_expr: exp.Expression) -> tuple[str, exp.Expression] | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     if isinstance(from_expr, exp.Table):
         return (from_expr.alias or from_expr.name, from_expr)
     if isinstance(from_expr, exp.Subquery):
@@ -967,17 +967,17 @@ def _resolve_nested_from(from_expr: exp.Expression) -> tuple[str, exp.Expression
 
 
 def _build_join_condition(
-    corr: list[tuple[exp.Expression, exp.Expression]],
-    local: list[exp.Expression],
-) -> exp.Expression:
-    join_cond: exp.Expression = exp.EQ(this=corr[0][0].copy(), expression=corr[0][1].copy())
+    corr: list[tuple[exp.Expression, exp.Expression]],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    local: list[exp.Expression],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    join_cond: exp.Expression = exp.EQ(this=corr[0][0].copy(), expression=corr[0][1].copy())  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     for jk2, outer2 in corr[1:]:
         join_cond = exp.And(
             this=join_cond,
             expression=exp.EQ(this=jk2.copy(), expression=outer2.copy()),
         )
     if local:
-        local_w: exp.Expression = local[0]
+        local_w: exp.Expression = local[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for lc in local[1:]:
             local_w = exp.And(this=local_w, expression=lc)
         join_cond = exp.And(this=join_cond, expression=local_w)
@@ -987,7 +987,7 @@ def _build_join_condition(
 def _flatten_walk_subquery(
     node: exp.Subquery,
     extra_joins: list[exp.Join],
-) -> exp.Expression | None:
+) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     inner = node.this
     if not isinstance(inner, exp.Select):
         return None
@@ -1025,17 +1025,17 @@ def _flatten_walk_subquery(
 
 
 def _flatten_nested_in_expr(
-    expr: exp.Expression,
+    expr: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     inner_aliases: set[str],
     extra_joins: list[exp.Join],
-) -> exp.Expression | None:
+) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Walk expr inside a CTE body, replacing nested correlated subqueries with LEFT JOINs.
 
     Uses a simple inline CTE counter (nested CTEs not needed — joins suffice here).
     Returns rewritten expr, or None if unchanged.
     """
 
-    def _walk(node: exp.Expression) -> exp.Expression | None:
+    def _walk(node: exp.Expression) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if isinstance(node, exp.Alias):
             return _flatten_walk_alias(node, _walk)
         if isinstance(node, exp.JSONObject):

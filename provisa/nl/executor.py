@@ -92,13 +92,15 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
 
 async def _execute_graphql(query: str, role: str, app_state: Any) -> dict:
     from graphql import GraphQLSchema
-    from graphql import graphql as gql_execute, parse as gql_parse
+    from graphql import execute as gql_execute, parse as gql_parse
+    import inspect
 
     schema = app_state.schemas.get(role)
     if not isinstance(schema, GraphQLSchema):
         raise RuntimeError(f"No GraphQL schema for role: {role}")
     doc = gql_parse(query)
-    result = await gql_execute(schema, source=doc)
+    raw = gql_execute(schema, document=doc)
+    result = (await raw) if inspect.isawaitable(raw) else raw
     if result.errors:
         raise RuntimeError("; ".join(str(e) for e in result.errors))
     return {"data": result.data}

@@ -76,6 +76,7 @@ async def execute_remote(
         if offset is not None and offset_arg:
             pagination_arg_strs.append(f"{offset_arg}: {offset}")
 
+    data: dict = {}
     async with httpx.AsyncClient(timeout=30.0) as client:
         for attempt in range(2):
             col_selection = "\n".join(selected_cols) if selected_cols else "__typename"

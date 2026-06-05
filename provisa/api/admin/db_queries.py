@@ -68,7 +68,7 @@ def derive_cypher_alias(source_column: str, cardinality: str) -> str:
     return entity
 
 
-def parse_mask_value(raw: str | None) -> object:
+def parse_mask_value(raw: str | None) -> int | float | str | None:
     """Parse a stored mask value string back to a Python value."""
     if raw is None:
         return None

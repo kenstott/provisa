@@ -213,8 +213,12 @@ def _detect_introspection(document) -> bool:
     introspection_fields = {"__schema", "__type", "__typename"}
     for defn in document.definitions:
         if isinstance(defn, OperationDefinitionNode) and defn.selection_set:
+            from graphql.language.ast import FieldNode as _FieldNode
+
             field_names = {
-                sel.name.value for sel in defn.selection_set.selections if hasattr(sel, "name")
+                sel.name.value
+                for sel in defn.selection_set.selections
+                if isinstance(sel, _FieldNode)
             }
             if field_names and field_names <= introspection_fields:
                 return True
@@ -259,7 +263,7 @@ def _build_redirect_params(
 def _inject_stats_into_response(response, stats_dict: dict):
     """Inject provisa_stats extension into a JSON response/dict."""
     if isinstance(response, JSONResponse):
-        body = json.loads(response.body)
+        body = json.loads(bytes(response.body))
         body.setdefault("extensions", {})["provisa_stats"] = stats_dict
         skip = {"content-length", "content-type"}
         extra = {k: v for k, v in response.headers.items() if k.lower() not in skip}
@@ -343,19 +347,26 @@ async def graphql_endpoint(
     # Introspection: execute directly against GraphQL schema
     if _detect_introspection(document):
         from graphql import execute as gql_execute
+        from graphql.execution.execute import ExecutionResult as _ExecutionResult
+        from typing import cast as _cast
 
-        result = gql_execute(schema, document, variable_values=effective_variables)
+        result = _cast(
+            _ExecutionResult,
+            gql_execute(schema, document, variable_values=effective_variables),
+        )
         return JSONResponse({"data": result.data})
 
     # AD_HOC_QUERY required for actual data queries
     _check_role_capability(role, Capability.AD_HOC_QUERY)
 
+    from graphql.language.ast import OperationDefinitionNode as _ODN
+
     is_mut = any(
-        hasattr(d, "operation") and d.operation == OperationType.MUTATION
+        isinstance(d, _ODN) and d.operation == OperationType.MUTATION
         for d in document.definitions
     )
     is_sub = any(
-        hasattr(d, "operation") and d.operation == OperationType.SUBSCRIPTION
+        isinstance(d, _ODN) and d.operation == OperationType.SUBSCRIPTION
         for d in document.definitions
     )
 
@@ -446,12 +457,18 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
         hook_config = state.approval_hook_config
         table_hooks = getattr(state, "table_approval_hooks", {})
         source_hooks = getattr(state, "source_approval_hooks", {})
-        if should_check(table_ids, source_ids, hook_config, table_hooks, source_hooks):
+        if should_check(
+            list(table_ids),
+            list(source_ids),
+            hook_config,
+            table_hooks=table_hooks,
+            source_hooks=source_hooks,
+        ):
             req = ApprovalRequest(
                 user=role_id,
                 roles=[role_id] if role_id else [],
                 tables=list(compiled.sources),
-                columns=compiled.columns,
+                columns=[c.column for c in compiled.columns],
                 operation="query",
             )
             resp = await state.approval_hook.evaluate(req)
@@ -928,7 +945,7 @@ async def _mat_api_ep_table(
     )
 
 
-async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tuple[dict, dict]:
+async def _materialize_api_to_trino_cache(exec_sql: str, _compiled, state) -> tuple[dict, dict]:
     """Materialize API-backed tables into Trino cache (VARCHAR columns) before Trino SQL runs.
 
     Avoids INVALID_CAST_ARGUMENT: Trino's PG connector exposes JSONB as json type;
@@ -950,7 +967,7 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
 
     if getattr(state, "pg_pool", None) is None:
         log.warning("[MAT] pg_pool is None — cannot materialize API tables to Trino cache")
-        return cache_rewrites
+        return cache_rewrites, values_cte_entries
 
     _META_COLS = {"_params_hash", "_cached_at"}
     _hot_threshold = hot_mgr.auto_threshold if hot_mgr is not None else 500
@@ -967,7 +984,10 @@ async def _materialize_api_to_trino_cache(exec_sql: str, compiled, state) -> tup
         ep = _lookup_ep(state, tn)
         if ep is None:
             gql_reg, gql_tbl = _lookup_gql_remote_table(state, tn)
-            if gql_reg is not None and not gql_tbl.get("required_args"):
+            if gql_reg is not None:
+                assert gql_tbl is not None
+                assert isinstance(gql_tbl, dict)
+            if gql_reg is not None and gql_tbl is not None and not gql_tbl.get("required_args"):
                 await _mat_gql_remote_table(
                     tn, gql_reg, gql_tbl, state, hot_mgr, _hot_threshold,
                     cache_rewrites, values_cte_entries,
@@ -1237,7 +1257,7 @@ def _count_rows_per_source(field_rows: list, ctx) -> dict[str, int]:
 def _build_mermaid(
     sources: set,
     source_types: dict,
-    ctx,
+    _ctx,
     hydration_ms: dict[str, float],
     trino_ms: float | None,
     result_rows: int,
@@ -1330,7 +1350,7 @@ def _build_mermaid(
     return "\n".join(lines)
 
 
-async def _execute_api_source(compiled, ctx, state, source_id, root_field, ck, output_format):
+async def _execute_api_source(compiled, ctx, state, source_id, root_field, _ck, output_format):
     """Execute a query against an API source in two phases.
 
     Phase 1 — REST call: native filter args (api_args) build the URL.
@@ -1463,6 +1483,7 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, ck, o
 
     exec_sql, exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
     exec_sql = rewrite_semantic_to_trino_physical(exec_sql, ctx)
+    assert cache_tbl is not None, "cache_tbl must be set before Phase 2"
     rewritten_sql = rewrite_from_cache(exec_sql, _cache_loc, cache_tbl)
     # Rewrite any joined API table refs → VALUES CTE (hot) or Trino cache
     _join_rewrites, _join_values_ctes = await _materialize_api_to_trino_cache(
@@ -1746,7 +1767,7 @@ async def _execute_trino_standard(
     )
 
 
-async def _exec_nodes_query(compiled, ctx, state, decision, root_field):
+async def _exec_nodes_query(compiled, ctx, state, decision, _root_field):
     """Execute the aggregate nodes sub-query (plain-SELECT companion).
 
     Returns the nodes_result.
@@ -1862,7 +1883,7 @@ def _append_mermaid(qs, compiled, ctx, root_field, per_source_ms, trino_ms, n_ro
     qs.mermaid = f"{qs.mermaid}\n\n{new_mermaid}" if qs.mermaid else new_mermaid
 
 
-async def _exec_api_route(compiled, ctx, state, decision, root_field, output_format, ck, response_cache_ttl, no_cache, t0):
+async def _exec_api_route(compiled, ctx, state, decision, root_field, output_format, ck, response_cache_ttl, no_cache, _t0):
     """Execute Route.API path.
 
     Returns (root_field, field_rows, None, ck, None).
@@ -1913,7 +1934,7 @@ async def _exec_api_route(compiled, ctx, state, decision, root_field, output_for
     return root_field, field_rows, None, ck, None
 
 
-async def _exec_ctas_route(compiled, ctx, state, root_field, effective_redirect_format, redirect_config, ck, t0):
+async def _exec_ctas_route(compiled, ctx, state, _root_field, effective_redirect_format, redirect_config, _ck, _t0):
     """Execute CTAS redirect path.
 
     Returns redirect_info dict on success, or raises.
@@ -1924,7 +1945,7 @@ async def _exec_ctas_route(compiled, ctx, state, root_field, effective_redirect_
         cleanup_result_table,
         schedule_s3_cleanup,
     )
-    _, _ctas_hydration_ms, _, _ctas_cache_hits = await _hydrate_api_tables_before_trino(compiled, ctx, state)
+    _, _ctas_hydration_ms, _, _ = await _hydrate_api_tables_before_trino(compiled, ctx, state)
     _ctas_exec_sql = rewrite_semantic_to_trino_physical(compiled.sql, ctx)
     _ctas_rewrites, _ctas_values_ctes = await _materialize_api_to_trino_cache(_ctas_exec_sql, compiled, state)
     if _ctas_values_ctes:
@@ -2184,7 +2205,7 @@ async def _handle_query(
     # --- Single root field: preserve existing behavior for binary formats ---
     if len(prepared) == 1:
         try:
-            root_field, field_rows, redirect_info, ck, cached_entry = await asyncio.wait_for(
+            root_field, field_rows, redirect_info, _ck, cached_entry = await asyncio.wait_for(
                 _execute_one_field(
                     prepared[0],
                     ctx,
@@ -2264,7 +2285,7 @@ async def _handle_query(
             status_code=504, detail=f"Query timed out after {_request_timeout():.0f}s"
         )
 
-    for root_field, field_rows, redirect_info, ck, cached_entry in results:
+    for root_field, field_rows, redirect_info, _ck, cached_entry in results:
         if redirect_info is not None:
             merged_data[root_field] = None
             merged_redirects[root_field] = redirect_info

@@ -17,6 +17,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from provisa.compiler.sql_gen import CompilationContext
 
 
 @dataclass
@@ -272,9 +276,7 @@ def _build_node_mappings(
         cypher_label = f"{domain_label}:{table_label}" if domain_label else table_label
         logical_table = _strip_domain_prefix(table_meta.table_name, domain_id)
         physical_table = table_meta.table_name
-        physical_kwarg = (
-            {"physical_table_name": physical_table} if physical_table != logical_table else {}
-        )
+        physical_table_name = physical_table if physical_table != logical_table else ""
 
         nf_cols = ctx_typed.native_filter_columns.get(table_meta.table_id, set())
         nodes[table_meta.type_name] = NodeMapping(
@@ -292,7 +294,7 @@ def _build_node_mappings(
             table_name=logical_table,
             properties=props,
             native_filter_columns=nf_cols,
-            **physical_kwarg,
+            physical_table_name=physical_table_name,
         )
 
         if domain_label:

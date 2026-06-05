@@ -17,6 +17,8 @@ _recursive_ctes, _shortestpath_hops_col, _shortestpath_is_all.
 
 from __future__ import annotations
 
+from typing import cast
+
 import sqlglot.expressions as exp
 
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
@@ -122,14 +124,14 @@ class PathFunctionsMixin:
     _lm: CypherLabelMap
     _var_table: dict
     _extra_path_branches: list
-    _recursive_ctes: list          # list[(cte_name, exp.Expression)]
-    _shortestpath_hops_col: exp.Expression | None
+    _recursive_ctes: list          # list[(cte_name, exp.Expression)]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    _shortestpath_hops_col: exp.Expression | None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     _shortestpath_is_all: bool
     _path_vars: dict               # path_var → (src_var, tgt_var, is_recursive)
 
     def _translate_path_function(
         self, clause: MatchClause
-    ) -> tuple[exp.Expression, list[dict]]:
+    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Entry point: route to flat-JOIN or recursive-CTE path."""
         from provisa.cypher.translator import CypherTranslateError  # avoid circular at module level
 
@@ -178,7 +180,7 @@ class PathFunctionsMixin:
         max_hops: int,
         is_all_paths: bool,
         CypherTranslateError: type,
-    ) -> tuple[exp.Expression, list[dict]]:
+    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Dispatch to recursive CTE translation after validating base rels exist."""
         base_rels = [r for r in allowed_rels if r.source_label == src_type]
         if not base_rels:
@@ -207,7 +209,7 @@ class PathFunctionsMixin:
         is_undirected: bool,
         is_all_paths: bool,
         CypherTranslateError: type,
-    ) -> tuple[exp.Expression, list[dict]]:
+    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build flat JOIN path for non-self-referential variable-length or fixed-length."""
         all_paths = self._lm.find_paths(src_type, tgt_type, rel_types, max_hops, bidirectional=is_undirected)
         if not all_paths:
@@ -228,7 +230,7 @@ class PathFunctionsMixin:
         tgt_var: str | None,
         src_nm: NodeMapping,
         tgt_nm: NodeMapping,
-    ) -> tuple[exp.Expression, list[dict]]:
+    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build primary join chain and register extra path branches."""
         primary_from, primary_joins, step_nodes, step_edges = self._build_path_join_chain(
             candidate_paths[0], src_var, tgt_var, src_nm, tgt_nm, clause.optional
@@ -286,7 +288,7 @@ class PathFunctionsMixin:
         src_nm: NodeMapping,
         tgt_nm: NodeMapping,
         optional: bool,
-    ) -> tuple[exp.Expression, list[dict], list[tuple[str, NodeMapping]], list[tuple[str, str, NodeMapping, str, NodeMapping, bool]]]:
+    ) -> tuple[exp.Expression, list[dict], list[tuple[str, NodeMapping]], list[tuple[str, str, NodeMapping, str, NodeMapping, bool]]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM + JOIN list for a single flat schema path."""
         src_alias = src_var or src_nm.table_name
         from_expr = exp.alias_(
@@ -343,7 +345,7 @@ class PathFunctionsMixin:
             prev_alias = nxt_alias
             prev_nm = nxt_nm
 
-        return from_expr, joins, step_nodes, step_edges
+        return cast(exp.Expression, from_expr), joins, step_nodes, step_edges  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     # ------------------------------------------------------------------
     # Recursive CTE (self-referential variable-length paths)
@@ -362,7 +364,7 @@ class PathFunctionsMixin:
         max_hops: int,
         is_all: bool,
         suppress_hops_order: bool = False,
-    ) -> tuple[exp.Expression, list[dict]]:
+    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Emit WITH RECURSIVE CTE for paths that may repeat edge traversals in data."""
         cte_name = f"_traverse_{src_var or src_type.lower()}"
         cte_expr = self._build_recursive_cte(cte_name, src_nm, allowed_rels, max_hops)
@@ -444,7 +446,7 @@ class PathFunctionsMixin:
                 table=exp.Identifier(this="_t"),
             )
         self._shortestpath_is_all = is_all
-        return from_expr, joins
+        return cast(exp.Expression, from_expr), joins  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     def _build_recursive_cte(
         self,
@@ -452,7 +454,7 @@ class PathFunctionsMixin:
         src_nm: NodeMapping,
         allowed_rels: list[RelationshipMapping],
         max_hops: int,
-    ) -> exp.Expression:
+    ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build the UNION ALL body of the recursive CTE.
 
         Base case: one branch per allowed rel whose source_label == src_nm.label.
@@ -465,15 +467,15 @@ class PathFunctionsMixin:
           hops     — number of edges traversed so far (>= 1)
         """
 
-        def _tbl(nm: NodeMapping, alias: str) -> exp.Expression:
-            return exp.alias_(
+        def _tbl(nm: NodeMapping, alias: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            return cast(exp.Expression, exp.alias_(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                 exp.Table(
                     this=exp.Identifier(this=nm.sql_table_name, quoted=True),
                     db=exp.Identifier(this=nm.schema_name, quoted=True),
                     catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
                 ),
                 alias=alias,
-            )
+            ))
 
         # ------------------------------------------------------------------
         # Base case: seed with 1-hop expansions from the source type
@@ -628,7 +630,7 @@ class PathFunctionsMixin:
         if not all_branches:
             raise ValueError(f"No traversal branches for recursive CTE {cte_name!r}")
 
-        result: exp.Expression = all_branches[0]
+        result: exp.Expression = all_branches[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for branch in all_branches[1:]:
             result = exp.Union(this=result, expression=branch, distinct=False)
         return result

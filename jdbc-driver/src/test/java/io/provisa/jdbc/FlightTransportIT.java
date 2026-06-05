@@ -99,6 +99,7 @@ class FlightTransportIT {
         props.setProperty("user", USER);
         props.setProperty("password", "");
         var conn = (ProvisaConnection) DriverManager.getConnection(BASE_URL, props);
+        @SuppressWarnings("unused")
         FlightTransport ft = conn.flightTransport;
         conn.close();
         assertTrue(conn.isClosed());

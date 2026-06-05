@@ -30,13 +30,13 @@ _NF_PREFIX = "_nf_"
 _PARAM_RE = re.compile(r"\$(\d+)")
 
 
-def _flatten_and(expr: exp.Expression) -> list[exp.Expression]:
+def _flatten_and(expr: exp.Expression) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     if isinstance(expr, exp.And):
         return _flatten_and(expr.left) + _flatten_and(expr.right)
     return [expr]
 
 
-def _rebuild_and(conditions: list[exp.Expression]) -> exp.Expression | None:
+def _rebuild_and(conditions: list[exp.Expression]) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     if not conditions:
         return None
     result = conditions[0]
@@ -45,7 +45,7 @@ def _rebuild_and(conditions: list[exp.Expression]) -> exp.Expression | None:
     return result
 
 
-def _resolve_value(val_expr: exp.Expression, params: list[Any]) -> tuple[Any, int | None]:
+def _resolve_value(val_expr: exp.Expression, params: list[Any]) -> tuple[Any, int | None]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Return (value, param_index_1based) from a value expression.
 
     param_index is set when the value came from a $N placeholder; None for literals.
@@ -85,11 +85,11 @@ def extract_nf_args(sql: str, params: list[Any]) -> tuple[str, list[Any], dict[s
     conditions = _flatten_and(where.this)
     nf_args: dict[str, Any] = {}
     consumed_indices: set[int] = set()
-    keep: list[exp.Expression] = []
+    keep: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     for cond in conditions:
         nf_col: str | None = None
-        val_expr: exp.Expression | None = None
+        val_expr: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         if isinstance(cond, exp.EQ):
             left, right = cond.left, cond.right

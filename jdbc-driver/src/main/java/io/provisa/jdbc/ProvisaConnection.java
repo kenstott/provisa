@@ -1,9 +1,8 @@
 package io.provisa.jdbc;
 
 import com.google.gson.*;
-import java.io.*;
 import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.sql.*;
 import java.util.*;
@@ -57,7 +56,7 @@ public class ProvisaConnection extends AbstractConnection {
         body.addProperty("username", user);
         body.addProperty("password", password);
 
-        HttpURLConnection conn = (HttpURLConnection) new URL(baseUrl + "/auth/login").openConnection();
+        HttpURLConnection conn = (HttpURLConnection) URI.create(baseUrl + "/auth/login").toURL().openConnection();
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setDoOutput(true);
@@ -235,7 +234,7 @@ public class ProvisaConnection extends AbstractConnection {
             JsonObject body = new JsonObject();
             body.addProperty("query", queryText);
 
-            HttpURLConnection conn = (HttpURLConnection) new URL(baseUrl + "/data/compile").openConnection();
+            HttpURLConnection conn = (HttpURLConnection) URI.create(baseUrl + "/data/compile").toURL().openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("X-Provisa-Role", role);
@@ -261,7 +260,7 @@ public class ProvisaConnection extends AbstractConnection {
     }
 
     private JsonObject executeGraphQL(String endpoint, JsonObject body) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(endpoint).openConnection();
+        HttpURLConnection conn = (HttpURLConnection) URI.create(endpoint).toURL().openConnection();
         conn.setRequestMethod("POST");
         conn.setRequestProperty("Content-Type", "application/json");
         conn.setRequestProperty("X-Provisa-Role", role);
@@ -301,7 +300,7 @@ public class ProvisaConnection extends AbstractConnection {
             body.addProperty("role", role);
 
             HttpURLConnection conn = (HttpURLConnection)
-                new URL(baseUrl + "/data/sql").openConnection();
+                URI.create(baseUrl + "/data/sql").toURL().openConnection();
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("X-Provisa-Role", role);

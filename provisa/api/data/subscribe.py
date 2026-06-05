@@ -227,8 +227,8 @@ async def _sse_generator(
 
     def _on_notify(
         conn: object,  # object-ok: asyncpg notify callback — connection type is opaque at this boundary
-        pid: int,
-        channel: str,
+        _pid: int,
+        _channel: str,
         payload: str,
     ) -> None:
         queue.put_nowait(payload)
@@ -274,7 +274,7 @@ async def _sse_generator(
         log.info("SSE: disconnected from channel %s", channel)
 
 
-def _rls_matches(row: dict, rls_ctx, table: str) -> bool:
+def _rls_matches(row: dict, rls_ctx, _table: str) -> bool:
     """Best-effort RLS check on a notification row.
 
     Checks simple ``column = 'value'`` filters from the RLS context.

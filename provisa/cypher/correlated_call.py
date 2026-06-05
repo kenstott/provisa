@@ -75,7 +75,7 @@ class CorrelatedCallMixin:
         self,
         call: CallSubquery,
         alias: str,
-    ) -> exp.Expression | None:
+    ) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Translate one correlated CALL body to a LATERAL subquery."""
         from provisa.cypher.translator import _Translator, CypherTranslateError
 

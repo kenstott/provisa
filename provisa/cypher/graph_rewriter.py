@@ -17,10 +17,13 @@ not modified.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import cast
+
 import sqlglot.expressions as exp
 
 from provisa.cypher.translator import GraphVarKind
-from provisa.cypher.label_map import CypherLabelMap
+from provisa.cypher.label_map import CypherLabelMap, NodeMapping
 
 
 def apply_graph_rewrites(
@@ -47,7 +50,7 @@ def apply_graph_rewrites(
     # Build alias → NodeMapping from the FROM/JOIN clauses
     alias_to_node = _extract_alias_mappings(sql_ast, label_map)
 
-    new_expressions: list[exp.Expression] = []
+    new_expressions: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     for sel_expr in sql_ast.expressions:
         alias_name = _get_alias(sel_expr)
@@ -76,21 +79,20 @@ def apply_graph_rewrites(
             else:
                 domain_props = _extract_domain_props_from_union(sql_ast, tbl)
                 rewritten = _build_domain_json(tbl, domain_props)
-            new_expressions.append(exp.alias_(rewritten, out_alias))
+            new_expressions.append(cast(exp.Expression, exp.alias_(rewritten, out_alias)))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         else:
-            new_expressions.append(sel_expr)
+            new_expressions.append(cast(exp.Expression, sel_expr))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     return sql_ast.select(*new_expressions, append=False)  # type: ignore[return-value]
 
 
-def _build_row_cast(tbl: str, node_meta: object) -> exp.Expression:
+def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Build CASE WHEN id IS NULL THEN NULL ELSE JSON_OBJECT(...) END for a graph variable.
 
     The CASE guard ensures OPTIONAL JOINs with no match produce NULL rather than
     a JSON object whose 'id' is null but 'label' is a non-null constant.
     """
-    from provisa.cypher.label_map import NodeMapping
-    nm: NodeMapping = node_meta  # type: ignore[assignment]
+    nm = node_meta
 
     id_col = exp.Column(
         this=exp.Identifier(this=nm.id_column, quoted=True),
@@ -100,7 +102,7 @@ def _build_row_cast(tbl: str, node_meta: object) -> exp.Expression:
         this=exp.Identifier(this=nm.id_column, quoted=True),
         table=exp.Identifier(this=tbl),
     )
-    kv: list[exp.Expression] = [
+    kv: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         exp.JSONKeyValue(this=exp.Literal.string("id"), expression=id_col),
         exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
     ]
@@ -122,9 +124,9 @@ def _build_row_cast(tbl: str, node_meta: object) -> exp.Expression:
     )
 
 
-def _build_domain_json(var: str, props: list[str] | None = None) -> exp.Expression:
+def _build_domain_json(var: str, props: list[str] | None = None) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Build JSON_OBJECT for a domain-union node (subquery with __id, __label, props)."""
-    kv: list[exp.Expression] = [
+    kv: list[exp.Expression] = [  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         exp.JSONKeyValue(
             this=exp.Literal.string("id"),
             expression=exp.Column(
@@ -181,9 +183,8 @@ def _extract_domain_props_from_union(sql_ast: exp.Select, var_alias: str) -> lis
     return []
 
 
-def _extract_alias_mappings(sql_ast: exp.Select, label_map: CypherLabelMap) -> dict[str, object]:
+def _extract_alias_mappings(sql_ast: exp.Select, label_map: CypherLabelMap) -> Mapping[str, NodeMapping]:
     """Walk FROM/JOIN clauses and map SQL alias → NodeMapping."""
-    from provisa.cypher.label_map import NodeMapping
     alias_map: dict[str, NodeMapping] = {}
 
     for tbl in sql_ast.find_all(exp.Table):
@@ -199,7 +200,7 @@ def _extract_alias_mappings(sql_ast: exp.Select, label_map: CypherLabelMap) -> d
     return alias_map
 
 
-def _find_node_meta(var_name: str, table_ref: str | None, label_map: CypherLabelMap) -> object:
+def _find_node_meta(var_name: str, table_ref: str | None, label_map: CypherLabelMap) -> NodeMapping | None:
     """Fallback lookup: match by label name or table name."""
     for label, nm in label_map.nodes.items():
         if label.lower() == var_name.lower():
@@ -211,22 +212,22 @@ def _find_node_meta(var_name: str, table_ref: str | None, label_map: CypherLabel
     return None
 
 
-def _get_alias(expr: exp.Expression) -> str | None:
+def _get_alias(expr: exp.Expression) -> str | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     if isinstance(expr, exp.Alias):
         return expr.alias
     return None
 
 
-def _get_table_ref(expr: exp.Expression) -> str | None:
+def _get_table_ref(expr: exp.Expression) -> str | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Extract table/alias name from a Column expression."""
     if isinstance(expr, exp.Column):
         tbl = expr.table
         if tbl:
-            return tbl.name if hasattr(tbl, "name") else str(tbl)
+            return tbl.name if isinstance(tbl, exp.Expression) else str(tbl)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     return None
 
 
-def _get_col_name(expr: exp.Expression) -> str | None:
+def _get_col_name(expr: exp.Expression) -> str | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Extract the bare column/identifier name."""
     if isinstance(expr, exp.Column):
         return expr.name

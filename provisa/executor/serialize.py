@@ -46,7 +46,9 @@ def _convert_value(val: object) -> object:  # object-ok: arbitrary SQL column va
             return int(f)
         return f
     if hasattr(val, "isoformat"):
-        return val.isoformat()  # object-ok: guarded by hasattr — any date/datetime-like type
+        from datetime import date as _date
+        from typing import cast as _cast
+        return _cast(_date, val).isoformat()  # guarded by hasattr — any date/datetime-like type
     # Trino returns JSON columns as strings; parse so object sub-fields resolve correctly.
     # Recursively convert nested values so json_format(...)-wrapped arrays unpack correctly.
     if isinstance(val, str) and len(val) > 1 and val[0] in ("{", "["):
@@ -207,7 +209,7 @@ def _zip_absorbed_children(
         for cp, cp_data in child_absorbed:
             rel = cp[len(prefix):]
             rel_parts = rel.split(".")
-            sub_t = elem
+            sub_t: dict = elem
             for sub_part in rel_parts[:-1]:
                 sub_t = sub_t.setdefault(sub_part, {})
             leaf = rel_parts[-1]
@@ -338,9 +340,10 @@ def _build_nested_obj(
     for nest_path, nest_cols in nested_groups.items():
         all_none = all(row[idx] is None for idx, _ in nest_cols)
         parts = nest_path.split(".")
-        target = obj
+        target: dict | None = obj
         skip = False
         for part in parts[:-1]:
+            assert target is not None
             if part not in target:
                 target[part] = {}
             target = target[part]
@@ -349,6 +352,7 @@ def _build_nested_obj(
                 break
         if skip:
             continue
+        assert target is not None
         leaf = parts[-1]
         if all_none:
             target[leaf] = None

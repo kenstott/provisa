@@ -22,10 +22,11 @@ class ProvisaStatementTest {
     ProvisaConnection conn;
 
     @Test
-    void rejectsInvalidSql() {
+    void rejectsInvalidSql() throws SQLException {
         conn.mode = "approved";
-        var stmt = new ProvisaStatement(conn);
-        assertThrows(SQLException.class, () -> stmt.executeQuery("DROP TABLE users"));
+        try (var stmt = new ProvisaStatement(conn)) {
+            assertThrows(SQLException.class, () -> stmt.executeQuery("DROP TABLE users"));
+        }
     }
 
     @Test
@@ -51,13 +52,13 @@ class ProvisaStatementTest {
         response.add("data", data);
         when(conn.executeApprovedQuery(eq("my-report"), any())).thenReturn(response);
 
-        var stmt = new ProvisaStatement(conn);
-        ResultSet rs = stmt.executeQuery("SELECT * FROM my-report__sales__users");
-
-        assertTrue(rs.next());
-        assertEquals("1", rs.getString("id"));
-        assertEquals("Alice", rs.getString("name"));
-        assertFalse(rs.next());
+        try (var stmt = new ProvisaStatement(conn);
+             ResultSet rs = stmt.executeQuery("SELECT * FROM my-report__sales__users")) {
+            assertTrue(rs.next());
+            assertEquals("1", rs.getString("id"));
+            assertEquals("Alice", rs.getString("name"));
+            assertFalse(rs.next());
+        }
     }
 
     @Test
@@ -80,12 +81,12 @@ class ProvisaStatementTest {
         response.add("data", data);
         when(conn.executeApprovedQuery(eq("get-users"), any())).thenReturn(response);
 
-        var stmt = new ProvisaStatement(conn);
-        ResultSet rs = stmt.executeQuery("SELECT * FROM get-users");
-
-        assertTrue(rs.next());
-        assertEquals("42", rs.getString("id"));
-        assertFalse(rs.next());
+        try (var stmt = new ProvisaStatement(conn);
+             ResultSet rs = stmt.executeQuery("SELECT * FROM get-users")) {
+            assertTrue(rs.next());
+            assertEquals("42", rs.getString("id"));
+            assertFalse(rs.next());
+        }
     }
 
     @Test
@@ -93,9 +94,10 @@ class ProvisaStatementTest {
         conn.mode = "approved";
         when(conn.fetchApprovedQueries()).thenReturn(List.of());
 
-        var stmt = new ProvisaStatement(conn);
-        assertThrows(SQLException.class,
-            () -> stmt.executeQuery("SELECT * FROM nonexistent__field"));
+        try (var stmt = new ProvisaStatement(conn)) {
+            assertThrows(SQLException.class,
+                () -> stmt.executeQuery("SELECT * FROM nonexistent__field"));
+        }
     }
 
     @Test
@@ -114,13 +116,13 @@ class ProvisaStatementTest {
         response.add("data", data);
         when(conn.executeApprovedQuery(eq("q1"), any())).thenReturn(response);
 
-        var stmt = new ProvisaStatement(conn);
-        stmt.executeQuery("SELECT * FROM q1__users WHERE region = 'us-east' AND status = active");
-
-        // Verify executeApprovedQuery was called (variables parsed from WHERE)
-        verify(conn).executeApprovedQuery(eq("q1"), argThat(vars ->
-            "us-east".equals(vars.get("region")) && "active".equals(vars.get("status"))
-        ));
+        try (var stmt = new ProvisaStatement(conn);
+             ResultSet rs = stmt.executeQuery("SELECT * FROM q1__users WHERE region = 'us-east' AND status = active")) {
+            // Verify executeApprovedQuery was called (variables parsed from WHERE)
+            verify(conn).executeApprovedQuery(eq("q1"), argThat(vars ->
+                "us-east".equals(vars.get("region")) && "active".equals(vars.get("status"))
+            ));
+        }
     }
 
     @Test
@@ -144,13 +146,13 @@ class ProvisaStatementTest {
         rows.add(row1);
         when(conn.executeSqlEndpoint(anyString())).thenReturn(rows);
 
-        var stmt = new ProvisaStatement(conn);
-        ResultSet rs = stmt.executeQuery("SELECT id, name FROM users WHERE region = 'us-east'");
-
-        assertTrue(rs.next());
-        assertEquals("1", rs.getString("id"));
-        assertEquals("Alice", rs.getString("name"));
-        assertFalse(rs.next());
+        try (var stmt = new ProvisaStatement(conn);
+             ResultSet rs = stmt.executeQuery("SELECT id, name FROM users WHERE region = 'us-east'")) {
+            assertTrue(rs.next());
+            assertEquals("1", rs.getString("id"));
+            assertEquals("Alice", rs.getString("name"));
+            assertFalse(rs.next());
+        }
 
         verify(conn).executeSqlEndpoint("SELECT id, name FROM users WHERE region = 'us-east'");
     }
@@ -163,10 +165,10 @@ class ProvisaStatementTest {
 
         when(conn.executeSqlEndpoint(anyString())).thenReturn(new ArrayList<>());
 
-        var stmt = new ProvisaStatement(conn);
-        ResultSet rs = stmt.executeQuery("SELECT * FROM orders");
-
-        assertFalse(rs.next());
+        try (var stmt = new ProvisaStatement(conn);
+             ResultSet rs = stmt.executeQuery("SELECT * FROM orders")) {
+            assertFalse(rs.next());
+        }
         verify(conn).executeSqlEndpoint("SELECT * FROM orders");
     }
 }

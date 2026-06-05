@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from provisa.executor.trino import QueryResult
+    from provisa.cypher.label_map import CypherLabelMap
 
 from provisa.api.admin._dev_shared import detect_target
 from provisa.compiler.rls import RLSContext
@@ -290,7 +291,7 @@ async def _dispatch_sql_execution(
     decision,
     ctx,
     state,
-    embedded_params: dict | None,
+    embedded_params: list | None,
 ) -> "QueryResult":
     _govdata_sid = next(
         (
@@ -313,7 +314,7 @@ async def _execute_trino_route(
     governed_physical: str,
     ctx,
     state,
-    embedded_params: dict | None,
+    embedded_params: list | None,
 ) -> "QueryResult":
     import asyncio
 
@@ -348,7 +349,7 @@ async def _execute_direct_route(
     decision,
     default_source: str,
     source_pools,
-    embedded_params: dict | None,
+    embedded_params: list | None,
 ) -> "QueryResult":
     from provisa.executor.direct import execute_direct
 
@@ -467,7 +468,7 @@ def _check_qualifier_binding(tree) -> str | None:
     return None
 
 
-def _collect_nl_user_tables(ctx) -> tuple[list, dict, dict]:
+def _collect_nl_user_tables(ctx) -> tuple[list, dict, dict, "CypherLabelMap"]:
     """Return (all_tables, user_nodes, table_name_to_type) from a schema context."""
     from provisa.compiler.sql_gen import TableMeta as _TableMeta
     from provisa.cypher.label_map import CypherLabelMap as _CLM
@@ -612,7 +613,7 @@ async def _run_sql_generation_loop(
     gov_ctx,
     role_obj,
     raw_tables: list,
-) -> tuple[str, int]:
+) -> tuple[str, int, str]:
     import sqlglot
     from provisa.llm.client import ProviasLLMClient
     from provisa.compiler.sql_validator import validate_sql

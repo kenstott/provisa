@@ -13,9 +13,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Optional, cast
 
+import asyncpg
 import strawberry
+from strawberry.types.info import Info as StrawberryInfo
 
 from provisa.compiler.naming import source_to_catalog
 from provisa.api.admin._config_io import config_path as _config_path, read_config
@@ -51,9 +53,10 @@ from provisa.api.admin.types import (
 )
 
 
-async def _get_pool():
+async def _get_pool() -> asyncpg.Pool:
     from provisa.api.app import state
 
+    assert state.pg_pool is not None
     return state.pg_pool
 
 
@@ -188,7 +191,7 @@ def _role_from_row(row) -> RoleType:
 
 
 def _derive_graphql_alias(
-    target_table_name: str, cardinality: str, alias: str | None, convention: str = "apollo_graphql"
+    target_table_name: str, cardinality: str, _alias: str | None, convention: str = "apollo_graphql"
 ) -> str | None:
     return _derive_graphql_alias_fn(target_table_name, cardinality, convention)
 
@@ -585,6 +588,7 @@ class Query:
         catalog = source_to_catalog(source_id)
         _HIDDEN_SCHEMAS = {"information_schema", "pg_catalog", "mv_cache"}
         try:
+            assert state.trino_conn is not None
             cursor = state.trino_conn.cursor()
             cursor.execute(
                 f'SELECT schema_name FROM "{catalog}".information_schema.schemata '
@@ -655,6 +659,7 @@ class Query:
             "tracked_webhooks",
         }
         try:
+            assert state.trino_conn is not None
             cursor = state.trino_conn.cursor()
             cursor.execute(
                 f'SELECT table_name FROM "{catalog}".information_schema.tables '
@@ -707,6 +712,7 @@ class Query:
             return [c.name for c in cols]
         catalog = source_to_catalog(source_id)
         try:
+            assert state.trino_conn is not None
             cursor = state.trino_conn.cursor()
             cursor.execute(
                 f'SELECT column_name FROM "{catalog}".information_schema.columns '
@@ -775,6 +781,7 @@ class Query:
         try:
             from provisa.compiler.introspect import introspect_pk_columns
 
+            assert state.trino_conn is not None
             pk_cols = introspect_pk_columns(state.trino_conn, catalog, schema_name, table_name)
             cursor = state.trino_conn.cursor()
             cursor.execute(
@@ -826,6 +833,7 @@ class Query:
         store = state.response_cache_store
         if isinstance(store, RedisCacheStore):
             try:
+                assert store._redis is not None
                 info = await store._redis.info("stats")
                 return CacheStatsType(
                     total_keys=await store._redis.dbsize(),
@@ -871,6 +879,7 @@ class Query:
         cache_ok = False
         if isinstance(state.response_cache_store, RedisCacheStore):
             try:
+                assert state.response_cache_store._redis is not None
                 await state.response_cache_store._redis.ping()
                 cache_ok = True
             except Exception:
@@ -1196,12 +1205,12 @@ def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
 class Mutation:
     @strawberry.mutation
     async def create_source(
-        self, info: strawberry.types.Info, input: SourceInput
+        self, info: StrawberryInfo, input: SourceInput
     ) -> MutationResult:
         from provisa.api.admin.capabilities import require_capability
 
         require_capability(info, "source_registration")
-        from provisa.core.models import Source as SourceModel
+        from provisa.core.models import Source as SourceModel, SourceType as SourceTypeEnum
 
         if input.type == "govdata":
             _err = await _validate_govdata_api_key(input)
@@ -1211,7 +1220,7 @@ class Mutation:
         pool = await _get_pool()
         model = SourceModel(
             id=input.id,
-            type=input.type,
+            type=SourceTypeEnum(input.type),
             host=input.host,
             port=input.port,
             database=input.database,
@@ -1247,22 +1256,23 @@ class Mutation:
 
     @strawberry.mutation
     async def update_source(
-        self, info: strawberry.types.Info, input: SourceInput
+        self, info: StrawberryInfo, input: SourceInput
     ) -> MutationResult:
         from provisa.api.admin.capabilities import require_capability
 
         require_capability(info, "source_registration")
-        from provisa.core.models import Source as SourceModel
+        from provisa.core.models import Source as SourceModel, SourceType as SourceTypeEnum
         from provisa.core.repositories import source as source_repo
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            existing = await source_repo.get(conn, input.id)
+            _conn = cast(asyncpg.Connection, conn)
+            existing = await source_repo.get(_conn, input.id)
             if existing is None:
                 return MutationResult(success=False, message=f"Source {input.id!r} not found")
             model = SourceModel(
                 id=input.id,
-                type=input.type,
+                type=SourceTypeEnum(input.type),
                 host=input.host,
                 port=input.port,
                 database=input.database,
@@ -1271,7 +1281,7 @@ class Mutation:
                 path=input.path,
                 description=input.description,
             )
-            await source_repo.upsert(conn, model)
+            await source_repo.upsert(_conn, model)
             if input.allowed_domains is not None:
                 await conn.execute(
                     "UPDATE sources SET allowed_domains = $1 WHERE id = $2",
@@ -1348,7 +1358,7 @@ class Mutation:
             return MutationResult(success=False, message="New ID must not be empty")
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            renamed = await source_repo.rename(conn, old_id, new_id)
+            renamed = await source_repo.rename(cast(asyncpg.Connection, conn), old_id, new_id)
         if renamed:
             return MutationResult(success=True, message=f"Source renamed {old_id!r} → {new_id!r}")
         return MutationResult(success=False, message=f"Source {old_id!r} not found")
@@ -1359,7 +1369,7 @@ class Mutation:
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await source_repo.delete(conn, id)
+            deleted = await source_repo.delete(cast(asyncpg.Connection, conn), id)
         if deleted:
             return MutationResult(success=True, message=f"Source {id!r} deleted")
         return MutationResult(success=False, message=f"Source {id!r} not found")
@@ -1374,7 +1384,7 @@ class Mutation:
             id=input.id, description=input.description, graphql_alias=input.graphql_alias or None
         )
         async with pool.acquire() as conn:
-            await domain_repo.upsert(conn, model)
+            await domain_repo.upsert(cast(asyncpg.Connection, conn), model)
         return MutationResult(success=True, message=f"Domain {input.id!r} created")
 
     @strawberry.mutation
@@ -1383,7 +1393,7 @@ class Mutation:
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await domain_repo.delete(conn, id)
+            deleted = await domain_repo.delete(cast(asyncpg.Connection, conn), id)
         if deleted:
             return MutationResult(success=True, message=f"Domain {id!r} deleted")
         return MutationResult(success=False, message=f"Domain {id!r} not found")
@@ -1400,12 +1410,12 @@ class Mutation:
             domain_access=input.domain_access,
         )
         async with pool.acquire() as conn:
-            await role_repo.upsert(conn, model)
+            await role_repo.upsert(cast(asyncpg.Connection, conn), model)
         return MutationResult(success=True, message=f"Role {input.id!r} created")
 
     @strawberry.mutation
     async def register_table(
-        self, info: strawberry.types.Info, input: TableInput
+        self, info: StrawberryInfo, input: TableInput
     ) -> MutationResult:
         import logging
 
@@ -1484,8 +1494,8 @@ class Mutation:
         model = TableModel(
             source_id=input.source_id,
             domain_id=input.domain_id,
-            schema_name=input.schema_name,
-            table_name=input.table_name,
+            schema=input.schema_name,
+            table=input.table_name,
             governance=governance,
             alias=alias,
             description=input.description,
@@ -1496,32 +1506,33 @@ class Mutation:
             data_product=input.data_product,
         )
         async with pool.acquire() as conn:
+            _conn = cast(asyncpg.Connection, conn)
             _conflict = await _domain_table_conflict(
-                conn, model.domain_id, model.table_name, model.source_id, model.schema_name
+                _conn, model.domain_id, model.table_name, model.source_id, model.schema_name
             )
             if _conflict:
                 return MutationResult(success=False, message=_conflict)
             if input.source_id == "__provisa__":
-                await conn.execute(
+                await _conn.execute(
                     """
                     INSERT INTO sources (id, type, description)
                     VALUES ('__provisa__', 'trino', 'Provisa-managed virtual views — cross-source SQL views defined and published by the data team as governed data products')
                     ON CONFLICT (id) DO NOTHING
                     """
                 )
-            table_id = await table_repo.upsert(conn, model)
-            src_row = await conn.fetchrow(
+            table_id = await table_repo.upsert(_conn, model)
+            src_row = await _conn.fetchrow(
                 "SELECT type, path FROM sources WHERE id = $1", input.source_id
             )
             await _maybe_migrate_sqlite(
-                src_row, conn, input.source_id, input.table_name, input.schema_name
+                src_row, _conn, input.source_id, input.table_name, input.schema_name
             )
             if input.domain_id != "meta":
-                meta_rt_id = await conn.fetchval(
+                meta_rt_id = await _conn.fetchval(
                     "SELECT id FROM registered_tables WHERE source_id = 'provisa-admin' AND domain_id = 'meta' AND table_name = 'registered_tables'"
                 )
                 if meta_rt_id:
-                    await conn.execute(
+                    await _conn.execute(
                         "INSERT INTO table_meta_links (source_table_id, target_table_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
                         table_id,
                         meta_rt_id,
@@ -1540,7 +1551,7 @@ class Mutation:
                     input.source_id,
                     input.schema_name,
                     input.table_name,
-                    conn,
+                    _conn,
                 )
                 if fk_count:
                     import logging as _logging
@@ -1559,7 +1570,7 @@ class Mutation:
         )
 
     @strawberry.mutation
-    async def update_table(self, info: strawberry.types.Info, input: TableInput) -> MutationResult:
+    async def update_table(self, info: StrawberryInfo, input: TableInput) -> MutationResult:
         """Update an existing table's alias, description, and column metadata."""
         from provisa.api.admin.capabilities import require_capability
 
@@ -1605,8 +1616,8 @@ class Mutation:
         model = TableModel(
             source_id=input.source_id,
             domain_id=input.domain_id,
-            schema_name=input.schema_name,
-            table_name=input.table_name,
+            schema=input.schema_name,
+            table=input.table_name,
             governance=governance,
             alias=input.alias,
             description=input.description,
@@ -1617,17 +1628,18 @@ class Mutation:
             data_product=input.data_product,
         )
         async with pool.acquire() as conn:
+            _conn = cast(asyncpg.Connection, conn)
             _conflict = await _domain_table_conflict(
-                conn, model.domain_id, model.table_name, model.source_id, model.schema_name
+                _conn, model.domain_id, model.table_name, model.source_id, model.schema_name
             )
             if _conflict:
                 return MutationResult(success=False, message=_conflict)
-            table_id = await table_repo.upsert(conn, model)
-            src_row = await conn.fetchrow(
+            table_id = await table_repo.upsert(_conn, model)
+            src_row = await _conn.fetchrow(
                 "SELECT type, path FROM sources WHERE id = $1", input.source_id
             )
             await _maybe_migrate_sqlite(
-                src_row, conn, input.source_id, input.table_name, input.schema_name
+                src_row, _conn, input.source_id, input.table_name, input.schema_name
             )
         await _rebuild_schemas()
         return MutationResult(
@@ -1641,7 +1653,7 @@ class Mutation:
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await table_repo.delete(conn, id)
+            deleted = await table_repo.delete(cast(asyncpg.Connection, conn), id)
         if deleted:
             await _rebuild_schemas()
             return MutationResult(success=True, message=f"Table {id} deleted")
@@ -1653,7 +1665,7 @@ class Mutation:
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await role_repo.delete(conn, id)
+            deleted = await role_repo.delete(cast(asyncpg.Connection, conn), id)
         if deleted:
             return MutationResult(success=True, message=f"Role {id!r} deleted")
         return MutationResult(success=False, message=f"Role {id!r} not found")
@@ -1672,7 +1684,7 @@ class Mutation:
         )
         try:
             async with pool.acquire() as conn:
-                await rls_repo.upsert(conn, model)
+                await rls_repo.upsert(cast(asyncpg.Connection, conn), model)
         except ValueError as e:
             return MutationResult(success=False, message=str(e))
         target = f"domain {input.domain_id!r}" if input.domain_id else f"table {input.table_id!r}"
@@ -1692,14 +1704,14 @@ class Mutation:
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await rls_repo.delete(conn, role_id, table_id=table_id, domain_id=domain_id)
+            deleted = await rls_repo.delete(cast(asyncpg.Connection, conn), role_id, table_id=table_id, domain_id=domain_id)
         if deleted:
             return MutationResult(success=True, message="RLS rule deleted")
         return MutationResult(success=False, message="RLS rule not found")
 
     @strawberry.mutation
     async def upsert_relationship(
-        self, info: strawberry.types.Info, input: RelationshipInput
+        self, info: StrawberryInfo, input: RelationshipInput
     ) -> MutationResult:
         from provisa.api.admin.capabilities import require_capability
 
@@ -1731,14 +1743,15 @@ class Mutation:
             disable_cypher=getattr(input, "disable_cypher", False),
         )
         async with pool.acquire() as conn:
-            await rel_repo.upsert(conn, model)
+            _conn = cast(asyncpg.Connection, conn)
+            await rel_repo.upsert(_conn, model)
             if input.record_candidate and not input.target_function_name:
-                rel_row = await conn.fetchrow(
+                rel_row = await _conn.fetchrow(
                     "SELECT source_table_id, target_table_id FROM relationships WHERE id = $1",
                     input.id,
                 )
                 if rel_row and rel_row["target_table_id"] is not None:
-                    await conn.execute(
+                    await _conn.execute(
                         """
                         INSERT INTO relationship_candidates
                             (source_table_id, target_table_id, source_column, target_column,
@@ -1767,7 +1780,7 @@ class Mutation:
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await rel_repo.delete(conn, id)
+            deleted = await rel_repo.delete(cast(asyncpg.Connection, conn), id)
         if deleted:
             await _rebuild_schemas()
             return MutationResult(success=True, message=f"Relationship {id!r} deleted")
@@ -1897,7 +1910,8 @@ class Mutation:
         try:
             from provisa.mv.refresh import refresh_mv
 
-            await refresh_mv(mv, state)
+            assert state.trino_conn is not None
+            await refresh_mv(state.trino_conn, mv, state.mv_registry)
             return MutationResult(success=True, message=f"MV {mv_id!r} refreshed")
         except Exception as e:
             return MutationResult(success=False, message=str(e))
@@ -1951,7 +1965,8 @@ class Mutation:
         """Force re-migration of a file-backed (SQLite) table into PG."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            row = await conn.fetchrow(
+            _conn = cast(asyncpg.Connection, conn)
+            row = await _conn.fetchrow(
                 """SELECT rt.table_name, rt.schema_name, s.type, s.path, s.id as source_id
                    FROM registered_tables rt
                    JOIN sources s ON s.id = rt.source_id
@@ -1967,11 +1982,11 @@ class Mutation:
             from provisa.file_source.pg_migrate import migrate_sqlite_table, record_mtime
 
             try:
-                await conn.execute("DELETE FROM file_source_mtimes WHERE table_id = $1", table_id)
+                await _conn.execute("DELETE FROM file_source_mtimes WHERE table_id = $1", table_id)
                 await migrate_sqlite_table(
-                    row["path"], row["table_name"], conn, row["schema_name"], row["table_name"]
+                    row["path"], row["table_name"], _conn, row["schema_name"], row["table_name"]
                 )
-                await record_mtime(table_id, row["path"], conn)
+                await record_mtime(table_id, row["path"], _conn)
                 return MutationResult(
                     success=True, message=f"Re-migrated {row['source_id']}.{row['table_name']}"
                 )
@@ -2063,7 +2078,7 @@ class Mutation:
     async def compile_query(self, input: CompileQueryInput) -> list[CompileQueryResult]:
         from provisa.api.admin import dev_queries
 
-        variables = dict(input.variables) if input.variables else None
+        variables = cast(dict, input.variables) if input.variables else None
         results = await dev_queries.compile_query(
             input.role,
             input.query,
@@ -2107,7 +2122,7 @@ class Mutation:
         return out
 
     @strawberry.mutation
-    async def deploy_view_to_db(self, info: strawberry.types.Info, table_id: int) -> MutationResult:
+    async def deploy_view_to_db(self, info: StrawberryInfo, table_id: int) -> MutationResult:
         """Promote a virtual Provisa view to a real database view on its underlying native source."""
         from provisa.api.admin.capabilities import require_capability
 

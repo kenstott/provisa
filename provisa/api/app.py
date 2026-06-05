@@ -48,7 +48,7 @@ from provisa.api.trino_setup import write_trino_config as _write_trino_config
 from provisa.mv.registry import MVRegistry
 from provisa.cache.warm_tables import WarmTableManager
 from provisa.apq.cache import APQCache, NoopAPQCache
-from provisa.api_source.models import ApiEndpoint, ApiSource  # noqa: F401
+from provisa.api_source.models import ApiEndpoint as ApiEndpoint, ApiSource as ApiSource
 from provisa.core.models import ProvisaConfig  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 
@@ -58,6 +58,7 @@ if TYPE_CHECKING:
     from provisa.kafka.window import KafkaTableConfig
     from provisa.core.models import Source
     from sqlalchemy.ext.asyncio import AsyncEngine
+    import graphql
 
 log = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ class AppState:
     trino_conn: trino.dbapi.Connection | None = None
     trino_conn_kwargs: dict = {}  # kwargs used to create trino_conn (for reconnect)
     flight_client: Any | None = None  # pyarrow.flight.FlightClient
-    schemas: dict[str, object] = {}  # role_id → GraphQLSchema
+    schemas: dict[str, graphql.GraphQLSchema] = {}  # role_id → GraphQLSchema
     schema_build_cache: dict = {}  # raw data for on-demand domain-filtered schema building
     schema_version: int = (
         0  # bumped on every _rebuild_schemas; used by clients for cache invalidation
@@ -673,6 +674,7 @@ async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:
 
 async def _seed_built_in_sources(pg_host: str, pg_port: int, pg_database: str, pg_user: str) -> None:
     """Seed provisa-admin, provisa-otel, and __provisa__ source rows; seed meta domain and ops; compute clusters."""
+    assert state.pg_pool is not None
     trino_host_early = os.environ.get("TRINO_HOST", "localhost")
     trino_port_early = int(os.environ.get("TRINO_PORT", "8080"))
     async with state.pg_pool.acquire() as _conn:
@@ -823,6 +825,7 @@ async def _connect_flight_and_object_store() -> None:
         try:
             from provisa.executor.trino_write import ensure_results_schema
 
+            assert state.trino_conn is not None
             await asyncio.to_thread(ensure_results_schema, state.trino_conn)
         except Exception:
             _os_log.getLogger(__name__).warning(
@@ -977,6 +980,7 @@ async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:
 
 async def _resolve_pk_from_sources() -> None:
     """Second pass — resolve PRIMARY KEYs from each native RDBMS source's information_schema."""
+    assert state.pg_pool is not None
     import logging as _pk_logging
 
     _startup_log = _pk_logging.getLogger("uvicorn.error")
@@ -1029,6 +1033,7 @@ async def _resolve_pk_from_sources() -> None:
 
 async def _load_openapi_specs() -> None:
     """Reload OpenAPI specs from DB into state (survives hot reloads and restarts)."""
+    assert state.pg_pool is not None
     async with state.pg_pool.acquire() as conn:
         openapi_rows = await conn.fetch(
             "SELECT id, path FROM sources WHERE type = 'openapi' AND path IS NOT NULL AND path != ''"
@@ -1210,6 +1215,7 @@ def _load_mv_and_views_config(raw_config: dict) -> None:
 
 async def _init_ingest_engines() -> None:
     """Phase AS: Initialize ingest engines and DDL for ingest sources."""
+    assert state.pg_pool is not None
     try:
         from provisa.ingest.engine import get_engine as _get_ingest_engine
         from provisa.ingest.ddl import generate_create_table as _gen_ddl
@@ -1271,6 +1277,7 @@ async def _init_ingest_engines() -> None:
 
 async def _load_and_build(config_path: str | None = None) -> None:
     """Load config, introspect Trino, build schemas for all roles."""
+    assert state.pg_pool is not None
     if config_path is None:
         config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
 
@@ -1913,7 +1920,9 @@ async def _bg_hydrate_api_endpoints() -> None:
 
     _hydrate_log = _hydrate_logging.getLogger(__name__)
 
-    async def _bg_hydrate(eps=_zero_param_eps, pool=state.pg_pool, _log=_hydrate_log):
+    assert state.pg_pool is not None
+
+    async def _bg_hydrate(eps=_zero_param_eps, pool: asyncpg.Pool = state.pg_pool, _log=_hydrate_log):
         from provisa.openapi.pg_cache import fill_api_table
 
         async with pool.acquire() as _conn:
@@ -2520,7 +2529,7 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     """App lifespan: load config and build schemas at startup."""
     import logging
 
@@ -2554,6 +2563,7 @@ async def lifespan(app: FastAPI):
 
     # Cancel SQLite staleness loop
     if getattr(state, "_sqlite_stale_task", None):
+        assert state._sqlite_stale_task is not None
         state._sqlite_stale_task.cancel()
         try:
             await state._sqlite_stale_task
@@ -2643,7 +2653,7 @@ def create_app() -> FastAPI:
     from fastapi.responses import JSONResponse as _JSONResponse
 
     @app.exception_handler(Exception)
-    async def _global_exception_handler(_req: _Request, exc: Exception):
+    async def _global_exception_handler(_req: _Request, exc: Exception):  # noqa: F841  # registered via app.exception_handler
         log.exception("Unhandled exception on %s %s", _req.method, _req.url.path)
         return _JSONResponse(
             status_code=500,
@@ -2651,7 +2661,7 @@ def create_app() -> FastAPI:
         )
 
     @app.exception_handler(asyncio.TimeoutError)
-    async def _timeout_handler(_req: _Request, exc: asyncio.TimeoutError):
+    async def _timeout_handler(_req: _Request, _exc: asyncio.TimeoutError):  # noqa: F841  # registered via app.exception_handler
         log.error("Request timeout on %s %s", _req.method, _req.url.path)
         return _JSONResponse(status_code=504, content={"detail": "Request timed out"})
 
@@ -2836,7 +2846,7 @@ def create_app() -> FastAPI:
     app.include_router(billing_router, prefix="/billing", tags=["billing"])
 
     @app.api_route("/health", methods=["GET", "HEAD"])
-    async def health():
+    async def health():  # noqa: F841  # FastAPI route
         return {"status": "ok"}
 
     return app

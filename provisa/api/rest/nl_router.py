@@ -21,11 +21,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING, AsyncGenerator
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    from provisa.api.app import AppState
 
 from provisa.nl.job import NlJob, make_job_store, new_job_id
 
@@ -81,7 +84,7 @@ async def stream_nl_result(job_id: str) -> StreamingResponse:
 # ---------------------------------------------------------------------------
 
 
-async def _run_job(job_id: str, nl_query: str, role: str, app_state: object, llm) -> None:
+async def _run_job(job_id: str, nl_query: str, role: str, app_state: AppState, llm) -> None:
     from provisa.nl.runner import run_nl_job
 
     try:
