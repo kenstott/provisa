@@ -148,152 +148,170 @@ def _gql_field_returns_list(field: dict) -> bool:
     return type_node.get("kind") == "LIST"
 
 
-async def native_tables(
+async def _native_tables_openapi(
+    source_id: str,
+    schema_name: str,
+    state,
+) -> "list[AvailableTableType] | None":
+    from provisa.api.admin.types import AvailableTableType
+
+    if schema_name != "openapi":
+        return []
+    spec_info = getattr(state, "openapi_specs", {}).get(source_id)
+    if spec_info is None:
+        return None
+    from provisa.openapi.mapper import parse_spec
+
+    queries, _ = parse_spec(spec_info["spec"])
+    return [
+        AvailableTableType(name=q.operation_id, comment=q.summary)
+        for q in queries
+        if _openapi_is_table(q)
+    ]
+
+
+async def _native_tables_graphql(
+    source_id: str,
+    schema_name: str,
+    state,
+) -> "list[AvailableTableType] | None":
+    from provisa.api.admin.types import AvailableTableType
+
+    if schema_name != "default":
+        return []
+    gql_sources = getattr(state, "graphql_remote_sources", {})
+    reg = gql_sources.get(source_id)
+    if reg is None:
+        return None
+    url = reg.get("url") or reg.get("endpoint") or ""
+    auth = reg.get("auth") or reg.get("auth_config")
+    if not url:
+        return None
+    try:
+        from provisa.graphql_remote.introspect import introspect_schema
+
+        schema = await introspect_schema(url, auth)
+    except Exception:
+        return None
+    query_type_name = (schema.get("queryType") or {}).get("name") or "Query"
+    types_by_name = {tp["name"]: tp for tp in (schema.get("types") or [])}
+    query_type = types_by_name.get(query_type_name)
+    if query_type is None:
+        return []
+    fields = query_type.get("fields") or []
+    return [
+        AvailableTableType(name=f["name"], comment=f.get("description"))
+        for f in fields
+        if _gql_field_returns_list(f)
+    ]
+
+
+async def _native_tables_grpc(
+    source_id: str,
+    schema_name: str,
+    state,
+) -> "list[AvailableTableType] | None":
+    from provisa.api.admin.types import AvailableTableType
+
+    if schema_name != "default":
+        return []
+    grpc_sources = getattr(state, "grpc_remote_sources", {})
+    reg = grpc_sources.get(source_id)
+    if reg is None:
+        return None
+    proto_text = reg.get("proto_text") or ""
+    if not proto_text:
+        return None
+    try:
+        from provisa.grpc_remote.loader import parse_proto_text
+
+        proto_dict = parse_proto_text(proto_text)
+    except Exception:
+        return None
+    messages = proto_dict.get("messages") or {}
+    results: list[AvailableTableType] = []
+    for service in proto_dict.get("services") or []:
+        for method in service.get("methods") or []:
+            is_streaming = method.get("server_streaming", False)
+            if is_streaming:
+                results.append(AvailableTableType(name=method["name"], comment=None))
+                continue
+            output_type = method.get("output_type", "")
+            response_fields = messages.get(output_type) or []
+            if any(f.get("repeated") for f in response_fields):
+                results.append(AvailableTableType(name=method["name"], comment=None))
+    return results
+
+
+async def _native_tables_kafka(
+    source_id: str,
+    schema_name: str,
+    config_conn,
+) -> "list[AvailableTableType] | None":
+    from provisa.api.admin.types import AvailableTableType
+
+    if schema_name != "default":
+        return []
+    try:
+        rows = await config_conn.fetch(
+            "SELECT topic FROM kafka_topics WHERE source_id = $1", source_id
+        )
+        return [AvailableTableType(name=row["topic"], comment=None) for row in rows]
+    except Exception:
+        return None
+
+
+async def _native_tables_govdata(
+    source_id: str,
+    schema_name: str,
+    config_conn,
+) -> "list[AvailableTableType] | None":
+    import asyncio as _asyncio
+    import logging as _logging
+
+    from provisa.api.admin.types import AvailableTableType
+    from provisa.core.models import GovDataSource, GovDataSubject
+    from provisa.core.secrets import resolve_secrets as _resolve_secrets
+    from provisa.govdata.source import fetch_tables as _fetch_tables
+
+    schema_lower = schema_name.lower()
+
+    cred_row = await config_conn.fetchrow(
+        "SELECT username FROM sources WHERE id = $1", source_id
+    )
+    api_key = _resolve_secrets((cred_row["username"] or "") if cred_row else "")
+
+    gds = GovDataSource(
+        id=source_id,
+        subject=GovDataSubject.all,
+        govdata_schemas=[schema_lower],
+        domain_id="default",
+        api_key=api_key,
+    )
+
+    try:
+        loop = _asyncio.get_running_loop()
+        names = await loop.run_in_executor(None, _fetch_tables, gds, schema_lower)
+        return [AvailableTableType(name=n, comment=None) for n in names]
+    except Exception as _e:
+        _logging.getLogger(__name__).warning(
+            "govdata native_tables FAILED: %s", _e, exc_info=True
+        )
+        return None
+
+
+async def _native_tables_rdbms(
     source_id: str,
     source_type: str,
     schema_name: str,
     pool: "SourcePool",
-    config_conn,
-    state,
 ) -> "list[AvailableTableType] | None":
-    """Return table list via native introspection or None to fall back to Trino."""
     from provisa.api.admin.types import AvailableTableType
 
-    t = source_type.lower()
-
-    # ── OpenAPI ──────────────────────────────────────────────────────────────
-    if t == "openapi":
-        if schema_name != "openapi":
-            return []
-        spec_info = getattr(state, "openapi_specs", {}).get(source_id)
-        if spec_info is None:
-            return None
-        from provisa.openapi.mapper import parse_spec
-
-        queries, _ = parse_spec(spec_info["spec"])
-        return [
-            AvailableTableType(name=q.operation_id, comment=q.summary)
-            for q in queries
-            if _openapi_is_table(q)
-        ]
-
-    # ── GraphQL / GraphQL Remote ─────────────────────────────────────────────
-    if t in ("graphql", "graphql_remote"):
-        if schema_name != "default":
-            return []
-        gql_sources = getattr(state, "graphql_remote_sources", {})
-        reg = gql_sources.get(source_id)
-        if reg is None:
-            return None
-        url = reg.get("url") or reg.get("endpoint") or ""
-        auth = reg.get("auth") or reg.get("auth_config")
-        if not url:
-            return None
-        try:
-            from provisa.graphql_remote.introspect import introspect_schema
-
-            schema = await introspect_schema(url, auth)
-        except Exception:
-            return None
-        # Find Query type
-        query_type_name = (schema.get("queryType") or {}).get("name") or "Query"
-        types_by_name = {tp["name"]: tp for tp in (schema.get("types") or [])}
-        query_type = types_by_name.get(query_type_name)
-        if query_type is None:
-            return []
-        fields = query_type.get("fields") or []
-        return [
-            AvailableTableType(name=f["name"], comment=f.get("description"))
-            for f in fields
-            if _gql_field_returns_list(f)
-        ]
-
-    # ── gRPC / gRPC Remote ───────────────────────────────────────────────────
-    if t in ("grpc", "grpc_remote"):
-        if schema_name != "default":
-            return []
-        grpc_sources = getattr(state, "grpc_remote_sources", {})
-        reg = grpc_sources.get(source_id)
-        if reg is None:
-            return None
-        proto_text = reg.get("proto_text") or ""
-        if not proto_text:
-            return None
-        try:
-            from provisa.grpc_remote.loader import parse_proto_text
-
-            proto_dict = parse_proto_text(proto_text)
-        except Exception:
-            return None
-        messages = proto_dict.get("messages") or {}
-        results: list[AvailableTableType] = []
-        for service in proto_dict.get("services") or []:
-            for method in service.get("methods") or []:
-                is_streaming = method.get("server_streaming", False)
-                if is_streaming:
-                    results.append(AvailableTableType(name=method["name"], comment=None))
-                    continue
-                # Check if response message has any repeated field
-                output_type = method.get("output_type", "")
-                response_fields = messages.get(output_type) or []
-                if any(f.get("repeated") for f in response_fields):
-                    results.append(AvailableTableType(name=method["name"], comment=None))
-        return results
-
-    # ── Kafka ─────────────────────────────────────────────────────────────────
-    if t == "kafka":
-        if schema_name != "default":
-            return []
-        try:
-            rows = await config_conn.fetch(
-                "SELECT topic FROM kafka_topics WHERE source_id = $1", source_id
-            )
-            return [AvailableTableType(name=row["topic"], comment=None) for row in rows]
-        except Exception:
-            return None
-
-    # ── Neo4j / SPARQL ────────────────────────────────────────────────────────
-    if t in ("neo4j", "sparql"):
-        return []
-
-    # ── GovData ───────────────────────────────────────────────────────────────
-    if t == "govdata":
-        import asyncio as _asyncio
-        import logging as _logging
-
-        from provisa.core.models import GovDataSource, GovDataSubject
-        from provisa.core.secrets import resolve_secrets as _resolve_secrets
-        from provisa.govdata.source import fetch_tables as _fetch_tables
-
-        schema_lower = schema_name.lower()
-
-        cred_row = await config_conn.fetchrow(
-            "SELECT username FROM sources WHERE id = $1", source_id
-        )
-        api_key = _resolve_secrets((cred_row["username"] or "") if cred_row else "")
-
-        gds = GovDataSource(
-            id=source_id,
-            subject=GovDataSubject.all,
-            govdata_schemas=[schema_lower],
-            domain_id="default",
-            api_key=api_key,
-        )
-
-        try:
-            loop = _asyncio.get_running_loop()
-            names = await loop.run_in_executor(None, _fetch_tables, gds, schema_lower)
-            return [AvailableTableType(name=n, comment=None) for n in names]
-        except Exception as _e:
-            _logging.getLogger(__name__).warning(
-                "govdata native_tables FAILED: %s", _e, exc_info=True
-            )
-            return None
-
-    # ── RDBMS ─────────────────────────────────────────────────────────────────
     if not pool.has(source_id):
         return None
 
+    t = source_type.lower()
     try:
         if t == "postgresql":
             result = await pool.execute(
@@ -337,3 +355,35 @@ async def native_tables(
         return None
 
     return None
+
+
+async def native_tables(
+    source_id: str,
+    source_type: str,
+    schema_name: str,
+    pool: "SourcePool",
+    config_conn,
+    state,
+) -> "list[AvailableTableType] | None":
+    """Return table list via native introspection or None to fall back to Trino."""
+    t = source_type.lower()
+
+    if t == "openapi":
+        return await _native_tables_openapi(source_id, schema_name, state)
+
+    if t in ("graphql", "graphql_remote"):
+        return await _native_tables_graphql(source_id, schema_name, state)
+
+    if t in ("grpc", "grpc_remote"):
+        return await _native_tables_grpc(source_id, schema_name, state)
+
+    if t == "kafka":
+        return await _native_tables_kafka(source_id, schema_name, config_conn)
+
+    if t in ("neo4j", "sparql"):
+        return []
+
+    if t == "govdata":
+        return await _native_tables_govdata(source_id, schema_name, config_conn)
+
+    return await _native_tables_rdbms(source_id, source_type, schema_name, pool)

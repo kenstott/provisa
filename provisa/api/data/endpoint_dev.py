@@ -147,7 +147,6 @@ async def sql_endpoint(
       5. Route and execute the governed SQL.
     """
     import sqlglot
-    import sqlglot.expressions as exp
 
     from provisa.api.app import state
     from provisa.api.data.endpoint import _parse_accept, _format_response
@@ -156,8 +155,6 @@ async def sql_endpoint(
         build_governance_context,
         extract_sources,
     )
-    from provisa.executor.direct import execute_direct
-    from provisa.executor.trino import execute_trino
 
     role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
 
@@ -165,41 +162,27 @@ async def sql_endpoint(
         raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
 
     role = state.roles.get(role_id)
-    if role and not request.discovery_mode:
-        try:
-            check_capability(role, Capability.QUERY_DEVELOPMENT)
-        except InsufficientRightsError as e:
-            raise HTTPException(status_code=403, detail=str(e))
-        try:
-            check_capability(role, Capability.AD_HOC_QUERY)
-        except InsufficientRightsError as e:
-            raise HTTPException(status_code=403, detail=str(e))
+    _check_sql_capabilities(role, request.discovery_mode)
 
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
 
     # --- Step 1: Parse semantic SQL via SQLGlot (REQ-266) ---
     # Strip provisa-params comment before SQLGlot (it strips comments); carry params forward.
-    from provisa.compiler.params import extract_params_comment
+    from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
 
     raw_sql, embedded_params = extract_params_comment(request.sql)
-    from provisa.compiler.params import extract_relationship_guard_comment
-
     raw_sql, _sql_opts_out = extract_relationship_guard_comment(raw_sql)
 
     # Clients write semantic SQL (domain.field_name refs). Physical translation
     # happens after routing — governance runs on semantic refs.
     try:
-        parsed_tree = sqlglot.parse_one(raw_sql, read="postgres")
+        sqlglot.parse_one(raw_sql, read="postgres")
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"SQL parse error: {exc}")
 
     # --- Step 1b: Normalize table refs — qualify unique unquoted names ---
-    normalized_sql = rewrite_semantic_to_physical(raw_sql, ctx)
-    try:
-        parsed_tree = sqlglot.parse_one(normalized_sql, read="postgres")
-    except Exception:
-        normalized_sql = raw_sql  # fall back to comment-stripped sql if normalize broke it
+    normalized_sql, parsed_tree = _normalize_sql_tree(raw_sql, ctx)
 
     # --- Step 2: Build GovernanceContext — table_map includes semantic refs ---
     gov_ctx = build_governance_context(
@@ -210,48 +193,17 @@ async def sql_endpoint(
         getattr(state, "tables", []),
     )
 
-    # --- Step 3: Validate SQL against role-scoped GraphQL-equivalent rules ---
-    from provisa.compiler.sql_validator import validate_sql
-
     raw_tables = getattr(state, "tables", [])
 
     # In discovery mode, augment table_map with all tables from all contexts
     if request.discovery_mode:
-        for all_ctx in state.contexts.values():
-            for meta in all_ctx.tables.values():
-                gov_ctx.table_map.setdefault(meta.table_name, meta.table_id)
-                gov_ctx.table_map.setdefault(f"{meta.schema_name}.{meta.table_name}", meta.table_id)
+        _augment_discovery_table_map(gov_ctx, state)
 
-    _role_guard = (role or {}).get("relationship_guard", True)
-    _bypass_guard = (not _role_guard) and _sql_opts_out
-    violations = validate_sql(
-        normalized_sql,
-        ctx,
-        gov_ctx,
-        role or {},
-        raw_tables,
-        discovery_mode=request.discovery_mode,
-        bypass_relationship_guard=_bypass_guard,
-        bypass_uncovered_relationships=True,
+    # --- Step 3: Validate SQL against role-scoped GraphQL-equivalent rules ---
+    violations = _validate_sql_governance(
+        normalized_sql, parsed_tree, ctx, gov_ctx, role, raw_tables,
+        request.discovery_mode, _sql_opts_out, role_id,
     )
-
-    _role_domain_access = (role or {}).get("domain_access") or []
-    if not request.discovery_mode and "*" not in _role_domain_access:
-        # Reject any table not in the role's schema scope (fast path for unknown tables)
-        for tbl in parsed_tree.find_all(exp.Table):
-            tbl_name = tbl.name
-            tbl_db = tbl.db
-            full_key = f"{tbl_db}.{tbl_name}" if tbl_db else tbl_name
-            if full_key not in gov_ctx.table_map and tbl_name not in gov_ctx.table_map:
-                from provisa.compiler.sql_validator import ValidationViolation
-
-                ref = full_key or tbl_name
-                violations.append(
-                    ValidationViolation(
-                        "V000",
-                        f"Table {ref!r} is not accessible for role {role_id!r}",
-                    )
-                )
 
     if violations:
         msgs = [f"[{v.code}] {v.message}" for v in violations]
@@ -266,12 +218,7 @@ async def sql_endpoint(
 
     # --- Step 5: Routing decision (on governed semantic SQL) ---
     sources = extract_sources(governed_semantic, gov_ctx, ctx)
-
-    _default_source = next(
-        (sid for sid, t in state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
-        next(iter(state.source_pools.source_ids), "pg"),
-    )
-
+    _default_source = _resolve_default_source(state)
     decision = decide_route(
         sources=sources or {_default_source},
         source_types=state.source_types,
@@ -282,57 +229,13 @@ async def sql_endpoint(
 
     # --- Step 6: governed_semantic is already physical after Step 1b normalization ---
     governed_physical = governed_semantic
-
     output_format = _parse_accept(accept)
 
     # --- Step 7: Execute ---
     try:
-        exec_params = embedded_params or None
-        _govdata_sid = next(
-            (
-                sid
-                for sid in (sources or {_default_source})
-                if state.source_types.get(sid) == "govdata"
-            ),
-            None,
+        result = await _dispatch_sql_execution(
+            governed_physical, sources, _default_source, decision, ctx, state, embedded_params
         )
-        if _govdata_sid:
-            result = await _execute_govdata(_govdata_sid, governed_physical, state)
-        elif decision.route == Route.TRINO:
-            from provisa.api.data.endpoint import _materialize_api_to_trino_cache
-            from provisa.cache.hot_tables import build_values_cte_sql
-            from provisa.api_source.trino_cache import rewrite_all_from_cache
-
-            _qualified = qualify_with_catalogs(governed_physical, ctx)
-            # Inline non-materialized views — their refs carry the synthetic '__provisa__'
-            # source which is not a Trino catalog; expand into the view's defining SQL
-            # (same as the GraphQL path's expand_views).
-            if state.view_sql_map:
-                from provisa.compiler.view_expand import expand_view_refs
-
-                _qualified = expand_view_refs(_qualified, state.view_sql_map)
-            _rewrites, _values_ctes = await _materialize_api_to_trino_cache(_qualified, None, state)
-            for _tn, _entry in _values_ctes.items():
-                _qualified = build_values_cte_sql(_qualified, _tn, _entry)
-            if _rewrites:
-                _qualified = rewrite_all_from_cache(_qualified, _rewrites)
-            sql_to_run = transpile_to_trino(_qualified)
-            _loop = asyncio.get_event_loop()
-            if state.trino_conn is None:
-                raise HTTPException(status_code=503, detail="Trino connection not available")
-            _trino_conn = state.trino_conn
-            result = await _loop.run_in_executor(
-                None, lambda: execute_trino(_trino_conn, sql_to_run, params=exec_params)
-            )
-        else:
-            dialect = decision.dialect or "postgres"
-            sql_to_run = transpile(governed_physical, dialect)
-            result = await execute_direct(
-                state.source_pools,
-                decision.source_id or _default_source,
-                sql_to_run,
-                exec_params,
-            )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -345,6 +248,177 @@ async def sql_endpoint(
         ColumnRef(alias=None, column=c, field_name=c, nested_in=None) for c in result.column_names
     ]
     return _format_response(result.rows, columns, "sql", output_format)
+
+
+def _validate_sql_governance(
+    normalized_sql: str,
+    parsed_tree,
+    ctx,
+    gov_ctx,
+    role,
+    raw_tables: list,
+    discovery_mode: bool,
+    sql_opts_out: bool,
+    role_id: str,
+) -> list:
+    from provisa.compiler.sql_validator import validate_sql
+
+    _role_guard = (role or {}).get("relationship_guard", True)
+    _bypass_guard = (not _role_guard) and sql_opts_out
+    violations = validate_sql(
+        normalized_sql,
+        ctx,
+        gov_ctx,
+        role or {},
+        raw_tables,
+        discovery_mode=discovery_mode,
+        bypass_relationship_guard=_bypass_guard,
+        bypass_uncovered_relationships=True,
+    )
+
+    _role_domain_access = (role or {}).get("domain_access") or []
+    if not discovery_mode and "*" not in _role_domain_access:
+        violations.extend(_collect_table_access_violations(parsed_tree, gov_ctx, role_id))
+
+    return violations
+
+
+async def _dispatch_sql_execution(
+    governed_physical: str,
+    sources,
+    default_source: str,
+    decision,
+    ctx,
+    state,
+    embedded_params: dict | None,
+) -> "QueryResult":
+    _govdata_sid = next(
+        (
+            sid
+            for sid in (sources or {default_source})
+            if state.source_types.get(sid) == "govdata"
+        ),
+        None,
+    )
+    if _govdata_sid:
+        return await _execute_govdata(_govdata_sid, governed_physical, state)
+    if decision.route == Route.TRINO:
+        return await _execute_trino_route(governed_physical, ctx, state, embedded_params)
+    return await _execute_direct_route(
+        governed_physical, decision, default_source, state.source_pools, embedded_params
+    )
+
+
+async def _execute_trino_route(
+    governed_physical: str,
+    ctx,
+    state,
+    embedded_params: dict | None,
+) -> "QueryResult":
+    import asyncio
+
+    from provisa.api.data.endpoint import _materialize_api_to_trino_cache
+    from provisa.cache.hot_tables import build_values_cte_sql
+    from provisa.api_source.trino_cache import rewrite_all_from_cache
+    from provisa.executor.trino import execute_trino
+
+    _qualified = qualify_with_catalogs(governed_physical, ctx)
+    if state.view_sql_map:
+        from provisa.compiler.view_expand import expand_view_refs
+
+        _qualified = expand_view_refs(_qualified, state.view_sql_map)
+    _rewrites, _values_ctes = await _materialize_api_to_trino_cache(_qualified, None, state)
+    for _tn, _entry in _values_ctes.items():
+        _qualified = build_values_cte_sql(_qualified, _tn, _entry)
+    if _rewrites:
+        _qualified = rewrite_all_from_cache(_qualified, _rewrites)
+    sql_to_run = transpile_to_trino(_qualified)
+    _loop = asyncio.get_event_loop()
+    if state.trino_conn is None:
+        raise HTTPException(status_code=503, detail="Trino connection not available")
+    _trino_conn = state.trino_conn
+    exec_params = embedded_params or None
+    return await _loop.run_in_executor(
+        None, lambda: execute_trino(_trino_conn, sql_to_run, params=exec_params)
+    )
+
+
+async def _execute_direct_route(
+    governed_physical: str,
+    decision,
+    default_source: str,
+    source_pools,
+    embedded_params: dict | None,
+) -> "QueryResult":
+    from provisa.executor.direct import execute_direct
+
+    dialect = decision.dialect or "postgres"
+    sql_to_run = transpile(governed_physical, dialect)
+    exec_params = embedded_params or None
+    return await execute_direct(
+        source_pools,
+        decision.source_id or default_source,
+        sql_to_run,
+        exec_params,
+    )
+
+
+def _check_sql_capabilities(role, discovery_mode: bool) -> None:
+    if role and not discovery_mode:
+        try:
+            check_capability(role, Capability.QUERY_DEVELOPMENT)
+        except InsufficientRightsError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+        try:
+            check_capability(role, Capability.AD_HOC_QUERY)
+        except InsufficientRightsError as e:
+            raise HTTPException(status_code=403, detail=str(e))
+
+
+def _normalize_sql_tree(raw_sql: str, ctx) -> tuple[str, object]:
+    import sqlglot
+
+    normalized_sql = rewrite_semantic_to_physical(raw_sql, ctx)
+    try:
+        parsed_tree = sqlglot.parse_one(normalized_sql, read="postgres")
+        return normalized_sql, parsed_tree
+    except Exception:
+        fallback_tree = sqlglot.parse_one(raw_sql, read="postgres")
+        return raw_sql, fallback_tree
+
+
+def _augment_discovery_table_map(gov_ctx, state) -> None:
+    for all_ctx in state.contexts.values():
+        for meta in all_ctx.tables.values():
+            gov_ctx.table_map.setdefault(meta.table_name, meta.table_id)
+            gov_ctx.table_map.setdefault(f"{meta.schema_name}.{meta.table_name}", meta.table_id)
+
+
+def _collect_table_access_violations(parsed_tree, gov_ctx, role_id: str) -> list:
+    import sqlglot.expressions as exp
+    from provisa.compiler.sql_validator import ValidationViolation
+
+    violations = []
+    for tbl in parsed_tree.find_all(exp.Table):
+        tbl_name = tbl.name
+        tbl_db = tbl.db
+        full_key = f"{tbl_db}.{tbl_name}" if tbl_db else tbl_name
+        if full_key not in gov_ctx.table_map and tbl_name not in gov_ctx.table_map:
+            ref = full_key or tbl_name
+            violations.append(
+                ValidationViolation(
+                    "V000",
+                    f"Table {ref!r} is not accessible for role {role_id!r}",
+                )
+            )
+    return violations
+
+
+def _resolve_default_source(state) -> str:
+    return next(
+        (sid for sid, t in state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
+        next(iter(state.source_pools.source_ids), "pg"),
+    )
 
 
 def _check_qualifier_binding(tree) -> str | None:
@@ -393,50 +467,11 @@ def _check_qualifier_binding(tree) -> str | None:
     return None
 
 
-class NLToSQLRequest(BaseModel):
-    question: str
-    role: str = "admin"
-
-
-@router.post("/nl-to-sql")
-async def nl_to_sql_endpoint(
-    raw_request: Request,
-    request: NLToSQLRequest,
-    x_provisa_role: str | None = Header(None),
-):
-    """Translate a natural-language question to Semantic SQL via Claude.
-
-    Validates the generated SQL with sqlglot and retries (up to 3 attempts)
-    feeding parse errors back to Claude.
-    """
-    import sqlglot
-
-    from provisa.api.app import state
-    from provisa.compiler.sql_gen import rewrite_semantic_to_physical
-    from provisa.llm.client import ProviasLLMClient
-
-    role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
-    if role_id not in state.contexts:
-        raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
-
-    ctx = state.contexts[role_id]
-
-    from provisa.compiler.naming import domain_to_sql_name
-
-    from provisa.compiler.sql_validator import validate_sql
-    from provisa.compiler.stage2 import build_governance_context
-
-    rls = state.rls_contexts.get(role_id, RLSContext.empty())
-    gov_ctx = build_governance_context(
-        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
-    )
-    role_obj = state.roles.get(role_id)
-    raw_tables = getattr(state, "tables", [])
-
+def _collect_nl_user_tables(ctx) -> tuple[list, dict, dict]:
+    """Return (all_tables, user_nodes, table_name_to_type) from a schema context."""
     from provisa.compiler.sql_gen import TableMeta as _TableMeta
     from provisa.cypher.label_map import CypherLabelMap as _CLM
 
-    # Collect all user-visible tables (root + join targets, excluding ops/meta).
     seen_type_names: set[str] = set()
     all_tables: list[_TableMeta] = []
     for tbl in ctx.tables.values():
@@ -448,29 +483,33 @@ async def nl_to_sql_endpoint(
             seen_type_names.add(jm.target.type_name)
             all_tables.append(jm.target)
 
-    def _sql_domain(domain_id: str | None) -> str:
-        return domain_to_sql_name(domain_id) if domain_id else "default"
-
     _lm = _CLM.from_schema(ctx)
     _user_domains = {
         d for d in (n.domain_id for n in _lm.nodes.values()) if d not in (None, "ops", "meta")
     }
-    # type_name → NodeMapping for user-visible, non-traversal-only nodes
     _user_nodes = {
         tn: nm
         for tn, nm in _lm.nodes.items()
         if nm.domain_id in _user_domains and not nm.traversal_only
     }
-    # table_name → type_name index for pass-1 response parsing
     _table_name_to_type: dict[str, str] = {nm.table_name: tn for tn, nm in _user_nodes.items()}
+    return all_tables, _user_nodes, _table_name_to_type, _lm
 
-    # Pass 1: ask table_selection LLM which tables the question needs.
+
+async def _run_table_selection(
+    user_nodes: dict,
+    question: str,
+    sql_domain_fn,
+    table_name_to_type: dict[str, str],
+) -> set[str]:
+    from provisa.llm.client import ProviasLLMClient
+
     table_list = ", ".join(
-        f"{_sql_domain(nm.domain_id)}.{nm.table_name}" for nm in _user_nodes.values()
+        f"{sql_domain_fn(nm.domain_id)}.{nm.table_name}" for nm in user_nodes.values()
     )
     _table_selector = ProviasLLMClient("table_selection")
     pass1_text = await _table_selector.complete(
-        prompt=f"Tables: {table_list}\n\nQuestion: {request.question}",
+        prompt=f"Tables: {table_list}\n\nQuestion: {question}",
         system=(
             "You are a table selector. Given a natural-language question and a list of available tables, "
             "reply with ONLY a comma-separated list of the table names (without domain prefix) that are "
@@ -480,21 +519,22 @@ async def nl_to_sql_endpoint(
     )
     selected_raw = [t.strip().split(".")[-1] for t in pass1_text.split(",") if t.strip()]
     selected_types: set[str] = {
-        _table_name_to_type[name] for name in selected_raw if name in _table_name_to_type
+        table_name_to_type[name] for name in selected_raw if name in table_name_to_type
     }
-    # Fall back to all user tables if pass 1 returned nothing recognisable.
     if not selected_types:
-        selected_types = set(_user_nodes)
+        selected_types = set(user_nodes)
+    return selected_types
 
-    # Find shortest join paths between every selected-table pair.
+
+def _build_multihop_lines(selected_types: set[str], lm, sql_domain_fn) -> list[str]:
     multihop_lines: list[str] = []
     _seen_path_keys: set[tuple[str, ...]] = set()
     for src_tn in selected_types:
-        src_nm = _lm.nodes[src_tn]
+        src_nm = lm.nodes[src_tn]
         for tgt_tn in selected_types:
             if src_tn == tgt_tn:
                 continue
-            paths = _lm.find_paths(src_tn, tgt_tn, max_hops=4)
+            paths = lm.find_paths(src_tn, tgt_tn, max_hops=4)
             multihop_paths = [p for p in paths if len(p) >= 2]
             if not multihop_paths:
                 continue
@@ -505,42 +545,54 @@ async def nl_to_sql_endpoint(
             if path_key in _seen_path_keys:
                 continue
             _seen_path_keys.add(path_key)
-            node_chain = [src_nm] + [_lm.nodes[r.target_label] for r in shortest]
-            hops_str = " → ".join(f"{_sql_domain(n.domain_id)}.{n.table_name}" for n in node_chain)
+            node_chain = [src_nm] + [lm.nodes[r.target_label] for r in shortest]
+            hops_str = " → ".join(
+                f"{sql_domain_fn(n.domain_id)}.{n.table_name}" for n in node_chain
+            )
             multihop_lines.append(f"Multi-hop path ({len(shortest)} hops): {hops_str}")
             for r in shortest:
-                s_nm = _lm.nodes[r.source_label]
-                t_nm = _lm.nodes[r.target_label]
+                s_nm = lm.nodes[r.source_label]
+                t_nm = lm.nodes[r.target_label]
                 multihop_lines.append(
-                    f"  JOIN {_sql_domain(t_nm.domain_id)}.{t_nm.table_name}"
+                    f"  JOIN {sql_domain_fn(t_nm.domain_id)}.{t_nm.table_name}"
                     f" ON {s_nm.table_name}.{r.join_source_column}"
                     f" = {t_nm.table_name}.{r.join_target_column}"
                 )
+    return multihop_lines
 
-    # Build schema block restricted to selected tables + intermediate hop tables.
+
+def _build_relevant_type_names(selected_types: set[str], lm) -> set[str]:
     hop_type_names: set[str] = set()
     for src_tn in selected_types:
         for tgt_tn in selected_types:
             if src_tn == tgt_tn:
                 continue
-            for path in _lm.find_paths(src_tn, tgt_tn, max_hops=4):
+            for path in lm.find_paths(src_tn, tgt_tn, max_hops=4):
                 for r in path:
                     hop_type_names.add(r.source_label)
                     hop_type_names.add(r.target_label)
-    relevant_type_names = selected_types | hop_type_names
+    return selected_types | hop_type_names
 
+
+def _build_schema_block(
+    all_tables: list,
+    relevant_type_names: set[str],
+    ctx,
+    sql_domain_fn,
+    multihop_lines: list[str],
+) -> str:
     schema_lines: list[str] = []
     for tbl in all_tables:
         if tbl.type_name not in relevant_type_names:
             continue
         cols = ctx.aggregate_columns.get(tbl.table_id, [])
         col_list = ", ".join(col_name for col_name, _ in cols)
-        schema_lines.append(f"Table {_sql_domain(tbl.domain_id)}.{tbl.table_name}")
+        schema_lines.append(f"Table {sql_domain_fn(tbl.domain_id)}.{tbl.table_name}")
         schema_lines.append(f"  Columns: {col_list or '(unknown)'}")
         for (src_type, _), jm in ctx.joins.items():
             if src_type == tbl.type_name:
                 schema_lines.append(
-                    f"  Approved JOIN: {_sql_domain(jm.target.domain_id)}.{jm.target.table_name} "
+                    f"  Approved JOIN: {sql_domain_fn(jm.target.domain_id)}.{jm.target.table_name} "
                     f"ON {tbl.table_name}.{jm.source_column} = {jm.target.table_name}.{jm.target_column}"
                 )
 
@@ -550,6 +602,20 @@ async def nl_to_sql_endpoint(
             "\n\nMulti-hop join paths (use these when tables are not directly joined):\n"
             + "\n".join(multihop_lines)
         )
+    return schema_block
+
+
+async def _run_sql_generation_loop(
+    question: str,
+    schema_block: str,
+    ctx,
+    gov_ctx,
+    role_obj,
+    raw_tables: list,
+) -> tuple[str, int]:
+    import sqlglot
+    from provisa.llm.client import ProviasLLMClient
+    from provisa.compiler.sql_validator import validate_sql
 
     sql_gen_system = (
         "You are a SQL generator for the Provisa data platform.\n"
@@ -575,12 +641,12 @@ async def nl_to_sql_endpoint(
     last_error: str = ""
     last_sql: str = ""
     attempt: int = 0
-    current_prompt: str = request.question
+    current_prompt: str = question
 
     for attempt in range(1, 4):
         if last_error:
             current_prompt = (
-                f"{request.question}\n\nPrevious attempt:\n{last_sql}\n\n"
+                f"{question}\n\nPrevious attempt:\n{last_sql}\n\n"
                 f"Error: {last_error}\nFix it and output only the corrected SQL."
             )
 
@@ -594,21 +660,17 @@ async def nl_to_sql_endpoint(
                 line for line in last_sql.splitlines() if not line.strip().startswith("```")
             ).strip()
 
-        # Validate syntax
         try:
             tree = sqlglot.parse_one(last_sql, read="postgres")
         except Exception as exc:
             last_error = str(exc)
             continue
 
-        # Validate column qualifiers bind to a FROM table/alias (sqlglot parses
-        # undefined aliases as valid syntax; catch them so the retry self-corrects).
         binding_error = _check_qualifier_binding(tree)
         if binding_error:
             last_error = binding_error
             continue
 
-        # Validate governance (column names, join conditions, table access)
         normalized = rewrite_semantic_to_physical(last_sql, ctx)
         violations = validate_sql(normalized, ctx, gov_ctx, role_obj or {}, raw_tables)
         if violations:
@@ -617,6 +679,58 @@ async def nl_to_sql_endpoint(
 
         last_error = ""
         break
+
+    return last_sql, attempt, last_error
+
+
+class NLToSQLRequest(BaseModel):
+    question: str
+    role: str = "admin"
+
+
+@router.post("/nl-to-sql")
+async def nl_to_sql_endpoint(
+    raw_request: Request,
+    request: NLToSQLRequest,
+    x_provisa_role: str | None = Header(None),
+):
+    """Translate a natural-language question to Semantic SQL via Claude.
+
+    Validates the generated SQL with sqlglot and retries (up to 3 attempts)
+    feeding parse errors back to Claude.
+    """
+    from provisa.api.app import state
+    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.compiler.stage2 import build_governance_context
+
+    role_id = _resolve_role_id(raw_request, x_provisa_role, request.role)
+    if role_id not in state.contexts:
+        raise HTTPException(status_code=400, detail=f"No schema for role {role_id!r}")
+
+    ctx = state.contexts[role_id]
+    rls = state.rls_contexts.get(role_id, RLSContext.empty())
+    gov_ctx = build_governance_context(
+        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
+    )
+    role_obj = state.roles.get(role_id)
+    raw_tables = getattr(state, "tables", [])
+
+    all_tables, _user_nodes, _table_name_to_type, _lm = _collect_nl_user_tables(ctx)
+
+    def _sql_domain(domain_id: str | None) -> str:
+        return domain_to_sql_name(domain_id) if domain_id else "default"
+
+    selected_types = await _run_table_selection(
+        _user_nodes, request.question, _sql_domain, _table_name_to_type
+    )
+
+    multihop_lines = _build_multihop_lines(selected_types, _lm, _sql_domain)
+    relevant_type_names = _build_relevant_type_names(selected_types, _lm)
+    schema_block = _build_schema_block(all_tables, relevant_type_names, ctx, _sql_domain, multihop_lines)
+
+    last_sql, attempt, last_error = await _run_sql_generation_loop(
+        request.question, schema_block, ctx, gov_ctx, role_obj, raw_tables
+    )
 
     if last_error:
         raise HTTPException(

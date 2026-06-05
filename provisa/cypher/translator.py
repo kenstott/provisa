@@ -36,8 +36,10 @@ from provisa.cypher.parser import (
     CypherAST,
     MatchClause,
     MatchStep,
+    NodePattern,
     PathPattern,
     PathFunction,
+    RelPattern,
     ReturnItem,
     UnwindClause,
     WhereClause,
@@ -61,6 +63,113 @@ def _safe_alias(expr: str) -> str:
 
 def _const_literal(v: int | str) -> exp.Expression:
     return exp.Literal.string(v) if isinstance(v, str) else exp.Literal.number(v)
+
+
+def _node_table_expr(nm: "NodeMapping", alias: str) -> "exp.Expression":
+    """Build a aliased table expression for a NodeMapping."""
+    return exp.alias_(
+        exp.Table(
+            this=exp.Identifier(this=nm.sql_table_name, quoted=True),
+            db=exp.Identifier(this=nm.schema_name, quoted=True),
+            catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
+        ),
+        alias=alias,
+    )
+
+
+def _tgt_col_expr_for_rm(rm: "RelationshipMapping", alias: str) -> "exp.Expression":
+    """Build the target column expression for a RelationshipMapping."""
+    if rm.target_expr is not None:
+        return exp.maybe_parse(
+            rm.target_expr.replace("{alias}", alias),
+            dialect="trino",
+        )
+    return exp.Column(
+        this=exp.Identifier(this=rm.join_target_column, quoted=True),
+        table=exp.Identifier(this=alias),
+    )
+
+
+def _src_col_expr_for_rm(
+    rm: "RelationshipMapping",
+    src_table_ref: str,
+    src_nm: "NodeMapping | None",
+) -> "exp.Expression":
+    """Build the source column expression for a RelationshipMapping (forward direction)."""
+    if rm.source_constant is not None:
+        return _const_literal(rm.source_constant)
+    if rm.source_expr is not None:
+        return exp.maybe_parse(
+            rm.source_expr.replace("{alias}", src_table_ref),
+            dialect="trino",
+        )
+    if rm.join_source_column == "_name_" and src_nm is not None:
+        from provisa.compiler.naming import domain_to_sql_name as _d2s
+
+        _name_val = f"{_d2s(src_nm.domain_id or src_nm.schema_name or '')}.{src_nm.table_name}"
+        return exp.Literal.string(_name_val)
+    return exp.Column(
+        this=exp.Identifier(this=rm.join_source_column, quoted=True),
+        table=exp.Identifier(this=src_table_ref),
+    )
+
+
+def _make_rel_join(
+    rm: "RelationshipMapping",
+    is_bwd: bool,
+    tgt_nm: "NodeMapping",
+    tgt_alias: str,
+    src_table_ref: str,
+    src_nm: "NodeMapping | None",
+    join_type: str,
+) -> dict:
+    """Build a join dict for a single relationship mapping candidate."""
+    jt = _node_table_expr(tgt_nm, tgt_alias)
+    if is_bwd:
+        if rm.source_constant is not None:
+            cond = exp.EQ(
+                this=_const_literal(rm.source_constant),
+                expression=_tgt_col_expr_for_rm(rm, src_table_ref),
+            )
+        else:
+            cond = exp.EQ(
+                this=exp.Column(
+                    this=exp.Identifier(this=rm.join_source_column, quoted=True),
+                    table=exp.Identifier(this=tgt_alias),
+                ),
+                expression=_tgt_col_expr_for_rm(rm, src_table_ref),
+            )
+    else:
+        src_col = _src_col_expr_for_rm(rm, src_table_ref, src_nm)
+        cond = exp.EQ(this=src_col, expression=_tgt_col_expr_for_rm(rm, tgt_alias))
+    return {"table": jt, "on": cond, "join_type": join_type}
+
+
+def _is_bwd_for_candidate(
+    rm: "RelationshipMapping",
+    bidir: bool,
+    backward: bool,
+    src_nm: "NodeMapping | None",
+    tgt_nm: "NodeMapping | None",
+    tgt_nm_explicit: bool,
+) -> "bool | None":
+    """Determine backward-ness for a relationship mapping candidate.
+
+    Returns None if the candidate should be filtered out (direction mismatch).
+    """
+    if bidir:
+        if src_nm is not None:
+            return rm.source_label != src_nm.type_name
+        return False
+    if src_nm is not None:
+        canonical_fwd = rm.source_label == src_nm.type_name
+        if tgt_nm is not None and tgt_nm_explicit:
+            if backward and canonical_fwd:
+                return None
+            if not backward and not canonical_fwd:
+                return None
+        return not canonical_fwd
+    return backward
 
 
 def _optional_vars(clauses: "list[MatchClause]") -> "set[str]":
@@ -229,81 +338,79 @@ class _Translator(
         # alias of the all-rels union subquery (when built)
         self._all_rels_alias: str | None = None
 
-    def translate(self) -> tuple[exp.Select, list[str], dict[str, GraphVarKind]]:
-        if self._ast.return_clause is None:
-            raise CypherTranslateError(
-                "Cannot translate a CALL {}-only query directly. "
-                "Use cypher_calls_to_sql_list() instead."
+    def _build_cte_segment(
+        self,
+        n: int,
+        match_steps: list,
+        unwinds: list,
+        with_clause: WithClause,
+    ) -> tuple[str, exp.Expression]:
+        """Build one CTE (from, joins, select, where, group-by) for a WITH segment."""
+        all_matches = [m for step in match_steps for m in step.matches]
+        stage_where: WhereClause | None = None
+        for step in match_steps:
+            if step.where is not None:
+                stage_where = step.where
+                break
+        if all_matches:
+            from_clause, joins = self._build_from_joins(all_matches)
+            if unwinds:
+                _, uw_joins = self._build_unwind_joins(unwinds, has_from=True)
+                joins.extend(uw_joins)
+        elif unwinds:
+            from_clause, joins = self._build_unwind_joins(unwinds, has_from=False)
+        else:
+            raise CypherTranslateError("Pipeline segment has no data source")
+
+        select_exprs = self._build_with_select_items(with_clause.items)
+        where_expr = self._build_where(stage_where)
+        if where_expr and stage_where is not None:
+            joins, where_expr = _fold_where_into_optional_joins(
+                where_expr, _optional_vars(all_matches), stage_where.expression, joins
             )
 
-        segments = self._group_pipeline()
-        cte_defs: list[tuple[str, exp.Expression]] = []
-
-        # Build CTEs for all segments except the last
-        for n, (match_steps, unwinds, with_clause) in enumerate(segments[:-1]):
-            all_matches = [m for step in match_steps for m in step.matches]
-            stage_where: WhereClause | None = None
-            for step in match_steps:
-                if step.where is not None:
-                    stage_where = step.where
-                    break
-            if all_matches:
-                from_clause, joins = self._build_from_joins(all_matches)
-                if unwinds:
-                    _, uw_joins = self._build_unwind_joins(unwinds, has_from=True)
-                    joins.extend(uw_joins)
-            elif unwinds:
-                from_clause, joins = self._build_unwind_joins(unwinds, has_from=False)
-            else:
-                raise CypherTranslateError("Pipeline segment has no data source")
-            select_exprs = self._build_with_select_items(with_clause.items)
-            where_expr = self._build_where(stage_where)
-            if where_expr and stage_where is not None:
-                joins, where_expr = _fold_where_into_optional_joins(
-                    where_expr, _optional_vars(all_matches), stage_where.expression, joins
+        stage_query = exp.select(*select_exprs).from_(from_clause)
+        for join in joins:
+            stage_query = stage_query.join(join["table"], on=join["on"], join_type=join["join_type"])
+        if where_expr:
+            stage_query = stage_query.where(where_expr)
+        with_group_exprs = self._build_group_by_for_with(with_clause.items)
+        if with_group_exprs:
+            stage_query = stage_query.group_by(*with_group_exprs)
+        if with_clause.where is not None:
+            with_where_expr = self._build_where(with_clause.where)
+            if with_where_expr:
+                stage_query = (
+                    exp.select(exp.Star())
+                    .from_(exp.alias_(exp.Subquery(this=stage_query), alias="_inner"))
+                    .where(with_where_expr)
                 )
 
-            stage_query = exp.select(*select_exprs).from_(from_clause)
-            for join in joins:
-                stage_query = stage_query.join(
-                    join["table"], on=join["on"], join_type=join["join_type"]
-                )
-            if where_expr:
-                stage_query = stage_query.where(where_expr)
-            with_group_exprs = self._build_group_by_for_with(with_clause.items)
-            if with_group_exprs:
-                stage_query = stage_query.group_by(*with_group_exprs)
+        cte_name = f"_w{n}"
+        return cte_name, stage_query
 
-            # Apply WITH ... WHERE as outer filter
-            if with_clause.where is not None:
-                with_where_expr = self._build_where(with_clause.where)
-                if with_where_expr:
-                    stage_query = (
-                        exp.select(exp.Star())
-                        .from_(exp.alias_(exp.Subquery(this=stage_query), alias="_inner"))
-                        .where(with_where_expr)
-                    )
+    def _build_final_from(
+        self,
+        final_match_steps: list,
+        final_unwinds: list,
+        cte_defs: list[tuple[str, exp.Expression]],
+    ) -> tuple[exp.Expression, list[dict], list[MatchClause], "WhereClause | None"]:
+        """Build FROM/joins for the final segment.
 
-            cte_name = f"_w{n}"
-            cte_defs.append((cte_name, stage_query))
-            self._update_var_table_for_with(with_clause.items, cte_name)
-
-        # Build main SELECT from final segment
-        final_match_steps, final_unwinds, _ = segments[-1]
+        Returns (from_clause, joins, all_matches, stage_where).
+        """
         all_matches = [m for step in final_match_steps for m in step.matches]
-        stage_where = None
+        stage_where: WhereClause | None = None
         for step in final_match_steps:
             if step.where is not None:
                 stage_where = step.where
                 break
 
         if not all_matches and not final_unwinds and cte_defs:
-            # No MATCH, no UNWIND — SELECT directly from last CTE
             last_cte_name = cte_defs[-1][0]
             from_clause: exp.Expression = exp.Table(this=exp.Identifier(this=last_cte_name))
             joins: list[dict] = []
         elif not all_matches and final_unwinds:
-            # Pure UNWIND — first may become FROM, rest CROSS JOINs
             if cte_defs:
                 last_cte_name = cte_defs[-1][0]
                 from_clause = exp.Table(this=exp.Identifier(this=last_cte_name))
@@ -321,19 +428,24 @@ class _Translator(
         else:
             raise CypherTranslateError("Query has no data source")
 
-        # Correlated CALL subqueries → CROSS JOIN LATERAL
-        lateral_joins = self._translate_correlated_calls(self._ast.call_subqueries)
-        joins = list(joins) + lateral_joins
+        return from_clause, joins, all_matches, stage_where
 
-        select_exprs = self._build_select(self._ast.return_clause)
+    def _apply_where_and_fold(
+        self,
+        stage_where: "WhereClause | None",
+        all_matches: list[MatchClause],
+        joins: list[dict],
+    ) -> tuple["exp.Expression | None", list[dict]]:
+        """Build WHERE and fold optional-join conditions.
+
+        Also updates self._extra_path_branches with folded WHERE.
+        """
         where_expr = self._build_where(stage_where)
         if where_expr and stage_where is not None:
             opt_vars = _optional_vars(all_matches)
             joins, where_expr = _fold_where_into_optional_joins(
                 where_expr, opt_vars, stage_where.expression, joins
             )
-            # Extra UNION branches captured joins_before the fold — apply fold to them too
-            # so bidir/multi-candidate paths inherit the same optional-variable exclusion.
             raw_where = self._build_where(stage_where)
             if raw_where is not None:
                 self._extra_path_branches = [
@@ -346,8 +458,16 @@ class _Translator(
                     )
                     for bf, bj, bps in self._extra_path_branches
                 ]
-        order_exprs = self._build_order_by(self._ast.order_by)
+        return where_expr, joins
 
+    def _build_main_query(
+        self,
+        from_clause: "exp.Expression",
+        joins: list[dict],
+        where_expr: "exp.Expression | None",
+        select_exprs: list["exp.Expression"],
+    ) -> "exp.Select":
+        """Assemble the main SELECT query from components."""
         query = exp.select(*select_exprs).from_(from_clause)
         if self._ast.return_clause and self._ast.return_clause.distinct:
             query = query.distinct()
@@ -360,10 +480,15 @@ class _Translator(
         group_exprs = self._build_group_by(self._ast.return_clause)
         if group_exprs:
             query = query.group_by(*group_exprs)
+        return query
 
-        # UNION ALL extra branches from multi-path shortestPath/allShortestPaths.
-        # Each schema path is its own SQL query; WHERE/SELECT are identical across branches.
-        result: exp.Select | exp.Union = query
+    def _apply_extra_branches(
+        self,
+        result: "exp.Select | exp.Union",
+        select_exprs: list["exp.Expression"],
+        where_expr: "exp.Expression | None",
+    ) -> "exp.Select | exp.Union":
+        """Apply UNION ALL extra branches from multi-path shortestPath/allShortestPaths."""
         for extra_from, extra_joins, extra_path_steps_map in self._extra_path_branches:
             branch_select_exprs = []
             for s_expr in select_exprs:
@@ -382,12 +507,12 @@ class _Translator(
             if where_expr:
                 branch = branch.where(where_expr)
             result = exp.Union(this=result, expression=branch, distinct=False)
-        for cte_name, cte_query in cte_defs:
-            result = result.with_(cte_name, as_=cte_query)
-        for cte_name, cte_expr in self._recursive_ctes:
-            result = result.with_(cte_name, as_=cte_expr, recursive=True)
+        return result
 
-        # Fold UNION / UNION ALL parts (ORDER BY/LIMIT/OFFSET applied after)
+    def _fold_union_parts(
+        self, result: "exp.Select | exp.Union"
+    ) -> "exp.Select | exp.Union":
+        """Fold UNION / UNION ALL parts into result."""
         for sub_ast, is_all in self._ast.union_parts:
             sub_sql, sub_params, sub_graph_vars = cypher_to_sql(sub_ast, self._lm, self._params)
             for p in sub_params:
@@ -395,19 +520,15 @@ class _Translator(
                     self._param_order.append(p)
                     self._param_seen.add(p)
             self._graph_vars.update(sub_graph_vars)
-            result = exp.Union(
-                this=result,
-                expression=sub_sql,
-                distinct=not is_all,
-            )
+            result = exp.Union(this=result, expression=sub_sql, distinct=not is_all)
+        return result
 
-        # For recursive shortestPath: inject ORDER BY _t.hops [LIMIT 1]
-        if self._shortestpath_hops_col is not None:
-            order_exprs = [self._shortestpath_hops_col] + list(order_exprs)
-            if not self._shortestpath_is_all and self._ast.limit is None:
-                self._ast.limit = 1
-
-        # Apply ORDER BY / LIMIT / OFFSET.
+    def _apply_order_limit(
+        self,
+        result: "exp.Select | exp.Union",
+        order_exprs: list["exp.Expression"],
+    ) -> "exp.Select | exp.Union":
+        """Apply ORDER BY / LIMIT / OFFSET, wrapping in outer SELECT if needed."""
         has_ordering = order_exprs or self._ast.limit is not None or self._ast.skip is not None
         needs_outer = bool(self._ast.union_parts) or bool(self._extra_path_branches)
         if needs_outer and has_ordering:
@@ -420,15 +541,58 @@ class _Translator(
                 outer = outer.limit(self._ast.limit)
             if self._ast.skip is not None:
                 outer = outer.offset(self._ast.skip)
-            return outer, self._param_order, self._graph_vars
-
+            return outer
         if order_exprs:
             result = result.order_by(*order_exprs)
         if self._ast.limit is not None:
             result = result.limit(self._ast.limit)
         if self._ast.skip is not None:
             result = result.offset(self._ast.skip)
+        return result
 
+    def translate(self) -> tuple[exp.Select, list[str], dict[str, GraphVarKind]]:
+        if self._ast.return_clause is None:
+            raise CypherTranslateError(
+                "Cannot translate a CALL {}-only query directly. "
+                "Use cypher_calls_to_sql_list() instead."
+            )
+
+        segments = self._group_pipeline()
+        cte_defs: list[tuple[str, exp.Expression]] = []
+
+        for n, (match_steps, unwinds, with_clause) in enumerate(segments[:-1]):
+            cte_name, stage_query = self._build_cte_segment(n, match_steps, unwinds, with_clause)
+            cte_defs.append((cte_name, stage_query))
+            self._update_var_table_for_with(with_clause.items, cte_name)
+
+        final_match_steps, final_unwinds, _ = segments[-1]
+        from_clause, joins, all_matches, stage_where = self._build_final_from(
+            final_match_steps, final_unwinds, cte_defs
+        )
+
+        lateral_joins = self._translate_correlated_calls(self._ast.call_subqueries)
+        joins = list(joins) + lateral_joins
+
+        select_exprs = self._build_select(self._ast.return_clause)
+        where_expr, joins = self._apply_where_and_fold(stage_where, all_matches, joins)
+        order_exprs = self._build_order_by(self._ast.order_by)
+
+        query = self._build_main_query(from_clause, joins, where_expr, select_exprs)
+        result: exp.Select | exp.Union = self._apply_extra_branches(query, select_exprs, where_expr)
+
+        for cte_name, cte_query in cte_defs:
+            result = result.with_(cte_name, as_=cte_query)
+        for cte_name, cte_expr in self._recursive_ctes:
+            result = result.with_(cte_name, as_=cte_expr, recursive=True)
+
+        result = self._fold_union_parts(result)
+
+        if self._shortestpath_hops_col is not None:
+            order_exprs = [self._shortestpath_hops_col] + list(order_exprs)
+            if not self._shortestpath_is_all and self._ast.limit is None:
+                self._ast.limit = 1
+
+        result = self._apply_order_limit(result, order_exprs)
         return result, self._param_order, self._graph_vars
 
     def _group_pipeline(
@@ -497,12 +661,430 @@ class _Translator(
                 cross_joins.append({"table": unnest, "on": None, "join_type": "CROSS"})
         return from_expr, cross_joins
 
+    def _register_node(self, node: "NodePattern") -> None:
+        """Register a single node into var_table and domain_nodes if not already present."""
+        if not node.variable or node.variable in self._var_table:
+            return
+        if node.label_alternation and len(node.labels) > 1:
+            ad_hoc = f"__alt_{node.variable}__"
+            if ad_hoc not in self._lm.domains:
+                from provisa.cypher.label_map import CypherLabelMap
+
+                self._lm = CypherLabelMap(
+                    nodes=self._lm.nodes,
+                    relationships=self._lm.relationships,
+                    domains={**self._lm.domains, ad_hoc: node.labels},
+                )
+            self._domain_nodes[node.variable] = ad_hoc
+            self._var_table[node.variable] = (node.variable, None)
+        elif node.labels:
+            type_label, domain_label = self._resolve_node_type(node.labels)
+            if type_label:
+                self._var_table[node.variable] = (node.variable, self._lm.nodes[type_label])
+            else:
+                self._domain_nodes[node.variable] = domain_label  # type: ignore[assignment]
+                self._var_table[node.variable] = (node.variable, None)
+        else:
+            self._domain_nodes[node.variable] = "__all__"
+            self._var_table[node.variable] = (node.variable, None)
+
+    def _build_first_node_from(
+        self, first_node: "NodePattern"
+    ) -> "exp.Expression | None":
+        """Build FROM expr for the first node; None if lateral-bound or not resolvable."""
+        fv = first_node.variable
+        if fv and fv in self._lateral_bound:
+            return None
+        if fv and fv in self._cte_sources:
+            sql_alias = self._var_table[fv][0]
+            return exp.Table(this=exp.Identifier(this=sql_alias))
+        if fv and fv in self._domain_nodes:
+            return self._build_domain_union(fv, self._domain_nodes[fv])
+        if fv and fv in self._var_table and self._var_table[fv][1]:
+            nm = self._var_table[fv][1]
+            if getattr(nm, "traversal_only", False):
+                raise CypherTranslateError(
+                    f"Node '{nm.label}' is in a domain outside your access. "
+                    f"Start the pattern from a node in your own domain and traverse to '{nm.label}' via a relationship."
+                )
+            return _node_table_expr(nm, fv)
+        if first_node.labels:
+            type_label, _ = self._resolve_node_type(first_node.labels)
+            nm = self._lm.nodes.get(type_label) if type_label else None
+            if nm:
+                if getattr(nm, "traversal_only", False):
+                    raise CypherTranslateError(
+                        f"Node '{nm.label}' is in a domain outside your access. "
+                        f"Start the pattern from a node in your own domain and traverse to '{nm.label}' via a relationship."
+                    )
+                alias = fv or type_label.lower()
+                return _node_table_expr(nm, alias)
+        return None
+
+    def _build_standalone_node_join(
+        self, fv: "str | None", clause: MatchClause
+    ) -> "dict | None":
+        """Build a JOIN dict for a standalone node (no relationships) in a non-first clause."""
+        if not fv or fv in self._cte_sources:
+            return None
+        join_type = "LEFT" if clause.optional else "CROSS"
+        on_clause = exp.true() if join_type == "LEFT" else None
+        if fv in self._domain_nodes:
+            join_table = self._build_domain_union(fv, self._domain_nodes[fv])
+            return {"table": join_table, "on": on_clause, "join_type": join_type}
+        if fv in self._var_table and self._var_table[fv][1]:
+            nm = self._var_table[fv][1]
+            join_table = _node_table_expr(nm, fv)
+            return {"table": join_table, "on": on_clause, "join_type": join_type}
+        return None
+
+    def _resolve_early_rel_mapping(
+        self, rel: "RelPattern"
+    ) -> "RelationshipMapping | None":
+        """Resolve early rel_mapping for domain-node path and anonymous node inference."""
+        if not rel.types:
+            return None
+        _rt_early = rel.types[0].upper()
+        _early_matches = self._lm.aliases.get(_rt_early, [])
+        if not _early_matches:
+            _rm_early = self._lm.relationships.get(_rt_early)
+            _early_matches = [_rm_early] if _rm_early else []
+        return _early_matches[0] if _early_matches else None
+
+    def _infer_src_from_rel(
+        self,
+        rel_mapping: "RelationshipMapping",
+        src_var: "str | None",
+        current_from_expr: "exp.Expression | None",
+    ) -> "tuple[NodeMapping | None, exp.Expression | None]":
+        """Infer src_nm from rel_mapping; update from_expr if src was a domain union."""
+        src_nm = self._lm.nodes.get(rel_mapping.source_label)
+        if src_nm and src_var:
+            self._var_table[src_var] = (src_var, src_nm)
+            if src_var in self._domain_nodes:
+                self._domain_nodes.pop(src_var)
+                current_from_expr = _node_table_expr(src_nm, src_var)
+        return src_nm, current_from_expr
+
+    def _infer_tgt_from_rel(
+        self,
+        rel_mapping: "RelationshipMapping",
+        tgt_var: "str | None",
+    ) -> "NodeMapping | None":
+        """Infer tgt_nm from rel_mapping; update var_table/domain_nodes."""
+        tgt_nm = self._lm.nodes.get(rel_mapping.target_label)
+        if tgt_nm and tgt_var:
+            self._var_table[tgt_var] = (tgt_var, tgt_nm)
+            self._domain_nodes.pop(tgt_var, None)
+        return tgt_nm
+
+    def _build_domain_target_join(
+        self,
+        tgt_var: str,
+        rel_mapping: "RelationshipMapping",
+        src_var: "str | None",
+        src_nm: "NodeMapping | None",
+        clause: MatchClause,
+    ) -> dict:
+        """Build a JOIN for a domain-only target node."""
+        join_type = "LEFT" if clause.optional else "INNER"
+        tgt_alias = tgt_var
+        join_table = self._build_domain_union(tgt_var, self._domain_nodes[tgt_var])
+        src_table_ref = (
+            self._var_table.get(src_var, (src_var, None))[0]
+            if src_var
+            else src_nm.table_name  # type: ignore[union-attr]
+        )
+        src_col_expr = _src_col_expr_for_rm(rel_mapping, src_table_ref, src_nm)
+        tgt_col_expr = _tgt_col_expr_for_rm(rel_mapping, tgt_alias)
+        on_cond = exp.EQ(this=src_col_expr, expression=tgt_col_expr)
+        return {"table": join_table, "on": on_cond, "join_type": join_type}
+
+    def _handle_unlabeled_rel_pattern(
+        self,
+        src_var: "str | None",
+        rel_var: "str | None",
+        tgt_var: "str | None",
+    ) -> "exp.Expression":
+        """Handle fully unlabeled rel pattern: UNION ALL over all relationship types."""
+        from_expr = self._build_all_rels_union(src_var, rel_var, tgt_var)
+        if src_var:
+            self._domain_nodes.pop(src_var, None)
+            self._var_table[src_var] = (src_var, None)
+            self._passthrough_vars.add(src_var)
+        if rel_var:
+            self._passthrough_vars.add(rel_var)
+        if tgt_var:
+            self._domain_nodes.pop(tgt_var, None)
+            self._var_table[tgt_var] = (tgt_var, None)
+            self._passthrough_vars.add(tgt_var)
+        return from_expr
+
+    def _resolve_typed_rel_candidates(
+        self,
+        rel: "RelPattern",
+        bidir: bool,
+        backward: bool,
+        src_nm: "NodeMapping | None",
+        tgt_nm: "NodeMapping | None",
+        src_nm_explicit: bool,
+        tgt_nm_explicit: bool,
+    ) -> "list[tuple]":
+        """Resolve relationship candidates for a typed relationship."""
+        rel_type = rel.types[0].upper()
+        alias_matches = self._lm.aliases.get(rel_type, [])
+        if not alias_matches:
+            rm = self._lm.relationships.get(rel_type)
+            alias_matches = [rm] if rm else []
+        # Filter to exact src/tgt match when multiple aliases share the same rel type
+        if src_nm is not None and src_nm_explicit and len(alias_matches) > 1:
+            fwd_exact = [
+                m
+                for m in alias_matches
+                if m.source_label == src_nm.type_name
+                and (tgt_nm is None or m.target_label == tgt_nm.type_name)
+            ]
+            bwd_exact = [
+                m
+                for m in alias_matches
+                if m.target_label == src_nm.type_name
+                and (tgt_nm is None or m.source_label == tgt_nm.type_name)
+            ]
+            if not backward and fwd_exact:
+                alias_matches = fwd_exact
+            elif bwd_exact:
+                alias_matches = bwd_exact
+            elif fwd_exact:
+                alias_matches = fwd_exact
+        return [
+            (m, bwd)
+            for m in alias_matches
+            if (
+                bwd := _is_bwd_for_candidate(
+                    m, bidir, backward, src_nm, tgt_nm, tgt_nm_explicit
+                )
+            )
+            is not None
+        ]
+
+    def _resolve_untyped_rel_candidates(
+        self,
+        bidir: bool,
+        backward: bool,
+        src_nm: "NodeMapping",
+        tgt_nm: "NodeMapping",
+    ) -> "list[tuple]":
+        """Resolve relationship candidates for an untyped relationship."""
+        if bidir:
+            fwd = self._lm.relationships_for(src_nm.type_name, tgt_nm.type_name)
+            bwd = self._lm.relationships_for(tgt_nm.type_name, src_nm.type_name)
+            return [(m, False) for m in fwd] + [(m, True) for m in bwd]
+        if backward:
+            fwd_cands = self._lm.relationships_for(tgt_nm.type_name, src_nm.type_name)
+            return [(m, True) for m in fwd_cands]
+        fwd_cands = self._lm.relationships_for(src_nm.type_name, tgt_nm.type_name)
+        return [(m, False) for m in fwd_cands]
+
+    def _resolve_rel_node_types(
+        self,
+        src_node: "NodePattern",
+        tgt_node: "NodePattern",
+        rel_mapping: "RelationshipMapping | None",
+        from_expr: "exp.Expression | None",
+    ) -> "tuple[NodeMapping | None, NodeMapping | None, bool, bool, exp.Expression | None]":
+        """Resolve src_nm, tgt_nm, explicitness flags, and updated from_expr.
+
+        Returns (src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr).
+        """
+        src_var = src_node.variable
+        tgt_var = tgt_node.variable
+        src_nm = self._var_table.get(src_var, (None, None))[1] if src_var else None
+        tgt_nm = self._var_table.get(tgt_var, (None, None))[1] if tgt_var else None
+        src_nm_explicit = src_nm is not None
+        tgt_nm_explicit = tgt_nm is not None
+
+        if tgt_nm is None and tgt_node.labels:
+            type_label, _ = self._resolve_node_type(tgt_node.labels)
+            tgt_nm = self._lm.nodes.get(type_label) if type_label else None
+            if tgt_nm and tgt_var:
+                self._var_table[tgt_var] = (tgt_var, tgt_nm)
+            tgt_nm_explicit = tgt_nm is not None
+
+        if (src_nm is None or tgt_nm is None) and rel_mapping:
+            if src_nm is None:
+                src_nm, from_expr = self._infer_src_from_rel(rel_mapping, src_var, from_expr)
+            if tgt_nm is None:
+                tgt_nm = self._infer_tgt_from_rel(rel_mapping, tgt_var)
+
+        return src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr
+
+    def _apply_rel_join_candidates(
+        self,
+        rel: "RelPattern",
+        candidates: list,
+        src_var: "str | None",
+        src_nm: "NodeMapping",
+        tgt_nm: "NodeMapping",
+        clause: MatchClause,
+        from_expr: "exp.Expression | None",
+        joins: "list[dict]",
+    ) -> "tuple[exp.Expression | None, list[dict]]":
+        """Apply primary and extra JOIN candidates to joins/from_expr."""
+        join_type = "LEFT" if clause.optional else "INNER"
+        tgt_var = None
+        # tgt_nm is resolved; tgt_alias comes from the last rel's tgt
+        tgt_alias = tgt_nm.table_name
+        if src_var and src_var in self._cte_sources:
+            src_table_ref = self._var_table.get(src_var, (src_var, None))[0]
+        else:
+            src_table_ref = src_var or src_nm.table_name
+
+        primary_rm, primary_bwd = candidates[0]
+        if rel.variable:
+            self._rel_var_types[rel.variable] = primary_rm.rel_type
+            _src_alias = src_var or src_nm.table_name
+            if _src_alias and src_nm and tgt_nm:
+                self._rel_var_endpoints[rel.variable] = (
+                    _src_alias, src_nm, tgt_alias, tgt_nm, primary_bwd,
+                )
+
+        primary_join = _make_rel_join(
+            primary_rm, primary_bwd, tgt_nm, tgt_alias, src_table_ref, src_nm, join_type
+        )
+        joins_before = list(joins)
+
+        if src_var and src_var in self._lateral_bound and from_expr is None:
+            from_expr = primary_join["table"]
+            self._lateral_conditions.append(primary_join["on"])
+        else:
+            joins.append(primary_join)
+
+        for extra_rm, extra_bwd in candidates[1:]:
+            extra_join = _make_rel_join(
+                extra_rm, extra_bwd, tgt_nm, tgt_alias, src_table_ref, src_nm, join_type
+            )
+            self._extra_path_branches.append((from_expr, joins_before + [extra_join], {}))
+
+        return from_expr, joins
+
+    def _build_candidate_joins(
+        self,
+        rel: "RelPattern",
+        candidates: list,
+        src_var: "str | None",
+        src_nm: "NodeMapping",
+        tgt_nm: "NodeMapping",
+        tgt_var: "str | None",
+        clause: MatchClause,
+        from_expr: "exp.Expression | None",
+        joins: "list[dict]",
+    ) -> "tuple[exp.Expression | None, list[dict]]":
+        """Build and register joins for a resolved set of rel candidates."""
+        join_type = "LEFT" if clause.optional else "INNER"
+        tgt_alias = tgt_var or tgt_nm.table_name
+        if src_var and src_var in self._cte_sources:
+            src_table_ref = self._var_table.get(src_var, (src_var, None))[0]
+        else:
+            src_table_ref = src_var or src_nm.table_name
+
+        primary_rm, primary_bwd = candidates[0]
+        if rel.variable:
+            self._rel_var_types[rel.variable] = primary_rm.rel_type
+            _src_alias = src_var or src_nm.table_name
+            _tgt_alias = tgt_var or tgt_nm.table_name
+            if _src_alias and _tgt_alias:
+                self._rel_var_endpoints[rel.variable] = (
+                    _src_alias, src_nm, _tgt_alias, tgt_nm, primary_bwd,
+                )
+
+        primary_join = _make_rel_join(
+            primary_rm, primary_bwd, tgt_nm, tgt_alias, src_table_ref, src_nm, join_type
+        )
+        joins_before = list(joins)
+
+        if src_var and src_var in self._lateral_bound and from_expr is None:
+            from_expr = primary_join["table"]
+            self._lateral_conditions.append(primary_join["on"])
+        else:
+            joins.append(primary_join)
+
+        for extra_rm, extra_bwd in candidates[1:]:
+            extra_join = _make_rel_join(
+                extra_rm, extra_bwd, tgt_nm, tgt_alias, src_table_ref, src_nm, join_type
+            )
+            self._extra_path_branches.append((from_expr, joins_before + [extra_join], {}))
+
+        return from_expr, joins
+
+    def _process_rel_step(
+        self,
+        rel: "RelPattern",
+        nodes: list,
+        i: int,
+        clause: MatchClause,
+        from_expr: "exp.Expression | None",
+        joins: "list[dict]",
+    ) -> "tuple[exp.Expression | None, list[dict], bool]":
+        """Process a single relationship → update joins/from_expr.
+
+        Returns (from_expr, joins, did_continue) where did_continue=True means
+        caller should skip to the next rel iteration.
+        """
+        src_node = nodes[i]
+        tgt_node = nodes[i + 1]
+        src_var = src_node.variable
+        tgt_var = tgt_node.variable
+
+        rel_mapping = self._resolve_early_rel_mapping(rel)
+        src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr = (
+            self._resolve_rel_node_types(src_node, tgt_node, rel_mapping, from_expr)
+        )
+
+        if from_expr is None and src_nm is not None:
+            src_alias = src_var or src_nm.table_name
+            from_expr = _node_table_expr(src_nm, src_alias)
+
+        if src_nm is None or tgt_nm is None:
+            if tgt_var and tgt_var in self._domain_nodes and rel_mapping is not None:
+                j = self._build_domain_target_join(tgt_var, rel_mapping, src_var, src_nm, clause)
+                joins.append(j)
+            elif rel_mapping is None:
+                from_expr = self._handle_unlabeled_rel_pattern(src_var, rel.variable, tgt_var)
+            return from_expr, joins, True
+
+        bidir = rel.direction == "none"
+        backward = rel.direction == "left"
+
+        if rel.types:
+            candidates = self._resolve_typed_rel_candidates(
+                rel, bidir, backward, src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit
+            )
+        else:
+            candidates = self._resolve_untyped_rel_candidates(bidir, backward, src_nm, tgt_nm)
+
+        if not candidates:
+            if tgt_var:
+                tgt_alias = tgt_var or tgt_nm.table_name
+                jt = _node_table_expr(tgt_nm, tgt_alias)
+                no_rel_join_type = "LEFT" if clause.optional else "INNER"
+                joins.append({"table": jt, "on": exp.false(), "join_type": no_rel_join_type})
+            if rel.variable:
+                self._rel_var_types[rel.variable] = ""
+            return from_expr, joins, True
+
+        from_expr, joins = self._build_candidate_joins(
+            rel, candidates, src_var, src_nm, tgt_nm, tgt_var, clause, from_expr, joins
+        )
+        return from_expr, joins, False
+
     def _build_from_joins(
         self, match_clauses: list[MatchClause]
     ) -> tuple[exp.Expression, list[dict]]:
         """Process MATCH clauses → (from_expr, [join_dict])."""
         from_expr: exp.Expression | None = None
         joins: list[dict] = []
+        rel_mapping: RelationshipMapping | None = None
+        tgt_nm: NodeMapping | None = None
 
         for clause in match_clauses:
             if isinstance(clause.pattern, PathFunction):
@@ -516,112 +1098,18 @@ class _Translator(
             nodes = pattern.nodes
             rels = pattern.rels
 
-            # Register all nodes
             for node in nodes:
-                if node.variable and node.variable not in self._var_table:
-                    if node.label_alternation and len(node.labels) > 1:
-                        # Cypher 5 (n:A|B) — build ad-hoc domain for alternation
-                        ad_hoc = f"__alt_{node.variable}__"
-                        if ad_hoc not in self._lm.domains:
-                            from provisa.cypher.label_map import CypherLabelMap
+                self._register_node(node)
 
-                            self._lm = CypherLabelMap(
-                                nodes=self._lm.nodes,
-                                relationships=self._lm.relationships,
-                                domains={**self._lm.domains, ad_hoc: node.labels},
-                            )
-                        self._domain_nodes[node.variable] = ad_hoc
-                        self._var_table[node.variable] = (node.variable, None)
-                    elif node.labels:
-                        type_label, domain_label = self._resolve_node_type(node.labels)
-                        if type_label:
-                            self._var_table[node.variable] = (
-                                node.variable,
-                                self._lm.nodes[type_label],
-                            )
-                        else:
-                            # domain-only: var_table entry has no NodeMapping
-                            self._domain_nodes[node.variable] = domain_label  # type: ignore[assignment]
-                            self._var_table[node.variable] = (node.variable, None)
-                    else:
-                        # No labels — UNION ALL of every known type (same mechanism as domain)
-                        self._domain_nodes[node.variable] = "__all__"
-                        self._var_table[node.variable] = (node.variable, None)
-
-            # First node → FROM (skip if lateral-bound — FROM comes from tgt instead)
             if from_expr is None and nodes:
-                first_node = nodes[0]
-                fv = first_node.variable
-                if fv and fv in self._lateral_bound:
-                    pass  # lateral-bound: FROM will be set when processing the first rel's tgt
-                elif fv and fv in self._cte_sources:
-                    sql_alias = self._var_table[fv][0]
-                    from_expr = exp.Table(this=exp.Identifier(this=sql_alias))
-                elif fv and fv in self._domain_nodes:
-                    from_expr = self._build_domain_union(fv, self._domain_nodes[fv])
-                elif fv and fv in self._var_table and self._var_table[fv][1]:
-                    nm = self._var_table[fv][1]
-                    if getattr(nm, "traversal_only", False):
-                        raise CypherTranslateError(
-                            f"Node '{nm.label}' is in a domain outside your access. "
-                            f"Start the pattern from a node in your own domain and traverse to '{nm.label}' via a relationship."
-                        )
-                    from_expr = exp.alias_(
-                        exp.Table(
-                            this=exp.Identifier(this=nm.sql_table_name, quoted=True),
-                            db=exp.Identifier(this=nm.schema_name, quoted=True),
-                            catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
-                        ),
-                        alias=fv,
-                    )
-                elif first_node.labels:
-                    type_label, _ = self._resolve_node_type(first_node.labels)
-                    nm = self._lm.nodes.get(type_label) if type_label else None
-                    if nm:
-                        if getattr(nm, "traversal_only", False):
-                            raise CypherTranslateError(
-                                f"Node '{nm.label}' is in a domain outside your access. "
-                                f"Start the pattern from a node in your own domain and traverse to '{nm.label}' via a relationship."
-                            )
-                        alias = fv or type_label.lower()
-                        from_expr = exp.alias_(
-                            exp.Table(
-                                this=exp.Identifier(this=nm.sql_table_name, quoted=True),
-                                db=exp.Identifier(this=nm.schema_name, quoted=True),
-                                catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
-                            ),
-                            alias=alias,
-                        )
+                new_from = self._build_first_node_from(nodes[0])
+                if new_from is not None:
+                    from_expr = new_from
             elif from_expr is not None and nodes and not rels:
-                # Standalone node in a non-first clause (no relationships) → JOIN
-                # This handles: OPTIONAL MATCH (x) or MATCH (x) with no connecting pattern
-                first_node = nodes[0]
-                fv = first_node.variable
-                if fv and fv not in self._cte_sources and fv in self._domain_nodes:
-                    join_type = "LEFT" if clause.optional else "CROSS"
-                    join_table = self._build_domain_union(fv, self._domain_nodes[fv])
-                    on_clause = exp.true() if join_type == "LEFT" else None
-                    joins.append({"table": join_table, "on": on_clause, "join_type": join_type})
-                elif (
-                    fv
-                    and fv not in self._cte_sources
-                    and fv in self._var_table
-                    and self._var_table[fv][1]
-                ):
-                    nm = self._var_table[fv][1]
-                    join_type = "LEFT" if clause.optional else "CROSS"
-                    join_table = exp.alias_(
-                        exp.Table(
-                            this=exp.Identifier(this=nm.sql_table_name, quoted=True),
-                            db=exp.Identifier(this=nm.schema_name, quoted=True),
-                            catalog=exp.Identifier(this=nm.catalog_name, quoted=True),
-                        ),
-                        alias=fv,
-                    )
-                    on_clause = exp.true() if join_type == "LEFT" else None
-                    joins.append({"table": join_table, "on": on_clause, "join_type": join_type})
+                j = self._build_standalone_node_join(nodes[0].variable, clause)
+                if j is not None:
+                    joins.append(j)
 
-            # Process relationships → JOINs
             for i, rel in enumerate(rels):
                 if i + 1 >= len(nodes):
                     break
@@ -632,7 +1120,6 @@ class _Translator(
                             "relationships in the same MATCH. Use a separate MATCH clause or "
                             "wrap the full pattern: MATCH p = allPaths((a)-[*..5]->(b)) RETURN p"
                         )
-                    # Auto-promote to allPaths() — same logic, no explicit wrapper needed
                     pf_clause = MatchClause(
                         pattern=PathFunction(
                             func_name="allpaths",
@@ -646,336 +1133,16 @@ class _Translator(
                         from_expr = pf_from
                     joins.extend(pf_joins)
                     break
-                src_node = nodes[i]
-                tgt_node = nodes[i + 1]
-                src_var = src_node.variable
-                tgt_var = tgt_node.variable
-
-                src_nm = self._var_table.get(src_var, (None, None))[1] if src_var else None
+                from_expr, joins, did_continue = self._process_rel_step(
+                    rel, nodes, i, clause, from_expr, joins
+                )
+                if did_continue:
+                    continue
+                # Capture rel_mapping and tgt_nm for path var registration below
+                rel_mapping = self._resolve_early_rel_mapping(rel)
+                tgt_var = nodes[i + 1].variable
                 tgt_nm = self._var_table.get(tgt_var, (None, None))[1] if tgt_var else None
 
-                # Track whether node types were resolved from explicit node labels (not inferred
-                # from the relationship). Direction validation only applies to explicitly-typed nodes.
-                src_nm_explicit = src_nm is not None
-                tgt_nm_explicit = tgt_nm is not None
-
-                if tgt_nm is None and tgt_node.labels:
-                    type_label, _ = self._resolve_node_type(tgt_node.labels)
-                    tgt_nm = self._lm.nodes.get(type_label) if type_label else None
-                    if tgt_nm and tgt_var:
-                        self._var_table[tgt_var] = (tgt_var, tgt_nm)
-                    tgt_nm_explicit = tgt_nm is not None
-
-                # Early rel_mapping for domain-node path and anonymous node inference
-                rel_mapping = None
-                if rel.types:
-                    _rt_early = rel.types[0].upper()
-                    _early_matches = self._lm.aliases.get(_rt_early, [])
-                    if not _early_matches:
-                        _rm_early = self._lm.relationships.get(_rt_early)
-                        _early_matches = [_rm_early] if _rm_early else []
-                    rel_mapping = _early_matches[0] if _early_matches else None
-
-                # Anonymous nodes with no variable/labels: infer from relationship type
-                if (src_nm is None or tgt_nm is None) and rel_mapping:
-                    if src_nm is None:
-                        src_nm = self._lm.nodes.get(rel_mapping.source_label)
-                        if src_nm and src_var:
-                            self._var_table[src_var] = (src_var, src_nm)
-                            # If this var was registered as a domain/all union, replace
-                            # from_expr with the concrete table now that type is known
-                            if src_var in self._domain_nodes:
-                                self._domain_nodes.pop(src_var)
-                                from_expr = exp.alias_(
-                                    exp.Table(
-                                        this=exp.Identifier(
-                                            this=src_nm.sql_table_name, quoted=True
-                                        ),
-                                        db=exp.Identifier(this=src_nm.schema_name, quoted=True),
-                                        catalog=exp.Identifier(
-                                            this=src_nm.catalog_name, quoted=True
-                                        ),
-                                    ),
-                                    alias=src_var,
-                                )
-                    if tgt_nm is None:
-                        tgt_nm = self._lm.nodes.get(rel_mapping.target_label)
-                        if tgt_nm and tgt_var:
-                            self._var_table[tgt_var] = (tgt_var, tgt_nm)
-                            if tgt_var in self._domain_nodes:
-                                self._domain_nodes.pop(tgt_var)
-
-                # Set FROM from anonymous src if still unset
-                if from_expr is None and src_nm is not None:
-                    src_alias = src_var or src_nm.table_name
-                    from_expr = exp.alias_(
-                        exp.Table(
-                            this=exp.Identifier(this=src_nm.sql_table_name, quoted=True),
-                            db=exp.Identifier(this=src_nm.schema_name, quoted=True),
-                            catalog=exp.Identifier(this=src_nm.catalog_name, quoted=True),
-                        ),
-                        alias=src_alias,
-                    )
-
-                if src_nm is None or tgt_nm is None:
-                    # domain-only JOIN target: use subquery
-                    if tgt_var and tgt_var in self._domain_nodes and rel_mapping is not None:
-                        join_type = "LEFT" if clause.optional else "INNER"
-                        tgt_alias = tgt_var
-                        join_table = self._build_domain_union(tgt_var, self._domain_nodes[tgt_var])
-                        src_table_ref = (
-                            self._var_table.get(src_var, (src_var, None))[0]
-                            if src_var
-                            else src_nm.table_name
-                        )
-                        if rel_mapping.source_constant is not None:
-                            src_col_expr = _const_literal(rel_mapping.source_constant)
-                        elif rel_mapping.source_expr is not None:
-                            src_col_expr = exp.maybe_parse(
-                                rel_mapping.source_expr.replace("{alias}", src_table_ref),
-                                dialect="trino",
-                            )
-                        else:
-                            src_col_expr = exp.Column(
-                                this=exp.Identifier(
-                                    this=rel_mapping.join_source_column, quoted=True
-                                ),
-                                table=exp.Identifier(this=src_table_ref),
-                            )
-                        if rel_mapping.target_expr is not None:
-                            tgt_col_expr = exp.maybe_parse(
-                                rel_mapping.target_expr.replace("{alias}", tgt_alias),
-                                dialect="trino",
-                            )
-                        else:
-                            tgt_col_expr = exp.Column(
-                                this=exp.Identifier(
-                                    this=rel_mapping.join_target_column, quoted=True
-                                ),
-                                table=exp.Identifier(this=tgt_alias),
-                            )
-                        on_cond = exp.EQ(this=src_col_expr, expression=tgt_col_expr)
-                        joins.append({"table": join_table, "on": on_cond, "join_type": join_type})
-                    elif rel_mapping is None:
-                        # Fully unlabeled pattern: UNION ALL over all relationship types
-                        from_expr = self._build_all_rels_union(src_var, rel.variable, tgt_var)
-                        if src_var:
-                            self._domain_nodes.pop(src_var, None)
-                            self._var_table[src_var] = (src_var, None)
-                            self._passthrough_vars.add(src_var)
-                        if rel.variable:
-                            self._passthrough_vars.add(rel.variable)
-                        if tgt_var:
-                            self._domain_nodes.pop(tgt_var, None)
-                            self._var_table[tgt_var] = (tgt_var, None)
-                            self._passthrough_vars.add(tgt_var)
-                    continue
-
-                # Find matching relationship(s)
-                # direction=="none" → bidirectional: expand to UNION ALL of all
-                # forward and backward directed relationships from the semantic layer.
-                bidir = rel.direction == "none"
-                backward = rel.direction == "left"
-
-                if rel.types:
-                    rel_type = rel.types[0].upper()
-                    # Phase 1: exact rel_type match
-                    # Phase 2: alias index (supports UNION fan-out for shared aliases)
-                    alias_matches = self._lm.aliases.get(rel_type, [])
-                    if not alias_matches:
-                        rm = self._lm.relationships.get(rel_type)
-                        alias_matches = [rm] if rm else []
-                    if not alias_matches:
-                        pass  # unknown rel → falls through to empty candidates → exp.false() join
-                    # Determine backward-ness from canonical relationship direction.
-                    # The arrow syntax alone is insufficient — e.g. (Users)-[:SUBMITTED_BY]->(Inquiries)
-                    # uses a right arrow but SUBMITTED_BY is canonically Inquiries→Users, so the
-                    # join columns must be treated as backward (swapped relative to the traversal).
-                    # When src_nm is known, compare canonical source_label directly.
-                    # Fall back to arrow-based `backward` for anonymous/unresolved nodes.
-                    #
-                    # When aliases["HAS_TABLE"] contains one entry per data table, filter to the
-                    # exact source/target match before building candidates. Otherwise the primary
-                    # candidate may be a wrong-table mapping with is_bwd=True, which emits virtual
-                    # column names (e.g. __table_id__) as physical column references.
-                    if src_nm is not None and src_nm_explicit and len(alias_matches) > 1:
-                        fwd_exact = [
-                            m
-                            for m in alias_matches
-                            if m.source_label == src_nm.type_name
-                            and (tgt_nm is None or m.target_label == tgt_nm.type_name)
-                        ]
-                        bwd_exact = [
-                            m
-                            for m in alias_matches
-                            if m.target_label == src_nm.type_name
-                            and (tgt_nm is None or m.source_label == tgt_nm.type_name)
-                        ]
-                        if not backward and fwd_exact:
-                            alias_matches = fwd_exact
-                        elif bwd_exact:
-                            alias_matches = bwd_exact
-                        elif fwd_exact:
-                            alias_matches = fwd_exact
-
-                    def _is_bwd(m: "RelationshipMapping") -> "bool | None":  # type: ignore[name-defined]
-                        if bidir:
-                            # Undirected: no arrow validation, orient join columns by canonical position.
-                            if src_nm is not None:
-                                return m.source_label != src_nm.type_name
-                            return False
-                        if src_nm is not None:
-                            canonical_fwd = m.source_label == src_nm.type_name
-                            if tgt_nm is not None and tgt_nm_explicit:
-                                # Arrow direction must match canonical direction for explicitly-typed nodes.
-                                # Mismatch → return None so this candidate is filtered out → empty result.
-                                # Cypher semantics: wrong-direction traversal returns no rows, not an error.
-                                if backward and canonical_fwd:
-                                    return None
-                                if not backward and not canonical_fwd:
-                                    return None
-                            return not canonical_fwd
-                        return backward
-
-                    candidates: list[tuple] = [
-                        (m, bwd) for m in alias_matches if (bwd := _is_bwd(m)) is not None
-                    ]
-                else:
-                    if bidir:
-                        fwd = self._lm.relationships_for(src_nm.type_name, tgt_nm.type_name)
-                        bwd = self._lm.relationships_for(tgt_nm.type_name, src_nm.type_name)
-                        candidates = [(m, False) for m in fwd] + [(m, True) for m in bwd]
-                    elif backward:
-                        fwd_cands = self._lm.relationships_for(tgt_nm.type_name, src_nm.type_name)
-                        candidates = [(m, True) for m in fwd_cands]
-                    else:
-                        fwd_cands = self._lm.relationships_for(src_nm.type_name, tgt_nm.type_name)
-                        candidates = [(m, False) for m in fwd_cands]
-
-                if not candidates:
-                    # No relationship between these two resolved node types.
-                    # Add an impossible predicate so the query returns empty results
-                    # rather than generating unjoined table references.
-                    # For OPTIONAL MATCH, use LEFT JOIN so rows from the base table survive.
-                    if src_nm is not None and tgt_nm is not None and tgt_var:
-                        tgt_alias = tgt_var or tgt_nm.table_name
-                        jt = exp.alias_(
-                            exp.Table(
-                                this=exp.Identifier(this=tgt_nm.sql_table_name, quoted=True),
-                                db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
-                                catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
-                            ),
-                            alias=tgt_alias,
-                        )
-                        no_rel_join_type = "LEFT" if clause.optional else "INNER"
-                        joins.append(
-                            {"table": jt, "on": exp.false(), "join_type": no_rel_join_type}
-                        )
-                    # Register the relationship variable so _build_select emits NULL instead of a
-                    # bare column reference (which would cause a column-not-found SQL error).
-                    if rel.variable:
-                        self._rel_var_types[rel.variable] = ""
-                    continue
-
-                join_type = "LEFT" if clause.optional else "INNER"
-                tgt_alias = tgt_var or tgt_nm.table_name
-                if src_var and src_var in self._cte_sources:
-                    src_table_ref = self._var_table.get(src_var, (src_var, None))[0]
-                else:
-                    src_table_ref = src_var or src_nm.table_name
-
-                def _make_rel_join(rm, is_bwd: bool) -> dict:
-                    jt = exp.alias_(
-                        exp.Table(
-                            this=exp.Identifier(this=tgt_nm.sql_table_name, quoted=True),
-                            db=exp.Identifier(this=tgt_nm.schema_name, quoted=True),
-                            catalog=exp.Identifier(this=tgt_nm.catalog_name, quoted=True),
-                        ),
-                        alias=tgt_alias,
-                    )
-
-                    def _tgt_col_expr(alias: str) -> exp.Expression:
-                        if rm.target_expr is not None:
-                            return exp.maybe_parse(
-                                rm.target_expr.replace("{alias}", alias),
-                                dialect="trino",
-                            )
-                        return exp.Column(
-                            this=exp.Identifier(this=rm.join_target_column, quoted=True),
-                            table=exp.Identifier(this=alias),
-                        )
-
-                    if is_bwd:
-                        if rm.source_constant is not None:
-                            # source_constant: join condition is always <literal> = src.target_col
-                            # whether forward or backward, the physical condition is the same.
-                            cond = exp.EQ(
-                                this=_const_literal(rm.source_constant),
-                                expression=_tgt_col_expr(src_table_ref),
-                            )
-                        else:
-                            cond = exp.EQ(
-                                this=exp.Column(
-                                    this=exp.Identifier(this=rm.join_source_column, quoted=True),
-                                    table=exp.Identifier(this=tgt_alias),
-                                ),
-                                expression=_tgt_col_expr(src_table_ref),
-                            )
-                    else:
-                        if rm.source_constant is not None:
-                            src_col_expr = _const_literal(rm.source_constant)
-                        elif rm.source_expr is not None:
-                            src_col_expr = exp.maybe_parse(
-                                rm.source_expr.replace("{alias}", src_table_ref),
-                                dialect="trino",
-                            )
-                        elif rm.join_source_column == "_name_" and src_nm is not None:
-                            # _name_ is a virtual column — resolve to literal "domain_sql.table_name"
-                            from provisa.compiler.naming import domain_to_sql_name as _d2s
-
-                            _name_val = f"{_d2s(src_nm.domain_id or src_nm.schema_name or '')}.{src_nm.table_name}"
-                            src_col_expr = exp.Literal.string(_name_val)
-                        else:
-                            src_col_expr = exp.Column(
-                                this=exp.Identifier(this=rm.join_source_column, quoted=True),
-                                table=exp.Identifier(this=src_table_ref),
-                            )
-                        cond = exp.EQ(this=src_col_expr, expression=_tgt_col_expr(tgt_alias))
-                    return {"table": jt, "on": cond, "join_type": join_type}
-
-                # Primary candidate → main join; extra candidates → UNION ALL branches
-                primary_rm, primary_bwd = candidates[0]
-                if rel.variable:
-                    self._rel_var_types[rel.variable] = primary_rm.rel_type
-                    _src_alias = src_var or (src_nm.table_name if src_nm else None)
-                    _tgt_alias = tgt_var or (tgt_nm.table_name if tgt_nm else None)
-                    if _src_alias and _tgt_alias and src_nm and tgt_nm:
-                        self._rel_var_endpoints[rel.variable] = (
-                            _src_alias,
-                            src_nm,
-                            _tgt_alias,
-                            tgt_nm,
-                            primary_bwd,
-                        )
-
-                primary_join = _make_rel_join(primary_rm, primary_bwd)
-
-                # Snapshot joins BEFORE adding primary (for extra branch construction)
-                joins_before = list(joins)
-
-                # Lateral-bound src: tgt becomes FROM; condition becomes WHERE predicate
-                if src_var and src_var in self._lateral_bound and from_expr is None:
-                    from_expr = primary_join["table"]
-                    self._lateral_conditions.append(primary_join["on"])
-                else:
-                    joins.append(primary_join)
-
-                # Bidirectional extra candidates → independent UNION ALL branches
-                for extra_rm, extra_bwd in candidates[1:]:
-                    extra_join = _make_rel_join(extra_rm, extra_bwd)
-                    self._extra_path_branches.append((from_expr, joins_before + [extra_join], {}))
-
-            # Register path variable (e.g. MATCH p = ()-[r:REL]->())
             if clause.variable and nodes:
                 _first = nodes[0]
                 _last = nodes[-1]

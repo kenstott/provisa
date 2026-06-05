@@ -222,6 +222,184 @@ def _compile_sql_submit(query: str, ctx) -> tuple[str, str, list[int], str | Non
 # ---------------------------------------------------------------------------
 
 
+def _parse_directives(query: str) -> tuple[Any, str]:
+    """Return (directives, sql_comment_prefix) for a GraphQL query string."""
+    from provisa.compiler.directives import (
+        extract_directives,
+        extract_directives_from_sql_comments,
+        merge_directives,
+    )
+    from provisa.compiler.hints import graphql_comments_to_sql
+    from graphql import parse as gql_parse_raw
+
+    _comment_directives = extract_directives_from_sql_comments(query)
+    try:
+        _ast_directives = extract_directives(gql_parse_raw(query))
+    except Exception:
+        _ast_directives = _comment_directives.__class__()
+    directives = merge_directives(_comment_directives, _ast_directives)
+    sql_comment_prefix = graphql_comments_to_sql(query)
+    return directives, sql_comment_prefix
+
+
+def _apply_pipeline_transforms(compiled, ctx, rls, role_id: str, role, fresh_mvs, state) -> tuple[Any, bool]:
+    """Apply RLS, masking, MV rewrite, Kafka filters, and sampling. Returns (compiled, mv_applied)."""
+    from provisa.compiler.mask_inject import inject_masking
+    from provisa.compiler.rls import inject_rls
+    from provisa.compiler.sampling import apply_sampling, get_sample_size
+    from provisa.mv.rewriter import rewrite_if_mv_match
+    from provisa.security.rights import has_capability, Capability
+
+    compiled = inject_rls(compiled, ctx, rls)
+    compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
+
+    pre_mv_sources = set(compiled.sources)
+    compiled = rewrite_if_mv_match(compiled, fresh_mvs)
+    mv_applied = compiled.sources != pre_mv_sources
+
+    if hasattr(state, "kafka_table_configs") and state.kafka_table_configs:
+        from provisa.kafka.window import inject_kafka_filters
+
+        compiled = inject_kafka_filters(
+            compiled, ctx, state.source_types, state.kafka_table_configs
+        )
+
+    sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
+    if sampling:
+        compiled = apply_sampling(compiled, get_sample_size())
+
+    return compiled, mv_applied
+
+
+def _decide_transpile(compiled, state, steward_hint: str | None) -> tuple[Any, str | None, str | None, str]:
+    """Return (decision, trino_sql, direct_sql, route_str)."""
+    from provisa.transpiler.router import Route, decide_route
+    from provisa.transpiler.transpile import transpile, transpile_to_trino
+
+    has_json_extract = "->>" in compiled.sql
+    decision = decide_route(
+        sources=compiled.sources,
+        source_types=state.source_types,
+        source_dialects=state.source_dialects,
+        steward_hint=steward_hint,
+        has_json_extract=has_json_extract,
+        source_dsns=getattr(state, "source_dsns", None),
+    )
+
+    trino_sql = transpile_to_trino(compiled.sql) if decision.route == Route.TRINO else None
+    direct_sql = (
+        transpile(compiled.sql, decision.dialect)
+        if decision.route == Route.DIRECT and decision.dialect
+        else None
+    )
+
+    route_str = decision.route.value
+    if decision.route == Route.DIRECT and decision.dialect:
+        route_str = f"direct:{decision.dialect}"
+
+    return decision, trino_sql, direct_sql, route_str
+
+
+def _build_optimizations_and_warnings(
+    compiled,
+    pre_mv_sources: set,
+    mv_applied: bool,
+    directives,
+    decision,
+    sampling: bool,
+) -> tuple[list[str], list[str]]:
+    """Return (optimizations, warnings) lists."""
+    from provisa.transpiler.router import Route
+
+    optimizations: list[str] = []
+    warnings: list[str] = []
+    if mv_applied:
+        new_sources = compiled.sources - pre_mv_sources
+        optimizations.append(
+            f"Materialized view rewrite: sources → {', '.join(sorted(new_sources))}"
+        )
+    if directives.route == "DIRECT":
+        if len(compiled.sources) > 1:
+            warnings.append(
+                "route=direct ignored: query spans multiple sources and requires federation"
+            )
+        elif decision.route != Route.DIRECT:
+            warnings.append("route=direct ignored: source has no direct driver")
+    for k, v in directives.to_session_props().items():
+        optimizations.append(f"Federation hint: {k}={v} (via @provisa directive)")
+    if sampling:
+        optimizations.append("Sampling applied (role lacks FULL_RESULTS capability)")
+    return optimizations, warnings
+
+
+def _compile_cypher_for_result(
+    compiled,
+    ctx,
+    state,
+    role,
+    document,
+    effective_variables: dict | None,
+    raw_semantic_sql: str,
+    flat_sql: bool,
+    flat_cypher: bool,
+    node_only_cypher: bool,
+) -> tuple[str | None, str | None]:
+    """Return (compiled_cypher, cypher_error)."""
+    from provisa.compiler.params import embed_params_comment
+    from provisa.compiler.sql_gen import compile_query as _compile_query, make_semantic_sql
+    from provisa.cypher.label_map import CypherLabelMap
+    from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
+
+    try:
+        _cache = getattr(state, "schema_build_cache", {})
+        _label_map = CypherLabelMap.from_schema(
+            ctx,
+            domain_access=role.get("domain_access") if role else None,
+            all_tables=_cache.get("tables"),
+            all_relationships=_cache.get("relationships"),
+            all_column_types=_cache.get("column_types"),
+            source_catalogs=getattr(state, "source_catalogs", None),
+        )
+        # Cypher translator requires ARRAY_AGG (flat=False) SQL as input — it maps ARRAY_AGG→collect().
+        # flat_sql only controls the SQL tab display; Cypher aggregation is controlled by flat_cypher.
+        if flat_sql:
+            _cypher_compiled = _compile_query(document, ctx, effective_variables, flat=False)[0]
+            _cypher_sql = make_semantic_sql(
+                embed_params_comment(_cypher_compiled.sql, _cypher_compiled.params), ctx
+            )
+        else:
+            _cypher_compiled = compiled
+            _cypher_sql = raw_semantic_sql
+        compiled_cypher = semantic_sql_to_cypher(
+            _cypher_sql,
+            _label_map,
+            ctx,
+            override_limit=_cypher_compiled.result_limit,
+            params=_cypher_compiled.params,
+            flat=flat_cypher,
+            node_only=node_only_cypher,
+        )
+        if compiled_cypher is None:
+            return None, "Query structure cannot be represented as a Cypher pattern"
+        return compiled_cypher, None
+    except Exception as e:
+        return None, str(e)
+
+
+def _combine_cypher_results(results: list[dict[str, Any]]) -> None:
+    """Merge multi-part Cypher queries in-place on results."""
+    cypher_parts = [r["compiled_cypher"] for r in results if r.get("compiled_cypher")]
+    if len(cypher_parts) > 1:
+        try:
+            from provisa.cypher.sql_to_cypher import combine_cypher_queries
+
+            combined = combine_cypher_queries(cypher_parts)
+            for r in results:
+                r["compiled_cypher"] = combined
+        except Exception:
+            pass
+
+
 async def compile_query(
     role_id: str,
     query: str,
@@ -232,26 +410,16 @@ async def compile_query(
 ) -> list[dict[str, Any]]:
     """Compile a GraphQL query → SQL. Returns list of compile result dicts."""
     from provisa.api.app import state
-    from provisa.compiler.directives import (
-        extract_directives,
-        extract_directives_from_sql_comments,
-        merge_directives,
-    )
-    from provisa.compiler.hints import graphql_comments_to_sql
-    from provisa.compiler.mask_inject import inject_masking
+    from provisa.compiler.params import embed_params_comment
     from provisa.compiler.parser import (
         GraphQLValidationError,
         coerce_variable_defaults,
         parse_query,
     )
-    from provisa.compiler.rls import RLSContext, inject_rls
-    from provisa.compiler.sampling import apply_sampling, get_sample_size
+    from provisa.compiler.rls import RLSContext
     from provisa.compiler.sql_gen import compile_query as _compile_query, make_semantic_sql
-    from provisa.mv.rewriter import rewrite_if_mv_match
     from provisa.security.rights import has_capability, Capability
-    from provisa.transpiler.router import Route, decide_route
-    from provisa.transpiler.transpile import transpile, transpile_to_trino
-    from graphql import GraphQLSyntaxError, parse as gql_parse_raw
+    from graphql import GraphQLSyntaxError
 
     if role_id not in state.schemas:
         raise ValueError(f"No schema for role {role_id!r}")
@@ -261,14 +429,8 @@ async def compile_query(
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
     role = state.roles.get(role_id)
 
-    _comment_directives = extract_directives_from_sql_comments(query)
-    try:
-        _ast_directives = extract_directives(gql_parse_raw(query))
-    except Exception:
-        _ast_directives = _comment_directives.__class__()
-    directives = merge_directives(_comment_directives, _ast_directives)
+    directives, sql_comment_prefix = _parse_directives(query)
     steward_hint = directives.steward_hint
-    sql_comment_prefix = graphql_comments_to_sql(query)
 
     try:
         document = parse_query(schema, query, variables)
@@ -283,45 +445,14 @@ async def compile_query(
     fresh_mvs = state.mv_registry.get_fresh()
     results = []
 
-    for compiled in compiled_queries:
-        compiled = inject_rls(compiled, ctx, rls)
-        compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
-
-        pre_mv_sources = set(compiled.sources)
-        compiled = rewrite_if_mv_match(compiled, fresh_mvs)
-        mv_applied = compiled.sources != pre_mv_sources
-
-        if hasattr(state, "kafka_table_configs") and state.kafka_table_configs:
-            from provisa.kafka.window import inject_kafka_filters
-
-            compiled = inject_kafka_filters(
-                compiled, ctx, state.source_types, state.kafka_table_configs
-            )
+    for _compiled_orig in compiled_queries:
+        pre_mv_sources = set(_compiled_orig.sources)
+        compiled, mv_applied = _apply_pipeline_transforms(
+            _compiled_orig, ctx, rls, role_id, role, fresh_mvs, state
+        )
 
         sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
-        if sampling:
-            compiled = apply_sampling(compiled, get_sample_size())
-
-        has_json_extract = "->>" in compiled.sql
-        decision = decide_route(
-            sources=compiled.sources,
-            source_types=state.source_types,
-            source_dialects=state.source_dialects,
-            steward_hint=steward_hint,
-            has_json_extract=has_json_extract,
-            source_dsns=getattr(state, "source_dsns", None),
-        )
-
-        trino_sql = transpile_to_trino(compiled.sql) if decision.route == Route.TRINO else None
-        direct_sql = (
-            transpile(compiled.sql, decision.dialect)
-            if decision.route == Route.DIRECT and decision.dialect
-            else None
-        )
-
-        route_str = decision.route.value
-        if decision.route == Route.DIRECT and decision.dialect:
-            route_str = f"direct:{decision.dialect}"
+        decision, trino_sql, direct_sql, route_str = _decide_transpile(compiled, state, steward_hint)
 
         enforcement = _build_enforcement_metadata(
             compiled=compiled,
@@ -332,70 +463,19 @@ async def compile_query(
             route_value=route_str,
         )
 
-        optimizations: list[str] = []
-        warnings: list[str] = []
-        if mv_applied:
-            new_sources = compiled.sources - pre_mv_sources
-            optimizations.append(
-                f"Materialized view rewrite: sources → {', '.join(sorted(new_sources))}"
-            )
-        if directives.route == "DIRECT":
-            if len(compiled.sources) > 1:
-                warnings.append(
-                    "route=direct ignored: query spans multiple sources and requires federation"
-                )
-            elif decision.route != Route.DIRECT:
-                warnings.append("route=direct ignored: source has no direct driver")
-        for k, v in directives.to_session_props().items():
-            optimizations.append(f"Federation hint: {k}={v} (via @provisa directive)")
-        if sampling:
-            optimizations.append("Sampling applied (role lacks FULL_RESULTS capability)")
-
-        from provisa.compiler.params import embed_params_comment
+        optimizations, warnings = _build_optimizations_and_warnings(
+            compiled, pre_mv_sources, mv_applied, directives, decision, sampling
+        )
 
         raw_semantic_sql = make_semantic_sql(
             embed_params_comment(compiled.sql, compiled.params), ctx
         )
         semantic_sql_str = sql_comment_prefix + raw_semantic_sql
 
-        compiled_cypher = None
-        cypher_error = None
-        try:
-            from provisa.cypher.label_map import CypherLabelMap
-            from provisa.cypher.sql_to_cypher import semantic_sql_to_cypher
-
-            _cache = getattr(state, "schema_build_cache", {})
-            _label_map = CypherLabelMap.from_schema(
-                ctx,
-                domain_access=role.get("domain_access") if role else None,
-                all_tables=_cache.get("tables"),
-                all_relationships=_cache.get("relationships"),
-                all_column_types=_cache.get("column_types"),
-                source_catalogs=getattr(state, "source_catalogs", None),
-            )
-            # Cypher translator requires ARRAY_AGG (flat=False) SQL as input — it maps ARRAY_AGG→collect().
-            # flat_sql only controls the SQL tab display; Cypher aggregation is controlled by flat_cypher.
-            if flat_sql:
-                _cypher_compiled = _compile_query(document, ctx, effective_variables, flat=False)[0]
-                _cypher_sql = make_semantic_sql(
-                    embed_params_comment(_cypher_compiled.sql, _cypher_compiled.params), ctx
-                )
-            else:
-                _cypher_compiled = compiled
-                _cypher_sql = raw_semantic_sql
-            compiled_cypher = semantic_sql_to_cypher(
-                _cypher_sql,
-                _label_map,
-                ctx,
-                override_limit=_cypher_compiled.result_limit,
-                params=_cypher_compiled.params,
-                flat=flat_cypher,
-                node_only=node_only_cypher,
-            )
-            if compiled_cypher is None:
-                cypher_error = "Query structure cannot be represented as a Cypher pattern"
-        except Exception as e:
-            cypher_error = str(e)
+        compiled_cypher, cypher_error = _compile_cypher_for_result(
+            compiled, ctx, state, role, document, effective_variables,
+            raw_semantic_sql, flat_sql, flat_cypher, node_only_cypher,
+        )
 
         results.append(
             {
@@ -421,15 +501,5 @@ async def compile_query(
             }
         )
 
-    cypher_parts = [r["compiled_cypher"] for r in results if r.get("compiled_cypher")]
-    if len(cypher_parts) > 1:
-        try:
-            from provisa.cypher.sql_to_cypher import combine_cypher_queries
-
-            combined = combine_cypher_queries(cypher_parts)
-            for r in results:
-                r["compiled_cypher"] = combined
-        except Exception:
-            pass
-
+    _combine_cypher_results(results)
     return results

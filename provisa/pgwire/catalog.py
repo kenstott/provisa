@@ -207,41 +207,34 @@ def classify(sql: str) -> str:
     return "PASS_THROUGH"
 
 
-def _build_catalog_db(role_id: str, state):
-    import duckdb
-
-    db = duckdb.connect(":memory:")
-    ctx = state.contexts.get(role_id)
-    col_types: dict = state.schema_build_cache.get("column_types", {})
-
-    _TABLE_OID_BASE = 16384
-    _oid = _TABLE_OID_BASE
-
+def _collect_tables_and_cols(
+    ctx, col_types: dict
+) -> tuple[list[tuple], list[tuple]]:
     tables: list[tuple] = []
     all_cols: list[tuple] = []
+    if not ctx:
+        return tables, all_cols
+    from provisa.compiler.naming import domain_to_sql_name
 
-    if ctx:
-        seen_table_ids: set[int] = set()
-        for _, tm in ctx.tables.items():
-            if tm.table_id in seen_table_ids:
-                continue
-            seen_table_ids.add(tm.table_id)
-            cat = "provisa"
-            from provisa.compiler.naming import domain_to_sql_name
+    _oid = 16384
+    seen_table_ids: set[int] = set()
+    for _, tm in ctx.tables.items():
+        if tm.table_id in seen_table_ids:
+            continue
+        seen_table_ids.add(tm.table_id)
+        cat = "provisa"
+        raw_schema = tm.domain_id or tm.schema_name or "public"
+        sch = domain_to_sql_name(raw_schema)
+        tname = tm.table_name
+        toid = _oid
+        _oid += 1
+        tables.append((cat, sch, tname, tm.table_id, toid))
+        for i, col in enumerate(col_types.get(tm.table_id, []), 1):
+            all_cols.append((toid, col.column_name, col.data_type, col.is_nullable, i))
+    return tables, all_cols
 
-            raw_schema = tm.domain_id or tm.schema_name or "public"
-            sch = domain_to_sql_name(raw_schema)
-            tname = tm.table_name
-            toid = _oid
-            _oid += 1
-            tables.append((cat, sch, tname, tm.table_id, toid))
-            for i, col in enumerate(col_types.get(tm.table_id, []), 1):
-                all_cols.append((toid, col.column_name, col.data_type, col.is_nullable, i))
 
-    _NS: dict[str, int] = {"pg_catalog": 11, "information_schema": 12, "public": 2200}
-    toid_map: dict[int, tuple] = {row[4]: (row[0], row[1], row[2]) for row in tables}
-
-    # information_schema.schemata
+def _populate_is_schemata(db, tables: list[tuple]) -> None:
     db.execute("""CREATE TABLE _is_schemata (
         catalog_name VARCHAR, schema_name VARCHAR, schema_owner VARCHAR,
         default_character_set_catalog VARCHAR, default_character_set_schema VARCHAR,
@@ -253,7 +246,8 @@ def _build_catalog_db(role_id: str, state):
             list(seen_schemas),
         )
 
-    # information_schema.tables
+
+def _populate_is_tables(db, tables: list[tuple]) -> None:
     db.execute("""CREATE TABLE _is_tables (
         table_catalog VARCHAR, table_schema VARCHAR, table_name VARCHAR, table_type VARCHAR,
         self_referencing_column_name VARCHAR, reference_generation VARCHAR,
@@ -266,7 +260,10 @@ def _build_catalog_db(role_id: str, state):
             [(row[0], row[1], row[2]) for row in tables],
         )
 
-    # information_schema.columns
+
+def _populate_is_columns(
+    db, all_cols: list[tuple], toid_map: dict[int, tuple]
+) -> None:
     db.execute("""CREATE TABLE _is_columns (
         table_catalog VARCHAR, table_schema VARCHAR, table_name VARCHAR,
         column_name VARCHAR, ordinal_position INTEGER, column_default VARCHAR,
@@ -291,63 +288,20 @@ def _build_catalog_db(role_id: str, state):
         null_str = "YES" if is_nullable else "NO"
         col_rows.append(
             (
-                c,
-                s,
-                t,
-                col_name,
-                ordinal,
-                None,
-                null_str,
-                pg_type,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                pg_type,
-                None,
-                None,
-                None,
-                None,
-                str(ordinal),
-                "NO",
-                "NO",
-                None,
-                None,
-                None,
-                None,
-                None,
-                "NO",
-                "NEVER",
-                None,
-                "YES",
+                c, s, t, col_name, ordinal, None, null_str, pg_type,
+                None, None, None, None, None, None, None, None,
+                None, None, None, None, None, None, None, None, None,
+                None, None, pg_type, None, None, None, None, str(ordinal),
+                "NO", "NO", None, None, None, None, None, "NO", "NEVER", None, "YES",
             )
         )
     if col_rows:
         db.executemany(f"INSERT INTO _is_columns VALUES ({','.join(['?'] * 44)})", col_rows)
 
-    # information_schema.views (empty)
-    db.execute("""CREATE TABLE _is_views (
-        table_catalog VARCHAR, table_schema VARCHAR, table_name VARCHAR,
-        view_definition VARCHAR, check_option VARCHAR, is_updatable VARCHAR,
-        is_insertable_into VARCHAR, is_trigger_updatable VARCHAR,
-        is_trigger_deletable VARCHAR, is_trigger_insertable_into VARCHAR)""")
 
-    # pg_namespace
+def _populate_pg_namespace(
+    db, tables: list[tuple], ns_map: dict[str, int]
+) -> None:
     db.execute("""CREATE TABLE _pg_namespace (
         oid INTEGER, nspname VARCHAR, nspowner INTEGER, nspacl VARCHAR)""")
     ns_rows = [
@@ -357,15 +311,18 @@ def _build_catalog_db(role_id: str, state):
     ]
     extra_ns_oid = 2201
     seen_ns: set[str] = {"pg_catalog", "information_schema", "public"}
-    for c, s, *_ in tables:
+    for _c, s, *_ in tables:
         if s not in seen_ns:
             ns_rows.append((extra_ns_oid, s, 10, None))
-            _NS[s] = extra_ns_oid
+            ns_map[s] = extra_ns_oid
             extra_ns_oid += 1
             seen_ns.add(s)
     db.executemany("INSERT INTO _pg_namespace VALUES (?,?,?,?)", ns_rows)
 
-    # pg_class
+
+def _populate_pg_class(
+    db, tables: list[tuple], all_cols: list[tuple], ns_map: dict[str, int]
+) -> None:
     db.execute("""CREATE TABLE _pg_class (
         oid INTEGER, relname VARCHAR, relnamespace INTEGER, reltype INTEGER,
         reloftype INTEGER, relowner INTEGER, relam INTEGER, relfilenode INTEGER,
@@ -378,50 +335,21 @@ def _build_catalog_db(role_id: str, state):
         relfrozenxid INTEGER, relminmxid INTEGER, relacl VARCHAR,
         reloptions VARCHAR, relpartbound VARCHAR)""")
     pg_class_rows = []
-    for c, s, t, _, toid in tables:
-        ns_oid = _NS.get(s, 2200)
+    for _c, s, t, _, toid in tables:
+        ns_oid = ns_map.get(s, 2200)
         natts = sum(1 for col in all_cols if col[0] == toid)
         pg_class_rows.append(
             (
-                toid,
-                t,
-                ns_oid,
-                toid + 100000,
-                0,
-                10,
-                0,
-                toid,
-                0,
-                0,
-                0.0,
-                0,
-                0,
-                False,
-                False,
-                "p",
-                "r",
-                natts,
-                0,
-                False,
-                False,
-                False,
-                False,
-                False,
-                True,
-                "d",
-                False,
-                0,
-                0,
-                0,
-                None,
-                None,
-                None,
+                toid, t, ns_oid, toid + 100000, 0, 10, 0, toid, 0, 0, 0.0, 0, 0,
+                False, False, "p", "r", natts, 0, False, False, False, False, False,
+                True, "d", False, 0, 0, 0, None, None, None,
             )
         )
     if pg_class_rows:
         db.executemany(f"INSERT INTO _pg_class VALUES ({','.join(['?'] * 33)})", pg_class_rows)
 
-    # pg_attribute
+
+def _populate_pg_attribute(db, all_cols: list[tuple]) -> None:
     db.execute("""CREATE TABLE _pg_attribute (
         attrelid INTEGER, attname VARCHAR, atttypid INTEGER, attstattarget INTEGER,
         attlen SMALLINT, attnum SMALLINT, attndims INTEGER, attcacheoff INTEGER,
@@ -435,36 +363,16 @@ def _build_catalog_db(role_id: str, state):
         pg_oid = _trino_to_pg_oid(col_type)
         attr_rows.append(
             (
-                toid,
-                col_name,
-                pg_oid,
-                -1,
-                -1,
-                ordinal,
-                0,
-                -1,
-                -1,
-                False,
-                "i",
-                "x",
-                not is_nullable,
-                False,
-                False,
-                "",
-                "",
-                False,
-                True,
-                0,
-                0,
-                None,
-                None,
-                None,
+                toid, col_name, pg_oid, -1, -1, ordinal, 0, -1, -1,
+                False, "i", "x", not is_nullable, False, False, "", "",
+                False, True, 0, 0, None, None, None,
             )
         )
     if attr_rows:
         db.executemany(f"INSERT INTO _pg_attribute VALUES ({','.join(['?'] * 24)})", attr_rows)
 
-    # pg_type
+
+def _populate_pg_type(db) -> None:
     db.execute("""CREATE TABLE _pg_type (
         oid INTEGER, typname VARCHAR, typnamespace INTEGER, typowner INTEGER,
         typlen SMALLINT, typbyval BOOLEAN, typtype VARCHAR, typcategory VARCHAR,
@@ -479,53 +387,22 @@ def _build_catalog_db(role_id: str, state):
         f"INSERT INTO _pg_type VALUES ({','.join(['?'] * 31)})",
         [
             (
-                oid,
-                name,
-                ns,
-                10,
-                ln,
-                False,
-                tt,
-                cat,
-                False,
-                True,
-                ",",
-                0,
-                0,
-                0,
-                "-",
-                "-",
-                "-",
-                "-",
-                "-",
-                "-",
-                "-",
-                "i",
-                "x",
-                nn,
-                base,
-                -1,
-                0,
-                0,
-                None,
-                None,
-                None,
+                oid, name, ns, 10, ln, False, tt, cat, False, True, ",",
+                0, 0, 0, "-", "-", "-", "-", "-", "-", "-", "i", "x",
+                nn, base, -1, 0, 0, None, None, None,
             )
             for oid, name, ns, ln, tt, cat, nn, base in _PG_TYPE_ROWS
         ],
     )
 
-    # pg_attrdef (empty)
+
+def _populate_empty_system_tables(db) -> None:
     db.execute(
         "CREATE TABLE _pg_attrdef (oid INTEGER, adrelid INTEGER, adnum SMALLINT, adbin VARCHAR)"
     )
-
-    # pg_description (empty)
     db.execute(
         "CREATE TABLE _pg_description (objoid INTEGER, classoid INTEGER, objsubid INTEGER, description VARCHAR)"
     )
-
-    # pg_index (empty)
     db.execute("""CREATE TABLE _pg_index (
         indexrelid INTEGER, indrelid INTEGER, indnatts SMALLINT, indnkeyatts SMALLINT,
         indisunique BOOLEAN, indisprimary BOOLEAN, indisexclusion BOOLEAN,
@@ -533,110 +410,6 @@ def _build_catalog_db(role_id: str, state):
         indcheckxmin BOOLEAN, indisready BOOLEAN, indislive BOOLEAN,
         indisreplident BOOLEAN, indkey VARCHAR, indcollation VARCHAR,
         indclass VARCHAR, indoption VARCHAR, indexprs VARCHAR, indpred VARCHAR)""")
-
-    # pg_constraint — PK and FK rows derived from CompilationContext
-    db.execute("""CREATE TABLE _pg_constraint (
-        oid INTEGER, conname VARCHAR, connamespace INTEGER, contype VARCHAR,
-        condeferrable BOOLEAN, condeferred BOOLEAN, convalidated BOOLEAN,
-        conrelid INTEGER, contypid INTEGER, conindid INTEGER, conparentid INTEGER,
-        confrelid INTEGER, confupdtype VARCHAR, confdeltype VARCHAR, confmatchtype VARCHAR,
-        conislocal BOOLEAN, coninhcount INTEGER, connoinherit BOOLEAN,
-        conkeys VARCHAR, confkey VARCHAR, conpfeqop VARCHAR, conppeqop VARCHAR,
-        conffeqop VARCHAR, conexclop VARCHAR, conbin VARCHAR)""")
-    # build column-name → attnum index for each table OID
-    _col_attnum: dict[tuple[int, str], int] = {(col[0], col[1]): col[4] for col in all_cols}
-    _tname_to_oid: dict[str, int] = {row[2]: row[4] for row in tables}
-    _constraint_rows = []
-    _con_oid = 20000
-    if ctx:
-        # PK constraints
-        for _, tm in ctx.tables.items():
-            toid_pk = _tname_to_oid.get(tm.table_name)
-            if toid_pk is None:
-                continue
-            pk_cols = ctx.pk_columns.get(tm.table_id, [])
-            if pk_cols:
-                ns_oid_pk = _NS.get(tm.schema_name or "public", 2200)
-                conkeys = ",".join(str(_col_attnum.get((toid_pk, c), 0)) for c in pk_cols)
-                _constraint_rows.append(
-                    (
-                        _con_oid,
-                        f"pk_{tm.table_name}",
-                        ns_oid_pk,
-                        "p",
-                        False,
-                        False,
-                        True,
-                        toid_pk,
-                        0,
-                        0,
-                        0,
-                        0,
-                        None,
-                        None,
-                        None,
-                        True,
-                        0,
-                        True,
-                        conkeys,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                        None,
-                    )
-                )
-                _con_oid += 1
-        # FK constraints from joins
-        for (src_type, _), jm in ctx.joins.items():
-            src_tm = next((tm for tm in ctx.tables.values() if tm.type_name == src_type), None)
-            if src_tm is None:
-                continue
-            src_toid = _tname_to_oid.get(src_tm.table_name)
-            tgt_toid = _tname_to_oid.get(jm.target.table_name)
-            if src_toid is None or tgt_toid is None:
-                continue
-            ns_oid_fk = _NS.get(src_tm.schema_name or "public", 2200)
-            src_attnum = _col_attnum.get((src_toid, jm.source_column), 0)
-            tgt_attnum = _col_attnum.get((tgt_toid, jm.target_column), 0)
-            _constraint_rows.append(
-                (
-                    _con_oid,
-                    f"fk_{src_tm.table_name}_{jm.source_column}",
-                    ns_oid_fk,
-                    "f",
-                    False,
-                    False,
-                    True,
-                    src_toid,
-                    0,
-                    0,
-                    0,
-                    tgt_toid,
-                    "a",
-                    "a",
-                    "s",
-                    True,
-                    0,
-                    True,
-                    str(src_attnum),
-                    str(tgt_attnum),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            )
-            _con_oid += 1
-    if _constraint_rows:
-        db.executemany(
-            f"INSERT INTO _pg_constraint VALUES ({','.join(['?'] * 25)})",
-            _constraint_rows,
-        )
-
-    # pg_proc (empty)
     db.execute("""CREATE TABLE _pg_proc (
         oid INTEGER, proname VARCHAR, pronamespace INTEGER, proowner INTEGER,
         prolang INTEGER, procost REAL, prorows REAL, provariadic INTEGER,
@@ -647,8 +420,43 @@ def _build_catalog_db(role_id: str, state):
         proargnames VARCHAR, proargdefaults VARCHAR, protrftypes VARCHAR,
         prosrc VARCHAR, probin VARCHAR, prosqlbody VARCHAR,
         proconfig VARCHAR, proacl VARCHAR)""")
+    db.execute(
+        "CREATE TABLE _pg_auth_members (roleid INTEGER, member INTEGER, grantor INTEGER, admin_option BOOLEAN)"
+    )
+    db.execute("""CREATE TABLE _pg_extension (
+        oid INTEGER, extname VARCHAR, extowner INTEGER, extnamespace INTEGER,
+        extrelocatable BOOLEAN, extversion VARCHAR, extconfig VARCHAR, extcondition VARCHAR)""")
+    db.execute("""CREATE TABLE _pg_enum (
+        oid INTEGER, enumtypid INTEGER, enumsortorder REAL, enumlabel VARCHAR)""")
+    db.execute("""CREATE TABLE _pg_stat_activity (
+        datid INTEGER, datname VARCHAR, pid INTEGER, usesysid INTEGER,
+        usename VARCHAR, application_name VARCHAR, client_addr VARCHAR,
+        client_hostname VARCHAR, client_port INTEGER, backend_start VARCHAR,
+        xact_start VARCHAR, query_start VARCHAR, state_change VARCHAR,
+        wait_event_type VARCHAR, wait_event VARCHAR, state VARCHAR,
+        backend_xid INTEGER, backend_xmin INTEGER, query VARCHAR,
+        backend_type VARCHAR)""")
+    db.execute("""CREATE TABLE _pg_stat_user_tables (
+        relid INTEGER, schemaname VARCHAR, relname VARCHAR,
+        seq_scan BIGINT, seq_tup_read BIGINT, idx_scan BIGINT, idx_tup_fetch BIGINT,
+        n_tup_ins BIGINT, n_tup_upd BIGINT, n_tup_del BIGINT, n_tup_hot_upd BIGINT,
+        n_live_tup BIGINT, n_dead_tup BIGINT, n_mod_since_analyze BIGINT,
+        n_ins_since_vacuum BIGINT, last_vacuum VARCHAR, last_autovacuum VARCHAR,
+        last_analyze VARCHAR, last_autoanalyze VARCHAR, vacuum_count BIGINT,
+        autovacuum_count BIGINT, analyze_count BIGINT, autoanalyze_count BIGINT)""")
+    db.execute("""CREATE TABLE _is_views (
+        table_catalog VARCHAR, table_schema VARCHAR, table_name VARCHAR,
+        view_definition VARCHAR, check_option VARCHAR, is_updatable VARCHAR,
+        is_insertable_into VARCHAR, is_trigger_updatable VARCHAR,
+        is_trigger_deletable VARCHAR, is_trigger_insertable_into VARCHAR)""")
+    db.execute("""CREATE TABLE _is_referential_constraints (
+        constraint_catalog VARCHAR, constraint_schema VARCHAR, constraint_name VARCHAR,
+        unique_constraint_catalog VARCHAR, unique_constraint_schema VARCHAR,
+        unique_constraint_name VARCHAR, match_option VARCHAR,
+        update_rule VARCHAR, delete_rule VARCHAR)""")
 
-    # pg_roles
+
+def _populate_pg_roles_and_database(db, role_id: str) -> None:
     db.execute("""CREATE TABLE _pg_roles (
         oid INTEGER, rolname VARCHAR, rolsuper BOOLEAN, rolinherit BOOLEAN,
         rolcreaterole BOOLEAN, rolcreatedb BOOLEAN, rolcanlogin BOOLEAN,
@@ -658,13 +466,6 @@ def _build_catalog_db(role_id: str, state):
         "INSERT INTO _pg_roles VALUES (10,?,FALSE,TRUE,FALSE,FALSE,TRUE,FALSE,-1,NULL,NULL,FALSE,NULL)",
         [role_id],
     )
-
-    # pg_auth_members (empty)
-    db.execute(
-        "CREATE TABLE _pg_auth_members (roleid INTEGER, member INTEGER, grantor INTEGER, admin_option BOOLEAN)"
-    )
-
-    # pg_database
     db.execute("""CREATE TABLE _pg_database (
         oid INTEGER, datname VARCHAR, datdba INTEGER, encoding INTEGER,
         datlocprovider VARCHAR, datistemplate BOOLEAN, datallowconn BOOLEAN,
@@ -674,7 +475,22 @@ def _build_catalog_db(role_id: str, state):
         "INSERT INTO _pg_database VALUES (16384,'provisa',10,6,'c',FALSE,TRUE,-1,726,1,1663,'en_US.UTF-8','en_US.UTF-8',NULL)"
     )
 
-    # pg_settings
+
+_PG_SETTINGS_ROWS: list[tuple] = [
+    ("server_version", "14.0.provisa", None, "Preset Options", "Shows the server version.", None, "internal", "string", "default", None, None, None, "14.0.provisa", "14.0.provisa", None, None, False),
+    ("server_version_num", "140000", None, "Preset Options", "Shows the server version as an integer.", None, "internal", "integer", "default", None, None, None, "140000", "140000", None, None, False),
+    ("server_encoding", "UTF8", None, "Preset Options", "Sets the server character set encoding.", None, "internal", "string", "default", None, None, None, "UTF8", "UTF8", None, None, False),
+    ("client_encoding", "UTF8", None, "Client Connection Defaults", "Sets the client character set encoding.", None, "user", "string", "default", None, None, None, "SQL_ASCII", "UTF8", None, None, False),
+    ("DateStyle", "ISO, MDY", None, "Client Connection Defaults", "Sets the display format for date and time values.", None, "user", "string", "default", None, None, None, "ISO, MDY", "ISO, MDY", None, None, False),
+    ("TimeZone", "UTC", None, "Client Connection Defaults", "Sets the time zone for displaying and interpreting time stamps.", None, "user", "string", "default", None, None, None, "GMT", "UTC", None, None, False),
+    ("max_connections", "100", None, "Connections and Authentication", "Sets the maximum number of concurrent connections.", None, "postmaster", "integer", "default", "1", "262143", None, "100", "100", None, None, False),
+    ("standard_conforming_strings", "on", None, "Version and Platform Compatibility", "Causes strings to treat backslashes literally.", None, "user", "bool", "default", None, None, None, "on", "on", None, None, False),
+    ("integer_datetimes", "on", None, "Preset Options", "Datetimes are integer based.", None, "internal", "bool", "default", None, None, None, "on", "on", None, None, False),
+    ("IntervalStyle", "postgres", None, "Client Connection Defaults", "Sets the display format for interval values.", None, "user", "string", "default", None, None, None, "postgres", "postgres", None, None, False),
+]
+
+
+def _populate_pg_settings(db) -> None:
     db.execute("""CREATE TABLE _pg_settings (
         name VARCHAR, setting VARCHAR, unit VARCHAR, category VARCHAR,
         short_desc VARCHAR, extra_desc VARCHAR, context VARCHAR,
@@ -683,201 +499,11 @@ def _build_catalog_db(role_id: str, state):
         sourcefile VARCHAR, sourceline INTEGER, pending_restart BOOLEAN)""")
     db.executemany(
         f"INSERT INTO _pg_settings VALUES ({','.join(['?'] * 17)})",
-        [
-            (
-                "server_version",
-                "14.0.provisa",
-                None,
-                "Preset Options",
-                "Shows the server version.",
-                None,
-                "internal",
-                "string",
-                "default",
-                None,
-                None,
-                None,
-                "14.0.provisa",
-                "14.0.provisa",
-                None,
-                None,
-                False,
-            ),
-            (
-                "server_version_num",
-                "140000",
-                None,
-                "Preset Options",
-                "Shows the server version as an integer.",
-                None,
-                "internal",
-                "integer",
-                "default",
-                None,
-                None,
-                None,
-                "140000",
-                "140000",
-                None,
-                None,
-                False,
-            ),
-            (
-                "server_encoding",
-                "UTF8",
-                None,
-                "Preset Options",
-                "Sets the server character set encoding.",
-                None,
-                "internal",
-                "string",
-                "default",
-                None,
-                None,
-                None,
-                "UTF8",
-                "UTF8",
-                None,
-                None,
-                False,
-            ),
-            (
-                "client_encoding",
-                "UTF8",
-                None,
-                "Client Connection Defaults",
-                "Sets the client character set encoding.",
-                None,
-                "user",
-                "string",
-                "default",
-                None,
-                None,
-                None,
-                "SQL_ASCII",
-                "UTF8",
-                None,
-                None,
-                False,
-            ),
-            (
-                "DateStyle",
-                "ISO, MDY",
-                None,
-                "Client Connection Defaults",
-                "Sets the display format for date and time values.",
-                None,
-                "user",
-                "string",
-                "default",
-                None,
-                None,
-                None,
-                "ISO, MDY",
-                "ISO, MDY",
-                None,
-                None,
-                False,
-            ),
-            (
-                "TimeZone",
-                "UTC",
-                None,
-                "Client Connection Defaults",
-                "Sets the time zone for displaying and interpreting time stamps.",
-                None,
-                "user",
-                "string",
-                "default",
-                None,
-                None,
-                None,
-                "GMT",
-                "UTC",
-                None,
-                None,
-                False,
-            ),
-            (
-                "max_connections",
-                "100",
-                None,
-                "Connections and Authentication",
-                "Sets the maximum number of concurrent connections.",
-                None,
-                "postmaster",
-                "integer",
-                "default",
-                "1",
-                "262143",
-                None,
-                "100",
-                "100",
-                None,
-                None,
-                False,
-            ),
-            (
-                "standard_conforming_strings",
-                "on",
-                None,
-                "Version and Platform Compatibility",
-                "Causes strings to treat backslashes literally.",
-                None,
-                "user",
-                "bool",
-                "default",
-                None,
-                None,
-                None,
-                "on",
-                "on",
-                None,
-                None,
-                False,
-            ),
-            (
-                "integer_datetimes",
-                "on",
-                None,
-                "Preset Options",
-                "Datetimes are integer based.",
-                None,
-                "internal",
-                "bool",
-                "default",
-                None,
-                None,
-                None,
-                "on",
-                "on",
-                None,
-                None,
-                False,
-            ),
-            (
-                "IntervalStyle",
-                "postgres",
-                None,
-                "Client Connection Defaults",
-                "Sets the display format for interval values.",
-                None,
-                "user",
-                "string",
-                "default",
-                None,
-                None,
-                None,
-                "postgres",
-                "postgres",
-                None,
-                None,
-                False,
-            ),
-        ],
+        _PG_SETTINGS_ROWS,
     )
 
-    # pg_tables
+
+def _populate_pg_tables_and_am(db, tables: list[tuple]) -> None:
     db.execute("""CREATE TABLE _pg_tables (
         schemaname VARCHAR, tablename VARCHAR, tableowner VARCHAR,
         tablespace VARCHAR, hasindexes BOOLEAN, hasrules BOOLEAN,
@@ -887,8 +513,6 @@ def _build_catalog_db(role_id: str, state):
             "INSERT INTO _pg_tables VALUES (?,?,'provisa',NULL,FALSE,FALSE,FALSE,FALSE)",
             [(row[1], row[2]) for row in tables],
         )
-
-    # pg_am (access methods)
     db.execute("""CREATE TABLE _pg_am (
         oid INTEGER, amname VARCHAR, amhandler VARCHAR, amtype VARCHAR)""")
     db.executemany(
@@ -904,112 +528,181 @@ def _build_catalog_db(role_id: str, state):
         ],
     )
 
-    # pg_extension (empty — tools expect the table to exist)
-    db.execute("""CREATE TABLE _pg_extension (
-        oid INTEGER, extname VARCHAR, extowner INTEGER, extnamespace INTEGER,
-        extrelocatable BOOLEAN, extversion VARCHAR, extconfig VARCHAR, extcondition VARCHAR)""")
 
-    # pg_enum (empty — tools expect the table to exist)
-    db.execute("""CREATE TABLE _pg_enum (
-        oid INTEGER, enumtypid INTEGER, enumsortorder REAL, enumlabel VARCHAR)""")
+def _build_pk_constraint_rows(
+    ctx,
+    tname_to_oid: dict[str, int],
+    col_attnum: dict[tuple[int, str], int],
+    ns_map: dict[str, int],
+    con_oid_start: int,
+) -> tuple[list[tuple], int]:
+    rows: list[tuple] = []
+    con_oid = con_oid_start
+    for _, tm in ctx.tables.items():
+        toid_pk = tname_to_oid.get(tm.table_name)
+        if toid_pk is None:
+            continue
+        pk_cols = ctx.pk_columns.get(tm.table_id, [])
+        if not pk_cols:
+            continue
+        ns_oid_pk = ns_map.get(tm.schema_name or "public", 2200)
+        conkeys = ",".join(str(col_attnum.get((toid_pk, c), 0)) for c in pk_cols)
+        rows.append(
+            (
+                con_oid, f"pk_{tm.table_name}", ns_oid_pk, "p",
+                False, False, True, toid_pk, 0, 0, 0, 0,
+                None, None, None, True, 0, True, conkeys,
+                None, None, None, None, None, None,
+            )
+        )
+        con_oid += 1
+    return rows, con_oid
 
-    # pg_stat_activity (empty stub — monitoring tools query this)
-    db.execute("""CREATE TABLE _pg_stat_activity (
-        datid INTEGER, datname VARCHAR, pid INTEGER, usesysid INTEGER,
-        usename VARCHAR, application_name VARCHAR, client_addr VARCHAR,
-        client_hostname VARCHAR, client_port INTEGER, backend_start VARCHAR,
-        xact_start VARCHAR, query_start VARCHAR, state_change VARCHAR,
-        wait_event_type VARCHAR, wait_event VARCHAR, state VARCHAR,
-        backend_xid INTEGER, backend_xmin INTEGER, query VARCHAR,
-        backend_type VARCHAR)""")
 
-    # pg_stat_user_tables (empty stub)
-    db.execute("""CREATE TABLE _pg_stat_user_tables (
-        relid INTEGER, schemaname VARCHAR, relname VARCHAR,
-        seq_scan BIGINT, seq_tup_read BIGINT, idx_scan BIGINT, idx_tup_fetch BIGINT,
-        n_tup_ins BIGINT, n_tup_upd BIGINT, n_tup_del BIGINT, n_tup_hot_upd BIGINT,
-        n_live_tup BIGINT, n_dead_tup BIGINT, n_mod_since_analyze BIGINT,
-        n_ins_since_vacuum BIGINT, last_vacuum VARCHAR, last_autovacuum VARCHAR,
-        last_analyze VARCHAR, last_autoanalyze VARCHAR, vacuum_count BIGINT,
-        autovacuum_count BIGINT, analyze_count BIGINT, autoanalyze_count BIGINT)""")
+def _build_fk_constraint_rows(
+    ctx,
+    tname_to_oid: dict[str, int],
+    col_attnum: dict[tuple[int, str], int],
+    ns_map: dict[str, int],
+    con_oid_start: int,
+) -> tuple[list[tuple], int]:
+    rows: list[tuple] = []
+    con_oid = con_oid_start
+    for (src_type, _), jm in ctx.joins.items():
+        src_tm = next((tm for tm in ctx.tables.values() if tm.type_name == src_type), None)
+        if src_tm is None:
+            continue
+        src_toid = tname_to_oid.get(src_tm.table_name)
+        tgt_toid = tname_to_oid.get(jm.target.table_name)
+        if src_toid is None or tgt_toid is None:
+            continue
+        ns_oid_fk = ns_map.get(src_tm.schema_name or "public", 2200)
+        src_attnum = col_attnum.get((src_toid, jm.source_column), 0)
+        tgt_attnum = col_attnum.get((tgt_toid, jm.target_column), 0)
+        rows.append(
+            (
+                con_oid, f"fk_{src_tm.table_name}_{jm.source_column}", ns_oid_fk, "f",
+                False, False, True, src_toid, 0, 0, 0, tgt_toid,
+                "a", "a", "s", True, 0, True, str(src_attnum), str(tgt_attnum),
+                None, None, None, None, None,
+            )
+        )
+        con_oid += 1
+    return rows, con_oid
 
-    # information_schema.table_constraints
+
+def _populate_pg_constraint(
+    db,
+    ctx,
+    tables: list[tuple],
+    all_cols: list[tuple],
+    ns_map: dict[str, int],
+) -> list[tuple]:
+    db.execute("""CREATE TABLE _pg_constraint (
+        oid INTEGER, conname VARCHAR, connamespace INTEGER, contype VARCHAR,
+        condeferrable BOOLEAN, condeferred BOOLEAN, convalidated BOOLEAN,
+        conrelid INTEGER, contypid INTEGER, conindid INTEGER, conparentid INTEGER,
+        confrelid INTEGER, confupdtype VARCHAR, confdeltype VARCHAR, confmatchtype VARCHAR,
+        conislocal BOOLEAN, coninhcount INTEGER, connoinherit BOOLEAN,
+        conkeys VARCHAR, confkey VARCHAR, conpfeqop VARCHAR, conppeqop VARCHAR,
+        conffeqop VARCHAR, conexclop VARCHAR, conbin VARCHAR)""")
+    col_attnum: dict[tuple[int, str], int] = {(col[0], col[1]): col[4] for col in all_cols}
+    tname_to_oid: dict[str, int] = {row[2]: row[4] for row in tables}
+    constraint_rows: list[tuple] = []
+    if ctx:
+        pk_rows, next_oid = _build_pk_constraint_rows(ctx, tname_to_oid, col_attnum, ns_map, 20000)
+        constraint_rows.extend(pk_rows)
+        fk_rows, _ = _build_fk_constraint_rows(ctx, tname_to_oid, col_attnum, ns_map, next_oid)
+        constraint_rows.extend(fk_rows)
+    if constraint_rows:
+        db.executemany(
+            f"INSERT INTO _pg_constraint VALUES ({','.join(['?'] * 25)})",
+            constraint_rows,
+        )
+    return constraint_rows
+
+
+def _populate_is_constraints(
+    db,
+    constraint_rows: list[tuple],
+    toid_map: dict[int, tuple],
+    all_cols: list[tuple],
+    ns_map: dict[str, int],
+) -> None:
     db.execute("""CREATE TABLE _is_table_constraints (
         constraint_catalog VARCHAR, constraint_schema VARCHAR, constraint_name VARCHAR,
         table_catalog VARCHAR, table_schema VARCHAR, table_name VARCHAR,
         constraint_type VARCHAR, is_deferrable VARCHAR, initially_deferred VARCHAR,
         enforced VARCHAR, nulls_distinct VARCHAR)""")
-
-    # information_schema.key_column_usage
     db.execute("""CREATE TABLE _is_key_column_usage (
         constraint_catalog VARCHAR, constraint_schema VARCHAR, constraint_name VARCHAR,
         table_catalog VARCHAR, table_schema VARCHAR, table_name VARCHAR,
         column_name VARCHAR, ordinal_position INTEGER, position_in_unique_constraint INTEGER)""")
-
-    # information_schema.referential_constraints (empty stub)
-    db.execute("""CREATE TABLE _is_referential_constraints (
-        constraint_catalog VARCHAR, constraint_schema VARCHAR, constraint_name VARCHAR,
-        unique_constraint_catalog VARCHAR, unique_constraint_schema VARCHAR,
-        unique_constraint_name VARCHAR, match_option VARCHAR,
-        update_rule VARCHAR, delete_rule VARCHAR)""")
-
-    if _constraint_rows:
-        _oid_to_ns: dict[int, str] = {v: k for k, v in _NS.items()}
-        _attnum_to_col: dict[tuple[int, int], str] = {(col[0], col[4]): col[1] for col in all_cols}
-        _is_tc_rows = []
-        _is_kcu_rows = []
-        for con_row in _constraint_rows:
-            conname_v: str = con_row[1]
-            conns_oid_v: int = con_row[2]
-            contype_v: str = con_row[3]
-            conrelid_v: int = con_row[7]
-            c_v, c_sch_v, c_tname_v = toid_map.get(conrelid_v, ("provisa", "public", ""))
-            con_schema_v = _oid_to_ns.get(conns_oid_v, "public")
-            ctype_str = "PRIMARY KEY" if contype_v == "p" else "FOREIGN KEY"
-            _is_tc_rows.append(
-                (
-                    "provisa",
-                    con_schema_v,
-                    conname_v,
-                    c_v,
-                    c_sch_v,
-                    c_tname_v,
-                    ctype_str,
-                    "NO",
-                    "NO",
-                    "YES",
-                    "YES",
-                )
-            )
-            conkeys_raw = con_row[18]
-            conkeys_str = str(conkeys_raw) if conkeys_raw is not None else ""
-            for pos, attnum_s in enumerate(conkeys_str.split(",") if conkeys_str else [], 1):
-                attnum_v = int(attnum_s.strip()) if attnum_s.strip().isdigit() else 0
-                col_name_v = _attnum_to_col.get((conrelid_v, attnum_v), "")
-                if col_name_v:
-                    _is_kcu_rows.append(
-                        (
-                            "provisa",
-                            con_schema_v,
-                            conname_v,
-                            c_v,
-                            c_sch_v,
-                            c_tname_v,
-                            col_name_v,
-                            pos,
-                            pos if contype_v == "p" else None,
-                        )
+    if not constraint_rows:
+        return
+    oid_to_ns: dict[int, str] = {v: k for k, v in ns_map.items()}
+    attnum_to_col: dict[tuple[int, int], str] = {(col[0], col[4]): col[1] for col in all_cols}
+    is_tc_rows: list[tuple] = []
+    is_kcu_rows: list[tuple] = []
+    for con_row in constraint_rows:
+        conname_v: str = con_row[1]
+        conns_oid_v: int = con_row[2]
+        contype_v: str = con_row[3]
+        conrelid_v: int = con_row[7]
+        c_v, c_sch_v, c_tname_v = toid_map.get(conrelid_v, ("provisa", "public", ""))
+        con_schema_v = oid_to_ns.get(conns_oid_v, "public")
+        ctype_str = "PRIMARY KEY" if contype_v == "p" else "FOREIGN KEY"
+        is_tc_rows.append(
+            ("provisa", con_schema_v, conname_v, c_v, c_sch_v, c_tname_v, ctype_str, "NO", "NO", "YES", "YES")
+        )
+        conkeys_raw = con_row[18]
+        conkeys_str = str(conkeys_raw) if conkeys_raw is not None else ""
+        for pos, attnum_s in enumerate(conkeys_str.split(",") if conkeys_str else [], 1):
+            attnum_v = int(attnum_s.strip()) if attnum_s.strip().isdigit() else 0
+            col_name_v = attnum_to_col.get((conrelid_v, attnum_v), "")
+            if col_name_v:
+                is_kcu_rows.append(
+                    (
+                        "provisa", con_schema_v, conname_v, c_v, c_sch_v, c_tname_v,
+                        col_name_v, pos, pos if contype_v == "p" else None,
                     )
-        if _is_tc_rows:
-            db.executemany(
-                f"INSERT INTO _is_table_constraints VALUES ({','.join(['?'] * 11)})",
-                _is_tc_rows,
-            )
-        if _is_kcu_rows:
-            db.executemany(
-                f"INSERT INTO _is_key_column_usage VALUES ({','.join(['?'] * 9)})",
-                _is_kcu_rows,
-            )
+                )
+    if is_tc_rows:
+        db.executemany(
+            f"INSERT INTO _is_table_constraints VALUES ({','.join(['?'] * 11)})",
+            is_tc_rows,
+        )
+    if is_kcu_rows:
+        db.executemany(
+            f"INSERT INTO _is_key_column_usage VALUES ({','.join(['?'] * 9)})",
+            is_kcu_rows,
+        )
+
+
+def _build_catalog_db(role_id: str, state):
+    import duckdb
+
+    db = duckdb.connect(":memory:")
+    ctx = state.contexts.get(role_id)
+    col_types: dict = state.schema_build_cache.get("column_types", {})
+
+    tables, all_cols = _collect_tables_and_cols(ctx, col_types)
+    toid_map: dict[int, tuple] = {row[4]: (row[0], row[1], row[2]) for row in tables}
+    ns_map: dict[str, int] = {"pg_catalog": 11, "information_schema": 12, "public": 2200}
+
+    _populate_is_schemata(db, tables)
+    _populate_is_tables(db, tables)
+    _populate_is_columns(db, all_cols, toid_map)
+    _populate_pg_namespace(db, tables, ns_map)
+    _populate_pg_class(db, tables, all_cols, ns_map)
+    _populate_pg_attribute(db, all_cols)
+    _populate_pg_type(db)
+    _populate_empty_system_tables(db)
+    constraint_rows = _populate_pg_constraint(db, ctx, tables, all_cols, ns_map)
+    _populate_pg_roles_and_database(db, role_id)
+    _populate_pg_settings(db)
+    _populate_pg_tables_and_am(db, tables)
+    _populate_is_constraints(db, constraint_rows, toid_map, all_cols, ns_map)
 
     return db
 

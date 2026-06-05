@@ -272,6 +272,196 @@ def _detect_relationships(
     return relationships
 
 
+def _qualify_name(namespace: str, field_name: str) -> str:
+    """Return namespace__field_name or field_name when namespace is empty."""
+    return f"{namespace}__{field_name}" if namespace else field_name
+
+
+def _build_args_list(field: dict) -> list[dict]:
+    """Build the arguments list for a function entry from a GQL field."""
+    return [
+        {
+            "name": a["name"],
+            "type": _gql_to_provisa_type(a["type"]),
+            "description": a.get("description") or None,
+        }
+        for a in (field.get("args") or [])
+    ]
+
+
+def _build_query_function_return_schema(
+    field: dict,
+    ret_kind: str,
+    ret_name: str,
+    types: list[dict],
+) -> list[dict]:
+    """Return the return_schema list for a query field treated as a function."""
+    if ret_kind == "OBJECT" and ret_name:
+        obj_type = _find_type(types, ret_name)
+        return _build_return_schema((obj_type or {}).get("fields") or [])
+    return [{"name": "value", "type": _gql_to_provisa_type(field["type"])}]
+
+
+def _make_function_entry(
+    field: dict,
+    namespace: str,
+    source_id: str,
+    domain_id: str,
+    return_schema: list[dict],
+) -> dict:
+    """Assemble a tracked-function dict from a GQL field."""
+    return {
+        "name": _qualify_name(namespace, field["name"]),
+        "field_name": field["name"],
+        "source_id": source_id,
+        "arguments": _build_args_list(field),
+        "return_schema": return_schema,
+        "domain_id": domain_id,
+        "description": field.get("description") or None,
+    }
+
+
+def _is_query_field_function(ret_kind: str, override: str) -> bool:
+    """Return True when a query field should be mapped as a function, not a table."""
+    return override == "mutation" or (ret_kind != "OBJECT" and override != "query")
+
+
+def _map_query_field_as_function(
+    field: dict,
+    namespace: str,
+    source_id: str,
+    domain_id: str,
+    types: list[dict],
+) -> dict:
+    """Map a single query field to a tracked-function entry."""
+    ret_kind, ret_name = _unwrap_type(field["type"])
+    return_schema = _build_query_function_return_schema(field, ret_kind, ret_name, types)
+    return _make_function_entry(field, namespace, source_id, domain_id, return_schema)
+
+
+def _map_query_field_as_table(
+    field: dict,
+    namespace: str,
+    source_id: str,
+    domain_id: str,
+    types: list[dict],
+    max_object_depth: int,
+    max_list_depth: int,
+    max_list_items: int,
+) -> dict:
+    """Map a single query field to a virtual-table entry."""
+    _, ret_name = _unwrap_type(field["type"])
+    return_type = _find_type(types, ret_name)
+    columns = _build_columns(
+        (return_type or {}).get("fields") or [],
+        types,
+        max_object_depth,
+        max_list_depth,
+        max_list_items,
+    )
+    table_name = _qualify_name(namespace, field["name"])
+    return {
+        "name": table_name,
+        "field_name": field["name"],
+        "source_id": source_id,
+        "columns": columns,
+        "domain_id": domain_id,
+        "description": field.get("description")
+        or (return_type or {}).get("description")
+        or None,
+        "required_args": _build_required_args(field),
+        "pagination": _detect_pagination_args(field.get("args") or []),
+    }
+
+
+def _map_mutation_field(
+    field: dict,
+    namespace: str,
+    source_id: str,
+    domain_id: str,
+    types: list[dict],
+) -> dict:
+    """Map a single mutation field to a tracked-function entry."""
+    ret_kind, ret_name = _unwrap_type(field["type"])
+    return_type = _find_type(types, ret_name) if ret_kind == "OBJECT" else None
+    return_schema = (
+        _build_return_schema((return_type or {}).get("fields") or []) if return_type else []
+    )
+    return _make_function_entry(field, namespace, source_id, domain_id, return_schema)
+
+
+def _collect_queryable_types(
+    query_type: dict | None,
+    namespace: str,
+) -> tuple[set[str], dict[str, str]]:
+    """Collect queryable GQL type names and their preferred table name mapping.
+
+    Prefers no-required-arg fields so join targets can be bulk-fetched.
+    """
+    queryable_type_names: set[str] = set()
+    type_to_table: dict[str, str] = {}
+    for field in (query_type or {}).get("fields") or []:
+        _, ret_name = _unwrap_type(field["type"])
+        if ret_name:
+            queryable_type_names.add(ret_name)
+            tname = _qualify_name(namespace, field["name"])
+            has_required = bool(_build_required_args(field))
+            if ret_name not in type_to_table or has_required is False:
+                type_to_table[ret_name] = tname
+    return queryable_type_names, type_to_table
+
+
+def _process_query_fields(
+    query_type: dict | None,
+    namespace: str,
+    source_id: str,
+    domain_id: str,
+    types: list[dict],
+    field_overrides: dict[str, str],
+    max_object_depth: int,
+    max_list_depth: int,
+    max_list_items: int,
+) -> tuple[list[dict], list[dict]]:
+    """Partition query fields into tables and functions."""
+    tables: list[dict] = []
+    functions: list[dict] = []
+    for field in (query_type or {}).get("fields") or []:
+        override = field_overrides.get(field["name"], "").lower()
+        ret_kind, _ = _unwrap_type(field["type"])
+        if _is_query_field_function(ret_kind, override):
+            functions.append(
+                _map_query_field_as_function(field, namespace, source_id, domain_id, types)
+            )
+        else:
+            tables.append(
+                _map_query_field_as_table(
+                    field,
+                    namespace,
+                    source_id,
+                    domain_id,
+                    types,
+                    max_object_depth,
+                    max_list_depth,
+                    max_list_items,
+                )
+            )
+    return tables, functions
+
+
+def _process_mutation_fields(
+    mutation_type: dict | None,
+    namespace: str,
+    source_id: str,
+    domain_id: str,
+    types: list[dict],
+) -> list[dict]:
+    """Map all mutation fields to tracked-function entries."""
+    return [
+        _map_mutation_field(field, namespace, source_id, domain_id, types)
+        for field in (mutation_type or {}).get("fields") or []
+    ]
+
+
 def map_schema(
     schema: dict,
     namespace: str,
@@ -297,105 +487,21 @@ def map_schema(
     query_type = _find_type(types, query_type_name)
     mutation_type = _find_type(types, mutation_type_name) if mutation_type_name else None
 
-    # Collect which GQL type names are directly queryable (root query return types)
-    # and build a mapping from GQL type name → registered table name.
-    # Prefer no-required-arg fields so join targets can be bulk-fetched.
-    queryable_type_names: set[str] = set()
-    type_to_table: dict[str, str] = {}
-    for field in (query_type or {}).get("fields") or []:
-        _, ret_name = _unwrap_type(field["type"])
-        if ret_name:
-            queryable_type_names.add(ret_name)
-            tname = f"{namespace}__{field['name']}" if namespace else field["name"]
-            has_required = bool(_build_required_args(field))
-            if ret_name not in type_to_table or has_required is False:
-                type_to_table[ret_name] = tname
-
-    tables: list[dict] = []
-    functions: list[dict] = []
+    queryable_type_names, type_to_table = _collect_queryable_types(query_type, namespace)
 
     _overrides = field_overrides or {}
-    for field in (query_type or {}).get("fields") or []:
-        override = _overrides.get(field["name"], "").lower()
-        ret_kind, ret_name = _unwrap_type(field["type"])
-        if override == "mutation" or (ret_kind != "OBJECT" and override != "query"):
-            args = [
-                {
-                    "name": a["name"],
-                    "type": _gql_to_provisa_type(a["type"]),
-                    "description": a.get("description") or None,
-                }
-                for a in (field.get("args") or [])
-            ]
-            fn_name = f"{namespace}__{field['name']}" if namespace else field["name"]
-            if ret_kind == "OBJECT" and ret_name:
-                obj_type = _find_type(types, ret_name)
-                return_schema = _build_return_schema((obj_type or {}).get("fields") or [])
-            else:
-                return_schema = [{"name": "value", "type": _gql_to_provisa_type(field["type"])}]
-            functions.append(
-                {
-                    "name": fn_name,
-                    "field_name": field["name"],
-                    "source_id": source_id,
-                    "arguments": args,
-                    "return_schema": return_schema,
-                    "domain_id": domain_id,
-                    "description": field.get("description") or None,
-                }
-            )
-            continue
-        required_args = _build_required_args(field)
-        return_type = _find_type(types, ret_name)
-        columns = _build_columns(
-            (return_type or {}).get("fields") or [],
-            types,
-            max_object_depth,
-            max_list_depth,
-            max_list_items,
-        )
-        table_name = f"{namespace}__{field['name']}" if namespace else field["name"]
-        tables.append(
-            {
-                "name": table_name,
-                "field_name": field["name"],
-                "source_id": source_id,
-                "columns": columns,
-                "domain_id": domain_id,
-                "description": field.get("description")
-                or (return_type or {}).get("description")
-                or None,
-                "required_args": required_args,
-                "pagination": _detect_pagination_args(field.get("args") or []),
-            }
-        )
-
-    for field in (mutation_type or {}).get("fields") or []:
-        ret_kind, ret_name = _unwrap_type(field["type"])
-        return_type = _find_type(types, ret_name) if ret_kind == "OBJECT" else None
-        return_schema = (
-            _build_return_schema((return_type or {}).get("fields") or []) if return_type else []
-        )
-        args = [
-            {
-                "name": a["name"],
-                "type": _gql_to_provisa_type(a["type"]),
-                "description": a.get("description") or None,
-            }
-            for a in (field.get("args") or [])
-        ]
-        fn_name = f"{namespace}__{field['name']}" if namespace else field["name"]
-        functions.append(
-            {
-                "name": fn_name,
-                "field_name": field["name"],
-                "source_id": source_id,
-                "arguments": args,
-                "return_schema": return_schema,
-                "domain_id": domain_id,
-                "description": field.get("description") or None,
-            }
-        )
+    tables, functions = _process_query_fields(
+        query_type,
+        namespace,
+        source_id,
+        domain_id,
+        types,
+        _overrides,
+        max_object_depth,
+        max_list_depth,
+        max_list_items,
+    )
+    functions.extend(_process_mutation_fields(mutation_type, namespace, source_id, domain_id, types))
 
     relationships = _detect_relationships(tables, types, queryable_type_names, type_to_table)
     return tables, functions, relationships

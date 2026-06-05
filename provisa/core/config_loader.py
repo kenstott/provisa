@@ -18,8 +18,9 @@ import asyncpg
 import trino
 import yaml
 
-from provisa.core.models import ProvisaConfig
+from provisa.core.models import ProvisaConfig, Source, Table
 from provisa.core.secrets import resolve_secrets
+from provisa.openapi.mapper import OpenAPIQuery
 from provisa.core.repositories import (
     source as source_repo,
     domain as domain_repo,
@@ -144,69 +145,56 @@ def parse_config_dict(data: dict) -> ProvisaConfig:
     return ProvisaConfig.model_validate(data)
 
 
-async def _load_config_in_txn(
-    config: ProvisaConfig,
+_SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel", "__provisa__"]
+_SYSTEM_DOMAIN_IDS = ["", "meta", "ops"]
+
+_OAPI_TRINO = {
+    "string": "varchar",
+    "integer": "integer",
+    "number": "double",
+    "boolean": "boolean",
+    "array": "json",
+    "object": "json",
+    "jsonb": "json",
+}
+
+
+async def _replace_mode_cleanup(conn: asyncpg.Connection, config: ProvisaConfig) -> None:
+    """Delete all rows not present in the new config (full replace semantics)."""
+    new_source_ids = list({src.id for src in config.sources} | set(_SYSTEM_SOURCE_IDS))
+    new_domain_ids = list({d.id for d in config.domains} | set(_SYSTEM_DOMAIN_IDS))
+    new_role_ids = [r.id for r in config.roles]
+    keep_sources = new_source_ids if new_source_ids else _SYSTEM_SOURCE_IDS
+    await conn.execute(
+        "DELETE FROM registered_tables WHERE source_id != ALL($1::text[])",
+        keep_sources,
+    )
+    await conn.execute(
+        "DELETE FROM sources WHERE id != ALL($1::text[])",
+        keep_sources,
+    )
+    keep_domains = new_domain_ids if new_domain_ids else _SYSTEM_DOMAIN_IDS
+    await conn.execute(
+        "DELETE FROM domains WHERE id != ALL($1::text[])",
+        keep_domains,
+    )
+    if new_role_ids:
+        await conn.execute(
+            "DELETE FROM roles WHERE id != ALL($1::text[])",
+            new_role_ids,
+        )
+    else:
+        await conn.execute("DELETE FROM roles")
+    await conn.execute("DELETE FROM relationships WHERE id NOT LIKE 'meta:%'")
+    await conn.execute("DELETE FROM tracked_functions")
+    await conn.execute("DELETE FROM tracked_webhooks")
+
+
+async def _upsert_sources(
     conn: asyncpg.Connection,
     trino_conn: trino.dbapi.Connection | None,
-    replace: bool = False,
+    config: ProvisaConfig,
 ) -> None:
-    """Upsert full config into PG within caller's transaction scope.
-
-    When replace=True, all existing sources/tables/domains/roles/relationships
-    not present in the new config are deleted first (full replace semantics).
-    """
-    # Serialize concurrent config loads to prevent deadlocks when multiple
-    # processes (e.g. parallel test app lifespans) upsert the same rows.
-    await conn.execute("SELECT pg_advisory_xact_lock(7261748190)")
-    # __provisa__ is the synthetic source for user-created views (and other
-    # UI-registered provisa-managed tables) — preserve them across config reloads
-    # in replace mode; they are not declared in the YAML config.
-    _SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel", "__provisa__"]
-    _SYSTEM_DOMAIN_IDS = ["", "meta", "ops"]
-    if replace:
-        new_source_ids = list({src.id for src in config.sources} | set(_SYSTEM_SOURCE_IDS))
-        new_domain_ids = list({d.id for d in config.domains} | set(_SYSTEM_DOMAIN_IDS))
-        new_role_ids = [r.id for r in config.roles]
-        if new_source_ids:
-            await conn.execute(
-                "DELETE FROM registered_tables WHERE source_id != ALL($1::text[])",
-                new_source_ids,
-            )
-            await conn.execute(
-                "DELETE FROM sources WHERE id != ALL($1::text[])",
-                new_source_ids,
-            )
-        else:
-            await conn.execute(
-                "DELETE FROM registered_tables WHERE source_id != ALL($1::text[])",
-                _SYSTEM_SOURCE_IDS,
-            )
-            await conn.execute(
-                "DELETE FROM sources WHERE id != ALL($1::text[])",
-                _SYSTEM_SOURCE_IDS,
-            )
-        if new_domain_ids:
-            await conn.execute(
-                "DELETE FROM domains WHERE id != ALL($1::text[])",
-                new_domain_ids,
-            )
-        else:
-            await conn.execute(
-                "DELETE FROM domains WHERE id != ALL($1::text[])",
-                _SYSTEM_DOMAIN_IDS,
-            )
-        if new_role_ids:
-            await conn.execute(
-                "DELETE FROM roles WHERE id != ALL($1::text[])",
-                new_role_ids,
-            )
-        else:
-            await conn.execute("DELETE FROM roles")
-        await conn.execute("DELETE FROM relationships WHERE id NOT LIKE 'meta:%'")
-        await conn.execute("DELETE FROM tracked_functions")
-        await conn.execute("DELETE FROM tracked_webhooks")
-
-    # 1. Sources
     for src in config.sources:
         await source_repo.upsert(conn, src)
         if trino_conn is not None:
@@ -216,11 +204,8 @@ async def _load_config_in_txn(
             except Exception:
                 pass  # catalog.create_catalog already logs warnings
 
-    # 2. Domains
-    for dom in config.domains:
-        await domain_repo.upsert(conn, dom)
 
-    # 3. Naming rules
+async def _upsert_naming_rules(conn: asyncpg.Connection, config: ProvisaConfig) -> None:
     await conn.execute("DELETE FROM naming_rules")
     for rule in config.naming.rules:
         await conn.execute(
@@ -229,14 +214,9 @@ async def _load_config_in_txn(
             rule.replace,
         )
 
-    # 4. Roles (before tables/RLS so FK refs exist)
-    for role in config.roles:
-        await role_repo.upsert(conn, role)
 
-    # 5. Tables + columns
-    sources_by_id = {src.id: src for src in config.sources}
-
-    # Pre-load OpenAPI specs once per source (avoid repeated HTTP fetches)
+def _load_openapi_specs(config: ProvisaConfig) -> dict[str, dict]:
+    """Pre-load OpenAPI specs once per source (avoid repeated HTTP fetches)."""
     openapi_specs: dict[str, dict] = {}
     for src in config.sources:
         if src.type.value == "openapi" and src.path:
@@ -246,250 +226,277 @@ async def _load_config_in_txn(
                 openapi_specs[src.id] = load_spec(resolve_secrets(src.path))
             except Exception as _e:
                 log.warning("Failed to load OpenAPI spec for %s: %s", src.id, _e)
+    return openapi_specs
 
-    for tbl in config.tables:
-        # Enrich OpenAPI table columns with descriptions from spec before upserting
-        src = sources_by_id.get(tbl.source_id)
-        if src and src.type.value == "openapi" and src.base_url:
-            spec = openapi_specs.get(src.id, {})
-            if spec:
-                from provisa.openapi.mapper import parse_spec
-                from provisa.openapi.register import _schema_to_columns
 
-                queries, _ = parse_spec(spec)
-                match = next(
-                    (
-                        q
-                        for q in queries
-                        if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)
-                    ),
-                    None,
-                )
-                if match:
-                    spec_cols = _schema_to_columns(match.response_schema)
-                    spec_col_map = {c["name"]: c for c in spec_cols}
-                    # Update table columns with descriptions from spec
-                    for col in tbl.columns:
-                        if col.name in spec_col_map and not col.description:
-                            col.description = spec_col_map[col.name].get("description")
+def _enrich_openapi_table_columns(
+    tbl: Table,
+    spec: dict,
+) -> None:
+    """Update table columns with descriptions from the OpenAPI spec (in-place)."""
+    from provisa.openapi.mapper import parse_spec
+    from provisa.openapi.register import _schema_to_columns
 
-        await table_repo.upsert(conn, tbl)
-        src = sources_by_id.get(tbl.source_id)
-        if src and src.type.value == "sqlite" and src.path:
-            from provisa.file_source.pg_migrate import (
-                migrate_sqlite_table,
-                sqlite_column_trino_types,
+    queries, _ = parse_spec(spec)
+    match = next(
+        (q for q in queries if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)),
+        None,
+    )
+    if not match:
+        return
+    spec_col_map = {c["name"]: c for c in _schema_to_columns(match.response_schema)}
+    for col in tbl.columns:
+        if col.name in spec_col_map and not col.description:
+            col.description = spec_col_map[col.name].get("description")
+
+
+async def _handle_sqlite_table(
+    conn: asyncpg.Connection,
+    tbl: Table,
+    src: Source,
+) -> None:
+    from provisa.file_source.pg_migrate import migrate_sqlite_table, sqlite_column_trino_types
+
+    try:
+        await migrate_sqlite_table(
+            src.path, tbl.table_name, conn, tbl.schema_name, tbl.table_name
+        )
+        await _fill_null_column_types(
+            conn,
+            tbl.source_id,
+            tbl.schema_name,
+            tbl.table_name,
+            sqlite_column_trino_types(src.path, tbl.table_name),
+        )
+    except Exception as _e:
+        log.warning(
+            "SQLite → PG migration failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e
+        )
+
+
+def _build_api_columns(match: OpenAPIQuery) -> tuple[list[dict], set[str]]:
+    """Build the api_columns list and resp_col_names set for an OpenAPI match."""
+    from provisa.openapi.register import _openapi_to_provisa_type, _schema_to_columns
+
+    resp_col_names: set[str] = {c["name"] for c in _schema_to_columns(match.response_schema)}
+    api_columns: list[dict] = [
+        {
+            "name": c["name"],
+            "type": c["type"],
+            "filterable": True,
+            **({"object_fields": c["object_fields"]} if c.get("object_fields") else {}),
+        }
+        for c in _schema_to_columns(match.response_schema)
+    ]
+    for p in match.path_params:
+        api_columns.append(
+            {
+                "name": p["name"],
+                "type": _openapi_to_provisa_type(p.get("type")),
+                "filterable": False,
+                "param_type": "path",
+                "param_name": p["name"],
+            }
+        )
+    for p in match.query_params:
+        if p["name"] not in resp_col_names:
+            api_columns.append(
+                {
+                    "name": p["name"],
+                    "type": _openapi_to_provisa_type(p.get("type")),
+                    "filterable": False,
+                    "param_type": "query",
+                    "param_name": p["name"],
+                }
             )
+    return api_columns, resp_col_names
 
-            try:
-                await migrate_sqlite_table(
-                    src.path, tbl.table_name, conn, tbl.schema_name, tbl.table_name
-                )
-                # The migration runs inside this transaction, so the introspect-from-Trino
-                # pass below (a separate JDBC connection) cannot see the uncommitted PG
-                # table. The SQLite schema is authoritative — fill null types from it.
-                await _fill_null_column_types(
-                    conn,
-                    tbl.source_id,
-                    tbl.schema_name,
-                    tbl.table_name,
-                    sqlite_column_trino_types(src.path, tbl.table_name),
-                )
-            except Exception as _e:
-                log.warning(
-                    "SQLite → PG migration failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e
-                )
-        elif src and src.type.value == "openapi" and src.base_url:
-            resolved_base_url = resolve_secrets(src.base_url)
-            spec = openapi_specs.get(src.id, {})
-            if spec:
-                import json as _json
-                from provisa.openapi.mapper import parse_spec
-                from provisa.openapi.pg_cache import cache_openapi_table
-                from provisa.openapi.register import _openapi_to_provisa_type, _schema_to_columns
 
-                queries, _ = parse_spec(spec)
-                match = next(
-                    (
-                        q
-                        for q in queries
-                        if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)
-                    ),
-                    None,
-                )
-                if match:
-                    default_params = _default_params_from_spec(spec, match.path)
-                    fallback_cols = [(c.name, "TEXT") for c in tbl.columns] if tbl.columns else None
-                    try:
-                        await cache_openapi_table(
-                            resolved_base_url,
-                            match.path,
-                            default_params,
-                            conn,
-                            tbl.schema_name,
-                            tbl.table_name,
-                            match.response_schema,
-                            fallback_cols,
-                        )
-                    except Exception as _e:
-                        log.warning(
-                            "OpenAPI cache failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e
-                        )
-                    # Register in api_sources + api_endpoints for runtime hydration
-                    try:
-                        await conn.execute(
-                            """
-                            INSERT INTO api_sources (id, type, base_url, auth)
-                            VALUES ($1, 'openapi', $2, $3)
-                            ON CONFLICT (id) DO UPDATE SET base_url = EXCLUDED.base_url
-                            """,
-                            src.id,
-                            resolved_base_url,
-                            None,
-                        )
-                        resp_col_names = {
-                            c["name"] for c in _schema_to_columns(match.response_schema)
-                        }
-                        api_columns = [
-                            {
-                                "name": c["name"],
-                                "type": c["type"],
-                                "filterable": True,
-                                **(
-                                    {"object_fields": c["object_fields"]}
-                                    if c.get("object_fields")
-                                    else {}
-                                ),
-                            }
-                            for c in _schema_to_columns(match.response_schema)
-                        ]
-                        for p in match.path_params:
-                            api_columns.append(
-                                {
-                                    "name": p["name"],
-                                    "type": _openapi_to_provisa_type(p.get("type")),
-                                    "filterable": False,
-                                    "param_type": "path",
-                                    "param_name": p["name"],
-                                }
-                            )
-                        for p in match.query_params:
-                            if p["name"] not in resp_col_names:
-                                api_columns.append(
-                                    {
-                                        "name": p["name"],
-                                        "type": _openapi_to_provisa_type(p.get("type")),
-                                        "filterable": False,
-                                        "param_type": "query",
-                                        "param_name": p["name"],
-                                    }
-                                )
-                        await conn.execute(
-                            """
-                            INSERT INTO api_endpoints
-                                (source_id, path, method, table_name, columns, ttl, default_params)
-                            VALUES ($1, $2, 'GET', $3, $4::jsonb, $5, $6::jsonb)
-                            ON CONFLICT (table_name) DO UPDATE SET
-                                source_id     = EXCLUDED.source_id,
-                                path          = EXCLUDED.path,
-                                columns       = EXCLUDED.columns,
-                                ttl           = EXCLUDED.ttl,
-                                default_params = EXCLUDED.default_params
-                            """,
-                            src.id,
-                            match.path,
-                            tbl.table_name,
-                            _json.dumps(api_columns),
-                            src.cache_ttl or 300,
-                            _json.dumps(default_params) if default_params else None,
-                        )
-                        # Backfill object_fields into table_columns — YAML columns don't carry them
-                        for col_data in api_columns:
-                            if col_data.get("object_fields"):
-                                await conn.execute(
-                                    """UPDATE table_columns tc
-                                       SET object_fields = $1::jsonb
-                                       FROM registered_tables rt
-                                       WHERE tc.table_id = rt.id
-                                         AND rt.source_id = $2
-                                         AND rt.table_name = $3
-                                         AND tc.column_name = $4""",
-                                    _json.dumps(col_data["object_fields"]),
-                                    tbl.source_id,
-                                    tbl.table_name,
-                                    col_data["name"],
-                                )
-                        # Persist column data_type from the spec. OpenAPI tables are
-                        # API-backed: their cached response may be empty (so Trino can't
-                        # introspect every column), and native-filter params (_nf_*) never
-                        # appear in the response at all. The spec is authoritative for
-                        # both. introspect_tables trusts stored types — fill any null.
-                        _OAPI_TRINO = {
-                            "string": "varchar",
-                            "integer": "integer",
-                            "number": "double",
-                            "boolean": "boolean",
-                            "array": "json",
-                            "object": "json",
-                            "jsonb": "json",
-                        }
-                        # The cache table (built above, in this transaction) is
-                        # authoritative for response columns — including map-typed
-                        # responses (e.g. status→count) the spec schema has no
-                        # properties for. Read it over this same connection, which
-                        # sees the uncommitted table; the Trino pass below cannot.
-                        await _fill_null_column_types(
-                            conn,
-                            tbl.source_id,
-                            tbl.schema_name,
-                            tbl.table_name,
-                            await _pg_column_trino_types(conn, tbl.schema_name, tbl.table_name),
-                        )
-                        # Spec is authoritative for native-filter params (_nf_*),
-                        # which never appear in the cached response at all.
-                        _oapi_types: dict[str, str] = {}
-                        for _sc in _schema_to_columns(match.response_schema):
-                            _oapi_types[_sc["name"]] = _OAPI_TRINO.get(_sc.get("type") or "string", "varchar")
-                        for _p in match.path_params + match.query_params:
-                            _pt = _OAPI_TRINO.get(_p.get("type") or "string", "varchar")
-                            _oapi_types[_p["name"]] = _pt
-                            _oapi_types["_nf_" + _p["name"]] = _pt
-                        await _fill_null_column_types(
-                            conn, tbl.source_id, tbl.schema_name, tbl.table_name, _oapi_types
-                        )
-                    except Exception as _e:
-                        log.warning(
-                            "api_endpoints registration failed for %s.%s: %s",
-                            src.id,
-                            tbl.table_name,
-                            _e,
-                        )
-                else:
-                    log.warning(
-                        "No matching OpenAPI operation for table %s (source %s)",
-                        tbl.table_name,
-                        tbl.source_id,
-                    )
+async def _register_api_endpoint(
+    conn: asyncpg.Connection,
+    tbl: Table,
+    src: Source,
+    match: OpenAPIQuery,
+    resolved_base_url: str,
+    default_params: dict,
+    api_columns: list[dict],
+) -> None:
+    import json as _json
+    from provisa.openapi.register import _schema_to_columns
 
-        # Resolve column types now that the table is materialized — postgres is live in
-        # Trino, sqlite has been migrated into PG, and openapi responses are cached; all
-        # are exposed through Trino's normalized information_schema.columns. introspect_
-        # tables trusts stored types, so fill any the YAML left null (never overrides).
-        if trino_conn is not None and tbl.columns:
-            from provisa.compiler.introspect import introspect_column_types
-            from provisa.compiler.naming import source_to_catalog
-
-            await _fill_null_column_types(
-                conn,
+    await conn.execute(
+        """
+        INSERT INTO api_sources (id, type, base_url, auth)
+        VALUES ($1, 'openapi', $2, $3)
+        ON CONFLICT (id) DO UPDATE SET base_url = EXCLUDED.base_url
+        """,
+        src.id,
+        resolved_base_url,
+        None,
+    )
+    await conn.execute(
+        """
+        INSERT INTO api_endpoints
+            (source_id, path, method, table_name, columns, ttl, default_params)
+        VALUES ($1, $2, 'GET', $3, $4::jsonb, $5, $6::jsonb)
+        ON CONFLICT (table_name) DO UPDATE SET
+            source_id     = EXCLUDED.source_id,
+            path          = EXCLUDED.path,
+            columns       = EXCLUDED.columns,
+            ttl           = EXCLUDED.ttl,
+            default_params = EXCLUDED.default_params
+        """,
+        src.id,
+        match.path,
+        tbl.table_name,
+        _json.dumps(api_columns),
+        src.cache_ttl or 300,
+        _json.dumps(default_params) if default_params else None,
+    )
+    for col_data in api_columns:
+        if col_data.get("object_fields"):
+            await conn.execute(
+                """UPDATE table_columns tc
+                   SET object_fields = $1::jsonb
+                   FROM registered_tables rt
+                   WHERE tc.table_id = rt.id
+                     AND rt.source_id = $2
+                     AND rt.table_name = $3
+                     AND tc.column_name = $4""",
+                _json.dumps(col_data["object_fields"]),
                 tbl.source_id,
-                tbl.schema_name,
                 tbl.table_name,
-                introspect_column_types(
-                    trino_conn, source_to_catalog(tbl.source_id), tbl.schema_name, tbl.table_name
-                ),
+                col_data["name"],
             )
+    # Persist column data_type from the spec. OpenAPI tables are
+    # API-backed: their cached response may be empty (so Trino can't
+    # introspect every column), and native-filter params (_nf_*) never
+    # appear in the response at all. The spec is authoritative for
+    # both. introspect_tables trusts stored types — fill any null.
 
-    # 5a. Purge registered_tables rows whose table_name is no longer in config (handles renames)
+    # The cache table (built above, in this transaction) is
+    # authoritative for response columns — including map-typed
+    # responses (e.g. status→count) the spec schema has no
+    # properties for. Read it over this same connection, which
+    # sees the uncommitted table; the Trino pass below cannot.
+    await _fill_null_column_types(
+        conn,
+        tbl.source_id,
+        tbl.schema_name,
+        tbl.table_name,
+        await _pg_column_trino_types(conn, tbl.schema_name, tbl.table_name),
+    )
+    # Spec is authoritative for native-filter params (_nf_*),
+    # which never appear in the cached response at all.
+    _oapi_types: dict[str, str] = {}
+    for _sc in _schema_to_columns(match.response_schema):
+        _oapi_types[_sc["name"]] = _OAPI_TRINO.get(_sc.get("type") or "string", "varchar")
+    for _p in match.path_params + match.query_params:
+        _pt = _OAPI_TRINO.get(_p.get("type") or "string", "varchar")
+        _oapi_types[_p["name"]] = _pt
+        _oapi_types["_nf_" + _p["name"]] = _pt
+    await _fill_null_column_types(
+        conn, tbl.source_id, tbl.schema_name, tbl.table_name, _oapi_types
+    )
+
+
+async def _handle_openapi_table(
+    conn: asyncpg.Connection,
+    tbl: Table,
+    src: Source,
+    spec: dict,
+) -> None:
+    from provisa.openapi.mapper import parse_spec
+    from provisa.openapi.pg_cache import cache_openapi_table
+
+    resolved_base_url = resolve_secrets(src.base_url)
+    queries, _ = parse_spec(spec)
+    match = next(
+        (q for q in queries if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)),
+        None,
+    )
+    if not match:
+        log.warning(
+            "No matching OpenAPI operation for table %s (source %s)",
+            tbl.table_name,
+            tbl.source_id,
+        )
+        return
+    default_params = _default_params_from_spec(spec, match.path)
+    fallback_cols = [(c.name, "TEXT") for c in tbl.columns] if tbl.columns else None
+    try:
+        await cache_openapi_table(
+            resolved_base_url,
+            match.path,
+            default_params,
+            conn,
+            tbl.schema_name,
+            tbl.table_name,
+            match.response_schema,
+            fallback_cols,
+        )
+    except Exception as _e:
+        log.warning(
+            "OpenAPI cache failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e
+        )
+    # Register in api_sources + api_endpoints for runtime hydration
+    try:
+        api_columns, _ = _build_api_columns(match)
+        await _register_api_endpoint(
+            conn, tbl, src, match, resolved_base_url, default_params, api_columns
+        )
+    except Exception as _e:
+        log.warning(
+            "api_endpoints registration failed for %s.%s: %s",
+            src.id,
+            tbl.table_name,
+            _e,
+        )
+
+
+async def _upsert_single_table(
+    conn: asyncpg.Connection,
+    trino_conn: trino.dbapi.Connection | None,
+    tbl: Table,
+    src: Source | None,
+    openapi_specs: dict[str, dict],
+) -> None:
+    """Upsert one table and run source-type-specific post-upsert steps."""
+    if src and src.type.value == "openapi" and src.base_url:
+        spec = openapi_specs.get(src.id, {})
+        if spec:
+            _enrich_openapi_table_columns(tbl, spec)
+
+    await table_repo.upsert(conn, tbl)
+
+    if src and src.type.value == "sqlite" and src.path:
+        await _handle_sqlite_table(conn, tbl, src)
+    elif src and src.type.value == "openapi" and src.base_url:
+        spec = openapi_specs.get(src.id, {})
+        if spec:
+            await _handle_openapi_table(conn, tbl, src, spec)
+
+    # Resolve column types now that the table is materialized — postgres is live in
+    # Trino, sqlite has been migrated into PG, and openapi responses are cached; all
+    # are exposed through Trino's normalized information_schema.columns. introspect_
+    # tables trusts stored types, so fill any the YAML left null (never overrides).
+    if trino_conn is not None and tbl.columns:
+        from provisa.compiler.introspect import introspect_column_types
+        from provisa.compiler.naming import source_to_catalog
+
+        await _fill_null_column_types(
+            conn,
+            tbl.source_id,
+            tbl.schema_name,
+            tbl.table_name,
+            introspect_column_types(
+                trino_conn, source_to_catalog(tbl.source_id), tbl.schema_name, tbl.table_name
+            ),
+        )
+
+
+async def _purge_removed_tables(conn: asyncpg.Connection, config: ProvisaConfig) -> None:
+    """Delete registered_tables rows whose table_name is no longer in config (handles renames)."""
     tables_by_source: dict[str, list[str]] = {}
     for tbl in config.tables:
         tables_by_source.setdefault(tbl.source_id, []).append(tbl.table_name)
@@ -500,18 +507,38 @@ async def _load_config_in_txn(
             current_names,
         )
 
-    # 5b. ANALYZE — prime federation CBO stats after tables are registered
-    if trino_conn is not None:
-        for src in config.sources:
-            try:
-                catalog.analyze_source_tables(trino_conn, src, config.tables)
-            except Exception:
-                pass  # analyze_source_tables already logs per-table failures
 
-    # 6. Relationships (tables must exist first)
-    # Preserve relationships whose source or target table belongs to a dynamically-registered
-    # source (e.g. graphql_remote) — those are managed outside of this config file.
-    # Also preserve 'meta:*' relationships seeded by _seed_meta_domain.
+async def _analyze_sources(
+    trino_conn: trino.dbapi.Connection, config: ProvisaConfig
+) -> None:
+    """Prime federation CBO stats after tables are registered."""
+    for src in config.sources:
+        try:
+            catalog.analyze_source_tables(trino_conn, src, config.tables)
+        except Exception:
+            pass  # analyze_source_tables already logs per-table failures
+
+
+async def _upsert_tables(
+    conn: asyncpg.Connection,
+    trino_conn: trino.dbapi.Connection | None,
+    config: ProvisaConfig,
+    openapi_specs: dict[str, dict],
+) -> None:
+    sources_by_id = {src.id: src for src in config.sources}
+
+    for tbl in config.tables:
+        src = sources_by_id.get(tbl.source_id)
+        await _upsert_single_table(conn, trino_conn, tbl, src, openapi_specs)
+
+    await _purge_removed_tables(conn, config)
+
+    if trino_conn is not None:
+        await _analyze_sources(trino_conn, config)
+
+
+async def _upsert_relationships(conn: asyncpg.Connection, config: ProvisaConfig) -> None:
+    """Delete stale relationships and upsert config-declared ones."""
     current_rel_ids = [rel.id for rel in config.relationships]
     if current_rel_ids:
         await conn.execute(
@@ -546,6 +573,49 @@ async def _load_config_in_txn(
             await rel_repo.upsert(conn, rel)
         except ValueError:
             pass  # referenced table not yet registered (dynamic source); retried after source registration
+
+
+async def _load_config_in_txn(
+    config: ProvisaConfig,
+    conn: asyncpg.Connection,
+    trino_conn: trino.dbapi.Connection | None,
+    replace: bool = False,
+) -> None:
+    """Upsert full config into PG within caller's transaction scope.
+
+    When replace=True, all existing sources/tables/domains/roles/relationships
+    not present in the new config are deleted first (full replace semantics).
+    """
+    # Serialize concurrent config loads to prevent deadlocks when multiple
+    # processes (e.g. parallel test app lifespans) upsert the same rows.
+    await conn.execute("SELECT pg_advisory_xact_lock(7261748190)")
+
+    if replace:
+        await _replace_mode_cleanup(conn, config)
+
+    # 1. Sources
+    await _upsert_sources(conn, trino_conn, config)
+
+    # 2. Domains
+    for dom in config.domains:
+        await domain_repo.upsert(conn, dom)
+
+    # 3. Naming rules
+    await _upsert_naming_rules(conn, config)
+
+    # 4. Roles (before tables/RLS so FK refs exist)
+    for role in config.roles:
+        await role_repo.upsert(conn, role)
+
+    # 5. Tables + columns
+    openapi_specs = _load_openapi_specs(config)
+    await _upsert_tables(conn, trino_conn, config, openapi_specs)
+
+    # 6. Relationships (tables must exist first)
+    # Preserve relationships whose source or target table belongs to a dynamically-registered
+    # source (e.g. graphql_remote) — those are managed outside of this config file.
+    # Also preserve 'meta:*' relationships seeded by _seed_meta_domain.
+    await _upsert_relationships(conn, config)
 
     # 7. RLS rules (tables + roles must exist first)
     for rule in config.rls_rules:

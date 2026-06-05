@@ -22,6 +22,7 @@ import os as _os
 import re as _re
 
 from dataclasses import dataclass, field
+from typing import Protocol
 from provisa.otel_compat import get_tracer as _get_tracer
 
 from graphql import (
@@ -63,6 +64,26 @@ def _get_default_row_limit() -> int:
 query_counter = QueryCounter()
 
 _VIRTUAL_COLS = frozenset({"_name_", "_domain_"})
+
+
+# Protocol mirroring schema_gen.ColumnMetadata — avoids circular import.
+class _ColumnMetaProto(Protocol):
+    data_type: str
+
+
+# Protocol mirroring schema_gen._TableInfo — avoids a circular import while
+# giving pyright full attribute visibility on the visible-table objects.
+class _TableInfoProto(Protocol):
+    table_id: int
+    field_name: str
+    type_name: str
+    domain_id: str
+    source_id: str
+    schema_name: str
+    table_name: str
+    visible_columns: list[dict]
+    column_metadata: dict[str, _ColumnMetaProto]
+    native_filter_columns: list[dict]
 
 
 # --- Compilation context (built from SchemaInput alongside schema) ---
@@ -184,7 +205,7 @@ class CompiledQuery:
 
 
 def _lookup_column_type(
-    si: object,
+    si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
     table_id: int,
     column_name: str,
     catalog: str | None = None,
@@ -210,121 +231,101 @@ def _lookup_column_type(
     return "varchar"
 
 
-def build_context(si: object) -> CompilationContext:
-    """Build CompilationContext from a SchemaInput.
-
-    This mirrors the logic in schema_gen._build_visible_tables and _assign_names
-    to produce the same field_name/type_name mapping.
-    """
-    from provisa.compiler.naming import domain_gql_alias, apply_convention
-    from provisa.compiler.schema_gen import SchemaInput, _build_visible_tables, _assign_names
+def _register_table_in_ctx(
+    t: _TableInfoProto,
+    ctx: CompilationContext,
+    si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
+    physical_map: dict[str, str],
+    table_preset_map: dict[int, list],
+) -> None:
+    """Register one visible table and its column metadata into ctx."""
+    from provisa.compiler.naming import apply_convention, domain_to_sql_name as _d2s
+    from provisa.compiler.schema_gen import SchemaInput
 
     assert isinstance(si, SchemaInput)
-    ctx = CompilationContext()
-
-    tables = _build_visible_tables(si)
-    if not tables:
-        return ctx
-
-    domain_alias_map = {
-        d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias"))
-        for d in si.domains
-        if domain_gql_alias(d["id"], d.get("graphql_alias"))
-    }
-    _assign_names(
-        tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map
+    physical_name = physical_map.get(t.table_name, t.table_name)
+    src_type = (si.source_types or {}).get(t.source_id, "")
+    meta = TableMeta(
+        table_id=t.table_id,
+        field_name=t.field_name,
+        type_name=t.type_name,
+        source_id=t.source_id,
+        catalog_name=(si.source_catalogs or {}).get(t.source_id)
+        or source_to_catalog(t.source_id),
+        schema_name=t.schema_name,
+        table_name=physical_name,
+        domain_id=t.domain_id,
+        column_presets=table_preset_map.get(t.table_id, []),
+        source_type=src_type,
+        original_table_name=t.table_name if physical_name != t.table_name else "",
     )
+    ctx.tables[t.field_name] = meta
+    _field_part = t.field_name.split("__", 1)[1] if "__" in t.field_name else t.field_name
+    ctx.virtual_columns[t.table_id] = {
+        "_name_": f"{_d2s(t.domain_id)}.{_field_part}",
+        "_domain_": t.domain_id,
+    }
+    ctx.tables[f"{t.field_name}_aggregate"] = meta
+    ctx.tables[f"{t.field_name}_connection"] = meta
 
-    table_lookup = {t.table_id: t for t in tables}
+    # Aggregate columns — exclude GQL object blob columns covered by a FK relationship
+    _gql_obj_cols = si.gql_object_columns.get(t.table_name, {})
+    _src_rels = [
+        r
+        for r in si.relationships
+        if r.get("source_table_id") == t.table_id and r.get("source_column")
+    ]
+    _covered_blobs = {
+        blob_col
+        for blob_col in _gql_obj_cols
+        if any(r["source_column"].lower().startswith(blob_col.lower()) for r in _src_rels)
+    }
+    col_info = []
+    for col in t.visible_columns:
+        col_name = col["column_name"]
+        if col_name in _covered_blobs:
+            continue
+        col_meta = t.column_metadata.get(col_name.lower())
+        if col_meta:
+            col_info.append((col_name, col_meta.data_type))
+    ctx.aggregate_columns[t.table_id] = col_info
 
-    physical_map = getattr(si, "physical_table_map", None) or {}
-    table_preset_map = {td["id"]: list(td.get("column_presets") or []) for td in si.tables}
+    ctx.pk_columns[t.table_id] = [
+        col["column_name"] for col in t.visible_columns if col.get("is_primary_key")
+    ]
+    ctx.native_filter_columns[t.table_id] = {
+        nfc["column_name"] for nfc in t.native_filter_columns
+    }
 
-    for t in tables:
-        physical_name = physical_map.get(t.table_name, t.table_name)
-        src_type = (si.source_types or {}).get(t.source_id, "")
-        meta = TableMeta(
-            table_id=t.table_id,
-            field_name=t.field_name,
-            type_name=t.type_name,
-            source_id=t.source_id,
-            catalog_name=(si.source_catalogs or {}).get(t.source_id)
-            or source_to_catalog(t.source_id),
-            schema_name=t.schema_name,
-            table_name=physical_name,
-            domain_id=t.domain_id,
-            column_presets=table_preset_map.get(t.table_id, []),
-            source_type=src_type,
-            original_table_name=t.table_name if physical_name != t.table_name else "",
-        )
-        ctx.tables[t.field_name] = meta
-        from provisa.compiler.naming import domain_to_sql_name as _d2s
+    convention = si.naming_convention
+    for col in t.visible_columns:
+        col_path = col.get("path")
+        phys = col["column_name"]
+        gql = col.get("alias") or apply_convention(phys, convention) or phys
+        if gql != phys:
+            ctx.gql_to_physical[(t.table_id, gql)] = phys
+        if col_path:
+            ctx.column_paths[(t.table_id, gql)] = col_path
 
-        _field_part = t.field_name.split("__", 1)[1] if "__" in t.field_name else t.field_name
-        ctx.virtual_columns[t.table_id] = {
-            "_name_": f"{_d2s(t.domain_id)}.{_field_part}",
-            "_domain_": t.domain_id,
-        }
-        # Register aggregate variant pointing to same TableMeta
-        ctx.tables[f"{t.field_name}_aggregate"] = meta
-        # Register connection variant for cursor pagination
-        ctx.tables[f"{t.field_name}_connection"] = meta
+    for col_name in si.gql_object_columns.get(t.table_name) or {}:
+        ctx.gql_json_columns.add((t.table_id, col_name))
 
-        # Store column metadata for aggregate compilation.
-        # Exclude GQL object blob columns covered by a FK relationship — those columns
-        # are not physical SQL columns in the materialized Trino table.
-        _gql_obj_cols = si.gql_object_columns.get(t.table_name, {})
-        _src_rels = [
-            r
-            for r in si.relationships
-            if r.get("source_table_id") == t.table_id and r.get("source_column")
-        ]
-        _covered_blobs = {
-            blob_col
-            for blob_col in _gql_obj_cols
-            if any(r["source_column"].lower().startswith(blob_col.lower()) for r in _src_rels)
-        }
-        col_info = []
-        for col in t.visible_columns:
-            col_name = col["column_name"]
-            if col_name in _covered_blobs:
-                continue
-            col_meta = t.column_metadata.get(col_name.lower())
-            if col_meta:
-                col_info.append((col_name, col_meta.data_type))
-        ctx.aggregate_columns[t.table_id] = col_info
 
-        # Store user-designated PK columns
-        ctx.pk_columns[t.table_id] = [
-            col["column_name"] for col in t.visible_columns if col.get("is_primary_key")
-        ]
+def _register_relationship_joins(
+    si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
+    ctx: CompilationContext,
+    table_lookup: dict[int, _TableInfoProto],
+    physical_map: dict[str, str],
+) -> None:
+    """Register JoinMeta entries for all explicit relationships."""
+    from provisa.compiler.schema_gen import SchemaInput
 
-        # Store native filter column names
-        ctx.native_filter_columns[t.table_id] = {
-            nfc["column_name"] for nfc in t.native_filter_columns
-        }
-
-        # Populate column paths for JSON extraction and gql→physical mapping
-        convention = si.naming_convention
-        for col in t.visible_columns:
-            col_path = col.get("path")
-            phys = col["column_name"]
-            gql = col.get("alias") or apply_convention(phys, convention) or phys
-            if gql != phys:
-                ctx.gql_to_physical[(t.table_id, gql)] = phys
-            if col_path:
-                ctx.column_paths[(t.table_id, gql)] = col_path
-
-        for col_name in si.gql_object_columns.get(t.table_name) or {}:
-            ctx.gql_json_columns.add((t.table_id, col_name))
-
-    # Build join metadata from visible relationships
+    assert isinstance(si, SchemaInput)
     for rel in si.relationships:
         src_id = rel["source_table_id"]
         tgt_id = rel["target_table_id"]
         if src_id not in table_lookup or tgt_id not in table_lookup:
             continue
-        # Remote-managed relationships with no inferred FK columns cannot be SQL-joined
         if not rel.get("source_column") and not rel.get("target_function_name"):
             continue
 
@@ -346,7 +347,6 @@ def build_context(si: object) -> CompilationContext:
             else "",
         )
 
-        # Look up column types for the join columns; fall back to schema_service on miss
         src_col_type = _lookup_column_type(
             si,
             src_id,
@@ -364,7 +364,6 @@ def build_context(si: object) -> CompilationContext:
             table=tgt_info.table_name,
         )
 
-        # The relationship field on the source type uses alias if set, else computed rel name
         join_field_name = rel.get("graphql_alias") or _rel_field_name(
             tgt_info.field_name, rel["cardinality"]
         )
@@ -380,44 +379,65 @@ def build_context(si: object) -> CompilationContext:
             source_json_key=rel.get("source_json_key") or None,
         )
 
-    # Inject synthetic _meta join: every non-meta table → meta:registered_tables
+
+def _register_meta_synthetic_joins(
+    si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
+    ctx: CompilationContext,
+    tables: list[_TableInfoProto],
+    physical_map: dict[str, str],
+) -> _TableInfoProto | None:
+    """Inject synthetic _meta join for every non-meta table → meta:registered_tables."""
+    from provisa.compiler.schema_gen import SchemaInput
+
+    assert isinstance(si, SchemaInput)
     meta_rt = next(
         (t for t in tables if t.domain_id == "meta" and t.table_name == "registered_tables"),
         None,
     )
-    if meta_rt:
-        meta_tgt = TableMeta(
-            table_id=meta_rt.table_id,
-            field_name=meta_rt.field_name,
-            type_name=meta_rt.type_name,
-            source_id=meta_rt.source_id,
-            catalog_name=(si.source_catalogs or {}).get(meta_rt.source_id)
-            or source_to_catalog(meta_rt.source_id),
-            schema_name=meta_rt.schema_name,
-            table_name=physical_map.get(meta_rt.table_name, meta_rt.table_name),
-            domain_id=meta_rt.domain_id,
+    if not meta_rt:
+        return None
+    meta_tgt = TableMeta(
+        table_id=meta_rt.table_id,
+        field_name=meta_rt.field_name,
+        type_name=meta_rt.type_name,
+        source_id=meta_rt.source_id,
+        catalog_name=(si.source_catalogs or {}).get(meta_rt.source_id)
+        or source_to_catalog(meta_rt.source_id),
+        schema_name=meta_rt.schema_name,
+        table_name=physical_map.get(meta_rt.table_name, meta_rt.table_name),
+        domain_id=meta_rt.domain_id,
+    )
+    for t in tables:
+        if t.domain_id == "meta":
+            continue
+        ctx.joins[(t.type_name, "_meta")] = JoinMeta(
+            source_column="__table_id__",
+            target_column="id",
+            source_column_type="text",
+            target_column_type="text",
+            target=meta_tgt,
+            cardinality="many-to-one",
+            cypher_alias="HAS_TABLE",
+            source_constant=f"{t.domain_id}.{t.table_name}",
+            source_expr=f"VARCHAR '{t.domain_id}.{t.table_name}'",
+            target_expr='CONCAT({alias}."domain_id", \'.\', {alias}."table_name")',
+            child_src_val=f"VARCHAR '{t.domain_id}.{t.table_name}'",
         )
-        for t in tables:
-            if t.domain_id == "meta":
-                continue
-            ctx.joins[(t.type_name, "_meta")] = JoinMeta(
-                source_column="__table_id__",
-                target_column="id",
-                source_column_type="text",
-                target_column_type="text",
-                target=meta_tgt,
-                cardinality="many-to-one",
-                cypher_alias="HAS_TABLE",
-                source_constant=f"{t.domain_id}.{t.table_name}",  # stable varchar for Cypher path
-                source_expr=f"VARCHAR '{t.domain_id}.{t.table_name}'",  # stable SQL constant
-                target_expr='CONCAT({alias}."domain_id", \'.\', {alias}."table_name")',
-                child_src_val=f"VARCHAR '{t.domain_id}.{t.table_name}'",
-            )
+    return meta_rt
 
-    # Inject synthetic traversal joins: registered_tables → ops tables
-    # that carry a `table_name` FK column (e.g. traces, queries).
+
+def _register_ops_synthetic_joins(
+    si: object,  # object-ok: circular import boundary — SchemaInput imported inside function body
+    ctx: CompilationContext,
+    tables: list[_TableInfoProto],
+    physical_map: dict[str, str],
+    meta_rt: _TableInfoProto | None,
+) -> None:
+    """Inject synthetic traversal joins: registered_tables → ops tables with table_name FK."""
+    from provisa.compiler.schema_gen import SchemaInput
+
+    assert isinstance(si, SchemaInput)
     _IMPLICIT_DOMAINS = {"meta", "ops"}
-    _ops_targets: list[tuple[TableMeta, str]] = []  # (ops_tgt, _base)
     for ops_t in tables:
         if ops_t.domain_id not in _IMPLICIT_DOMAINS or ops_t.domain_id == "meta":
             continue
@@ -435,7 +455,6 @@ def build_context(si: object) -> CompilationContext:
             domain_id=ops_t.domain_id,
         )
         _base = ops_t.field_name.split("__", 1)[1] if "__" in ops_t.field_name else ops_t.field_name
-        _ops_targets.append((ops_tgt, _base))
         join_field = f"_{_base}"
         if meta_rt:
             ctx.joins[(meta_rt.type_name, join_field)] = JoinMeta(
@@ -451,13 +470,52 @@ def build_context(si: object) -> CompilationContext:
                 default_limit=10,
             )
 
+
+def build_context(si: object) -> CompilationContext:  # object-ok: circular import boundary — SchemaInput imported inside function body
+    """Build CompilationContext from a SchemaInput.
+
+    This mirrors the logic in schema_gen._build_visible_tables and _assign_names
+    to produce the same field_name/type_name mapping.
+    """
+    from provisa.compiler.naming import domain_gql_alias
+    from provisa.compiler.schema_gen import SchemaInput, _build_visible_tables, _assign_names
+
+    assert isinstance(si, SchemaInput)
+    ctx = CompilationContext()
+
+    tables = _build_visible_tables(si)
+    if not tables:
+        return ctx
+
+    domain_alias_map = {
+        d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias"))
+        for d in si.domains
+        if domain_gql_alias(d["id"], d.get("graphql_alias"))
+    }
+    _assign_names(
+        tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map
+    )
+
+    table_lookup = {t.table_id: t for t in tables}
+    physical_map = getattr(si, "physical_table_map", None) or {}
+    table_preset_map = {td["id"]: list(td.get("column_presets") or []) for td in si.tables}
+
+    for t in tables:
+        _register_table_in_ctx(t, ctx, si, physical_map, table_preset_map)
+
+    _register_relationship_joins(si, ctx, table_lookup, physical_map)
+
+    meta_rt = _register_meta_synthetic_joins(si, ctx, tables, physical_map)
+
+    _register_ops_synthetic_joins(si, ctx, tables, physical_map, meta_rt)
+
     return ctx
 
 
 # --- AST value extraction ---
 
 
-def _extract_value(node: object, variables: dict | None) -> object:
+def _extract_value(node: object, variables: dict | None) -> object:  # object-ok: truly-any payload — GraphQL AST value nodes and Python primitives unified
     """Extract a Python value from a GraphQL AST value node."""
     if isinstance(node, StringValueNode):
         return node.value
@@ -494,7 +552,7 @@ _ISO_DATE_RE = _re.compile(
 )
 
 
-def _timestamp_literal_or_param(val: object, collector) -> str:
+def _timestamp_literal_or_param(val: object, collector) -> str:  # object-ok: truly-any payload — caller may pass str, int, float, bool, None
     """Return a TIMESTAMP literal if val is an ISO date, otherwise a parameter.
 
     Accepts: 2000-01-01, 2000-01-01T00:00:00, 2000-01-01 00:00:00,
@@ -514,6 +572,72 @@ def _timestamp_literal_or_param(val: object, collector) -> str:
             return f"TIMESTAMP '{base} {tz}'"
         return f"TIMESTAMP '{normalized}'"
     return collector.add(val)
+
+
+def _compile_virtual_col_filter(
+    vv: str,
+    filter_obj: dict,
+) -> list[str]:
+    """Compile filter predicates for a virtual column against its compile-time value."""
+    parts: list[str] = []
+    for op, val in filter_obj.items():
+        if op == "eq":
+            parts.append("TRUE" if vv == str(val) else "FALSE")
+        elif op == "neq":
+            parts.append("TRUE" if vv != str(val) else "FALSE")
+        elif op == "gt":
+            parts.append("TRUE" if vv > str(val) else "FALSE")
+        elif op == "gte":
+            parts.append("TRUE" if vv >= str(val) else "FALSE")
+        elif op == "lt":
+            parts.append("TRUE" if vv < str(val) else "FALSE")
+        elif op == "lte":
+            parts.append("TRUE" if vv <= str(val) else "FALSE")
+        elif op == "in":
+            parts.append("TRUE" if vv in [str(v) for v in val] else "FALSE")
+        elif op == "like":
+            pattern = str(val).replace("%", "*").replace("_", "?")
+            parts.append("TRUE" if _fnmatch.fnmatch(vv, pattern) else "FALSE")
+        elif op == "is_null":
+            parts.append("FALSE")
+    return parts
+
+
+def _compile_column_filter(
+    col: str,
+    filter_obj: dict,
+    collector: ParamCollector,
+) -> list[str]:
+    """Compile filter predicates for a physical column expression."""
+    parts: list[str] = []
+    for op, val in filter_obj.items():
+        if op == "eq":
+            rhs = _timestamp_literal_or_param(val, collector)
+            parts.append(f"{col} = {rhs}")
+        elif op == "neq":
+            rhs = _timestamp_literal_or_param(val, collector)
+            parts.append(f"{col} != {rhs}")
+        elif op == "gt":
+            rhs = _timestamp_literal_or_param(val, collector)
+            parts.append(f"{col} > {rhs}")
+        elif op == "gte":
+            rhs = _timestamp_literal_or_param(val, collector)
+            parts.append(f"{col} >= {rhs}")
+        elif op == "lt":
+            rhs = _timestamp_literal_or_param(val, collector)
+            parts.append(f"{col} < {rhs}")
+        elif op == "lte":
+            rhs = _timestamp_literal_or_param(val, collector)
+            parts.append(f"{col} <= {rhs}")
+        elif op == "in":
+            placeholders = [collector.add(v) for v in val]
+            parts.append(f"{col} IN ({', '.join(placeholders)})")
+        elif op == "like":
+            placeholder = collector.add(val)
+            parts.append(f"{col} LIKE {placeholder}")
+        elif op == "is_null":
+            parts.append(f"{col} IS NULL" if val else f"{col} IS NOT NULL")
+    return parts
 
 
 def _compile_where(
@@ -538,62 +662,12 @@ def _compile_where(
         # Virtual column: resolve at compile time — no physical column exists
         if key in _VIRTUAL_COLS and virtual_vals is not None:
             vv = virtual_vals.get(key, "")
-            filter_obj = value
-            for op, val in filter_obj.items():
-                if op == "eq":
-                    parts.append("TRUE" if vv == str(val) else "FALSE")
-                elif op == "neq":
-                    parts.append("TRUE" if vv != str(val) else "FALSE")
-                elif op == "gt":
-                    parts.append("TRUE" if vv > str(val) else "FALSE")
-                elif op == "gte":
-                    parts.append("TRUE" if vv >= str(val) else "FALSE")
-                elif op == "lt":
-                    parts.append("TRUE" if vv < str(val) else "FALSE")
-                elif op == "lte":
-                    parts.append("TRUE" if vv <= str(val) else "FALSE")
-                elif op == "in":
-                    parts.append("TRUE" if vv in [str(v) for v in val] else "FALSE")
-                elif op == "like":
-                    pattern = str(val).replace("%", "*").replace("_", "?")
-                    parts.append("TRUE" if _fnmatch.fnmatch(vv, pattern) else "FALSE")
-                elif op == "is_null":
-                    parts.append("FALSE")
+            parts.extend(_compile_virtual_col_filter(vv, value))
             continue
 
         # Column filter: key is column name, value is filter object
         col = _q(key) if alias is None else f"{_q(alias)}.{_q(key)}"
-        filter_obj = value
-        for op, val in filter_obj.items():
-            if op == "eq":
-                rhs = _timestamp_literal_or_param(val, collector)
-                parts.append(f"{col} = {rhs}")
-            elif op == "neq":
-                rhs = _timestamp_literal_or_param(val, collector)
-                parts.append(f"{col} != {rhs}")
-            elif op == "gt":
-                rhs = _timestamp_literal_or_param(val, collector)
-                parts.append(f"{col} > {rhs}")
-            elif op == "gte":
-                rhs = _timestamp_literal_or_param(val, collector)
-                parts.append(f"{col} >= {rhs}")
-            elif op == "lt":
-                rhs = _timestamp_literal_or_param(val, collector)
-                parts.append(f"{col} < {rhs}")
-            elif op == "lte":
-                rhs = _timestamp_literal_or_param(val, collector)
-                parts.append(f"{col} <= {rhs}")
-            elif op == "in":
-                placeholders = [collector.add(v) for v in val]
-                parts.append(f"{col} IN ({', '.join(placeholders)})")
-            elif op == "like":
-                placeholder = collector.add(val)
-                parts.append(f"{col} LIKE {placeholder}")
-            elif op == "is_null":
-                if val:
-                    parts.append(f"{col} IS NULL")
-                else:
-                    parts.append(f"{col} IS NOT NULL")
+        parts.extend(_compile_column_filter(col, value, collector))
 
     return " AND ".join(parts) if parts else "TRUE"
 
@@ -930,7 +1004,7 @@ def _explicit_limit(field_node: FieldNode, variables: dict | None) -> int | None
     return None
 
 
-def _extract_non_negative_int(value: object, name: str) -> int:
+def _extract_non_negative_int(value: object, name: str) -> int:  # object-ok: truly-any payload — validated via isinstance checks inside body
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{name} must be an integer")
     if value < 0:
@@ -1987,6 +2061,96 @@ def _collect_requested_agg_funcs(
     return has_count, sum_cols, avg_cols, min_cols, max_cols, has_nodes
 
 
+def _collect_agg_aliases(
+    field_node: FieldNode,
+) -> tuple[str, dict[str, str], dict[str, dict[str, str]]]:
+    """Return (agg_key, func_aliases, col_aliases) from the aggregate selection set."""
+    agg_key = "aggregate"
+    func_aliases: dict[str, str] = {}
+    col_aliases: dict[str, dict[str, str]] = {}
+    if not field_node.selection_set:
+        return agg_key, func_aliases, col_aliases
+    for sel in field_node.selection_set.selections:
+        if not isinstance(sel, FieldNode) or sel.name.value != "aggregate":
+            continue
+        if sel.alias:
+            agg_key = sel.alias.value
+        if not sel.selection_set:
+            continue
+        for agg_sel in sel.selection_set.selections:
+            if not isinstance(agg_sel, FieldNode):
+                continue
+            func = agg_sel.name.value
+            if agg_sel.alias:
+                func_aliases[func] = agg_sel.alias.value
+            if agg_sel.selection_set:
+                col_aliases[func] = {}
+                for col_sel in agg_sel.selection_set.selections:
+                    if isinstance(col_sel, FieldNode) and col_sel.alias:
+                        col_aliases[func][col_sel.name.value] = col_sel.alias.value
+    return agg_key, func_aliases, col_aliases
+
+
+def _build_agg_func_parts(
+    sql_func: str,
+    func_name: str,
+    cols: list[str],
+    agg_key: str,
+    func_aliases: dict[str, str],
+    col_aliases: dict[str, dict[str, str]],
+) -> tuple[list[str], list[ColumnRef]]:
+    """Build SELECT parts and ColumnRefs for one aggregate function (SUM/AVG/MIN/MAX)."""
+    select_parts: list[str] = []
+    columns: list[ColumnRef] = []
+    fn_key = func_aliases.get(func_name, func_name)
+    for col_name in cols:
+        field_name = col_aliases.get(func_name, {}).get(col_name, col_name)
+        expr = f"{sql_func}({_q(col_name)})"
+        if field_name != col_name:
+            expr += f" AS {_q(field_name)}"
+        select_parts.append(expr)
+        columns.append(
+            ColumnRef(
+                alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"
+            )
+        )
+    return select_parts, columns
+
+
+def _build_nodes_sql(
+    field_node: FieldNode,
+    ref: str,
+    args: dict,
+    agg_vvals: dict[str, str] | None,
+) -> tuple[str | None, list[ColumnRef] | None, list]:
+    """Build the nodes sub-query SQL, columns, and params (or Nones when not requested)."""
+    nodes_select_parts: list[str] = []
+    nodes_cols: list[ColumnRef] = []
+    assert field_node.selection_set is not None
+    for sel in field_node.selection_set.selections:
+        if not isinstance(sel, FieldNode) or sel.name.value != "nodes":
+            continue
+        if sel.selection_set:
+            for node_sel in sel.selection_set.selections:
+                if not isinstance(node_sel, FieldNode):
+                    continue
+                col_name = node_sel.name.value
+                nodes_select_parts.append(_q(col_name))
+                nodes_cols.append(
+                    ColumnRef(alias=None, column=col_name, field_name=col_name, nested_in=None)
+                )
+    if not nodes_select_parts:
+        return None, None, []
+    nodes_sql = f"SELECT {', '.join(nodes_select_parts)} FROM {ref}"
+    nodes_params: list = []
+    if "where" in args:
+        nodes_collector = ParamCollector()
+        nodes_where_sql = _compile_where(args["where"], nodes_collector, None, agg_vvals)
+        nodes_sql += f" WHERE {nodes_where_sql}"
+        nodes_params = nodes_collector.params
+    return nodes_sql, nodes_cols, nodes_params
+
+
 def _compile_aggregate_field(
     field_node: FieldNode,
     ctx: CompilationContext,
@@ -2003,29 +2167,7 @@ def _compile_aggregate_field(
         field_node
     )
 
-    # Collect aliases for aggregate sub-fields
-    agg_key = "aggregate"
-    func_aliases: dict[str, str] = {}
-    col_aliases: dict[str, dict[str, str]] = {}
-    if field_node.selection_set:
-        for sel in field_node.selection_set.selections:
-            if not isinstance(sel, FieldNode) or sel.name.value != "aggregate":
-                continue
-            if sel.alias:
-                agg_key = sel.alias.value
-            if not sel.selection_set:
-                continue
-            for agg_sel in sel.selection_set.selections:
-                if not isinstance(agg_sel, FieldNode):
-                    continue
-                func = agg_sel.name.value
-                if agg_sel.alias:
-                    func_aliases[func] = agg_sel.alias.value
-                if agg_sel.selection_set:
-                    col_aliases[func] = {}
-                    for col_sel in agg_sel.selection_set.selections:
-                        if isinstance(col_sel, FieldNode) and col_sel.alias:
-                            col_aliases[func][col_sel.name.value] = col_sel.alias.value
+    agg_key, func_aliases, col_aliases = _collect_agg_aliases(field_node)
 
     # Build SELECT parts for aggregate functions
     select_parts: list[str] = []
@@ -2035,57 +2177,15 @@ def _compile_aggregate_field(
         select_parts.append("COUNT(*)")
         columns.append(ColumnRef(alias=None, column="count", field_name="count", nested_in=agg_key))
 
-    for col_name in sum_cols:
-        fn_key = func_aliases.get("sum", "sum")
-        field_name = col_aliases.get("sum", {}).get(col_name, col_name)
-        expr = f"SUM({_q(col_name)})"
-        if field_name != col_name:
-            expr += f" AS {_q(field_name)}"
-        select_parts.append(expr)
-        columns.append(
-            ColumnRef(
-                alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"
-            )
-        )
-
-    for col_name in avg_cols:
-        fn_key = func_aliases.get("avg", "avg")
-        field_name = col_aliases.get("avg", {}).get(col_name, col_name)
-        expr = f"AVG({_q(col_name)})"
-        if field_name != col_name:
-            expr += f" AS {_q(field_name)}"
-        select_parts.append(expr)
-        columns.append(
-            ColumnRef(
-                alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"
-            )
-        )
-
-    for col_name in min_cols:
-        fn_key = func_aliases.get("min", "min")
-        field_name = col_aliases.get("min", {}).get(col_name, col_name)
-        expr = f"MIN({_q(col_name)})"
-        if field_name != col_name:
-            expr += f" AS {_q(field_name)}"
-        select_parts.append(expr)
-        columns.append(
-            ColumnRef(
-                alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"
-            )
-        )
-
-    for col_name in max_cols:
-        fn_key = func_aliases.get("max", "max")
-        field_name = col_aliases.get("max", {}).get(col_name, col_name)
-        expr = f"MAX({_q(col_name)})"
-        if field_name != col_name:
-            expr += f" AS {_q(field_name)}"
-        select_parts.append(expr)
-        columns.append(
-            ColumnRef(
-                alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"
-            )
-        )
+    for func_name, sql_func, cols in (
+        ("sum", "SUM", sum_cols),
+        ("avg", "AVG", avg_cols),
+        ("min", "MIN", min_cols),
+        ("max", "MAX", max_cols),
+    ):
+        sp, cr = _build_agg_func_parts(sql_func, func_name, cols, agg_key, func_aliases, col_aliases)
+        select_parts.extend(sp)
+        columns.extend(cr)
 
     if not select_parts:
         select_parts.append("1")
@@ -2109,34 +2209,9 @@ def _compile_aggregate_field(
     nodes_columns: list[ColumnRef] | None = None
     nodes_params: list = []
     if has_nodes:
-        nodes_select_parts: list[str] = []
-        nodes_cols: list[ColumnRef] = []
-        assert field_node.selection_set is not None
-        for sel in field_node.selection_set.selections:
-            if not isinstance(sel, FieldNode) or sel.name.value != "nodes":
-                continue
-            if sel.selection_set:
-                for node_sel in sel.selection_set.selections:
-                    if not isinstance(node_sel, FieldNode):
-                        continue
-                    col_name = node_sel.name.value
-                    nodes_select_parts.append(_q(col_name))
-                    nodes_cols.append(
-                        ColumnRef(
-                            alias=None,
-                            column=col_name,
-                            field_name=col_name,
-                            nested_in=None,
-                        )
-                    )
-        if nodes_select_parts:
-            nodes_sql = f"SELECT {', '.join(nodes_select_parts)} FROM {ref}"
-            if "where" in args:
-                nodes_collector = ParamCollector()
-                nodes_where_sql = _compile_where(args["where"], nodes_collector, None, _agg_vvals)
-                nodes_sql += f" WHERE {nodes_where_sql}"
-                nodes_params = nodes_collector.params
-            nodes_columns = nodes_cols
+        nodes_sql, nodes_columns, nodes_params = _build_nodes_sql(
+            field_node, ref, args, _agg_vvals
+        )
 
     return CompiledQuery(
         sql=sql,
@@ -2152,7 +2227,7 @@ def _compile_aggregate_field(
     )
 
 
-def _sql_literal(val: object) -> str:
+def _sql_literal(val: object) -> str:  # object-ok: truly-any payload — SQL literal accepts any Python scalar
     """Convert a Python value to a SQL literal for VALUES injection."""
     if val is None:
         return "NULL"
@@ -2168,7 +2243,7 @@ def _sql_literal(val: object) -> str:
     return f"'{val!s}'"
 
 
-def rewrite_hot_joins(compiled: CompiledQuery, hot_manager: object) -> CompiledQuery:
+def rewrite_hot_joins(compiled: CompiledQuery, hot_manager: object) -> CompiledQuery:  # object-ok: circular import boundary — HotTableManager imported inside function body
     """Rewrite JOINs targeting hot tables to use VALUES-based CTEs.
 
     When a LEFT JOIN target is a hot-cached table, replace the table reference

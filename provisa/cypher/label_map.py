@@ -185,7 +185,7 @@ class CypherLabelMap:
     @classmethod
     def from_schema(
         cls,
-        ctx: object,
+        ctx: object,  # object-ok: circular import boundary — CompilationContext imported inside method body
         domain_access: list[str] | None = None,
         all_tables: list[dict] | None = None,
         all_relationships: list[dict] | None = None,
@@ -207,92 +207,10 @@ class CypherLabelMap:
 
         ctx_typed: CompilationContext = ctx  # type: ignore[assignment]
 
-        # Build target_pk_columns: type_name → target_column, but ONLY for many-to-one
-        # joins. On a many-to-one join the target column is the PK/unique key of the
-        # "one" side. On a one-to-many join the target column is a FK in the "many"
-        # table and must not be mistaken for that table's primary key.
-        target_pk: dict[str, str] = {}
-        for join_meta in ctx_typed.joins.values():
-            tname = join_meta.target.type_name
-            if tname not in target_pk and getattr(join_meta, "cardinality", None) == "many-to-one":
-                target_pk[tname] = join_meta.target_column
+        target_pk = _build_target_pk(ctx_typed)
+        _build_node_mappings(ctx_typed, target_pk, nodes, domains, nodes_by_table)
+        aliases = _build_relationship_mappings(ctx_typed, relationships)
 
-        # Build node mappings from table metadata
-        # Skip _connection and _aggregate synthetic variants registered for GraphQL pagination
-        for field_name, table_meta in ctx_typed.tables.items():
-            if field_name.endswith("_connection") or field_name.endswith("_aggregate"):
-                continue
-            col_list = ctx_typed.aggregate_columns.get(table_meta.table_id, [])
-            col_names = [c for c, _ in col_list]
-            user_pks = ctx_typed.pk_columns.get(table_meta.table_id, [])
-            id_col = _resolve_id_column(table_meta.type_name, col_names, target_pk, user_pks)
-            props: dict[str, str] = {_to_camel(c): c for c in col_names}
-
-            domain_id = getattr(table_meta, "domain_id", None) or None
-            domain_label = _pascal(domain_id) if domain_id else None
-            _, table_label = _split_cypher_labels(field_name)
-            cypher_label = f"{domain_label}:{table_label}" if domain_label else table_label
-            # logical table name: domain initials prefix stripped (lowercase of table_label parts)
-            logical_table = _strip_domain_prefix(table_meta.table_name, domain_id)
-            physical_table = table_meta.table_name
-            physical_kwarg = (
-                {"physical_table_name": physical_table} if physical_table != logical_table else {}
-            )
-
-            nf_cols = ctx_typed.native_filter_columns.get(table_meta.table_id, set())
-            nodes[table_meta.type_name] = NodeMapping(
-                label=cypher_label,
-                type_name=table_meta.type_name,
-                domain_label=domain_label,
-                domain_id=domain_id,
-                table_label=table_label,
-                table_id=table_meta.table_id,
-                source_id=table_meta.source_id,
-                id_column=id_col,
-                pk_columns=user_pks,
-                catalog_name=table_meta.catalog_name,
-                schema_name=table_meta.schema_name,
-                table_name=logical_table,
-                properties=props,
-                native_filter_columns=nf_cols,
-                **physical_kwarg,
-            )
-
-            # Populate domain index
-            if domain_label:
-                domains.setdefault(domain_label, []).append(table_meta.type_name)
-
-            # Populate table index
-            nodes_by_table.setdefault(table_label, []).append(table_meta.type_name)
-
-        # Build relationship mappings from join metadata
-        aliases: dict[str, list[RelationshipMapping]] = {}
-        for (source_type_name, gql_field_name), join_meta in ctx_typed.joins.items():
-            if getattr(join_meta, "disable_cypher", False):
-                continue
-            # Cypher rel type: use explicit alias (e.g. OPENED_BY) else derive from GraphQL field name
-            cypher_alias = getattr(join_meta, "cypher_alias", None)
-            cardinality = getattr(join_meta, "cardinality", None)
-            rel_type = cypher_alias if cypher_alias else _to_rel_type(gql_field_name, cardinality)
-            rm = RelationshipMapping(
-                rel_type=rel_type,
-                source_label=source_type_name,
-                target_label=join_meta.target.type_name,
-                join_source_column=join_meta.source_column,
-                join_target_column=join_meta.target_column,
-                field_name=gql_field_name,
-                alias=cypher_alias,
-                source_constant=getattr(join_meta, "source_constant", None),
-                source_expr=getattr(join_meta, "source_expr", None),
-                target_expr=getattr(join_meta, "target_expr", None),
-                many=(cardinality == "one-to-many"),
-            )
-            rel_key = f"{rel_type}::{source_type_name}→{join_meta.target.type_name}"
-            relationships[rel_key] = rm
-            aliases.setdefault(rel_type, []).append(rm)
-
-        # Cross-domain traversal nodes: reachable via registered relationships but not
-        # directly accessible. Marked traversal_only=True — cannot be MATCH start nodes.
         _all_access = domain_access is not None and "*" in domain_access
         if (
             not _all_access
@@ -300,91 +218,17 @@ class CypherLabelMap:
             and all_relationships is not None
             and all_column_types is not None
         ):
-            table_id_to_type: dict[int, str] = {nm.table_id: tn for tn, nm in nodes.items()}
-            all_tables_by_id: dict[int, dict] = {t["id"]: t for t in all_tables}
-            owned_ids: set[int] = set(table_id_to_type)
-
-            for rel in all_relationships:
-                if rel.get("disable_cypher"):
-                    continue
-                src_id: int = rel["source_table_id"]
-                tgt_id: int = rel["target_table_id"]
-                src_type = table_id_to_type.get(src_id)
-                if src_type is None or tgt_id in owned_ids:
-                    continue
-                tgt_table = all_tables_by_id.get(tgt_id)
-                if tgt_table is None:
-                    continue
-                col_metas = all_column_types.get(tgt_id, [])
-                if not col_metas:
-                    continue
-
-                tgt_domain_id = tgt_table.get("domain_id") or None
-                tgt_domain_label = _pascal(tgt_domain_id) if tgt_domain_id else None
-                tgt_raw_name = tgt_table["table_name"]
-                tgt_table_label = _pascal(_strip_domain_prefix(tgt_raw_name, tgt_domain_id))
-                tgt_logical = _strip_domain_prefix(tgt_raw_name, tgt_domain_id)
-                tgt_type_name = (
-                    f"{tgt_domain_label}_{tgt_table_label}" if tgt_domain_label else tgt_table_label
-                )
-                tgt_cypher_label = (
-                    f"{tgt_domain_label}:{tgt_table_label}" if tgt_domain_label else tgt_table_label
-                )
-
-                if tgt_type_name not in nodes:
-                    col_names = [c.column_name for c in col_metas]
-                    props: dict[str, str] = {_to_camel(c): c for c in col_names}
-                    id_col = _resolve_id_column(tgt_type_name, col_names, {}, [])
-                    tgt_source_id = tgt_table.get("source_id") or ""
-                    tgt_schema = tgt_table.get("schema_name") or ""
-                    from provisa.compiler.naming import source_to_catalog as _s2c
-
-                    tgt_catalog = (source_catalogs or {}).get(tgt_source_id) or (
-                        _s2c(tgt_source_id) if tgt_source_id else ""
-                    )
-                    nodes[tgt_type_name] = NodeMapping(
-                        label=tgt_cypher_label,
-                        type_name=tgt_type_name,
-                        domain_label=tgt_domain_label,
-                        domain_id=tgt_domain_id,
-                        table_label=tgt_table_label,
-                        table_id=tgt_id,
-                        source_id=tgt_source_id,
-                        id_column=id_col,
-                        pk_columns=[],
-                        catalog_name=tgt_catalog,
-                        schema_name=tgt_schema,
-                        table_name=tgt_logical,
-                        properties=props,
-                        traversal_only=True,
-                    )
-                    if tgt_domain_label:
-                        domains.setdefault(tgt_domain_label, []).append(tgt_type_name)
-                    nodes_by_table.setdefault(tgt_table_label, []).append(tgt_type_name)
-                    owned_ids.add(tgt_id)
-                    table_id_to_type[tgt_id] = tgt_type_name
-
-                cypher_alias = rel.get("alias") or rel.get("computed_cypher_alias")
-                rel_cardinality = rel.get("cardinality")
-                rel_type = (
-                    cypher_alias
-                    if cypher_alias
-                    else _to_rel_type(rel.get("graphql_alias") or tgt_raw_name, rel_cardinality)
-                )
-                rel_key = f"{rel_type}::{src_type}→{tgt_type_name}"
-                if rel_key not in relationships:
-                    xrel = RelationshipMapping(
-                        rel_type=rel_type,
-                        source_label=src_type,
-                        target_label=tgt_type_name,
-                        join_source_column=rel["source_column"],
-                        join_target_column=rel["target_column"],
-                        field_name=rel.get("graphql_alias") or "",
-                        alias=cypher_alias,
-                        many=(rel_cardinality == "one-to-many"),
-                    )
-                    relationships[rel_key] = xrel
-                    aliases.setdefault(rel_type, []).append(xrel)
+            _add_cross_domain_nodes(
+                all_tables,
+                all_relationships,
+                all_column_types,
+                source_catalogs,
+                nodes,
+                relationships,
+                domains,
+                nodes_by_table,
+                aliases,
+            )
 
         return cls(
             nodes=nodes,
@@ -393,6 +237,215 @@ class CypherLabelMap:
             nodes_by_table=nodes_by_table,
             aliases=aliases,
         )
+
+
+def _build_target_pk(ctx_typed: "CompilationContext") -> dict[str, str]:
+    """Return type_name → target_column for many-to-one joins only."""
+    target_pk: dict[str, str] = {}
+    for join_meta in ctx_typed.joins.values():
+        tname = join_meta.target.type_name
+        if tname not in target_pk and getattr(join_meta, "cardinality", None) == "many-to-one":
+            target_pk[tname] = join_meta.target_column
+    return target_pk
+
+
+def _build_node_mappings(
+    ctx_typed: "CompilationContext",
+    target_pk: dict[str, str],
+    nodes: dict[str, NodeMapping],
+    domains: dict[str, list[str]],
+    nodes_by_table: dict[str, list[str]],
+) -> None:
+    """Populate nodes/domains/nodes_by_table from ctx tables. Mutates all three dicts."""
+    for field_name, table_meta in ctx_typed.tables.items():
+        if field_name.endswith("_connection") or field_name.endswith("_aggregate"):
+            continue
+        col_list = ctx_typed.aggregate_columns.get(table_meta.table_id, [])
+        col_names = [c for c, _ in col_list]
+        user_pks = ctx_typed.pk_columns.get(table_meta.table_id, [])
+        id_col = _resolve_id_column(table_meta.type_name, col_names, target_pk, user_pks)
+        props: dict[str, str] = {_to_camel(c): c for c in col_names}
+
+        domain_id = getattr(table_meta, "domain_id", None) or None
+        domain_label = _pascal(domain_id) if domain_id else None
+        _, table_label = _split_cypher_labels(field_name)
+        cypher_label = f"{domain_label}:{table_label}" if domain_label else table_label
+        logical_table = _strip_domain_prefix(table_meta.table_name, domain_id)
+        physical_table = table_meta.table_name
+        physical_kwarg = (
+            {"physical_table_name": physical_table} if physical_table != logical_table else {}
+        )
+
+        nf_cols = ctx_typed.native_filter_columns.get(table_meta.table_id, set())
+        nodes[table_meta.type_name] = NodeMapping(
+            label=cypher_label,
+            type_name=table_meta.type_name,
+            domain_label=domain_label,
+            domain_id=domain_id,
+            table_label=table_label,
+            table_id=table_meta.table_id,
+            source_id=table_meta.source_id,
+            id_column=id_col,
+            pk_columns=user_pks,
+            catalog_name=table_meta.catalog_name,
+            schema_name=table_meta.schema_name,
+            table_name=logical_table,
+            properties=props,
+            native_filter_columns=nf_cols,
+            **physical_kwarg,
+        )
+
+        if domain_label:
+            domains.setdefault(domain_label, []).append(table_meta.type_name)
+        nodes_by_table.setdefault(table_label, []).append(table_meta.type_name)
+
+
+def _build_relationship_mappings(
+    ctx_typed: "CompilationContext",
+    relationships: dict[str, RelationshipMapping],
+) -> dict[str, list[RelationshipMapping]]:
+    """Populate relationships from ctx joins; return aliases dict."""
+    aliases: dict[str, list[RelationshipMapping]] = {}
+    for (source_type_name, gql_field_name), join_meta in ctx_typed.joins.items():
+        if getattr(join_meta, "disable_cypher", False):
+            continue
+        cypher_alias = getattr(join_meta, "cypher_alias", None)
+        cardinality = getattr(join_meta, "cardinality", None)
+        rel_type = cypher_alias if cypher_alias else _to_rel_type(gql_field_name, cardinality)
+        rm = RelationshipMapping(
+            rel_type=rel_type,
+            source_label=source_type_name,
+            target_label=join_meta.target.type_name,
+            join_source_column=join_meta.source_column,
+            join_target_column=join_meta.target_column,
+            field_name=gql_field_name,
+            alias=cypher_alias,
+            source_constant=getattr(join_meta, "source_constant", None),
+            source_expr=getattr(join_meta, "source_expr", None),
+            target_expr=getattr(join_meta, "target_expr", None),
+            many=(cardinality == "one-to-many"),
+        )
+        rel_key = f"{rel_type}::{source_type_name}→{join_meta.target.type_name}"
+        relationships[rel_key] = rm
+        aliases.setdefault(rel_type, []).append(rm)
+    return aliases
+
+
+def _make_traversal_node(
+    tgt_id: int,
+    tgt_table: dict,
+    col_metas: list,
+    source_catalogs: dict[str, str] | None,
+) -> NodeMapping:
+    """Build a traversal_only NodeMapping for a cross-domain target table."""
+    from provisa.compiler.naming import source_to_catalog as _s2c
+
+    tgt_domain_id = tgt_table.get("domain_id") or None
+    tgt_domain_label = _pascal(tgt_domain_id) if tgt_domain_id else None
+    tgt_raw_name = tgt_table["table_name"]
+    tgt_table_label = _pascal(_strip_domain_prefix(tgt_raw_name, tgt_domain_id))
+    tgt_logical = _strip_domain_prefix(tgt_raw_name, tgt_domain_id)
+    tgt_type_name = (
+        f"{tgt_domain_label}_{tgt_table_label}" if tgt_domain_label else tgt_table_label
+    )
+    tgt_cypher_label = (
+        f"{tgt_domain_label}:{tgt_table_label}" if tgt_domain_label else tgt_table_label
+    )
+    col_names = [c.column_name for c in col_metas]
+    props: dict[str, str] = {_to_camel(c): c for c in col_names}
+    id_col = _resolve_id_column(tgt_type_name, col_names, {}, [])
+    tgt_source_id = tgt_table.get("source_id") or ""
+    tgt_schema = tgt_table.get("schema_name") or ""
+    tgt_catalog = (source_catalogs or {}).get(tgt_source_id) or (
+        _s2c(tgt_source_id) if tgt_source_id else ""
+    )
+    return NodeMapping(
+        label=tgt_cypher_label,
+        type_name=tgt_type_name,
+        domain_label=tgt_domain_label,
+        domain_id=tgt_domain_id,
+        table_label=tgt_table_label,
+        table_id=tgt_id,
+        source_id=tgt_source_id,
+        id_column=id_col,
+        pk_columns=[],
+        catalog_name=tgt_catalog,
+        schema_name=tgt_schema,
+        table_name=tgt_logical,
+        properties=props,
+        traversal_only=True,
+    )
+
+
+def _add_cross_domain_nodes(
+    all_tables: list[dict],
+    all_relationships: list[dict],
+    all_column_types: dict,
+    source_catalogs: dict[str, str] | None,
+    nodes: dict[str, NodeMapping],
+    relationships: dict[str, RelationshipMapping],
+    domains: dict[str, list[str]],
+    nodes_by_table: dict[str, list[str]],
+    aliases: dict[str, list[RelationshipMapping]],
+) -> None:
+    """Add cross-domain traversal-only nodes reachable via all_relationships. Mutates all dicts."""
+    table_id_to_type: dict[int, str] = {nm.table_id: tn for tn, nm in nodes.items()}
+    all_tables_by_id: dict[int, dict] = {t["id"]: t for t in all_tables}
+    owned_ids: set[int] = set(table_id_to_type)
+
+    for rel in all_relationships:
+        if rel.get("disable_cypher"):
+            continue
+        src_id: int = rel["source_table_id"]
+        tgt_id: int = rel["target_table_id"]
+        src_type = table_id_to_type.get(src_id)
+        if src_type is None or tgt_id in owned_ids:
+            continue
+        tgt_table = all_tables_by_id.get(tgt_id)
+        if tgt_table is None:
+            continue
+        col_metas = all_column_types.get(tgt_id, [])
+        if not col_metas:
+            continue
+
+        tgt_domain_id = tgt_table.get("domain_id") or None
+        tgt_domain_label = _pascal(tgt_domain_id) if tgt_domain_id else None
+        tgt_raw_name = tgt_table["table_name"]
+        tgt_table_label = _pascal(_strip_domain_prefix(tgt_raw_name, tgt_domain_id))
+        tgt_type_name = (
+            f"{tgt_domain_label}_{tgt_table_label}" if tgt_domain_label else tgt_table_label
+        )
+
+        if tgt_type_name not in nodes:
+            node = _make_traversal_node(tgt_id, tgt_table, col_metas, source_catalogs)
+            nodes[tgt_type_name] = node
+            if tgt_domain_label:
+                domains.setdefault(tgt_domain_label, []).append(tgt_type_name)
+            nodes_by_table.setdefault(tgt_table_label, []).append(tgt_type_name)
+            owned_ids.add(tgt_id)
+            table_id_to_type[tgt_id] = tgt_type_name
+
+        cypher_alias = rel.get("alias") or rel.get("computed_cypher_alias")
+        rel_cardinality = rel.get("cardinality")
+        rel_type = (
+            cypher_alias
+            if cypher_alias
+            else _to_rel_type(rel.get("graphql_alias") or tgt_raw_name, rel_cardinality)
+        )
+        rel_key = f"{rel_type}::{src_type}→{tgt_type_name}"
+        if rel_key not in relationships:
+            xrel = RelationshipMapping(
+                rel_type=rel_type,
+                source_label=src_type,
+                target_label=tgt_type_name,
+                join_source_column=rel["source_column"],
+                join_target_column=rel["target_column"],
+                field_name=rel.get("graphql_alias") or "",
+                alias=cypher_alias,
+                many=(rel_cardinality == "one-to-many"),
+            )
+            relationships[rel_key] = xrel
+            aliases.setdefault(rel_type, []).append(xrel)
 
 
 _ID_EXACT = {"id", "_id", "pk", "oid"}

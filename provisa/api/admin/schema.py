@@ -903,7 +903,9 @@ class Query:
         triggers = cfg.get("scheduled_triggers", [])
 
         # Try to get runtime info from the APScheduler instance
-        job_map: dict[str, object] = {}
+        from apscheduler.job import Job as _APSJob
+
+        job_map: dict[str, _APSJob] = {}
         try:
             from provisa.api.app import state
 
@@ -1031,6 +1033,165 @@ class Query:
             return ""
 
 
+async def _validate_govdata_api_key(input: SourceInput) -> Optional[MutationResult]:
+    """Return a failure MutationResult if the govdata API key is invalid, else None."""
+    if not input.username:
+        return MutationResult(success=False, message="AskAmerica API Key is required")
+    import asyncio as _asyncio
+    import logging as _vlog
+    from provisa.core.models import GovDataSource as _GDS, GovDataSubject as _GDSubj
+    from provisa.core.secrets import resolve_secrets as _rs_v
+    from provisa.govdata.source import connect as _gd_v
+
+    def _validate() -> None:
+        gds = _GDS(
+            id=input.id,
+            subject=_GDSubj.all,
+            govdata_schemas=["fec"],
+            domain_id="default",
+            api_key=_rs_v(input.username),
+        )
+        conn = _gd_v(gds)
+        conn.getMetaData().getDatabaseProductName()
+
+    try:
+        loop = _asyncio.get_running_loop()
+        await loop.run_in_executor(None, _validate)
+    except Exception as _ve:
+        _vlog.getLogger(__name__).warning("govdata API key validation failed: %s", _ve)
+        return MutationResult(success=False, message=f"Invalid AskAmerica API Key: {_ve}")
+    return None
+
+
+async def _upsert_source_with_domains(pool, model, input: SourceInput) -> None:
+    """Upsert the source model and update allowed_domains in the DB."""
+    from provisa.core.repositories import source as source_repo
+
+    async with pool.acquire() as conn:
+        await source_repo.upsert(conn, model)
+        _domains = [d for d in (input.allowed_domains or []) if d.strip()]
+        if _domains:
+            await conn.execute(
+                "UPDATE sources SET allowed_domains = $1 WHERE id = $2",
+                _domains,
+                input.id,
+            )
+
+
+def _configure_govdata_env(input: SourceInput) -> None:
+    """Set AWS environment variables required for govdata access."""
+    import os as _os
+    from provisa.core.secrets import resolve_secrets as _rs
+
+    _os.environ.setdefault("AWS_ACCESS_KEY_ID", _rs(input.username))
+    if input.password:
+        _os.environ.setdefault("AWS_SECRET_ACCESS_KEY", _rs(input.password))
+    if input.host:
+        _os.environ["AWS_ENDPOINT_OVERRIDE"] = _rs(input.host)
+
+
+async def _add_source_pool(state, input: SourceInput) -> None:
+    """Register a direct connection pool for the source if a driver exists."""
+    from provisa.executor.drivers.registry import has_driver
+    from provisa.core.secrets import resolve_secrets
+
+    if not has_driver(input.type):
+        return
+    try:
+        await state.source_pools.add(
+            source_id=input.id,
+            source_type=input.type,
+            host=resolve_secrets(input.host) if input.host else "localhost",
+            port=input.port,
+            database=input.database,
+            user=input.username,
+            password=resolve_secrets(input.password),
+        )
+    except Exception as _pool_err:
+        logging.getLogger(__name__).warning(
+            "Direct pool for %r failed: %s — Trino-routed queries still work.",
+            input.id,
+            _pool_err,
+        )
+
+
+def _create_trino_catalog(state, model, input: SourceInput) -> None:
+    """Create a Trino catalog for the source (mirrors config_loader path)."""
+    from provisa.core.catalog import create_catalog
+    from provisa.core.secrets import resolve_secrets
+
+    try:
+        create_catalog(
+            state.trino_conn,
+            model,
+            resolve_secrets(input.password) if input.password else "",
+        )
+    except Exception as _cat_err:
+        logging.getLogger(__name__).warning(
+            "Trino catalog creation for %r failed: %s", input.id, _cat_err
+        )
+
+
+async def _analyze_trino_tables(state, pool, model, input: SourceInput) -> None:
+    """Fire ANALYZE on all registered tables for this source (errors swallowed)."""
+    from provisa.core.catalog import analyze_source_tables
+
+    class _TblRef:
+        def __init__(self, source_id: str, schema_name: str, table_name: str) -> None:
+            self.source_id = source_id
+            self.schema_name = schema_name
+            self.table_name = table_name
+
+    async with pool.acquire() as _conn:
+        rows = await _conn.fetch(
+            "SELECT schema_name, table_name FROM registered_tables WHERE source_id = $1",
+            input.id,
+        )
+    table_refs = [_TblRef(input.id, r["schema_name"], r["table_name"]) for r in rows]
+    if table_refs:
+        analyze_source_tables(state.trino_conn, model, table_refs)
+
+
+def _prime_govdata_cache(input: SourceInput) -> None:
+    """Schedule a background task to prime the govdata metadata cache."""
+    import asyncio as _asyncio
+    from provisa.core.models import GovDataSource as _GDS, GovDataSubject as _GDSubj
+    from provisa.core.secrets import resolve_secrets as _rs2
+    from provisa.govdata.source import prime_source as _prime
+
+    _gds = _GDS(
+        id=input.id,
+        subject=_GDSubj.all,
+        govdata_schemas=[s.strip().lower() for s in input.database.split(",") if s.strip()],
+        domain_id="default",
+        api_key=_rs2(input.username),
+    )
+    _schemas = [s.strip().lower() for s in input.database.split(",") if s.strip()]
+
+    async def _prime_task() -> None:
+        loop = _asyncio.get_running_loop()
+        await loop.run_in_executor(None, _prime, _gds, _schemas)
+
+    _asyncio.create_task(_prime_task())
+
+
+def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
+    """Schedule background catalog indexing for NL table search (REQ-464)."""
+    import asyncio as _asyncio
+    from provisa.discovery.catalog_cache import index_source as _index_source
+
+    _asyncio.create_task(
+        _index_source(
+            input.id,
+            pool,
+            state.trino_conn,
+            state.source_pools,
+            state.source_types,
+            state,
+        )
+    )
+
+
 @strawberry.type
 class Mutation:
     @strawberry.mutation
@@ -1041,34 +1202,11 @@ class Mutation:
 
         require_capability(info, "source_registration")
         from provisa.core.models import Source as SourceModel
-        from provisa.core.repositories import source as source_repo
 
         if input.type == "govdata":
-            if not input.username:
-                return MutationResult(success=False, message="AskAmerica API Key is required")
-            import asyncio as _asyncio
-            import logging as _vlog
-            from provisa.core.models import GovDataSource as _GDS, GovDataSubject as _GDSubj
-            from provisa.core.secrets import resolve_secrets as _rs_v
-            from provisa.govdata.source import connect as _gd_v
-
-            def _validate():
-                gds = _GDS(
-                    id=input.id,
-                    subject=_GDSubj.all,
-                    govdata_schemas=["fec"],
-                    domain_id="default",
-                    api_key=_rs_v(input.username),
-                )
-                conn = _gd_v(gds)
-                conn.getMetaData().getDatabaseProductName()
-
-            try:
-                loop = _asyncio.get_running_loop()
-                await loop.run_in_executor(None, _validate)
-            except Exception as _ve:
-                _vlog.getLogger(__name__).warning("govdata API key validation failed: %s", _ve)
-                return MutationResult(success=False, message=f"Invalid AskAmerica API Key: {_ve}")
+            _err = await _validate_govdata_api_key(input)
+            if _err is not None:
+                return _err
 
         pool = await _get_pool()
         model = SourceModel(
@@ -1082,128 +1220,28 @@ class Mutation:
             path=input.path,
             description=input.description,
         )
-        async with pool.acquire() as conn:
-            await source_repo.upsert(conn, model)
-            _domains = [d for d in (input.allowed_domains or []) if d.strip()]
-            if _domains:
-                await conn.execute(
-                    "UPDATE sources SET allowed_domains = $1 WHERE id = $2",
-                    _domains,
-                    input.id,
-                )
+        await _upsert_source_with_domains(pool, model, input)
 
         if input.type == "govdata" and input.username:
-            import os as _os
-            from provisa.core.secrets import resolve_secrets as _rs
-
-            _os.environ.setdefault("AWS_ACCESS_KEY_ID", _rs(input.username))
-            if input.password:
-                _os.environ.setdefault("AWS_SECRET_ACCESS_KEY", _rs(input.password))
-            if input.host:
-                _os.environ["AWS_ENDPOINT_OVERRIDE"] = _rs(input.host)
+            _configure_govdata_env(input)
 
         from provisa.api.app import state
-        from provisa.executor.drivers.registry import has_driver
-        from provisa.core.secrets import resolve_secrets
 
         _domains = [d for d in (input.allowed_domains or []) if d.strip()]
         if _domains:
             state.source_allowed_domains[input.id] = _domains
-        if has_driver(input.type):
-            try:
-                await state.source_pools.add(
-                    source_id=input.id,
-                    source_type=input.type,
-                    host=resolve_secrets(input.host) if input.host else "localhost",
-                    port=input.port,
-                    database=input.database,
-                    user=input.username,
-                    password=resolve_secrets(input.password),
-                )
-            except Exception as _pool_err:
-                import logging as _log
-
-                _log.getLogger(__name__).warning(
-                    "Direct pool for %r failed: %s — Trino-routed queries still work.",
-                    input.id,
-                    _pool_err,
-                )
+        await _add_source_pool(state, input)
         state.source_types[input.id] = input.type
         state.source_dialects[input.id] = ""
 
-        # Create Trino catalog for this source (mirrors config_loader path)
         if state.trino_conn is not None:
-            from provisa.core.catalog import create_catalog
-            from provisa.core.secrets import resolve_secrets
+            _create_trino_catalog(state, model, input)
+            await _analyze_trino_tables(state, pool, model, input)
 
-            try:
-                create_catalog(
-                    state.trino_conn,
-                    model,
-                    resolve_secrets(input.password) if input.password else "",
-                )
-            except Exception as _cat_err:
-                import logging as _log
-
-                _log.getLogger(__name__).warning(
-                    "Trino catalog creation for %r failed: %s", input.id, _cat_err
-                )
-
-        # AL1: fire ANALYZE on all registered tables for this source (errors swallowed)
-        if state.trino_conn is not None:
-            from provisa.core.catalog import analyze_source_tables
-
-            class _TblRef:
-                def __init__(self, source_id, schema_name, table_name):
-                    self.source_id = source_id
-                    self.schema_name = schema_name
-                    self.table_name = table_name
-
-            async with pool.acquire() as _conn:
-                rows = await _conn.fetch(
-                    "SELECT schema_name, table_name FROM registered_tables WHERE source_id = $1",
-                    input.id,
-                )
-            table_refs = [_TblRef(input.id, r["schema_name"], r["table_name"]) for r in rows]
-            if table_refs:
-                analyze_source_tables(state.trino_conn, model, table_refs)
-
-        # Prime govdata metadata cache so the table registration form is instant
         if input.type == "govdata" and input.database and input.username:
-            import asyncio as _asyncio
-            from provisa.core.models import GovDataSource as _GDS, GovDataSubject as _GDSubj
-            from provisa.core.secrets import resolve_secrets as _rs2
-            from provisa.govdata.source import prime_source as _prime
+            _prime_govdata_cache(input)
 
-            _gds = _GDS(
-                id=input.id,
-                subject=_GDSubj.all,
-                govdata_schemas=[s.strip().lower() for s in input.database.split(",") if s.strip()],
-                domain_id="default",
-                api_key=_rs2(input.username),
-            )
-            _schemas = [s.strip().lower() for s in input.database.split(",") if s.strip()]
-
-            async def _prime_task():
-                loop = _asyncio.get_running_loop()
-                await loop.run_in_executor(None, _prime, _gds, _schemas)
-
-            _asyncio.create_task(_prime_task())
-
-        # Fire background catalog indexing for NL table search (REQ-464)
-        import asyncio as _asyncio
-        from provisa.discovery.catalog_cache import index_source as _index_source
-
-        _asyncio.create_task(
-            _index_source(
-                input.id,
-                pool,
-                state.trino_conn,
-                state.source_pools,
-                state.source_types,
-                state,
-            )
-        )
+        _fire_catalog_indexing(state, pool, input)
 
         return MutationResult(success=True, message=f"Source {input.id!r} created")
 

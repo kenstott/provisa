@@ -20,7 +20,99 @@ from __future__ import annotations
 import sqlglot.expressions as exp
 
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping, RelationshipMapping
-from provisa.cypher.parser import MatchClause, PathFunction
+from provisa.cypher.parser import MatchClause, NodePattern, PathFunction, RelPattern
+
+
+# ---------------------------------------------------------------------------
+# Module-level pure helpers (no mixin state)
+# ---------------------------------------------------------------------------
+
+
+def _extract_path_nodes(
+    pf: PathFunction,
+    CypherTranslateError: type,
+) -> tuple[NodePattern, NodePattern, RelPattern | None]:
+    """Validate and extract src/tgt nodes and optional rel from a PathFunction."""
+    pattern = pf.pattern
+    if len(pattern.nodes) < 2:
+        raise CypherTranslateError("Path function requires at least two nodes")
+    src_node = pattern.nodes[0]
+    tgt_node = pattern.nodes[-1]
+    if not src_node.labels or not tgt_node.labels:
+        raise CypherTranslateError(
+            "shortestPath/allShortestPaths require labeled source and target nodes"
+        )
+    rel: RelPattern | None = pattern.rels[0] if pattern.rels else None
+    return src_node, tgt_node, rel
+
+
+def _register_path_vars(
+    var_table: dict,
+    src_var: str | None,
+    tgt_var: str | None,
+    src_nm: NodeMapping,
+    tgt_nm: NodeMapping,
+) -> None:
+    """Register src/tgt node variables in the var_table if not already present."""
+    if src_var and src_var not in var_table:
+        var_table[src_var] = (src_var, src_nm)
+    if tgt_var and tgt_var not in var_table:
+        var_table[tgt_var] = (tgt_var, tgt_nm)
+
+
+def _extract_rel_attrs(
+    rel: RelPattern | None,
+) -> tuple[list[str] | None, bool, bool, int]:
+    """Extract rel_types, variable_length, is_undirected, max_hops from an optional RelPattern."""
+    rel_types = [rt.upper() for rt in rel.types] if rel and rel.types else None
+    variable_length = bool(rel and rel.variable_length)
+    is_undirected = bool(rel and getattr(rel, "direction", "right") == "none")
+    if variable_length:
+        max_hops = rel.max_hops if rel is not None and rel.max_hops is not None else 10
+    else:
+        max_hops = 1
+    return rel_types, variable_length, is_undirected, max_hops
+
+
+def _filter_allowed_rels(
+    lm: CypherLabelMap,
+    rel_types: list[str] | None,
+) -> list[RelationshipMapping]:
+    """Return schema rels matching the given rel_types filter (None = all)."""
+    return [
+        r for r in lm.relationships.values()
+        if rel_types is None or r.rel_type in rel_types
+    ]
+
+
+def _needs_recursive_cte(
+    variable_length: bool,
+    is_undirected: bool,
+    src_type: str,
+    tgt_type: str,
+    allowed_rels: list[RelationshipMapping],
+) -> bool:
+    """Return True when a recursive CTE is required instead of flat JOINs.
+
+    Recursive is needed when src==tgt label (same-type start/end) OR any
+    allowed rel loops back to the same node type (e.g. KNOWS: Person→Person).
+    """
+    return variable_length and not is_undirected and (
+        src_type == tgt_type
+        or any(r.source_label == r.target_label for r in allowed_rels)
+    )
+
+
+def _select_candidate_paths(
+    all_paths: list[list[RelationshipMapping]],
+    is_all_paths: bool,
+    is_undirected: bool,
+) -> list[list[RelationshipMapping]]:
+    """Choose which schema paths to emit as UNION branches."""
+    if is_all_paths and not is_undirected:
+        return all_paths
+    min_hops = min(len(p) for p in all_paths)
+    return [p for p in all_paths if len(p) == min_hops]
 
 
 class PathFunctionsMixin:
@@ -42,83 +134,81 @@ class PathFunctionsMixin:
         from provisa.cypher.translator import CypherTranslateError  # avoid circular at module level
 
         pf: PathFunction = clause.pattern  # type: ignore[assignment]
-        pattern = pf.pattern
-        if len(pattern.nodes) < 2:
-            raise CypherTranslateError("Path function requires at least two nodes")
-
-        src_node = pattern.nodes[0]
-        tgt_node = pattern.nodes[-1]
-        rel = pattern.rels[0] if pattern.rels else None
-
-        if not src_node.labels or not tgt_node.labels:
-            raise CypherTranslateError(
-                "shortestPath/allShortestPaths require labeled source and target nodes"
-            )
-
-        src_type, _ = self._resolve_node_type(src_node.labels)  # type: ignore[attr-defined]
-        tgt_type, _ = self._resolve_node_type(tgt_node.labels)  # type: ignore[attr-defined]
-        if src_type is None or tgt_type is None:
-            raise CypherTranslateError(
-                "shortestPath/allShortestPaths require type-labeled (not domain-only) nodes"
-            )
-
-        src_nm = self._lm.nodes[src_type]
-        tgt_nm = self._lm.nodes[tgt_type]
+        src_node, tgt_node, rel = _extract_path_nodes(pf, CypherTranslateError)
+        src_type, tgt_type, src_nm, tgt_nm = self._resolve_path_node_types(
+            src_node, tgt_node, CypherTranslateError
+        )
         src_var = src_node.variable
         tgt_var = tgt_node.variable
+        _register_path_vars(self._var_table, src_var, tgt_var, src_nm, tgt_nm)
 
-        if src_var and src_var not in self._var_table:
-            self._var_table[src_var] = (src_var, src_nm)
-        if tgt_var and tgt_var not in self._var_table:
-            self._var_table[tgt_var] = (tgt_var, tgt_nm)
+        rel_types, variable_length, is_undirected, max_hops = _extract_rel_attrs(rel)
+        allowed_rels = _filter_allowed_rels(self._lm, rel_types)
+        needs_recursive = _needs_recursive_cte(variable_length, is_undirected, src_type, tgt_type, allowed_rels)
 
-        rel_types = [rt.upper() for rt in rel.types] if rel and rel.types else None
-        variable_length = bool(rel and rel.variable_length)
-        is_undirected = bool(rel and getattr(rel, "direction", "right") == "none")
-        if variable_length:
-            max_hops = rel.max_hops if rel.max_hops is not None else 10  # type: ignore[union-attr]
-        else:
-            max_hops = 1
-
-        # Determine allowed rels (for cycle detection and recursive CTE)
-        all_schema_rels = list(self._lm.relationships.values())
-        allowed_rels = [
-            r for r in all_schema_rels
-            if rel_types is None or r.rel_type in rel_types
-        ]
-
-        # Use recursive CTE when variable-length AND a self-referential schema
-        # path is possible: src==tgt (same-label start/end) OR any allowed rel
-        # loops back to the same node type (e.g. KNOWS: Person→Person).
-        # Flat JOIN only finds paths where each edge type appears once; recursive
-        # CTE handles repeated traversal of the same edge through different rows.
-        # Undirected variable-length uses flat JOIN with bidirectional BFS.
-        needs_recursive = variable_length and not is_undirected and (
-            src_type == tgt_type
-            or any(r.source_label == r.target_label for r in allowed_rels)
-        )
-
-        # Register path variable for RETURN p support
         if clause.variable and src_var and tgt_var:
             self._path_vars[clause.variable] = (src_var, tgt_var, needs_recursive)
 
         is_all_paths = pf.func_name.lower() == "allpaths"
 
         if needs_recursive:
-            base_rels = [r for r in allowed_rels if r.source_label == src_type]
-            if not base_rels:
-                raise CypherTranslateError(
-                    f"No schema path found from {src_type!r} to {tgt_type!r} "
-                    f"within {max_hops} hops"
-                )
-            return self._translate_path_function_recursive(
-                clause, src_var, tgt_var, src_nm, tgt_nm,
-                src_type, tgt_type, allowed_rels, max_hops,
-                is_all=pf.func_name.lower() in ("allshortestpaths", "allpaths"),
-                suppress_hops_order=is_all_paths,
+            return self._translate_path_recursive_branch(
+                clause, pf, src_var, tgt_var, src_nm, tgt_nm,
+                src_type, tgt_type, allowed_rels, max_hops, is_all_paths,
+                CypherTranslateError,
             )
 
-        # Flat JOIN path (non-self-referential variable-length or fixed-length)
+        return self._translate_path_flat_branch(
+            clause, src_var, tgt_var, src_nm, tgt_nm,
+            src_type, tgt_type, rel_types, max_hops, is_undirected, is_all_paths,
+            CypherTranslateError,
+        )
+
+    def _translate_path_recursive_branch(
+        self,
+        clause: MatchClause,
+        pf: PathFunction,
+        src_var: str | None,
+        tgt_var: str | None,
+        src_nm: NodeMapping,
+        tgt_nm: NodeMapping,
+        src_type: str,
+        tgt_type: str,
+        allowed_rels: list[RelationshipMapping],
+        max_hops: int,
+        is_all_paths: bool,
+        CypherTranslateError: type,
+    ) -> tuple[exp.Expression, list[dict]]:
+        """Dispatch to recursive CTE translation after validating base rels exist."""
+        base_rels = [r for r in allowed_rels if r.source_label == src_type]
+        if not base_rels:
+            raise CypherTranslateError(
+                f"No schema path found from {src_type!r} to {tgt_type!r} "
+                f"within {max_hops} hops"
+            )
+        return self._translate_path_function_recursive(
+            clause, src_var, tgt_var, src_nm, tgt_nm,
+            src_type, tgt_type, allowed_rels, max_hops,
+            is_all=pf.func_name.lower() in ("allshortestpaths", "allpaths"),
+            suppress_hops_order=is_all_paths,
+        )
+
+    def _translate_path_flat_branch(
+        self,
+        clause: MatchClause,
+        src_var: str | None,
+        tgt_var: str | None,
+        src_nm: NodeMapping,
+        tgt_nm: NodeMapping,
+        src_type: str,
+        tgt_type: str,
+        rel_types: list[str] | None,
+        max_hops: int,
+        is_undirected: bool,
+        is_all_paths: bool,
+        CypherTranslateError: type,
+    ) -> tuple[exp.Expression, list[dict]]:
+        """Build flat JOIN path for non-self-referential variable-length or fixed-length."""
         all_paths = self._lm.find_paths(src_type, tgt_type, rel_types, max_hops, bidirectional=is_undirected)
         if not all_paths:
             direction_hint = " (undirected — both directions searched)" if is_undirected else ""
@@ -127,29 +217,62 @@ class PathFunctionsMixin:
                 f"within {max_hops} hops{direction_hint}"
             )
 
-        if is_all_paths and not is_undirected:
-            # Directed allPaths() only: include all schema paths up to max_hops
-            candidate_paths = all_paths
-        else:
-            # Undirected patterns always use min_hops to prevent backtracking schema
-            # paths from generating cross-join UNION branches with duplicate rows
-            min_hops = min(len(p) for p in all_paths)
-            candidate_paths = [p for p in all_paths if len(p) == min_hops]
+        candidate_paths = _select_candidate_paths(all_paths, is_all_paths, is_undirected)
+        return self._build_flat_join_result(clause, candidate_paths, src_var, tgt_var, src_nm, tgt_nm)
 
+    def _build_flat_join_result(
+        self,
+        clause: MatchClause,
+        candidate_paths: list[list[RelationshipMapping]],
+        src_var: str | None,
+        tgt_var: str | None,
+        src_nm: NodeMapping,
+        tgt_nm: NodeMapping,
+    ) -> tuple[exp.Expression, list[dict]]:
+        """Build primary join chain and register extra path branches."""
         primary_from, primary_joins, step_nodes, step_edges = self._build_path_join_chain(
             candidate_paths[0], src_var, tgt_var, src_nm, tgt_nm, clause.optional
         )
         if clause.variable is not None:
             self._path_steps[clause.variable] = (step_nodes, step_edges)  # type: ignore[attr-defined]
         for extra_path in candidate_paths[1:]:
-            extra_from, extra_joins, extra_step_nodes, extra_step_edges = self._build_path_join_chain(
-                extra_path, src_var, tgt_var, src_nm, tgt_nm, clause.optional
-            )
-            extra_path_steps_map: dict[str, tuple[list, list]] = {}
-            if clause.variable is not None:
-                extra_path_steps_map[clause.variable] = (extra_step_nodes, extra_step_edges)
-            self._extra_path_branches.append((extra_from, extra_joins, extra_path_steps_map))
+            self._register_extra_path_branch(clause, extra_path, src_var, tgt_var, src_nm, tgt_nm)
         return primary_from, primary_joins
+
+    def _register_extra_path_branch(
+        self,
+        clause: MatchClause,
+        extra_path: list[RelationshipMapping],
+        src_var: str | None,
+        tgt_var: str | None,
+        src_nm: NodeMapping,
+        tgt_nm: NodeMapping,
+    ) -> None:
+        """Build and append one extra UNION branch for an alternate schema path."""
+        extra_from, extra_joins, extra_step_nodes, extra_step_edges = self._build_path_join_chain(
+            extra_path, src_var, tgt_var, src_nm, tgt_nm, clause.optional
+        )
+        extra_path_steps_map: dict[str, tuple[list, list]] = {}
+        if clause.variable is not None:
+            extra_path_steps_map[clause.variable] = (extra_step_nodes, extra_step_edges)
+        self._extra_path_branches.append((extra_from, extra_joins, extra_path_steps_map))
+
+    def _resolve_path_node_types(
+        self,
+        src_node: NodePattern,
+        tgt_node: NodePattern,
+        CypherTranslateError: type,
+    ) -> tuple[str, str, NodeMapping, NodeMapping]:
+        """Resolve src/tgt labels to type strings and NodeMappings."""
+        src_type, _ = self._resolve_node_type(src_node.labels)  # type: ignore[attr-defined]
+        tgt_type, _ = self._resolve_node_type(tgt_node.labels)  # type: ignore[attr-defined]
+        if src_type is None or tgt_type is None:
+            raise CypherTranslateError(
+                "shortestPath/allShortestPaths require type-labeled (not domain-only) nodes"
+            )
+        src_nm = self._lm.nodes[src_type]
+        tgt_nm = self._lm.nodes[tgt_type]
+        return src_type, tgt_type, src_nm, tgt_nm
 
     # ------------------------------------------------------------------
     # Flat JOIN chain (non-self-referential)

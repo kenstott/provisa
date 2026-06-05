@@ -30,7 +30,7 @@ from provisa.cypher.label_map import CypherLabelMap, RelationshipMapping
 def semantic_sql_to_cypher(
     semantic_sql: str,
     label_map: CypherLabelMap,
-    ctx: object,
+    ctx: object,  # object-ok: circular-import boundary — CompilationContext lives in provisa.compiler
     override_limit: int | None = None,
     params: list | None = None,
     flat: bool = False,
@@ -63,69 +63,17 @@ def semantic_sql_to_cypher(
     if not isinstance(tree, exp.Select):
         return None
 
-    # Build reverse lookups: (sql_domain, field_name) → node label
-    domain_to_label: dict[tuple[str, str], str] = {}
-    for _fn, table_meta in ctx.tables.items():  # type: ignore[attr-defined]
-        type_name = table_meta.type_name
-        if type_name not in label_map.nodes:
-            continue
-        nm = label_map.nodes[type_name]
-        sql_domain = domain_to_sql_name(table_meta.domain_id)
-        # Strip domain prefix from field_name — same logic as _semantic_table_ref:
-        # "sa__orders" → "orders" so lookups match the parsed semantic SQL table name.
-        field_key = (
-            table_meta.field_name.split("__", 1)[1]
-            if "__" in table_meta.field_name
-            else table_meta.field_name
-        )
-        lbl = label_map.display_label(nm)
-        domain_to_label[(sql_domain, field_key)] = lbl
-        domain_to_label[("", field_key)] = lbl
-
-    # Also cover traversal-only nodes (in label_map.nodes but not in ctx.tables)
-    for _tn, nm in label_map.nodes.items():
-        lbl = label_map.display_label(nm)
-        _sql_dom = domain_to_sql_name(nm.domain_id) if nm.domain_id else ""
-        _tbl = nm.sql_table_name
-        domain_to_label.setdefault((_sql_dom, _tbl), lbl)
-        domain_to_label.setdefault(("", _tbl), lbl)
-
-    # Build lookup for relationships: (src_col, tgt_col, tgt_display_label) → RelationshipMapping
-    # Keyed by forward direction + target label to avoid collision between inverse relationships
-    # that share the same column names (e.g. pets→assignments and assignments→pets both use
-    # breed_name/breedName but target different labels).
-    join_to_rel: dict[tuple[str, str, str], RelationshipMapping] = {}
-    for rel in label_map.relationships.values():
-        tgt_nm = label_map.nodes.get(rel.target_label)
-        tgt_display = label_map.display_label(tgt_nm) if tgt_nm is not None else rel.target_label
-        join_to_rel[(rel.join_source_column, rel.join_target_column, tgt_display)] = rel
+    domain_to_label = _build_domain_to_label(ctx, label_map, domain_to_sql_name)
+    join_to_rel = _build_join_to_rel(label_map)
 
     # --- Resolve FROM clause ---
     from_clause = tree.args.get("from_")
     if from_clause is None:
         return None
 
-    # sqlglot stores the Table directly (with alias embedded) in from_.this
-    from_tbl = from_clause.this
-    if not isinstance(from_tbl, exp.Table):
-        # Unwrap simple limit subquery: (SELECT * FROM table LIMIT N) alias
-        if isinstance(from_tbl, exp.Subquery):
-            inner = from_tbl.this
-            inner_from = inner.args.get("from_") if isinstance(inner, exp.Select) else None
-            inner_exprs = (
-                inner.args.get("expressions") or [] if isinstance(inner, exp.Select) else []
-            )
-            is_star = len(inner_exprs) == 1 and isinstance(inner_exprs[0], exp.Star)
-            if inner_from and is_star and isinstance(inner_from.this, exp.Table):
-                inner_tbl = inner_from.this
-                if from_tbl.alias:
-                    inner_tbl.set("alias", exp.TableAlias(this=exp.to_identifier(from_tbl.alias)))
-                inner_limit = inner.args.get("limit")
-                if inner_limit and not tree.args.get("limit"):
-                    tree.set("limit", inner_limit)
-                from_tbl = inner_tbl
-        if not isinstance(from_tbl, exp.Table):
-            return None  # non-unwrappable subquery in FROM
+    from_tbl = _unwrap_from_table(from_clause.this, tree)
+    if from_tbl is None:
+        return None
 
     base_label = _resolve_label(from_tbl, domain_to_label)
     if base_label is None:
@@ -133,106 +81,12 @@ def semantic_sql_to_cypher(
 
     sql_base_alias = from_tbl.alias or from_tbl.name
 
-    # --- Resolve JOINs → relationship segments ---
-    joins = tree.args.get("joins") or []
-    # Each entry: (is_optional, rel_type | None, src_sql_alias, tgt_sql_alias, tgt_label, inner_limit | None, many)
-    join_segments: list[tuple[bool, str | None, str, str, str, int | None, bool]] = []
+    label_to_rel, label_to_many = _build_label_to_rel(label_map)
 
-    # Build label → rel_type lookup for use with LATERAL joins (no ON condition to parse).
-    # Key by display_label (e.g. "RegisteredTables"), not type_name (e.g. "Meta_RegisteredTables"),
-    # because _resolve_label returns display_label and must match here.
-    label_to_rel: dict[str, str | None] = {}
-    label_to_many: dict[str, bool] = {}
-    for rel in label_map.relationships.values():
-        tgt_nm = label_map.nodes.get(rel.target_label)
-        tgt_display = label_map.display_label(tgt_nm) if tgt_nm is not None else rel.target_label
-        label_to_rel[tgt_display] = rel.rel_type
-        label_to_many[tgt_display] = rel.many
-
-    skipped_aliases: set[str] = set()
-    for join in joins:
-        join_tbl = join.this
-        if not isinstance(join_tbl, exp.Table):
-            # Try to unwrap LATERAL (SELECT * FROM actual_tbl WHERE ...) subquery
-            lateral_alias = join_tbl.alias if hasattr(join_tbl, "alias") else None
-            inner_tbl = None
-            # Unwrap Lateral(Subquery(Select(...))) or bare Subquery(Select(...))
-            subquery_node = join_tbl.this if isinstance(join_tbl, exp.Lateral) else join_tbl
-            if isinstance(subquery_node, exp.Subquery):
-                inner_select = subquery_node.this
-                if isinstance(inner_select, exp.Select):
-                    inner_from = inner_select.args.get("from_")
-                    if inner_from and isinstance(inner_from.this, exp.Table):
-                        inner_tbl = inner_from.this
-            if inner_tbl is not None and lateral_alias:
-                tgt_label = _resolve_label(inner_tbl, domain_to_label)
-                if tgt_label is not None:
-                    rel_type = label_to_rel.get(tgt_label)
-                    inner_lim_node = (
-                        inner_select.args.get("limit")
-                        if isinstance(inner_select, exp.Select)
-                        else None
-                    )
-                    inner_lim: int | None = None
-                    if inner_lim_node is not None:
-                        _lim_expr = getattr(inner_lim_node, "expression", None)
-                        if isinstance(_lim_expr, exp.Literal):
-                            inner_lim = int(_lim_expr.sql())
-                        elif isinstance(_lim_expr, exp.Parameter) and params:
-                            # sql_gen emits LIMIT $N (parameterized); Parameter.name is "1", "2", ...
-                            _idx = int(_lim_expr.name) - 1
-                            inner_lim = int(params[_idx])
-                    # Determine source alias from the lateral subquery's WHERE clause.
-                    # The WHERE condition ties the lateral to its source via a column equality
-                    # (e.g. _meta_alias.table_name = lateral_alias.table_name).  The table
-                    # qualifier that is NOT the lateral alias is the actual source.
-                    inner_where = (
-                        inner_select.args.get("where")
-                        if isinstance(inner_select, exp.Select)
-                        else None
-                    )
-                    lateral_src_alias = _src_alias_from_on(
-                        inner_where, lateral_alias, sql_base_alias
-                    )
-                    join_segments.append(
-                        (
-                            True,
-                            rel_type,
-                            lateral_src_alias,
-                            lateral_alias,
-                            tgt_label,
-                            inner_lim,
-                            label_to_many.get(tgt_label, False),
-                        )
-                    )
-                    continue
-            if lateral_alias:
-                skipped_aliases.add(lateral_alias)
-            continue  # non-unwrappable or non-graph LATERAL — skip
-
-        tgt_label = _resolve_label(join_tbl, domain_to_label)
-        if tgt_label is None:
-            skipped_aliases.add(join_tbl.alias or join_tbl.name)
-            continue  # meta/ops table not in graph schema — skip
-
-        tgt_sql_alias = join_tbl.alias or join_tbl.name
-
-        on_expr = join.args.get("on")
-        rel_type = _rel_type_from_on(on_expr, join_to_rel, tgt_label) or label_to_rel.get(tgt_label)
-        # Determine source alias from ON condition table references
-        src_sql_alias = _src_alias_from_on(on_expr, tgt_sql_alias, sql_base_alias)
-        is_optional = (join.side or "").upper() == "LEFT"
-        join_segments.append(
-            (
-                is_optional,
-                rel_type,
-                src_sql_alias,
-                tgt_sql_alias,
-                tgt_label,
-                None,
-                label_to_many.get(tgt_label, False),
-            )
-        )
+    join_segments, skipped_aliases = _resolve_join_segments(
+        tree, domain_to_label, join_to_rel, label_to_rel, label_to_many,
+        sql_base_alias, params,
+    )
 
     # Build short alias map: verbose SQL alias → a, b, c, …
     _letters = list(string.ascii_lowercase)
@@ -248,7 +102,6 @@ def semantic_sql_to_cypher(
     for _is_opt, _rt, _src, tgt_a, tgt_lbl, _il, _many in join_segments:
         alias_label[tgt_a] = tgt_lbl
 
-    # Build sql_alias → {sql_col: cypher_prop} from NodeMapping.properties (inverted)
     def _prop_map_for_label(display_lbl: str) -> dict[str, str]:
         type_names = label_map.nodes_by_table.get(display_lbl, [])
         if not type_names:
@@ -269,7 +122,6 @@ def semantic_sql_to_cypher(
         """Replace verbose SQL aliases with short Cypher aliases and sql_col names with cypher prop names."""
         for sql_a in sorted(alias_map, key=len, reverse=True):
             text = re.sub(rf"\b{re.escape(sql_a)}\b", alias_map[sql_a], text)
-        # Rewrite short_alias.sql_col → short_alias.cypherProp using prop map
         prop_lookup: dict[str, dict[str, str]] = {
             alias_map[sql_a]: pm for sql_a, pm in alias_prop_map.items() if sql_a in alias_map
         }
@@ -292,374 +144,32 @@ def semantic_sql_to_cypher(
 
     # --- Pre-scan SELECT to know which properties are needed per alias ---
     select_exprs = tree.args.get("expressions") or []
-    # short_alias → [(sql_col, cypher_prop), ...]
-    alias_needed_props: dict[str, list[tuple[str, str]]] = {}
-    for _expr in select_exprs:
-        if isinstance(_expr, exp.Column) and _expr.table:
-            _tbl_short = alias_map.get(_expr.table, _expr.table)
-            _sql_col = _expr.name
-            _cypher_prop = alias_prop_map.get(_expr.table, {}).get(_sql_col, _sql_col)
-            alias_needed_props.setdefault(_tbl_short, []).append((_sql_col, _cypher_prop))
+    alias_needed_props = _build_alias_needed_props(select_exprs, alias_map, alias_prop_map)
 
-    # short_alias → {cypher_prop → per-property list var name}
-    # Used by _build_return to emit direct list references instead of list comprehensions.
     collected_aliases: dict[str, dict[str, str]] = {}
+    _emit_optional_matches(
+        join_segments, alias_map, alias_label, base_alias, base_label,
+        alias_needed_props, collected_aliases, cypher_lines, flat, node_only, _node,
+    )
 
-    for is_optional, rel_type, src_sql_a, tgt_sql_a, label, inner_lim, is_many in join_segments:
-        if is_optional:
-            rel_str = f"[:{rel_type}]" if rel_type else "[]"
-            src_short = alias_map.get(src_sql_a, base_alias)
-            src_lbl = alias_label.get(src_sql_a, base_label)
-            tgt_short = alias_map[tgt_sql_a]
-            match_line = (
-                f"OPTIONAL MATCH {_node(src_short, src_lbl)}-{rel_str}->{_node(tgt_short, label)}"
-            )
-            if not flat and not node_only and (inner_lim is not None or is_many):
-                props = alias_needed_props.get(tgt_short, [])
-                if props:
-                    # Collect individual properties to avoid ARRAY_AGG(table_alias) (issue #49).
-                    prop_map: dict[str, str] = {}
-                    return_parts = []
-                    for _sql_col, _cypher_prop in props:
-                        prop_list_var = f"{tgt_short}_{_cypher_prop}_list"
-                        prop_map[_cypher_prop] = prop_list_var
-                        slice_suffix = f"[..{inner_lim}]" if inner_lim is not None else ""
-                        return_parts.append(
-                            f"collect({tgt_short}.{_cypher_prop}){slice_suffix} AS {prop_list_var}"
-                        )
-                    collected_aliases[tgt_short] = prop_map
-                    cypher_lines.append(
-                        f"CALL {{\n"
-                        f"  WITH {src_short}\n"
-                        f"  {match_line}\n"
-                        f"  RETURN {', '.join(return_parts)}\n"
-                        f"}}"
-                    )
-                # If no properties selected from this alias, fall through to flat OPTIONAL MATCH.
-                else:
-                    cypher_lines.append(match_line)
-            else:
-                cypher_lines.append(match_line)
-
-    # --- ARRAY_AGG subqueries → OPTIONAL MATCH + collect() ---
-    # Non-flat one-to-many joins emit correlated ARRAY_AGG subqueries in the SQL SELECT list.
-    # Translate each to an OPTIONAL MATCH on the inner table + collect() in RETURN.
-    array_agg_return: dict[str, str] = {}  # output SQL alias → collect(short.prop) expr
+    array_agg_return: dict[str, str] = {}
     _agg_alias_counter = len(alias_map)
-    _agg_seen: dict[str, str] = {}  # inner_sql_alias → assigned short alias
-    _agg_seen_label: dict[str, str] = {}  # inner_sql_alias → display label
+    _agg_seen: dict[str, str] = {}
+    _agg_seen_label: dict[str, str] = {}
 
-    for _expr in select_exprs:
-        if not (isinstance(_expr, exp.Alias) and isinstance(_expr.this, exp.Subquery)):
-            continue
-        _inner = _expr.this.this
-        if not isinstance(_inner, exp.Select):
-            continue
-        _agg_exprs = _inner.args.get("expressions") or []
-        if len(_agg_exprs) != 1:
-            continue
-        _agg_node = _agg_exprs[0]
-        if isinstance(_agg_node, exp.ArrayAgg):
-            _agg_col_node = _agg_node.this
-        elif isinstance(_agg_node, exp.Anonymous) and _agg_node.name.upper() == "ARRAY_AGG":
-            _agg_cols = getattr(_agg_node, "expressions", [])
-            _agg_col_node = _agg_cols[0] if _agg_cols else None
-        else:
-            continue
-        if not isinstance(_agg_col_node, exp.Column):
-            continue
-        _inner_from = _inner.args.get("from_")
-        if not _inner_from:
-            continue
-        # Handle both direct table and LIMIT-wrapped subquery:
-        # ARRAY_AGG(col) FROM table WHERE ...
-        # ARRAY_AGG(col) FROM (SELECT col FROM table WHERE ... LIMIT N)
-        if isinstance(_inner_from.this, exp.Table):
-            _inner_tbl = _inner_from.this
-            _where_node = _inner.args.get("where")
-        elif isinstance(_inner_from.this, exp.Subquery):
-            _limit_select = _inner_from.this.this
-            if not isinstance(_limit_select, exp.Select):
-                continue
-            _lf = _limit_select.args.get("from_")
-            if not (_lf and isinstance(_lf.this, exp.Table)):
-                continue
-            _inner_tbl = _lf.this
-            _where_node = _limit_select.args.get("where")
-        else:
-            continue
-        _tgt_lbl = _resolve_label(_inner_tbl, domain_to_label)
-        if _tgt_lbl is None:
-            continue
-        _inner_sql_alias = _inner_tbl.alias or _inner_tbl.name
-        # Source side of join condition (WHERE inner_alias.col = src_alias.col)
-        _src_sql = sql_base_alias
-        if _where_node:
-            for _eq in _where_node.find_all(exp.EQ):
-                for _wc in (_eq.this, _eq.expression):
-                    if isinstance(_wc, exp.Column) and _wc.table and _wc.table != _inner_sql_alias:
-                        _src_sql = _wc.table
-                        break
+    _agg_alias_counter = _process_array_agg_subqueries(
+        select_exprs, domain_to_label, label_to_rel, alias_map, alias_label,
+        base_alias, base_label, sql_base_alias, flat,
+        _agg_alias_counter, _agg_seen, _agg_seen_label,
+        array_agg_return, cypher_lines, _letters, _prop_map_for_label, _node,
+    )
 
-        # When aggregated column comes from a JOIN target inside the subquery
-        # (e.g. ARRAY_AGG(t2.lastName) FROM assignments t1 JOIN employees t2 ...),
-        # emit an OPTIONAL MATCH for the FROM table then chain to the JOIN target.
-        _col_table = _agg_col_node.table
-        if _col_table and _col_table != _inner_sql_alias:
-            # Find the JOIN inside the subquery that has alias _col_table.
-            _inner_joins = _inner.args.get("joins") or []
-            _join_tbl_node = next(
-                (
-                    j.this
-                    for j in _inner_joins
-                    if isinstance(j.this, exp.Table) and (j.this.alias or j.this.name) == _col_table
-                ),
-                None,
-            )
-            if _join_tbl_node is None:
-                continue
-            _eff_lbl = _resolve_label(_join_tbl_node, domain_to_label)
-            if _eff_lbl is None:
-                continue
-            # Ensure the FROM-table OPTIONAL MATCH is emitted (assignments → …).
-            if _inner_sql_alias not in _agg_seen:
-                _arr_short = (
-                    _letters[_agg_alias_counter]
-                    if _agg_alias_counter < len(_letters)
-                    else f"n{_agg_alias_counter}"
-                )
-                _agg_alias_counter += 1
-                _agg_seen[_inner_sql_alias] = _arr_short
-                _src_short = alias_map.get(_src_sql, base_alias)
-                _src_lbl = alias_label.get(_src_sql, base_label)
-                _parent_rel_type = label_to_rel.get(_tgt_lbl)
-                _parent_rel_str = f"[:{_parent_rel_type}]" if _parent_rel_type else "[]"
-                cypher_lines.append(
-                    f"OPTIONAL MATCH {_node(_src_short, _src_lbl)}-{_parent_rel_str}->{_node(_arr_short, _tgt_lbl)}"
-                )
-            # Emit the JOIN-target OPTIONAL MATCH chained from the FROM-table node.
-            if _col_table not in _agg_seen:
-                _join_short = (
-                    _letters[_agg_alias_counter]
-                    if _agg_alias_counter < len(_letters)
-                    else f"n{_agg_alias_counter}"
-                )
-                _agg_alias_counter += 1
-                _agg_seen[_col_table] = _join_short
-                _from_node_short = _agg_seen[_inner_sql_alias]
-                _join_rel_type = label_to_rel.get(_eff_lbl)
-                _join_rel_str = f"[:{_join_rel_type}]" if _join_rel_type else "[]"
-                cypher_lines.append(
-                    f"OPTIONAL MATCH {_node(_from_node_short, _tgt_lbl)}-{_join_rel_str}->{_node(_join_short, _eff_lbl)}"
-                )
-            _agg_sql_col = _agg_col_node.name
-            _cypher_prop = _prop_map_for_label(_eff_lbl).get(_agg_sql_col, _agg_sql_col)
-            _prop_ref = f"{_agg_seen[_col_table]}.{_cypher_prop}"
-            array_agg_return[_expr.alias] = _prop_ref if flat else f"collect({_prop_ref})"
-            continue
-
-        _agg_sql_col = _agg_col_node.name
-        _cypher_prop = _prop_map_for_label(_tgt_lbl).get(_agg_sql_col, _agg_sql_col)
-
-        if _inner_sql_alias not in _agg_seen:
-            _arr_short = (
-                _letters[_agg_alias_counter]
-                if _agg_alias_counter < len(_letters)
-                else f"n{_agg_alias_counter}"
-            )
-            _agg_alias_counter += 1
-            _agg_seen[_inner_sql_alias] = _arr_short
-            _src_short = alias_map.get(_src_sql, base_alias)
-            _src_lbl = alias_label.get(_src_sql, base_label)
-            _agg_rel_type = label_to_rel.get(_tgt_lbl)
-            _agg_rel_str = f"[:{_agg_rel_type}]" if _agg_rel_type else "[]"
-            cypher_lines.append(
-                f"OPTIONAL MATCH {_node(_src_short, _src_lbl)}-{_agg_rel_str}->{_node(_arr_short, _tgt_lbl)}"
-            )
-
-        _prop_ref = f"{_agg_seen[_inner_sql_alias]}.{_cypher_prop}"
-        array_agg_return[_expr.alias] = _prop_ref if flat else f"collect({_prop_ref})"
-
-    # --- json_agg(json_object(...)) / json_object(...) subqueries ---
-    # _build_rel_json_expr emits one correlated subquery per relationship using
-    # SQL-standard json_object(KEY k VALUE v, ...) which sqlglot parses as exp.JSONObject.
-    # Walk each top-level Alias(Subquery) that contains json_agg or json_object
-    # and emit OPTIONAL MATCH chains for every reachable table.
-    for _expr in select_exprs:
-        if not (isinstance(_expr, exp.Alias) and isinstance(_expr.this, exp.Subquery)):
-            continue
-        _outer_sel = _expr.this.this
-        if not isinstance(_outer_sel, exp.Select):
-            continue
-
-        # Determine top-level output alias (e.g. "assignment")
-        _top_alias = _expr.alias
-
-        # Work queue: (parent_sql_alias, inner_select_node)
-        # parent_sql_alias is the SQL table alias whose OPTIONAL MATCH we chain from.
-        _queue: list[tuple[str, exp.Select]] = []
-
-        # Detect json_agg(json_object) or json_agg(_t) [LIMIT-wrapped form]
-        # or bare json_object (many-to-one, LIMIT 1).
-        _outer_exprs = _outer_sel.args.get("expressions") or []
-        if len(_outer_exprs) != 1:
-            continue
-        _outer_agg = _outer_exprs[0]
-
-        # Resolve the actual SELECT that contains json_object
-        _jbo_sel: exp.Select | None = None
-        if isinstance(_outer_agg, exp.JSONArrayAgg):
-            _inner_arg = _outer_agg.this
-            if isinstance(_inner_arg, exp.JSONObject):
-                # Direct form: json_agg(json_object(...))
-                _jbo_sel = _outer_sel
-            elif isinstance(_inner_arg, exp.Column) and _inner_arg.name == "_t":
-                # LIMIT-wrapped: json_agg(_t) FROM (SELECT json_object(...) AS _t ...)
-                _from_outer = _outer_sel.args.get("from_")
-                if _from_outer and isinstance(_from_outer.this, exp.Subquery):
-                    _inner_limited = _from_outer.this.this
-                    if isinstance(_inner_limited, exp.Select):
-                        _jbo_sel = _inner_limited
-        elif isinstance(_outer_agg, exp.JSONObject):
-            # Many-to-one (LIMIT 1): SELECT json_object(...)
-            _jbo_sel = _outer_sel
-        else:
-            continue
-
-        if _jbo_sel is None:
-            continue
-
-        _from_node = _jbo_sel.args.get("from_")
-        if not (_from_node and isinstance(_from_node.this, exp.Table)):
-            continue
-
-        _queue.append((sql_base_alias, _jbo_sel))
-
-        while _queue:
-            _parent_sql_alias, _sel = _queue.pop(0)
-
-            _sel_from = _sel.args.get("from_")
-            if not (_sel_from and isinstance(_sel_from.this, exp.Table)):
-                continue
-
-            _tbl = _sel_from.this
-            _tgt_lbl = _resolve_label(_tbl, domain_to_label)
-            if _tgt_lbl is None:
-                continue
-
-            _inner_sql_alias = _tbl.alias or _tbl.name
-            _where_nd = _sel.args.get("where")
-
-            # Resolve source alias from WHERE condition
-            _src_sql = _parent_sql_alias
-            if _where_nd:
-                for _eq in _where_nd.find_all(exp.EQ):
-                    for _wc in (_eq.this, _eq.expression):
-                        if (
-                            isinstance(_wc, exp.Column)
-                            and _wc.table
-                            and _wc.table != _inner_sql_alias
-                        ):
-                            _src_sql = _wc.table
-                            break
-
-            if _inner_sql_alias not in _agg_seen:
-                _arr_short = (
-                    _letters[_agg_alias_counter]
-                    if _agg_alias_counter < len(_letters)
-                    else f"n{_agg_alias_counter}"
-                )
-                _agg_alias_counter += 1
-                _agg_seen[_inner_sql_alias] = _arr_short
-                _agg_seen_label[_inner_sql_alias] = _tgt_lbl
-                _src_short = alias_map.get(_src_sql) or _agg_seen.get(_src_sql, base_alias)
-                _src_lbl = alias_label.get(_src_sql) or _agg_seen_label.get(_src_sql, base_label)
-                _rel_type = label_to_rel.get(_tgt_lbl)
-                _rel_str = f"[:{_rel_type}]" if _rel_type else "[]"
-                cypher_lines.append(
-                    f"OPTIONAL MATCH {_node(_src_short, _src_lbl)}-{_rel_str}->{_node(_arr_short, _tgt_lbl)}"
-                )
-
-            # Find nested subqueries inside json_object args (JSONKeyValue children)
-            _sel_exprs = _sel.args.get("expressions") or []
-            for _se in _sel_exprs:
-                # Could be JSONObject or Alias(JSONObject)
-                _jbo_node = (
-                    _se
-                    if isinstance(_se, exp.JSONObject)
-                    else (
-                        _se.this
-                        if isinstance(_se, exp.Alias) and isinstance(_se.this, exp.JSONObject)
-                        else None
-                    )
-                )
-                if _jbo_node is None:
-                    continue
-                # Each child is a JSONKeyValue; check .expression (the value side) for Subquery
-                for _kv in _jbo_node.expressions:
-                    if not isinstance(_kv, exp.JSONKeyValue):
-                        continue
-                    _val = _kv.expression
-                    # Unwrap Subquery → Select
-                    _sub_sel: exp.Select | None = None
-                    if isinstance(_val, exp.Subquery) and isinstance(_val.this, exp.Select):
-                        _sub_sel = _val.this
-                    if _sub_sel is None:
-                        continue
-                    # Determine the actual Select containing json_object
-                    _sub_outer_exprs = _sub_sel.args.get("expressions") or []
-                    if not _sub_outer_exprs:
-                        continue
-                    _sub_agg = _sub_outer_exprs[0]
-                    if isinstance(_sub_agg, exp.JSONArrayAgg):
-                        _sub_inner = _sub_agg.this
-                        if isinstance(_sub_inner, exp.JSONObject):
-                            _queue.append((_inner_sql_alias, _sub_sel))
-                        elif isinstance(_sub_inner, exp.Column) and _sub_inner.name == "_t":
-                            _sub_from_nd = _sub_sel.args.get("from_")
-                            if _sub_from_nd and isinstance(_sub_from_nd.this, exp.Subquery):
-                                _sub_limited = _sub_from_nd.this.this
-                                if isinstance(_sub_limited, exp.Select):
-                                    _queue.append((_inner_sql_alias, _sub_limited))
-                    elif isinstance(_sub_agg, exp.JSONObject):
-                        _queue.append((_inner_sql_alias, _sub_sel))
-
-        # Build RETURN expression after queue is fully processed (all aliases populated).
-        if _top_alias not in array_agg_return:
-            # Extract the top-level JSONObject from _jbo_sel to build the map literal.
-            _jbo_node_for_ret: exp.JSONObject | None = None
-            for _se in _jbo_sel.args.get("expressions") or []:
-                if isinstance(_se, exp.JSONObject):
-                    _jbo_node_for_ret = _se
-                    break
-                if isinstance(_se, exp.Alias) and isinstance(_se.this, exp.JSONObject):
-                    _jbo_node_for_ret = _se.this
-                    break
-                # Direct form: json_agg(json_object(...)) — JSONArrayAgg wraps the JSONObject
-                if isinstance(_se, exp.JSONArrayAgg) and isinstance(_se.this, exp.JSONObject):
-                    _jbo_node_for_ret = _se.this
-                    break
-            # First table alias from _jbo_sel (fallback for flat mode)
-            _jbo_from = _jbo_sel.args.get("from_")
-            _jbo_tbl = (
-                _jbo_from.this if _jbo_from and isinstance(_jbo_from.this, exp.Table) else None
-            )
-            _first_sql_alias = (_jbo_tbl.alias or _jbo_tbl.name) if _jbo_tbl else None
-
-            if not flat and _jbo_node_for_ret is not None:
-                _map_expr = _cypher_map_from_jbo(
-                    _jbo_node_for_ret, _agg_seen, _agg_seen_label, _prop_map_for_label, flat
-                )
-                array_agg_return[_top_alias] = f"collect({_map_expr})"
-            elif flat and _jbo_node_for_ret is not None:
-                _flat_items = _flat_return_items_from_jbo(
-                    _jbo_node_for_ret, _agg_seen, _agg_seen_label, _prop_map_for_label
-                )
-                array_agg_return[_top_alias] = _flat_items or _agg_seen.get(
-                    _first_sql_alias or "", base_alias
-                )
-            else:
-                array_agg_return[_top_alias] = _agg_seen.get(_first_sql_alias or "", base_alias)
+    _process_json_subqueries(
+        select_exprs, domain_to_label, label_to_rel, alias_map, alias_label,
+        base_alias, base_label, sql_base_alias, flat,
+        _agg_alias_counter, _agg_seen, _agg_seen_label,
+        array_agg_return, cypher_lines, _letters, _prop_map_for_label, _node,
+    )
 
     # --- WHERE ---
     where_expr = tree.args.get("where")
@@ -669,23 +179,14 @@ def semantic_sql_to_cypher(
 
     # --- RETURN ---
     default_sql_alias = sql_base_alias if not join_segments else None
-    # If any SELECT column references a skipped (non-graph) alias, Cypher can't express it
     for _expr in select_exprs:
         if isinstance(_expr, exp.Column) and _expr.table in skipped_aliases:
             return None
 
     if node_only:
-        # Emit unique node aliases only (a, b, c …) — no property dotted paths.
-        # Preserve insertion order: base alias first, then each join target in order.
-        node_aliases: list[str] = [base_alias]
-        for _, _, _, tgt_sql_a, _, _, _ in join_segments:
-            short = alias_map.get(tgt_sql_a)
-            if short and short not in node_aliases:
-                node_aliases.append(short)
-        # Also include any aliases added by ARRAY_AGG subquery processing.
-        for short in _agg_seen.values():
-            if short not in node_aliases:
-                node_aliases.append(short)
+        node_aliases = _build_node_aliases(
+            base_alias, join_segments, alias_map, _agg_seen,
+        )
         cypher_lines.append(f"RETURN {', '.join(node_aliases)}")
     else:
         return_items = _build_return(
@@ -700,38 +201,688 @@ def semantic_sql_to_cypher(
         )
         cypher_lines.append(f"RETURN {', '.join(return_items)}" if return_items else "RETURN *")
 
-    # --- ORDER BY (skipped in node_only mode — node variables have no stable sort key) ---
     if not node_only:
-        order = tree.args.get("order")
-        if order:
-            order_items = []
-            for o in order.expressions:
-                col_expr = o.this
-                if isinstance(col_expr, exp.Column) and not col_expr.table and default_sql_alias:
-                    prop = alias_prop_map.get(default_sql_alias, {}).get(
-                        col_expr.name, col_expr.name
-                    )
-                    col_sql = f"{alias_map[default_sql_alias]}.{prop}"
-                else:
-                    col_sql = _remap(_sql_to_cypher_expr(col_expr.sql(dialect="postgres")))
-                direction = " DESC" if o.args.get("desc") else ""
-                order_items.append(f"{col_sql}{direction}")
-            cypher_lines.append(f"ORDER BY {', '.join(order_items)}")
+        _append_order_by(
+            tree, alias_map, alias_prop_map, default_sql_alias, cypher_lines, _remap,
+        )
 
-    # --- SKIP / LIMIT ---
+    _append_skip_limit(
+        tree, override_limit, node_only,
+        node_aliases if node_only else [],  # type: ignore[possibly-undefined]
+        cypher_lines,
+    )
+
+    return "\n".join(cypher_lines)
+
+
+# --- Extracted helpers for semantic_sql_to_cypher ---
+
+
+def _build_domain_to_label(
+    ctx: object,  # object-ok: circular-import boundary — CompilationContext lives in provisa.compiler
+    label_map: CypherLabelMap,
+    domain_to_sql_name,
+) -> dict[tuple[str, str], str]:
+    """Build reverse lookup: (sql_domain, field_name) → node display label."""
+    domain_to_label: dict[tuple[str, str], str] = {}
+    for _fn, table_meta in ctx.tables.items():  # type: ignore[attr-defined]
+        type_name = table_meta.type_name
+        if type_name not in label_map.nodes:
+            continue
+        nm = label_map.nodes[type_name]
+        sql_domain = domain_to_sql_name(table_meta.domain_id)
+        field_key = (
+            table_meta.field_name.split("__", 1)[1]
+            if "__" in table_meta.field_name
+            else table_meta.field_name
+        )
+        lbl = label_map.display_label(nm)
+        domain_to_label[(sql_domain, field_key)] = lbl
+        domain_to_label[("", field_key)] = lbl
+
+    for _tn, nm in label_map.nodes.items():
+        lbl = label_map.display_label(nm)
+        _sql_dom = domain_to_sql_name(nm.domain_id) if nm.domain_id else ""
+        _tbl = nm.sql_table_name
+        domain_to_label.setdefault((_sql_dom, _tbl), lbl)
+        domain_to_label.setdefault(("", _tbl), lbl)
+
+    return domain_to_label
+
+
+def _build_join_to_rel(
+    label_map: CypherLabelMap,
+) -> dict[tuple[str, str, str], RelationshipMapping]:
+    """Build lookup: (src_col, tgt_col, tgt_display_label) → RelationshipMapping."""
+    join_to_rel: dict[tuple[str, str, str], RelationshipMapping] = {}
+    for rel in label_map.relationships.values():
+        tgt_nm = label_map.nodes.get(rel.target_label)
+        tgt_display = label_map.display_label(tgt_nm) if tgt_nm is not None else rel.target_label
+        join_to_rel[(rel.join_source_column, rel.join_target_column, tgt_display)] = rel
+    return join_to_rel
+
+
+def _build_label_to_rel(
+    label_map: CypherLabelMap,
+) -> tuple[dict[str, str | None], dict[str, bool]]:
+    """Build label → rel_type and label → many lookups."""
+    label_to_rel: dict[str, str | None] = {}
+    label_to_many: dict[str, bool] = {}
+    for rel in label_map.relationships.values():
+        tgt_nm = label_map.nodes.get(rel.target_label)
+        tgt_display = label_map.display_label(tgt_nm) if tgt_nm is not None else rel.target_label
+        label_to_rel[tgt_display] = rel.rel_type
+        label_to_many[tgt_display] = rel.many
+    return label_to_rel, label_to_many
+
+
+def _unwrap_from_table(
+    from_tbl: exp.Expression,
+    tree: exp.Select,
+) -> exp.Table | None:
+    """Unwrap a FROM clause node into an exp.Table, handling limit-subquery wrappers."""
+    if isinstance(from_tbl, exp.Table):
+        return from_tbl
+    if isinstance(from_tbl, exp.Subquery):
+        inner = from_tbl.this
+        inner_from = inner.args.get("from_") if isinstance(inner, exp.Select) else None
+        inner_exprs = (
+            inner.args.get("expressions") or [] if isinstance(inner, exp.Select) else []
+        )
+        is_star = len(inner_exprs) == 1 and isinstance(inner_exprs[0], exp.Star)
+        if inner_from and is_star and isinstance(inner_from.this, exp.Table):
+            inner_tbl = inner_from.this
+            if from_tbl.alias:
+                inner_tbl.set("alias", exp.TableAlias(this=exp.to_identifier(from_tbl.alias)))
+            inner_limit = inner.args.get("limit")
+            if inner_limit and not tree.args.get("limit"):
+                tree.set("limit", inner_limit)
+            return inner_tbl
+    return None
+
+
+def _resolve_lateral_inner_lim(
+    inner_select: exp.Select,
+    params: list | None,
+) -> int | None:
+    """Extract LIMIT value from a lateral subquery SELECT, resolving parameters if needed."""
+    inner_lim_node = inner_select.args.get("limit")
+    if inner_lim_node is None:
+        return None
+    _lim_expr = getattr(inner_lim_node, "expression", None)
+    if isinstance(_lim_expr, exp.Literal):
+        return int(_lim_expr.sql())
+    if isinstance(_lim_expr, exp.Parameter) and params:
+        _idx = int(_lim_expr.name) - 1
+        return int(params[_idx])
+    return None
+
+
+def _resolve_join_segments(
+    tree: exp.Select,
+    domain_to_label: dict[tuple[str, str], str],
+    join_to_rel: dict[tuple[str, str, str], RelationshipMapping],
+    label_to_rel: dict[str, str | None],
+    label_to_many: dict[str, bool],
+    sql_base_alias: str,
+    params: list | None,
+) -> tuple[list[tuple[bool, str | None, str, str, str, int | None, bool]], set[str]]:
+    """Resolve JOIN clauses into join_segments and collect skipped aliases."""
+    joins = tree.args.get("joins") or []
+    join_segments: list[tuple[bool, str | None, str, str, str, int | None, bool]] = []
+    skipped_aliases: set[str] = set()
+
+    for join in joins:
+        join_tbl = join.this
+        if not isinstance(join_tbl, exp.Table):
+            _process_lateral_join(
+                join_tbl, domain_to_label, label_to_rel, label_to_many,
+                sql_base_alias, params, join_segments, skipped_aliases,
+            )
+            continue
+
+        tgt_label = _resolve_label(join_tbl, domain_to_label)
+        if tgt_label is None:
+            skipped_aliases.add(join_tbl.alias or join_tbl.name)
+            continue
+
+        tgt_sql_alias = join_tbl.alias or join_tbl.name
+        on_expr = join.args.get("on")
+        rel_type = _rel_type_from_on(on_expr, join_to_rel, tgt_label) or label_to_rel.get(tgt_label)
+        src_sql_alias = _src_alias_from_on(on_expr, tgt_sql_alias, sql_base_alias)
+        is_optional = (join.side or "").upper() == "LEFT"
+        join_segments.append((
+            is_optional, rel_type, src_sql_alias, tgt_sql_alias, tgt_label,
+            None, label_to_many.get(tgt_label, False),
+        ))
+
+    return join_segments, skipped_aliases
+
+
+def _process_lateral_join(
+    join_tbl: exp.Expression,
+    domain_to_label: dict[tuple[str, str], str],
+    label_to_rel: dict[str, str | None],
+    label_to_many: dict[str, bool],
+    sql_base_alias: str,
+    params: list | None,
+    join_segments: list[tuple[bool, str | None, str, str, str, int | None, bool]],
+    skipped_aliases: set[str],
+) -> None:
+    """Try to unwrap a LATERAL join and append a segment, or add to skipped_aliases."""
+    lateral_alias = join_tbl.alias if hasattr(join_tbl, "alias") else None
+    inner_tbl = None
+    subquery_node = join_tbl.this if isinstance(join_tbl, exp.Lateral) else join_tbl
+    inner_select: exp.Select | None = None
+    if isinstance(subquery_node, exp.Subquery):
+        inner_select = subquery_node.this if isinstance(subquery_node.this, exp.Select) else None
+        if inner_select is not None:
+            inner_from = inner_select.args.get("from_")
+            if inner_from and isinstance(inner_from.this, exp.Table):
+                inner_tbl = inner_from.this
+
+    if inner_tbl is not None and lateral_alias and inner_select is not None:
+        tgt_label = _resolve_label(inner_tbl, domain_to_label)
+        if tgt_label is not None:
+            rel_type = label_to_rel.get(tgt_label)
+            inner_lim = _resolve_lateral_inner_lim(inner_select, params)
+            inner_where = inner_select.args.get("where")
+            lateral_src_alias = _src_alias_from_on(inner_where, lateral_alias, sql_base_alias)
+            join_segments.append((
+                True, rel_type, lateral_src_alias, lateral_alias, tgt_label,
+                inner_lim, label_to_many.get(tgt_label, False),
+            ))
+            return
+
+    if lateral_alias:
+        skipped_aliases.add(lateral_alias)
+
+
+def _build_alias_needed_props(
+    select_exprs: list[exp.Expression],
+    alias_map: dict[str, str],
+    alias_prop_map: dict[str, dict[str, str]],
+) -> dict[str, list[tuple[str, str]]]:
+    """Pre-scan SELECT to determine which properties are needed per short alias."""
+    alias_needed_props: dict[str, list[tuple[str, str]]] = {}
+    for _expr in select_exprs:
+        if isinstance(_expr, exp.Column) and _expr.table:
+            _tbl_short = alias_map.get(_expr.table, _expr.table)
+            _sql_col = _expr.name
+            _cypher_prop = alias_prop_map.get(_expr.table, {}).get(_sql_col, _sql_col)
+            alias_needed_props.setdefault(_tbl_short, []).append((_sql_col, _cypher_prop))
+    return alias_needed_props
+
+
+def _emit_optional_matches(
+    join_segments: list[tuple[bool, str | None, str, str, str, int | None, bool]],
+    alias_map: dict[str, str],
+    alias_label: dict[str, str],
+    base_alias: str,
+    base_label: str,
+    alias_needed_props: dict[str, list[tuple[str, str]]],
+    collected_aliases: dict[str, dict[str, str]],
+    cypher_lines: list[str],
+    flat: bool,
+    node_only: bool,
+    node_fn,
+) -> None:
+    """Emit OPTIONAL MATCH or CALL {} blocks for optional join segments."""
+    for is_optional, rel_type, src_sql_a, tgt_sql_a, label, inner_lim, is_many in join_segments:
+        if not is_optional:
+            continue
+        rel_str = f"[:{rel_type}]" if rel_type else "[]"
+        src_short = alias_map.get(src_sql_a, base_alias)
+        src_lbl = alias_label.get(src_sql_a, base_label)
+        tgt_short = alias_map[tgt_sql_a]
+        match_line = (
+            f"OPTIONAL MATCH {node_fn(src_short, src_lbl)}-{rel_str}->{node_fn(tgt_short, label)}"
+        )
+        if not flat and not node_only and (inner_lim is not None or is_many):
+            props = alias_needed_props.get(tgt_short, [])
+            if props:
+                prop_map: dict[str, str] = {}
+                return_parts = []
+                for _sql_col, _cypher_prop in props:
+                    prop_list_var = f"{tgt_short}_{_cypher_prop}_list"
+                    prop_map[_cypher_prop] = prop_list_var
+                    slice_suffix = f"[..{inner_lim}]" if inner_lim is not None else ""
+                    return_parts.append(
+                        f"collect({tgt_short}.{_cypher_prop}){slice_suffix} AS {prop_list_var}"
+                    )
+                collected_aliases[tgt_short] = prop_map
+                cypher_lines.append(
+                    f"CALL {{\n"
+                    f"  WITH {src_short}\n"
+                    f"  {match_line}\n"
+                    f"  RETURN {', '.join(return_parts)}\n"
+                    f"}}"
+                )
+            else:
+                cypher_lines.append(match_line)
+        else:
+            cypher_lines.append(match_line)
+
+
+def _extract_array_agg_col_and_from(
+    inner: exp.Select,
+) -> tuple[exp.Column | None, exp.Table | None, exp.Expression | None]:
+    """Return (agg_col_node, inner_tbl, where_node) from an ARRAY_AGG subquery SELECT."""
+    _agg_exprs = inner.args.get("expressions") or []
+    if len(_agg_exprs) != 1:
+        return None, None, None
+    _agg_node = _agg_exprs[0]
+    if isinstance(_agg_node, exp.ArrayAgg):
+        _agg_col_node = _agg_node.this
+    elif isinstance(_agg_node, exp.Anonymous) and _agg_node.name.upper() == "ARRAY_AGG":
+        _agg_cols = getattr(_agg_node, "expressions", [])
+        _agg_col_node = _agg_cols[0] if _agg_cols else None
+    else:
+        return None, None, None
+    if not isinstance(_agg_col_node, exp.Column):
+        return None, None, None
+    _inner_from = inner.args.get("from_")
+    if not _inner_from:
+        return None, None, None
+    if isinstance(_inner_from.this, exp.Table):
+        return _agg_col_node, _inner_from.this, inner.args.get("where")
+    if isinstance(_inner_from.this, exp.Subquery):
+        _limit_select = _inner_from.this.this
+        if not isinstance(_limit_select, exp.Select):
+            return None, None, None
+        _lf = _limit_select.args.get("from_")
+        if not (_lf and isinstance(_lf.this, exp.Table)):
+            return None, None, None
+        return _agg_col_node, _lf.this, _limit_select.args.get("where")
+    return None, None, None
+
+
+def _resolve_where_src_alias(
+    where_node: exp.Expression | None,
+    inner_sql_alias: str,
+    default: str,
+) -> str:
+    """Find the source alias in a WHERE condition (the side that is NOT inner_sql_alias)."""
+    if not where_node:
+        return default
+    for _eq in where_node.find_all(exp.EQ):
+        for _wc in (_eq.this, _eq.expression):
+            if isinstance(_wc, exp.Column) and _wc.table and _wc.table != inner_sql_alias:
+                return _wc.table
+    return default
+
+
+def _next_short_alias(counter: int, letters: list[str]) -> str:
+    return letters[counter] if counter < len(letters) else f"n{counter}"
+
+
+def _process_array_agg_subqueries(
+    select_exprs: list[exp.Expression],
+    domain_to_label: dict[tuple[str, str], str],
+    label_to_rel: dict[str, str | None],
+    alias_map: dict[str, str],
+    alias_label: dict[str, str],
+    base_alias: str,
+    base_label: str,
+    sql_base_alias: str,
+    flat: bool,
+    agg_alias_counter: int,
+    agg_seen: dict[str, str],
+    agg_seen_label: dict[str, str],
+    array_agg_return: dict[str, str],
+    cypher_lines: list[str],
+    letters: list[str],
+    prop_map_for_label,
+    node_fn,
+) -> int:
+    """Process ARRAY_AGG correlated subqueries in SELECT; mutates cypher_lines and array_agg_return."""
+    for _expr in select_exprs:
+        if not (isinstance(_expr, exp.Alias) and isinstance(_expr.this, exp.Subquery)):
+            continue
+        _inner = _expr.this.this
+        if not isinstance(_inner, exp.Select):
+            continue
+        _agg_col_node, _inner_tbl, _where_node = _extract_array_agg_col_and_from(_inner)
+        if _agg_col_node is None or _inner_tbl is None:
+            continue
+        _tgt_lbl = _resolve_label(_inner_tbl, domain_to_label)
+        if _tgt_lbl is None:
+            continue
+        _inner_sql_alias = _inner_tbl.alias or _inner_tbl.name
+        _src_sql = _resolve_where_src_alias(_where_node, _inner_sql_alias, sql_base_alias)
+        _col_table = _agg_col_node.table
+
+        if _col_table and _col_table != _inner_sql_alias:
+            agg_alias_counter = _process_array_agg_chained(
+                _inner, _agg_col_node, _inner_tbl, _tgt_lbl, _inner_sql_alias, _col_table,
+                _src_sql, domain_to_label, label_to_rel, alias_map, alias_label,
+                base_alias, base_label, flat, agg_alias_counter, agg_seen,
+                cypher_lines, letters, prop_map_for_label, node_fn, array_agg_return, _expr,
+            )
+            continue
+
+        _agg_sql_col = _agg_col_node.name
+        _cypher_prop = prop_map_for_label(_tgt_lbl).get(_agg_sql_col, _agg_sql_col)
+
+        if _inner_sql_alias not in agg_seen:
+            _arr_short = _next_short_alias(agg_alias_counter, letters)
+            agg_alias_counter += 1
+            agg_seen[_inner_sql_alias] = _arr_short
+            _src_short = alias_map.get(_src_sql, base_alias)
+            _src_lbl = alias_label.get(_src_sql, base_label)
+            _agg_rel_type = label_to_rel.get(_tgt_lbl)
+            _agg_rel_str = f"[:{_agg_rel_type}]" if _agg_rel_type else "[]"
+            cypher_lines.append(
+                f"OPTIONAL MATCH {node_fn(_src_short, _src_lbl)}-{_agg_rel_str}->{node_fn(_arr_short, _tgt_lbl)}"
+            )
+
+        _prop_ref = f"{agg_seen[_inner_sql_alias]}.{_cypher_prop}"
+        array_agg_return[_expr.alias] = _prop_ref if flat else f"collect({_prop_ref})"
+
+    return agg_alias_counter
+
+
+def _process_array_agg_chained(
+    inner: exp.Select,
+    agg_col_node: exp.Column,
+    inner_tbl: exp.Table,
+    tgt_lbl: str,
+    inner_sql_alias: str,
+    col_table: str,
+    src_sql: str,
+    domain_to_label: dict[tuple[str, str], str],
+    label_to_rel: dict[str, str | None],
+    alias_map: dict[str, str],
+    alias_label: dict[str, str],
+    base_alias: str,
+    base_label: str,
+    flat: bool,
+    agg_alias_counter: int,
+    agg_seen: dict[str, str],
+    cypher_lines: list[str],
+    letters: list[str],
+    prop_map_for_label,
+    node_fn,
+    array_agg_return: dict[str, str],
+    expr: exp.Alias,
+) -> int:
+    """Handle ARRAY_AGG where the aggregated column comes from a JOIN inside the subquery."""
+    _inner_joins = inner.args.get("joins") or []
+    _join_tbl_node = next(
+        (
+            j.this
+            for j in _inner_joins
+            if isinstance(j.this, exp.Table) and (j.this.alias or j.this.name) == col_table
+        ),
+        None,
+    )
+    if _join_tbl_node is None:
+        return agg_alias_counter
+    _eff_lbl = _resolve_label(_join_tbl_node, domain_to_label)
+    if _eff_lbl is None:
+        return agg_alias_counter
+
+    if inner_sql_alias not in agg_seen:
+        _arr_short = _next_short_alias(agg_alias_counter, letters)
+        agg_alias_counter += 1
+        agg_seen[inner_sql_alias] = _arr_short
+        _src_short = alias_map.get(src_sql, base_alias)
+        _src_lbl = alias_label.get(src_sql, base_label)
+        _parent_rel_type = label_to_rel.get(tgt_lbl)
+        _parent_rel_str = f"[:{_parent_rel_type}]" if _parent_rel_type else "[]"
+        cypher_lines.append(
+            f"OPTIONAL MATCH {node_fn(_src_short, _src_lbl)}-{_parent_rel_str}->{node_fn(_arr_short, tgt_lbl)}"
+        )
+
+    if col_table not in agg_seen:
+        _join_short = _next_short_alias(agg_alias_counter, letters)
+        agg_alias_counter += 1
+        agg_seen[col_table] = _join_short
+        _from_node_short = agg_seen[inner_sql_alias]
+        _join_rel_type = label_to_rel.get(_eff_lbl)
+        _join_rel_str = f"[:{_join_rel_type}]" if _join_rel_type else "[]"
+        cypher_lines.append(
+            f"OPTIONAL MATCH {node_fn(_from_node_short, tgt_lbl)}-{_join_rel_str}->{node_fn(_join_short, _eff_lbl)}"
+        )
+
+    _agg_sql_col = agg_col_node.name
+    _cypher_prop = prop_map_for_label(_eff_lbl).get(_agg_sql_col, _agg_sql_col)
+    _prop_ref = f"{agg_seen[col_table]}.{_cypher_prop}"
+    array_agg_return[expr.alias] = _prop_ref if flat else f"collect({_prop_ref})"
+    return agg_alias_counter
+
+
+def _resolve_jbo_sel(outer_sel: exp.Select) -> exp.Select | None:
+    """Resolve the actual SELECT containing json_object from a json_agg or json_object wrapper."""
+    _outer_exprs = outer_sel.args.get("expressions") or []
+    if len(_outer_exprs) != 1:
+        return None
+    _outer_agg = _outer_exprs[0]
+    if isinstance(_outer_agg, exp.JSONArrayAgg):
+        _inner_arg = _outer_agg.this
+        if isinstance(_inner_arg, exp.JSONObject):
+            return outer_sel
+        if isinstance(_inner_arg, exp.Column) and _inner_arg.name == "_t":
+            _from_outer = outer_sel.args.get("from_")
+            if _from_outer and isinstance(_from_outer.this, exp.Subquery):
+                _inner_limited = _from_outer.this.this
+                if isinstance(_inner_limited, exp.Select):
+                    return _inner_limited
+    elif isinstance(_outer_agg, exp.JSONObject):
+        return outer_sel
+    return None
+
+
+def _enqueue_jbo_nested_subqueries(
+    sel: exp.Select,
+    inner_sql_alias: str,
+    queue: list[tuple[str, exp.Select]],
+) -> None:
+    """Find nested json_agg/json_object subqueries in a json_object and enqueue them."""
+    _sel_exprs = sel.args.get("expressions") or []
+    for _se in _sel_exprs:
+        _jbo_node = (
+            _se
+            if isinstance(_se, exp.JSONObject)
+            else (
+                _se.this
+                if isinstance(_se, exp.Alias) and isinstance(_se.this, exp.JSONObject)
+                else None
+            )
+        )
+        if _jbo_node is None:
+            continue
+        for _kv in _jbo_node.expressions:
+            if not isinstance(_kv, exp.JSONKeyValue):
+                continue
+            _val = _kv.expression
+            _sub_sel: exp.Select | None = None
+            if isinstance(_val, exp.Subquery) and isinstance(_val.this, exp.Select):
+                _sub_sel = _val.this
+            if _sub_sel is None:
+                continue
+            _sub_outer_exprs = _sub_sel.args.get("expressions") or []
+            if not _sub_outer_exprs:
+                continue
+            _sub_agg = _sub_outer_exprs[0]
+            if isinstance(_sub_agg, exp.JSONArrayAgg):
+                _sub_inner = _sub_agg.this
+                if isinstance(_sub_inner, exp.JSONObject):
+                    queue.append((inner_sql_alias, _sub_sel))
+                elif isinstance(_sub_inner, exp.Column) and _sub_inner.name == "_t":
+                    _sub_from_nd = _sub_sel.args.get("from_")
+                    if _sub_from_nd and isinstance(_sub_from_nd.this, exp.Subquery):
+                        _sub_limited = _sub_from_nd.this.this
+                        if isinstance(_sub_limited, exp.Select):
+                            queue.append((inner_sql_alias, _sub_limited))
+            elif isinstance(_sub_agg, exp.JSONObject):
+                queue.append((inner_sql_alias, _sub_sel))
+
+
+def _extract_jbo_node_for_ret(jbo_sel: exp.Select) -> exp.JSONObject | None:
+    """Extract the top-level JSONObject from a jbo_sel for building the RETURN map literal."""
+    for _se in jbo_sel.args.get("expressions") or []:
+        if isinstance(_se, exp.JSONObject):
+            return _se
+        if isinstance(_se, exp.Alias) and isinstance(_se.this, exp.JSONObject):
+            return _se.this
+        if isinstance(_se, exp.JSONArrayAgg) and isinstance(_se.this, exp.JSONObject):
+            return _se.this
+    return None
+
+
+def _process_json_subqueries(
+    select_exprs: list[exp.Expression],
+    domain_to_label: dict[tuple[str, str], str],
+    label_to_rel: dict[str, str | None],
+    alias_map: dict[str, str],
+    alias_label: dict[str, str],
+    base_alias: str,
+    base_label: str,
+    sql_base_alias: str,
+    flat: bool,
+    agg_alias_counter: int,
+    agg_seen: dict[str, str],
+    agg_seen_label: dict[str, str],
+    array_agg_return: dict[str, str],
+    cypher_lines: list[str],
+    letters: list[str],
+    prop_map_for_label,
+    node_fn,
+) -> None:
+    """Process json_agg/json_object correlated subqueries; mutates cypher_lines and array_agg_return."""
+    for _expr in select_exprs:
+        if not (isinstance(_expr, exp.Alias) and isinstance(_expr.this, exp.Subquery)):
+            continue
+        _outer_sel = _expr.this.this
+        if not isinstance(_outer_sel, exp.Select):
+            continue
+        _top_alias = _expr.alias
+        _jbo_sel = _resolve_jbo_sel(_outer_sel)
+        if _jbo_sel is None:
+            continue
+        _from_node = _jbo_sel.args.get("from_")
+        if not (_from_node and isinstance(_from_node.this, exp.Table)):
+            continue
+
+        _queue: list[tuple[str, exp.Select]] = [(sql_base_alias, _jbo_sel)]
+
+        while _queue:
+            _parent_sql_alias, _sel = _queue.pop(0)
+            _sel_from = _sel.args.get("from_")
+            if not (_sel_from and isinstance(_sel_from.this, exp.Table)):
+                continue
+            _tbl = _sel_from.this
+            _tgt_lbl = _resolve_label(_tbl, domain_to_label)
+            if _tgt_lbl is None:
+                continue
+            _inner_sql_alias = _tbl.alias or _tbl.name
+            _where_nd = _sel.args.get("where")
+            _src_sql = _resolve_where_src_alias(_where_nd, _inner_sql_alias, _parent_sql_alias)
+
+            if _inner_sql_alias not in agg_seen:
+                _arr_short = _next_short_alias(agg_alias_counter, letters)
+                agg_alias_counter += 1
+                agg_seen[_inner_sql_alias] = _arr_short
+                agg_seen_label[_inner_sql_alias] = _tgt_lbl
+                _src_short = alias_map.get(_src_sql) or agg_seen.get(_src_sql, base_alias)
+                _src_lbl = alias_label.get(_src_sql) or agg_seen_label.get(_src_sql, base_label)
+                _rel_type = label_to_rel.get(_tgt_lbl)
+                _rel_str = f"[:{_rel_type}]" if _rel_type else "[]"
+                cypher_lines.append(
+                    f"OPTIONAL MATCH {node_fn(_src_short, _src_lbl)}-{_rel_str}->{node_fn(_arr_short, _tgt_lbl)}"
+                )
+
+            _enqueue_jbo_nested_subqueries(_sel, _inner_sql_alias, _queue)
+
+        if _top_alias not in array_agg_return:
+            _jbo_node_for_ret = _extract_jbo_node_for_ret(_jbo_sel)
+            _jbo_from = _jbo_sel.args.get("from_")
+            _jbo_tbl = (
+                _jbo_from.this if _jbo_from and isinstance(_jbo_from.this, exp.Table) else None
+            )
+            _first_sql_alias = (_jbo_tbl.alias or _jbo_tbl.name) if _jbo_tbl else None
+
+            if not flat and _jbo_node_for_ret is not None:
+                _map_expr = _cypher_map_from_jbo(
+                    _jbo_node_for_ret, agg_seen, agg_seen_label, prop_map_for_label, flat
+                )
+                array_agg_return[_top_alias] = f"collect({_map_expr})"
+            elif flat and _jbo_node_for_ret is not None:
+                _flat_items = _flat_return_items_from_jbo(
+                    _jbo_node_for_ret, agg_seen, agg_seen_label, prop_map_for_label
+                )
+                array_agg_return[_top_alias] = _flat_items or agg_seen.get(
+                    _first_sql_alias or "", base_alias
+                )
+            else:
+                array_agg_return[_top_alias] = agg_seen.get(_first_sql_alias or "", base_alias)
+
+
+def _build_node_aliases(
+    base_alias: str,
+    join_segments: list[tuple[bool, str | None, str, str, str, int | None, bool]],
+    alias_map: dict[str, str],
+    agg_seen: dict[str, str],
+) -> list[str]:
+    """Build ordered unique list of node aliases for node_only RETURN."""
+    node_aliases: list[str] = [base_alias]
+    for _, _, _, tgt_sql_a, _, _, _ in join_segments:
+        short = alias_map.get(tgt_sql_a)
+        if short and short not in node_aliases:
+            node_aliases.append(short)
+    for short in agg_seen.values():
+        if short not in node_aliases:
+            node_aliases.append(short)
+    return node_aliases
+
+
+def _append_order_by(
+    tree: exp.Select,
+    alias_map: dict[str, str],
+    alias_prop_map: dict[str, dict[str, str]],
+    default_sql_alias: str | None,
+    cypher_lines: list[str],
+    remap_fn,
+) -> None:
+    """Append ORDER BY clause to cypher_lines if present."""
+    order = tree.args.get("order")
+    if not order:
+        return
+    order_items = []
+    for o in order.expressions:
+        col_expr = o.this
+        if isinstance(col_expr, exp.Column) and not col_expr.table and default_sql_alias:
+            prop = alias_prop_map.get(default_sql_alias, {}).get(col_expr.name, col_expr.name)
+            col_sql = f"{alias_map[default_sql_alias]}.{prop}"
+        else:
+            col_sql = remap_fn(_sql_to_cypher_expr(col_expr.sql(dialect="postgres")))
+        direction = " DESC" if o.args.get("desc") else ""
+        order_items.append(f"{col_sql}{direction}")
+    cypher_lines.append(f"ORDER BY {', '.join(order_items)}")
+
+
+def _resolve_limit_expr(lim_node: exp.Expression) -> str:
+    lim_expr = getattr(lim_node, "expression", None)
+    if isinstance(lim_expr, exp.Parameter):
+        return "25"
+    return lim_expr.sql() if lim_expr is not None else "25"
+
+
+def _append_skip_limit(
+    tree: exp.Select,
+    override_limit: int | None,
+    node_only: bool,
+    node_aliases: list[str],
+    cypher_lines: list[str],
+) -> None:
+    """Append SKIP and LIMIT clauses to cypher_lines."""
     offset = tree.args.get("offset")
     limit = tree.args.get("limit")
     if offset:
         cypher_lines.append(f"SKIP {offset.expression.sql()}")
 
-    def _resolve_limit_expr(lim_node: exp.Expression) -> str:
-        lim_expr = getattr(lim_node, "expression", None)
-        if isinstance(lim_expr, exp.Parameter):
-            return "25"
-        return lim_expr.sql() if lim_expr is not None else "25"
-
     if node_only:
-        # Use Neo4j browser default when multiple nodes; original limit for single-node.
         cypher_lines.append(
             "LIMIT 25"
             if len(node_aliases) > 1
@@ -745,8 +896,6 @@ def semantic_sql_to_cypher(
         cypher_lines.append(f"LIMIT {override_limit}")
     elif limit:
         cypher_lines.append(f"LIMIT {_resolve_limit_expr(limit)}")
-
-    return "\n".join(cypher_lines)
 
 
 # --- Helpers ---

@@ -30,6 +30,8 @@ from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from provisa.cypher.label_map import CypherLabelMap  # noqa: F401
+    from provisa.api.app import AppState  # noqa: F401
+    from provisa.compiler.sql_gen import CompilationContext  # noqa: F401
 
 import re as _re
 
@@ -108,6 +110,313 @@ class CypherRequest(BaseModel):
     params: dict[str, Any] = {}
 
 
+async def _route_approved_query(
+    query_id: str,
+    request: Request,
+    state: AppState,
+) -> Response:
+    """Dispatch a pre-approved query by stable_id."""
+    from provisa.api.data.endpoint_dev import QueryRequest, unified_query_endpoint
+
+    queries: list[dict] = (getattr(state, "schema_build_cache", {}) or {}).get(
+        "approved_queries", []
+    )
+    matched = next((q for q in queries if q.get("stable_id") == query_id), None)
+    if matched is None:
+        return JSONResponse(
+            status_code=404, content={"error": f"Approved query not found: {query_id!r}"}
+        )
+    query_req = QueryRequest(
+        query=matched.get("query_text") or "", role=_resolve_role_id(request, state)
+    )
+    result = await unified_query_endpoint(request, query_req, x_provisa_role=None)
+    return result  # type: ignore[return-value]
+
+
+def _handle_procedure(proc: str, label_map: CypherLabelMap) -> JSONResponse:
+    """Return schema-inspection results for Neo4j-compatible CALL procedures."""
+    if proc == "db.labels":
+        all_labels: set[str] = set()
+        for nm in label_map.nodes.values():
+            if nm.domain_label:
+                all_labels.add(nm.domain_label)
+            all_labels.add(nm.table_label)
+        rows = [{"label": lbl} for lbl in sorted(all_labels)]
+        return JSONResponse(content={"columns": ["label"], "rows": rows})
+    if proc == "db.relationshiptypes":
+        rows = [
+            {"relationshipType": r.rel_type}
+            for r in sorted(label_map.relationships.values(), key=lambda x: x.rel_type)
+        ]
+        return JSONResponse(content={"columns": ["relationshipType"], "rows": rows})
+    # proc == "db.propertykeys"
+    keys: set[str] = set()
+    for nm in label_map.nodes.values():
+        keys.update(nm.properties.keys())
+    rows = [{"propertyKey": k} for k in sorted(keys)]
+    return JSONResponse(content={"columns": ["propertyKey"], "rows": rows})
+
+
+async def _execute_multi_call(
+    non_corr_calls: list,
+    label_map: CypherLabelMap,
+    body: CypherRequest,
+    state: AppState,
+    role_id: str,
+    ctx: CompilationContext,
+    assemble_rows: Any,
+    to_serializable: Any,
+    build_governance_context: Any,
+    RLSContext: Any,
+) -> Response:
+    """Execute independent (non-correlated) CALL subqueries and CROSS JOIN results."""
+    rls = state.rls_contexts.get(role_id, RLSContext.empty())  # type: ignore[union-attr]
+    try:
+        gov_ctx = build_governance_context(
+            role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])  # type: ignore[union-attr]
+        )
+    except Exception as exc:
+        log.exception("Cypher governance setup failed")
+        return JSONResponse(
+            status_code=500, content={"error": f"Governance setup failed: {exc}"}
+        )
+
+    all_rows: list[list[dict]] = []
+    merged_graph_vars: dict = {}
+    for call_sq in non_corr_calls:
+        try:
+            rows_i, gvars_i = await _execute_call_body(
+                call_sq.body, label_map, body.params, state, gov_ctx, ctx, role_id
+            )
+            all_rows.append(rows_i)
+            merged_graph_vars.update(gvars_i)
+        except Exception as exc:
+            log.exception("Cypher multi-CALL execution failed")
+            return JSONResponse(status_code=500, content={"error": f"Execution failed: {exc}"})
+
+    combined: list[dict] = [{}]
+    for rs in all_rows:
+        combined = [{**a, **b} for a in combined for b in (rs or [{}])]
+
+    try:
+        assembled = assemble_rows(combined, merged_graph_vars)
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": f"Assembly failed: {exc}"})
+    try:
+        columns = list(combined[0].keys()) if combined else []
+        serializable_rows = [to_serializable(r) for r in assembled]
+    except Exception as exc:
+        log.exception("Cypher serialization failed")
+        return JSONResponse(status_code=500, content={"error": f"Serialization failed: {exc}"})
+    return JSONResponse(content={"columns": columns, "rows": serializable_rows})
+
+
+def _build_sql_from_ast(
+    ast: Any,
+    label_map: CypherLabelMap,
+    body: CypherRequest,
+    cypher_to_sql: Any,
+    apply_graph_rewrites: Any,
+) -> tuple[Any, list, dict] | Response:
+    """Stages 1-2: translate Cypher AST → SQL AST with graph rewrites. Returns (sql_str, ordered_params, graph_vars) or error Response."""
+    import sqlglot
+
+    try:
+        sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, body.params)
+    except Exception as exc:
+        from provisa.cypher.translator import CypherCrossSourceError, CypherTranslateError
+        if isinstance(exc, (CypherCrossSourceError, CypherTranslateError)):
+            return JSONResponse(status_code=400, content={"error": str(exc)})
+        raise
+
+    try:
+        sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
+    except Exception as exc:
+        log.exception("Cypher graph rewrite failed")
+        return JSONResponse(status_code=500, content={"error": f"Graph rewrite failed: {exc}"})
+
+    try:
+        sql_str = sql_ast.sql(dialect="postgres")
+        if ast.comments:
+            prefix = "\n".join(f"-- {c}" for c in ast.comments)
+            sql_str = f"{prefix}\n{sql_str}"
+    except Exception as exc:
+        log.exception("Cypher SQL render failed")
+        return JSONResponse(status_code=500, content={"error": f"SQL generation failed: {exc}"})
+
+    return sql_str, ordered_params, graph_vars
+
+
+def _apply_governance_pipeline(
+    sql_str: str,
+    role_id: str,
+    state: AppState,
+    ctx: CompilationContext,
+    make_semantic_sql: Any,
+    build_governance_context: Any,
+    apply_governance: Any,
+    RLSContext: Any,
+) -> tuple[str, str, Any] | Response:
+    """Stage 3: semantic SQL + RLS/masking. Returns (semantic_sql, governed_sql, gov_ctx) or error Response."""
+    try:
+        rls = state.rls_contexts.get(role_id, RLSContext.empty())  # type: ignore[union-attr]
+        gov_ctx = build_governance_context(
+            role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])  # type: ignore[union-attr]
+        )
+        semantic_sql = make_semantic_sql(sql_str, ctx)
+
+        from provisa.compiler.sql_validator import validate_sql
+
+        _role_dict = state.roles.get(role_id) or {}  # type: ignore[union-attr]
+        _violations = validate_sql(
+            semantic_sql,
+            ctx,
+            gov_ctx,
+            _role_dict,
+            getattr(state, "tables", []),
+            bypass_relationship_guard=True,
+            bypass_uncovered_relationships=True,
+        )
+        if _violations:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "violations": [{"code": v.code, "message": v.message} for v in _violations]
+                },
+            )
+
+        governed_sql = apply_governance(semantic_sql, gov_ctx)
+    except Exception as exc:
+        log.exception("Cypher governance failed")
+        return JSONResponse(status_code=500, content={"error": f"Governance failed: {exc}"})
+
+    return semantic_sql, governed_sql, gov_ctx
+
+
+def _rewrite_to_physical(
+    governed_sql: str,
+    ctx: CompilationContext,
+    state: AppState,
+    rewrite_semantic_to_trino_physical: Any,
+) -> tuple[str, str] | Response:
+    """Stage 4: semantic → Trino-physical refs, view expansion, transpile. Returns (exec_sql, trino_sql) or error Response."""
+    import sqlglot
+
+    try:
+        exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
+        if state.view_sql_map:  # type: ignore[union-attr]
+            from provisa.compiler.view_expand import expand_view_refs
+            exec_sql = expand_view_refs(exec_sql, state.view_sql_map)  # type: ignore[union-attr]
+    except Exception as exc:
+        log.exception("Cypher physical rewrite failed")
+        return JSONResponse(status_code=500, content={"error": f"Physical rewrite failed: {exc}"})
+
+    try:
+        trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
+    except Exception as exc:
+        log.exception("Cypher SQL transpile failed")
+        return JSONResponse(status_code=500, content={"error": f"Transpile failed: {exc}"})
+
+    return exec_sql, trino_sql
+
+
+async def _dispatch_execution(
+    exec_sql: str,
+    trino_sql: str,
+    resolved_params: list,
+    state: AppState,
+    span_attrs: dict[str, str],
+) -> list[dict] | Response:
+    """Stage 5: route to the correct executor based on table backing. Returns rows or error Response."""
+    import asyncio as _asyncio
+    from provisa.api.data.endpoint import _request_timeout
+    from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
+
+    clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)
+    _api_table_names = find_api_table_names(clean_exec_sql)
+    _has_api_tables = any(_lookup_api_endpoint(state, tn) is not None for tn in _api_table_names)
+    _has_gql_remote = any(
+        _lookup_gql_remote_table(state, tn) is not None for tn in _api_table_names
+    )
+
+    _timeout = _request_timeout()
+    log.info("Cypher final SQL: %s", trino_sql)
+    try:
+        if _has_gql_remote:
+            rows = await _asyncio.wait_for(
+                _execute_with_gql_remote(clean_exec_sql, clean_params, nf_args, state, span_attrs),
+                timeout=_timeout,
+            )
+        elif nf_args or _has_api_tables:
+            rows = await _asyncio.wait_for(
+                _execute_with_api(clean_exec_sql, clean_params, nf_args, state, span_attrs),
+                timeout=_timeout,
+            )
+        else:
+            rows = await _asyncio.wait_for(
+                _execute(trino_sql, resolved_params, state, span_attrs),
+                timeout=_timeout,
+            )
+    except _asyncio.TimeoutError:
+        return JSONResponse(
+            status_code=504,
+            content={"error": f"Query timed out after {_timeout:.0f}s", "sql": trino_sql},
+        )
+    except Exception as exc:
+        log.exception("Cypher execution failed: %s", trino_sql)
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql},
+        )
+    return rows
+
+
+def _serialize_rows(
+    rows: list[dict],
+    graph_vars: dict,
+    assemble_rows: Any,
+    to_serializable: Any,
+) -> tuple[list[str], list] | Response:
+    """Assemble and serialize rows. Returns (columns, serializable_rows) or error Response."""
+    try:
+        assembled = assemble_rows(rows, graph_vars)
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"error": f"Assembly failed: {exc}"})
+
+    try:
+        columns = list(rows[0].keys()) if rows else []
+        serializable_rows = [to_serializable(r) for r in assembled]
+    except Exception as exc:
+        log.exception("Cypher serialization failed")
+        return JSONResponse(status_code=500, content={"error": f"Serialization failed: {exc}"})
+
+    return columns, serializable_rows
+
+
+def _build_stats_content(
+    columns: list[str],
+    serializable_rows: list,
+    trino_sql: str,
+    stats_enabled: bool,
+    t0: float,
+) -> dict:
+    """Build response content dict, optionally including query stats."""
+    content: dict = {"columns": columns, "rows": serializable_rows}
+    if stats_enabled:
+        _qs_mod.record(
+            field="cypher",
+            source="trino",
+            strategy="federated",
+            elapsed_ms=(_time.perf_counter() - t0) * 1000,
+            rows=len(serializable_rows),
+            physical_sql=trino_sql,
+        )
+        qs = _qs_mod.current()
+        if qs is not None:
+            content["provisa_stats"] = qs.to_dict()
+    return content
+
+
 @router.post("/data/cypher")
 async def cypher_query(
     body: CypherRequest,
@@ -119,21 +428,7 @@ async def cypher_query(
     from provisa.api.app import state
 
     if query_id:
-        from provisa.api.data.endpoint_dev import QueryRequest, unified_query_endpoint
-
-        queries: list[dict] = (getattr(state, "schema_build_cache", {}) or {}).get(
-            "approved_queries", []
-        )
-        matched = next((q for q in queries if q.get("stable_id") == query_id), None)
-        if matched is None:
-            return JSONResponse(
-                status_code=404, content={"error": f"Approved query not found: {query_id!r}"}
-            )
-        query_req = QueryRequest(
-            query=matched.get("query_text") or "", role=_resolve_role_id(request, state)
-        )
-        result = await unified_query_endpoint(request, query_req, x_provisa_role=None)
-        return result  # type: ignore[return-value]
+        return await _route_approved_query(query_id, request, state)
 
     try:
         from provisa.cypher.parser import parse_cypher, CypherParseError
@@ -152,7 +447,6 @@ async def cypher_query(
         log.exception("Cypher imports failed")
         return JSONResponse(status_code=500, content={"error": f"Import failed: {exc}"})
 
-    # Resolve role → use default role_id
     role_id = _resolve_role_id(request, state)
     ctx = state.contexts.get(role_id)
     if ctx is None:
@@ -162,28 +456,7 @@ async def cypher_query(
     _proc = _detect_procedure(body.query)
     if _proc is not None:
         label_map = _build_label_map(ctx, role_id, state)
-        if _proc == "db.labels":
-            # Return individual domain labels + table labels (multi-label nodes).
-            # Each node contributes up to two labels; deduplicate and sort.
-            all_labels: set[str] = set()
-            for nm in label_map.nodes.values():
-                if nm.domain_label:
-                    all_labels.add(nm.domain_label)
-                all_labels.add(nm.table_label)
-            rows = [{"label": lbl} for lbl in sorted(all_labels)]
-            return JSONResponse(content={"columns": ["label"], "rows": rows})
-        if _proc == "db.relationshiptypes":
-            rows = [
-                {"relationshipType": r.rel_type}
-                for r in sorted(label_map.relationships.values(), key=lambda x: x.rel_type)
-            ]
-            return JSONResponse(content={"columns": ["relationshipType"], "rows": rows})
-        if _proc == "db.propertykeys":
-            keys: set[str] = set()
-            for nm in label_map.nodes.values():
-                keys.update(nm.properties.keys())
-            rows = [{"propertyKey": k} for k in sorted(keys)]
-            return JSONResponse(content={"columns": ["propertyKey"], "rows": rows})
+        return _handle_procedure(_proc, label_map)
 
     # Stage 1: Parse
     try:
@@ -191,7 +464,6 @@ async def cypher_query(
     except CypherParseError as exc:
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
-    # Build label map
     label_map = _build_label_map(ctx, role_id, state)
 
     # Validate and bind params
@@ -202,221 +474,56 @@ async def cypher_query(
         return JSONResponse(status_code=400, content={"error": str(exc)})
 
     # Multi-CALL pattern: independent (non-correlated) CALL blocks with no outer MATCH.
-    # Translate and execute each body independently, then Python CROSS JOIN the results.
     _non_corr_calls = [cs for cs in ast.call_subqueries if not cs.imported_vars]
     if _non_corr_calls and not ast.match_clauses:
-        try:
-            rls = state.rls_contexts.get(role_id, RLSContext.empty())
-            gov_ctx = build_governance_context(
-                role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
-            )
-        except Exception as exc:
-            log.exception("Cypher governance setup failed")
-            return JSONResponse(
-                status_code=500, content={"error": f"Governance setup failed: {exc}"}
-            )
-
-        all_rows: list[list[dict]] = []
-        merged_graph_vars: dict = {}
-        for call_sq in _non_corr_calls:
-            try:
-                rows_i, gvars_i = await _execute_call_body(
-                    call_sq.body, label_map, body.params, state, gov_ctx, ctx, role_id
-                )
-                all_rows.append(rows_i)
-                merged_graph_vars.update(gvars_i)
-            except Exception as exc:
-                log.exception("Cypher multi-CALL execution failed")
-                return JSONResponse(status_code=500, content={"error": f"Execution failed: {exc}"})
-
-        combined: list[dict] = [{}]
-        for rs in all_rows:
-            combined = [{**a, **b} for a in combined for b in (rs or [{}])]
-
-        try:
-            assembled = assemble_rows(combined, merged_graph_vars)
-        except Exception as exc:
-            return JSONResponse(status_code=500, content={"error": f"Assembly failed: {exc}"})
-        try:
-            columns = list(combined[0].keys()) if combined else []
-            serializable_rows = [to_serializable(r) for r in assembled]
-        except Exception as exc:
-            log.exception("Cypher serialization failed")
-            return JSONResponse(status_code=500, content={"error": f"Serialization failed: {exc}"})
-        return JSONResponse(content={"columns": columns, "rows": serializable_rows})
-
-    # Stage 1: Translate to SQLGlot (physical catalog.schema.table refs)
-    try:
-        sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, body.params)
-    except CypherCrossSourceError as exc:
-        return JSONResponse(status_code=400, content={"error": str(exc)})
-    except CypherTranslateError as exc:
-        return JSONResponse(status_code=400, content={"error": str(exc)})
-
-    # Stage 2: Graph type rewriter
-    try:
-        sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
-    except Exception as exc:
-        log.exception("Cypher graph rewrite failed")
-        return JSONResponse(status_code=500, content={"error": f"Graph rewrite failed: {exc}"})
-
-    # Render to SQL string (postgres dialect; make_semantic_sql handles catalog-qualified refs)
-    try:
-        import sqlglot
-
-        sql_str = sql_ast.sql(dialect="postgres")
-        if ast.comments:
-            prefix = "\n".join(f"-- {c}" for c in ast.comments)
-            sql_str = f"{prefix}\n{sql_str}"
-    except Exception as exc:
-        log.exception("Cypher SQL render failed")
-        return JSONResponse(status_code=500, content={"error": f"SQL generation failed: {exc}"})
-
-    # Stage 3: Governance — semantic SQL → apply RLS/masking/visibility
-    try:
-        rls = state.rls_contexts.get(role_id, RLSContext.empty())
-        gov_ctx = build_governance_context(
-            role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
+        return await _execute_multi_call(
+            _non_corr_calls, label_map, body, state, role_id, ctx,
+            assemble_rows, to_serializable, build_governance_context, RLSContext,
         )
-        semantic_sql = make_semantic_sql(sql_str, ctx)
 
-        # Validate against role-scoped GraphQL-equivalent rules
-        from provisa.compiler.sql_validator import validate_sql
+    # Stages 1-2: Translate + graph rewrites
+    _sql_result = _build_sql_from_ast(ast, label_map, body, cypher_to_sql, apply_graph_rewrites)
+    if isinstance(_sql_result, Response):
+        return _sql_result
+    sql_str, ordered_params, graph_vars = _sql_result
 
-        _role_dict = state.roles.get(role_id) or {}
-        _violations = validate_sql(
-            semantic_sql,
-            ctx,
-            gov_ctx,
-            _role_dict,
-            getattr(state, "tables", []),
-            bypass_relationship_guard=True,  # Cypher semantic layer is authoritative on joins
-            bypass_uncovered_relationships=True,
-        )
-        if _violations:
-            return JSONResponse(
-                status_code=403,
-                content={
-                    "violations": [{"code": v.code, "message": v.message} for v in _violations]
-                },
-            )
+    # Stage 3: Governance
+    _gov_result = _apply_governance_pipeline(
+        sql_str, role_id, state, ctx,
+        make_semantic_sql, build_governance_context, apply_governance, RLSContext,
+    )
+    if isinstance(_gov_result, Response):
+        return _gov_result
+    semantic_sql, governed_sql, _gov_ctx = _gov_result
 
-        governed_sql = apply_governance(semantic_sql, gov_ctx)
-    except Exception as exc:
-        log.exception("Cypher governance failed")
-        return JSONResponse(status_code=500, content={"error": f"Governance failed: {exc}"})
+    # Stage 4: Physical rewrite
+    _phys_result = _rewrite_to_physical(governed_sql, ctx, state, rewrite_semantic_to_trino_physical)
+    if isinstance(_phys_result, Response):
+        return _phys_result
+    exec_sql, trino_sql = _phys_result
 
-    # Stage 4: Rewrite to Trino-physical (catalog.schema.table)
-    try:
-        exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
-        # Inline non-materialized views — their refs resolve to the synthetic
-        # '__provisa__' source which is not a Trino catalog. expand into the
-        # view's (already physical) defining SQL, same as the GraphQL/SQL path.
-        if state.view_sql_map:
-            from provisa.compiler.view_expand import expand_view_refs
-
-            exec_sql = expand_view_refs(exec_sql, state.view_sql_map)
-    except Exception as exc:
-        log.exception("Cypher physical rewrite failed")
-        return JSONResponse(status_code=500, content={"error": f"Physical rewrite failed: {exc}"})
-
-    # Transpile to Trino dialect
-    try:
-        trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
-    except Exception as exc:
-        log.exception("Cypher SQL transpile failed")
-        return JSONResponse(status_code=500, content={"error": f"Transpile failed: {exc}"})
-
-    # Resolve ordered parameter values
     resolved_params = [body.params.get(name) for name in ordered_params]
 
-    # Stage 5: Execute — extract _nf_* native filter args before Trino execution
-    from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
-
-    clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)
-
-    # Route through REST+cache whenever any table is API-backed, even with no nf_args.
-    # This ensures JSONB columns (exposed as json by Trino's PG connector) are always
-    # accessed as VARCHAR from the Trino cache, avoiding INVALID_CAST_ARGUMENT errors.
-    # Scan the expanded exec_sql, not governed_sql: a view's body inlines API/graphql_remote
-    # tables that the outer (view-name-only) governed_sql never names.
-    _api_table_names = find_api_table_names(clean_exec_sql)
-    _has_api_tables = any(_lookup_api_endpoint(state, tn) is not None for tn in _api_table_names)
-    _has_gql_remote = any(
-        _lookup_gql_remote_table(state, tn) is not None for tn in _api_table_names
-    )
-
-    # Build span attrs from semantic SQL table refs (already normalized: pet_store.pets)
-    _cypher_span_attrs: dict[str, str] = _span_attrs_from_semantic_sql(
-        semantic_sql, role_id, body.query
-    )
+    span_attrs: dict[str, str] = _span_attrs_from_semantic_sql(semantic_sql, role_id, body.query)
 
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:
         _qs_mod.begin()
     _t0 = _time.perf_counter()
 
-    import asyncio as _asyncio
-    from provisa.api.data.endpoint import _request_timeout
+    # Stage 5: Execute
+    _exec_result = await _dispatch_execution(exec_sql, trino_sql, resolved_params, state, span_attrs)
+    if isinstance(_exec_result, Response):
+        return _exec_result
+    rows = _exec_result
 
-    _timeout = _request_timeout()
-    log.info("Cypher final SQL: %s", trino_sql)
-    try:
-        if _has_gql_remote:
-            rows = await _asyncio.wait_for(
-                _execute_with_gql_remote(
-                    clean_exec_sql, clean_params, nf_args, state, _cypher_span_attrs
-                ),
-                timeout=_timeout,
-            )
-        elif nf_args or _has_api_tables:
-            rows = await _asyncio.wait_for(
-                _execute_with_api(clean_exec_sql, clean_params, nf_args, state, _cypher_span_attrs),
-                timeout=_timeout,
-            )
-        else:
-            rows = await _asyncio.wait_for(
-                _execute(trino_sql, resolved_params, state, _cypher_span_attrs),
-                timeout=_timeout,
-            )
-    except _asyncio.TimeoutError:
-        return JSONResponse(
-            status_code=504,
-            content={"error": f"Query timed out after {_timeout:.0f}s", "sql": trino_sql},
-        )
-    except Exception as exc:
-        log.exception("Cypher execution failed: %s", trino_sql)
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql},
-        )
+    # Assemble & serialize
+    _ser_result = _serialize_rows(rows, graph_vars, assemble_rows, to_serializable)
+    if isinstance(_ser_result, Response):
+        return _ser_result
+    columns, serializable_rows = _ser_result
 
-    # Assemble
-    try:
-        assembled = assemble_rows(rows, graph_vars)
-    except Exception as exc:
-        return JSONResponse(status_code=500, content={"error": f"Assembly failed: {exc}"})
-
-    try:
-        columns = list(rows[0].keys()) if rows else []
-        serializable_rows = [to_serializable(r) for r in assembled]
-    except Exception as exc:
-        log.exception("Cypher serialization failed")
-        return JSONResponse(status_code=500, content={"error": f"Serialization failed: {exc}"})
-
-    content: dict = {"columns": columns, "rows": serializable_rows}
-    if stats_enabled:
-        _qs_mod.record(
-            field="cypher",
-            source="trino",
-            strategy="federated",
-            elapsed_ms=(_time.perf_counter() - _t0) * 1000,
-            rows=len(serializable_rows),
-            physical_sql=trino_sql,
-        )
-        qs = _qs_mod.current()
-        if qs is not None:
-            content["provisa_stats"] = qs.to_dict()
+    content = _build_stats_content(columns, serializable_rows, trino_sql, stats_enabled, _t0)
     return JSONResponse(content=content)
 
 
@@ -473,7 +580,7 @@ async def graph_schema(request: Request) -> JSONResponse:
     )
 
 
-def _resolve_role_id(request: Request, state: object) -> str:
+def _resolve_role_id(request: Request, state: AppState) -> str:
     """Resolve the role_id from X-Provisa-Role header, falling back to the first registered role."""
     roles: dict = getattr(state, "roles", {})
     header_role = request.headers.get("x-provisa-role") or request.headers.get("X-Provisa-Role")
@@ -484,7 +591,7 @@ def _resolve_role_id(request: Request, state: object) -> str:
     return "default"
 
 
-def _build_label_map(ctx: object, role_id: str, state: object) -> CypherLabelMap:
+def _build_label_map(ctx: CompilationContext, role_id: str, state: AppState) -> CypherLabelMap:
     """Build CypherLabelMap with cross-domain traversal nodes for the given role."""
     from provisa.cypher.label_map import CypherLabelMap
 
@@ -500,7 +607,7 @@ def _build_label_map(ctx: object, role_id: str, state: object) -> CypherLabelMap
     )
 
 
-def _lookup_api_endpoint(state: object, table_name: str):
+def _lookup_api_endpoint(state: AppState, table_name: str):
     """Look up an API endpoint by table name, tolerating camelCase/snake_case mismatch.
 
     Physical SQL uses tables.table_name (may be snake_case after compiler normalization).
@@ -521,7 +628,7 @@ def _lookup_api_endpoint(state: object, table_name: str):
     return None
 
 
-def _lookup_gql_remote_table(state: object, table_name: str) -> dict | None:
+def _lookup_gql_remote_table(state: AppState, table_name: str) -> dict | None:
     """Look up graphql_remote source info by physical table name."""
     for reg in getattr(state, "graphql_remote_sources", {}).values():
         for t in reg.get("tables", []):

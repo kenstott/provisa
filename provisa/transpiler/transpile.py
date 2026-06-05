@@ -13,6 +13,8 @@
 Supports PG SQL → Trino, and PG SQL → any target dialect for direct execution.
 """
 
+from collections.abc import Callable
+
 import sqlglot
 import sqlglot.expressions as exp
 
@@ -895,6 +897,133 @@ def _is_qualified_outer_col(expr: exp.Expression, inner_aliases: set[str]) -> bo
     return False
 
 
+def _flatten_walk_alias(
+    node: exp.Alias,
+    walk: "Callable[[exp.Expression], exp.Expression | None]",
+) -> exp.Expression | None:
+    inner_rw = walk(node.this)
+    if inner_rw is not None:
+        new_n = node.copy()
+        new_n.set("this", inner_rw)
+        return new_n
+    return None
+
+
+def _flatten_walk_json_object(
+    node: exp.JSONObject,
+    walk: "Callable[[exp.Expression], exp.Expression | None]",
+) -> exp.Expression | None:
+    new_kvs: list[exp.JSONKeyValue] = []
+    changed = False
+    for kv in node.expressions or []:
+        if not isinstance(kv, exp.JSONKeyValue):
+            new_kvs.append(kv)
+            continue
+        val_rw = walk(kv.expression)
+        if val_rw is not None:
+            new_kv = kv.copy()
+            new_kv.set("expression", val_rw)
+            new_kvs.append(new_kv)
+            changed = True
+        else:
+            new_kvs.append(kv)
+    if not changed:
+        return None
+    return exp.JSONObject(expressions=new_kvs)
+
+
+def _flatten_walk_agg(
+    node: exp.Anonymous,
+    walk: "Callable[[exp.Expression], exp.Expression | None]",
+) -> exp.Expression | None:
+    children = node.expressions or []
+    if children:
+        rw = walk(children[0])
+        if rw is not None:
+            new_n = node.copy()
+            new_n.set("expressions", [rw] + list(children[1:]))
+            return new_n
+    return None
+
+
+def _flatten_walk_json_array_agg(
+    node: exp.JSONArrayAgg,
+    walk: "Callable[[exp.Expression], exp.Expression | None]",
+) -> exp.Expression | None:
+    rw = walk(node.this)
+    if rw is not None:
+        new_n = node.copy()
+        new_n.set("this", rw)
+        return new_n
+    return None
+
+
+def _resolve_nested_from(from_expr: exp.Expression) -> tuple[str, exp.Expression] | None:
+    if isinstance(from_expr, exp.Table):
+        return (from_expr.alias or from_expr.name, from_expr)
+    if isinstance(from_expr, exp.Subquery):
+        return (from_expr.alias or from_expr.alias_or_name, from_expr)
+    return None
+
+
+def _build_join_condition(
+    corr: list[tuple[exp.Expression, exp.Expression]],
+    local: list[exp.Expression],
+) -> exp.Expression:
+    join_cond: exp.Expression = exp.EQ(this=corr[0][0].copy(), expression=corr[0][1].copy())
+    for jk2, outer2 in corr[1:]:
+        join_cond = exp.And(
+            this=join_cond,
+            expression=exp.EQ(this=jk2.copy(), expression=outer2.copy()),
+        )
+    if local:
+        local_w: exp.Expression = local[0]
+        for lc in local[1:]:
+            local_w = exp.And(this=local_w, expression=lc)
+        join_cond = exp.And(this=join_cond, expression=local_w)
+    return join_cond
+
+
+def _flatten_walk_subquery(
+    node: exp.Subquery,
+    extra_joins: list[exp.Join],
+) -> exp.Expression | None:
+    inner = node.this
+    if not isinstance(inner, exp.Select):
+        return None
+    inner_exprs_list = inner.args.get("expressions") or []
+    if len(inner_exprs_list) != 1:
+        return None
+    from_clause = inner.args.get("from_")
+    if not from_clause:
+        return None
+    resolved = _resolve_nested_from(from_clause.this)
+    if resolved is None:
+        return None
+    nested_alias, nested_table = resolved
+    where = inner.args.get("where")
+    if not where:
+        return None
+    corr, local = _split_where_conditions_general(where.this, {nested_alias})
+    if not corr:
+        return None
+    nested_select_expr = inner_exprs_list[0]
+    deeper_joins: list[exp.Join] = []
+    flat_nested = _flatten_nested_in_expr(nested_select_expr, {nested_alias}, deeper_joins)
+    if flat_nested is None:
+        flat_nested = nested_select_expr
+    join_cond = _build_join_condition(corr, local)
+    extra_joins.append(
+        exp.Join(
+            this=nested_table.copy(),
+            on=join_cond,
+            kind="LEFT",
+        )
+    )
+    extra_joins.extend(deeper_joins)
+    return flat_nested.copy()
+
+
 def _flatten_nested_in_expr(
     expr: exp.Expression,
     inner_aliases: set[str],
@@ -908,101 +1037,15 @@ def _flatten_nested_in_expr(
 
     def _walk(node: exp.Expression) -> exp.Expression | None:
         if isinstance(node, exp.Alias):
-            inner_rw = _walk(node.this)
-            if inner_rw is not None:
-                new_n = node.copy()
-                new_n.set("this", inner_rw)
-                return new_n
-            return None
-
+            return _flatten_walk_alias(node, _walk)
         if isinstance(node, exp.JSONObject):
-            new_kvs: list[exp.JSONKeyValue] = []
-            changed = False
-            for kv in node.expressions or []:
-                if not isinstance(kv, exp.JSONKeyValue):
-                    new_kvs.append(kv)
-                    continue
-                val_rw = _walk(kv.expression)
-                if val_rw is not None:
-                    new_kv = kv.copy()
-                    new_kv.set("expression", val_rw)
-                    new_kvs.append(new_kv)
-                    changed = True
-                else:
-                    new_kvs.append(kv)
-            if not changed:
-                return None
-            return exp.JSONObject(expressions=new_kvs)
-
+            return _flatten_walk_json_object(node, _walk)
         if isinstance(node, exp.Anonymous) and node.name.upper() in ("JSON_AGG", "ARRAY_AGG"):
-            children = node.expressions or []
-            if children:
-                rw = _walk(children[0])
-                if rw is not None:
-                    new_n = node.copy()
-                    new_n.set("expressions", [rw] + list(children[1:]))
-                    return new_n
-            return None
-
+            return _flatten_walk_agg(node, _walk)
         if isinstance(node, exp.JSONArrayAgg):
-            rw = _walk(node.this)
-            if rw is not None:
-                new_n = node.copy()
-                new_n.set("this", rw)
-                return new_n
-            return None
-
+            return _flatten_walk_json_array_agg(node, _walk)
         if isinstance(node, exp.Subquery):
-            inner = node.this
-            if not isinstance(inner, exp.Select):
-                return None
-            inner_exprs_list = inner.args.get("expressions") or []
-            if len(inner_exprs_list) != 1:
-                return None
-            from_clause = inner.args.get("from_")
-            if not from_clause:
-                return None
-            from_expr = from_clause.this
-            if isinstance(from_expr, exp.Table):
-                nested_alias = from_expr.alias or from_expr.name
-                nested_table: exp.Expression = from_expr
-            elif isinstance(from_expr, exp.Subquery):
-                nested_alias = from_expr.alias or from_expr.alias_or_name
-                nested_table = from_expr
-            else:
-                return None
-            where = inner.args.get("where")
-            if not where:
-                return None
-            corr, local = _split_where_conditions_general(where.this, {nested_alias})
-            if not corr:
-                return None
-            nested_select_expr = inner_exprs_list[0]
-            deeper_joins: list[exp.Join] = []
-            flat_nested = _flatten_nested_in_expr(nested_select_expr, {nested_alias}, deeper_joins)
-            if flat_nested is None:
-                flat_nested = nested_select_expr
-            join_cond: exp.Expression = exp.EQ(this=corr[0][0].copy(), expression=corr[0][1].copy())
-            for jk2, outer2 in corr[1:]:
-                join_cond = exp.And(
-                    this=join_cond,
-                    expression=exp.EQ(this=jk2.copy(), expression=outer2.copy()),
-                )
-            if local:
-                local_w: exp.Expression = local[0]
-                for lc in local[1:]:
-                    local_w = exp.And(this=local_w, expression=lc)
-                join_cond = exp.And(this=join_cond, expression=local_w)
-            extra_joins.append(
-                exp.Join(
-                    this=nested_table.copy(),
-                    on=join_cond,
-                    kind="LEFT",
-                )
-            )
-            extra_joins.extend(deeper_joins)
-            return flat_nested.copy()
-
+            return _flatten_walk_subquery(node, extra_joins)
         return None
 
     return _walk(expr)

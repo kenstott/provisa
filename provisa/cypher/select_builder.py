@@ -17,10 +17,15 @@ _shortestpath_hops_col, and _parse_expr.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import sqlglot.expressions as exp
 
 from provisa.cypher.label_map import CypherLabelMap, NodeMapping
 from provisa.cypher.parser import ReturnClause
+
+if TYPE_CHECKING:
+    from provisa.cypher.translator import GraphVarKind
 
 
 def _is_bare_variable(text: str) -> bool:
@@ -318,110 +323,141 @@ class SelectBuilderMixin:
             ],
         )
 
+    def _select_passthrough_var(
+        self,
+        expr_text: str,
+        alias: str | None,
+        graph_var_kind_edge: GraphVarKind,
+        graph_var_kind_passthrough: GraphVarKind,
+    ) -> exp.Expression:
+        """Emit SELECT expression for a passthrough variable from _all_rels subquery."""
+        all_rels_alias = getattr(self, "_all_rels_alias", "_all_rels")
+        rel_var_types = getattr(self, "_rel_var_types", {})
+        if expr_text in rel_var_types:
+            self._graph_vars[alias or expr_text] = graph_var_kind_edge
+        else:
+            self._graph_vars[alias or expr_text] = graph_var_kind_passthrough
+        col = exp.Column(
+            this=exp.Identifier(this=expr_text, quoted=True),
+            table=exp.Identifier(this=all_rels_alias),
+        )
+        return exp.alias_(col, alias or expr_text)
+
+    def _select_path_var(
+        self,
+        expr_text: str,
+        alias: str | None,
+        graph_var_kind_path: GraphVarKind,
+    ) -> exp.Expression:
+        """Emit SELECT expression for a path variable."""
+        self._graph_vars[alias or expr_text] = graph_var_kind_path
+        path_expr = self._build_path_object(expr_text)
+        return exp.alias_(path_expr, alias or expr_text)
+
+    def _select_rel_var(
+        self,
+        expr_text: str,
+        alias: str | None,
+        graph_var_kind_edge: GraphVarKind,
+    ) -> exp.Expression:
+        """Emit SELECT expression for a bare relationship variable."""
+        self._graph_vars[alias or expr_text] = graph_var_kind_edge
+        endpoints = getattr(self, "_rel_var_endpoints", {}).get(expr_text)
+        if endpoints:
+            src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
+            rel_type = self._rel_var_types[expr_text]
+            edge_expr: exp.Expression = self._build_edge_object(
+                rel_type, src_alias, src_nm, tgt_alias, tgt_nm, is_reversed
+            )
+        else:
+            edge_expr = exp.Null()
+        return exp.alias_(edge_expr, alias or expr_text)
+
+    def _select_node_var(
+        self,
+        expr_text: str,
+        alias: str | None,
+        graph_var_kind_node: GraphVarKind,
+    ) -> exp.Expression | None:
+        """Emit SELECT expression for a bare node variable. Returns None if not handled."""
+        var_info = self._var_table[expr_text]
+        if var_info[1] is not None:
+            self._graph_vars[alias or expr_text] = graph_var_kind_node
+            table_alias = var_info[0]
+            tbl_col = exp.Column(
+                this=exp.Star(),
+                table=exp.Identifier(this=table_alias),
+            )
+            if alias:
+                return exp.alias_(tbl_col, alias)
+            return tbl_col
+        if hasattr(self, "_domain_nodes") and expr_text in self._domain_nodes:
+            self._graph_vars[alias or expr_text] = graph_var_kind_node
+            tbl_col = exp.Column(
+                this=exp.Star(),
+                table=exp.Identifier(this=expr_text),
+            )
+            if alias:
+                return exp.alias_(tbl_col, alias)
+            return tbl_col
+        return None
+
+    def _select_prop_expr(self, expr_text: str, alias: str | None) -> exp.Expression:
+        """Emit SELECT expression for a property access or arbitrary expression."""
+        import re as _re
+
+        parsed = self._parse_expr(expr_text)
+        if alias:
+            return exp.alias_(parsed, alias)
+        _prop_m = _re.match(r"^([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)$", expr_text.strip())
+        _cypher_alias: str | None = None
+        if _prop_m:
+            _var, _prop = _prop_m.group(1), _prop_m.group(2)
+            _info = self._var_table.get(_var)
+            if _info and _info[1] and _prop in _info[1].properties:
+                _cypher_alias = _prop
+        if _cypher_alias:
+            return exp.alias_(parsed, _cypher_alias)
+        return parsed
+
     def _build_select(self, return_clause: ReturnClause) -> list[exp.Expression]:
         from provisa.cypher.translator import GraphVarKind  # avoid circular at module level
 
         exprs: list[exp.Expression] = []
+        passthrough_vars = getattr(self, "_passthrough_vars", set())
+
         for item in return_clause.items:
             expr_text = item.expression.strip()
             alias = item.alias
+            is_bare = _is_bare_variable(expr_text)
 
             # Passthrough variable: pre-built JSON from all-rels union subquery
-            passthrough_vars = getattr(self, "_passthrough_vars", set())
-            all_rels_alias = getattr(self, "_all_rels_alias", "_all_rels")
-            if _is_bare_variable(expr_text) and expr_text in passthrough_vars:
-                # Edge var keeps EDGE kind; node vars get PASSTHROUGH so rewriter skips them
-                rel_var_types = getattr(self, "_rel_var_types", {})
-                if expr_text in rel_var_types:
-                    self._graph_vars[alias or expr_text] = GraphVarKind.EDGE
-                else:
-                    self._graph_vars[alias or expr_text] = GraphVarKind.PASSTHROUGH
-                col = exp.Column(
-                    this=exp.Identifier(this=expr_text, quoted=True),
-                    table=exp.Identifier(this=all_rels_alias),
+            if is_bare and expr_text in passthrough_vars:
+                exprs.append(
+                    self._select_passthrough_var(
+                        expr_text, alias, GraphVarKind.EDGE, GraphVarKind.PASSTHROUGH
+                    )
                 )
-                out = alias or expr_text
-                exprs.append(exp.alias_(col, out))
                 continue
 
             # Path variable: RETURN p where p = shortestPath(...)
-            if _is_bare_variable(expr_text) and expr_text in self._path_vars:
-                self._graph_vars[alias or expr_text] = GraphVarKind.PATH
-                path_expr = self._build_path_object(expr_text)
-                if alias:
-                    exprs.append(exp.alias_(path_expr, alias))
-                else:
-                    exprs.append(exp.alias_(path_expr, expr_text))
+            if is_bare and expr_text in self._path_vars:
+                exprs.append(self._select_path_var(expr_text, alias, GraphVarKind.PATH))
                 continue
 
             # Bare relationship variable: RETURN r
-            if (
-                _is_bare_variable(expr_text)
-                and hasattr(self, "_rel_var_types")
-                and expr_text in self._rel_var_types
-            ):
-                self._graph_vars[alias or expr_text] = GraphVarKind.EDGE
-                endpoints = getattr(self, "_rel_var_endpoints", {}).get(expr_text)
-                if endpoints:
-                    src_alias, src_nm, tgt_alias, tgt_nm, is_reversed = endpoints
-                    rel_type = self._rel_var_types[expr_text]
-                    edge_expr = self._build_edge_object(
-                        rel_type, src_alias, src_nm, tgt_alias, tgt_nm, is_reversed
-                    )
-                else:
-                    edge_expr = exp.Null()
-                out = alias or expr_text
-                exprs.append(exp.alias_(edge_expr, out))
+            if is_bare and hasattr(self, "_rel_var_types") and expr_text in self._rel_var_types:
+                exprs.append(self._select_rel_var(expr_text, alias, GraphVarKind.EDGE))
                 continue
 
             # Bare node variable: RETURN n
-            if _is_bare_variable(expr_text) and expr_text in self._var_table:
-                var_info = self._var_table[expr_text]
-                if var_info[1] is not None:
-                    self._graph_vars[alias or expr_text] = GraphVarKind.NODE
-                    table_alias = var_info[0]
-                    tbl_col = exp.Column(
-                        this=exp.Star(),
-                        table=exp.Identifier(this=table_alias),
-                    )
-                    if alias:
-                        exprs.append(exp.alias_(tbl_col, alias))
-                    else:
-                        exprs.append(tbl_col)
-                    continue
-                # Domain-only node (var_info[1] is None): select all from the subquery alias
-                if hasattr(self, "_domain_nodes") and expr_text in self._domain_nodes:
-                    self._graph_vars[alias or expr_text] = GraphVarKind.NODE
-                    tbl_col = exp.Column(
-                        this=exp.Star(),
-                        table=exp.Identifier(this=expr_text),
-                    )
-                    if alias:
-                        exprs.append(exp.alias_(tbl_col, alias))
-                    else:
-                        exprs.append(tbl_col)
+            if is_bare and expr_text in self._var_table:
+                node_expr = self._select_node_var(expr_text, alias, GraphVarKind.NODE)
+                if node_expr is not None:
+                    exprs.append(node_expr)
                     continue
 
             # Property access or expression
-            parsed = self._parse_expr(expr_text)
-            if alias:
-                exprs.append(exp.alias_(parsed, alias))
-            else:
-                # For var.prop without an explicit alias, use the canonical Cypher
-                # property name from NodeMapping (the naming authority) so the SQL
-                # column name never leaks into results.
-                import re as _re
-
-                _prop_m = _re.match(r"^([A-Za-z_]\w*)\s*\.\s*([A-Za-z_]\w*)$", expr_text.strip())
-                _cypher_alias: str | None = None
-                if _prop_m:
-                    _var, _prop = _prop_m.group(1), _prop_m.group(2)
-                    _info = self._var_table.get(_var)
-                    if _info and _info[1] and _prop in _info[1].properties:
-                        _cypher_alias = _prop
-                if _cypher_alias:
-                    exprs.append(exp.alias_(parsed, _cypher_alias))
-                else:
-                    exprs.append(parsed)
+            exprs.append(self._select_prop_expr(expr_text, alias))
 
         return exprs

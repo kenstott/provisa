@@ -24,7 +24,7 @@ from provisa.compiler.cursor import encode_cursor
 from provisa.compiler.sql_gen import ColumnRef, CompiledQuery
 
 
-def _recursive_json_convert(val: object) -> object:
+def _recursive_json_convert(val: object) -> object:  # object-ok: arbitrary SQL column value — Decimal | date | str | int | dict | list | None
     """Recursively apply _convert_value to nested dicts/lists.
 
     Needed because json_format(...) embeds JSON arrays as VARCHAR strings inside
@@ -38,7 +38,7 @@ def _recursive_json_convert(val: object) -> object:
     return val
 
 
-def _convert_value(val: object) -> object:
+def _convert_value(val: object) -> object:  # object-ok: arbitrary SQL column value — Decimal | date | str | int | dict | list | None
     """Convert database types to JSON-safe Python types."""
     if isinstance(val, Decimal):
         f = float(val)
@@ -46,7 +46,7 @@ def _convert_value(val: object) -> object:
             return int(f)
         return f
     if hasattr(val, "isoformat"):
-        return val.isoformat()
+        return val.isoformat()  # object-ok: guarded by hasattr — any date/datetime-like type
     # Trino returns JSON columns as strings; parse so object sub-fields resolve correctly.
     # Recursively convert nested values so json_format(...)-wrapped arrays unpack correctly.
     if isinstance(val, str) and len(val) > 1 and val[0] in ("{", "["):
@@ -58,40 +58,31 @@ def _convert_value(val: object) -> object:
     return val
 
 
-def _to_hashable(v: object) -> object:
+def _to_hashable(v: object) -> object:  # object-ok: arbitrary SQL column value — dict | list | scalar
     """Make a value safe to use as a dict key / tuple component."""
     if isinstance(v, (dict, list)):
         return json.dumps(v, sort_keys=True, default=str)
     return v
 
 
-def serialize_rows(
-    rows: list[tuple],
+def _group_columns(
     columns: list[ColumnRef],
-    root_field: str,
-    result_limit: int | None = None,
-) -> dict:
-    """Serialize flat SQL rows into nested GraphQL JSON.
-
-    Args:
-        rows: Result rows from SQL execution (tuples).
-        columns: Column references from compilation (maps positions to fields).
-        root_field: The GraphQL root field name (e.g., "orders").
-
-    Returns:
-        {"data": {root_field: [...]}}
-    """
-    # Group columns by nesting path
+) -> tuple[list[tuple[int, ColumnRef]], dict[str, list[tuple[int, ColumnRef]]]]:
+    """Split columns into root-level and nested groups keyed by nest path."""
     root_cols: list[tuple[int, ColumnRef]] = []
     nested_groups: dict[str, list[tuple[int, ColumnRef]]] = {}
-
     for i, col in enumerate(columns):
         if col.nested_in is None:
             root_cols.append((i, col))
         else:
             nested_groups.setdefault(col.nested_in, []).append((i, col))
+    return root_cols, nested_groups
 
-    # Detect ARRAY_AGG paths: one-to-many cardinality OR is_agg=True (many-to-one via ARRAY_AGG).
+
+def _detect_path_sets(
+    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
+) -> tuple[set[str], set[str], set[str]]:
+    """Return (one_to_many_paths, agg_paths, absorbed_paths)."""
     one_to_many_paths: set[str] = set()
     for nest_path, nest_cols in nested_groups.items():
         for _, col in nest_cols:
@@ -99,231 +90,324 @@ def serialize_rows(
                 one_to_many_paths.add(nest_path)
                 break
 
-    # Paths that emit ARRAY_AGG values (is_agg=True on any column).
     agg_paths: set[str] = {
         p for p in one_to_many_paths if any(col.is_agg for _, col in nested_groups[p])
     }
-    # Child paths nested under an agg_path: their arrays are parallel to the parent's
-    # and must be zipped index-by-index during parent unzip rather than processed separately.
     absorbed_paths: set[str] = {
         cp for cp in one_to_many_paths if any(cp.startswith(p + ".") for p in agg_paths)
     }
+    return one_to_many_paths, agg_paths, absorbed_paths
 
-    if one_to_many_paths:
-        # Grouping mode: de-duplicate parent rows and accumulate one-to-many children
-        seen: dict[tuple, int] = {}  # root_key → index in result_rows
-        result_rows: list[dict] = []
 
-        for row in rows:
-            root_key = tuple(_to_hashable(_convert_value(row[idx])) for idx, _ in root_cols)
+def _navigate_path(
+    obj: dict,
+    parts: list[str],
+) -> tuple[dict, bool]:
+    """Walk obj down parts[:-1], creating intermediate dicts. Returns (target, skip)."""
+    target = obj
+    for part in parts[:-1]:
+        cur = target.get(part)
+        if isinstance(cur, dict):
+            target = cur
+        elif part not in target:
+            target[part] = {}
+            target = target[part]
+        else:
+            return target, True
+    return target, False
 
-            is_first_visit = root_key not in seen
-            if is_first_visit:
-                obj: dict = {}
-                for idx, col in root_cols:
-                    obj[col.field_name] = _convert_value(row[idx])
-                # Seed all nested paths in sorted order (parents before children).
-                # one-to-many paths → initialize as []; many-to-one → seed from first row.
-                for nest_path in sorted(nested_groups.keys()):
-                    nest_cols_for_path = nested_groups[nest_path]
-                    parts = nest_path.split(".")
-                    target = obj
-                    skip = False
-                    for part in parts[:-1]:
-                        cur = target.get(part)
-                        if isinstance(cur, dict):
-                            target = cur
-                        elif part not in target:
-                            target[part] = {}
-                            target = target[part]
-                        else:
-                            skip = True
-                            break
-                    if skip:
-                        continue
-                    leaf = parts[-1]
-                    if nest_path in one_to_many_paths:
-                        target[leaf] = []
-                    else:
-                        all_none = all(row[idx] is None for idx, _ in nest_cols_for_path)
-                        if all_none:
-                            target[leaf] = None
-                        else:
-                            target[leaf] = {
-                                col.field_name: _convert_value(row[idx])
-                                for idx, col in nest_cols_for_path
-                            }
-                seen[root_key] = len(result_rows)
-                result_rows.append(obj)
 
-            # Accumulate into every one-to-many array (at any depth).
-            # Process paths in sorted order so parents are always appended before children.
-            # absorbed_paths are zipped by their parent ARRAY_AGG path and skipped here.
-            parent_idx = seen[root_key]
-            parent_obj = result_rows[parent_idx]
-            for oto_path in sorted(one_to_many_paths):
-                if oto_path in absorbed_paths:
-                    continue
-                nest_cols_for_path = nested_groups[oto_path]
-                all_none = all(row[idx] is None for idx, _ in nest_cols_for_path)
-                child: dict = {
-                    col.field_name: _convert_value(row[idx]) for idx, col in nest_cols_for_path
-                }
-                parts = oto_path.split(".")
-                target = parent_obj
-                skip = False
-                for part in parts[:-1]:
-                    cur = target.get(part)
-                    if isinstance(cur, dict):
-                        target = cur
-                    elif isinstance(cur, list) and cur:
-                        # Navigate into the last appended element — the one added for this row
-                        # when the parent one-to-many path was processed earlier in this loop.
-                        target = cur[-1]
-                    else:
-                        skip = True
-                        break
-                if skip:
-                    continue
-                arr = target.get(parts[-1])
-                if not isinstance(arr, list):
-                    continue
-                if all_none:
-                    # No child data — leave the [] in place (already seeded or initialized on item)
-                    continue
-                # ARRAY_AGG case: column values are already arrays — zip into per-element objects.
-                # Skip duplicate unzipping only when there is no one-to-many parent path
-                # (top-level ARRAY_AGG repeats identically on every SQL row for the same parent).
-                # With a one-to-many parent each SQL row carries distinct ARRAY_AGG values.
-                has_oto_parent = any(
-                    oto_path.startswith(p + ".") for p in one_to_many_paths if p != oto_path
-                )
-                if any(isinstance(v, list) for v in child.values()):
-                    if not is_first_visit and not has_oto_parent:
-                        continue
-                    n = next((len(v) for v in child.values() if isinstance(v, list)), 0)
-                    # Gather absorbed child paths to zip at index j alongside this parent.
-                    prefix = oto_path + "."
-                    child_absorbed = [
-                        (
-                            cp,
-                            {
-                                col.field_name: _convert_value(row[idx])
-                                for idx, col in nested_groups[cp]
-                            },
-                        )
-                        for cp in sorted(absorbed_paths)
-                        if cp.startswith(prefix)
-                    ]
-                    for j in range(n):
-                        elem = {
-                            k: (v[j] if isinstance(v, list) and j < len(v) else v)
-                            for k, v in child.items()
-                        }
-                        # Zip absorbed child ARRAY_AGG paths into this element at index j.
-                        for cp, cp_data in child_absorbed:
-                            rel = cp[len(prefix) :]
-                            rel_parts = rel.split(".")
-                            sub_t = elem
-                            for sub_part in rel_parts[:-1]:
-                                sub_t = sub_t.setdefault(sub_part, {})
-                            leaf = rel_parts[-1]
-                            cp_elem = {
-                                k: (v[j] if isinstance(v, list) and j < len(v) else v)
-                                for k, v in cp_data.items()
-                            }
-                            if all(v is None for v in cp_elem.values()):
-                                sub_t[leaf] = None
-                            else:
-                                sub_t.setdefault(leaf, []).append(cp_elem)
-                        arr.append(elem)
-                else:
-                    if child in arr:
-                        continue
-                    # Before appending, initialize any deeper nested one-to-many sub-paths
-                    # on the new item so they exist when deeper paths are processed.
-                    new_item = dict(child)
-                    prefix = oto_path + "."
-                    for deeper_path in sorted(
-                        p
-                        for p in one_to_many_paths
-                        if p.startswith(prefix) and p not in absorbed_paths
-                    ):
-                        rel_parts = deeper_path[len(prefix) :].split(".")
-                        sub_target = new_item
-                        for sub_part in rel_parts[:-1]:
-                            sub_target = sub_target.setdefault(sub_part, {})
-                        sub_target.setdefault(rel_parts[-1], [])
-                    arr.append(new_item)
+def _navigate_path_into_lists(
+    obj: dict,
+    parts: list[str],
+) -> tuple[dict, bool]:
+    """Walk obj down parts[:-1], entering the last list element when encountered."""
+    target = obj
+    for part in parts[:-1]:
+        cur = target.get(part)
+        if isinstance(cur, dict):
+            target = cur
+        elif isinstance(cur, list) and cur:
+            target = cur[-1]
+        else:
+            return target, True
+    return target, False
 
-        if result_limit is not None:
-            result_rows = result_rows[:result_limit]
-        return {"data": {root_field: result_rows}}
 
-    # No one-to-many: many-to-one or flat.
-    # Deduplicate by root key — a many-to-one join that returns N rows for the
-    # same root object is a cardinality mismatch; keep only the first occurrence
-    # and record a warning for each affected relationship path.
+def _seed_nested_path(
+    obj: dict,
+    nest_path: str,
+    nest_cols_for_path: list[tuple[int, ColumnRef]],
+    one_to_many_paths: set[str],
+    row: tuple,
+) -> None:
+    """Seed a single nested path into obj on first visit."""
+    parts = nest_path.split(".")
+    target, skip = _navigate_path(obj, parts)
+    if skip:
+        return
+    leaf = parts[-1]
+    if nest_path in one_to_many_paths:
+        target[leaf] = []
+    else:
+        all_none = all(row[idx] is None for idx, _ in nest_cols_for_path)
+        if all_none:
+            target[leaf] = None
+        else:
+            target[leaf] = {
+                col.field_name: _convert_value(row[idx])
+                for idx, col in nest_cols_for_path
+            }
+
+
+def _seed_all_nested_paths(
+    obj: dict,
+    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
+    one_to_many_paths: set[str],
+    row: tuple,
+) -> None:
+    """Seed all nested paths in sorted order (parents before children)."""
+    for nest_path in sorted(nested_groups.keys()):
+        _seed_nested_path(
+            obj,
+            nest_path,
+            nested_groups[nest_path],
+            one_to_many_paths,
+            row,
+        )
+
+
+def _zip_absorbed_children(
+    arr: list,
+    oto_path: str,
+    child: dict,
+    absorbed_paths: set[str],
+    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
+    row: tuple,
+    n: int,
+) -> None:
+    """Unzip ARRAY_AGG child and absorbed sub-paths, appending elements to arr."""
+    prefix = oto_path + "."
+    child_absorbed = [
+        (
+            cp,
+            {
+                col.field_name: _convert_value(row[idx])
+                for idx, col in nested_groups[cp]
+            },
+        )
+        for cp in sorted(absorbed_paths)
+        if cp.startswith(prefix)
+    ]
+    for j in range(n):
+        elem = {
+            k: (v[j] if isinstance(v, list) and j < len(v) else v)
+            for k, v in child.items()
+        }
+        for cp, cp_data in child_absorbed:
+            rel = cp[len(prefix):]
+            rel_parts = rel.split(".")
+            sub_t = elem
+            for sub_part in rel_parts[:-1]:
+                sub_t = sub_t.setdefault(sub_part, {})
+            leaf = rel_parts[-1]
+            cp_elem = {
+                k: (v[j] if isinstance(v, list) and j < len(v) else v)
+                for k, v in cp_data.items()
+            }
+            if all(v is None for v in cp_elem.values()):
+                sub_t[leaf] = None
+            else:
+                sub_t.setdefault(leaf, []).append(cp_elem)
+        arr.append(elem)
+
+
+def _append_regular_child(
+    arr: list,
+    new_item: dict,
+    oto_path: str,
+    one_to_many_paths: set[str],
+    absorbed_paths: set[str],
+) -> None:
+    """Seed deeper sub-paths on new_item then append to arr, skipping duplicates."""
+    if new_item in arr:
+        return
+    prefix = oto_path + "."
+    for deeper_path in sorted(
+        p
+        for p in one_to_many_paths
+        if p.startswith(prefix) and p not in absorbed_paths
+    ):
+        rel_parts = deeper_path[len(prefix):].split(".")
+        sub_target = new_item
+        for sub_part in rel_parts[:-1]:
+            sub_target = sub_target.setdefault(sub_part, {})
+        sub_target.setdefault(rel_parts[-1], [])
+    arr.append(new_item)
+
+
+def _accumulate_oto_path(
+    oto_path: str,
+    row: tuple,
+    parent_obj: dict,
+    is_first_visit: bool,
+    one_to_many_paths: set[str],
+    absorbed_paths: set[str],
+    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
+) -> None:
+    """Accumulate one row into the one-to-many array at oto_path in parent_obj."""
+    nest_cols_for_path = nested_groups[oto_path]
+    all_none = all(row[idx] is None for idx, _ in nest_cols_for_path)
+    child: dict = {
+        col.field_name: _convert_value(row[idx]) for idx, col in nest_cols_for_path
+    }
+    parts = oto_path.split(".")
+    target, skip = _navigate_path_into_lists(parent_obj, parts)
+    if skip:
+        return
+    arr = target.get(parts[-1])
+    if not isinstance(arr, list):
+        return
+    if all_none:
+        return
+    has_oto_parent = any(
+        oto_path.startswith(p + ".") for p in one_to_many_paths if p != oto_path
+    )
+    if any(isinstance(v, list) for v in child.values()):
+        if not is_first_visit and not has_oto_parent:
+            return
+        n = next((len(v) for v in child.values() if isinstance(v, list)), 0)
+        _zip_absorbed_children(
+            arr, oto_path, child, absorbed_paths, nested_groups, row, n
+        )
+    else:
+        _append_regular_child(arr, dict(child), oto_path, one_to_many_paths, absorbed_paths)
+
+
+def _serialize_with_one_to_many(
+    rows: list[tuple],
+    root_cols: list[tuple[int, ColumnRef]],
+    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
+    one_to_many_paths: set[str],
+    absorbed_paths: set[str],
+    result_limit: int | None,
+    root_field: str,
+) -> dict:
+    """Serialize rows when at least one one-to-many path exists."""
+    seen: dict[tuple, int] = {}
+    result_rows: list[dict] = []
+
+    for row in rows:
+        root_key = tuple(_to_hashable(_convert_value(row[idx])) for idx, _ in root_cols)
+        is_first_visit = root_key not in seen
+
+        if is_first_visit:
+            obj: dict = {}
+            for idx, col in root_cols:
+                obj[col.field_name] = _convert_value(row[idx])
+            _seed_all_nested_paths(obj, nested_groups, one_to_many_paths, row)
+            seen[root_key] = len(result_rows)
+            result_rows.append(obj)
+
+        parent_idx = seen[root_key]
+        parent_obj = result_rows[parent_idx]
+        for oto_path in sorted(one_to_many_paths):
+            if oto_path in absorbed_paths:
+                continue
+            _accumulate_oto_path(
+                oto_path,
+                row,
+                parent_obj,
+                is_first_visit,
+                one_to_many_paths,
+                absorbed_paths,
+                nested_groups,
+            )
+
+    if result_limit is not None:
+        result_rows = result_rows[:result_limit]
+    return {"data": {root_field: result_rows}}
+
+
+def _build_nested_obj(
+    obj: dict,
+    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
+    row: tuple,
+) -> None:
+    """Populate nested relationship fields into obj for flat/many-to-one rows."""
+    for nest_path, nest_cols in nested_groups.items():
+        all_none = all(row[idx] is None for idx, _ in nest_cols)
+        parts = nest_path.split(".")
+        target = obj
+        skip = False
+        for part in parts[:-1]:
+            if part not in target:
+                target[part] = {}
+            target = target[part]
+            if target is None:
+                skip = True
+                break
+        if skip:
+            continue
+        leaf = parts[-1]
+        if all_none:
+            target[leaf] = None
+        else:
+            nested_obj: dict = {}
+            for idx, col in nest_cols:
+                nested_obj[col.field_name] = _convert_value(row[idx])
+            target[leaf] = nested_obj
+
+
+def _detect_truncated_paths(
+    result_rows: list[dict],
+    seen_root_keys: dict[tuple, int],
+    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
+    row: tuple,
+    root_key: tuple,
+) -> set[str]:
+    """Return set of nested paths that differ from the already-seen row."""
+    truncated: set[str] = set()
+    prev_obj = result_rows[seen_root_keys[root_key]]
+    for nest_path, nest_cols in nested_groups.items():
+        cur_vals = tuple(_convert_value(row[idx]) for idx, _ in nest_cols)
+        parts = nest_path.split(".")
+        target = prev_obj
+        for part in parts[:-1]:
+            target = target.get(part) or {}
+        prev_val = target.get(parts[-1])
+        prev_vals = tuple(prev_val.values()) if isinstance(prev_val, dict) else (prev_val,)
+        if cur_vals != prev_vals:
+            truncated.add(nest_path)
+    return truncated
+
+
+def _serialize_flat(
+    rows: list[tuple],
+    root_cols: list[tuple[int, ColumnRef]],
+    nested_groups: dict[str, list[tuple[int, ColumnRef]]],
+    result_limit: int | None,
+    root_field: str,
+) -> dict:
+    """Serialize rows for flat or many-to-one (no one-to-many) case."""
     seen_root_keys: dict[tuple, int] = {}
-    result_rows = []
+    result_rows: list[dict] = []
     truncated_paths: set[str] = set()
 
     for row in rows:
-        # Exclude is_agg=True columns: their JSON value varies per expanded JOIN row
-        # (the CTE rewriter strips LIMIT 1 from many-to-one subqueries), so including
-        # them in the key makes every row unique and breaks dedup.
         root_key = tuple(
             _to_hashable(_convert_value(row[idx])) for idx, col in root_cols if not col.is_agg
         )
-
         if root_key in seen_root_keys:
-            # Identify which nested paths produced a different value on this
-            # duplicate row so we can name them in the warning.
-            prev_obj = result_rows[seen_root_keys[root_key]]
-            for nest_path, nest_cols in nested_groups.items():
-                cur_vals = tuple(_convert_value(row[idx]) for idx, _ in nest_cols)
-                parts = nest_path.split(".")
-                target = prev_obj
-                for part in parts[:-1]:
-                    target = target.get(part) or {}
-                prev_val = target.get(parts[-1])
-                prev_vals = tuple(prev_val.values()) if isinstance(prev_val, dict) else (prev_val,)
-                if cur_vals != prev_vals:
-                    truncated_paths.add(nest_path)
+            truncated_paths |= _detect_truncated_paths(
+                result_rows, seen_root_keys, nested_groups, row, root_key
+            )
             continue
 
-        obj = {}
-
-        # Root-level fields
+        obj: dict = {}
         for idx, col in root_cols:
             obj[col.field_name] = _convert_value(row[idx])
-
-        # Nested relationship fields — support dotted paths for deep nesting
-        for nest_path, nest_cols in nested_groups.items():
-            all_none = all(row[idx] is None for idx, _ in nest_cols)
-            parts = nest_path.split(".")
-            # Walk down the object tree, creating intermediate dicts as needed.
-            # If an intermediate segment is already None, skip — parent is null.
-            target = obj
-            skip = False
-            for part in parts[:-1]:
-                if part not in target:
-                    target[part] = {}
-                target = target[part]
-                if target is None:
-                    skip = True
-                    break
-            if skip:
-                continue
-            leaf = parts[-1]
-            if all_none:
-                target[leaf] = None
-            else:
-                nested_obj: dict = {}
-                for idx, col in nest_cols:
-                    nested_obj[col.field_name] = _convert_value(row[idx])
-                target[leaf] = nested_obj
-
+        _build_nested_obj(obj, nested_groups, row)
         seen_root_keys[root_key] = len(result_rows)
         result_rows.append(obj)
 
@@ -346,6 +430,39 @@ def serialize_rows(
             ]
         }
     return result
+
+
+def serialize_rows(
+    rows: list[tuple],
+    columns: list[ColumnRef],
+    root_field: str,
+    result_limit: int | None = None,
+) -> dict:
+    """Serialize flat SQL rows into nested GraphQL JSON.
+
+    Args:
+        rows: Result rows from SQL execution (tuples).
+        columns: Column references from compilation (maps positions to fields).
+        root_field: The GraphQL root field name (e.g., "orders").
+
+    Returns:
+        {"data": {root_field: [...]}}
+    """
+    root_cols, nested_groups = _group_columns(columns)
+    one_to_many_paths, _agg_paths, absorbed_paths = _detect_path_sets(nested_groups)
+
+    if one_to_many_paths:
+        return _serialize_with_one_to_many(
+            rows,
+            root_cols,
+            nested_groups,
+            one_to_many_paths,
+            absorbed_paths,
+            result_limit,
+            root_field,
+        )
+
+    return _serialize_flat(rows, root_cols, nested_groups, result_limit, root_field)
 
 
 def _transform_row(obj: dict, m2o_paths: set[str], prefix: str) -> None:
@@ -412,7 +529,7 @@ def serialize_aggregate(
             if path == agg_alias:
                 sub_path: list[str] = []
             elif path.startswith(f"{agg_alias}."):
-                sub_path = path[len(f"{agg_alias}.") :].split(".")
+                sub_path = path[len(f"{agg_alias}."):].split(".")
             else:
                 sub_path = path.split(".")
 

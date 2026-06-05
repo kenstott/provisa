@@ -58,6 +58,137 @@ def _resolve_table_source(table: str) -> tuple[str, str] | None:
     return None
 
 
+def _build_postgresql_config(state) -> dict:
+    return {"pool": state.pg_pool}
+
+
+def _build_mongodb_config(state, source_id: str) -> dict:
+    source_pool = state.source_pools.get(source_id) if state.source_pools else None
+    return {"database": source_pool}
+
+
+def _build_kafka_config(state, table: str) -> dict:
+    ks = state.kafka_table_configs.get(table)
+    bootstrap = getattr(ks, "bootstrap_servers", "localhost:9092") if ks else "localhost:9092"
+    return {"bootstrap_servers": bootstrap}
+
+
+def _build_ingest_config(state, source_id: str) -> dict:
+    ingest_engine = state.ingest_engines.get(source_id) if state.ingest_engines else None
+    return {"engine": ingest_engine}
+
+
+def _build_rss_feed_url(rss_src, hints: dict) -> str:
+    feed_url = hints.get("feed_url")
+    if feed_url:
+        return feed_url
+    use_ssl = hints.get("use_ssl", "true").lower() == "true"
+    scheme = "https" if use_ssl else "http"
+    path = getattr(rss_src, "path", None) or "/"
+    return f"{scheme}://{rss_src.host}:{rss_src.port}{path}"
+
+
+def _build_rss_config(state, source_id: str) -> dict:
+    rss_src = state.rss_sources.get(source_id) if state.rss_sources else None
+    if not rss_src:
+        return {}
+    hints = getattr(rss_src, "federation_hints", {}) or {}
+    config: dict = {"url": _build_rss_feed_url(rss_src, hints)}
+    if hints.get("poll_interval"):
+        config["poll_interval"] = float(hints["poll_interval"])
+    return config
+
+
+def _parse_ws_subscribe_payload(raw_payload: str) -> dict | None:
+    import json as _json
+
+    try:
+        return _json.loads(raw_payload)
+    except (ValueError, TypeError):
+        return None
+
+
+def _build_websocket_config(state, source_id: str) -> dict:
+    ws_src = state.websocket_sources.get(source_id) if state.websocket_sources else None
+    if not ws_src:
+        return {}
+    hints = getattr(ws_src, "federation_hints", {}) or {}
+    use_ssl = hints.get("use_ssl", "false").lower() == "true"
+    scheme = "wss" if use_ssl else "ws"
+    path = getattr(ws_src, "path", None) or "/"
+    config: dict = {"url": f"{scheme}://{ws_src.host}:{ws_src.port}{path}"}
+    raw_payload = hints.get("subscribe_payload")
+    if raw_payload:
+        parsed = _parse_ws_subscribe_payload(raw_payload)
+        if parsed is not None:
+            config["subscribe_payload"] = parsed
+    if hints.get("event_path"):
+        config["event_path"] = hints["event_path"]
+    return config
+
+
+def _build_fallback_config(state, tbl_meta) -> dict:
+    config: dict = {"pool": state.pg_pool}
+    if tbl_meta is not None:
+        wc = getattr(tbl_meta, "watermark_column", None)
+        if wc:
+            config["watermark_column"] = wc
+    return config
+
+
+def _build_provider_config(
+    source_type: str,
+    source_id: str,
+    table: str,
+    tbl_meta,
+    state,
+) -> dict:
+    if source_type == "postgresql":
+        return _build_postgresql_config(state)
+    if source_type == "mongodb":
+        return _build_mongodb_config(state, source_id)
+    if source_type == "kafka":
+        return _build_kafka_config(state, table)
+    if source_type == "ingest":
+        return _build_ingest_config(state, source_id)
+    if source_type == "rss":
+        return _build_rss_config(state, source_id)
+    if source_type == "websocket":
+        return _build_websocket_config(state, source_id)
+    return _build_fallback_config(state, tbl_meta)
+
+
+def _resolve_tbl_meta(table: str, state):
+    for ctx in state.contexts.values():
+        tables = getattr(ctx, "tables", {})
+        if table in tables:
+            return tables[table]
+    return None
+
+
+async def _stream_provider_events(
+    provider,
+    table: str,
+    role_id: str | None,
+    rls_contexts: dict,
+    disconnect: asyncio.Event,
+) -> AsyncGenerator[str, None]:
+    yield ": connected\n\n"
+    try:
+        async for event in provider.watch(table):
+            if disconnect.is_set():
+                break
+            if role_id and rls_contexts:
+                rls_ctx = rls_contexts.get(role_id)
+                if rls_ctx and rls_ctx.has_rules():
+                    if not _rls_matches(event.row, rls_ctx, table):
+                        continue
+            payload = json.dumps({"op": event.operation.upper(), "row": event.row})
+            yield f"data: {payload}\n\n"
+    finally:
+        await provider.close()
+
+
 async def _provider_sse_generator(
     table: str,
     source_id: str,
@@ -70,90 +201,12 @@ async def _provider_sse_generator(
     from provisa.api.app import state
     from provisa.subscriptions.registry import get_provider
 
-    # Resolve table-level subscription config (watermark_column, soft_delete_column, etc.)
-    tbl_meta = None
-    for ctx in state.contexts.values():
-        tables = getattr(ctx, "tables", {})
-        if table in tables:
-            tbl_meta = tables[table]
-            break
-
-    provider_config: dict = {}
-    if source_type == "postgresql":
-        provider_config["pool"] = state.pg_pool
-    elif source_type == "mongodb":
-        source_pool = state.source_pools.get(source_id) if state.source_pools else None
-        provider_config["database"] = source_pool
-    elif source_type == "kafka":
-        ks = state.kafka_table_configs.get(table)
-        bootstrap = getattr(ks, "bootstrap_servers", "localhost:9092") if ks else "localhost:9092"
-        provider_config["bootstrap_servers"] = bootstrap
-    elif source_type == "ingest":
-        ingest_engine = state.ingest_engines.get(source_id) if state.ingest_engines else None
-        provider_config["engine"] = ingest_engine
-    elif source_type == "rss":
-        rss_src = state.rss_sources.get(source_id) if state.rss_sources else None
-        if rss_src:
-            hints = getattr(rss_src, "federation_hints", {}) or {}
-            feed_url = hints.get("feed_url")
-            if not feed_url:
-                use_ssl = hints.get("use_ssl", "true").lower() == "true"
-                scheme = "https" if use_ssl else "http"
-                path = getattr(rss_src, "path", None) or "/"
-                feed_url = f"{scheme}://{rss_src.host}:{rss_src.port}{path}"
-            provider_config["url"] = feed_url
-            if hints.get("poll_interval"):
-                provider_config["poll_interval"] = float(hints["poll_interval"])
-    elif source_type == "websocket":
-        ws_src = state.websocket_sources.get(source_id) if state.websocket_sources else None
-        if ws_src:
-            hints = getattr(ws_src, "federation_hints", {}) or {}
-            use_ssl = hints.get("use_ssl", "false").lower() == "true"
-            scheme = "wss" if use_ssl else "ws"
-            path = getattr(ws_src, "path", None) or "/"
-            provider_config["url"] = f"{scheme}://{ws_src.host}:{ws_src.port}{path}"
-            raw_payload = hints.get("subscribe_payload")
-            if raw_payload:
-                import json as _json
-
-                try:
-                    provider_config["subscribe_payload"] = _json.loads(raw_payload)
-                except (ValueError, TypeError):
-                    pass
-            if hints.get("event_path"):
-                provider_config["event_path"] = hints["event_path"]
-    else:
-        provider_config["pool"] = state.pg_pool
-        if tbl_meta is not None:
-            wc = getattr(tbl_meta, "watermark_column", None)
-            if wc:
-                provider_config["watermark_column"] = wc
-
+    tbl_meta = _resolve_tbl_meta(table, state)
+    provider_config = _build_provider_config(source_type, source_id, table, tbl_meta, state)
     provider = get_provider(source_type, provider_config)
 
-    yield ": connected\n\n"
-
-    try:
-        async for event in provider.watch(table):
-            if disconnect.is_set():
-                break
-
-            # RLS filtering
-            if role_id and rls_contexts:
-                rls_ctx = rls_contexts.get(role_id)
-                if rls_ctx and rls_ctx.has_rules():
-                    if not _rls_matches(event.row, rls_ctx, table):
-                        continue
-
-            payload = json.dumps(
-                {
-                    "op": event.operation.upper(),
-                    "row": event.row,
-                }
-            )
-            yield f"data: {payload}\n\n"
-    finally:
-        await provider.close()
+    async for chunk in _stream_provider_events(provider, table, role_id, rls_contexts, disconnect):
+        yield chunk
 
 
 async def _sse_generator(
@@ -173,7 +226,7 @@ async def _sse_generator(
     queue: asyncio.Queue[str] = asyncio.Queue()
 
     def _on_notify(
-        conn: object,
+        conn: object,  # object-ok: asyncpg notify callback — connection type is opaque at this boundary
         pid: int,
         channel: str,
         payload: str,

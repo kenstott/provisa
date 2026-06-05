@@ -501,7 +501,7 @@ def _build_column_fields(
             _type_prefix = ""
             if "__" in table.type_name:
                 _type_prefix = table.type_name.split("__", 1)[0] + "__"
-            gql_type: object = _build_object_type(
+            gql_type: GraphQLObjectType = _build_object_type(
                 col_name, object_fields, convention, _obj_registry, _type_prefix
             )
         else:
@@ -946,6 +946,312 @@ def _build_subscription_fields(
     return fields
 
 
+def _dedup_tables(tables: list[_TableInfo]) -> list[_TableInfo]:
+    """Remove tables sharing a type_name, keeping the first occurrence (lowest id)."""
+    seen: set[str] = set()
+    result: list[_TableInfo] = []
+    for t in tables:
+        if t.type_name not in seen:
+            seen.add(t.type_name)
+            result.append(t)
+    return result
+
+
+def _build_domain_alias_map(domains: list[dict]) -> dict[str, str]:
+    return {
+        d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias"))
+        for d in domains
+        if domain_gql_alias(d["id"], d.get("graphql_alias"))
+    }
+
+
+def _add_virtual_system_fields(fields: dict[str, GraphQLField]) -> None:
+    fields["_name_"] = GraphQLField(GraphQLNonNull(GraphQLString), description="Logical table name")
+    fields["_domain_"] = GraphQLField(
+        GraphQLNonNull(GraphQLString), description="Domain identifier"
+    )
+
+
+def _add_meta_field(
+    fields: dict[str, GraphQLField],
+    info: _TableInfo,
+    meta_rt: _TableInfo,
+    gql_types: dict[int, GraphQLObjectType],
+) -> None:
+    if info.domain_id != "meta":
+        fields["_meta"] = GraphQLField(
+            gql_types[meta_rt.table_id],
+            description="Registration metadata for this table",
+        )
+
+
+def _add_ops_traversal_fields(
+    fields: dict[str, GraphQLField],
+    ops_targets: list[_TableInfo],
+    gql_types: dict[int, GraphQLObjectType],
+    where_types: dict[int, GraphQLInputObjectType | None],
+    order_by_types: dict[int, GraphQLInputObjectType],
+    distinct_enums: dict[int, GraphQLEnumType | None],
+) -> None:
+    for ops_t in ops_targets:
+        if ops_t.table_id not in gql_types:
+            continue
+        ops_base = (
+            ops_t.field_name.split("__", 1)[1]
+            if "__" in ops_t.field_name
+            else ops_t.field_name
+        )
+        fields[f"_{ops_base}"] = GraphQLField(
+            GraphQLList(GraphQLNonNull(gql_types[ops_t.table_id])),
+            args=_build_db_field_args(
+                where_types.get(ops_t.table_id),
+                order_by_types.get(ops_t.table_id),
+                distinct_enums.get(ops_t.table_id),
+            ),
+            description=f"Operational {ops_t.table_name} records for this table",
+        )
+
+
+def _add_computed_relationship_field(
+    fields: dict[str, GraphQLField],
+    rel: dict,
+    fn_name: str,
+    functions: list[dict],
+    tables: list[_TableInfo],
+    gql_types: dict[int, GraphQLObjectType],
+) -> None:
+    func = next((f for f in functions if f["name"] == fn_name), None)
+    if not func:
+        return
+    returns_str = func.get("returns", "")
+    parts = returns_str.split(".", 1) if returns_str else []
+    if len(parts) != 2:
+        return
+    ret_type = next(
+        (gql_types[t.table_id] for t in tables if t.schema_name == parts[0] and t.table_name == parts[1]),
+        None,
+    )
+    if ret_type:
+        field_key = re.sub(r"[^a-zA-Z0-9_]", "_", rel["id"])
+        fields[field_key] = GraphQLField(GraphQLList(GraphQLNonNull(ret_type)))
+
+
+def _add_standard_relationship_field(
+    fields: dict[str, GraphQLField],
+    rel: dict,
+    table_lookup: dict[int, _TableInfo],
+    gql_types: dict[int, GraphQLObjectType],
+    where_types: dict[int, GraphQLInputObjectType | None],
+    order_by_types: dict[int, GraphQLInputObjectType],
+    distinct_enums: dict[int, GraphQLEnumType | None],
+) -> None:
+    target = table_lookup.get(rel["target_table_id"])
+    if not target:
+        return
+    target_type = gql_types[target.table_id]
+    cardinality = rel["cardinality"]
+    field_name = rel.get("graphql_alias") or rel_field_name(target.field_name, cardinality)
+    if cardinality == "many-to-one":
+        fields[field_name] = GraphQLField(target_type)
+    elif cardinality == "one-to-many":
+        fields[field_name] = GraphQLField(
+            GraphQLList(GraphQLNonNull(target_type)),
+            args=_build_db_field_args(
+                where_types.get(target.table_id),
+                order_by_types.get(target.table_id),
+                distinct_enums.get(target.table_id),
+            ),
+        )
+
+
+def _make_object_type_fields(
+    tid: int,
+    table_lookup: dict[int, _TableInfo],
+    gql_types: dict[int, GraphQLObjectType],
+    meta_rt: _TableInfo | None,
+    ops_traversal_targets: list[_TableInfo],
+    visible_rels: list[dict],
+    functions: list[dict],
+    tables: list[_TableInfo],
+    where_types: dict[int, GraphQLInputObjectType | None],
+    order_by_types: dict[int, GraphQLInputObjectType],
+    distinct_enums: dict[int, GraphQLEnumType | None],
+) -> dict[str, GraphQLField]:
+    info = table_lookup[tid]
+    fields: dict[str, GraphQLField] = dict(info.gql_fields)
+
+    _add_virtual_system_fields(fields)
+
+    if meta_rt is not None:
+        _add_meta_field(fields, info, meta_rt, gql_types)
+
+    if meta_rt is not None and tid == meta_rt.table_id:
+        _add_ops_traversal_fields(
+            fields, ops_traversal_targets, gql_types, where_types, order_by_types, distinct_enums
+        )
+
+    for rel in visible_rels:
+        if rel["source_table_id"] != tid:
+            continue
+        fn_name = rel.get("target_function_name")
+        if fn_name:
+            _add_computed_relationship_field(
+                fields, rel, fn_name, functions, tables, gql_types
+            )
+        else:
+            _add_standard_relationship_field(
+                fields, rel, table_lookup, gql_types, where_types, order_by_types, distinct_enums
+            )
+
+    return fields
+
+
+def _build_native_filter_args(
+    t: _TableInfo,
+    args: dict[str, GraphQLArgument],
+) -> None:
+    """Append native filter args to args in-place."""
+    visible_col_names = [
+        c["column_name"]
+        for c in t.visible_columns
+        if c["column_name"].lower() in t.column_metadata
+    ]
+    response_field_names = set(visible_col_names) | {
+        "where",
+        "order_by",
+        "limit",
+        "offset",
+        "distinct_on",
+    }
+    for nfc in t.native_filter_columns:
+        col_name = nfc["column_name"]
+        bare_name = col_name[4:] if col_name.startswith("_nf_") else col_name
+        arg_name = f"_{bare_name}" if bare_name in response_field_names else bare_name
+        meta = t.column_metadata.get(col_name.lower())
+        nfc_gql_type = trino_to_graphql(meta.data_type) if meta else GraphQLString
+        scalar = nfc_gql_type.of_type if isinstance(nfc_gql_type, GraphQLList) else nfc_gql_type
+        required = nfc.get("native_filter_type") == "path_param"
+        args[arg_name] = GraphQLArgument(
+            GraphQLNonNull(scalar) if required else scalar,
+            description=f"Native API filter ({nfc.get('native_filter_type', 'query_param')})",
+        )
+
+
+def _build_aggregate_query_field(
+    t: _TableInfo,
+    gql_type: GraphQLObjectType,
+    naming_convention: str,
+    enum_types: dict,
+) -> tuple[str, GraphQLField] | None:
+    agg_type = build_aggregate_types(t.type_name, t.visible_columns, t.column_metadata, gql_type)
+    if not agg_type:
+        return None
+    agg_args: dict[str, GraphQLArgument] = {}
+    agg_where = _build_where_input(t, f"{t.type_name}Agg", enum_types=enum_types)
+    if agg_where:
+        agg_args["where"] = GraphQLArgument(agg_where)
+    if naming_convention == "apollo_graphql":
+        agg_field_name = f"{t.field_name}Aggregate"
+    else:
+        agg_field_name = f"{t.field_name}_aggregate"
+    return agg_field_name, GraphQLField(agg_type, args=agg_args)
+
+
+def _build_connection_query_field(
+    t: _TableInfo,
+    gql_type: GraphQLObjectType,
+    order_by_types: dict[int, GraphQLInputObjectType],
+    enum_types: dict,
+) -> tuple[str, GraphQLField]:
+    _edge_type, conn_type = _build_connection_types(t.type_name, gql_type)
+    conn_args: dict[str, GraphQLArgument] = {
+        "first": GraphQLArgument(GraphQLInt),
+        "after": GraphQLArgument(GraphQLString),
+        "last": GraphQLArgument(GraphQLInt),
+        "before": GraphQLArgument(GraphQLString),
+    }
+    conn_where = _build_where_input(t, f"{t.type_name}Conn", enum_types=enum_types)
+    if conn_where:
+        conn_args["where"] = GraphQLArgument(conn_where)
+    conn_ob = order_by_types.get(t.table_id)
+    if conn_ob:
+        conn_args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(conn_ob)))
+    return f"{t.field_name}_connection", GraphQLField(conn_type, args=conn_args)
+
+
+def _build_mutation_fields_for_table(
+    t: _TableInfo,
+    enum_types: dict,
+) -> dict[str, GraphQLField]:
+    """Build insert/upsert/update/delete mutation fields for one table. Returns {} if skipped."""
+    insert_fields: dict[str, GraphQLInputField] = {}
+    for col in t.visible_columns:
+        col_name = col["column_name"]
+        meta = t.column_metadata.get(col_name.lower())
+        if meta is None:
+            continue
+        col_gql_type = trino_to_graphql(meta.data_type)
+        if isinstance(col_gql_type, GraphQLList):
+            col_gql_type = GraphQLString  # fallback for arrays in input
+        insert_fields[col_name] = GraphQLInputField(col_gql_type)
+
+    if not insert_fields:
+        return {}
+
+    insert_input = cast(
+        GraphQLInputObjectType,
+        GraphQLInputObjectType(f"{t.type_name}InsertInput", lambda fields=insert_fields: fields),
+    )
+    set_input = cast(
+        GraphQLInputObjectType,
+        GraphQLInputObjectType(f"{t.type_name}SetInput", lambda fields=insert_fields: fields),
+    )
+    where_input = _build_where_input(t, f"{t.type_name}Mutation", enum_types=enum_types)
+    response_type = cast(
+        GraphQLObjectType,
+        GraphQLObjectType(
+            f"{t.type_name}MutationResponse",
+            lambda t=t: {"affected_rows": GraphQLField(GraphQLNonNull(GraphQLInt))},
+        ),
+    )
+    conflict_col_enum = cast(
+        GraphQLEnumType,
+        GraphQLEnumType(
+            f"{t.type_name}ConflictColumn",
+            {name: GraphQLEnumValue(name) for name in insert_fields},
+        ),
+    )
+
+    conv = t.naming_convention
+    result: dict[str, GraphQLField] = {}
+    result[_mutation_name("insert", t.field_name, conv)] = GraphQLField(
+        GraphQLNonNull(response_type),
+        args={"input": GraphQLArgument(GraphQLNonNull(insert_input))},
+    )
+    result[_mutation_name("upsert", t.field_name, conv)] = GraphQLField(
+        GraphQLNonNull(response_type),
+        args={
+            "input": GraphQLArgument(GraphQLNonNull(insert_input)),
+            "on_conflict": GraphQLArgument(
+                GraphQLNonNull(GraphQLList(GraphQLNonNull(conflict_col_enum)))
+            ),
+        },
+    )
+    if where_input:
+        result[_mutation_name("update", t.field_name, conv)] = GraphQLField(
+            GraphQLNonNull(response_type),
+            args={
+                "set": GraphQLArgument(GraphQLNonNull(set_input)),
+                "where": GraphQLArgument(GraphQLNonNull(where_input)),
+            },
+        )
+        result[_mutation_name("delete", t.field_name, conv)] = GraphQLField(
+            GraphQLNonNull(response_type),
+            args={"where": GraphQLArgument(GraphQLNonNull(where_input))},
+        )
+    return result
+
+
 def generate_schema(si: SchemaInput) -> GraphQLSchema:
     """Generate a graphql-core schema for a specific role.
 
@@ -961,24 +1267,11 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             f"Check domain_access and column visibility."
         )
 
-    domain_alias_map = {
-        d["id"]: domain_gql_alias(d["id"], d.get("graphql_alias"))
-        for d in si.domains
-        if domain_gql_alias(d["id"], d.get("graphql_alias"))
-    }
+    domain_alias_map = _build_domain_alias_map(si.domains)
     _assign_names(
         tables, si.naming_rules, domain_prefix=si.domain_prefix, domain_alias_map=domain_alias_map
     )
-
-    # Deduplicate tables sharing a type_name (same domain+table registered from multiple sources).
-    # Keep the first occurrence (lowest id); duplicates produce a GraphQLSchema TypeError.
-    _seen_type_names: set[str] = set()
-    _deduped: list[_TableInfo] = []
-    for t in tables:
-        if t.type_name not in _seen_type_names:
-            _seen_type_names.add(t.type_name)
-            _deduped.append(t)
-    tables = _deduped
+    tables = _dedup_tables(tables)
 
     # Build base column fields — share object_type_registry so same-named object types are reused
     _object_type_registry: dict[str, GraphQLObjectType] = {}
@@ -991,20 +1284,13 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         )
 
     table_lookup: dict[int, _TableInfo] = {t.table_id: t for t in tables}
-
-    # Filter relationships to those where both sides are visible
     visible_rels = [r for r in si.relationships if _can_see_relationship(r, table_lookup)]
-
-    # Create GraphQL object types with thunks (handles circular relationships)
     gql_types: dict[int, GraphQLObjectType] = {}
 
-    # Find the meta:registered_tables table for the _meta synthetic relationship
     _meta_rt = next(
         (t for t in tables if t.domain_id == "meta" and t.table_name == "registered_tables"),
         None,
     )
-
-    # Find ops tables with a table_name FK column for synthetic traversal fields
     _ops_traversal_targets: list[_TableInfo] = [
         t
         for t in tables
@@ -1021,109 +1307,34 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         tid = t.table_id
 
         def make_fields(tid=tid):
-            info = table_lookup[tid]
-            fields = dict(info.gql_fields)
-
-            # Virtual system columns — always present, no DB metadata needed
-            fields["_name_"] = GraphQLField(
-                GraphQLNonNull(GraphQLString), description="Logical table name"
+            return _make_object_type_fields(
+                tid,
+                table_lookup,
+                gql_types,
+                _meta_rt,
+                _ops_traversal_targets,
+                visible_rels,
+                si.functions,
+                tables,
+                where_types,
+                order_by_types,
+                distinct_enums,
             )
-            fields["_domain_"] = GraphQLField(
-                GraphQLNonNull(GraphQLString), description="Domain identifier"
-            )
-
-            # Synthetic _meta field: every non-meta table links to its registered_tables row
-            if info.domain_id != "meta" and _meta_rt is not None:
-                fields["_meta"] = GraphQLField(
-                    gql_types[_meta_rt.table_id],
-                    description="Registration metadata for this table",
-                )
-
-            # Synthetic traversal fields: registered_tables → ops tables with table_name FK
-            if _meta_rt is not None and tid == _meta_rt.table_id:
-                for ops_t in _ops_traversal_targets:
-                    if ops_t.table_id in gql_types:
-                        _ops_base = (
-                            ops_t.field_name.split("__", 1)[1]
-                            if "__" in ops_t.field_name
-                            else ops_t.field_name
-                        )
-                        fields[f"_{_ops_base}"] = GraphQLField(
-                            GraphQLList(GraphQLNonNull(gql_types[ops_t.table_id])),
-                            args=_build_db_field_args(
-                                where_types.get(ops_t.table_id),
-                                order_by_types.get(ops_t.table_id),
-                                distinct_enums.get(ops_t.table_id),
-                            ),
-                            description=f"Operational {ops_t.table_name} records for this table",
-                        )
-
-            # Add relationship fields
-            for rel in visible_rels:
-                if rel["source_table_id"] != tid:
-                    continue
-                fn_name = rel.get("target_function_name")
-                if fn_name:
-                    # Computed relationship: target is a DB function
-                    func = next((f for f in si.functions if f["name"] == fn_name), None)
-                    if func:
-                        returns_str = func.get("returns", "")
-                        parts = returns_str.split(".", 1) if returns_str else []
-                        ret_type = None
-                        if len(parts) == 2:
-                            ret_type = next(
-                                (
-                                    gql_types[t.table_id]
-                                    for t in tables
-                                    if t.schema_name == parts[0] and t.table_name == parts[1]
-                                ),
-                                None,
-                            )
-                        if ret_type:
-                            field_key = re.sub(r"[^a-zA-Z0-9_]", "_", rel["id"])
-                            fields[field_key] = GraphQLField(GraphQLList(GraphQLNonNull(ret_type)))
-                else:
-                    target = table_lookup.get(rel["target_table_id"])
-                    if target:
-                        target_type = gql_types[target.table_id]
-                        cardinality = rel["cardinality"]
-                        field_name = rel.get("graphql_alias") or rel_field_name(
-                            target.field_name, cardinality
-                        )
-                        if cardinality == "many-to-one":
-                            fields[field_name] = GraphQLField(target_type)
-                        elif cardinality == "one-to-many":
-                            fields[field_name] = GraphQLField(
-                                GraphQLList(GraphQLNonNull(target_type)),
-                                args=_build_db_field_args(
-                                    where_types.get(target.table_id),
-                                    order_by_types.get(target.table_id),
-                                    distinct_enums.get(target.table_id),
-                                ),
-                            )
-
-            return fields
 
         gql_types[tid] = cast(
             GraphQLObjectType,
-            GraphQLObjectType(
-                t.type_name,
-                make_fields,
-                description=t.description,
-            ),
+            GraphQLObjectType(t.type_name, make_fields, description=t.description),
         )
 
     # Build root query fields
     query_fields: dict[str, GraphQLField] = {}
-    _root_ids = si.root_table_ids  # None → all tables are roots (normal build)
-
+    _root_ids = si.root_table_ids
     _accessible_domains = set(si.role.get("domain_access") or [])
     _all_access = "*" in _accessible_domains
 
     for t in tables:
         if _root_ids is not None and t.table_id not in _root_ids:
-            continue  # domain-filtered build: foreign-domain tables are type-defs only
-        # Implicit traversal domains are type-defs only unless role has direct access
+            continue
         if (
             not _all_access
             and t.domain_id in _IMPLICIT_TRAVERSAL_DOMAINS
@@ -1136,80 +1347,20 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             order_by_types.get(t.table_id),
             distinct_enums.get(t.table_id),
         )
+        _build_native_filter_args(t, args)
+        query_fields[t.field_name] = GraphQLField(GraphQLList(GraphQLNonNull(gql_type)), args=args)
 
-        # Native filter args: path params (required) and query params (optional).
-        # Follow Hasura DDN convention: direct top-level args, no prefix unless there is
-        # a name collision with a response body field, in which case prefix with "_".
-        visible_col_names = [
-            c["column_name"]
-            for c in t.visible_columns
-            if c["column_name"].lower() in t.column_metadata
-        ]
-        _response_field_names = set(visible_col_names) | {
-            "where",
-            "order_by",
-            "limit",
-            "offset",
-            "distinct_on",
-        }
-        for nfc in t.native_filter_columns:
-            col_name = nfc["column_name"]
-            bare_name = col_name[4:] if col_name.startswith("_nf_") else col_name
-            arg_name = f"_{bare_name}" if bare_name in _response_field_names else bare_name
-            meta = t.column_metadata.get(col_name.lower())
-            nfc_gql_type = trino_to_graphql(meta.data_type) if meta else GraphQLString
-            scalar = nfc_gql_type.of_type if isinstance(nfc_gql_type, GraphQLList) else nfc_gql_type
-            required = nfc.get("native_filter_type") == "path_param"
-            args[arg_name] = GraphQLArgument(
-                GraphQLNonNull(scalar) if required else scalar,
-                description=f"Native API filter ({nfc.get('native_filter_type', 'query_param')})",
-            )
-
-        query_fields[t.field_name] = GraphQLField(
-            GraphQLList(GraphQLNonNull(gql_type)),
-            args=args,
+        agg_result = _build_aggregate_query_field(
+            t, gql_type, si.naming_convention, si.enum_types
         )
+        if agg_result:
+            query_fields[agg_result[0]] = agg_result[1]
 
-        # Aggregate field: apollo_graphql → orderItemsAggregate; others → *_aggregate
-        agg_type = build_aggregate_types(
-            t.type_name,
-            t.visible_columns,
-            t.column_metadata,
-            gql_type,
-        )
-        if agg_type:
-            agg_args: dict[str, GraphQLArgument] = {}
-            agg_where = _build_where_input(t, f"{t.type_name}Agg", enum_types=si.enum_types)
-            if agg_where:
-                agg_args["where"] = GraphQLArgument(agg_where)
-            if si.naming_convention == "apollo_graphql":
-                agg_field_name = f"{t.field_name}Aggregate"
-            else:
-                agg_field_name = f"{t.field_name}_aggregate"
-            query_fields[agg_field_name] = GraphQLField(
-                agg_type,
-                args=agg_args,
-            )
-
-        # Connection field: <table>_connection (cursor pagination, REQ-218) — opt-in only
         if t.relay_pagination:
-            _edge_type, conn_type = _build_connection_types(t.type_name, gql_type)
-            conn_args: dict[str, GraphQLArgument] = {
-                "first": GraphQLArgument(GraphQLInt),
-                "after": GraphQLArgument(GraphQLString),
-                "last": GraphQLArgument(GraphQLInt),
-                "before": GraphQLArgument(GraphQLString),
-            }
-            conn_where = _build_where_input(t, f"{t.type_name}Conn", enum_types=si.enum_types)
-            if conn_where:
-                conn_args["where"] = GraphQLArgument(conn_where)
-            conn_ob = order_by_types.get(t.table_id)
-            if conn_ob:
-                conn_args["order_by"] = GraphQLArgument(GraphQLList(GraphQLNonNull(conn_ob)))
-            query_fields[f"{t.field_name}_connection"] = GraphQLField(
-                conn_type,
-                args=conn_args,
+            conn_name, conn_field = _build_connection_query_field(
+                t, gql_type, order_by_types, si.enum_types
             )
+            query_fields[conn_name] = conn_field
 
     query_type = cast(GraphQLObjectType, GraphQLObjectType("Query", lambda: query_fields))
 
@@ -1218,98 +1369,9 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
     mutation_fields: dict[str, GraphQLField] = {}
 
     for t in tables:
-        # Skip NoSQL sources — no mutations
         if si.source_types and si.source_types.get(t.source_id, "") in nosql_types:
             continue
-
-        # Build input type for insert (all visible columns)
-        insert_fields: dict[str, GraphQLInputField] = {}
-        for col in t.visible_columns:
-            col_name = col["column_name"]
-            meta = t.column_metadata.get(col_name.lower())
-            if meta is None:
-                continue
-            gql_type = trino_to_graphql(meta.data_type)
-            if isinstance(gql_type, GraphQLList):
-                gql_type = GraphQLString  # fallback for arrays in input
-            insert_fields[col_name] = GraphQLInputField(gql_type)
-
-        if not insert_fields:
-            continue
-
-        insert_input = cast(
-            GraphQLInputObjectType,
-            GraphQLInputObjectType(
-                f"{t.type_name}InsertInput",
-                lambda fields=insert_fields: fields,
-            ),
-        )
-
-        # Build set input type for update (same columns)
-        set_input = cast(
-            GraphQLInputObjectType,
-            GraphQLInputObjectType(
-                f"{t.type_name}SetInput",
-                lambda fields=insert_fields: fields,
-            ),
-        )
-
-        # Where input for update/delete (use mutation-specific name to avoid conflict)
-        where_input = _build_where_input(t, f"{t.type_name}Mutation", enum_types=si.enum_types)
-
-        # Mutation response type
-        response_type = cast(
-            GraphQLObjectType,
-            GraphQLObjectType(
-                f"{t.type_name}MutationResponse",
-                lambda t=t: {
-                    "affected_rows": GraphQLField(GraphQLNonNull(GraphQLInt)),
-                },
-            ),
-        )
-
-        # On-conflict column list for upsert
-        conflict_col_enum = cast(
-            GraphQLEnumType,
-            GraphQLEnumType(
-                f"{t.type_name}ConflictColumn",
-                {name: GraphQLEnumValue(name) for name in insert_fields},
-            ),
-        )
-
-        conv = t.naming_convention
-        # insert_<table>(input: InsertInput!): MutationResponse!
-        mutation_fields[_mutation_name("insert", t.field_name, conv)] = GraphQLField(
-            GraphQLNonNull(response_type),
-            args={"input": GraphQLArgument(GraphQLNonNull(insert_input))},
-        )
-
-        # upsert_<table>(input: InsertInput!, on_conflict: [ConflictColumn!]!): MutationResponse!
-        mutation_fields[_mutation_name("upsert", t.field_name, conv)] = GraphQLField(
-            GraphQLNonNull(response_type),
-            args={
-                "input": GraphQLArgument(GraphQLNonNull(insert_input)),
-                "on_conflict": GraphQLArgument(
-                    GraphQLNonNull(GraphQLList(GraphQLNonNull(conflict_col_enum)))
-                ),
-            },
-        )
-
-        # update_<table>(set: SetInput!, where: WhereInput!): MutationResponse!
-        if where_input:
-            mutation_fields[_mutation_name("update", t.field_name, conv)] = GraphQLField(
-                GraphQLNonNull(response_type),
-                args={
-                    "set": GraphQLArgument(GraphQLNonNull(set_input)),
-                    "where": GraphQLArgument(GraphQLNonNull(where_input)),
-                },
-            )
-
-            # delete_<table>(where: WhereInput!): MutationResponse!
-            mutation_fields[_mutation_name("delete", t.field_name, conv)] = GraphQLField(
-                GraphQLNonNull(response_type),
-                args={"where": GraphQLArgument(GraphQLNonNull(where_input))},
-            )
+        mutation_fields.update(_build_mutation_fields_for_table(t, si.enum_types))
 
     extra_query, extra_mutation = _build_action_fields(si, gql_types, tables, domain_alias_map)
     query_fields.update(extra_query)
