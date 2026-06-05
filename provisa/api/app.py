@@ -1277,7 +1277,6 @@ async def _init_ingest_engines() -> None:
 
 async def _load_and_build(config_path: str | None = None) -> None:
     """Load config, introspect Trino, build schemas for all roles."""
-    assert state.pg_pool is not None
     if config_path is None:
         config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
 
