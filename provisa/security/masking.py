@@ -60,7 +60,7 @@ class MaskingRule:
     pattern: str | None = None
     replace: str | None = None
     # constant fields
-    value: object = None
+    value: int | float | str | None = None
     # truncate fields
     precision: str | None = None
 
@@ -112,7 +112,7 @@ def validate_masking_rule(
             )
 
 
-def _resolve_constant(value: object, data_type: str) -> str:
+def _resolve_constant(value: int | float | str | None, data_type: str) -> str:
     """Resolve a constant mask value to a SQL literal.
 
     Handles special values: NULL, MAX, MIN (resolved from column type bounds).

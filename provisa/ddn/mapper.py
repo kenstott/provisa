@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TypedDict, cast
 
 from provisa.core.models import (
     Column,
@@ -43,6 +43,25 @@ from provisa.ddn.models import (
 )
 from provisa.import_shared.warnings import WarningCollector
 
+# DDN permission filters are recursive JSON: field->predicate or logical combinator.
+# Values are isinstance-narrowed at every access site in _ddn_filter_to_sql.
+DdnFilterNode = dict[str, object]  # object-ok: recursive parsed JSON; all access sites narrow with isinstance
+
+# Leaf operand from a DDN filter predicate: scalar, list, session-var dict, or None.
+DdnOperand = str | int | float | bool | list[str | int | float | bool] | dict[str, str] | None
+
+# Source-override YAML: outer key = source id, inner = Source constructor kwargs.
+SourceFieldValue = str | int | bool | list[str]
+SourceOverrides = dict[str, dict[str, SourceFieldValue]]
+
+
+class AggConfig(TypedDict, total=False):
+    """Aggregate expression config produced by _map_aggregate_expressions."""
+
+    count: bool
+    count_distinct: bool
+    fields: dict[str, list[str]]
+
 
 def _source_type_from_url(url: str) -> SourceType:
     """Infer source type from connector URL."""
@@ -71,7 +90,7 @@ def _safe_id(name: str) -> str:
 
 def _map_connectors(
     connectors: list[DDNConnector],
-    source_overrides: dict[str, Any] | None,
+    source_overrides: SourceOverrides | None,
 ) -> list[Source]:
     """Map DDN connectors to Provisa sources."""
     sources: list[Source] = []
@@ -80,7 +99,7 @@ def _map_connectors(
         sid = _safe_id(conn.name)
         stype = _source_type_from_url(conn.url)
 
-        defaults: dict[str, Any] = {
+        defaults: dict[str, SourceFieldValue] = {
             "id": sid,
             "type": stype,
             "host": "localhost",
@@ -92,7 +111,7 @@ def _map_connectors(
         if sid in overrides:
             defaults.update(overrides[sid])
 
-        sources.append(Source(**defaults))
+        sources.append(Source(**defaults))  # type: ignore[arg-type]  # Pydantic coerces and validates
     return sources
 
 
@@ -244,7 +263,7 @@ def _map_rls_rules(
 
 
 def _ddn_filter_to_sql(
-    flt: dict[str, Any], field_col_map: dict[str, str],
+    flt: DdnFilterNode, field_col_map: dict[str, str],
 ) -> str:
     """Convert a DDN permission filter to a SQL WHERE clause.
 
@@ -256,18 +275,18 @@ def _ddn_filter_to_sql(
     parts: list[str] = []
     for key, value in flt.items():
         if key == "_and" and isinstance(value, list):
-            sub = [_ddn_filter_to_sql(v, field_col_map) for v in value]
+            sub = [_ddn_filter_to_sql(cast(DdnFilterNode, v), field_col_map) for v in value]
             parts.append("(" + " AND ".join(sub) + ")")
         elif key == "_or" and isinstance(value, list):
-            sub = [_ddn_filter_to_sql(v, field_col_map) for v in value]
+            sub = [_ddn_filter_to_sql(cast(DdnFilterNode, v), field_col_map) for v in value]
             parts.append("(" + " OR ".join(sub) + ")")
         elif key == "_not" and isinstance(value, dict):
-            inner = _ddn_filter_to_sql(value, field_col_map)
+            inner = _ddn_filter_to_sql(cast(DdnFilterNode, value), field_col_map)
             parts.append(f"NOT ({inner})")
         elif isinstance(value, dict):
             col = _resolve_column(key, field_col_map)
             for op, operand in value.items():
-                sql_part = _ddn_op_to_sql(col, op, operand)
+                sql_part = _ddn_op_to_sql(col, op, cast(DdnOperand, operand))
                 if sql_part:
                     parts.append(sql_part)
     if not parts:
@@ -289,7 +308,7 @@ _DDN_OPS: dict[str, str] = {
 }
 
 
-def _ddn_op_to_sql(col: str, op: str, operand: Any) -> str:
+def _ddn_op_to_sql(col: str, op: str, operand: DdnOperand) -> str:
     """Convert a single DDN filter operation to SQL."""
     if op == "_is_null":
         return f"{col} IS NULL" if operand else f"{col} IS NOT NULL"
@@ -418,14 +437,14 @@ def _map_commands(
 
 def _map_aggregate_expressions(
     agg_exprs: list[DDNAggregateExpression],
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, AggConfig]:
     """Map DDN AggregateExpressions to aggregate config dicts.
 
     Returns: {object_type_name: {field: [functions], count: bool, ...}}
     """
-    result: dict[str, dict[str, Any]] = {}
+    result: dict[str, AggConfig] = {}
     for agg in agg_exprs:
-        entry: dict[str, Any] = {
+        entry: AggConfig = {
             "count": agg.count_enabled,
             "count_distinct": agg.count_distinct,
             "fields": dict(agg.aggregatable_fields),
@@ -439,7 +458,7 @@ def convert_hml(
     collector: WarningCollector | None = None,
     governance_default: GovernanceLevel = GovernanceLevel.pre_approved,
     domain_map: dict[str, str] | None = None,
-    source_overrides: dict[str, Any] | None = None,
+    source_overrides: SourceOverrides | None = None,
 ) -> ProvisaConfig:
     """Convert DDN HML metadata to a ProvisaConfig.
 
@@ -551,7 +570,7 @@ def _find_model_by_collection(
     return None
 
 
-def _format_agg_description(agg: dict[str, Any]) -> str:
+def _format_agg_description(agg: AggConfig) -> str:
     """Format aggregate config as a description annotation."""
     parts = []
     if agg.get("count"):

@@ -16,7 +16,10 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator
+from typing import AsyncGenerator
+
+import asyncpg
+import asyncpg.pool
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
@@ -28,9 +31,9 @@ CHANNEL_PREFIX = "provisa_"
 class PgNotificationProvider(NotificationProvider):
     """Wraps asyncpg LISTEN/NOTIFY into the NotificationProvider interface."""
 
-    def __init__(self, pool: Any) -> None:
+    def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
-        self._conn: Any | None = None
+        self._conn: asyncpg.pool.PoolConnectionProxy | None = None
 
     async def watch(
         self, table: str, filter_expr: str | None = None
@@ -38,7 +41,7 @@ class PgNotificationProvider(NotificationProvider):
         channel = f"{CHANNEL_PREFIX}{table}"
         queue: asyncio.Queue[str] = asyncio.Queue()
 
-        def _on_notify(conn: object, pid: int, ch: str, payload: str) -> None:
+        def _on_notify(conn: asyncpg.pool.PoolConnectionProxy, pid: int, ch: str, payload: str) -> None:
             queue.put_nowait(payload)
 
         self._conn = await self._pool.acquire()
@@ -81,7 +84,7 @@ class PgNotificationProvider(NotificationProvider):
         channels = [f"{CHANNEL_PREFIX}{t}" for t in tables]
         queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
 
-        def _on_notify(conn: object, pid: int, ch: str, payload: str) -> None:
+        def _on_notify(conn: asyncpg.pool.PoolConnectionProxy, pid: int, ch: str, payload: str) -> None:
             queue.put_nowait((ch, payload))
 
         self._conn = await self._pool.acquire()

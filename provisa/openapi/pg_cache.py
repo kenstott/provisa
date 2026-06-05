@@ -12,7 +12,6 @@ import json
 import logging
 import time as _time
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import asyncpg
 import httpx
@@ -57,7 +56,7 @@ def _schema_to_pg_cols(schema: dict | None) -> list[tuple[str, str]]:
     return [(name, _JSON_TO_PG.get(prop.get("type", "string"), "TEXT")) for name, prop in props.items()]
 
 
-def _check_error_path(data: Any, error_path: str | None) -> str | None:
+def _check_error_path(data: object, error_path: str | None) -> str | None:  # object-ok: httpx r.json() parsed JSON; isinstance-narrowed inside
     """Return error message if error_path resolves to a truthy value in the response."""
     if not error_path or not isinstance(data, dict):
         return None
@@ -69,7 +68,7 @@ def _check_error_path(data: Any, error_path: str | None) -> str | None:
     return str(val) if val else None
 
 
-def _normalize_rows(data: Any, response_root: str | None = None) -> list[dict]:
+def _normalize_rows(data: object, response_root: str | None = None) -> list[dict]:  # object-ok: httpx r.json() parsed JSON; isinstance-narrowed inside
     if response_root and isinstance(data, dict):
         data = data.get(response_root, data)
     if isinstance(data, list):
@@ -308,7 +307,7 @@ async def fetch_pk_row(
     base_url: str,
     path_template: str,
     path_param_name: str,
-    pk: object,
+    pk: object,  # object-ok: asyncpg Record column value (untyped); used only as str(pk)
     pg_conn: asyncpg.Connection,
     pg_schema: str,
     pg_table: str,

@@ -16,9 +16,42 @@ import asyncio
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator
+from typing import AsyncGenerator, Protocol, runtime_checkable
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
+
+
+@runtime_checkable
+class _JdbcResultSet(Protocol):
+    """Structural interface for java.sql.ResultSet used in _fetch_new_rows."""
+
+    def next(self) -> bool: ...
+    def getObject(self, column_index: int) -> object: ...  # object-ok: JPype returns opaque Java objects; narrowed via str(val) below
+    def getMetaData(self) -> _JdbcResultSetMetaData: ...
+
+
+@runtime_checkable
+class _JdbcResultSetMetaData(Protocol):
+    """Structural interface for java.sql.ResultSetMetaData."""
+
+    def getColumnCount(self) -> int: ...
+    def getColumnName(self, column: int) -> str: ...
+
+
+@runtime_checkable
+class _JdbcStatement(Protocol):
+    """Structural interface for java.sql.Statement used in _fetch_new_rows."""
+
+    def executeQuery(self, sql: str) -> _JdbcResultSet: ...
+    def close(self) -> None: ...
+
+
+@runtime_checkable
+class _JdbcConnection(Protocol):
+    """Structural interface for java.sql.Connection returned by askamerica.engine.get_connection."""
+
+    def createStatement(self) -> _JdbcStatement: ...
+    def close(self) -> None: ...
 
 log = logging.getLogger(__name__)
 
@@ -47,13 +80,13 @@ class GovDataPollingProvider(NotificationProvider):
         self._poll_interval = poll_interval
         self._running = True
 
-    def _connect(self) -> Any:
-        from askamerica.engine import get_connection
+    def _connect(self) -> _JdbcConnection:
+        from askamerica.engine import get_connection  # type: ignore[import-untyped]  # askamerica ships no stubs; Protocol narrows usage
 
         os.environ["ASKAMERICA_SCHEMAS"] = self._sources
-        return get_connection(self._api_key)
+        return get_connection(self._api_key)  # type: ignore[no-any-return]  # untyped third-party; Protocol narrowed above
 
-    def _fetch_new_rows(self, conn: Any, watermark: datetime) -> list[dict]:
+    def _fetch_new_rows(self, conn: _JdbcConnection, watermark: datetime) -> list[dict]:
         wc = self._watermark_column
         schema = self._schema
         table = self._table

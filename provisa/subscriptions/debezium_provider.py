@@ -24,9 +24,16 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator
+from typing import AsyncGenerator, AsyncIterator, Callable, Protocol, runtime_checkable
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
+
+
+@runtime_checkable
+class _KafkaConsumer(Protocol):
+    async def start(self) -> None: ...
+    async def stop(self) -> None: ...
+    def __aiter__(self) -> AsyncIterator[object]: ...
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +78,7 @@ class DebeziumNotificationProvider(NotificationProvider):
         self._schema_registry_url = schema_registry_url
         self._source_type = source_type
         self._pg_schema = pg_schema
-        self._consumer: Any | None = None
+        self._consumer: _KafkaConsumer | None = None
 
     def _build_topic(self, table: str) -> str:
         """Build Debezium topic name.
@@ -91,7 +98,7 @@ class DebeziumNotificationProvider(NotificationProvider):
             log.warning("DebeziumProvider: invalid JSON message: %s", exc)
             return None
 
-    def _parse_avro_message(self, raw: bytes, deserializer: Any) -> dict | None:
+    def _parse_avro_message(self, raw: bytes, deserializer: Callable[[bytes, None], dict | None]) -> dict | None:
         """Deserialize an Avro-encoded Debezium message using Schema Registry."""
         try:
             return deserializer(raw, None)

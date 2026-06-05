@@ -50,7 +50,14 @@ from provisa.cache.warm_tables import WarmTableManager
 from provisa.apq.cache import APQCache, NoopAPQCache
 from provisa.api_source.models import ApiEndpoint, ApiSource  # noqa: F401
 from provisa.core.models import ProvisaConfig  # noqa: F401
-from typing import Any, cast  # noqa: F401
+from typing import TYPE_CHECKING, Any, cast  # noqa: F401
+
+if TYPE_CHECKING:
+    from provisa.cache.hot_tables import HotTableManager
+    from provisa.core.tenant_context import TenantContextCache
+    from provisa.kafka.window import KafkaTableConfig
+    from provisa.core.models import Source
+    from sqlalchemy.ext.asyncio import AsyncEngine
 
 log = logging.getLogger(__name__)
 
@@ -87,7 +94,7 @@ class AppState:
     _grpc_server: Any | None = None
     _flight_server: Any | None = None  # ProvisaFlightServer
     kafka_windows: dict[str, str] = {}  # source_id → default_window (e.g. "1h")
-    kafka_table_configs: dict[str, object] = {}  # table_name → KafkaTableConfig
+    kafka_table_configs: dict[str, KafkaTableConfig] = {}  # table_name → KafkaTableConfig
     view_sql_map: dict[str, str] = {}  # view_table_name → SQL (for inline expansion)
     source_cache: dict[str, dict] = {}  # source_id → {cache_enabled, cache_ttl}
     table_cache: dict[int, int | None] = {}  # table_id → cache_ttl
@@ -95,7 +102,7 @@ class AppState:
     auth_middleware_active: bool = False  # True only when wire_auth installed AuthMiddleware
     api_endpoints: dict[str, Any] = {}  # table_name → ApiEndpoint
     api_sources: dict[str, Any] = {}  # source_id → ApiSource
-    hot_manager: object | None = None  # HotTableManager
+    hot_manager: HotTableManager | None = None
     _hot_refresh_task: asyncio.Task | None = None
     warm_manager: WarmTableManager = WarmTableManager()
     _warm_task: asyncio.Task | None = None
@@ -116,12 +123,12 @@ class AppState:
     openapi_specs: dict[str, dict] = {}  # source_id → OpenAPI spec registration
     grpc_remote_sources: dict[str, dict] = {}  # source_id → gRPC remote registration
     # Phase AS — Ingest sources
-    ingest_engines: dict[str, object] = {}  # source_id → AsyncEngine
+    ingest_engines: dict[str, AsyncEngine] = {}  # source_id → AsyncEngine
     ingest_tables: dict[str, dict[str, list[dict]]] = {}  # source_id → {table_name → [col defs]}
     # WebSocket sources
-    websocket_sources: dict[str, object] = {}  # source_id → Source
+    websocket_sources: dict[str, Source] = {}  # source_id → Source
     # RSS/Atom feed sources
-    rss_sources: dict[str, object] = {}  # source_id → Source
+    rss_sources: dict[str, Source] = {}  # source_id → Source
     pg_notify_tables: set[str] = set()  # table_names with pg_notify triggers installed
     table_watermarks: dict[str, str] = {}  # table_name → watermark_column (for polling fallback)
     _scheduler: Any | None = None  # APScheduler instance for scheduled queries
@@ -136,7 +143,7 @@ class AppState:
         str, tuple[str, str]
     ] = {}  # domain_id → (catalog, domain_id) from Domain.catalog
     multitenancy: bool = False
-    tenant_context_cache: object = None  # TenantContextCache, set at startup when multitenancy=True
+    tenant_context_cache: TenantContextCache | None = None
     kafka_table_physical: dict[
         str, str
     ] = {}  # virtual gql table → physical Trino table (Kafka sources)
@@ -486,14 +493,14 @@ async def _seed_ops_pg(conn: asyncpg.Connection) -> None:
             )
 
 
-def _seed_ops_trino(trino_conn: object, snapshot_retention_hours: int | None = None) -> None:
+def _seed_ops_trino(trino_conn: trino.dbapi.Connection, snapshot_retention_hours: int | None = None) -> None:
     """Create Iceberg schema/tables/views in Trino for the ops domain (idempotent)."""
     import logging as _ops_log
 
     _log = _ops_log.getLogger(__name__)
 
     def _exec(ddl: str) -> None:
-        cur = trino_conn.cursor()  # type: ignore[union-attr]
+        cur = trino_conn.cursor()
         cur.execute(ddl)
         cur.fetchall()
 
@@ -525,7 +532,7 @@ def _seed_ops_trino(trino_conn: object, snapshot_retention_hours: int | None = N
         # Column additions are non-fatal and isolated per table.
         for tbl_name, cols in _OPS_TABLES.items():
             try:
-                cur = trino_conn.cursor()  # type: ignore[union-attr]
+                cur = trino_conn.cursor()
                 cur.execute(f"SHOW COLUMNS FROM otel.signals.{tbl_name}")
                 existing_cols = {row[0].lower() for row in cur.fetchall()}
                 for col_name, pg_type, _ in cols:
@@ -628,33 +635,8 @@ async def _init_meta_rls(conn: asyncpg.Connection) -> None:
         )
 
 
-async def _load_and_build(config_path: str | None = None) -> None:
-    """Load config, introspect Trino, build schemas for all roles."""
-    if config_path is None:
-        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
-
-    import logging as _startup_logging
-    import time as _startup_time
-
-    # Use uvicorn's console logger — the root logger's only handler is the OTLP
-    # exporter, so provisa.* logs never reach the console / backend.log.
-    _startup_log = _startup_logging.getLogger("uvicorn.error")
-    _startup_marks = [_startup_time.perf_counter()]
-
-    def _mark(name: str) -> None:
-        now = _startup_time.perf_counter()
-        _startup_log.warning(
-            "startup phase %-20s +%6.2fs (total %6.2fs)",
-            name,
-            now - _startup_marks[-1],
-            now - _startup_marks[0],
-        )
-        _startup_marks.append(now)
-
-    _startup_log.warning("startup phase %-20s begin", "lifespan")
-
-    # Connect to PG and init schema unconditionally — pool must be available
-    # even before a config file exists (admin UI needs it on first start).
+async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:
+    """Connect to PG, init schema, audit, and billing. Returns (pg_host, pg_port, pg_database, pg_user)."""
     pg_host = os.environ.get("PG_HOST", "localhost")
     pg_port = int(os.environ.get("PG_PORT", "5432"))
     pg_database = os.environ.get("PG_DATABASE", "provisa")
@@ -673,8 +655,6 @@ async def _load_and_build(config_path: str | None = None) -> None:
         max_size=pg_pool_max,
     )
 
-    _mark("pg-pool")
-
     schema_sql_path = Path(__file__).parent.parent / "core" / "schema.sql"
     if schema_sql_path.exists():
         schema_sql = schema_sql_path.read_text()
@@ -688,9 +668,11 @@ async def _load_and_build(config_path: str | None = None) -> None:
 
     await init_billing_schema(state.pg_pool)
 
-    _mark("schema-init")
+    return pg_host, pg_port, pg_database, pg_user
 
-    # Seed built-in sources so the Data Sources page is never empty on first start.
+
+async def _seed_built_in_sources(pg_host: str, pg_port: int, pg_database: str, pg_user: str) -> None:
+    """Seed provisa-admin, provisa-otel, and __provisa__ source rows; seed meta domain and ops; compute clusters."""
     trino_host_early = os.environ.get("TRINO_HOST", "localhost")
     trino_port_early = int(os.environ.get("TRINO_PORT", "8080"))
     async with state.pg_pool.acquire() as _conn:
@@ -730,22 +712,14 @@ async def _load_and_build(config_path: str | None = None) -> None:
         if needs_clusters:
             await _compute_and_store_clusters(_pg_conn)
 
-    _mark("pg+schema+seed")
 
-    path = Path(config_path)
-    if not path.exists():
-        return
-
-    with open(path) as f:
-        raw_config = yaml.safe_load(f)
-
-    # Resolve server hostname: env var > config file > default (localhost)
+def _apply_server_and_trino_config(raw_config: dict) -> None:
+    """Populate state.server_cfg, state.hostname, state.server_limits, state.trino_conn, and FTE hints."""
     state.server_cfg = raw_config.get("server", {}) if isinstance(raw_config, dict) else {}
     state.hostname = str(
         os.environ.get("PROVISA_HOSTNAME") or state.server_cfg.get("hostname", "localhost")
     )
 
-    # Resolve query/request limits: env var > provisa.yaml server.limits > hardcoded defaults
     _limits_cfg = state.server_cfg.get("limits", {})
     state.server_limits = {
         "default_row_limit": int(
@@ -763,7 +737,6 @@ async def _load_and_build(config_path: str | None = None) -> None:
         ),
     }
 
-    # Connect to Trino
     trino_host = os.environ.get("TRINO_HOST", "localhost")
     trino_port = int(os.environ.get("TRINO_PORT", "8080"))
     state.trino_conn_kwargs = dict(
@@ -782,10 +755,7 @@ async def _load_and_build(config_path: str | None = None) -> None:
 
     _seed_ops_trino(state.trino_conn, getattr(state, "otel_snapshot_retention_hours", None))
 
-    _mark("trino-connect")
-
     # Fault-Tolerant Execution (FTE) — env var > server.federation_fte config > disabled.
-    # Pure CPU; no I/O, so it stays inline.
     _fte_cfg = state.server_cfg.get("federation_fte", {})
     _fte_enabled = os.environ.get(
         "TRINO_FTE_ENABLED", str(_fte_cfg.get("enabled", False))
@@ -801,9 +771,10 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 continue
             state.trino_fte_hints.setdefault(_k, str(_v))
 
-    # Flight (Zaychik), the MinIO buckets, and the Trino results schema are mutually
-    # independent network setup. Run them concurrently to cut startup latency — the
-    # blocking calls go on threads so the event loop can overlap them.
+
+async def _connect_flight_and_object_store() -> None:
+    """Concurrently connect Arrow Flight (Zaychik) and set up MinIO/results-schema."""
+
     async def _connect_flight() -> None:
         from provisa.executor.trino_flight import create_flight_connection
 
@@ -812,7 +783,6 @@ async def _load_and_build(config_path: str | None = None) -> None:
         state.flight_client = await asyncio.to_thread(
             create_flight_connection, host=zaychik_host, port=zaychik_port
         )
-        _mark("flight-connect")
 
     async def _setup_object_store() -> None:
         import logging as _os_log
@@ -861,22 +831,14 @@ async def _load_and_build(config_path: str | None = None) -> None:
 
     await asyncio.gather(_connect_flight(), _setup_object_store())
 
-    _mark("infra: flight/minio/results")
 
-    # Load Kafka source configs and auto-register tables
-    # Each topic config with a discriminator becomes a separate table.
-    # The discriminator is injected as a WHERE clause at query time.
-    # Column definitions from the topic config define the GraphQL schema.
-    # NOTE: This must run BEFORE parse_config_dict / load_config so that
-    # Kafka-derived tables are present when relationships are validated.
+def _process_kafka_sources(raw_config: dict) -> None:
+    """Register Kafka topics as virtual tables and populate state.kafka_table_configs/windows."""
     from provisa.kafka.window import KafkaTableConfig
 
     for ks in raw_config.get("kafka_sources", []):
         source_id = ks["id"]
         for topic in ks.get("topics", []):
-            # Determine the GraphQL table name:
-            # - Use topic config's table_name if set
-            # - Otherwise derive from topic config id
             topic_id = topic.get("id", "")
             physical_table = topic.get("topic", "").replace(".", "_").replace("-", "_")
             gql_table_name = topic.get("table_name") or topic_id.replace("-", "_")
@@ -886,7 +848,6 @@ async def _load_and_build(config_path: str | None = None) -> None:
             disc_field = disc.get("field") if disc else None
             disc_value = disc.get("value") if disc else None
 
-            # Register the Kafka table config for WHERE injection
             state.kafka_table_configs[gql_table_name] = KafkaTableConfig(
                 window=window,
                 discriminator_field=disc_field,
@@ -896,15 +857,12 @@ async def _load_and_build(config_path: str | None = None) -> None:
             if window:
                 state.kafka_windows[source_id] = window
 
-            # Auto-register as a Provisa table entry
-            # Use topic ID as table name (unique per registration),
-            # backed by the physical Trino table for introspection
             topic_columns = topic.get("columns", [])
             table_entry = {
                 "source_id": source_id,
                 "domain_id": topic.get("domain_id", "support"),
                 "schema": "default",
-                "table": gql_table_name,  # unique name per topic config
+                "table": gql_table_name,
                 "description": topic.get("description", ""),
                 "governance": "pre-approved",
                 "columns": [
@@ -921,65 +879,21 @@ async def _load_and_build(config_path: str | None = None) -> None:
             }
             raw_config.setdefault("tables", []).append(table_entry)
 
-            # Map the virtual table name to the physical Trino table
-            # so introspection and SQL compilation use the right table
             state.kafka_table_physical = getattr(state, "kafka_table_physical", {})
             state.kafka_table_physical[gql_table_name] = physical_table
 
-    # Store auth config for middleware setup
-    _raw_auth = raw_config.get("auth")
-    state.auth_config = (
-        None if (isinstance(_raw_auth, dict) and _raw_auth.get("provider") == "none") else _raw_auth
-    )
 
-    # Load config into PG (and create Trino catalogs)
-    config = parse_config_dict(raw_config)
-    state.config = config
-    state.multitenancy = config.multitenancy
-    if config.multitenancy:
-        from provisa.core.tenant_context import TenantContextCache
-
-        state.tenant_context_cache = TenantContextCache()
-        async with state.pg_pool.acquire() as _rls_conn:
-            await _init_meta_rls(cast(asyncpg.Connection, _rls_conn))
-
-    # Apply observability config to state
-    if config.observability:
-        state.otel_compact_cron = config.observability.compact_cron
-        state.otel_compact_batch_size = config.observability.compact_batch_size
-        state.otel_compact_file_chunk = config.observability.compact_file_chunk
-        state.otel_snapshot_retention_hours = config.observability.ops_snapshot_retention_hours
-        state.otel_s3_endpoint = config.observability.s3_endpoint
-
-    # Initialize cache store — REDIS_URL env var overrides config
-    cache_config = raw_config.get("cache", {})
-    if cache_config.get("enabled"):
-        redis_url = os.environ.get("REDIS_URL", "")
-        if not redis_url:
-            redis_url = resolve_secrets(cache_config.get("redis_url", ""))
-        if redis_url:
-            state.response_cache_store = RedisCacheStore(redis_url)
-        state.response_cache_default_ttl = cache_config.get("default_ttl", 300)
-
-    async with state.pg_pool.acquire() as conn:
-        _replace_mode = os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in ("1", "true", "yes")
-        await load_config(
-            config, cast(asyncpg.Connection, conn), state.trino_conn, replace=_replace_mode
-        )
-
-    _mark("load_config")
-
-    # Seed system source catalogs (not in config.sources, so must be explicit).
-    state.source_catalogs["provisa-admin"] = source_to_catalog("provisa-admin")  # provisa_admin
-    state.source_catalogs["provisa-otel"] = "otel"
-    state.source_dsns["provisa-admin"] = f"{pg_host}:{pg_port}/{pg_database}"
-
-    # Build source metadata and direct connection pools
+async def _build_source_pools_and_enums(config: ProvisaConfig) -> None:
+    """Build direct source connection pools, register websocket/rss sources, and fetch enum types."""
     from provisa.executor.drivers.registry import has_driver
+    from provisa.cache.warm_tables import DEFAULT_ICEBERG_CATALOG as _DEFAULT_ICE_CAT
+
+    # Seed system source catalogs
+    state.source_catalogs["provisa-admin"] = source_to_catalog("provisa-admin")
+    state.source_catalogs["provisa-otel"] = "otel"
 
     for src in config.sources:
         state.source_types[src.id] = src.type.value
-        # PostgreSQL sources: database is the PG db name, not the Trino catalog name.
         _pg_cat = (
             source_to_catalog(src.id)
             if src.type.value == "postgresql"
@@ -1024,8 +938,6 @@ async def _load_and_build(config_path: str | None = None) -> None:
                     _pool_err,
                 )
 
-    from provisa.cache.warm_tables import DEFAULT_ICEBERG_CATALOG as _DEFAULT_ICE_CAT
-
     _known_trino_catalogs = set(state.source_catalogs.values()) | {
         _DEFAULT_ICE_CAT,
         "otel",
@@ -1039,67 +951,6 @@ async def _load_and_build(config_path: str | None = None) -> None:
             )
         _ddl_schema = _dom.ddl_schema or _dom.id
         state.domain_write_targets[_dom.id] = (_ddl_cat, _ddl_schema)
-
-    # Phase AS: Initialize ingest engines and DDL for ingest sources
-    try:
-        from provisa.ingest.engine import get_engine as _get_ingest_engine
-        from provisa.ingest.ddl import generate_create_table as _gen_ddl
-        from provisa.core.secrets import resolve_secrets as _resolve_secrets
-        import logging as _logging
-
-        _ingest_log = _logging.getLogger(__name__)
-        async with state.pg_pool.acquire() as _pg_conn:
-            _ingest_sources = await _pg_conn.fetch(
-                "SELECT id, host, port, database, username, dialect FROM sources WHERE type = 'ingest'"
-            )
-        for _isrc in _ingest_sources:
-            _sid = _isrc["id"]
-            _pw = _resolve_secrets("")  # password resolved via secrets provider if needed
-            _eng = _get_ingest_engine(
-                source_id=_sid,
-                dialect=_isrc["dialect"] or "postgresql+asyncpg",
-                host=_isrc["host"] or "localhost",
-                port=_isrc["port"] or 5432,
-                database=_isrc["database"] or "",
-                username=_isrc["username"] or "",
-                password=_pw or "",
-            )
-            state.ingest_engines[_sid] = _eng
-            # Load tables + columns for this ingest source
-            async with state.pg_pool.acquire() as _pg_conn:
-                _itables = await _pg_conn.fetch(
-                    """
-                    SELECT rt.table_name, tc.column_name, tc.path, tc.data_type
-                    FROM registered_tables rt
-                    JOIN table_columns tc ON tc.table_id = rt.id
-                    WHERE rt.source_id = $1
-                    ORDER BY rt.table_name, tc.id
-                    """,
-                    _sid,
-                )
-            _tbl_map: dict[str, list[dict]] = {}
-            for _row in _itables:
-                _tn = _row["table_name"]
-                _tbl_map.setdefault(_tn, []).append(
-                    {
-                        "column_name": _row["column_name"],
-                        "path": _row["path"],
-                        "data_type": _row["data_type"],
-                    }
-                )
-            state.ingest_tables[_sid] = _tbl_map
-            # Run CREATE TABLE IF NOT EXISTS for each ingest table
-            for _tn, _cols in _tbl_map.items():
-                _ddl = _gen_ddl(_tn, _cols)
-                try:
-                    async with _eng.begin() as _conn:
-                        await _conn.execute(__import__("sqlalchemy").text(_ddl))
-                except Exception as _exc:
-                    _ingest_log.warning("Ingest DDL failed for %s.%s: %s", _sid, _tn, _exc)
-    except Exception:
-        import logging as _logging
-
-        _logging.getLogger(__name__).warning("Ingest source init failed", exc_info=True)
 
     # WebSocket + RSS sources — register for SSE subscription dispatch
     for _src in config.sources:
@@ -1123,16 +974,12 @@ async def _load_and_build(config_path: str | None = None) -> None:
                     pass
     state.pg_enum_types = build_enum_types(_enum_registry)
 
-    # Second pass — resolve PRIMARY KEYs from each native RDBMS source's own
-    # information_schema. Trino normalizes column types and layers Provisa governance
-    # on top, but its metadata model omits source constraints (there is no
-    # information_schema.table_constraints in a Trino catalog), so PKs are read here
-    # through the source driver directly, now that the source pools are built. The DB
-    # constraint is authoritative — config YAML need not restate is_primary_key.
-    # RDBMS sources expose their PK via the source's own information_schema, read through
-    # the source driver. SQLite sources have no driver in the pool — they migrate into
-    # the main Postgres (schema_name.table_name) with the PK preserved (see
-    # file_source.pg_migrate), so their PK is read from _pk_conn directly.
+
+async def _resolve_pk_from_sources() -> None:
+    """Second pass — resolve PRIMARY KEYs from each native RDBMS source's information_schema."""
+    import logging as _pk_logging
+
+    _startup_log = _pk_logging.getLogger("uvicorn.error")
     _PK_RDBMS_TYPES = ("postgresql", "mysql", "mariadb", "singlestore", "sqlserver", "redshift")
     _PK_SOURCE_TYPES = _PK_RDBMS_TYPES + ("sqlite",)
     async with state.pg_pool.acquire() as _pk_conn:
@@ -1145,10 +992,6 @@ async def _load_and_build(config_path: str | None = None) -> None:
         for _pk_t in _pk_rows:
             _sch = _pk_t["schema_name"].replace("'", "''")
             _tbl = _pk_t["table_name"].replace("'", "''")
-            # Standard information_schema constraint query — valid on postgres, mysql,
-            # mariadb, singlestore, sqlserver, redshift, and the main PG that holds
-            # migrated SQLite tables. Schema/table are escaped identifiers from
-            # registered_tables (not user input).
             _pk_sql = (
                 "SELECT kcu.column_name "
                 "FROM information_schema.table_constraints tc "
@@ -1183,7 +1026,9 @@ async def _load_and_build(config_path: str | None = None) -> None:
                     _pk_cols,
                 )
 
-    # Reload OpenAPI specs from DB into state (survives hot reloads and restarts)
+
+async def _load_openapi_specs() -> None:
+    """Reload OpenAPI specs from DB into state (survives hot reloads and restarts)."""
     async with state.pg_pool.acquire() as conn:
         openapi_rows = await conn.fetch(
             "SELECT id, path FROM sources WHERE type = 'openapi' AND path IS NOT NULL AND path != ''"
@@ -1212,7 +1057,9 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 "Failed to reload OpenAPI spec for %s: %s", _row["id"], exc
             )
 
-    # Load materialized view definitions
+
+def _load_mv_and_views_config(raw_config: dict) -> None:
+    """Load materialized_views, views, and auto-MV cross-source relationships into state."""
     from provisa.mv.models import MVDefinition, JoinPattern, SDLConfig
 
     mv_configs = raw_config.get("materialized_views", [])
@@ -1263,7 +1110,6 @@ async def _load_and_build(config_path: str | None = None) -> None:
             raw_config.setdefault("tables", []).append(mv_table)
 
     # Process views — governed computed datasets
-    # Each view becomes a registered table (for governance) + MV (for execution)
     views_config = raw_config.get("views", [])
     if views_config:
         import logging
@@ -1278,13 +1124,10 @@ async def _load_and_build(config_path: str | None = None) -> None:
             description = view_cfg.get("description")
             refresh_interval = view_cfg.get("refresh_interval", 300)
 
-            # Determine the source — views run through Trino, backed by postgresql catalog
             view_source_id = view_cfg.get("source_id", "postgresql")
             view_table_name = f"view_{view_id.replace('-', '_')}"
             view_schema = "mv_cache" if materialize else "public"
 
-            # Register the view as a table entry in the YAML tables list
-            # so it gets picked up by the normal table loading pipeline
             view_table = {
                 "source_id": view_source_id,
                 "domain_id": domain_id,
@@ -1295,31 +1138,28 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 "alias": view_cfg.get("alias"),
                 "columns": view_cfg.get("columns", []),
             }
-            # Append to the tables list so it's processed during schema build
             raw_config.setdefault("tables", []).append(view_table)
 
             if materialize:
-                # Create a materialized MV
                 mv = MVDefinition(
                     id=f"view-{view_id}",
-                    source_tables=[],  # SQL defines its own sources
+                    source_tables=[],
                     target_catalog="postgresql",
                     target_schema="mv_cache",
                     target_table=view_table_name,
                     refresh_interval=refresh_interval,
                     enabled=True,
                     sql=view_sql,
-                    expose_in_sdl=False,  # Exposed via the registered table instead
+                    expose_in_sdl=False,
                 )
                 state.mv_registry.register(mv)
                 _view_log.info("Registered materialized view: %s", view_id)
             else:
-                # Store semantic SQL; compiled to Trino-physical after contexts are built
                 state.view_sql_map[view_table_name] = view_sql.strip()
                 _view_log.info("Registered inline view: %s", view_id)
 
     # Auto-generate MVs from cross-source relationships with materialize=true
-    _table_source_map: dict[str, str] = {}  # table_name → source_id
+    _table_source_map: dict[str, str] = {}
     for tbl_cfg in raw_config.get("tables", []):
         tbl_name = tbl_cfg.get("table") or tbl_cfg.get("table_name")
         if tbl_name and "source_id" in tbl_cfg:
@@ -1334,15 +1174,11 @@ async def _load_and_build(config_path: str | None = None) -> None:
         src_source = _table_source_map.get(src_table)
         tgt_source = _table_source_map.get(tgt_table)
 
-        # Only auto-materialize cross-source relationships
         if src_source and tgt_source and src_source != tgt_source:
             mv_id = f"auto-mv-{rel_cfg['id']}"
             if state.mv_registry.get(mv_id) is not None:
-                continue  # Already registered (e.g., from explicit MV config)
+                continue
 
-            # Determine left/right based on cardinality
-            # many-to-one: source has FK → source is left, target is right
-            # one-to-many: source is parent → source is left, target is right
             jp = JoinPattern(
                 left_table=src_table,
                 left_column=rel_cfg["source_column"],
@@ -1370,6 +1206,189 @@ async def _load_and_build(config_path: str | None = None) -> None:
                 tgt_source,
                 tgt_table,
             )
+
+
+async def _init_ingest_engines() -> None:
+    """Phase AS: Initialize ingest engines and DDL for ingest sources."""
+    try:
+        from provisa.ingest.engine import get_engine as _get_ingest_engine
+        from provisa.ingest.ddl import generate_create_table as _gen_ddl
+        from provisa.core.secrets import resolve_secrets as _resolve_secrets
+        import logging as _logging
+
+        _ingest_log = _logging.getLogger(__name__)
+        async with state.pg_pool.acquire() as _pg_conn:
+            _ingest_sources = await _pg_conn.fetch(
+                "SELECT id, host, port, database, username, dialect FROM sources WHERE type = 'ingest'"
+            )
+        for _isrc in _ingest_sources:
+            _sid = _isrc["id"]
+            _pw = _resolve_secrets("")
+            _eng = _get_ingest_engine(
+                source_id=_sid,
+                dialect=_isrc["dialect"] or "postgresql+asyncpg",
+                host=_isrc["host"] or "localhost",
+                port=_isrc["port"] or 5432,
+                database=_isrc["database"] or "",
+                username=_isrc["username"] or "",
+                password=_pw or "",
+            )
+            state.ingest_engines[_sid] = _eng
+            async with state.pg_pool.acquire() as _pg_conn:
+                _itables = await _pg_conn.fetch(
+                    """
+                    SELECT rt.table_name, tc.column_name, tc.path, tc.data_type
+                    FROM registered_tables rt
+                    JOIN table_columns tc ON tc.table_id = rt.id
+                    WHERE rt.source_id = $1
+                    ORDER BY rt.table_name, tc.id
+                    """,
+                    _sid,
+                )
+            _tbl_map: dict[str, list[dict]] = {}
+            for _row in _itables:
+                _tn = _row["table_name"]
+                _tbl_map.setdefault(_tn, []).append(
+                    {
+                        "column_name": _row["column_name"],
+                        "path": _row["path"],
+                        "data_type": _row["data_type"],
+                    }
+                )
+            state.ingest_tables[_sid] = _tbl_map
+            for _tn, _cols in _tbl_map.items():
+                _ddl = _gen_ddl(_tn, _cols)
+                try:
+                    async with _eng.begin() as _conn:
+                        await _conn.execute(__import__("sqlalchemy").text(_ddl))
+                except Exception as _exc:
+                    _ingest_log.warning("Ingest DDL failed for %s.%s: %s", _sid, _tn, _exc)
+    except Exception:
+        import logging as _logging
+
+        _logging.getLogger(__name__).warning("Ingest source init failed", exc_info=True)
+
+
+async def _load_and_build(config_path: str | None = None) -> None:
+    """Load config, introspect Trino, build schemas for all roles."""
+    if config_path is None:
+        config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
+
+    import logging as _startup_logging
+    import time as _startup_time
+
+    # Use uvicorn's console logger — the root logger's only handler is the OTLP
+    # exporter, so provisa.* logs never reach the console / backend.log.
+    _startup_log = _startup_logging.getLogger("uvicorn.error")
+    _startup_marks = [_startup_time.perf_counter()]
+
+    def _mark(name: str) -> None:
+        now = _startup_time.perf_counter()
+        _startup_log.warning(
+            "startup phase %-20s +%6.2fs (total %6.2fs)",
+            name,
+            now - _startup_marks[-1],
+            now - _startup_marks[0],
+        )
+        _startup_marks.append(now)
+
+    _startup_log.warning("startup phase %-20s begin", "lifespan")
+
+    # Connect to PG and init schema unconditionally — pool must be available
+    # even before a config file exists (admin UI needs it on first start).
+    pg_host, pg_port, pg_database, pg_user = await _init_pg_pool_and_schema()
+
+    _mark("pg-pool")
+    _mark("schema-init")
+
+    await _seed_built_in_sources(pg_host, pg_port, pg_database, pg_user)
+
+    _mark("pg+schema+seed")
+
+    path = Path(config_path)
+    if not path.exists():
+        return
+
+    with open(path) as f:
+        raw_config = yaml.safe_load(f)
+
+    _apply_server_and_trino_config(raw_config)
+
+    _mark("trino-connect")
+
+    # Flight (Zaychik), the MinIO buckets, and the Trino results schema are mutually
+    # independent network setup. Run them concurrently to cut startup latency — the
+    # blocking calls go on threads so the event loop can overlap them.
+    await _connect_flight_and_object_store()
+
+    _mark("infra: flight/minio/results")
+
+    # NOTE: Kafka sources must run BEFORE parse_config_dict / load_config so that
+    # Kafka-derived tables are present when relationships are validated.
+    _process_kafka_sources(raw_config)
+
+    # Store auth config for middleware setup
+    _raw_auth = raw_config.get("auth")
+    state.auth_config = (
+        None if (isinstance(_raw_auth, dict) and _raw_auth.get("provider") == "none") else _raw_auth
+    )
+
+    # Load config into PG (and create Trino catalogs)
+    config = parse_config_dict(raw_config)
+    state.config = config
+    state.multitenancy = config.multitenancy
+    if config.multitenancy:
+        from provisa.core.tenant_context import TenantContextCache
+
+        state.tenant_context_cache = TenantContextCache()
+        async with state.pg_pool.acquire() as _rls_conn:
+            await _init_meta_rls(cast(asyncpg.Connection, _rls_conn))
+
+    # Apply observability config to state
+    if config.observability:
+        state.otel_compact_cron = config.observability.compact_cron
+        state.otel_compact_batch_size = config.observability.compact_batch_size
+        state.otel_compact_file_chunk = config.observability.compact_file_chunk
+        state.otel_snapshot_retention_hours = config.observability.ops_snapshot_retention_hours
+        state.otel_s3_endpoint = config.observability.s3_endpoint
+
+    # Initialize cache store — REDIS_URL env var overrides config
+    cache_config = raw_config.get("cache", {})
+    if cache_config.get("enabled"):
+        redis_url = os.environ.get("REDIS_URL", "")
+        if not redis_url:
+            redis_url = resolve_secrets(cache_config.get("redis_url", ""))
+        if redis_url:
+            state.response_cache_store = RedisCacheStore(redis_url)
+        state.response_cache_default_ttl = cache_config.get("default_ttl", 300)
+
+    async with state.pg_pool.acquire() as conn:
+        _replace_mode = os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in ("1", "true", "yes")
+        await load_config(
+            config, cast(asyncpg.Connection, conn), state.trino_conn, replace=_replace_mode
+        )
+
+    _mark("load_config")
+
+    state.source_dsns["provisa-admin"] = f"{pg_host}:{pg_port}/{pg_database}"
+
+    await _build_source_pools_and_enums(config)
+
+    await _init_ingest_engines()
+
+    # Second pass — resolve PRIMARY KEYs from each native RDBMS source's own
+    # information_schema. Trino normalizes column types and layers Provisa governance
+    # on top, but its metadata model omits source constraints (there is no
+    # information_schema.table_constraints in a Trino catalog), so PKs are read here
+    # through the source driver directly, now that the source pools are built. The DB
+    # constraint is authoritative — config YAML need not restate is_primary_key.
+    await _resolve_pk_from_sources()
+
+    # Reload OpenAPI specs from DB into state (survives hot reloads and restarts)
+    await _load_openapi_specs()
+
+    # Load materialized view definitions, views, and auto-MV cross-source rels
+    _load_mv_and_views_config(raw_config)
 
     await _load_graphql_remote_sources_from_db()
 
@@ -1536,21 +1555,8 @@ def _assert_domain_table_unique(tables: list[dict]) -> None:
         raise RuntimeError(f"Duplicate domain+table registration (must be unique): {detail}")
 
 
-async def _rebuild_schemas(raw_config: dict | None = None) -> None:
-    """Re-introspect Trino and rebuild schemas for all roles from current DB state.
-
-    Called after _load_and_build() during startup, and independently after
-    admin mutations that change tables/relationships/roles.
-    """
-    import logging as _rl
-
-    _rebuild_log = _rl.getLogger(__name__)
-    _rebuild_log.info("_rebuild_schemas called")
-    if state.pg_pool is None or state.trino_conn is None:
-        _rebuild_log.warning("_rebuild_schemas: pg_pool or trino_conn is None, returning")
-        return
-
-    kafka_physical = getattr(state, "kafka_table_physical", {})
+def _resolve_naming_config(raw_config: dict | None) -> tuple[bool, dict | None]:
+    """Load naming config from raw_config or disk. Returns (domain_prefix, resolved_raw_config)."""
     domain_prefix = False
     if raw_config:
         domain_prefix = raw_config.get("naming", {}).get("domain_prefix", False)
@@ -1566,6 +1572,387 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 domain_prefix = raw_config.get("naming", {}).get("domain_prefix", False)
                 if raw_config.get("naming", {}).get("convention"):
                     state.global_naming_convention = raw_config["naming"]["convention"]
+    return domain_prefix, raw_config
+
+
+def _inject_gql_required_args(
+    tables: list[dict], gql_remote_srcs: dict
+) -> None:
+    """Inject required GQL args as native filter columns for graphql_remote tables."""
+    if not gql_remote_srcs:
+        return
+    _gql_req_args: dict[tuple, list[dict]] = {}
+    for _reg in gql_remote_srcs.values():
+        _sid = _reg.get("source_id", "")
+        for _tbl in _reg.get("tables", []):
+            _req = _tbl.get("required_args", [])
+            if _req:
+                _gql_req_args[(_sid, _tbl["name"])] = _req
+    if _gql_req_args:
+        for _tbl in tables:
+            _key = (_tbl["source_id"], _tbl["table_name"])
+            _req = _gql_req_args.get(_key, [])
+            for _arg in _req:
+                _tbl.setdefault("columns", [])
+                _tbl["columns"].append(
+                    {
+                        "name": _arg["name"],
+                        "column_name": _arg["name"],
+                        "visible_to": [],
+                        "native_filter_type": "query_param",
+                    }
+                )
+
+
+def _build_gql_object_columns(gql_remote_srcs: dict) -> dict[str, dict[str, list[str]]]:
+    """Build gql_object_columns: {table_name: {col_name: [sub_field_names]}} for JSON extraction."""
+    _gql_object_cols: dict[str, dict[str, list[str]]] = {}
+    for _reg in gql_remote_srcs.values():
+        for _tbl in _reg.get("tables", []):
+            _tbl_obj: dict[str, list[str]] = {}
+            for _col in _tbl.get("columns", []):
+                _sub = _col.get("gql_object_fields")
+                if _sub:
+                    _tbl_obj[_col["name"]] = _sub
+            if _tbl_obj:
+                _gql_object_cols[_tbl["name"]] = _tbl_obj
+    return _gql_object_cols
+
+
+def _synthesize_column_metadata(
+    tables: list[dict],
+    col_types_converted: dict[int, list[ColumnMetadata]],
+    gql_remote_srcs: dict,
+) -> None:
+    """Synthesize ColumnMetadata for ops, provisa-admin, graphql_remote, and govdata tables."""
+    # Ops tables: static columns when Trino introspection returns empty
+    _ops_static_cols: dict[str, list[ColumnMetadata]] = {
+        tbl_name: [
+            ColumnMetadata(
+                column_name=col_name,
+                data_type=_OPS_PG_TO_TRINO.get(pg_type, "VARCHAR").lower(),
+                is_nullable=not is_pk,
+            )
+            for col_name, pg_type, is_pk in cols
+        ]
+        for tbl_name, cols in _OPS_TABLES.items()
+    }
+    for view_name, cols, _ in _OPS_VIEWS:
+        _ops_static_cols[view_name] = [
+            ColumnMetadata(
+                column_name=col_name,
+                data_type=_OPS_PG_TO_TRINO.get(pg_type, "VARCHAR").lower(),
+                is_nullable=not is_pk,
+            )
+            for col_name, pg_type, is_pk in cols
+        ]
+    for _tbl in tables:
+        if _tbl["source_id"] != "provisa-otel":
+            continue
+        _vname = _tbl["table_name"]
+        if _vname not in _ops_static_cols:
+            continue
+        _tid = _tbl["id"]
+        if not col_types_converted.get(_tid):
+            col_types_converted[_tid] = _ops_static_cols[_vname]
+
+    # provisa-admin meta tables (no provisa_admin Trino catalog)
+    _pg_to_trino: dict[str, str] = {
+        "text": "varchar",
+        "character varying": "varchar",
+        "varchar": "varchar",
+        "integer": "integer",
+        "bigint": "bigint",
+        "smallint": "smallint",
+        "boolean": "boolean",
+        "double precision": "double",
+        "float8": "double",
+        "numeric": "double",
+        "date": "date",
+        "timestamp": "timestamp",
+        "timestamp without time zone": "timestamp",
+        "json": "json",
+        "jsonb": "json",
+    }
+    for _tbl in tables:
+        if _tbl["source_id"] != "provisa-admin":
+            continue
+        _tid = _tbl["id"]
+        if col_types_converted.get(_tid):
+            continue
+        _cols = _tbl.get("columns", [])
+        if not _cols:
+            continue
+        col_types_converted[_tid] = [
+            ColumnMetadata(
+                column_name=c["column_name"],
+                data_type=_pg_to_trino.get(c.get("data_type") or "text", "varchar"),
+                is_nullable=not c.get("is_primary_key", False),
+            )
+            for c in _cols
+        ]
+
+    # graphql_remote tables (no Trino catalog)
+    if gql_remote_srcs:
+        _provisa_to_trino = {
+            "text": "varchar",
+            "integer": "integer",
+            "numeric": "double",
+            "boolean": "boolean",
+            "jsonb": "json",
+        }
+        _tbl_lookup = {(t["source_id"], t["table_name"]): t["id"] for t in tables}
+        for _reg in gql_remote_srcs.values():
+            _sid = _reg.get("source_id", "")
+            for _tbl in _reg.get("tables", []):
+                _tid = _tbl_lookup.get((_sid, _tbl["name"]))
+                if _tid is not None and _tid not in col_types_converted:
+                    col_types_converted[_tid] = [
+                        ColumnMetadata(
+                            column_name=c["name"],
+                            data_type=_provisa_to_trino.get(c.get("type", "text"), "varchar"),
+                            is_nullable=True,
+                        )
+                        for c in _tbl.get("columns", [])
+                    ]
+
+    # govdata tables from registered columns
+    for _tbl in tables:
+        if state.source_types.get(_tbl["source_id"]) != "govdata":
+            continue
+        _tid = _tbl["id"]
+        if col_types_converted.get(_tid):
+            continue
+        _cols = _tbl.get("columns", [])
+        if not _cols:
+            log.warning(
+                "govdata table %s.%s has no registered columns — skipping",
+                _tbl.get("schema_name", ""),
+                _tbl.get("table_name", ""),
+            )
+            continue
+        col_types_converted[_tid] = [
+            ColumnMetadata(
+                column_name=c["column_name"],
+                data_type=c.get("data_type") or "varchar",
+                is_nullable=True,
+            )
+            for c in _cols
+        ]
+
+
+async def _load_masking_rules(
+    conn: Any,
+    col_types_converted: dict[int, list[ColumnMetadata]],
+    roles: list[dict],
+) -> None:
+    """Load masking rules from table_columns and populate state.masking_rules."""
+    from provisa.security.masking import MaskingRule, MaskType, validate_masking_rule
+
+    masking_rows = await conn.fetch(
+        "SELECT table_id, column_name, unmasked_to, mask_type, mask_pattern, "
+        "mask_replace, mask_value, mask_precision FROM table_columns "
+        "WHERE mask_type IS NOT NULL"
+    )
+    for mrow in masking_rows:
+        mask_rule = MaskingRule(
+            mask_type=MaskType(mrow["mask_type"]),
+            pattern=mrow["mask_pattern"],
+            replace=mrow["mask_replace"],
+            value=_parse_mask_value(mrow["mask_value"]),
+            precision=mrow["mask_precision"],
+        )
+        table_id = mrow["table_id"]
+        col_name = mrow["column_name"]
+        unmasked_to = list(mrow.get("unmasked_to") or [])
+        col_metas = col_types_converted.get(table_id, [])
+        data_type = "varchar"
+        is_nullable = True
+        for cm in col_metas:
+            if cm.column_name == col_name:
+                data_type = cm.data_type
+                is_nullable = cm.is_nullable
+                break
+        validate_masking_rule(mask_rule, col_name, data_type, is_nullable)
+        for role in roles:
+            if role["id"] in unmasked_to:
+                continue
+            key = (table_id, role["id"])
+            if key not in state.masking_rules:
+                state.masking_rules[key] = {}
+            state.masking_rules[key][col_name] = (mask_rule, data_type)
+
+
+async def _load_tracked_functions_and_webhooks(
+    conn: Any, raw_config: dict | None
+) -> tuple[list[dict], list[dict]]:
+    """Load tracked functions and webhooks from DB; populate state.tracked_functions/webhooks."""
+    from provisa.api.admin.actions_router import _ensure_tables
+
+    await _ensure_tables(state.pg_pool)
+
+    from provisa.discovery.catalog_cache import ensure_table as _ensure_catalog_cache
+
+    await _ensure_catalog_cache(state.pg_pool)
+    fn_rows = await conn.fetch("SELECT * FROM tracked_functions ORDER BY name")
+    wh_rows = await conn.fetch("SELECT * FROM tracked_webhooks ORDER BY name")
+    import json as _json
+
+    tracked_functions = [
+        {
+            **dict(r),
+            "arguments": _json.loads(r["arguments"])
+            if isinstance(r["arguments"], str)
+            else (r["arguments"] or []),
+            "visible_to": list(r["visible_to"] or []),
+        }
+        for r in fn_rows
+    ]
+    tracked_webhooks = [
+        {
+            **dict(r),
+            "arguments": _json.loads(r["arguments"])
+            if isinstance(r["arguments"], str)
+            else (r["arguments"] or []),
+            "inline_return_type": _json.loads(r["inline_return_type"])
+            if isinstance(r["inline_return_type"], str)
+            else (r["inline_return_type"] or []),
+            "visible_to": list(r["visible_to"] or []),
+        }
+        for r in wh_rows
+    ]
+
+    from provisa.compiler.naming import domain_to_sql_name as _d2sql
+
+    _dp = raw_config.get("naming", {}).get("domain_prefix", False) if raw_config else False
+    state.tracked_functions = {}
+    for f in tracked_functions:
+        state.tracked_functions[f["name"]] = f
+        if _dp and f.get("domain_id"):
+            prefixed = f"{_d2sql(f['domain_id'])}__{f['name']}"
+            state.tracked_functions[prefixed] = f
+    state.tracked_webhooks = {}
+    for w in tracked_webhooks:
+        state.tracked_webhooks[w["name"]] = w
+        if _dp and w.get("domain_id"):
+            prefixed = f"{_d2sql(w['domain_id'])}__{w['name']}"
+            state.tracked_webhooks[prefixed] = w
+
+    return tracked_functions, tracked_webhooks
+
+
+def _build_and_register_schemas(
+    roles: list[dict],
+    tables: list[dict],
+    relationships: list[dict],
+    col_types_converted: dict[int, list[ColumnMetadata]],
+    naming_rules: list[dict],
+    domains: list[dict],
+    domain_prefix: bool,
+    kafka_physical: dict,
+    tracked_functions: list[dict],
+    tracked_webhooks: list[dict],
+    approved_queries: list[dict],
+    gql_object_cols: dict,
+    rls_rules: list[dict],
+) -> None:
+    """Build and register GraphQL schemas, contexts, and protos for each role."""
+    for role in roles:
+        state.roles[role["id"]] = role
+        si = SchemaInput(
+            tables=tables,
+            relationships=relationships,
+            column_types=col_types_converted,
+            naming_rules=naming_rules,
+            role=role,
+            domains=domains,
+            source_types=state.source_types,
+            source_catalogs=state.source_catalogs,
+            domain_prefix=domain_prefix,
+            physical_table_map={**_META_TABLE_ALIAS, **(kafka_physical or {})},
+            naming_convention=state.global_naming_convention,
+            functions=tracked_functions,
+            webhooks=tracked_webhooks,
+            enum_types=state.pg_enum_types,
+            approved_queries=approved_queries,
+            gql_object_columns=gql_object_cols,
+        )
+        try:
+            state.schemas[role["id"]] = generate_schema(si)
+            state.contexts[role["id"]] = build_context(si)
+            state.rls_contexts[role["id"]] = build_rls_context(
+                rls_rules,
+                role["id"],
+            )
+        except ValueError as _schema_err:
+            import logging as _log
+
+            _log.getLogger(__name__).error(
+                "generate_schema failed for role %r: %s", role["id"], _schema_err
+            )
+
+        try:
+            from provisa.grpc.proto_gen import generate_proto
+
+            state.proto_files[role["id"]] = generate_proto(si)
+        except ValueError:
+            pass
+
+
+async def _bg_hydrate_api_endpoints() -> None:
+    """Background-hydrate zero-param API endpoints (no path params → full collection known at startup)."""
+    _zero_param_eps = [
+        (ep, state.api_sources[ep.source_id])
+        for ep in state.api_endpoints.values()
+        if "{" not in ep.path and ep.source_id in state.api_sources
+    ]
+    if not _zero_param_eps:
+        return
+
+    import logging as _hydrate_logging
+
+    _hydrate_log = _hydrate_logging.getLogger(__name__)
+
+    async def _bg_hydrate(eps=_zero_param_eps, pool=state.pg_pool, _log=_hydrate_log):
+        from provisa.openapi.pg_cache import fill_api_table
+
+        async with pool.acquire() as _conn:
+            for _ep, _src in eps:
+                try:
+                    await fill_api_table(
+                        _src.base_url,
+                        _ep.path,
+                        _ep.default_params,
+                        cast(asyncpg.Connection, _conn),
+                        "default",
+                        _ep.table_name,
+                        _ep.ttl,
+                        _ep.response_root,
+                        _ep.error_path,
+                        _ep.pk_column,
+                    )
+                except Exception as _e:
+                    _log.warning("BG hydration failed for %s: %s", _ep.table_name, _e)
+
+    asyncio.create_task(_bg_hydrate())
+
+
+async def _rebuild_schemas(raw_config: dict | None = None) -> None:
+    """Re-introspect Trino and rebuild schemas for all roles from current DB state.
+
+    Called after _load_and_build() during startup, and independently after
+    admin mutations that change tables/relationships/roles.
+    """
+    import logging as _rl
+
+    _rebuild_log = _rl.getLogger(__name__)
+    _rebuild_log.info("_rebuild_schemas called")
+    if state.pg_pool is None or state.trino_conn is None:
+        _rebuild_log.warning("_rebuild_schemas: pg_pool or trino_conn is None, returning")
+        return
+
+    kafka_physical = getattr(state, "kafka_table_physical", {})
+    domain_prefix, raw_config = _resolve_naming_config(raw_config)
 
     # Clear mutable state before rebuild
     state.masking_rules = {}
@@ -1659,161 +2046,16 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         )
         col_types_converted: dict[int, list[ColumnMetadata]] = column_types
 
-        # Inject required GQL args as native filter columns for graphql_remote tables.
-        # This lets the Cypher translator rewrite WHERE n.id → WHERE n._nf_id so the
-        # GQL executor can pick them up as variables (e.g. employee(id: $id)).
         _gql_remote_srcs = getattr(state, "graphql_remote_sources", {})
-        if _gql_remote_srcs:
-            _gql_req_args: dict[tuple, list[dict]] = {}
-            for _reg in _gql_remote_srcs.values():
-                _sid = _reg.get("source_id", "")
-                for _tbl in _reg.get("tables", []):
-                    _req = _tbl.get("required_args", [])
-                    if _req:
-                        _gql_req_args[(_sid, _tbl["name"])] = _req
-            if _gql_req_args:
-                for _tbl in tables:
-                    _key = (_tbl["source_id"], _tbl["table_name"])
-                    _req = _gql_req_args.get(_key, [])
-                    for _arg in _req:
-                        _tbl.setdefault("columns", [])
-                        _tbl["columns"].append(
-                            {
-                                "name": _arg["name"],
-                                "column_name": _arg["name"],
-                                "visible_to": [],
-                                "native_filter_type": "query_param",
-                            }
-                        )
+
+        # Inject required GQL args as native filter columns for graphql_remote tables.
+        _inject_gql_required_args(tables, _gql_remote_srcs)
 
         # Build gql_object_columns: {table_name: {col_name: [sub_field_names]}} for JSON extraction
-        _gql_object_cols: dict[str, dict[str, list[str]]] = {}
-        for _reg in _gql_remote_srcs.values():
-            for _tbl in _reg.get("tables", []):
-                _tbl_obj: dict[str, list[str]] = {}
-                for _col in _tbl.get("columns", []):
-                    _sub = _col.get("gql_object_fields")
-                    if _sub:
-                        _tbl_obj[_col["name"]] = _sub
-                if _tbl_obj:
-                    _gql_object_cols[_tbl["name"]] = _tbl_obj
+        _gql_object_cols = _build_gql_object_columns(_gql_remote_srcs)
 
-        # Synthesize ColumnMetadata for all ops tables when Trino introspection returns empty.
-        # Physical tables (traces/logs/metrics) may not exist yet (compact hasn't run);
-        # views are never exposed via Iceberg JDBC information_schema.columns.
-        _ops_static_cols: dict[str, list[ColumnMetadata]] = {
-            tbl_name: [
-                ColumnMetadata(
-                    column_name=col_name,
-                    data_type=_OPS_PG_TO_TRINO.get(pg_type, "VARCHAR").lower(),
-                    is_nullable=not is_pk,
-                )
-                for col_name, pg_type, is_pk in cols
-            ]
-            for tbl_name, cols in _OPS_TABLES.items()
-        }
-        for view_name, cols, _ in _OPS_VIEWS:
-            _ops_static_cols[view_name] = [
-                ColumnMetadata(
-                    column_name=col_name,
-                    data_type=_OPS_PG_TO_TRINO.get(pg_type, "VARCHAR").lower(),
-                    is_nullable=not is_pk,
-                )
-                for col_name, pg_type, is_pk in cols
-            ]
-        for _tbl in tables:
-            if _tbl["source_id"] != "provisa-otel":
-                continue
-            _vname = _tbl["table_name"]
-            if _vname not in _ops_static_cols:
-                continue
-            _tid = _tbl["id"]
-            if not col_types_converted.get(_tid):
-                col_types_converted[_tid] = _ops_static_cols[_vname]
-
-        # Synthesize ColumnMetadata for provisa-admin meta tables (no provisa_admin Trino catalog)
-        _pg_to_trino: dict[str, str] = {
-            "text": "varchar",
-            "character varying": "varchar",
-            "varchar": "varchar",
-            "integer": "integer",
-            "bigint": "bigint",
-            "smallint": "smallint",
-            "boolean": "boolean",
-            "double precision": "double",
-            "float8": "double",
-            "numeric": "double",
-            "date": "date",
-            "timestamp": "timestamp",
-            "timestamp without time zone": "timestamp",
-            "json": "json",
-            "jsonb": "json",
-        }
-        for _tbl in tables:
-            if _tbl["source_id"] != "provisa-admin":
-                continue
-            _tid = _tbl["id"]
-            if col_types_converted.get(_tid):
-                continue
-            _cols = _tbl.get("columns", [])
-            if not _cols:
-                continue
-            col_types_converted[_tid] = [
-                ColumnMetadata(
-                    column_name=c["column_name"],
-                    data_type=_pg_to_trino.get(c.get("data_type") or "text", "varchar"),
-                    is_nullable=not c.get("is_primary_key", False),
-                )
-                for c in _cols
-            ]
-
-        # Synthesize ColumnMetadata for graphql_remote tables (no Trino catalog)
-        if _gql_remote_srcs:
-            _provisa_to_trino = {
-                "text": "varchar",
-                "integer": "integer",
-                "numeric": "double",
-                "boolean": "boolean",
-                "jsonb": "json",
-            }
-            _tbl_lookup = {(t["source_id"], t["table_name"]): t["id"] for t in tables}
-            for _reg in _gql_remote_srcs.values():
-                _sid = _reg.get("source_id", "")
-                for _tbl in _reg.get("tables", []):
-                    _tid = _tbl_lookup.get((_sid, _tbl["name"]))
-                    if _tid is not None and _tid not in col_types_converted:
-                        col_types_converted[_tid] = [
-                            ColumnMetadata(
-                                column_name=c["name"],
-                                data_type=_provisa_to_trino.get(c.get("type", "text"), "varchar"),
-                                is_nullable=True,
-                            )
-                            for c in _tbl.get("columns", [])
-                        ]
-
-        # Synthesize ColumnMetadata for govdata tables from registered columns (populated via JDBC at registration time)
-        for _tbl in tables:
-            if state.source_types.get(_tbl["source_id"]) != "govdata":
-                continue
-            _tid = _tbl["id"]
-            if col_types_converted.get(_tid):
-                continue
-            _cols = _tbl.get("columns", [])
-            if not _cols:
-                log.warning(
-                    "govdata table %s.%s has no registered columns — skipping",
-                    _tbl.get("schema_name", ""),
-                    _tbl.get("table_name", ""),
-                )
-                continue
-            col_types_converted[_tid] = [
-                ColumnMetadata(
-                    column_name=c["column_name"],
-                    data_type=c.get("data_type") or "varchar",
-                    is_nullable=True,
-                )
-                for c in _cols
-            ]
+        # Synthesize ColumnMetadata for ops, provisa-admin, graphql_remote, and govdata tables
+        _synthesize_column_metadata(tables, col_types_converted, _gql_remote_srcs)
 
         # Load API sources and endpoints (Phase U)
         from provisa.api_source.loader import load_api_sources
@@ -1826,39 +2068,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             state.source_types,
         )
 
-        # Background hydration for zero-param API endpoints (no path params → full collection known at startup)
-        _zero_param_eps = [
-            (ep, state.api_sources[ep.source_id])
-            for ep in state.api_endpoints.values()
-            if "{" not in ep.path and ep.source_id in state.api_sources
-        ]
-        if _zero_param_eps:
-            import logging as _hydrate_logging
-
-            _hydrate_log = _hydrate_logging.getLogger(__name__)
-
-            async def _bg_hydrate(eps=_zero_param_eps, pool=state.pg_pool, _log=_hydrate_log):
-                from provisa.openapi.pg_cache import fill_api_table
-
-                async with pool.acquire() as _conn:
-                    for _ep, _src in eps:
-                        try:
-                            await fill_api_table(
-                                _src.base_url,
-                                _ep.path,
-                                _ep.default_params,
-                                cast(asyncpg.Connection, _conn),
-                                "default",
-                                _ep.table_name,
-                                _ep.ttl,
-                                _ep.response_root,
-                                _ep.error_path,
-                                _ep.pk_column,
-                            )
-                        except Exception as _e:
-                            _log.warning("BG hydration failed for %s: %s", _ep.table_name, _e)
-
-            asyncio.create_task(_bg_hydrate())
+        await _bg_hydrate_api_endpoints()
 
         # Load RLS rules
         rls_rules = [
@@ -1866,94 +2076,11 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             for r in await conn.fetch("SELECT table_id, role_id, filter_expr FROM rls_rules")
         ]
 
-        # Load masking rules from table_columns (inline masking)
-        from provisa.security.masking import MaskingRule, MaskType, validate_masking_rule
+        await _load_masking_rules(conn, col_types_converted, roles)
 
-        masking_rows = await conn.fetch(
-            "SELECT table_id, column_name, unmasked_to, mask_type, mask_pattern, "
-            "mask_replace, mask_value, mask_precision FROM table_columns "
-            "WHERE mask_type IS NOT NULL"
+        tracked_functions, tracked_webhooks = await _load_tracked_functions_and_webhooks(
+            conn, raw_config
         )
-        for mrow in masking_rows:
-            mask_rule = MaskingRule(
-                mask_type=MaskType(mrow["mask_type"]),
-                pattern=mrow["mask_pattern"],
-                replace=mrow["mask_replace"],
-                value=_parse_mask_value(mrow["mask_value"]),
-                precision=mrow["mask_precision"],
-            )
-            table_id = mrow["table_id"]
-            col_name = mrow["column_name"]
-            unmasked_to = list(mrow.get("unmasked_to") or [])
-            col_metas = col_types_converted.get(table_id, [])
-            data_type = "varchar"
-            is_nullable = True
-            for cm in col_metas:
-                if cm.column_name == col_name:
-                    data_type = cm.data_type
-                    is_nullable = cm.is_nullable
-                    break
-            validate_masking_rule(mask_rule, col_name, data_type, is_nullable)
-            # Build per-role masking entries for all roles NOT in unmasked_to
-            for role in roles:
-                if role["id"] in unmasked_to:
-                    continue
-                key = (table_id, role["id"])
-                if key not in state.masking_rules:
-                    state.masking_rules[key] = {}
-                state.masking_rules[key][col_name] = (mask_rule, data_type)
-
-        # Load tracked functions and webhooks for action schema fields
-        from provisa.api.admin.actions_router import _ensure_tables
-
-        await _ensure_tables(state.pg_pool)
-
-        from provisa.discovery.catalog_cache import ensure_table as _ensure_catalog_cache
-
-        await _ensure_catalog_cache(state.pg_pool)
-        fn_rows = await conn.fetch("SELECT * FROM tracked_functions ORDER BY name")
-        wh_rows = await conn.fetch("SELECT * FROM tracked_webhooks ORDER BY name")
-        import json as _json
-
-        tracked_functions = [
-            {
-                **dict(r),
-                "arguments": _json.loads(r["arguments"])
-                if isinstance(r["arguments"], str)
-                else (r["arguments"] or []),
-                "visible_to": list(r["visible_to"] or []),
-            }
-            for r in fn_rows
-        ]
-        tracked_webhooks = [
-            {
-                **dict(r),
-                "arguments": _json.loads(r["arguments"])
-                if isinstance(r["arguments"], str)
-                else (r["arguments"] or []),
-                "inline_return_type": _json.loads(r["inline_return_type"])
-                if isinstance(r["inline_return_type"], str)
-                else (r["inline_return_type"] or []),
-                "visible_to": list(r["visible_to"] or []),
-            }
-            for r in wh_rows
-        ]
-
-        from provisa.compiler.naming import domain_to_sql_name as _d2sql
-
-        _dp = raw_config.get("naming", {}).get("domain_prefix", False) if raw_config else False
-        state.tracked_functions = {}
-        for f in tracked_functions:
-            state.tracked_functions[f["name"]] = f
-            if _dp and f.get("domain_id"):
-                prefixed = f"{_d2sql(f['domain_id'])}__{f['name']}"
-                state.tracked_functions[prefixed] = f
-        state.tracked_webhooks = {}
-        for w in tracked_webhooks:
-            state.tracked_webhooks[w["name"]] = w
-            if _dp and w.get("domain_id"):
-                prefixed = f"{_d2sql(w['domain_id'])}__{w['name']}"
-                state.tracked_webhooks[prefixed] = w
 
         approved_query_rows = await conn.fetch(
             "SELECT id, stable_id, query_text, target_tables, business_purpose "
@@ -1961,47 +2088,21 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         )
         approved_queries = [dict(r) for r in approved_query_rows]
 
-        for role in roles:
-            state.roles[role["id"]] = role
-            si = SchemaInput(
-                tables=tables,
-                relationships=relationships,
-                column_types=col_types_converted,
-                naming_rules=naming_rules,
-                role=role,
-                domains=domains,
-                source_types=state.source_types,
-                source_catalogs=state.source_catalogs,
-                domain_prefix=domain_prefix,
-                physical_table_map={**_META_TABLE_ALIAS, **(kafka_physical or {})},
-                naming_convention=state.global_naming_convention,
-                functions=tracked_functions,
-                webhooks=tracked_webhooks,
-                enum_types=state.pg_enum_types,
-                approved_queries=approved_queries,
-                gql_object_columns=_gql_object_cols,
-            )
-            try:
-                state.schemas[role["id"]] = generate_schema(si)
-                state.contexts[role["id"]] = build_context(si)
-                state.rls_contexts[role["id"]] = build_rls_context(
-                    rls_rules,
-                    role["id"],
-                )
-            except ValueError as _schema_err:
-                import logging as _log
-
-                _log.getLogger(__name__).error(
-                    "generate_schema failed for role %r: %s", role["id"], _schema_err
-                )
-
-            # Generate proto for this role
-            try:
-                from provisa.grpc.proto_gen import generate_proto
-
-                state.proto_files[role["id"]] = generate_proto(si)
-            except ValueError:
-                pass
+        _build_and_register_schemas(
+            roles=roles,
+            tables=tables,
+            relationships=relationships,
+            col_types_converted=col_types_converted,
+            naming_rules=naming_rules,
+            domains=domains,
+            domain_prefix=domain_prefix,
+            kafka_physical=kafka_physical,
+            tracked_functions=tracked_functions,
+            tracked_webhooks=tracked_webhooks,
+            approved_queries=approved_queries,
+            gql_object_cols=_gql_object_cols,
+            rls_rules=rls_rules,
+        )
 
     # Cache raw build data for on-demand domain-filtered schema generation
     state.schema_build_cache = {
@@ -2038,43 +2139,34 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         }
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """App lifespan: load config and build schemas at startup."""
-    import logging
-
-    _log = logging.getLogger(__name__)
-    state.schema_boot_id = uuid.uuid4().hex
-    try:
-        await _load_and_build()
-    except Exception:
-        _log.exception("Startup failed during _load_and_build")
-        raise
-
-    # Pre-warm GovData JVM if govdata is or may be used
+def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
+    """Start GovData JVM pre-warm in a background thread if govdata sources are active."""
     _govdata_active = any(v == "govdata" for v in state.source_types.values()) or bool(
         os.environ.get("ASKAMERICA_API_KEY")
     )
-    if _govdata_active:
-        import threading as _threading
+    if not _govdata_active:
+        return
+    import threading as _threading
 
-        def _prewarm_jvm():
-            try:
-                import os as _os
-                from provisa.govdata.source import _jvm_lock as _lock
-                from askamerica.engine import DEFAULT_SCHEMAS as _DS, start_jvm as _start_jvm
+    def _prewarm_jvm():
+        try:
+            import os as _os
+            from provisa.govdata.source import _jvm_lock as _lock
+            from askamerica.engine import DEFAULT_SCHEMAS as _DS, start_jvm as _start_jvm
 
-                with _lock:
-                    if "ASKAMERICA_SCHEMAS" not in _os.environ:
-                        _os.environ["ASKAMERICA_SCHEMAS"] = _DS
-                    api_key = _os.environ.get("ASKAMERICA_API_KEY", "")
-                    _start_jvm(api_key)
-            except Exception:
-                _log.exception("GovData JVM pre-warm failed")
+            with _lock:
+                if "ASKAMERICA_SCHEMAS" not in _os.environ:
+                    _os.environ["ASKAMERICA_SCHEMAS"] = _DS
+                api_key = _os.environ.get("ASKAMERICA_API_KEY", "")
+                _start_jvm(api_key)
+        except Exception:
+            _log.exception("GovData JVM pre-warm failed")
 
-        _threading.Thread(target=_prewarm_jvm, daemon=True, name="govdata-jvm-prewarm").start()
+    _threading.Thread(target=_prewarm_jvm, daemon=True, name="govdata-jvm-prewarm").start()
 
-    # Start MV refresh background task
+
+async def _start_background_tasks(_log: logging.Logger) -> None:
+    """Start MV refresh, warm-table, hot-table refresh, and SQLite staleness background tasks."""
     if state.mv_registry.get_enabled() and state.trino_conn:
         from provisa.mv.refresh import refresh_loop
 
@@ -2082,7 +2174,6 @@ async def lifespan(app: FastAPI):
             refresh_loop(state.trino_conn, state.mv_registry),
         )
 
-    # Start warm-table background task (REQ-AD5)
     if state.trino_conn:
         from provisa.compiler.sql_gen import query_counter as _qc
 
@@ -2097,7 +2188,6 @@ async def lifespan(app: FastAPI):
 
         state._warm_task = asyncio.create_task(_warm_loop())
 
-    # Start hot-table periodic refresh (Phase AD6)
     if state.hot_manager is not None and state.trino_conn:
         from provisa.cache.hot_tables import HotTableManager
 
@@ -2131,7 +2221,6 @@ async def lifespan(app: FastAPI):
 
         state._hot_refresh_task = asyncio.create_task(_hot_refresh_loop())
 
-    # Start SQLite staleness check loop
     _sqlite_check_interval = 60
 
     async def _sqlite_stale_loop() -> None:
@@ -2173,14 +2262,15 @@ async def lifespan(app: FastAPI):
 
     state._sqlite_stale_task = asyncio.create_task(_sqlite_stale_loop())
 
-    # Start gRPC server if protos were generated
+
+async def _start_servers(_log: logging.Logger) -> None:
+    """Start gRPC, Arrow Flight, pgwire, Live Query Engine, and APQ cache servers."""
     if state.proto_files:
         try:
             import tempfile
             from provisa.grpc.schema_gen import compile_proto
             from provisa.grpc.server import start_grpc_server
 
-            # Use the first role's proto to compile stubs (service is the same)
             first_proto = next(iter(state.proto_files.values()))
             grpc_output_dir = tempfile.mkdtemp(prefix="provisa_grpc_")
             pb2_path, pb2_grpc_path = compile_proto(first_proto, grpc_output_dir)
@@ -2195,11 +2285,8 @@ async def lifespan(app: FastAPI):
             )
             _log.info("gRPC server listening on %s:%d", state.hostname, grpc_port)
         except Exception:
-            import logging
+            _log.exception("gRPC server startup failed")
 
-            logging.getLogger(__name__).exception("gRPC server startup failed")
-
-    # Start Arrow Flight server
     try:
         from provisa.api.flight.server import ProvisaFlightServer
 
@@ -2223,7 +2310,6 @@ async def lifespan(app: FastAPI):
     except Exception:
         _log.exception("Arrow Flight server startup failed")
 
-    # Start pgwire server
     pgwire_port = int(os.environ.get("PROVISA_PGWIRE_PORT", "0"))
     if pgwire_port:
         try:
@@ -2249,7 +2335,6 @@ async def lifespan(app: FastAPI):
         except Exception:
             _log.exception("pgwire server startup failed")
 
-    # Start Live Query Engine (Phase AM)
     try:
         from provisa.live.engine import LiveEngine
 
@@ -2260,7 +2345,6 @@ async def lifespan(app: FastAPI):
     except Exception:
         _log.exception("Live Query Engine startup failed")
 
-    # Initialize APQ cache (Phase AN)
     redis_url = os.environ.get("REDIS_URL")
     if redis_url:
         try:
@@ -2271,13 +2355,14 @@ async def lifespan(app: FastAPI):
         except Exception:
             _log.exception("APQ cache initialization failed")
 
-    # Start scheduler for config-based triggers and approved query schedules (Phase AX)
+
+def _start_scheduler(_log: logging.Logger) -> None:
+    """Start APScheduler with config-based triggers, OTEL compaction, and Trino watcher."""
     try:
         from apscheduler.schedulers.asyncio import AsyncIOScheduler
         from apscheduler.triggers.cron import CronTrigger
 
         scheduler = AsyncIOScheduler()
-        # Register config-based triggers if present
         _cfg_triggers = []
         try:
             _raw = yaml.safe_load(
@@ -2303,7 +2388,6 @@ async def lifespan(app: FastAPI):
                     name=job.name,
                     replace_existing=True,
                 )
-        # OTEL compaction: Parquet → Iceberg on configured schedule
         from provisa.scheduler.jobs import compact_otel_signals, watch_trino
 
         scheduler.add_job(
@@ -2329,177 +2413,134 @@ async def lifespan(app: FastAPI):
     except Exception:
         _log.exception("APScheduler startup failed")
 
-    # Auto-register graphql-demo source if GRAPHQL_DEMO_URL is set (or we're in docker-compose)
-    _graphql_demo_url = os.environ.get("GRAPHQL_DEMO_URL", "http://graphql-demo:4000/graphql")
-    if os.environ.get("GRAPHQL_DEMO_ENABLED", "").lower() in ("1", "true", "yes") or os.environ.get(
-        "GRAPHQL_DEMO_URL"
-    ):
 
-        async def _register_graphql_demo() -> None:
-            from provisa.api.admin.graphql_remote_router import (
-                _introspect_and_map,
-                _upsert_tables_to_semantic_layer,
-                GraphQLRemoteRegistration,
+async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
+    """Auto-register graphql-demo source if GRAPHQL_DEMO_URL or GRAPHQL_DEMO_ENABLED is set."""
+    _graphql_demo_url = os.environ.get("GRAPHQL_DEMO_URL", "http://graphql-demo:4000/graphql")
+    if not (
+        os.environ.get("GRAPHQL_DEMO_ENABLED", "").lower() in ("1", "true", "yes")
+        or os.environ.get("GRAPHQL_DEMO_URL")
+    ):
+        return
+
+    async def _register_graphql_demo() -> None:
+        from provisa.api.admin.graphql_remote_router import (
+            _introspect_and_map,
+            _upsert_tables_to_semantic_layer,
+            GraphQLRemoteRegistration,
+        )
+
+        try:
+            tables, functions, relationships = await _introspect_and_map(
+                "graphql-demo",
+                _graphql_demo_url,
+                "shelter",
+                "shelter",
+                None,
+            )
+            reg = GraphQLRemoteRegistration(
+                source_id="graphql-demo",
+                url=_graphql_demo_url,
+                namespace="shelter",
+                domain_id="shelter",
+                cache_ttl=300,
+                tables=tables,
+                functions=functions,
+                relationships=relationships,
+            )
+            if not hasattr(state, "graphql_remote_sources"):
+                state.graphql_remote_sources = {}
+            state.graphql_remote_sources["graphql-demo"] = reg.model_dump()
+            _demo_pool = state.pg_pool
+            if _demo_pool is not None:
+                async with _demo_pool.acquire() as _conn:
+                    await _conn.execute(
+                        """
+                        INSERT INTO sources (id, type, host, port, database, username, dialect, path, description)
+                        VALUES ('graphql-demo', 'graphql_remote', '', 0, '', '', '', $1, 'Animal shelter GraphQL API — staff schedules, breed catalogue, and animal assignment records managed by shelter operations')
+                        ON CONFLICT (id) DO UPDATE SET path = EXCLUDED.path, description = EXCLUDED.description
+                        """,
+                        _graphql_demo_url,
+                    )
+                    await _conn.execute(
+                        "INSERT INTO domains (id, description) VALUES ('shelter', 'Animal shelter staff and breed management') ON CONFLICT (id) DO NOTHING",
+                    )
+                await _upsert_tables_to_semantic_layer(
+                    "graphql-demo",
+                    "shelter",
+                    tables,
+                    _demo_pool,
+                )
+                from provisa.api.admin.graphql_remote_router import (
+                    _upsert_relationships_to_semantic_layer,
+                )
+
+                await _upsert_relationships_to_semantic_layer(relationships, _demo_pool, state)
+                from provisa.core.models import Cardinality, Relationship
+                from provisa.core.repositories import relationship as rel_repo
+
+                async with _demo_pool.acquire() as _rel_conn:
+                    _pg_rel = cast(asyncpg.Connection, _rel_conn)
+                    for _rel_id, _src_tbl, _tgt_tbl, _src_col, _tgt_col, _card, _alias in [
+                        ("employees_to_assignments", "shelter__employees", "shelter__assignments", "id", "employeeId", "one-to-many", None),
+                        ("pets-to-shelter-breed", "pets", "shelter__animalBreeds", "breed_name", "name", "many-to-one", "BREED_INFO"),
+                        ("shelter-breed-to-pets", "shelter__animalBreeds", "pets", "name", "breed_name", "one-to-many", "PETS_OF_BREED"),
+                        ("pets-to-shelter-assignments", "pets", "shelter__assignments", "breed_name", "breedName", "many-to-one", None),
+                        ("shelter-assignments-to-pets", "shelter__assignments", "pets", "breedName", "breed_name", "one-to-many", None),
+                        ("shelter-assignments-to-employees", "shelter__assignments", "shelter__employees", "employeeId", "id", "many-to-one", None),
+                    ]:
+                        try:
+                            await rel_repo.upsert(
+                                _pg_rel,
+                                Relationship(
+                                    id=_rel_id,
+                                    source_table_id=_src_tbl,
+                                    target_table_id=_tgt_tbl,
+                                    source_column=_src_col,
+                                    target_column=_tgt_col,
+                                    cardinality=Cardinality(_card),
+                                    **({} if _alias is None else {"alias": _alias}),
+                                ),
+                            )
+                        except Exception:
+                            _log.warning("Failed to upsert %s", _rel_id, exc_info=True)
+            _log.info(
+                "Auto-registered graphql-demo source (%d tables, %d functions)",
+                len(tables),
+                len(functions),
+            )
+            await _rebuild_schemas()
+        except Exception:
+            _log.warning(
+                "graphql-demo auto-registration failed (service may not be up yet)",
+                exc_info=True,
             )
 
-            try:
-                tables, functions, relationships = await _introspect_and_map(
-                    "graphql-demo",
-                    _graphql_demo_url,
-                    "shelter",
-                    "shelter",
-                    None,
-                )
-                reg = GraphQLRemoteRegistration(
-                    source_id="graphql-demo",
-                    url=_graphql_demo_url,
-                    namespace="shelter",
-                    domain_id="shelter",
-                    cache_ttl=300,
-                    tables=tables,
-                    functions=functions,
-                    relationships=relationships,
-                )
-                if not hasattr(state, "graphql_remote_sources"):
-                    state.graphql_remote_sources = {}
-                state.graphql_remote_sources["graphql-demo"] = reg.model_dump()
-                _demo_pool = state.pg_pool
-                if _demo_pool is not None:
-                    async with _demo_pool.acquire() as _conn:
-                        # Ensure source row exists before registering tables (FK constraint)
-                        await _conn.execute(
-                            """
-                            INSERT INTO sources (id, type, host, port, database, username, dialect, path, description)
-                            VALUES ('graphql-demo', 'graphql_remote', '', 0, '', '', '', $1, 'Animal shelter GraphQL API — staff schedules, breed catalogue, and animal assignment records managed by shelter operations')
-                            ON CONFLICT (id) DO UPDATE SET path = EXCLUDED.path, description = EXCLUDED.description
-                            """,
-                            _graphql_demo_url,
-                        )
-                        # Ensure shelter domain exists (FK constraint on registered_tables.domain_id)
-                        await _conn.execute(
-                            "INSERT INTO domains (id, description) VALUES ('shelter', 'Animal shelter staff and breed management') ON CONFLICT (id) DO NOTHING",
-                        )
-                    await _upsert_tables_to_semantic_layer(
-                        "graphql-demo",
-                        "shelter",
-                        tables,
-                        _demo_pool,
-                    )
-                    from provisa.api.admin.graphql_remote_router import (
-                        _upsert_relationships_to_semantic_layer,
-                    )
+    asyncio.create_task(_register_graphql_demo())
 
-                    await _upsert_relationships_to_semantic_layer(relationships, _demo_pool, state)
-                    from provisa.core.models import Cardinality, Relationship
-                    from provisa.core.repositories import relationship as rel_repo
 
-                    async with _demo_pool.acquire() as _rel_conn:
-                        _pg_rel = cast(asyncpg.Connection, _rel_conn)
-                        try:
-                            await rel_repo.upsert(
-                                _pg_rel,
-                                Relationship(
-                                    id="employees_to_assignments",
-                                    source_table_id="shelter__employees",
-                                    target_table_id="shelter__assignments",
-                                    source_column="id",
-                                    target_column="employeeId",
-                                    cardinality=Cardinality("one-to-many"),
-                                ),
-                            )
-                        except Exception:
-                            _log.warning("Failed to upsert employees_to_assignments", exc_info=True)
-                        try:
-                            await rel_repo.upsert(
-                                _pg_rel,
-                                Relationship(
-                                    id="pets-to-shelter-breed",
-                                    source_table_id="pets",
-                                    target_table_id="shelter__animalBreeds",
-                                    source_column="breed_name",
-                                    target_column="name",
-                                    cardinality=Cardinality("many-to-one"),
-                                    alias="BREED_INFO",
-                                ),
-                            )
-                        except Exception:
-                            _log.warning("Failed to upsert pets-to-shelter-breed", exc_info=True)
-                        try:
-                            await rel_repo.upsert(
-                                _pg_rel,
-                                Relationship(
-                                    id="shelter-breed-to-pets",
-                                    source_table_id="shelter__animalBreeds",
-                                    target_table_id="pets",
-                                    source_column="name",
-                                    target_column="breed_name",
-                                    cardinality=Cardinality("one-to-many"),
-                                    alias="PETS_OF_BREED",
-                                ),
-                            )
-                        except Exception:
-                            _log.warning("Failed to upsert shelter-breed-to-pets", exc_info=True)
-                        try:
-                            await rel_repo.upsert(
-                                _pg_rel,
-                                Relationship(
-                                    id="pets-to-shelter-assignments",
-                                    source_table_id="pets",
-                                    target_table_id="shelter__assignments",
-                                    source_column="breed_name",
-                                    target_column="breedName",
-                                    cardinality=Cardinality("many-to-one"),
-                                ),
-                            )
-                        except Exception:
-                            _log.warning(
-                                "Failed to upsert pets-to-shelter-assignments", exc_info=True
-                            )
-                        try:
-                            await rel_repo.upsert(
-                                _pg_rel,
-                                Relationship(
-                                    id="shelter-assignments-to-pets",
-                                    source_table_id="shelter__assignments",
-                                    target_table_id="pets",
-                                    source_column="breedName",
-                                    target_column="breed_name",
-                                    cardinality=Cardinality("one-to-many"),
-                                ),
-                            )
-                        except Exception:
-                            _log.warning(
-                                "Failed to upsert shelter-assignments-to-pets", exc_info=True
-                            )
-                        try:
-                            await rel_repo.upsert(
-                                _pg_rel,
-                                Relationship(
-                                    id="shelter-assignments-to-employees",
-                                    source_table_id="shelter__assignments",
-                                    target_table_id="shelter__employees",
-                                    source_column="employeeId",
-                                    target_column="id",
-                                    cardinality=Cardinality("many-to-one"),
-                                ),
-                            )
-                        except Exception:
-                            _log.warning(
-                                "Failed to upsert shelter-assignments-to-employees", exc_info=True
-                            )
-                _log.info(
-                    "Auto-registered graphql-demo source (%d tables, %d functions)",
-                    len(tables),
-                    len(functions),
-                )
-                await _rebuild_schemas()
-            except Exception:
-                _log.warning(
-                    "graphql-demo auto-registration failed (service may not be up yet)",
-                    exc_info=True,
-                )
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """App lifespan: load config and build schemas at startup."""
+    import logging
 
-        asyncio.create_task(_register_graphql_demo())
+    _log = logging.getLogger(__name__)
+    state.schema_boot_id = uuid.uuid4().hex
+    try:
+        await _load_and_build()
+    except Exception:
+        _log.exception("Startup failed during _load_and_build")
+        raise
+
+    _prewarm_govdata_jvm(_log)
+
+    await _start_background_tasks(_log)
+
+    await _start_servers(_log)
+
+    _start_scheduler(_log)
+
+    await _auto_register_graphql_demo(_log)
 
     yield
 

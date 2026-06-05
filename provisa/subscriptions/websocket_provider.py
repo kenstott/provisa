@@ -16,14 +16,17 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING, AsyncGenerator, cast
+
+if TYPE_CHECKING:
+    from websockets.asyncio.client import ClientConnection
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
 
 log = logging.getLogger(__name__)
 
 
-def _extract_path(data: object, path: str) -> object:
+def _extract_path(data: object, path: str) -> object:  # object-ok: parsed JSON — isinstance-narrowed before every attribute access
     """Walk a dot-notation path into nested dicts/lists. Returns None on miss."""
     for segment in path.split("."):
         if isinstance(data, dict):
@@ -62,7 +65,7 @@ class WebSocketNotificationProvider(NotificationProvider):
         self._event_path = event_path
         self._reconnect_interval = reconnect_interval
         self._running = True
-        self._ws: object | None = None
+        self._ws: ClientConnection | None = None
 
     async def watch(
         self, table: str, filter_expr: str | None = None
@@ -92,7 +95,7 @@ class WebSocketNotificationProvider(NotificationProvider):
                         if not isinstance(data, dict):
                             data = {"value": data}
 
-                        op = data.pop("op", "insert").lower() if "op" in data else "insert"
+                        op = cast(str, data.pop("op", "insert")).lower() if "op" in data else "insert"
 
                         ts_raw = data.get("_ts") or data.get("timestamp")
                         if isinstance(ts_raw, str):

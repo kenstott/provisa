@@ -14,9 +14,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator
+from typing import TYPE_CHECKING, AsyncGenerator
 
 from provisa.subscriptions.base import ChangeEvent, NotificationProvider
+
+if TYPE_CHECKING:
+    from motor.motor_asyncio import AsyncIOMotorChangeStream, AsyncIOMotorDatabase
 
 log = logging.getLogger(__name__)
 
@@ -32,9 +35,9 @@ _OP_MAP = {
 class MongoNotificationProvider(NotificationProvider):
     """Uses motor ``collection.watch()`` for MongoDB Change Streams."""
 
-    def __init__(self, database: Any) -> None:
+    def __init__(self, database: AsyncIOMotorDatabase) -> None:
         self._db = database
-        self._cursor: Any | None = None
+        self._cursor: AsyncIOMotorChangeStream | None = None
 
     async def watch(
         self, table: str, filter_expr: str | None = None
