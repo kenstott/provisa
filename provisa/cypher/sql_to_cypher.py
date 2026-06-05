@@ -152,7 +152,7 @@ def semantic_sql_to_cypher(
         alias_needed_props, collected_aliases, cypher_lines, flat, node_only, _node,
     )
 
-    array_agg_return: dict[str, str] = {}
+    array_agg_return: dict[str, str | list[str]] = {}
     _agg_alias_counter = len(alias_map)
     _agg_seen: dict[str, str] = {}
     _agg_seen_label: dict[str, str] = {}
@@ -277,7 +277,7 @@ def _build_label_to_rel(
 
 
 def _unwrap_from_table(
-    from_tbl: exp.Expression,
+    from_tbl: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     tree: exp.Select,
 ) -> exp.Table | None:
     """Unwrap a FROM clause node into an exp.Table, handling limit-subquery wrappers."""
@@ -360,7 +360,7 @@ def _resolve_join_segments(
 
 
 def _process_lateral_join(
-    join_tbl: exp.Expression,
+    join_tbl: exp.Expression,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     domain_to_label: dict[tuple[str, str], str],
     label_to_rel: dict[str, str | None],
     label_to_many: dict[str, bool],
@@ -399,7 +399,7 @@ def _process_lateral_join(
 
 
 def _build_alias_needed_props(
-    select_exprs: list[exp.Expression],
+    select_exprs: list[exp.Expression],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     alias_map: dict[str, str],
     alias_prop_map: dict[str, dict[str, str]],
 ) -> dict[str, list[tuple[str, str]]]:
@@ -466,7 +466,7 @@ def _emit_optional_matches(
 
 def _extract_array_agg_col_and_from(
     inner: exp.Select,
-) -> tuple[exp.Column | None, exp.Table | None, exp.Expression | None]:
+) -> tuple[exp.Column | None, exp.Table | None, exp.Expression | None]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Return (agg_col_node, inner_tbl, where_node) from an ARRAY_AGG subquery SELECT."""
     _agg_exprs = inner.args.get("expressions") or []
     if len(_agg_exprs) != 1:
@@ -498,7 +498,7 @@ def _extract_array_agg_col_and_from(
 
 
 def _resolve_where_src_alias(
-    where_node: exp.Expression | None,
+    where_node: exp.Expression | None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     inner_sql_alias: str,
     default: str,
 ) -> str:
@@ -517,7 +517,7 @@ def _next_short_alias(counter: int, letters: list[str]) -> str:
 
 
 def _process_array_agg_subqueries(
-    select_exprs: list[exp.Expression],
+    select_exprs: list[exp.Expression],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     domain_to_label: dict[tuple[str, str], str],
     label_to_rel: dict[str, str | None],
     alias_map: dict[str, str],
@@ -529,7 +529,7 @@ def _process_array_agg_subqueries(
     agg_alias_counter: int,
     agg_seen: dict[str, str],
     agg_seen_label: dict[str, str],
-    array_agg_return: dict[str, str],
+    array_agg_return: dict[str, str | list[str]],
     cypher_lines: list[str],
     letters: list[str],
     prop_map_for_label,
@@ -603,7 +603,7 @@ def _process_array_agg_chained(
     letters: list[str],
     prop_map_for_label,
     node_fn,
-    array_agg_return: dict[str, str],
+    array_agg_return: dict[str, str | list[str]],
     expr: exp.Alias,
 ) -> int:
     """Handle ARRAY_AGG where the aggregated column comes from a JOIN inside the subquery."""
@@ -732,7 +732,7 @@ def _extract_jbo_node_for_ret(jbo_sel: exp.Select) -> exp.JSONObject | None:
 
 
 def _process_json_subqueries(
-    select_exprs: list[exp.Expression],
+    select_exprs: list[exp.Expression],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     domain_to_label: dict[tuple[str, str], str],
     label_to_rel: dict[str, str | None],
     alias_map: dict[str, str],
@@ -744,7 +744,7 @@ def _process_json_subqueries(
     agg_alias_counter: int,
     agg_seen: dict[str, str],
     agg_seen_label: dict[str, str],
-    array_agg_return: dict[str, str],
+    array_agg_return: dict[str, str | list[str]],
     cypher_lines: list[str],
     letters: list[str],
     prop_map_for_label,
@@ -862,7 +862,7 @@ def _append_order_by(
     cypher_lines.append(f"ORDER BY {', '.join(order_items)}")
 
 
-def _resolve_limit_expr(lim_node: exp.Expression) -> str:
+def _resolve_limit_expr(lim_node: exp.Expression) -> str:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     lim_expr = getattr(lim_node, "expression", None)
     if isinstance(lim_expr, exp.Parameter):
         return "25"
@@ -912,7 +912,7 @@ def _resolve_label(
 
 
 def _rel_type_from_on(
-    on_expr: exp.Expression | None,
+    on_expr: exp.Expression | None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     join_to_rel: dict[tuple[str, str, str], RelationshipMapping],
     tgt_label: str | None = None,
 ) -> str | None:
@@ -935,7 +935,7 @@ def _rel_type_from_on(
 
 
 def _src_alias_from_on(
-    on_expr: exp.Expression | None,
+    on_expr: exp.Expression | None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     tgt_sql_alias: str,
     default_alias: str,
 ) -> str:
@@ -1048,7 +1048,7 @@ def _cypher_map_from_jbo(
 
 
 def _build_return(
-    select_exprs: list[exp.Expression],
+    select_exprs: list[exp.Expression],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     default_sql_alias: str | None = None,
     alias_map: dict[str, str] | None = None,
     alias_prop_map: dict[str, dict[str, str]] | None = None,

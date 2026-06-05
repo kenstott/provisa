@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 
 import sqlglot.expressions as exp
 import sqlglot
@@ -61,13 +61,13 @@ def _safe_alias(expr: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", expr)
 
 
-def _const_literal(v: int | str) -> exp.Expression:
+def _const_literal(v: int | str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     return exp.Literal.string(v) if isinstance(v, str) else exp.Literal.number(v)
 
 
-def _node_table_expr(nm: "NodeMapping", alias: str) -> "exp.Expression":
+def _node_table_expr(nm: "NodeMapping", alias: str) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Build a aliased table expression for a NodeMapping."""
-    return exp.alias_(
+    return exp.alias_(  # pyright: ignore[reportReturnType]
         exp.Table(
             this=exp.Identifier(this=nm.sql_table_name, quoted=True),
             db=exp.Identifier(this=nm.schema_name, quoted=True),
@@ -77,7 +77,7 @@ def _node_table_expr(nm: "NodeMapping", alias: str) -> "exp.Expression":
     )
 
 
-def _tgt_col_expr_for_rm(rm: "RelationshipMapping", alias: str) -> "exp.Expression":
+def _tgt_col_expr_for_rm(rm: "RelationshipMapping", alias: str) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Build the target column expression for a RelationshipMapping."""
     if rm.target_expr is not None:
         return exp.maybe_parse(
@@ -94,7 +94,7 @@ def _src_col_expr_for_rm(
     rm: "RelationshipMapping",
     src_table_ref: str,
     src_nm: "NodeMapping | None",
-) -> "exp.Expression":
+) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Build the source column expression for a RelationshipMapping (forward direction)."""
     if rm.source_constant is not None:
         return _const_literal(rm.source_constant)
@@ -192,18 +192,18 @@ def _optional_vars(clauses: "list[MatchClause]") -> "set[str]":
     return optional_only
 
 
-def _join_alias(table_expr: "exp.Expression") -> "str | None":
+def _join_alias(table_expr: "exp.Expression") -> "str | None":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Extract the SQL alias from a join table expression."""
     alias = getattr(table_expr, "alias", None)
     return str(alias) if alias else None
 
 
 def _fold_where_into_optional_joins(
-    where_expr: "exp.Expression",
+    where_expr: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     optional_vars: "set[str]",
     where_text: str,
     joins: "list[dict]",
-) -> "tuple[list[dict], exp.Expression | None]":
+) -> "tuple[list[dict], exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Fold WHERE conditions referencing optional variables into the relevant LEFT JOIN ON clauses.
 
     Cypher semantics: WHERE after OPTIONAL MATCH constrains the optional pattern.
@@ -311,11 +311,11 @@ class _Translator(
         # var → domain_name for nodes resolved via a domain label only
         self._domain_nodes: dict[str, str] = {}
         # extra (from, joins, path_step_overrides) branches from multi-path shortestPath/allShortestPaths
-        self._extra_path_branches: list[tuple[exp.Expression, list[dict], dict]] = []
+        self._extra_path_branches: list[tuple[exp.Expression | None, list[dict], dict]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # WITH RECURSIVE CTEs for self-referential variable-length paths
-        self._recursive_ctes: list[tuple[str, exp.Expression]] = []
+        self._recursive_ctes: list[tuple[str, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # Set by PathFunctionsMixin when a recursive shortestPath is emitted
-        self._shortestpath_hops_col: exp.Expression | None = None
+        self._shortestpath_hops_col: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         self._shortestpath_is_all: bool = False
         # Counter for unique UNNEST alias names across the translation
         self._unwind_count: int = 0
@@ -326,7 +326,7 @@ class _Translator(
         # vars from outer scope bound via CALL { WITH x ... } — skip as FROM source
         self._lateral_bound: set[str] = set()
         # ON conditions from lateral-bound first-node relationships → added as WHERE
-        self._lateral_conditions: list[exp.Expression] = []
+        self._lateral_conditions: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         # CALL subquery return variable → lateral alias (e.g. "d_list" → "_call0")
         self._call_var_to_lateral: dict[str, str] = {}
         # relationship variable → resolved rel_type string (for type(r) resolution)
@@ -344,7 +344,7 @@ class _Translator(
         match_steps: list,
         unwinds: list,
         with_clause: WithClause,
-    ) -> tuple[str, exp.Expression]:
+    ) -> tuple[str, exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build one CTE (from, joins, select, where, group-by) for a WITH segment."""
         all_matches = [m for step in match_steps for m in step.matches]
         stage_where: WhereClause | None = None
@@ -359,6 +359,7 @@ class _Translator(
                 joins.extend(uw_joins)
         elif unwinds:
             from_clause, joins = self._build_unwind_joins(unwinds, has_from=False)
+            assert from_clause is not None
         else:
             raise CypherTranslateError("Pipeline segment has no data source")
 
@@ -393,8 +394,8 @@ class _Translator(
         self,
         final_match_steps: list,
         final_unwinds: list,
-        cte_defs: list[tuple[str, exp.Expression]],
-    ) -> tuple[exp.Expression, list[dict], list[MatchClause], "WhereClause | None"]:
+        cte_defs: list[tuple[str, exp.Expression]],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> tuple[exp.Expression, list[dict], list[MatchClause], "WhereClause | None"]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM/joins for the final segment.
 
         Returns (from_clause, joins, all_matches, stage_where).
@@ -408,7 +409,7 @@ class _Translator(
 
         if not all_matches and not final_unwinds and cte_defs:
             last_cte_name = cte_defs[-1][0]
-            from_clause: exp.Expression = exp.Table(this=exp.Identifier(this=last_cte_name))
+            from_clause: exp.Expression = exp.Table(this=exp.Identifier(this=last_cte_name))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             joins: list[dict] = []
         elif not all_matches and final_unwinds:
             if cte_defs:
@@ -418,6 +419,7 @@ class _Translator(
                 joins = list(uw_joins)
             else:
                 uw_from, uw_joins = self._build_unwind_joins(final_unwinds, has_from=False)
+                assert uw_from is not None
                 from_clause = uw_from
                 joins = list(uw_joins)
         elif all_matches:
@@ -435,7 +437,7 @@ class _Translator(
         stage_where: "WhereClause | None",
         all_matches: list[MatchClause],
         joins: list[dict],
-    ) -> tuple["exp.Expression | None", list[dict]]:
+    ) -> tuple["exp.Expression | None", list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build WHERE and fold optional-join conditions.
 
         Also updates self._extra_path_branches with folded WHERE.
@@ -462,10 +464,10 @@ class _Translator(
 
     def _build_main_query(
         self,
-        from_clause: "exp.Expression",
+        from_clause: "exp.Expression",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         joins: list[dict],
-        where_expr: "exp.Expression | None",
-        select_exprs: list["exp.Expression"],
+        where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        select_exprs: list["exp.Expr"],
     ) -> "exp.Select":
         """Assemble the main SELECT query from components."""
         query = exp.select(*select_exprs).from_(from_clause)
@@ -477,7 +479,7 @@ class _Translator(
             query = query.where(where_expr)
         for lat_cond in self._lateral_conditions:
             query = query.where(lat_cond)
-        group_exprs = self._build_group_by(self._ast.return_clause)
+        group_exprs = self._build_group_by(self._ast.return_clause) if self._ast.return_clause else []
         if group_exprs:
             query = query.group_by(*group_exprs)
         return query
@@ -485,8 +487,8 @@ class _Translator(
     def _apply_extra_branches(
         self,
         result: "exp.Select | exp.Union",
-        select_exprs: list["exp.Expression"],
-        where_expr: "exp.Expression | None",
+        select_exprs: list["exp.Expr"],
+        where_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> "exp.Select | exp.Union":
         """Apply UNION ALL extra branches from multi-path shortestPath/allShortestPaths."""
         for extra_from, extra_joins, extra_path_steps_map in self._extra_path_branches:
@@ -499,6 +501,7 @@ class _Translator(
                     branch_select_exprs.append(exp.alias_(new_path, alias_name))
                 else:
                     branch_select_exprs.append(s_expr)
+            assert extra_from is not None
             branch = exp.select(*branch_select_exprs).from_(extra_from)
             if self._ast.return_clause and self._ast.return_clause.distinct:
                 branch = branch.distinct()
@@ -526,7 +529,7 @@ class _Translator(
     def _apply_order_limit(
         self,
         result: "exp.Select | exp.Union",
-        order_exprs: list["exp.Expression"],
+        order_exprs: list["exp.Expression"],  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> "exp.Select | exp.Union":
         """Apply ORDER BY / LIMIT / OFFSET, wrapping in outer SELECT if needed."""
         has_ordering = order_exprs or self._ast.limit is not None or self._ast.skip is not None
@@ -550,7 +553,7 @@ class _Translator(
             result = result.offset(self._ast.skip)
         return result
 
-    def translate(self) -> tuple[exp.Select, list[str], dict[str, GraphVarKind]]:
+    def translate(self) -> tuple[exp.Select | exp.Union, list[str], dict[str, GraphVarKind]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if self._ast.return_clause is None:
             raise CypherTranslateError(
                 "Cannot translate a CALL {}-only query directly. "
@@ -558,9 +561,10 @@ class _Translator(
             )
 
         segments = self._group_pipeline()
-        cte_defs: list[tuple[str, exp.Expression]] = []
+        cte_defs: list[tuple[str, exp.Expression]] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         for n, (match_steps, unwinds, with_clause) in enumerate(segments[:-1]):
+            assert with_clause is not None
             cte_name, stage_query = self._build_cte_segment(n, match_steps, unwinds, with_clause)
             cte_defs.append((cte_name, stage_query))
             self._update_var_table_for_with(with_clause.items, cte_name)
@@ -613,7 +617,7 @@ class _Translator(
         segments.append((list(current_matches), list(current_unwinds), None))
         return segments
 
-    def _build_unwind_expr(self, expr_text: str) -> exp.Expression:
+    def _build_unwind_expr(self, expr_text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Parse a Cypher UNWIND source expression into a SQLGlot expression."""
         text = expr_text.strip()
         # Cypher list literal [...] → ARRAY[...]
@@ -626,21 +630,21 @@ class _Translator(
         try:
             # No dialect: $N executor placeholders must survive as identifiers.
             # dialect="postgres" turns $1 into a Parameter node that renders as @1.
-            return sqlglot.parse_one(text)
+            return sqlglot.parse_one(text)  # pyright: ignore[reportReturnType]
         except Exception:
-            return exp.column(text)
+            return exp.column(text)  # pyright: ignore[reportReturnType]
 
     def _build_unwind_joins(
         self,
         unwinds: list[UnwindClause],
         has_from: bool,
-    ) -> tuple[exp.Expression | None, list[dict]]:
+    ) -> tuple[exp.Expression | None, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM/CROSS JOIN sources for UNWIND clauses.
 
         If has_from is False, the first UNWIND becomes the FROM expression.
         Returns (from_expr_or_None, [cross_join_dicts]).
         """
-        from_expr: exp.Expression | None = None
+        from_expr: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         cross_joins: list[dict] = []
         for uw in unwinds:
             alias = f"_uw{self._unwind_count}"
@@ -690,7 +694,7 @@ class _Translator(
 
     def _build_first_node_from(
         self, first_node: "NodePattern"
-    ) -> "exp.Expression | None":
+    ) -> "exp.Expression | None":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build FROM expr for the first node; None if lateral-bound or not resolvable."""
         fv = first_node.variable
         if fv and fv in self._lateral_bound:
@@ -702,6 +706,7 @@ class _Translator(
             return self._build_domain_union(fv, self._domain_nodes[fv])
         if fv and fv in self._var_table and self._var_table[fv][1]:
             nm = self._var_table[fv][1]
+            assert nm is not None
             if getattr(nm, "traversal_only", False):
                 raise CypherTranslateError(
                     f"Node '{nm.label}' is in a domain outside your access. "
@@ -717,6 +722,7 @@ class _Translator(
                         f"Node '{nm.label}' is in a domain outside your access. "
                         f"Start the pattern from a node in your own domain and traverse to '{nm.label}' via a relationship."
                     )
+                assert type_label is not None
                 alias = fv or type_label.lower()
                 return _node_table_expr(nm, alias)
         return None
@@ -734,6 +740,7 @@ class _Translator(
             return {"table": join_table, "on": on_clause, "join_type": join_type}
         if fv in self._var_table and self._var_table[fv][1]:
             nm = self._var_table[fv][1]
+            assert nm is not None
             join_table = _node_table_expr(nm, fv)
             return {"table": join_table, "on": on_clause, "join_type": join_type}
         return None
@@ -755,8 +762,8 @@ class _Translator(
         self,
         rel_mapping: "RelationshipMapping",
         src_var: "str | None",
-        current_from_expr: "exp.Expression | None",
-    ) -> "tuple[NodeMapping | None, exp.Expression | None]":
+        current_from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> "tuple[NodeMapping | None, exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Infer src_nm from rel_mapping; update from_expr if src was a domain union."""
         src_nm = self._lm.nodes.get(rel_mapping.source_label)
         if src_nm and src_var:
@@ -805,7 +812,7 @@ class _Translator(
         src_var: "str | None",
         rel_var: "str | None",
         tgt_var: "str | None",
-    ) -> "exp.Expression":
+    ) -> "exp.Expression":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Handle fully unlabeled rel pattern: UNION ALL over all relationship types."""
         from_expr = self._build_all_rels_union(src_var, rel_var, tgt_var)
         if src_var:
@@ -890,8 +897,8 @@ class _Translator(
         src_node: "NodePattern",
         tgt_node: "NodePattern",
         rel_mapping: "RelationshipMapping | None",
-        from_expr: "exp.Expression | None",
-    ) -> "tuple[NodeMapping | None, NodeMapping | None, bool, bool, exp.Expression | None]":
+        from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> "tuple[NodeMapping | None, NodeMapping | None, bool, bool, exp.Expression | None]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Resolve src_nm, tgt_nm, explicitness flags, and updated from_expr.
 
         Returns (src_nm, tgt_nm, src_nm_explicit, tgt_nm_explicit, from_expr).
@@ -926,9 +933,9 @@ class _Translator(
         src_nm: "NodeMapping",
         tgt_nm: "NodeMapping",
         clause: MatchClause,
-        from_expr: "exp.Expression | None",
+        from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         joins: "list[dict]",
-    ) -> "tuple[exp.Expression | None, list[dict]]":
+    ) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Apply primary and extra JOIN candidates to joins/from_expr."""
         join_type = "LEFT" if clause.optional else "INNER"
         tgt_var = None
@@ -976,9 +983,9 @@ class _Translator(
         tgt_nm: "NodeMapping",
         tgt_var: "str | None",
         clause: MatchClause,
-        from_expr: "exp.Expression | None",
+        from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         joins: "list[dict]",
-    ) -> "tuple[exp.Expression | None, list[dict]]":
+    ) -> "tuple[exp.Expression | None, list[dict]]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build and register joins for a resolved set of rel candidates."""
         join_type = "LEFT" if clause.optional else "INNER"
         tgt_alias = tgt_var or tgt_nm.table_name
@@ -1022,9 +1029,9 @@ class _Translator(
         nodes: list,
         i: int,
         clause: MatchClause,
-        from_expr: "exp.Expression | None",
+        from_expr: "exp.Expression | None",  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         joins: "list[dict]",
-    ) -> "tuple[exp.Expression | None, list[dict], bool]":
+    ) -> "tuple[exp.Expression | None, list[dict], bool]":  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Process a single relationship → update joins/from_expr.
 
         Returns (from_expr, joins, did_continue) where did_continue=True means
@@ -1079,9 +1086,9 @@ class _Translator(
 
     def _build_from_joins(
         self, match_clauses: list[MatchClause]
-    ) -> tuple[exp.Expression, list[dict]]:
+    ) -> tuple[exp.Expression, list[dict]]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Process MATCH clauses → (from_expr, [join_dict])."""
-        from_expr: exp.Expression | None = None
+        from_expr: exp.Expression | None = None  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         joins: list[dict] = []
         rel_mapping: RelationshipMapping | None = None
         tgt_nm: NodeMapping | None = None
@@ -1192,7 +1199,7 @@ class _Translator(
         # Match both quoted (var."col") and unquoted with optional spaces (var . col)
         return re.sub(r'\b([A-Za-z_]\w*)\s*\.\s*"?([A-Za-z_]\w*)"?', _replace, text)
 
-    def _build_where(self, where: WhereClause | None) -> exp.Expression | None:
+    def _build_where(self, where: WhereClause | None) -> exp.Expression | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if where is None:
             return None
         expr_text = _rewrite_cypher_dquote_strings(self._rewrite_params_in_expr(where.expression))
@@ -1225,8 +1232,8 @@ class _Translator(
                 pass
             return exp.true()
 
-    def _build_order_by(self, order_by: list[OrderItem]) -> list[exp.Expression]:
-        exprs: list[exp.Expression] = []
+    def _build_order_by(self, order_by: list[OrderItem]) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for item in order_by:
             inner = self._parse_expr(item.expression)
             if item.direction == "DESC":
@@ -1289,7 +1296,7 @@ class _Translator(
             text = re.sub(r"\blength\s*\(\s*[A-Za-z_]\w*\s*\)", "1", text, flags=re.IGNORECASE)
         return text
 
-    def _parse_expr(self, text: str) -> exp.Expression:
+    def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Parse a Cypher expression fragment into a SQLGlot expression."""
         text = self._rewrite_params_in_expr(text)
         text = self._rewrite_cte_vars(text)
@@ -1339,8 +1346,8 @@ class _Translator(
             )
         return text
 
-    def _build_with_select_items(self, items: list[ReturnItem]) -> list[exp.Expression]:
-        exprs: list[exp.Expression] = []
+    def _build_with_select_items(self, items: list[ReturnItem]) -> list[exp.Expr]:
+        exprs: list[exp.Expr] = []
         for item in items:
             expr_text = item.expression.strip()
             alias = item.alias
@@ -1495,7 +1502,7 @@ class _Translator(
         src_var: str | None,
         rel_var: str | None,
         tgt_var: str | None,
-    ) -> exp.Expression:
+    ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build UNION ALL subquery over all relationship types for fully-unlabeled patterns."""
         src_col = src_var or "n"
         rel_col = rel_var or "r"
@@ -1624,12 +1631,12 @@ class _Translator(
         if not branches:
             raise CypherTranslateError("No relationship types found in schema")
 
-        union: exp.Expression = branches[0]
+        union: exp.Expression = branches[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for b in branches[1:]:
             union = exp.Union(this=union, expression=b, distinct=False)
-        return exp.alias_(exp.Subquery(this=union), alias=alias)
+        return exp.alias_(exp.Subquery(this=union), alias=alias)  # pyright: ignore[reportReturnType]
 
-    def _build_domain_union(self, var: str, domain_name: str) -> exp.Expression:
+    def _build_domain_union(self, var: str, domain_name: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build UNION ALL subquery over all types in a domain."""
         type_labels = (
             list(self._lm.nodes.keys())
@@ -1645,7 +1652,7 @@ class _Translator(
                 continue
             if nm.native_filter_columns:
                 continue
-            select_items: list[exp.Expression] = [
+            select_items: list[exp.Expr] = [
                 exp.alias_(exp.Literal.string(nm.label), alias="__label"),
                 exp.alias_(
                     exp.Cast(
@@ -1686,10 +1693,10 @@ class _Translator(
         if not branches:
             raise CypherTranslateError(f"Domain {domain_name!r} has no resolvable types")
 
-        union: exp.Expression = branches[0]
+        union: exp.Expression = branches[0]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for branch in branches[1:]:
             union = exp.Union(this=union, expression=branch, distinct=False)
-        return exp.alias_(exp.Subquery(this=union), alias=var)
+        return exp.alias_(exp.Subquery(this=union), alias=var)  # pyright: ignore[reportReturnType]
 
     def _rewrite_params_in_expr(self, text: str) -> str:
         """Replace $name with positional $N."""
@@ -1780,7 +1787,7 @@ _CYPHER_CAST_FNS: dict[str, tuple[str, bool]] = {
 }
 
 # String predicates: (pattern, replacement)
-_STRING_PREDICATE_REWRITES: list[tuple[re.Pattern[str], str]] = [
+_STRING_PREDICATE_REWRITES: list[tuple[re.Pattern[str], str | Callable[[re.Match[str]], str]]] = [
     # n . name STARTS WITH 'x'  →  starts_with(n.name, 'x')
     # Also handles function calls on the left: toLower(n.name) STARTS WITH 'x'
     (
@@ -1853,7 +1860,7 @@ def _rewrite_list_slices(text: str) -> str:
     return _LIST_SLICE_RE.sub(r"slice(\1, 1, \2)", text)
 
 
-def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:
+def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """SQLGlot transform: rewrite Cypher function names to SQL equivalents."""
     # Cypher last(list) → element_at(list, -1) — SQLGlot parses last() as exp.Last
     if isinstance(node, exp.Last):
@@ -1896,7 +1903,7 @@ def _rewrite_cypher_fn_node(node: exp.Expression) -> exp.Expression:
     if not isinstance(node, exp.Anonymous):
         return node
     name = node.name.upper()
-    args: list[exp.Expression] = node.args.get("expressions") or []
+    args: list[exp.Expression] = node.args.get("expressions") or []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
     if name == "HEAD" and args:
         return exp.Anonymous(this="element_at", expressions=[args[0], exp.Literal.number(1)])
