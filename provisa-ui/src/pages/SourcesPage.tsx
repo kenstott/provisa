@@ -1958,6 +1958,7 @@ export function SourcesPage() {
         <tbody>
           {(() => {
             const filtered = sources.filter((s) => {
+              if (["__provisa__", "provisa-admin", "provisa-otel"].includes(s.id)) return false;
               if (!sourceSearch.trim()) return true;
               const q = sourceSearch.toLowerCase();
               return (
@@ -2213,6 +2214,7 @@ export function SourcesPage() {
 
       {(() => {
         const filtered = sources.filter((s) => {
+          if (["__provisa__", "provisa-admin", "provisa-otel"].includes(s.id)) return false;
           if (!sourceSearch.trim()) return true;
           const q = sourceSearch.toLowerCase();
           return (
