@@ -613,6 +613,10 @@ export function GraphCanvas({
       onCyReady?.(null);
       cy.destroy();
       setHullCircles([]);
+      // Reset prev-overlay refs so the incremental effect re-adds ALL current overlay
+      // nodes after the cytoscape instance is rebuilt (e.g. when overlayEdges changes).
+      prevOverlayNodesRef.current = new Map();
+      prevOverlayEdgesRef.current = new Map();
     };
     /* eslint-disable-next-line react-hooks/exhaustive-deps --
        rebuild the cytoscape instance only when graph data or clustering changes; the latest-value style refs and imperative layout helpers are intentionally excluded so the graph is not torn down and rebuilt on unrelated renders */
