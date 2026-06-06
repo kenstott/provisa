@@ -767,12 +767,8 @@ def _try_lift_subquery(
             for lc in local_conditions[1:]:
                 local_where = exp.And(this=local_where, expression=lc)
             cte_sel = cte_sel.where(local_where)
-        # group by positional index to avoid quoting issues
         cte_sel = cte_sel.group_by(
-            *[
-                exp.Column(this=exp.to_identifier(jk_aliases[i]))
-                for i in range(len(correlated_pairs))
-            ]
+            *[exp.Literal(this=str(i + 1), is_string=False) for i in range(len(correlated_pairs))]
         )
     else:
         # Wrap in ARBITRARY() for dedup when LIMIT 1 semantics are needed
@@ -790,10 +786,7 @@ def _try_lift_subquery(
                     local_where = exp.And(this=local_where, expression=lc)
                 cte_sel = cte_sel.where(local_where)
             cte_sel = cte_sel.group_by(
-                *[
-                    exp.Column(this=exp.to_identifier(jk_aliases[i]))
-                    for i in range(len(correlated_pairs))
-                ]
+                *[exp.Literal(this=str(i + 1), is_string=False) for i in range(len(correlated_pairs))]
             )
         else:
             # User specified LIMIT — select raw value, use ROW_NUMBER to pick top-N
