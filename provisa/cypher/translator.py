@@ -1170,6 +1170,23 @@ class _Translator(
         if from_expr is None:
             raise CypherTranslateError("No MATCH clause produced a FROM table")
 
+        # Supplement each extra branch with primary joins it's missing.
+        # Extra branches are created with only joins_before+[extra_join], which
+        # excludes any joins added AFTER the branch point (e.g. a second OPTIONAL
+        # MATCH). Without this, the UNION ALL branch's SELECT can reference aliases
+        # that don't exist in that branch.
+        if self._extra_path_branches:
+            primary_aliases = {_join_alias(j["table"]): j for j in joins}
+            patched: list[tuple] = []
+            for extra_from, extra_joins, extra_path_steps_map in self._extra_path_branches:
+                branch_aliases = {_join_alias(j["table"]) for j in extra_joins}
+                supplement = [
+                    pj for alias, pj in primary_aliases.items()
+                    if alias not in branch_aliases
+                ]
+                patched.append((extra_from, extra_joins + supplement, extra_path_steps_map))
+            self._extra_path_branches = patched
+
         return from_expr, joins
 
     def _rewrite_cypher_props(self, text: str) -> str:

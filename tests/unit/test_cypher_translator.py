@@ -1948,3 +1948,102 @@ def test_where_on_required_match_variable_is_not_guarded():
         f"WHERE on required MATCH variable must not add IS NULL guard: {sql}"
     )
     assert "30" in sql, f"WHERE condition should still appear in SQL: {sql}"
+
+
+def _make_label_map_bidir_multi_hop() -> CypherLabelMap:
+    """Label map with bidir Inquiries↔Pets (both directions registered) and one-way Inquiries→Users."""
+    nm_inq = NodeMapping(
+        label="PetStore:Inquiries", type_name="PetStore_Inquiries",
+        domain_label="PetStore", table_label="Inquiries",
+        table_id=1, source_id="sqlite-petstore", id_column="id", pk_columns=[],
+        catalog_name="sqlite", schema_name="petstore",
+        table_name="inquiries",
+        properties={"id": "id", "petId": "pet_id", "userId": "user_id"},
+    )
+    nm_pets = NodeMapping(
+        label="PetStore:Pets", type_name="PetStore_Pets",
+        domain_label="PetStore", table_label="Pets",
+        table_id=2, source_id="sqlite-petstore", id_column="id", pk_columns=[],
+        catalog_name="sqlite", schema_name="petstore",
+        table_name="pets",
+        properties={"id": "id", "name": "name"},
+    )
+    nm_users = NodeMapping(
+        label="PetStore:Users", type_name="PetStore_Users",
+        domain_label="PetStore", table_label="Users",
+        table_id=3, source_id="sqlite-petstore", id_column="id", pk_columns=[],
+        catalog_name="sqlite", schema_name="petstore",
+        table_name="users",
+        properties={"id": "id", "name": "name", "email": "email"},
+    )
+    return CypherLabelMap(
+        nodes={
+            "PetStore_Inquiries": nm_inq,
+            "PetStore_Pets": nm_pets,
+            "PetStore_Users": nm_users,
+        },
+        relationships={
+            "HAS_PET::PetStore_Inquiries→PetStore_Pets": RelationshipMapping(
+                rel_type="HAS_PET", source_label="PetStore_Inquiries",
+                target_label="PetStore_Pets", join_source_column="pet_id",
+                join_target_column="id", field_name="hasPet",
+            ),
+            "HAS_USER::PetStore_Inquiries→PetStore_Users": RelationshipMapping(
+                rel_type="HAS_USER", source_label="PetStore_Inquiries",
+                target_label="PetStore_Users", join_source_column="user_id",
+                join_target_column="id", field_name="hasUser",
+            ),
+            # reverse direction registered — causes bidir to produce a UNION ALL branch
+            "INQUIRIES_FOR_PET::PetStore_Pets→PetStore_Inquiries": RelationshipMapping(
+                rel_type="INQUIRIES_FOR_PET", source_label="PetStore_Pets",
+                target_label="PetStore_Inquiries", join_source_column="id",
+                join_target_column="pet_id", field_name="inquiriesForPet",
+            ),
+        },
+        domains={"PetStore": ["PetStore_Inquiries", "PetStore_Pets", "PetStore_Users"]},
+        nodes_by_table={
+            "Inquiries": ["PetStore_Inquiries"],
+            "Pets": ["PetStore_Pets"],
+            "Users": ["PetStore_Users"],
+        },
+        aliases={},
+    )
+
+
+def test_union_all_branch_includes_all_subsequent_optional_match_joins():
+    """UNION ALL extra branches must include joins for ALL variables in the SELECT.
+
+    When an undirected OPTIONAL MATCH has multiple relationship candidates (bidir),
+    the translator emits UNION ALL. Each UNION branch must carry every JOIN that
+    appears in the primary query — including ones added by OPTIONAL MATCHes that
+    come AFTER the branching point — so that column references in the shared SELECT
+    are resolvable in every branch.
+
+    Regression: without the fix, the extra branch for mPets only contained the
+    mPets JOIN, leaving mUsers unresolved → Trino: 'Column musers.id cannot be
+    resolved'.
+    """
+    lm = _make_label_map_bidir_multi_hop()
+    ast = parse_cypher(
+        "MATCH (n:PetStore:Inquiries) "
+        "OPTIONAL MATCH (n)-[rPets]-(mPets:PetStore:Pets) "
+        "OPTIONAL MATCH (n)-[rUsers]-(mUsers:PetStore:Users) "
+        "RETURN n, rPets, mPets, rUsers, mUsers"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+
+    assert "UNION ALL" in sql, "Bidir relationship should produce UNION ALL"
+
+    # Each UNION branch must include both mPets and mUsers JOINs
+    union_idx = sql.index("UNION ALL")
+    second_branch = sql[union_idx:]
+    assert "mPets" in second_branch, "Second branch must have mPets alias"
+    assert "mUsers" in second_branch, "Second branch must have mUsers alias in its FROM/JOINs"
+
+    # Confirm mUsers appears as a JOIN (not just in SELECT expressions)
+    from_idx = second_branch.index(" FROM ")
+    from_clause = second_branch[from_idx:]
+    assert "mUsers" in from_clause, (
+        f"mUsers JOIN missing from UNION ALL branch FROM clause: {from_clause[:300]}"
+    )
