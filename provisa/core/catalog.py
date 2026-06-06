@@ -55,7 +55,7 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
         pg_database = os.environ.get("PG_DATABASE", "provisa")
         pg_user = os.environ.get("PG_USER", "provisa")
         pg_pw = os.environ.get("PG_PASSWORD", "provisa")
-        jdbc = f"jdbc:postgresql://{pg_host}:{pg_port}/{pg_database}"
+        jdbc = f"jdbc:postgresql://{pg_host}:{pg_port}/{pg_database}?autosave=conservative"
         return {
             "connection-url": jdbc,
             "connection-user": pg_user,

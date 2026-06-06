@@ -201,6 +201,11 @@ class Source(BaseModel):
             return f"{p}://{h}:{po};databaseName={self.database}"
         if self.type == SourceType.oracle:
             return f"{p}:@{h}:{po}/{self.database}"
+        if self.type == SourceType.postgresql:
+            # autosave=conservative prevents pgjdbc from crashing on the
+            # pg_type_typname_nsp_index duplicate-key race when two concurrent
+            # queries register the same anonymous composite type.
+            return f"{p}://{h}:{po}/{self.database}?autosave=conservative"
         return f"{p}://{h}:{po}/{self.database}"
 
 
