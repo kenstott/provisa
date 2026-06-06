@@ -15,6 +15,7 @@
 import type { Relationship } from "../../types/admin";
 import type { GNode, GEdge } from "./graph-model";
 import type { CyInstance } from "./cytoscape-types";
+import { tableLabel as dbTableLabel } from "../../naming";
 
 export interface NodeCtxMenuState {
   x: number;
@@ -85,11 +86,15 @@ export function NodeContextMenu({
   const isSource = (r: (typeof relationships)[0]) =>
     norm(r.sourceTableName) === tl ||
     norm(r.sourceTableName) === cl ||
-    siblingTls.includes(norm(r.sourceTableName));
+    norm(dbTableLabel(r.sourceTableName)) === tl ||
+    siblingTls.includes(norm(r.sourceTableName)) ||
+    siblingTls.includes(norm(dbTableLabel(r.sourceTableName)));
   const isTarget = (r: (typeof relationships)[0]) =>
     norm(r.targetTableName) === tl ||
     norm(r.targetTableName) === cl ||
-    siblingTls.includes(norm(r.targetTableName));
+    norm(dbTableLabel(r.targetTableName)) === tl ||
+    siblingTls.includes(norm(r.targetTableName)) ||
+    siblingTls.includes(norm(dbTableLabel(r.targetTableName)));
   const hasChildRels = relationships.some(isSource);
   const hasParentRels = relationships.some(isTarget);
   return (

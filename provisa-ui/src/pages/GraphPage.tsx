@@ -28,6 +28,7 @@ import type {
 import { Sidebar } from "../components/graph/GraphSidebar";
 import { QueryBar } from "../components/graph/QueryBar";
 import { NativeFilterModal } from "../components/graph/graph-context-menus";
+import { tableLabel as dbTableLabel } from "../naming";
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export function GraphPage() {
@@ -370,20 +371,20 @@ export function GraphPage() {
         });
       }
 
-      // Find a rel where one side is a frame node and the other is the dropped table
+      // Find a rel where one side is a frame node and the other is the dropped table.
+      // DB table names use domain__table format; compare via canonical tableLabel().
       let sourceVar: string;
       let relAlias: string | null = null;
       const rel = adminRels.find((r) => {
-        const srcMatch =
-          frameNodeLabels.has(r.sourceTableName) && r.targetTableName === droppedTableName;
-        const tgtMatch =
-          frameNodeLabels.has(r.targetTableName) && r.sourceTableName === droppedTableName;
+        const srcTbl = dbTableLabel(r.sourceTableName);
+        const tgtTbl = dbTableLabel(r.targetTableName);
+        const srcMatch = frameNodeLabels.has(srcTbl) && tgtTbl === droppedTableName;
+        const tgtMatch = frameNodeLabels.has(tgtTbl) && srcTbl === droppedTableName;
         return srcMatch || tgtMatch;
       });
       if (rel) {
-        const connectedLabel = frameNodeLabels.has(rel.sourceTableName)
-          ? rel.sourceTableName
-          : rel.targetTableName;
+        const srcTbl = dbTableLabel(rel.sourceTableName);
+        const connectedLabel = frameNodeLabels.has(srcTbl) ? srcTbl : dbTableLabel(rel.targetTableName);
         sourceVar = varByLabel[connectedLabel] ?? "n";
         relAlias = rel.alias;
       } else {
@@ -392,11 +393,21 @@ export function GraphPage() {
         sourceVar = nodeVarMatch?.[1] ?? "n";
       }
 
-      const suffix = compoundLabel.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8);
-      const relVar = `r${suffix}`;
-      const targetVar = `m${suffix}`;
-      const relTypeStr = relAlias ? `[${relVar}:${relAlias}]` : `[${relVar}]`;
+      const suffix = droppedTableName.replace(/[^a-zA-Z0-9]/g, "").slice(0, 12);
+      let relVar = `r${suffix}`;
+      let targetVar = `m${suffix}`;
       const trimmed = frame.query.replace(/\s+LIMIT\s+\d+\s*$/i, "").trim();
+      let counter = 2;
+      while (
+        trimmed.includes(`[${relVar}`) ||
+        trimmed.includes(` ${targetVar}`) ||
+        trimmed.includes(`(${targetVar}`)
+      ) {
+        relVar = `r${suffix}${counter}`;
+        targetVar = `m${suffix}${counter}`;
+        counter++;
+      }
+      const relTypeStr = relAlias ? `[${relVar}:${relAlias}]` : `[${relVar}]`;
       const returnMatches = [...trimmed.matchAll(/\bRETURN\b/gi)];
       const lastReturn = returnMatches.pop();
       let newQuery: string;

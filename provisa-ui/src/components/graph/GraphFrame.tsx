@@ -39,6 +39,7 @@ import { downloadBlob, compositeGraphDownload, downloadGraphSvg, toCSV } from ".
 import { GraphCanvas } from "./GraphCanvas";
 import { Inspector } from "./Inspector";
 import { TableView, JsonCopyButton } from "./TableView";
+import { tableLabel as dbTableLabel } from "../../naming";
 
 // ── Frame component ───────────────────────────────────────────────────────────
 interface GraphFrameProps {
@@ -93,6 +94,7 @@ export function GraphFrame({
   const [overlayData, setOverlayData] = useState<
     Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>
   >(new Map());
+  if (typeof window !== "undefined") (window as Record<string, unknown>).__overlayData = overlayData;
   const [autoImpute, setAutoImpute] = useState(autoImputeProp);
   const [dragOver, setDragOver] = useState(false);
   const handleRerun = useCallback(
@@ -180,7 +182,7 @@ export function GraphFrame({
       if (!pkLit || !pkCol) return null;
       const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
       const tl = norm(tableLabel);
-      const rels = (relationships ?? []).filter((r) => norm(r.sourceTableName) === tl);
+      const rels = (relationships ?? []).filter((r) => norm(r.sourceTableName) === tl || norm(dbTableLabel(r.sourceTableName)) === tl);
       const myPkKey = pkCols.join(",");
       const siblingSourceRels =
         rels.length === 0
@@ -192,7 +194,7 @@ export function GraphFrame({
                 )
                 .map(([lbl]) => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl));
               return (relationships ?? []).filter((r) =>
-                siblingTls.includes(norm(r.sourceTableName)),
+                siblingTls.includes(norm(r.sourceTableName)) || siblingTls.includes(norm(dbTableLabel(r.sourceTableName))),
               );
             })()
           : null;
@@ -262,7 +264,7 @@ export function GraphFrame({
       if (!pkLit || !pkCol) return null;
       const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
       const tl = norm(tableLabel);
-      const rels = (relationships ?? []).filter((r) => norm(r.targetTableName) === tl);
+      const rels = (relationships ?? []).filter((r) => norm(r.targetTableName) === tl || norm(dbTableLabel(r.targetTableName)) === tl);
       const myPkKey = pkCols.join(",");
       const siblingTargetRels =
         rels.length === 0
@@ -274,7 +276,7 @@ export function GraphFrame({
                 )
                 .map(([lbl]) => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl));
               return (relationships ?? []).filter((r) =>
-                siblingTls.includes(norm(r.targetTableName)),
+                siblingTls.includes(norm(r.targetTableName)) || siblingTls.includes(norm(dbTableLabel(r.targetTableName))),
               );
             })()
           : null;
@@ -377,7 +379,6 @@ export function GraphFrame({
       const results = await Promise.all(toAdd.map((id) => _fetchChildrenForNode(id)));
       setOverlayData((prev) => {
         const next = new Map(prev);
-        toRemove.forEach((id) => next.delete(`${id}${suffix}`));
         toAdd.forEach((id, i) => {
           if (results[i]) next.set(`${id}${suffix}`, results[i]!);
         });
@@ -437,7 +438,6 @@ export function GraphFrame({
       const results = await Promise.all(toAdd.map((id) => _fetchParentsForNode(id)));
       setOverlayData((prev) => {
         const next = new Map(prev);
-        toRemove.forEach((id) => next.delete(`${id}${suffix}`));
         toAdd.forEach((id, i) => {
           if (results[i]) next.set(`${id}${suffix}`, results[i]!);
         });
@@ -927,6 +927,7 @@ export function GraphFrame({
             onToggleParentsCircular={handleToggleParentsCircular}
             onCyReady={(cy) => {
               canvasCyRef.current = cy;
+              if (typeof window !== "undefined") (window as Record<string, unknown>).__cy = cy;
             }}
             clusterLevel={clusterLevel}
             hullSvgRef={canvasHullSvgRef}
