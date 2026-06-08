@@ -253,7 +253,7 @@ jobs:
             -v "$PWD:/src:ro" \
             -v "$PWD/provisa-wheels:/wheels" \
             python:3.12-slim \
-            bash -c "cp -r /src /tmp/build && pip wheel --no-cache-dir --wheel-dir /wheels /tmp/build"
+            bash -c "cp -r /src /tmp/build && cd /tmp/build && pip wheel --no-cache-dir --wheel-dir /wheels ."
 
       - name: Upload core image tarballs
         uses: actions/upload-artifact@v4
