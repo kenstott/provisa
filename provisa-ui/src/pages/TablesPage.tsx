@@ -15,7 +15,6 @@ import { CopyButton } from "../components/CopyButton";
 import { MultiSelect } from "../components/MultiSelect";
 import { fetchSettings, profileTable } from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
-import type { TableMetadata } from "../api/admin";
 import {
   useTables,
   useSources,
@@ -730,7 +729,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 <select
                   value={tableName}
                   onChange={(e) => setTableName(e.target.value)}
-                  disabled={!schemaName || loadingTables || allRegistered}
+                  disabled={!schemaName || loadingTables || !!allRegistered}
                 >
                   <option value="">
                     {loadingTables

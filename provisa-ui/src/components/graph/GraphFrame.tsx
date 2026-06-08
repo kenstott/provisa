@@ -94,7 +94,7 @@ export function GraphFrame({
   const [overlayData, setOverlayData] = useState<
     Map<string, { nodes: Map<string, GNode>; edges: Map<string, GEdge> }>
   >(new Map());
-  if (typeof window !== "undefined") (window as Record<string, unknown>).__overlayData = overlayData;
+  if (typeof window !== "undefined") (window as unknown as Record<string, unknown>).__overlayData = overlayData;
   const [autoImpute, setAutoImpute] = useState(autoImputeProp);
   const [dragOver, setDragOver] = useState(false);
   const handleRerun = useCallback(
@@ -927,7 +927,7 @@ export function GraphFrame({
             onToggleParentsCircular={handleToggleParentsCircular}
             onCyReady={(cy) => {
               canvasCyRef.current = cy;
-              if (typeof window !== "undefined") (window as Record<string, unknown>).__cy = cy;
+              if (typeof window !== "undefined") (window as unknown as Record<string, unknown>).__cy = cy;
             }}
             clusterLevel={clusterLevel}
             hullSvgRef={canvasHullSvgRef}

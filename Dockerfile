@@ -3,6 +3,7 @@
 FROM python:3.12-slim AS installer
 WORKDIR /app
 COPY pyproject.toml .
+COPY vendor/ ./vendor/
 RUN pip install --no-cache-dir .
 
 # Stage 2: lean runtime image — no wheels, only app source + installed packages

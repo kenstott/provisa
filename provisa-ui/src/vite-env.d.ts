@@ -58,6 +58,7 @@ declare module '*.graphql' {
   export const UpdateSourceNaming: DocumentNode;
   export const UpdateTableNaming: DocumentNode;
   export const UpdateSourceAllowedDomains: DocumentNode;
+  export const SuggestTableAlias: DocumentNode;
   export default doc;
 }
 
@@ -109,5 +110,6 @@ declare module '*.gql' {
   export const UpdateSourceNaming: DocumentNode;
   export const UpdateTableNaming: DocumentNode;
   export const UpdateSourceAllowedDomains: DocumentNode;
+  export const SuggestTableAlias: DocumentNode;
   export default doc;
 }
