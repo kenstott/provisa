@@ -54,6 +54,8 @@ export QUERY_ENGINE_CONTAINER="${QUERY_ENGINE_CONTAINER:-provisa-trino-1}"
 COMPOSE_FILES="-f docker-compose.core.yml -f docker-compose.dev.yml"
 if [ "$DEMO" = true ]; then
   COMPOSE_FILES="$COMPOSE_FILES -f docker-compose.demo.yml"
+  echo "Resetting volumes for pristine demo environment..."
+  docker compose $COMPOSE_FILES down -v 2>/dev/null || true
   if [ -f "$SCRIPT_DIR/demo/files/create_demo_files.py" ]; then
     echo "Generating demo files..."
     "$SCRIPT_DIR/.venv/bin/python" "$SCRIPT_DIR/demo/files/create_demo_files.py" 2>/dev/null || true
