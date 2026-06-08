@@ -652,3 +652,32 @@ def test_bidirectional_typed_rel_no_expansion():
     # Explicit type: only one mapping looked up → no extra UNION ALL branch
     assert "persons" in sql.lower()
     assert "companies" in sql.lower()
+
+
+# ---------------------------------------------------------------------------
+# G20 — bare map literals in collect()
+# ---------------------------------------------------------------------------
+
+def test_collect_bare_map_simple():
+    """collect({name: b.name, email: b.email}) → array_agg(MAP(ARRAY[...], ARRAY[...]))."""
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) RETURN collect({name: n.name, age: n.age}) AS data"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "array['name', 'age']" in sql.lower()
+    assert "cast(" in sql.lower() and "as json)" in sql.lower()
+    assert "array_agg" in sql.lower()
+
+
+def test_collect_bare_map_does_not_corrupt_subquery():
+    """COLLECT { MATCH ... } subquery is NOT rewritten as a bare map literal."""
+    lm = _make_label_map()
+    ast = parse_cypher(
+        "MATCH (n:Person) RETURN n.name, COLLECT { MATCH (n)-[:KNOWS]->(m:Person) RETURN m.name } AS friends"
+    )
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "ARRAY" in sql.upper()
+    assert "friends" in sql.lower()

@@ -31,6 +31,63 @@ _MAP_PROJ_RE = re.compile(
     r'\b([A-Za-z_]\w*)\s*\{([^{}]+)\}',
 )
 
+# Matches bare {key: val, ...} blocks — no leading identifier, innermost only (no nested {})
+_BARE_MAP_RE = re.compile(r'(?<![A-Za-z_\w])\{([^{}]+:[^{}]*)\}')
+
+
+def _split_top_level_commas(text: str) -> list[str]:
+    """Split by commas at depth 0 (not inside parentheses or brackets)."""
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    for i, ch in enumerate(text):
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append(text[start:i])
+            start = i + 1
+    parts.append(text[start:])
+    return parts
+
+
+_IDENT_RE = re.compile(r'^[A-Za-z_]\w*$')
+
+
+def _expand_bare_map(m: re.Match) -> str:
+    """Replace {key: val, ...} with MAP(ARRAY['key',...], ARRAY[val,...])."""
+    body = m.group(1)
+    keys: list[str] = []
+    vals: list[str] = []
+    for part in _split_top_level_commas(body):
+        colon = part.find(":")
+        if colon < 0:
+            return m.group(0)
+        k = part[:colon].strip()
+        v = part[colon + 1:].strip()
+        if not k or not v or not _IDENT_RE.match(k):
+            return m.group(0)
+        keys.append(f"'{k}'")
+        vals.append(v)
+    if not keys:
+        return m.group(0)
+    cast_vals = [f"CAST({v} AS JSON)" for v in vals]
+    return f"MAP(ARRAY[{', '.join(keys)}], ARRAY[{', '.join(cast_vals)}])"
+
+
+def rewrite_bare_map_literals(text: str) -> str:
+    """Rewrite bare {key: val, ...} map literals to MAP(ARRAY[...], ARRAY[...]).
+
+    Applies bottom-up to handle nested maps: innermost {key: val} blocks are
+    replaced first, then the next level up, until stable.
+    """
+    prev = None
+    while prev != text:
+        prev = text
+        text = _BARE_MAP_RE.sub(_expand_bare_map, text)
+    return text
+
 
 class MapProjectionMixin:
     """Mixin for _Translator: rewrites map projection expressions."""

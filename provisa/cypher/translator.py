@@ -53,7 +53,7 @@ from provisa.cypher.path_comprehension import PathComprehensionMixin
 from provisa.cypher.select_builder import SelectBuilderMixin
 from provisa.cypher.correlated_call import CorrelatedCallMixin
 from provisa.cypher.subquery_exprs import SubqueryExprsMixin
-from provisa.cypher.map_projection import MapProjectionMixin
+from provisa.cypher.map_projection import MapProjectionMixin, rewrite_bare_map_literals
 from provisa.cypher.group_by import GroupByMixin
 
 
@@ -1223,6 +1223,7 @@ class _Translator(
         expr_text = self._rewrite_cte_vars(expr_text)
         expr_text = self._rewrite_call_bound_vars(expr_text)
         expr_text = self._rewrite_map_projections(expr_text)
+        expr_text = rewrite_bare_map_literals(expr_text)
         expr_text = self._rewrite_graph_fns(expr_text)
         expr_text = self._rewrite_path_comprehensions(expr_text)
         expr_text = rewrite_list_comprehensions(expr_text)
@@ -1320,6 +1321,7 @@ class _Translator(
         text = self._rewrite_call_bound_vars(text)
         text = self._rewrite_cypher_props(text)
         text = self._rewrite_map_projections(text)
+        text = rewrite_bare_map_literals(text)
         text = self._rewrite_graph_fns(text)
         text = self._rewrite_path_comprehensions(text)
         text = rewrite_list_comprehensions(text)
