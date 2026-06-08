@@ -1940,7 +1940,6 @@ async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redi
     from provisa.executor.trino_write import (
         execute_ctas_redirect,
         presign_ctas_result,
-        cleanup_result_table,
         schedule_s3_cleanup,
     )
     _, _, _, _ = await _hydrate_api_tables_before_trino(compiled, ctx, state)
@@ -1956,7 +1955,9 @@ async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redi
     trino_sql = transpile_to_trino(_ctas_exec_sql)
     ctas_result = execute_ctas_redirect(state.trino_conn, trino_sql, effective_redirect_format)
     url = await presign_ctas_result(ctas_result["s3_prefix"], redirect_config)
-    cleanup_result_table(state.trino_conn, ctas_result["table_name"])
+    # Do NOT drop the Iceberg table here — DROP TABLE on the JDBC catalog purges
+    # S3 data files immediately, invalidating the presigned URL before the user
+    # can download. The background task deletes S3 objects after TTL expires.
     asyncio.create_task(schedule_s3_cleanup(ctas_result["s3_prefix"], redirect_config))
     content_type = {"parquet": "application/vnd.apache.parquet", "orc": "application/x-orc"}.get(effective_redirect_format, "application/octet-stream")
     return {"redirect_url": url, "row_count": ctas_result["row_count"], "expires_in": redirect_config.ttl, "content_type": content_type}
