@@ -945,7 +945,7 @@ async def _mat_api_ep_table(
     )
 
 
-async def _materialize_api_to_trino_cache(exec_sql: str, _compiled, state) -> tuple[dict, dict]:
+async def _materialize_api_to_trino_cache(exec_sql: str, state) -> tuple[dict, dict]:
     """Materialize API-backed tables into Trino cache (VARCHAR columns) before Trino SQL runs.
 
     Avoids INVALID_CAST_ARGUMENT: Trino's PG connector exposes JSONB as json type;
@@ -1257,7 +1257,6 @@ def _count_rows_per_source(field_rows: list, ctx) -> dict[str, int]:
 def _build_mermaid(
     sources: set,
     source_types: dict,
-    _ctx,
     hydration_ms: dict[str, float],
     trino_ms: float | None,
     result_rows: int,
@@ -1350,7 +1349,7 @@ def _build_mermaid(
     return "\n".join(lines)
 
 
-async def _execute_api_source(compiled, ctx, state, source_id, root_field, _ck, output_format):
+async def _execute_api_source(compiled, ctx, state, source_id, root_field, output_format):
     """Execute a query against an API source in two phases.
 
     Phase 1 — REST call: native filter args (api_args) build the URL.
@@ -1487,7 +1486,7 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, _ck, 
     rewritten_sql = rewrite_from_cache(exec_sql, _cache_loc, cache_tbl)
     # Rewrite any joined API table refs → VALUES CTE (hot) or Trino cache
     _join_rewrites, _join_values_ctes = await _materialize_api_to_trino_cache(
-        rewritten_sql, compiled, state
+        rewritten_sql, state
     )
     if _join_values_ctes:
         from provisa.cache.hot_tables import build_values_cte_sql
@@ -1702,7 +1701,7 @@ async def _execute_trino_standard(
 
     # Materialize API-backed tables into Trino cache to avoid INVALID_CAST_ARGUMENT
     _api_cache_rewrites, _api_values_ctes = await _materialize_api_to_trino_cache(
-        exec_sql, compiled, state
+        exec_sql, state
     )
     for _tn, _entry in _api_values_ctes.items():
         exec_sql = build_values_cte_sql(exec_sql, _tn, _entry)
@@ -1767,7 +1766,7 @@ async def _execute_trino_standard(
     )
 
 
-async def _exec_nodes_query(compiled, ctx, state, decision, _root_field):
+async def _exec_nodes_query(compiled, ctx, state, decision):
     """Execute the aggregate nodes sub-query (plain-SELECT companion).
 
     Returns the nodes_result.
@@ -1809,7 +1808,7 @@ async def _store_response_cache(
     table_ids = {meta.table_id for meta in ctx.tables.values() if meta.field_name == root_field}
     table_id = next(iter(table_ids), None)
     tbl_cache_ttl = state.table_cache.get(table_id) if table_id else None
-    _policy, resolved_ttl = resolve_policy(
+    _, resolved_ttl = resolve_policy(
         stable_id=None,
         cache_ttl=response_cache_ttl,
         default_ttl=state.response_cache_default_ttl,
@@ -1872,7 +1871,6 @@ def _append_mermaid(qs, compiled, ctx, root_field, per_source_ms, trino_ms, n_ro
     new_mermaid = _build_mermaid(
         compiled.sources,
         _st,
-        ctx,
         per_source_ms or {},
         trino_ms,
         n_rows,
@@ -1883,7 +1881,7 @@ def _append_mermaid(qs, compiled, ctx, root_field, per_source_ms, trino_ms, n_ro
     qs.mermaid = f"{qs.mermaid}\n\n{new_mermaid}" if qs.mermaid else new_mermaid
 
 
-async def _exec_api_route(compiled, ctx, state, decision, root_field, output_format, ck, response_cache_ttl, no_cache, _t0):
+async def _exec_api_route(compiled, ctx, state, decision, root_field, output_format, ck, response_cache_ttl, no_cache):
     """Execute Route.API path.
 
     Returns (root_field, field_rows, None, ck, None).
@@ -1897,7 +1895,7 @@ async def _exec_api_route(compiled, ctx, state, decision, root_field, output_for
             _api_cache_hit = False
         else:
             field_rows, response_data, _phase1_ms, _phase2_ms, _api_physical_sql, _api_cache_hit = (
-                await _execute_api_source(compiled, ctx, state, decision.source_id, root_field, ck, output_format)
+                await _execute_api_source(compiled, ctx, state, decision.source_id, root_field, output_format)
             )
     except HTTPException:
         raise
@@ -1924,7 +1922,7 @@ async def _exec_api_route(compiled, ctx, state, decision, root_field, output_for
         _src_obj = getattr(state, "api_sources", {}).get(decision.source_id)
         _cc = getattr(_src_obj, "cache_catalog", None) if _src_obj else None
         _api_mermaid = _build_mermaid(
-            compiled.sources, _source_types, ctx, _hydration_ms_api,
+            compiled.sources, _source_types, _hydration_ms_api,
             _trino_ms_for_mermaid, _api_rows, root_field,
             join_fields=_join_fields or None, root_source_id=decision.source_id, cache_catalog=_cc,
         )
@@ -1934,7 +1932,7 @@ async def _exec_api_route(compiled, ctx, state, decision, root_field, output_for
     return root_field, field_rows, None, ck, None
 
 
-async def _exec_ctas_route(compiled, ctx, state, _root_field, effective_redirect_format, redirect_config, _ck, _t0):
+async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redirect_config):
     """Execute CTAS redirect path.
 
     Returns redirect_info dict on success, or raises.
@@ -1945,9 +1943,9 @@ async def _exec_ctas_route(compiled, ctx, state, _root_field, effective_redirect
         cleanup_result_table,
         schedule_s3_cleanup,
     )
-    _, _ctas_hydration_ms, _, _ = await _hydrate_api_tables_before_trino(compiled, ctx, state)
+    _, _, _, _ = await _hydrate_api_tables_before_trino(compiled, ctx, state)
     _ctas_exec_sql = rewrite_semantic_to_trino_physical(compiled.sql, ctx)
-    _ctas_rewrites, _ctas_values_ctes = await _materialize_api_to_trino_cache(_ctas_exec_sql, compiled, state)
+    _ctas_rewrites, _ctas_values_ctes = await _materialize_api_to_trino_cache(_ctas_exec_sql, state)
     if _ctas_values_ctes:
         from provisa.cache.hot_tables import build_values_cte_sql
         for _tn, _entry in _ctas_values_ctes.items():
@@ -1964,7 +1962,7 @@ async def _exec_ctas_route(compiled, ctx, state, _root_field, effective_redirect
     return {"redirect_url": url, "row_count": ctas_result["row_count"], "expires_in": redirect_config.ttl, "content_type": content_type}
 
 
-async def _exec_probe_redirect(compiled, ctx, state, decision, root_field, session_hints, effective_redirect_format, redirect_config):
+async def _exec_probe_redirect(compiled, ctx, state, decision, session_hints, effective_redirect_format, redirect_config):
     """Re-execute without probe limit then upload-and-presign.
 
     Returns redirect_info dict on success, or raises.
@@ -1987,7 +1985,7 @@ async def _exec_inline_result(compiled, ctx, state, decision, root_field, result
     """Build inline response, cache it, record stats, and return (root_field, field_rows, None, ck, None)."""
     if compiled.nodes_sql is not None:
         try:
-            nodes_result = await _exec_nodes_query(compiled, ctx, state, decision, root_field)
+            nodes_result = await _exec_nodes_query(compiled, ctx, state, decision)
         except (MemoryError, ConnectionError) as e:
             log.error("Nodes query resource error for %s: %s", root_field, e)
             raise HTTPException(status_code=503, detail=str(e))
@@ -2026,9 +2024,7 @@ async def _execute_one_field(
     ctx,
     rls,
     state,
-    role,
     role_id,
-    fresh_mvs,
     output_format,
     *,
     force_redirect,
@@ -2073,11 +2069,11 @@ async def _execute_one_field(
     log.warning("[QUERY %s] Route: %s | source=%s | reason: %s", root_field, decision.route.value, decision.source_id or "(trino)", decision.reason)
 
     if decision.route == Route.API and decision.source_id:
-        return await _exec_api_route(compiled, ctx, state, decision, root_field, output_format, ck, response_cache_ttl, no_cache, _t0)
+        return await _exec_api_route(compiled, ctx, state, decision, root_field, output_format, ck, response_cache_ttl, no_cache)
 
     if force_redirect and is_trino_native_format(effective_redirect_format) and state.trino_conn is not None:
         try:
-            redirect_info = await _exec_ctas_route(compiled, ctx, state, root_field, effective_redirect_format, redirect_config, ck, _t0)
+            redirect_info = await _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redirect_config)
             _record_per_source_stats(root_field, compiled.sources, (_time.perf_counter() - _t0) * 1000, redirect_info["row_count"], ctx, state)
             return root_field, None, redirect_info, ck, None
         except Exception:
@@ -2086,7 +2082,6 @@ async def _execute_one_field(
     # Standard execution
     session_hints: dict[str, str] = {}
     _dataloader_srcs: set = set()
-    _hydration_ms: dict[str, float] = {}
     _hydration_rows: dict[str, int] = {}
     _hydration_cache_hits: set = set()
     _per_source_ms: dict[str, float] = {}
@@ -2100,7 +2095,7 @@ async def _execute_one_field(
                 exec_sql = _inject_probe_limit(exec_sql, probe_limit)
             result = await execute_direct(state.source_pools, decision.source_id, transpile(exec_sql, decision.dialect or "postgres"), compiled.params)
         else:
-            (result, trino_sql, _trino_ms, _per_source_ms, _dataloader_srcs, _hydration_ms, _hydration_rows, _hydration_cache_hits, session_hints) = await _execute_trino_standard(compiled, ctx, state, role_id, root_field, probe_limit, query_session_props, query_text)
+            (result, trino_sql, _trino_ms, _per_source_ms, _dataloader_srcs, _, _hydration_rows, _hydration_cache_hits, session_hints) = await _execute_trino_standard(compiled, ctx, state, role_id, root_field, probe_limit, query_session_props, query_text)
     except HTTPException:
         raise
     except (MemoryError, ConnectionError) as e:
@@ -2113,7 +2108,7 @@ async def _execute_one_field(
     if probe_limit is not None and len(result.rows) >= probe_limit:
         log.info("[QUERY %s] Probe returned %d rows (threshold %d) — redirecting", root_field, len(result.rows), redirect_config.threshold)
         try:
-            redirect_info = await _exec_probe_redirect(compiled, ctx, state, decision, root_field, session_hints, effective_redirect_format, redirect_config)
+            redirect_info = await _exec_probe_redirect(compiled, ctx, state, decision, session_hints, effective_redirect_format, redirect_config)
             _record_per_source_stats(root_field, compiled.sources, (_time.perf_counter() - _t0) * 1000, redirect_info.get("row_count", 0), ctx, state, decision)
             return root_field, None, redirect_info, ck, None
         except Exception:
@@ -2124,8 +2119,8 @@ async def _execute_one_field(
             redirect_info = await upload_and_presign(result, redirect_config, output_format=effective_redirect_format, columns=compiled.columns)
             _record_per_source_stats(root_field, compiled.sources, (_time.perf_counter() - _t0) * 1000, redirect_info.get("row_count", 0), ctx, state, decision)
             return root_field, None, redirect_info, ck, None
-        except Exception:
-            log.exception("Redirect upload failed for %s, returning inline", root_field)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Redirect upload failed: {e}")
 
     return await _exec_inline_result(compiled, ctx, state, decision, root_field, result, output_format, ck, response_cache_ttl, no_cache, _t0, _dataloader_srcs, _per_source_ms, _trino_ms, _hydration_rows, _hydration_cache_hits, trino_sql)
 
@@ -2177,7 +2172,7 @@ async def _handle_query(
     # Prepare all compiled queries (RLS, masking, MV rewrite, sampling)
     prepared = []
     for cq in compiled_queries:
-        prepped, _mv_used = await _prepare_compiled(cq, ctx, rls, state, role_id, role, fresh_mvs)
+        prepped, _ = await _prepare_compiled(cq, ctx, rls, state, role_id, role, fresh_mvs)
         prepared.append(prepped)
 
     # Determine redirect config
@@ -2205,15 +2200,13 @@ async def _handle_query(
     # --- Single root field: preserve existing behavior for binary formats ---
     if len(prepared) == 1:
         try:
-            root_field, field_rows, redirect_info, _ck, cached_entry = await asyncio.wait_for(
+            root_field, field_rows, redirect_info, _, cached_entry = await asyncio.wait_for(
                 _execute_one_field(
                     prepared[0],
                     ctx,
                     rls,
                     state,
-                    role,
                     role_id,
-                    fresh_mvs,
                     output_format,
                     force_redirect=force_redirect,
                     redirect_config=redirect_config,
@@ -2261,9 +2254,7 @@ async def _handle_query(
                         ctx,
                         rls,
                         state,
-                        role,
                         role_id,
-                        fresh_mvs,
                         "json",  # multi-field always uses JSON
                         force_redirect=force_redirect,
                         redirect_config=redirect_config,
@@ -2285,7 +2276,7 @@ async def _handle_query(
             status_code=504, detail=f"Query timed out after {_request_timeout():.0f}s"
         )
 
-    for root_field, field_rows, redirect_info, _ck, cached_entry in results:
+    for root_field, field_rows, redirect_info, _, cached_entry in results:
         if redirect_info is not None:
             merged_data[root_field] = None
             merged_redirects[root_field] = redirect_info
