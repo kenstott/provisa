@@ -73,6 +73,7 @@ import {
   UpdateSourceNaming,
   UpdateTableNaming,
   UpdateSourceAllowedDomains,
+  SuggestTableAlias,
 } from "./admin.graphql";
 
 const NO_SOURCES: Source[] = [];
@@ -412,30 +413,22 @@ export function useScheduledTasks() {
 // STABLE identity across renders. Callers list them in effect deps; without this,
 // every render produces a new function, re-running the effect → infinite loop.
 
-export function useAvailableSchemasLazy() {
-  const [run] = useLazyQuery<{ availableSchemas: string[] }>(AvailableSchemas, {
-    fetchPolicy: "cache-first",
+export function useAvailableSchemas(sourceId: string | null) {
+  const { data, loading } = useQuery<{ availableSchemas: string[] }>(AvailableSchemas, {
+    variables: { sourceId },
+    skip: !sourceId,
+    fetchPolicy: "no-cache",
   });
-  return useCallback(
-    async (sourceId: string): Promise<string[]> => {
-      const { data } = await run({ variables: { sourceId } });
-      return data?.availableSchemas ?? [];
-    },
-    [run],
-  );
+  return { schemas: data?.availableSchemas ?? [], loading };
 }
 
-export function useAvailableTablesLazy() {
-  const [run] = useLazyQuery<{ availableTables: TableMetadata[] }>(AvailableTables, {
-    fetchPolicy: "cache-first",
+export function useAvailableTables(sourceId: string | null, schemaName: string | null) {
+  const { data, loading } = useQuery<{ availableTables: TableMetadata[] }>(AvailableTables, {
+    variables: { sourceId, schemaName },
+    skip: !sourceId || !schemaName,
+    fetchPolicy: "no-cache",
   });
-  return useCallback(
-    async (sourceId: string, schemaName = "public"): Promise<TableMetadata[]> => {
-      const { data } = await run({ variables: { sourceId, schemaName } });
-      return data?.availableTables ?? [];
-    },
-    [run],
-  );
+  return { tables: data?.availableTables ?? [], loading };
 }
 
 export function useAvailableColumnsMetadataLazy() {
@@ -493,7 +486,25 @@ export function useGenerateTableDescription() {
   };
 }
 
-// ── Mutation hooks (previously imperative client.mutate in api/admin.ts) ──
+export function useSuggestTableAlias() {
+  const [run, { loading }] = useLazyQuery<{ suggestTableAlias: string }>(
+    SuggestTableAlias,
+    { fetchPolicy: "no-cache" },
+  );
+  return {
+    suggestTableAlias: async (
+      tableName: string,
+      domainId: string,
+      sourceId: string,
+    ): Promise<string> => {
+      const { data } = await run({ variables: { tableName, domainId, sourceId } });
+      return data?.suggestTableAlias ?? tableName;
+    },
+    loading,
+  };
+}
+
+// ── Mutation hooks ──
 
 export function useCompileQuery() {
   const [compile, { loading }] = useMutation<{ compileQuery: Record<string, unknown>[] }>(

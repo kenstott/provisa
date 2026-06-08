@@ -166,6 +166,10 @@ query GenerateTableDescription($tableId: String!) {
   generateTableDescription(tableId: $tableId)
 }
 
+query SuggestTableAlias($tableName: String!, $domainId: String!, $sourceId: String!) {
+  suggestTableAlias(tableName: $tableName, domainId: $domainId, sourceId: $sourceId)
+}
+
 mutation CompileQuery($input: CompileQueryInput!) {
   compileQuery(input: $input) {
     sql

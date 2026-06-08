@@ -21,8 +21,8 @@ import {
   useSources,
   useDomains,
   useRoles,
-  useAvailableSchemasLazy,
-  useAvailableTablesLazy,
+  useAvailableSchemas,
+  useAvailableTables,
   useAvailableColumnsMetadataLazy,
   useGenerateTableDescription,
   useGenerateColumnDescription,
@@ -34,6 +34,7 @@ import {
   usePurgeCacheByTable,
   useInvalidateFileSource,
   useDeployViewToDb,
+  useSuggestTableAlias,
 } from "../hooks/useAdminQueries";
 import type { RegisteredTable } from "../types/admin";
 import { ColumnPresetsEditor } from "../components/admin/ColumnPresetsEditor";
@@ -122,25 +123,6 @@ const NAMING_CONVENTIONS = [
 ];
 
 const CDC_TYPES = new Set(["postgresql", "mongodb", "kafka", "debezium"]);
-// Source types where the "table" is user-defined (no stable catalog identifier to dedup against)
-// Source types with no available_tables catalog path — dedup only enforced on commit
-const UNSTABLE_TABLE_SOURCES = new Set([
-  "neo4j",
-  "sparql",
-  "graphql",
-  "graphql_remote",
-  "grpc",
-  "grpc_remote",
-]);
-// Source types that always return a single fixed schema — schema field should be auto-selected and disabled
-const FIXED_SCHEMA_SOURCES: Record<string, string> = {
-  graphql: "default",
-  graphql_remote: "default",
-  grpc: "default",
-  grpc_remote: "default",
-  kafka: "default",
-  openapi: "openapi",
-};
 
 function isWatermarkEligible(dataType: string): boolean {
   const t = dataType.toLowerCase();
@@ -183,18 +165,11 @@ interface ColumnForm {
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  // Reactive subscriber to the tables cache (cache-and-network). Table mutations in
-  // api/admin.ts carry refetchQueries:[{query: TablesQuery}], so create/update/delete
-  // re-render this list automatically — no manual setTables. Replaces the former
-  // one-shot fetchTables() (client.query), which replayed stale localStorage-persisted
-  // cache and never revalidated (e.g. a column's isPrimaryKey stuck false).
   const { tables, refetch: refetchTables } = useTables();
   const { sources, refetch: refetchSources } = useSources();
   const { domains, refetch: refetchDomains } = useDomains();
   const { roles, refetch: refetchRoles } = useRoles();
   const domainHints = domains.map((d) => d.id);
-  const getAvailableSchemas = useAvailableSchemasLazy();
-  const getAvailableTables = useAvailableTablesLazy();
   const getAvailableColumnsMetadata = useAvailableColumnsMetadataLazy();
   const { generateTableDescription } = useGenerateTableDescription();
   const { generateColumnDescription } = useGenerateColumnDescription();
@@ -206,6 +181,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { purgeCacheByTable } = usePurgeCacheByTable();
   const { invalidateFileSource } = useInvalidateFileSource();
   const { deployViewToDb } = useDeployViewToDb();
+  const { suggestTableAlias } = useSuggestTableAlias();
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -237,10 +213,14 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   >({});
 
   // Discovery state
-  const [availableSchemas, setAvailableSchemas] = useState<string[]>([]);
-  const [availableTables, setAvailableTables] = useState<TableMetadata[]>([]);
-  const [loadingSchemas, setLoadingSchemas] = useState(false);
-  const [loadingTables, setLoadingTables] = useState(false);
+  const { schemas: availableSchemas, loading: loadingSchemas } = useAvailableSchemas(
+    sourceId || null,
+  );
+  const isFixedSchema = availableSchemas.length === 1;
+  const { tables: availableTables, loading: loadingTables } = useAvailableTables(
+    sourceId && schemaName ? sourceId : null,
+    schemaName || null,
+  );
   const [loadingColumns, setLoadingColumns] = useState(false);
 
   // Inline edit state for expanded table
@@ -361,7 +341,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   };
 
   useEffect(() => {
-    reload();
+    // useQuery hooks (tables/sources/domains/roles) fetch on mount automatically.
+    // Only the imperative REST call (fetchSettings) needs explicit initialization.
+    fetchSettings()
+      .then((st) => setSettings(st))
+      .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -370,38 +354,18 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setTableName("");
     setTableDescription("");
     setColumns([]);
-    setAvailableSchemas([]);
-    setAvailableTables([]);
-    if (!sourceId) return;
-    const srcType = sources.find((s) => s.id === sourceId)?.type ?? "";
-    const fixedSchema = FIXED_SCHEMA_SOURCES[srcType];
-    if (fixedSchema !== undefined) {
-      setAvailableSchemas([fixedSchema]);
-      setSchemaName(fixedSchema);
-      return;
+  }, [sourceId]);
+
+  useEffect(() => {
+    if (availableSchemas.length === 1) {
+      setSchemaName(availableSchemas[0]);
     }
-    setLoadingSchemas(true);
-    getAvailableSchemas(sourceId)
-      .then(setAvailableSchemas)
-      .catch(() => setAvailableSchemas([]))
-      .finally(() => setLoadingSchemas(false));
-    /* eslint-disable-next-line react-hooks/exhaustive-deps --
-       getAvailableSchemas is a fresh lazy-query trigger each render; including it would loop. Refetch only on source change. */
-  }, [sourceId, sources]);
+  }, [availableSchemas, sourceId]);
 
   useEffect(() => {
     setTableName("");
     setTableDescription("");
     setColumns([]);
-    setAvailableTables([]);
-    if (!sourceId || !schemaName) return;
-    setLoadingTables(true);
-    getAvailableTables(sourceId, schemaName)
-      .then(setAvailableTables)
-      .catch(() => setAvailableTables([]))
-      .finally(() => setLoadingTables(false));
-    /* eslint-disable-next-line react-hooks/exhaustive-deps --
-       getAvailableTables is a fresh lazy-query trigger each render; including it would loop. Refetch only on source/schema change. */
   }, [sourceId, schemaName]);
 
   // Auto-populate table description from physical database comment
@@ -413,14 +377,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
   // Auto-generate alias from table name using snake_case convention
   useEffect(() => {
-    if (!tableName) {
+    if (!tableName || !domainId || !sourceId) {
       setTableAlias("");
       return;
     }
-    const snake = toSnakeCase(tableName);
-    if (snake !== tableName) setTableAlias(snake);
-    else setTableAlias("");
-  }, [tableName]);
+    suggestTableAlias(tableName, domainId, sourceId).then(setTableAlias);
+  }, [tableName, domainId, sourceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setColumns([]);
@@ -733,14 +695,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           <label>
             Schema
             {(() => {
-              const srcType = sources.find((s) => s.id === sourceId)?.type ?? "";
-              const isFixed = srcType in FIXED_SCHEMA_SOURCES;
               return (
                 <select
                   value={schemaName}
                   onChange={(e) => setSchemaName(e.target.value)}
-                  disabled={!sourceId || loadingSchemas || isFixed}
-                  style={isFixed ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+                  disabled={!sourceId || loadingSchemas || isFixedSchema}
+                  style={isFixedSchema ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
                 >
                   <option value="">{loadingSchemas ? "Loading..." : "Select schema..."}</option>
                   {availableSchemas.map((s) => (
@@ -754,32 +714,39 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           </label>
           <label>
             Table
-            <select
-              value={tableName}
-              onChange={(e) => setTableName(e.target.value)}
-              disabled={!schemaName || loadingTables}
-            >
-              <option value="">{loadingTables ? "Loading..." : "Select table..."}</option>
-              {(() => {
-                const srcType = sources.find((s) => s.id === sourceId)?.type ?? "";
-                const filtered = UNSTABLE_TABLE_SOURCES.has(srcType)
-                  ? availableTables
-                  : availableTables.filter(
-                      (t) =>
-                        !tables.some(
-                          (rt) =>
-                            rt.sourceId === sourceId &&
-                            rt.schemaName === schemaName &&
-                            rt.tableName === t.name,
-                        ),
-                    );
-                return filtered.map((t) => (
-                  <option key={t.name} value={t.name}>
-                    {t.name}
+            {(() => {
+              const isRegistered = (t: { name: string }) =>
+                tables.some(
+                  (rt) =>
+                    rt.sourceId === sourceId &&
+                    toSnakeCase(rt.tableName) === toSnakeCase(t.name),
+                );
+              const allRegistered =
+                !loadingTables &&
+                schemaName &&
+                availableTables.length > 0 &&
+                availableTables.every(isRegistered);
+              return (
+                <select
+                  value={tableName}
+                  onChange={(e) => setTableName(e.target.value)}
+                  disabled={!schemaName || loadingTables || allRegistered}
+                >
+                  <option value="">
+                    {loadingTables
+                      ? "Loading..."
+                      : allRegistered
+                        ? "All tables already registered"
+                        : "Select table..."}
                   </option>
-                ));
-              })()}
-            </select>
+                  {availableTables.map((t) => (
+                    <option key={t.name} value={t.name} disabled={isRegistered(t)}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              );
+            })()}
           </label>
           <label>
             Alias{" "}

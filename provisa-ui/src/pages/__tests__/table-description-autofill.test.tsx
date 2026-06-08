@@ -47,13 +47,16 @@ vi.mock("../../api/admin", () => ({
   profileTable: vi.fn().mockResolvedValue({ columns: [], rows: [], rowCount: 0 }),
 }));
 
-// Module-level lazy-hook spies so tests can assert call args directly.
-const getAvailableSchemas = vi.fn().mockResolvedValue(["public"]);
-const getAvailableTables = vi.fn().mockResolvedValue([
-  { name: "customers", comment: "Registered customer accounts" },
-  { name: "orders", comment: "Customer purchase orders" },
-  { name: "products", comment: null },
-]);
+// Module-level hook spies so tests can assert call args directly.
+const mockUseAvailableSchemas = vi.fn().mockReturnValue({ schemas: ["public", "private"], loading: false });
+const mockUseAvailableTables = vi.fn().mockReturnValue({
+  tables: [
+    { name: "customers", comment: "Registered customer accounts" },
+    { name: "orders", comment: "Customer purchase orders" },
+    { name: "products", comment: null },
+  ],
+  loading: false,
+});
 const getAvailableColumnsMetadata = vi.fn().mockResolvedValue([
   { name: "id", dataType: "integer", comment: "Primary key", nativeFilterType: null, isPrimaryKey: true },
   { name: "name", dataType: "varchar", comment: "Customer name", nativeFilterType: null, isPrimaryKey: false },
@@ -93,8 +96,8 @@ vi.mock("../../hooks/useAdminQueries", () => ({
   useSources: () => ({ sources: sourcesData, loading: false, refetch: refetchSources }),
   useDomains: () => ({ domains: DOMAINS, loading: false, refetch: refetchDomains }),
   useRoles: () => ({ roles: ROLES, loading: false, refetch: refetchRoles }),
-  useAvailableSchemasLazy: () => getAvailableSchemas,
-  useAvailableTablesLazy: () => getAvailableTables,
+  useAvailableSchemas: (...args: Parameters<typeof mockUseAvailableSchemas>) => mockUseAvailableSchemas(...args),
+  useAvailableTables: (...args: unknown[]) => mockUseAvailableTables(...args),
   useAvailableColumnsMetadataLazy: () => getAvailableColumnsMetadata,
   useGenerateTableDescription: () => ({ generateTableDescription, loading: false }),
   useGenerateColumnDescription: () => ({ generateColumnDescription, loading: false }),
@@ -106,6 +109,10 @@ vi.mock("../../hooks/useAdminQueries", () => ({
   usePurgeCacheByTable: () => ({ purgeCacheByTable, loading: false }),
   useInvalidateFileSource: () => ({ invalidateFileSource, loading: false }),
   useDeployViewToDb: () => ({ deployViewToDb, loading: false }),
+  useSuggestTableAlias: () => ({
+    suggestTableAlias: async (tableName: string) => tableName,
+    loading: false,
+  }),
 }));
 
 import { TablesPage } from "../TablesPage";
@@ -123,12 +130,15 @@ function renderPage() {
 function resetSpies() {
   vi.clearAllMocks();
   sourcesData = [SALES_PG_SOURCE];
-  getAvailableSchemas.mockResolvedValue(["public"]);
-  getAvailableTables.mockResolvedValue([
-    { name: "customers", comment: "Registered customer accounts" },
-    { name: "orders", comment: "Customer purchase orders" },
-    { name: "products", comment: null },
-  ]);
+  mockUseAvailableSchemas.mockReturnValue({ schemas: ["public", "private"], loading: false });
+  mockUseAvailableTables.mockReturnValue({
+    tables: [
+      { name: "customers", comment: "Registered customer accounts" },
+      { name: "orders", comment: "Customer purchase orders" },
+      { name: "products", comment: null },
+    ],
+    loading: false,
+  });
   getAvailableColumnsMetadata.mockResolvedValue([
     { name: "id", dataType: "integer", comment: "Primary key", nativeFilterType: null, isPrimaryKey: true },
     { name: "name", dataType: "varchar", comment: "Customer name", nativeFilterType: null, isPrimaryKey: false },
@@ -248,7 +258,7 @@ describe("Schema population — source type routing", () => {
     await userEvent.selectOptions(selects[0], "sales-pg");
 
     await waitFor(() => {
-      expect(getAvailableSchemas).toHaveBeenCalledWith("sales-pg");
+      expect(mockUseAvailableSchemas).toHaveBeenCalledWith("sales-pg");
     });
   });
 
@@ -267,10 +277,11 @@ describe("Schema population — source type routing", () => {
     });
   });
 
-  it("does NOT call available-schemas for graphql sources (uses fixed schema)", async () => {
+  it("auto-selects single schema returned by backend for fixed-schema sources", async () => {
     sourcesData = [
       { id: "my-gql", type: "graphql", host: "", port: 0, database: "", username: "", dialect: "graphql", cacheEnabled: false, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "" },
     ];
+    mockUseAvailableSchemas.mockReturnValue({ schemas: ["default"], loading: false });
 
     renderPage();
 
@@ -281,16 +292,16 @@ describe("Schema population — source type routing", () => {
     await userEvent.selectOptions(selects[0], "my-gql");
 
     await waitFor(() => {
-      const schemaOpts = screen.getAllByRole("option", { name: "default" });
-      expect(schemaOpts.length).toBeGreaterThan(0);
+      expect(mockUseAvailableSchemas).toHaveBeenCalledWith("my-gql");
+      expect(selects[2]).toHaveValue("default");
     });
-    expect(getAvailableSchemas).not.toHaveBeenCalled();
   });
 
-  it("does NOT call available-schemas for kafka sources (uses fixed schema)", async () => {
+  it("auto-selects single schema returned by backend for kafka sources", async () => {
     sourcesData = [
       { id: "my-kafka", type: "kafka", host: "", port: 0, database: "", username: "", dialect: "kafka", cacheEnabled: false, cacheTtl: null, allowedDomains: [], namingConvention: null, path: null, description: "" },
     ];
+    mockUseAvailableSchemas.mockReturnValue({ schemas: ["default"], loading: false });
 
     renderPage();
 
@@ -301,10 +312,9 @@ describe("Schema population — source type routing", () => {
     await userEvent.selectOptions(selects[0], "my-kafka");
 
     await waitFor(() => {
-      const schemaOpts = screen.getAllByRole("option", { name: "default" });
-      expect(schemaOpts.length).toBeGreaterThan(0);
+      expect(mockUseAvailableSchemas).toHaveBeenCalledWith("my-kafka");
+      expect(selects[2]).toHaveValue("default");
     });
-    expect(getAvailableSchemas).not.toHaveBeenCalled();
   });
 
   it("resets schema and table when source changes", async () => {
