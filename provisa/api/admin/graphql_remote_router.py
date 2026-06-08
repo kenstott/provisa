@@ -126,7 +126,7 @@ async def _upsert_tables_to_semantic_layer(
             tbl = Table(
                 source_id=source_id,
                 domain_id=domain_id or "",
-                schema_name="graphql_remote",
+                schema_name="graphql",
                 table_name=t["name"],
                 governance=GovernanceLevel.pre_approved,
                 description=t.get("description"),

@@ -1044,9 +1044,13 @@ async def _load_openapi_specs() -> None:
     state.openapi_specs = {}
     for _row in openapi_rows:
         try:
-            _spec = load_spec(_resolve_secrets(_row["path"]))
+            _resolved_path = _resolve_secrets(_row["path"])
+            _spec = load_spec(_resolved_path)
             _servers = _spec.get("servers", [])
             _base_url = _servers[0].get("url", "") if _servers else ""
+            if _base_url and not _base_url.startswith(("http://", "https://")) and _resolved_path.startswith(("http://", "https://")):
+                from urllib.parse import urljoin
+                _base_url = urljoin(_resolved_path, _base_url)
             state.openapi_specs[_row["id"]] = {
                 "spec_path": _row["path"],
                 "spec": _spec,
@@ -1468,7 +1472,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                     continue
                 tbl_rows = await _conn.fetch(
                     "SELECT id, table_name, domain_id, description FROM registered_tables "
-                    "WHERE source_id = $1 AND schema_name = 'graphql_remote'",
+                    "WHERE source_id = $1 AND schema_name = 'graphql'",
                     source_id,
                 )
                 tables: list[dict] = []
@@ -1509,7 +1513,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                     tables.append(
                         {
                             "name": tname,
-                            "field_name": tname.split("__", 1)[-1] if "__" in tname else tname,
+                            "field_name": tname,
                             "source_id": source_id,
                             "columns": columns,
                             "domain_id": tr["domain_id"] or "",
@@ -1519,7 +1523,7 @@ async def _load_graphql_remote_sources_from_db() -> None:
                     )
                 if not tables:
                     continue
-                namespace = tables[0]["name"].split("__", 1)[0] if "__" in tables[0]["name"] else ""
+                namespace = ""
                 if not hasattr(state, "graphql_remote_sources"):
                     state.graphql_remote_sources = {}
                 state.graphql_remote_sources[source_id] = {
@@ -2442,14 +2446,14 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
             tables, functions, relationships = await _introspect_and_map(
                 "graphql-demo",
                 _graphql_demo_url,
-                "shelter",
+                "",
                 "shelter",
                 None,
             )
             reg = GraphQLRemoteRegistration(
                 source_id="graphql-demo",
                 url=_graphql_demo_url,
-                namespace="shelter",
+                namespace="",
                 domain_id="shelter",
                 cache_ttl=300,
                 tables=tables,
@@ -2490,12 +2494,12 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                 async with _demo_pool.acquire() as _rel_conn:
                     _pg_rel = cast(asyncpg.Connection, _rel_conn)
                     for _rel_id, _src_tbl, _tgt_tbl, _src_col, _tgt_col, _card, _alias in [
-                        ("employees_to_assignments", "shelter__employees", "shelter__assignments", "id", "employeeId", "one-to-many", None),
-                        ("pets-to-shelter-breed", "pets", "shelter__animalBreeds", "breed_name", "name", "many-to-one", "BREED_INFO"),
-                        ("shelter-breed-to-pets", "shelter__animalBreeds", "pets", "name", "breed_name", "one-to-many", "PETS_OF_BREED"),
-                        ("pets-to-shelter-assignments", "pets", "shelter__assignments", "breed_name", "breedName", "many-to-one", None),
-                        ("shelter-assignments-to-pets", "shelter__assignments", "pets", "breedName", "breed_name", "one-to-many", None),
-                        ("shelter-assignments-to-employees", "shelter__assignments", "shelter__employees", "employeeId", "id", "many-to-one", None),
+                        ("employees_to_assignments", "employees", "assignments", "id", "employeeId", "one-to-many", None),
+                        ("pets-to-shelter-breed", "pets", "animalBreeds", "breed_name", "name", "many-to-one", "BREED_INFO"),
+                        ("shelter-breed-to-pets", "animalBreeds", "pets", "name", "breed_name", "one-to-many", "PETS_OF_BREED"),
+                        ("pets-to-shelter-assignments", "pets", "assignments", "breed_name", "breedName", "many-to-one", None),
+                        ("shelter-assignments-to-pets", "assignments", "pets", "breedName", "breed_name", "one-to-many", None),
+                        ("shelter-assignments-to-employees", "assignments", "employees", "employeeId", "id", "many-to-one", None),
                     ]:
                         try:
                             await rel_repo.upsert(

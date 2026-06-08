@@ -19,6 +19,10 @@ sources:
   type: sqlite
   path: ./demo/files/inquiries.sqlite
   description: Customer adoption inquiry records — prospective pet owner interest submissions tracked by the front-desk team, including inquiry type, message, and resolution status
+- id: graphql-demo
+  type: graphql_remote
+  path: ${env:GRAPHQL_DEMO_URL:-http://graphql-demo:4000/graphql}
+  description: Animal shelter GraphQL API — staff schedules, breed catalogue, and animal assignment records managed by shelter operations
 domains:
 - id: pet-store
   description: "Pet store \u2014 Petstore public API (OpenAPI), internal inventory\
@@ -310,6 +314,200 @@ tables:
     visible_to:
     - admin
     - analyst
+- source_id: graphql-demo
+  domain_id: shelter
+  schema: graphql
+  table: animalBreeds
+  governance: pre-approved
+  description: "Full breed catalog — use to answer what care protocols apply and which adopter profiles match each species in custody"
+  columns:
+  - name: name
+    visible_to: [admin, analyst]
+  - name: species
+    visible_to: [admin, analyst]
+  - name: care_level
+    visible_to: [admin, analyst]
+  - name: avg_lifespan_years
+    visible_to: [admin, analyst]
+  - name: typical_habitat
+    visible_to: [admin, analyst]
+  - name: description
+    visible_to: [admin, analyst]
+- source_id: graphql-demo
+  domain_id: shelter
+  schema: graphql
+  table: animalBreed
+  governance: pre-approved
+  description: "Care requirements and placement context for a single breed — use before making a staffing assignment or adoption decision"
+  columns:
+  - name: _nf_name
+    native_filter_type: query_param
+    visible_to: []
+  - name: name
+    visible_to: [admin, analyst]
+  - name: species
+    visible_to: [admin, analyst]
+  - name: care_level
+    visible_to: [admin, analyst]
+  - name: avg_lifespan_years
+    visible_to: [admin, analyst]
+  - name: typical_habitat
+    visible_to: [admin, analyst]
+  - name: description
+    visible_to: [admin, analyst]
+- source_id: graphql-demo
+  domain_id: shelter
+  schema: graphql
+  table: employees
+  governance: pre-approved
+  description: "All staff eligible for breed assignments — use to identify who can be assigned or scheduled"
+  columns:
+  - name: id
+    visible_to: [admin, analyst]
+  - name: first_name
+    visible_to: [admin, analyst]
+  - name: last_name
+    visible_to: [admin, analyst]
+  - name: hire_date
+    visible_to: [admin, analyst]
+  - name: department
+    visible_to: [admin, analyst]
+  - name: email
+    visible_to: [admin, analyst]
+  - name: phone
+    visible_to: [admin, analyst]
+  - name: ssn
+    visible_to: [admin]
+- source_id: graphql-demo
+  domain_id: shelter
+  schema: graphql
+  table: employee
+  governance: pre-approved
+  description: "Contact details and department for a single staff member — use to route assignment requests or resolve scheduling conflicts"
+  columns:
+  - name: _nf_id
+    native_filter_type: query_param
+    visible_to: []
+  - name: id
+    visible_to: [admin, analyst]
+  - name: first_name
+    visible_to: [admin, analyst]
+  - name: last_name
+    visible_to: [admin, analyst]
+  - name: hire_date
+    visible_to: [admin, analyst]
+  - name: department
+    visible_to: [admin, analyst]
+  - name: email
+    visible_to: [admin, analyst]
+  - name: phone
+    visible_to: [admin, analyst]
+  - name: ssn
+    visible_to: [admin]
+- source_id: graphql-demo
+  domain_id: shelter
+  schema: graphql
+  table: assignments
+  governance: pre-approved
+  description: "Complete accountability map of staff to breeds — use to spot coverage gaps or single-keeper risk across all species"
+  columns:
+  - name: id
+    visible_to: [admin, analyst]
+  - name: employee_id
+    visible_to: [admin, analyst]
+  - name: breed_name
+    visible_to: [admin, analyst]
+  - name: role
+    visible_to: [admin, analyst]
+  - name: start_date
+    visible_to: [admin, analyst]
+  - name: end_date
+    visible_to: [admin, analyst]
+- source_id: graphql-demo
+  domain_id: shelter
+  schema: graphql
+  table: assignmentsByEmployee
+  governance: pre-approved
+  description: "All breeds a given staff member is accountable for — use to assess workload before adding a new assignment"
+  columns:
+  - name: _nf_employee_id
+    native_filter_type: query_param
+    visible_to: []
+  - name: id
+    visible_to: [admin, analyst]
+  - name: employee_id
+    visible_to: [admin, analyst]
+  - name: breed_name
+    visible_to: [admin, analyst]
+  - name: role
+    visible_to: [admin, analyst]
+  - name: start_date
+    visible_to: [admin, analyst]
+  - name: end_date
+    visible_to: [admin, analyst]
+- source_id: graphql-demo
+  domain_id: shelter
+  schema: graphql
+  table: assignmentsByBreed
+  governance: pre-approved
+  description: "All staff responsible for a breed — use to verify minimum keeper coverage and identify backup gaps"
+  columns:
+  - name: _nf_breed_name
+    native_filter_type: query_param
+    visible_to: []
+  - name: id
+    visible_to: [admin, analyst]
+  - name: employee_id
+    visible_to: [admin, analyst]
+  - name: breed_name
+    visible_to: [admin, analyst]
+  - name: role
+    visible_to: [admin, analyst]
+  - name: start_date
+    visible_to: [admin, analyst]
+  - name: end_date
+    visible_to: [admin, analyst]
+- source_id: graphql-demo
+  domain_id: shelter
+  schema: graphql
+  table: schedules
+  governance: pre-approved
+  description: "Full weekly shift roster — use for shelter-wide coverage analysis and to surface days where any location is understaffed"
+  columns:
+  - name: id
+    visible_to: [admin, analyst]
+  - name: employee_id
+    visible_to: [admin, analyst]
+  - name: day_of_week
+    visible_to: [admin, analyst]
+  - name: shift_start
+    visible_to: [admin, analyst]
+  - name: shift_end
+    visible_to: [admin, analyst]
+  - name: location
+    visible_to: [admin, analyst]
+- source_id: graphql-demo
+  domain_id: shelter
+  schema: graphql
+  table: scheduleByEmployee
+  governance: pre-approved
+  description: "A staff member's shift coverage for the week — use for availability checks before scheduling a new assignment or event"
+  columns:
+  - name: _nf_employee_id
+    native_filter_type: query_param
+    visible_to: []
+  - name: id
+    visible_to: [admin, analyst]
+  - name: employee_id
+    visible_to: [admin, analyst]
+  - name: day_of_week
+    visible_to: [admin, analyst]
+  - name: shift_start
+    visible_to: [admin, analyst]
+  - name: shift_end
+    visible_to: [admin, analyst]
+  - name: location
+    visible_to: [admin, analyst]
 relationships:
 - id: pets-to-find-pets-by-status
   source_table_id: pets
@@ -362,13 +560,13 @@ relationships:
   alias: DETAIL
 - id: pets-to-shelter-breed
   source_table_id: pets
-  target_table_id: shelter__animalBreeds
+  target_table_id: animalBreeds
   source_column: breed_name
   target_column: name
   cardinality: many-to-one
   alias: BREED_INFO
 - id: shelter-breed-to-pets
-  source_table_id: shelter__animalBreeds
+  source_table_id: animalBreeds
   target_table_id: pets
   source_column: name
   target_column: breed_name
@@ -376,12 +574,12 @@ relationships:
   alias: PETS_OF_BREED
 - id: pets-to-shelter-assignments
   source_table_id: pets
-  target_table_id: shelter__assignments
+  target_table_id: assignments
   source_column: breed_name
   target_column: breedName
   cardinality: many-to-one
 - id: shelter-assignments-to-pets
-  source_table_id: shelter__assignments
+  source_table_id: assignments
   target_table_id: pets
   source_column: breedName
   target_column: breed_name
