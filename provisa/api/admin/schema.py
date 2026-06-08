@@ -60,6 +60,34 @@ async def _get_pool() -> asyncpg.Pool:
     return state.pg_pool
 
 
+async def _dynamic_openapi_columns(base_url: str, query) -> list[dict]:
+    """Call a no-input GET endpoint and infer columns from the response keys."""
+    import httpx
+    from provisa.openapi.register import _openapi_to_provisa_type
+
+    url = base_url.rstrip("/") + query.path
+    params = {p["name"]: "" for p in query.query_params}
+    try:
+        r = httpx.get(url, params=params, timeout=10, follow_redirects=True)
+        r.raise_for_status()
+        data = r.json()
+    except Exception:
+        return []
+    if isinstance(data, list):
+        sample = data[0] if data else {}
+    elif isinstance(data, dict):
+        sample = data
+    else:
+        return []
+    if not isinstance(sample, dict):
+        return []
+    additional_type = (query.response_schema or {}).get("additionalProperties", {})
+    value_type = _openapi_to_provisa_type(
+        additional_type.get("type") if isinstance(additional_type, dict) else None
+    )
+    return [{"name": k, "type": value_type} for k in sample]
+
+
 async def _ensure_openapi_spec(source_id: str) -> bool:
     """Lazy-load an OpenAPI spec into state from the DB source record if missing."""
     from provisa.api.app import state
@@ -74,11 +102,16 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
     if not row or row["type"] != "openapi" or not row["path"]:
         return False
     try:
+        from provisa.core.secrets import resolve_secrets as _resolve_secrets
         from provisa.openapi.loader import load_spec
 
-        spec = load_spec(row["path"])
+        resolved_path = _resolve_secrets(row["path"])
+        spec = load_spec(resolved_path)
         servers = spec.get("servers", [])
         base_url = servers[0].get("url", "") if servers else ""
+        if base_url and not base_url.startswith(("http://", "https://")) and resolved_path.startswith(("http://", "https://")):
+            from urllib.parse import urljoin
+            base_url = urljoin(resolved_path, base_url)
         if not hasattr(state, "openapi_specs"):
             state.openapi_specs = {}
         state.openapi_specs[source_id] = {
@@ -452,25 +485,27 @@ async def _introspect_view_columns(conn, view_sql: str, default_roles: list[str]
 
 
 async def _domain_table_conflict(
-    conn, domain_id: str, table_name: str, source_id: str, schema_name: str
+    conn, domain_id: str, table_name: str, source_id: str, schema_name: str, alias: str | None = None
 ) -> str | None:
-    """Return an error message if (domain_id, table_name) is already registered to a
-    DIFFERENT physical table. Domain+table must be unique: every query layer (GraphQL,
-    Cypher, view SQL) addresses a table as domain.table, so a collision is unresolvable.
-    Re-registering the same physical table (same source+schema) is allowed (upsert)."""
+    """Return an error message if the effective name (alias or table_name) is already
+    registered in the domain from a DIFFERENT physical table.
+
+    Re-registering the same physical table (same source+schema) is allowed (upsert).
+    Providing an alias that differs from a conflicting table_name resolves the conflict."""
+    effective_name = alias or table_name
     row = await conn.fetchrow(
         "SELECT source_id, schema_name FROM registered_tables "
-        "WHERE domain_id = $1 AND table_name = $2 "
+        "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "
         "AND NOT (source_id = $3 AND schema_name = $4) LIMIT 1",
         domain_id,
-        table_name,
+        effective_name,
         source_id,
         schema_name,
     )
     if row:
         return (
-            f"Table {table_name!r} is already registered in domain {domain_id!r} "
-            f"from {row['source_id']}.{row['schema_name']} — domain + table must be unique."
+            f"Name {effective_name!r} is already used in domain {domain_id!r} "
+            f"from {row['source_id']}.{row['schema_name']} — effective name (alias or table_name) must be unique."
         )
     return None
 
@@ -620,26 +655,25 @@ class Query:
 
     @strawberry.field
     async def available_schemas(self, source_id: str) -> list[str]:
-        """List schemas available in a source, using native introspection first."""
+        """List schemas available in a source."""
         from provisa.api.app import state
-        from provisa.api.admin.introspect import native_schemas
+        from provisa.api.admin.introspect import native_schemas, _PROVISA_INTERNAL_SCHEMAS
+        from provisa.core.models import SOURCE_TO_CONNECTOR
 
         source_type = state.source_types.get(source_id, "")
         if source_type == "openapi":
             await _ensure_openapi_spec(source_id)
         pool = await _get_pool()
         async with pool.acquire() as config_conn:
-            try:
-                result = await native_schemas(
-                    source_id, source_type, state.source_pools, config_conn
-                )
-            except Exception:
-                result = None
+            result = await native_schemas(source_id, source_type, state.source_pools, config_conn)
         if result is not None:
-            return result
-        # Trino fallback
+            return [s for s in result if s not in _PROVISA_INTERNAL_SCHEMAS]
+        # native_schemas returns None only for Trino-backed connector sources
+        # that have no cheaper direct pool path. Use Trino for those.
+        if source_type not in SOURCE_TO_CONNECTOR:
+            return []
         catalog = source_to_catalog(source_id)
-        _HIDDEN_SCHEMAS = {"information_schema", "pg_catalog", "mv_cache"}
+        hidden = {"information_schema", "pg_catalog"} | _PROVISA_INTERNAL_SCHEMAS
         try:
             assert state.trino_conn is not None
             cursor = state.trino_conn.cursor()
@@ -647,9 +681,7 @@ class Query:
                 f'SELECT schema_name FROM "{catalog}".information_schema.schemata '
                 f"ORDER BY schema_name"
             )
-            return [
-                row[0].lower() for row in cursor.fetchall() if row[0].lower() not in _HIDDEN_SCHEMAS
-            ]
+            return [row[0].lower() for row in cursor.fetchall() if row[0].lower() not in hidden]
         except Exception:
             return []
 
@@ -687,30 +719,9 @@ class Query:
         if result is not None:
             return result
         # Trino fallback
+        from provisa.api.admin.introspect import _PROVISA_INTERNAL_TABLES
         catalog = source_to_catalog(source_id)
-        _ADMIN_TABLES = {
-            "sources",
-            "domains",
-            "naming_rules",
-            "registered_tables",
-            "table_columns",
-            "relationships",
-            "roles",
-            "rls_rules",
-            "materialized_views",
-            "mv_refresh_log",
-            "column_masking_rules",
-            "persisted_queries",
-            "approval_log",
-            "relationship_candidates",
-            "kafka_sources",
-            "kafka_topics",
-            "kafka_sinks",
-            "api_sources",
-            "api_endpoints",
-            "api_endpoint_candidates",
-            "tracked_webhooks",
-        }
+        skip = _PROVISA_INTERNAL_TABLES if schema_name.lower() == "public" else frozenset()
         try:
             assert state.trino_conn is not None
             cursor = state.trino_conn.cursor()
@@ -723,7 +734,7 @@ class Query:
             return [
                 AvailableTableType(name=row[0], comment=None)
                 for row in cursor.fetchall()
-                if row[0].lower() not in _ADMIN_TABLES
+                if row[0].lower() not in skip
             ]
         except Exception:
             return []
@@ -800,6 +811,10 @@ class Query:
             if q is None:
                 return []
             cols = _schema_to_columns(q.response_schema)
+            if not cols and not q.path_params and (q.response_schema or {}).get("additionalProperties"):
+                cols = await _dynamic_openapi_columns(
+                    state.openapi_specs[source_id]["base_url"], q
+                )
             existing = {c["name"] for c in cols}
             for p in q.path_params:
                 nf_name = f"_nf_{p['name']}"
@@ -852,6 +867,58 @@ class Query:
             ]
         except Exception:
             return []
+
+    @strawberry.field
+    async def suggest_table_alias(
+        self, table_name: str, domain_id: str, source_id: str
+    ) -> str:
+        """Return the alias to use when registering table_name in domain_id from source_id.
+
+        Returns a plain snake_case alias when no conflict exists, or a source-prefixed
+        alias (e.g. sqlite_b_orders) when the effective name already exists in the domain
+        from a different source.
+        """
+        from provisa.compiler.naming import apply_convention
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            convention = await conn.fetchval(
+                "SELECT naming_convention FROM sources WHERE id = $1", source_id
+            ) or "apollo_graphql"
+            _c = apply_convention(table_name, convention)
+            candidate: str = _c if _c is not None else table_name
+            conflict = await conn.fetchrow(
+                "SELECT 1 FROM registered_tables "
+                "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "
+                "AND source_id != $3 LIMIT 1",
+                domain_id, candidate, source_id,
+            )
+            if not conflict:
+                return candidate
+            # Prefix with source_id to disambiguate
+            _p = apply_convention(f"{source_id}_{table_name}", convention)
+            prefixed: str = _p if _p is not None else f"{source_id}_{table_name}"
+            conflict2 = await conn.fetchrow(
+                "SELECT 1 FROM registered_tables "
+                "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "
+                "AND source_id != $3 LIMIT 1",
+                domain_id, prefixed, source_id,
+            )
+            if not conflict2:
+                return prefixed
+            # Last resort: add numeric suffix
+            for i in range(1, 100):
+                _s = apply_convention(f"{source_id}_{table_name}_{i}", convention)
+                suffixed: str = _s if _s is not None else f"{source_id}_{table_name}_{i}"
+                taken = await conn.fetchrow(
+                    "SELECT 1 FROM registered_tables "
+                    "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "
+                    "AND source_id != $3 LIMIT 1",
+                    domain_id, suffixed, source_id,
+                )
+                if not taken:
+                    return suffixed
+            return prefixed
 
     # ── Admin: Materialized Views ──
 
@@ -1561,7 +1628,7 @@ class Mutation:
         async with pool.acquire() as conn:
             _conn = cast(asyncpg.Connection, conn)
             _conflict = await _domain_table_conflict(
-                _conn, model.domain_id, model.table_name, model.source_id, model.schema_name
+                _conn, model.domain_id, model.table_name, model.source_id, model.schema_name, alias
             )
             if _conflict:
                 return MutationResult(success=False, message=_conflict)
@@ -1683,7 +1750,7 @@ class Mutation:
         async with pool.acquire() as conn:
             _conn = cast(asyncpg.Connection, conn)
             _conflict = await _domain_table_conflict(
-                _conn, model.domain_id, model.table_name, model.source_id, model.schema_name
+                _conn, model.domain_id, model.table_name, model.source_id, model.schema_name, input.alias
             )
             if _conflict:
                 return MutationResult(success=False, message=_conflict)

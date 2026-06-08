@@ -23,7 +23,8 @@ class OpenAPIQuery:
     summary: str | None = None
     path_params: list[dict] = field(default_factory=list)  # [{name, type}]
     query_params: list[dict] = field(default_factory=list)  # [{name, type}]
-    response_schema: dict | None = None  # JSON Schema of 200 response
+    response_schema: dict | None = None  # JSON Schema of 200 response (item schema if is_list)
+    is_list: bool = False  # True when the raw 200 response was an array type
 
 
 @dataclass
@@ -81,8 +82,21 @@ def _maybe_resolve(spec: dict, schema: dict | None) -> dict | None:
     return _resolve_properties(spec, schema)
 
 
-def _extract_response_schema(spec: dict, operation: dict) -> dict | None:
-    """Extract JSON Schema from 200/2xx/default response."""
+def _raw_schema_is_list(spec: dict, schema: dict) -> bool:
+    """Return True if schema (before unwrapping) represents an array response."""
+    if schema.get("type") == "array":
+        return True
+    if "$ref" in schema:
+        resolved = _resolve_ref(spec, schema["$ref"])
+        return resolved.get("type") == "array"
+    return False
+
+
+def _extract_response_schema(spec: dict, operation: dict) -> tuple[dict | None, bool]:
+    """Extract JSON Schema from 200/2xx/default response.
+
+    Returns (item_schema, is_list) where is_list is True when the raw response was array-typed.
+    """
     responses = operation.get("responses", {})
     for code in ("200", "2xx", "default"):
         resp = responses.get(code)
@@ -94,12 +108,12 @@ def _extract_response_schema(spec: dict, operation: dict) -> dict | None:
         json_content = content.get("application/json", {})
         schema = json_content.get("schema")
         if schema is not None:
-            return _maybe_resolve(spec, schema)
+            return _maybe_resolve(spec, schema), _raw_schema_is_list(spec, schema)
         # Swagger 2.0 puts schema directly on response
         schema = resp.get("schema")
         if schema is not None:
-            return _maybe_resolve(spec, schema)
-    return None
+            return _maybe_resolve(spec, schema), _raw_schema_is_list(spec, schema)
+    return None, False
 
 
 def _extract_request_schema(spec: dict, operation: dict) -> dict | None:
@@ -187,7 +201,7 @@ def parse_spec(
             path_params, query_params = _extract_params(spec, merged)
             op_id = _operation_id(operation, method, path)
             summary = operation.get("summary") or operation.get("description")
-            response_schema = _extract_response_schema(spec, operation)
+            response_schema, is_list = _extract_response_schema(spec, operation)
 
             # Payload override > x-provisa-kind > GET heuristic
             explicit_kind = (
@@ -212,6 +226,7 @@ def parse_spec(
                         path_params=path_params,
                         query_params=query_params,
                         response_schema=response_schema,
+                        is_list=is_list,
                     )
                 )
             else:
