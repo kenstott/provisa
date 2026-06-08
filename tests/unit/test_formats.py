@@ -77,6 +77,44 @@ class TestCSV:
         lines = [l.strip() for l in result.strip().splitlines()]
         assert len(lines) == 1  # header only
 
+    def test_json_string_cells_flattened(self):
+        cols = [
+            ColumnRef(alias=None, column="status", field_name="status", nested_in=None),
+            ColumnRef(alias=None, column="user", field_name="user", nested_in=None),
+            ColumnRef(alias=None, column="pet", field_name="pet", nested_in=None),
+        ]
+        rows = [
+            ("closed", '{"name":"Alice Nguyen"}', '{"species":"lion","price":1600.0,"animalBreed":{"careLevel":"expert","avgLifespanYears":18}}'),
+            ("open",   '{"name":"Bob Martinez"}', '{"species":"cat","price":380.0,"animalBreed":{"careLevel":"moderate","avgLifespanYears":15}}'),
+        ]
+        result = rows_to_csv(rows, cols)
+        lines = [l.strip() for l in result.strip().splitlines()]
+        headers = lines[0].split(",")
+        assert "status" in headers
+        assert "user.name" in headers
+        assert "pet.species" in headers
+        assert "pet.animalBreed.careLevel" in headers
+        assert "pet.animalBreed.avgLifespanYears" in headers
+        assert "user" not in headers
+        assert "pet" not in headers
+        row1 = dict(zip(headers, lines[1].split(",")))
+        assert row1["user.name"] == "Alice Nguyen"
+        assert row1["pet.species"] == "lion"
+        assert row1["pet.animalBreed.careLevel"] == "expert"
+
+    def test_dict_cells_flattened(self):
+        cols = [
+            ColumnRef(alias=None, column="status", field_name="status", nested_in=None),
+            ColumnRef(alias=None, column="user", field_name="user", nested_in=None),
+        ]
+        rows = [("open", {"name": "Alice", "age": 30})]
+        result = rows_to_csv(rows, cols)
+        lines = [l.strip() for l in result.strip().splitlines()]
+        headers = lines[0].split(",")
+        assert "user.name" in headers
+        assert "user.age" in headers
+        assert "user" not in headers
+
 
 class TestParquet:
     def test_basic(self):

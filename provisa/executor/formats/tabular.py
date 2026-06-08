@@ -36,16 +36,72 @@ def _convert(val):
     return val
 
 
+def _expand_cell(prefix: str, val, out: dict) -> None:
+    """Recursively expand a dict or JSON-string cell into dot-notation keys."""
+    if isinstance(val, dict):
+        for k, v in val.items():
+            _expand_cell(f"{prefix}.{k}", v, out)
+    elif isinstance(val, str) and val.startswith("{") and val.endswith("}"):
+        try:
+            import json as _json
+            parsed = _json.loads(val)
+            if isinstance(parsed, dict):
+                for k, v in parsed.items():
+                    _expand_cell(f"{prefix}.{k}", v, out)
+                return
+        except (ValueError, TypeError):
+            pass
+        out[prefix] = val
+    else:
+        out[prefix] = val
+
+
+def _flatten_dict_rows(
+    rows: list[tuple],
+    col_names: list[str],
+) -> tuple[list[str], list[tuple]]:
+    """Re-expand rows where cells contain dicts into dot-notation columns."""
+    all_keys: list[str] = []
+    seen_keys: set[str] = set()
+    flat_rows: list[dict] = []
+
+    for row in rows:
+        flat: dict = {}
+        for name, val in zip(col_names, row):
+            _expand_cell(name, val, flat)
+        flat_rows.append(flat)
+        for k in flat:
+            if k not in seen_keys:
+                seen_keys.add(k)
+                all_keys.append(k)
+
+    return all_keys, [tuple(fr.get(k) for k in all_keys) for fr in flat_rows]
+
+
+def _resolve_columns(
+    rows: list[tuple],
+    columns: list[ColumnRef],
+) -> tuple[list[str], list[tuple]]:
+    """Return flat column names and rows, expanding dict/JSON-string cells when present."""
+    names = _column_names(columns)
+    if rows and any(
+        isinstance(v, dict) or (isinstance(v, str) and v.startswith("{") and v.endswith("}"))
+        for v in rows[0]
+    ):
+        return _flatten_dict_rows(rows, names)
+    return names, rows
+
+
 def rows_to_csv(
     rows: list[tuple],
     columns: list[ColumnRef],
 ) -> str:
     """Serialize rows to CSV (denormalized/flat)."""
-    names = _column_names(columns)
+    names, flat_rows = _resolve_columns(rows, columns)
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(names)
-    for row in rows:
+    for row in flat_rows:
         writer.writerow([_convert(v) for v in row])
     return buf.getvalue()
 
@@ -55,10 +111,9 @@ def rows_to_parquet(
     columns: list[ColumnRef],
 ) -> bytes:
     """Serialize rows to Parquet (denormalized/flat)."""
-    names = _column_names(columns)
-    # Build columnar data
+    names, flat_rows = _resolve_columns(rows, columns)
     col_data: dict[str, list] = {name: [] for name in names}
-    for row in rows:
+    for row in flat_rows:
         for i, name in enumerate(names):
             col_data[name].append(_convert(row[i]))
 
