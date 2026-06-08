@@ -164,7 +164,7 @@ class TestSource:
             username="u",
             password="p",
         )
-        assert s.jdbc_url() == "jdbc:postgresql://db.example.com:5432/sales"
+        assert s.jdbc_url() == "jdbc:postgresql://db.example.com:5432/sales?autosave=conservative"
 
     def test_jdbc_url_mysql(self):
         s = Source(

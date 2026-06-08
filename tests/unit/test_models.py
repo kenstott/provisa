@@ -45,7 +45,7 @@ class TestSource:
         assert s.connector == "postgresql"
         assert s.dialect == "postgres"
         assert s.catalog_name == "pg1"
-        assert "jdbc:postgresql://localhost:5432/mydb" == s.jdbc_url()
+        assert "jdbc:postgresql://localhost:5432/mydb?autosave=conservative" == s.jdbc_url()
 
     def test_catalog_name_sanitizes_hyphens(self):
         s = Source(
