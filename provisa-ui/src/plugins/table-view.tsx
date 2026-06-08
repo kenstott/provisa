@@ -21,10 +21,46 @@ import { get as idbGet, set as idbSet } from "idb-keyval";
 import { Copy } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEditorContext } from "@graphiql/react";
+import { parse, print, visit, Kind } from "graphql";
 import { lastQueryElapsedMs } from "../query-timing";
 import { setCurrentQueryStats, subscribeQueryStats, type QueryStats } from "../query-stats";
+import { useAuth } from "../context/AuthContext";
 
 type ViewMode = "json" | "table" | "stats";
+
+const PAGE_SIZE = 50;
+
+function injectLimitOffset(query: string, limit: number, offset: number): string {
+  const doc = parse(query);
+  const patched = visit(doc, {
+    OperationDefinition(node) {
+      const patchedSelections = node.selectionSet.selections.map((sel) => {
+        if (sel.kind !== Kind.FIELD) return sel;
+        const filteredArgs = (sel.arguments ?? []).filter(
+          (a) => a.name.value !== "limit" && a.name.value !== "offset",
+        );
+        return {
+          ...sel,
+          arguments: [
+            ...filteredArgs,
+            {
+              kind: Kind.ARGUMENT,
+              name: { kind: Kind.NAME, value: "limit" },
+              value: { kind: Kind.INT, value: String(limit) },
+            },
+            {
+              kind: Kind.ARGUMENT,
+              name: { kind: Kind.NAME, value: "offset" },
+              value: { kind: Kind.INT, value: String(offset) },
+            },
+          ],
+        };
+      });
+      return { ...node, selectionSet: { ...node.selectionSet, selections: patchedSelections } };
+    },
+  });
+  return print(patched);
+}
 
 let _mermaidDagSeq = 0;
 
@@ -196,6 +232,9 @@ export function ResponseTableOverlay() {
   const strippingRef = useRef(false);
   const lastStrippedRef = useRef<string | null>(null);
   const editorContext = useEditorContext();
+  const { role } = useAuth();
+  const [page, setPage] = useState(0);
+  const [pagedResponseText, setPagedResponseText] = useState<string | null>(null);
 
   useEffect(() => subscribeQueryStats(setQueryStats), []);
 
@@ -282,14 +321,17 @@ export function ResponseTableOverlay() {
     if (responseText) {
       idbSet("provisa.graphql.response", responseText);
     }
-    /* eslint-disable react-hooks/set-state-in-effect -- reset user interaction state (sort/tab/expansion) when underlying response data changes */
+    /* eslint-disable react-hooks/set-state-in-effect -- reset user interaction state (sort/tab/expansion/page) when underlying response data changes */
     setSortCol(null);
     setActiveTab(0);
     setExpandedRows(new Set());
+    setPage(0);
+    setPagedResponseText(null);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [responseText]);
 
-  const tables = useMemo(() => parseResponse(responseText), [responseText]);
+  const displayText = pagedResponseText ?? responseText;
+  const tables = useMemo(() => parseResponse(displayText), [displayText]);
   const currentTable = tables[activeTab] ?? null;
   const columns = currentTable?.columns ?? [];
   const rows = useMemo(() => currentTable?.rows ?? [], [currentTable]);
@@ -355,39 +397,68 @@ export function ResponseTableOverlay() {
     });
   }, [responseText]);
 
-  const handleCopyCSV = useCallback(() => {
-    if (!currentTable || currentTable.columns.length === 0) return;
-    const escape = (v: unknown) => {
-      const s = v != null ? String(v) : "";
-      return s.includes(",") || s.includes('"') || s.includes("\n")
-        ? `"${s.replace(/"/g, '""')}"`
-        : s;
-    };
-    const header = currentTable.columns.map(escape).join(",");
-    const body = currentTable.rows
-      .map((row) => currentTable.columns.map((col) => escape(row[col])).join(","))
-      .join("\n");
-    navigator.clipboard.writeText(`${header}\n${body}`).then(() => {
-      setCopiedCsv(true);
-      setTimeout(() => setCopiedCsv(false), 2000);
+  const fetchServerCsv = useCallback(async (): Promise<string> => {
+    const query = editorContext.queryEditor?.getValue() ?? "";
+    const varsRaw = editorContext.variableEditor?.getValue() ?? "";
+    const variables = varsRaw.trim() ? JSON.parse(varsRaw) : null;
+    const res = await fetch("/data/graphql", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/csv",
+        "X-Provisa-Role": role?.id ?? "",
+      },
+      body: JSON.stringify({ query, variables }),
     });
-  }, [currentTable]);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.text();
+  }, [editorContext.queryEditor, editorContext.variableEditor, role?.id]);
+
+  const handleCopyCSV = useCallback(() => {
+    void fetchServerCsv().then((csv) => {
+      void navigator.clipboard.writeText(csv).then(() => {
+        setCopiedCsv(true);
+        setTimeout(() => setCopiedCsv(false), 2000);
+      });
+    });
+  }, [fetchServerCsv]);
 
   const handleDownloadCSV = useCallback(() => {
-    if (!currentTable || currentTable.columns.length === 0) return;
-    const escape = (v: unknown) => {
-      const s = v != null ? String(v) : "";
-      return s.includes(",") || s.includes('"') || s.includes("\n")
-        ? `"${s.replace(/"/g, '""')}"`
-        : s;
-    };
-    const header = currentTable.columns.map(escape).join(",");
-    const body = currentTable.rows
-      .map((row) => currentTable.columns.map((col) => escape(row[col])).join(","))
-      .join("\n");
-    const filename = tables.length > 1 ? `${currentTable.key}.csv` : "response.csv";
-    downloadFile(`${header}\n${body}`, filename, "text/csv");
-  }, [currentTable, tables, downloadFile]);
+    void fetchServerCsv().then((csv) => {
+      const filename = tables.length > 1 ? `${currentTable?.key ?? "response"}.csv` : "response.csv";
+      downloadFile(csv, filename, "text/csv");
+    });
+  }, [fetchServerCsv, tables, currentTable, downloadFile]);
+
+  const fetchPage = useCallback(async (p: number) => {
+    if (p === 0) { setPagedResponseText(null); return; }
+    const query = editorContext.queryEditor?.getValue() ?? "";
+    const varsRaw = editorContext.variableEditor?.getValue() ?? "";
+    const variables = varsRaw.trim() ? JSON.parse(varsRaw) : null;
+    const res = await fetch("/data/graphql", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "X-Provisa-Role": role?.id ?? "",
+      },
+      body: JSON.stringify({ query: injectLimitOffset(query, PAGE_SIZE, p * PAGE_SIZE), variables }),
+    });
+    setPagedResponseText(await res.text());
+  }, [editorContext.queryEditor, editorContext.variableEditor, role?.id]);
+
+  const handleNextPage = useCallback(() => {
+    const next = page + 1;
+    setPage(next);
+    void fetchPage(next);
+  }, [page, fetchPage]);
+
+  const handlePrevPage = useCallback(() => {
+    if (page === 0) return;
+    const prev = page - 1;
+    setPage(prev);
+    void fetchPage(prev);
+  }, [page, fetchPage]);
 
   const handleDownloadNormalizedCSV = useCallback(() => {
     if (!currentTable || currentTable.columns.length === 0) return;
@@ -624,6 +695,8 @@ export function ResponseTableOverlay() {
                   onClick={() => {
                     setActiveTab(i);
                     setSortCol(null);
+                    setPage(0);
+                    setPagedResponseText(null);
                   }}
                 >
                   {t.key}
@@ -635,8 +708,15 @@ export function ResponseTableOverlay() {
           <div className="response-table-info">
             {rows.length} row{rows.length !== 1 ? "s" : ""}
             {tables.length === 1 && currentTable ? ` in ${currentTable.key}` : ""}
-            {elapsedMs !== null && (
+            {elapsedMs !== null && page === 0 && (
               <span className="response-table-elapsed"> · {Math.round(elapsedMs)} ms</span>
+            )}
+            {hasData && (
+              <span className="response-table-pager">
+                <button onClick={handlePrevPage} disabled={page === 0} title="Previous page">‹</button>
+                {` p${page + 1} `}
+                <button onClick={handleNextPage} disabled={rows.length < PAGE_SIZE} title="Next page">›</button>
+              </span>
             )}
           </div>
           <div className="response-table-scroll">
