@@ -1,5 +1,6 @@
 # Demo/example services overlay — adds graphql-demo, petstore-mock, and sqlite demo data.
-# Usage (demo mode): docker compose -f docker-compose.core.yml -f docker-compose.dev-install.yml -f docker-compose.demo.yml up
+# MinIO and redirect env vars are provided by docker-compose.observability.yml.
+# Usage (demo mode): docker compose -f docker-compose.core.yml -f docker-compose.observability.yml -f docker-compose.demo.yml up
 # Do NOT include in production starts.
 services:
   petstore-mock:
