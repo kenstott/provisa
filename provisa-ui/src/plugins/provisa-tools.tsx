@@ -374,11 +374,30 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
   const [cypherError, setCypherError] = useState<string | null>(null);
   const [cypherCopied, setCypherCopied] = useState(false);
   const [cypherExpanded, setCypherExpanded] = useState(true);
-  const [aggregatedSql, setAggregatedSql] = useState(true);
-  const [aggregatedCypher, setAggregatedCypher] = useState(true);
-  const [includeFields, setIncludeFields] = useState(false);
+  const [aggregatedSql, setAggregatedSql] = useState(
+    () => localStorage.getItem("provisa-tools:aggregatedSql") !== "false",
+  );
+  const [aggregatedCypher, setAggregatedCypher] = useState(
+    () => localStorage.getItem("provisa-tools:aggregatedCypher") !== "false",
+  );
+  const [includeFields, setIncludeFields] = useState(
+    () => localStorage.getItem("provisa-tools:includeFields") === "true",
+  );
   const navigate = useNavigate();
   const { compileQuery } = useCompileQuery();
+
+  const onAggregatedSqlChange = useCallback((v: boolean) => {
+    localStorage.setItem("provisa-tools:aggregatedSql", String(v));
+    setAggregatedSql(v);
+  }, []);
+  const onAggregatedCypherChange = useCallback((v: boolean) => {
+    localStorage.setItem("provisa-tools:aggregatedCypher", String(v));
+    setAggregatedCypher(v);
+  }, []);
+  const onIncludeFieldsChange = useCallback((v: boolean) => {
+    localStorage.setItem("provisa-tools:includeFields", String(v));
+    setIncludeFields(v);
+  }, []);
 
   const cypherExtensions = useMemo(
     () => [
@@ -432,7 +451,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
         <SqlPanel
           compiled={compiled[0]}
           aggregated={aggregatedSql}
-          onFlatSqlChange={setAggregatedSql}
+          onFlatSqlChange={onAggregatedSqlChange}
         />
       )}
       {compiled && compiled.length > 1 && (
@@ -443,7 +462,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
           <CombinedSqlPanel
             compiledList={compiled}
             aggregated={aggregatedSql}
-            onFlatSqlChange={setAggregatedSql}
+            onFlatSqlChange={onAggregatedSqlChange}
           />
         </>
       )}
@@ -462,7 +481,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
                     <input
                       type="checkbox"
                       checked={includeFields}
-                      onChange={(e) => setIncludeFields(e.target.checked)}
+                      onChange={(e) => onIncludeFieldsChange(e.target.checked)}
                     />
                     Include fields
                   </label>
@@ -471,7 +490,7 @@ function ProvisaToolsContent({ roleId }: { roleId: string }) {
                       <input
                         type="checkbox"
                         checked={aggregatedCypher}
-                        onChange={(e) => setAggregatedCypher(e.target.checked)}
+                        onChange={(e) => onAggregatedCypherChange(e.target.checked)}
                       />
                       GraphQL-Shape (Aggregated)
                     </label>

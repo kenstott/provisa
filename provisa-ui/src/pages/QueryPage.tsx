@@ -485,11 +485,34 @@ export function QueryPage() {
   const { role } = useAuth();
   const { checkedDomains } = useDomainFilter();
   const [domainSchema, setDomainSchema] = useState<GraphQLSchema | null>(null);
-  const [redirectFormat, setRedirectFormat] = useState("");
-  const [redirectThreshold, setRedirectThreshold] = useState("");
+  // Frozen initial values — never updated so GraphiQL owns these states after mount.
+  const [initialVisiblePlugin] = useState<string | undefined>(
+    () => localStorage.getItem("query:visiblePlugin") ?? undefined,
+  );
+  const [initialEditorTab] = useState<"variables" | "headers">(
+    () => (localStorage.getItem("query:editorTab") as "variables" | "headers") ?? "variables",
+  );
+  const [redirectFormat, setRedirectFormat] = useState(
+    () => localStorage.getItem("query:redirectFormat") ?? "",
+  );
+  const [redirectThreshold, setRedirectThreshold] = useState(
+    () => localStorage.getItem("query:redirectThreshold") ?? "",
+  );
   const [statsEnabled, setStatsEnabled] = useState(false);
   const [queryElapsedMs, setQueryElapsedMs] = useState<number | null>(null);
   useEffect(() => subscribeQueryTiming(setQueryElapsedMs), []);
+
+  // Persist which secondary editor tab (Variables/Headers) is active.
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const name = (e.target as HTMLElement).closest<HTMLElement>("[data-name]")?.dataset.name;
+      if (name === "variables" || name === "headers") {
+        localStorage.setItem("query:editorTab", name);
+      }
+    };
+    document.addEventListener("click", handler, true);
+    return () => document.removeEventListener("click", handler, true);
+  }, []);
 
   const [serverSchemaVersion, setServerSchemaVersion] = useState<number | null>(null);
   const [schemaError, setSchemaError] = useState<string | null>(null);
@@ -680,16 +703,20 @@ export function QueryPage() {
     [provisaPlugin],
   );
 
-  const onFormatChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => setRedirectFormat(e.target.value),
-    [],
-  );
-  const onThresholdChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => setRedirectThreshold(e.target.value),
-    [],
-  );
+  const onFormatChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    localStorage.setItem("query:redirectFormat", e.target.value);
+    setRedirectFormat(e.target.value);
+  }, []);
+  const onThresholdChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    localStorage.setItem("query:redirectThreshold", e.target.value);
+    setRedirectThreshold(e.target.value);
+  }, []);
   const onStatsChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => setStatsEnabled(e.target.checked),
+    [],
+  );
+  const onPluginVisibilityChange = useCallback(
+    (plugin: { title: string } | null) => localStorage.setItem("query:visiblePlugin", plugin?.title ?? ""),
     [],
   );
 
@@ -764,6 +791,10 @@ export function QueryPage() {
         plugins={plugins}
         forcedTheme="dark"
         schema={domainSchema ?? undefined}
+        visiblePlugin={initialVisiblePlugin}
+        onTogglePluginVisibility={onPluginVisibilityChange}
+        defaultEditorToolsVisibility={initialEditorTab}
+        shouldPersistHeaders
       >
         <GraphiQL.Footer>
           <ResponseTableOverlay />
