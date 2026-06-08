@@ -36,7 +36,29 @@ _SQLSERVER_SYSTEM_SCHEMAS = {
     "db_denydatareader",
     "db_denydatawriter",
 }
-_PG_SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast", "mv_cache"}
+_PG_SYSTEM_SCHEMAS = {"information_schema", "pg_catalog", "pg_toast", "mv_cache", "public"}
+
+_PROVISA_INTERNAL_SCHEMAS: frozenset[str] = frozenset({
+    "mv_cache",
+    "gql_cache",
+    "api_cache",
+    "default",
+})
+
+_PROVISA_INTERNAL_TABLES: frozenset[str] = frozenset({
+    "sources", "domains", "naming_rules", "registered_tables", "table_columns",
+    "relationships", "roles", "rls_rules", "materialized_views", "mv_refresh_log",
+    "persisted_queries", "approval_log", "relationship_candidates",
+    "kafka_sources", "kafka_topics", "kafka_sinks",
+    "api_sources", "api_endpoints", "api_endpoint_candidates",
+    "live_query_state", "tracked_functions", "tracked_webhooks",
+    "table_meta_links", "file_source_mtimes",
+    "orgs", "user_profiles", "user_org_memberships", "local_users",
+    "user_role_assignments", "org_invites",
+    "query_audit_log", "tenants", "tenant_config",
+    "source_catalog_cache",
+    "iceberg_tables", "iceberg_namespace_properties",
+})
 
 
 async def native_schemas(
@@ -49,19 +71,25 @@ async def native_schemas(
     t = source_type.lower()
 
     if t in ("graphql", "graphql_remote"):
-        return ["default"]
+        return ["graphql"]
 
     if t in ("grpc", "grpc_remote"):
-        return ["default"]
+        return ["grpc"]
 
     if t == "kafka":
-        return ["default"]
+        return ["kafka"]
 
-    if t in ("neo4j", "sparql"):
-        return []
+    if t == "neo4j":
+        return ["neo4j"]
+
+    if t == "sparql":
+        return ["sparql"]
 
     if t == "openapi":
         return ["openapi"]
+
+    if t == "sqlite":
+        return ["main"]
 
     if t == "govdata":
         row = await config_conn.fetchrow("SELECT database FROM sources WHERE id = $1", source_id)
@@ -78,7 +106,7 @@ async def native_schemas(
             result = await pool.execute(
                 source_id,
                 "SELECT schema_name FROM information_schema.schemata "
-                "WHERE schema_name NOT IN ('information_schema','pg_catalog','pg_toast','mv_cache') "
+                "WHERE schema_name NOT IN ('information_schema','pg_catalog','pg_toast','mv_cache','public') "
                 "ORDER BY schema_name",
             )
             return [row[0] for row in result.rows]
@@ -111,28 +139,13 @@ async def native_schemas(
 
 
 def _openapi_is_table(query) -> bool:
-    """Return True if this OpenAPI GET operation can return multiple rows.
+    """Return True if this OpenAPI GET operation is a table candidate.
 
-    Accepts:
-    - response_schema type == "array"
-    - response_schema is an object with exactly one property of type "array"
-      (pagination wrapper pattern)
+    All GET operations with non-null responses qualify: the execution layer
+    auto-wraps single-object responses as [item] so every GET can be queried
+    as a table.
     """
-    schema = query.response_schema
-    if schema is None:
-        return False
-    # Direct array
-    if schema.get("type") == "array":
-        return True
-    # Pagination wrapper: object with exactly one array-typed property
-    if schema.get("type") == "object":
-        props = schema.get("properties") or {}
-        array_props = [
-            v for v in props.values() if isinstance(v, dict) and v.get("type") == "array"
-        ]
-        if len(array_props) == 1:
-            return True
-    return False
+    return query.response_schema is not None
 
 
 def _unwrap_gql_type(type_node: dict) -> dict:
@@ -173,26 +186,31 @@ async def _native_tables_openapi(
 async def _native_tables_graphql(
     source_id: str,
     schema_name: str,
+    config_conn,
     state,
 ) -> "list[AvailableTableType] | None":
     from provisa.api.admin.types import AvailableTableType
 
-    if schema_name != "default":
+    if schema_name != "graphql":
         return []
     gql_sources = getattr(state, "graphql_remote_sources", {})
     reg = gql_sources.get(source_id)
-    if reg is None:
-        return None
-    url = reg.get("url") or reg.get("endpoint") or ""
-    auth = reg.get("auth") or reg.get("auth_config")
+    if reg is not None:
+        url = reg.get("url") or reg.get("endpoint") or ""
+        auth = reg.get("auth") or reg.get("auth_config")
+    else:
+        # Source not yet in state (no registered tables) — query the physical endpoint directly.
+        row = await config_conn.fetchrow("SELECT path FROM sources WHERE id = $1", source_id)
+        url = (row["path"] or "") if row else ""
+        auth = None
     if not url:
-        return None
+        return []
     try:
         from provisa.graphql_remote.introspect import introspect_schema
 
         schema = await introspect_schema(url, auth)
     except Exception:
-        return None
+        return []
     query_type_name = (schema.get("queryType") or {}).get("name") or "Query"
     types_by_name = {tp["name"]: tp for tp in (schema.get("types") or [])}
     query_type = types_by_name.get(query_type_name)
@@ -213,7 +231,7 @@ async def _native_tables_grpc(
 ) -> "list[AvailableTableType] | None":
     from provisa.api.admin.types import AvailableTableType
 
-    if schema_name != "default":
+    if schema_name != "grpc":
         return []
     grpc_sources = getattr(state, "grpc_remote_sources", {})
     reg = grpc_sources.get(source_id)
@@ -250,7 +268,7 @@ async def _native_tables_kafka(
 ) -> "list[AvailableTableType] | None":
     from provisa.api.admin.types import AvailableTableType
 
-    if schema_name != "default":
+    if schema_name != "kafka":
         return []
     try:
         rows = await config_conn.fetch(
@@ -259,6 +277,33 @@ async def _native_tables_kafka(
         return [AvailableTableType(name=row["topic"], comment=None) for row in rows]
     except Exception:
         return None
+
+
+async def _native_tables_sqlite(
+    source_id: str,
+    schema_name: str,
+    config_conn,
+) -> "list[AvailableTableType] | None":
+    import sqlite3 as _sqlite3
+
+    from provisa.api.admin.types import AvailableTableType
+
+    if schema_name != "main":
+        return []
+    row = await config_conn.fetchrow("SELECT path FROM sources WHERE id = $1", source_id)
+    if not row or not row["path"]:
+        return None
+    sq = _sqlite3.connect(row["path"])
+    try:
+        names = [
+            r[0]
+            for r in sq.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            ).fetchall()
+        ]
+    finally:
+        sq.close()
+    return [AvailableTableType(name=n, comment=None) for n in names]
 
 
 async def _native_tables_govdata(
@@ -372,7 +417,7 @@ async def native_tables(
         return await _native_tables_openapi(source_id, schema_name, state)
 
     if t in ("graphql", "graphql_remote"):
-        return await _native_tables_graphql(source_id, schema_name, state)
+        return await _native_tables_graphql(source_id, schema_name, config_conn, state)
 
     if t in ("grpc", "grpc_remote"):
         return await _native_tables_grpc(source_id, schema_name, state)
@@ -382,6 +427,9 @@ async def native_tables(
 
     if t in ("neo4j", "sparql"):
         return []
+
+    if t == "sqlite":
+        return await _native_tables_sqlite(source_id, schema_name, config_conn)
 
     if t == "govdata":
         return await _native_tables_govdata(source_id, schema_name, config_conn)
