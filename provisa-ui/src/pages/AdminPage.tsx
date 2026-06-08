@@ -381,8 +381,10 @@ export function AdminPage() {
               </div>
             )}
             {(() => {
-              const totalPages = Math.max(1, Math.ceil(domains.length / PAGE_SIZE));
-              const paged = domains.slice(domainPage * PAGE_SIZE, (domainPage + 1) * PAGE_SIZE);
+              const IMPLICIT_DOMAIN_IDS = new Set(["", "meta", "ops"]);
+              const userDomains = domains.filter((d) => !IMPLICIT_DOMAIN_IDS.has(d.id));
+              const totalPages = Math.max(1, Math.ceil(userDomains.length / PAGE_SIZE));
+              const paged = userDomains.slice(domainPage * PAGE_SIZE, (domainPage + 1) * PAGE_SIZE);
               return (
                 <div>
                   <table className="data-table" style={{ marginBottom: "1rem" }}>
@@ -395,7 +397,7 @@ export function AdminPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {domains.length === 0 && (
+                      {userDomains.length === 0 && (
                         <tr>
                           <td
                             colSpan={4}

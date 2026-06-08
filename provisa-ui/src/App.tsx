@@ -22,7 +22,8 @@ import "./App.css";
 const SourcesPage = lazy(() => import("./pages/SourcesPage").then((m) => ({ default: m.SourcesPage })));
 const TablesPage = lazy(() => import("./pages/TablesPage").then((m) => ({ default: m.TablesPage })));
 const RelationshipsPage = lazy(() => import("./pages/RelationshipsPage").then((m) => ({ default: m.RelationshipsPage })));
-const SecurityPage = lazy(() => import("./pages/SecurityPage").then((m) => ({ default: m.SecurityPage })));
+const SecurityRolesPage = lazy(() => import("./pages/SecurityPage").then((m) => ({ default: m.SecurityRolesPage })));
+const SecurityRlsPage = lazy(() => import("./pages/SecurityPage").then((m) => ({ default: m.SecurityRlsPage })));
 const QueryPage = lazy(() => import("./pages/QueryPage").then((m) => ({ default: m.QueryPage })));
 const AdminPage = lazy(() => import("./pages/AdminPage").then((m) => ({ default: m.AdminPage })));
 const CommandsPage = lazy(() => import("./pages/CommandsPage").then((m) => ({ default: m.CommandsPage })));
@@ -129,11 +130,20 @@ function App() {
                       </CapabilityGate>
                     }
                   />
+                  <Route path="/security" element={<Navigate to="/security/roles" replace />} />
                   <Route
-                    path="/security"
+                    path="/security/roles"
                     element={
                       <CapabilityGate capability="access_config" fallback={<NotAuthorized />}>
-                        <SecurityPage />
+                        <SecurityRolesPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/security/rls"
+                    element={
+                      <CapabilityGate capability="access_config" fallback={<NotAuthorized />}>
+                        <SecurityRlsPage />
                       </CapabilityGate>
                     }
                   />

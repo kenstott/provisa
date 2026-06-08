@@ -46,7 +46,10 @@ const NAV_GROUPS: NavGroup[] = [
   {
     id: "security",
     label: "Security",
-    items: [{ to: "/security", label: "Policies", capability: "access_config" }],
+    items: [
+      { to: "/security/roles", label: "Roles", capability: "access_config" },
+      { to: "/security/rls", label: "RLS Rules", capability: "access_config" },
+    ],
   },
   {
     id: "explore",
@@ -145,7 +148,7 @@ export function NavBar() {
   const onTablesPage =
     location.pathname === "/tables" ||
     location.pathname === "/relationships" ||
-    location.pathname === "/security" ||
+    location.pathname.startsWith("/security") ||
     location.pathname === "/schema" ||
     location.pathname === "/query" ||
     location.pathname === "/graph" ||

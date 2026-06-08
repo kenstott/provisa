@@ -80,7 +80,7 @@ function MultiSelect({
     <div className="multiselect" ref={triggerRef}>
       <div className="multiselect-trigger" onClick={() => setOpen(!open)}>
         <span className="multiselect-text">{display}</span>
-        <span className="multiselect-arrow">{open ? "\u25B4" : "\u25BE"}</span>
+        <span className="multiselect-arrow">{open ? "▴" : "▾"}</span>
       </div>
       {open &&
         pos &&
@@ -141,40 +141,25 @@ const EMPTY_RULE = {
   applyToDomain: false,
 };
 
-export function SecurityPage() {
-  const location = useLocation();
-  const { selectedDomain, setDomains: setContextDomains, setSelectedDomain } = useDomainFilter();
+export function SecurityRolesPage() {
+  const { setDomains: setContextDomains, setSelectedDomain } = useDomainFilter();
   const { roles, loading: rolesLoading, refetch: refetchRoles } = useRoles();
-  const { rlsRules: rules, loading: rulesLoading, refetch: refetchRules } = useRLSRules();
-  const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
   const { domains, loading: domainsLoading, refetch: refetchDomains } = useDomains();
   const { upsertRole } = useUpsertRole();
   const { deleteRole } = useDeleteRole();
-  const { upsertRlsRule } = useUpsertRlsRule();
-  const { deleteRlsRule } = useDeleteRlsRule();
-  const loading = rolesLoading || rulesLoading || tablesLoading || domainsLoading;
+  const loading = rolesLoading || domainsLoading;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  // Roles
   const [showRoleForm, setShowRoleForm] = useState(false);
   const [roleForm, setRoleForm] = useState(EMPTY_ROLE);
   const [expandedRole, setExpandedRole] = useState<string | null>(null);
   const [editingRoleInRow, setEditingRoleInRow] = useState<string | null>(null);
   const [roleSearch, setRoleSearch] = useState("");
 
-  // RLS Rules
-  const [showRuleForm, setShowRuleForm] = useState(false);
-  const [ruleForm, setRuleForm] = useState(EMPTY_RULE);
-  const [expandedRule, setExpandedRule] = useState<number | null>(null);
-  const [editingRuleInRow, setEditingRuleInRow] = useState<number | null>(null);
-  const [ruleSearch, setRuleSearch] = useState(
-    (location.state as { tableFilter?: string } | null)?.tableFilter ?? "",
-  );
-
   const reload = useCallback(async () => {
-    await Promise.all([refetchRoles(), refetchRules(), refetchTables(), refetchDomains()]);
-  }, [refetchRoles, refetchRules, refetchTables, refetchDomains]);
+    await Promise.all([refetchRoles(), refetchDomains()]);
+  }, [refetchRoles, refetchDomains]);
 
   useEffect(() => {
     setSelectedDomain("all");
@@ -184,13 +169,6 @@ export function SecurityPage() {
     setContextDomains(domains.map((x) => x.id));
   }, [domains, setContextDomains]);
 
-  const normalizeDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
-  const tableNameById = Object.fromEntries(tables.map((t) => [t.id, t.tableName]));
-  const tableLabelById = Object.fromEntries(
-    tables.map((t) => [t.id, `${normalizeDomain(t.domainId)}.${t.tableName}`]),
-  );
-
-  // --- Role handlers ---
   const handleNewRole = () => {
     setRoleForm({ ...EMPTY_ROLE });
     setShowRoleForm(true);
@@ -251,90 +229,12 @@ export function SecurityPage() {
     }));
   };
 
-  // --- RLS Rule handlers ---
-  const handleNewRule = () => {
-    setRuleForm({ ...EMPTY_RULE, domainFilter: selectedDomain !== "all" ? selectedDomain : "" });
-    setShowRuleForm(true);
-    setError("");
-  };
-
-  const handleSaveRule = async () => {
-    const valid = ruleForm.applyToDomain
-      ? ruleForm.domainFilter && ruleForm.roleId && ruleForm.filterExpr
-      : ruleForm.tableId && ruleForm.roleId && ruleForm.filterExpr;
-    if (!valid) return;
-    setSaving(true);
-    setError("");
-    try {
-      const res = await upsertRlsRule({
-        tableId: ruleForm.applyToDomain ? null : ruleForm.tableId || null,
-        domainId: ruleForm.applyToDomain ? ruleForm.domainFilter || null : null,
-        roleId: ruleForm.roleId,
-        filterExpr: ruleForm.filterExpr,
-      });
-      if (!res.success) {
-        setError(res.message);
-        return;
-      }
-      setShowRuleForm(false);
-      setRuleForm({ ...EMPTY_RULE });
-      setEditingRuleInRow(null);
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDeleteRule = async (rule: RLSRule) => {
-    setSaving(true);
-    setError("");
-    try {
-      await deleteRlsRule(rule.roleId, rule.tableId, rule.domainId);
-      if (expandedRule === rule.id) setExpandedRule(null);
-      await reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const startEditingRule = (rule: RLSRule) => {
-    if (rule.domainId) {
-      setRuleForm({
-        tableId: "",
-        domainId: rule.domainId,
-        roleId: rule.roleId,
-        filterExpr: rule.filterExpr,
-        domainFilter: rule.domainId,
-        applyToDomain: true,
-      });
-    } else {
-      const tableName =
-        rule.tableId != null ? (tableNameById[rule.tableId] ?? String(rule.tableId)) : "";
-      const tbl = rule.tableId != null ? tables.find((t) => t.id === rule.tableId) : undefined;
-      setRuleForm({
-        tableId: tableName,
-        domainId: "",
-        roleId: rule.roleId,
-        filterExpr: rule.filterExpr,
-        domainFilter: tbl ? tbl.domainId : "",
-        applyToDomain: false,
-      });
-    }
-    setEditingRuleInRow(rule.id);
-    setError("");
-  };
-
-  if (loading) return <div className="page">Loading security config...</div>;
+  if (loading) return <div className="page">Loading roles...</div>;
 
   return (
     <div className="page">
       {error && <div className="error-banner">{error}</div>}
 
-      {/* Roles Section */}
       <div className="page-header">
         <h2>Roles</h2>
         <FilterInput value={roleSearch} onChange={setRoleSearch} placeholder="Filter by role ID…" />
@@ -578,9 +478,132 @@ export function SecurityPage() {
             ))}
         </tbody>
       </table>
+    </div>
+  );
+}
 
-      {/* RLS Rules Section */}
-      <div className="page-header" style={{ marginTop: "2rem" }}>
+export function SecurityRlsPage() {
+  const location = useLocation();
+  const { selectedDomain, setDomains: setContextDomains, setSelectedDomain } = useDomainFilter();
+  const { roles, loading: rolesLoading } = useRoles();
+  const { rlsRules: rules, loading: rulesLoading, refetch: refetchRules } = useRLSRules();
+  const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
+  const { domains, loading: domainsLoading, refetch: refetchDomains } = useDomains();
+  const { upsertRlsRule } = useUpsertRlsRule();
+  const { deleteRlsRule } = useDeleteRlsRule();
+  const loading = rolesLoading || rulesLoading || tablesLoading || domainsLoading;
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const [showRuleForm, setShowRuleForm] = useState(false);
+  const [ruleForm, setRuleForm] = useState(EMPTY_RULE);
+  const [expandedRule, setExpandedRule] = useState<number | null>(null);
+  const [editingRuleInRow, setEditingRuleInRow] = useState<number | null>(null);
+  const [ruleSearch, setRuleSearch] = useState(
+    (location.state as { tableFilter?: string } | null)?.tableFilter ?? "",
+  );
+
+  const reload = useCallback(async () => {
+    await Promise.all([refetchRules(), refetchTables(), refetchDomains()]);
+  }, [refetchRules, refetchTables, refetchDomains]);
+
+  useEffect(() => {
+    setSelectedDomain("all");
+  }, [setSelectedDomain]);
+
+  useEffect(() => {
+    setContextDomains(domains.map((x) => x.id));
+  }, [domains, setContextDomains]);
+
+  const normalizeDomain = (id: string) => id.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
+  const tableNameById = Object.fromEntries(tables.map((t) => [t.id, t.tableName]));
+  const tableLabelById = Object.fromEntries(
+    tables.map((t) => [t.id, `${normalizeDomain(t.domainId)}.${t.tableName}`]),
+  );
+
+  const handleNewRule = () => {
+    setRuleForm({ ...EMPTY_RULE, domainFilter: selectedDomain !== "all" ? selectedDomain : "" });
+    setShowRuleForm(true);
+    setError("");
+  };
+
+  const handleSaveRule = async () => {
+    const valid = ruleForm.applyToDomain
+      ? ruleForm.domainFilter && ruleForm.roleId && ruleForm.filterExpr
+      : ruleForm.tableId && ruleForm.roleId && ruleForm.filterExpr;
+    if (!valid) return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await upsertRlsRule({
+        tableId: ruleForm.applyToDomain ? null : ruleForm.tableId || null,
+        domainId: ruleForm.applyToDomain ? ruleForm.domainFilter || null : null,
+        roleId: ruleForm.roleId,
+        filterExpr: ruleForm.filterExpr,
+      });
+      if (!res.success) {
+        setError(res.message);
+        return;
+      }
+      setShowRuleForm(false);
+      setRuleForm({ ...EMPTY_RULE });
+      setEditingRuleInRow(null);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteRule = async (rule: RLSRule) => {
+    setSaving(true);
+    setError("");
+    try {
+      await deleteRlsRule(rule.roleId, rule.tableId, rule.domainId);
+      if (expandedRule === rule.id) setExpandedRule(null);
+      await reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startEditingRule = (rule: RLSRule) => {
+    if (rule.domainId) {
+      setRuleForm({
+        tableId: "",
+        domainId: rule.domainId,
+        roleId: rule.roleId,
+        filterExpr: rule.filterExpr,
+        domainFilter: rule.domainId,
+        applyToDomain: true,
+      });
+    } else {
+      const tableName =
+        rule.tableId != null ? (tableNameById[rule.tableId] ?? String(rule.tableId)) : "";
+      const tbl = rule.tableId != null ? tables.find((t) => t.id === rule.tableId) : undefined;
+      setRuleForm({
+        tableId: tableName,
+        domainId: "",
+        roleId: rule.roleId,
+        filterExpr: rule.filterExpr,
+        domainFilter: tbl ? tbl.domainId : "",
+        applyToDomain: false,
+      });
+    }
+    setEditingRuleInRow(rule.id);
+    setError("");
+  };
+
+  if (loading) return <div className="page">Loading RLS rules...</div>;
+
+  return (
+    <div className="page">
+      {error && <div className="error-banner">{error}</div>}
+
+      <div className="page-header">
         <h2>RLS Rules</h2>
         <FilterInput
           value={ruleSearch}
@@ -952,3 +975,5 @@ export function SecurityPage() {
     </div>
   );
 }
+
+export { SecurityRolesPage as SecurityPage };

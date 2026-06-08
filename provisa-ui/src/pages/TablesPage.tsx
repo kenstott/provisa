@@ -1273,7 +1273,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                 title="View RLS policies for this table"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate("/security", { state: { tableFilter: t.tableName } });
+                                  navigate("/security/rls", { state: { tableFilter: t.tableName } });
                                 }}
                               >
                                 Policies
