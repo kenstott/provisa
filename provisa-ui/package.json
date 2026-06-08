@@ -24,7 +24,7 @@
     "coverage": "npm run coverage:clean && npm run test:unit && npm run test:e2e && npm run coverage:merge && npm run coverage:report"
   },
   "dependencies": {
-    "@apollo/client": "^4.2.0",
+    "@apollo/client": "^4.2.2",
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-sql": "^6.10.0",
     "@codemirror/theme-one-dark": "^6.1.3",
