@@ -498,7 +498,7 @@ export function QueryPage() {
   const [redirectThreshold, setRedirectThreshold] = useState(
     () => localStorage.getItem("query:redirectThreshold") ?? "",
   );
-  const [statsEnabled, setStatsEnabled] = useState(false);
+  const [statsEnabled, setStatsEnabled] = useState(() => localStorage.getItem("query:statsEnabled") === "true");
   const [queryElapsedMs, setQueryElapsedMs] = useState<number | null>(null);
   useEffect(() => subscribeQueryTiming(setQueryElapsedMs), []);
 
@@ -711,10 +711,10 @@ export function QueryPage() {
     localStorage.setItem("query:redirectThreshold", e.target.value);
     setRedirectThreshold(e.target.value);
   }, []);
-  const onStatsChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => setStatsEnabled(e.target.checked),
-    [],
-  );
+  const onStatsChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setStatsEnabled(e.target.checked);
+    localStorage.setItem("query:statsEnabled", String(e.target.checked));
+  }, []);
   const onPluginVisibilityChange = useCallback(
     (plugin: { title: string } | null) => localStorage.setItem("query:visiblePlugin", plugin?.title ?? ""),
     [],
