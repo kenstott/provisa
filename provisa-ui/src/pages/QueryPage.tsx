@@ -388,7 +388,9 @@ function createProvisaFetch(
     headers.set("Accept", "application/json");
     if (settings.format) {
       headers.set("X-Provisa-Redirect-Format", settings.format);
-      if (settings.threshold) {
+      if (settings.threshold === "all") {
+        headers.set("X-Provisa-Redirect", "true");
+      } else if (settings.threshold) {
         headers.set("X-Provisa-Redirect-Threshold", settings.threshold);
       }
     }
