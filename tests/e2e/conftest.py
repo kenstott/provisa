@@ -8,9 +8,40 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
+import os
+import socket
+
 import pytest
 
 from tests._noauth_config import pin_no_auth_config
+
+
+def _pg_available() -> bool:
+    try:
+        host = os.environ.get("PG_HOST", "localhost")
+        port = int(os.environ.get("PG_PORT", "5432"))
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+def _trino_available() -> bool:
+    try:
+        host = os.environ.get("TRINO_HOST", "localhost")
+        port = int(os.environ.get("TRINO_PORT", "8080"))
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _require_stack():
+    """Skip all e2e tests when PG + Trino stack is not running."""
+    if not (_pg_available() and _trino_available()):
+        pytest.skip("Docker Compose stack (PG + Trino) not running")
+    yield
 
 
 @pytest.fixture(scope="session", autouse=True)

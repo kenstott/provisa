@@ -21,6 +21,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 @pytest.fixture
 async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
+    os.environ["PROVISA_CONFIG_REPLACE"] = "1"
 
     from provisa.api.app import create_app
 
