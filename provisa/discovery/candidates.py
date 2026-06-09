@@ -53,6 +53,7 @@ async def store_candidates(
             c.suggested_name or None,
             scope,
         )
+        assert row_id is not None
         ids.append(row_id)
     return ids
 

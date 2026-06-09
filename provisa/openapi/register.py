@@ -77,6 +77,7 @@ def _schema_to_columns(schema: dict | None) -> list[dict]:
     # Unwrap array wrapper
     if schema.get("type") == "array" and "items" in schema:
         schema = schema["items"]
+    assert schema is not None
     props = schema.get("properties", {})
     cols = []
     for name, prop in props.items():

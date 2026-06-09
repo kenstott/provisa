@@ -556,13 +556,22 @@ def _lookup_gql_remote_table(state, table_name: str):
 
     gql_srcs = getattr(state, "graphql_remote_sources", {})
     snake_tn = to_snake_case(table_name)
+    # Strip domain prefix (e.g. "shelter__animalBreed" → "animalBreed") for matching
+    bare_tn = table_name.split("__", 1)[1] if "__" in table_name else table_name
+    snake_bare = to_snake_case(bare_tn)
     for reg in gql_srcs.values():
         for tbl in reg.get("tables", []):
+            tbl_name = tbl["name"]
+            tbl_field = tbl.get("field_name", "")
             if (
-                tbl["name"] == table_name
-                or tbl.get("field_name") == table_name
-                or to_snake_case(tbl["name"]) == snake_tn
-                or to_snake_case(tbl.get("field_name", "")) == snake_tn
+                tbl_name == table_name
+                or tbl_field == table_name
+                or to_snake_case(tbl_name) == snake_tn
+                or to_snake_case(tbl_field) == snake_tn
+                or tbl_name == bare_tn
+                or tbl_field == bare_tn
+                or to_snake_case(tbl_name) == snake_bare
+                or to_snake_case(tbl_field) == snake_bare
             ):
                 return reg, tbl
     return None, None
@@ -965,10 +974,7 @@ async def _materialize_api_to_trino_cache(exec_sql: str, state) -> tuple[dict, d
     if not table_names:
         return cache_rewrites, values_cte_entries
 
-    if getattr(state, "pg_pool", None) is None:
-        log.warning("[MAT] pg_pool is None — cannot materialize API tables to Trino cache")
-        return cache_rewrites, values_cte_entries
-
+    _has_pg_pool = getattr(state, "pg_pool", None) is not None
     _META_COLS = {"_params_hash", "_cached_at"}
     _hot_threshold = hot_mgr.auto_threshold if hot_mgr is not None else 500
 
@@ -992,6 +998,10 @@ async def _materialize_api_to_trino_cache(exec_sql: str, state) -> tuple[dict, d
                     tn, gql_reg, gql_tbl, state, hot_mgr, _hot_threshold,
                     cache_rewrites, values_cte_entries,
                 )
+            continue
+
+        if not _has_pg_pool:
+            log.warning("[MAT] pg_pool is None — skipping API table %s", tn)
             continue
 
         await _mat_api_ep_table(

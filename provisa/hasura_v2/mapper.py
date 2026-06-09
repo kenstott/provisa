@@ -17,6 +17,7 @@ from typing import Any
 
 from provisa.core.models import (
     AuthConfig,
+    Cardinality,
     Column,
     EventTrigger,
     Function,
@@ -288,7 +289,7 @@ def _map_table(
             target_table_id=target_tid,
             source_column=src_col,
             target_column=tgt_col,
-            cardinality="many-to-one",
+            cardinality=Cardinality.many_to_one,
         ))
     for rel in ht.array_relationships:
         if not rel.column_mapping:
@@ -302,7 +303,7 @@ def _map_table(
             target_table_id=target_tid,
             source_column=src_col,
             target_column=tgt_col,
-            cardinality="one-to-many",
+            cardinality=Cardinality.one_to_many,
         ))
 
     # Computed fields -> functions
@@ -314,7 +315,7 @@ def _map_table(
             schema_name=cf.function_schema,
             function_name=cf.function_name,
             returns=tid,
-            exposed_as="query",
+            kind="query",
             domain_id="default",
         ))
 

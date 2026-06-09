@@ -17,11 +17,16 @@ discover_schema() and returns candidate columns.
 from __future__ import annotations
 
 import logging
+from typing import Protocol, cast
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from provisa.source_adapters.registry import get_adapter
+
+
+class _SampleableDriver(Protocol):
+    def sample_documents(self, collection: str, limit: int) -> list[dict]: ...
 
 log = logging.getLogger(__name__)
 
@@ -142,7 +147,7 @@ def _call_discover(adapter, source_type: str, row, hints: DiscoverRequest) -> li
                     "Verify the source is connected and the server is reachable."
                 ),
             )
-        driver = source_pools.get(source_id)
+        driver = cast(_SampleableDriver, source_pools.get(source_id))
         collection = hints.collection or "default"
         sample_docs = driver.sample_documents(
             collection=collection,

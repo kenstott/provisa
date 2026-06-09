@@ -257,6 +257,7 @@ async def _handle_sqlite_table(
 ) -> None:
     from provisa.file_source.pg_migrate import migrate_sqlite_table, sqlite_column_trino_types
 
+    assert src.path is not None
     try:
         await migrate_sqlite_table(
             src.path, tbl.table_name, conn, tbl.schema_name, tbl.table_name
@@ -409,6 +410,7 @@ async def _handle_openapi_table(
     from provisa.openapi.mapper import parse_spec
     from provisa.openapi.pg_cache import cache_openapi_table
 
+    assert src.base_url is not None
     resolved_base_url = resolve_secrets(src.base_url)
     queries, _ = parse_spec(spec)
     match = next(

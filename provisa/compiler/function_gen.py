@@ -16,18 +16,26 @@ Webhooks produce: HTTP POST mutations with inline or table-mapped return types.
 
 from __future__ import annotations
 
+from typing import cast
+
 from graphql import (
     GraphQLArgument,
-    GraphQLBoolean,
+    GraphQLBoolean as _GraphQLBoolean,
     GraphQLField,
-    GraphQLFloat,
-    GraphQLInt,
+    GraphQLFloat as _GraphQLFloat,
+    GraphQLInt as _GraphQLInt,
     GraphQLList,
     GraphQLNonNull,
     GraphQLObjectType,
+    GraphQLOutputType,
     GraphQLScalarType,
-    GraphQLString,
+    GraphQLString as _GraphQLString,
 )
+
+GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
+GraphQLInt: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLInt)
+GraphQLFloat: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLFloat)
+GraphQLBoolean: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLBoolean)
 
 from provisa.compiler.type_map import BigInt, Date, DateTime, JSONScalar
 from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
@@ -70,7 +78,7 @@ def _build_inline_return_type(
     for f in fields:
         scalar = _resolve_scalar(f.type)
         gql_fields[f.name] = GraphQLField(scalar)
-    return GraphQLObjectType(f"{name}Result", lambda fields=gql_fields: fields)
+    return cast(GraphQLObjectType, GraphQLObjectType(f"{name}Result", lambda fields=gql_fields: fields))
 
 
 def build_function_mutations(
@@ -123,21 +131,22 @@ def build_function_mutations(
             continue
 
         # Resolve return type: table-backed or inline
+        wh_return_type: GraphQLOutputType
         if wh.returns and wh.returns in table_gql_types:
-            return_type = GraphQLList(
+            wh_return_type = GraphQLList(
                 GraphQLNonNull(table_gql_types[wh.returns])
             )
         elif wh.inline_return_type:
             inline_type = _build_inline_return_type(wh.name, wh.inline_return_type)
-            return_type = inline_type
+            wh_return_type = inline_type
         else:
             # Default: return JSON scalar
-            return_type = JSONScalar
+            wh_return_type = JSONScalar
 
         args = _build_args(wh.arguments)
 
         mutation_fields[wh.name] = GraphQLField(
-            return_type,
+            wh_return_type,
             args=args,
             description=wh.description or f"Webhook: {wh.method} {wh.url}",
         )

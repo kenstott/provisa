@@ -36,7 +36,7 @@ class NotificationProvider(abc.ABC):
         self, table: str, filter_expr: str | None = None
     ) -> AsyncGenerator[ChangeEvent, None]:
         """Yield change events for *table*, optionally filtered."""
-        yield  # pragma: no cover  # noqa: B027
+        yield  # type: ignore[misc]  # bare yield required to make Python treat this as an async generator; Pyright can't infer the yield type without an expression  # pragma: no cover  # noqa: B027
         raise NotImplementedError  # pragma: no cover
 
     @abc.abstractmethod

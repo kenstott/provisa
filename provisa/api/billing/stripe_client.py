@@ -10,11 +10,15 @@ from __future__ import annotations
 import os
 
 import stripe
+from stripe._base_address import BaseAddresses
 
 
 def get_stripe_client() -> stripe.StripeClient:
     api_key = os.environ["STRIPE_API_KEY"]
     base_url = os.environ.get("STRIPE_BASE_URL")
     if base_url:
-        return stripe.StripeClient(api_key, base_url=base_url)
+        return stripe.StripeClient(
+            api_key,
+            base_addresses=BaseAddresses(api=base_url),
+        )
     return stripe.StripeClient(api_key)

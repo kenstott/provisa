@@ -64,7 +64,7 @@ def _msg_to_dict(msg) -> dict:
     return MessageToDict(
         msg,
         preserving_proto_field_name=True,
-        including_default_value_fields=False,
+        always_print_fields_with_no_presence=False,
     )
 
 

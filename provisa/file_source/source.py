@@ -122,7 +122,7 @@ def _discover_csv(config: FileSourceConfig) -> list[dict]:
     """Infer columns from a CSV file using pyarrow."""
     import pyarrow.csv as pac
 
-    table = pac.read_csv(config.path)
+    table = pac.read_csv(config.path)  # type: ignore[attr-defined]
     return _arrow_schema_to_columns(table.schema)
 
 

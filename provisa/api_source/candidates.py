@@ -40,6 +40,7 @@ async def store_candidates(
             """,
             source_id, c.path, c.method, c.table_name, columns_json,
         )
+        assert row is not None
         ids.append(row["id"])
     return ids
 
@@ -124,6 +125,7 @@ async def accept_candidate(
         candidate_id,
     )
 
+    assert ep_row is not None
     raw_cols = columns if isinstance(columns, list) else json.loads(columns)
     columns_parsed = [ApiColumn(**c) for c in raw_cols]
     return ApiEndpoint(

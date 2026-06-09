@@ -36,7 +36,7 @@ def path_to_recursive_sql(
     end_var: str,
     path_var: str,
     max_depth: int,
-) -> str:
+) -> tuple[str, str, str]:
     """Generate a WITH RECURSIVE SQL fragment for a path function.
 
     Returns a SQL string (not a SQLGlot AST) that can be prepended to the

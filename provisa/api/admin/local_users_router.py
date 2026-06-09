@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import asyncpg
 import bcrypt
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -57,8 +58,9 @@ def _strip_hash(row) -> dict:
     return d
 
 
-def _pool(request: Request):
+def _pool(request: Request) -> asyncpg.Pool:
     from provisa.api.app import state
+    assert state.pg_pool is not None
     return state.pg_pool
 
 

@@ -84,7 +84,7 @@ async def webhook(request: Request):
     secret = os.environ["STRIPE_WEBHOOK_SECRET"]
     try:
         stripe.WebhookSignature.verify_header(payload, sig, secret)
-    except stripe.error.SignatureVerificationError:
+    except stripe.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid Stripe signature")
 
     event = json.loads(payload)

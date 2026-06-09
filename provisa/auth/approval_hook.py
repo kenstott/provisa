@@ -179,7 +179,7 @@ class GrpcApprovalHook(ApprovalHook):
             self._ensure_channel()
             from provisa.auth import approval_pb2
 
-            proto_req = approval_pb2.ApprovalRequest(
+            proto_req = approval_pb2.ApprovalRequest(  # type: ignore[attr-defined]
                 user=request.user,
                 roles=list(request.roles),
                 tables=list(request.tables),

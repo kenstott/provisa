@@ -25,6 +25,7 @@ from provisa.api_source.models import (
     ApiSource,
     ApiSourceType,
 )
+from provisa.core.auth_models import ApiAuth
 
 
 @dataclass
@@ -35,7 +36,7 @@ class Neo4jSourceConfig:
     host: str
     port: int = 7474
     database: str = "neo4j"
-    auth: object | None = None  # ApiAuth instance
+    auth: ApiAuth | None = None
     use_https: bool = False
 
 

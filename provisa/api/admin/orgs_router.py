@@ -12,14 +12,16 @@
 
 from __future__ import annotations
 
+import asyncpg
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/admin/orgs", tags=["admin"])
 
 
-def _pool(request: Request):
+def _pool(request: Request) -> asyncpg.Pool:
     from provisa.api.app import state
+    assert state.pg_pool is not None
     return state.pg_pool
 
 

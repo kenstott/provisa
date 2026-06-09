@@ -15,6 +15,8 @@ Drivers are lazily imported so missing optional dependencies don't break startup
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from provisa.executor.drivers.base import DirectDriver
 
 
@@ -44,7 +46,7 @@ def _make_oracle() -> DirectDriver:
 
 
 # source_type → factory function
-_DRIVER_FACTORIES: dict[str, callable] = {
+_DRIVER_FACTORIES: dict[str, Callable[[], DirectDriver]] = {
     "postgresql": _make_pg,
     "mysql": _make_mysql,
     "singlestore": _make_mysql,   # MySQL wire-compatible

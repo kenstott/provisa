@@ -38,7 +38,7 @@ class TenantMiddleware(BaseHTTPMiddleware):
 
         ctx = _cache.get(tenant_id)
         if ctx is None:
-            ctx = await _build_tenant_context(tenant_id)
+            ctx = await _build_tenant_context(request, tenant_id)
             if ctx is None:
                 return JSONResponse(status_code=401, content={"detail": "Tenant not found"})
             _cache.set(tenant_id, ctx)
@@ -48,19 +48,22 @@ class TenantMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-async def _build_tenant_context(tenant_id: str) -> TenantContext | None:
+async def _build_tenant_context(request: Request, tenant_id: str) -> TenantContext | None:
     from provisa.api.billing.tenant_db import fetch_config_entities
-    from provisa.api.billing.kms import decrypt
+    from provisa.api.billing.kms import decrypt_data_key, aes_decrypt
     from provisa.core.config_loader import parse_config_dict
     import json
 
-    entities = await fetch_config_entities(tenant_id)
-    if entities is None:
+    pool = request.app.state.pg_pool
+    entity_rows = await fetch_config_entities(pool, tenant_id, "config")
+    if not entity_rows:
         return None
 
     decrypted: dict = {}
-    for key, ciphertext in entities.items():
-        decrypted[key] = json.loads(decrypt(ciphertext))
+    for row in entity_rows:
+        dek = await decrypt_data_key(row["entity_id"], row["encrypted_dek"])
+        plaintext = aes_decrypt(row["iv"], row["ciphertext"], dek)
+        decrypted[row["entity_id"]] = json.loads(plaintext)
 
     config = parse_config_dict(decrypted)
 

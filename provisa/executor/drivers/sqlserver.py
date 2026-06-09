@@ -48,7 +48,9 @@ class SQLServerDriver(DirectDriver):
             for i in range(len(params), 0, -1):
                 exec_sql = exec_sql.replace(f"${i}", "?")
 
-        async with self._pool.acquire() as conn:
+        pool = self._pool
+        assert pool is not None
+        async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(exec_sql, params or [])
                 rows = await cur.fetchall()

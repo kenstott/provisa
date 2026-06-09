@@ -13,51 +13,60 @@
 Nullability preserved from INFORMATION_SCHEMA. Custom scalars for DateTime, JSON.
 """
 
+from typing import cast
+
 from graphql import (
-    GraphQLBoolean,
-    GraphQLFloat,
+    GraphQLBoolean as _GraphQLBoolean,
+    GraphQLFloat as _GraphQLFloat,
     GraphQLInputField,
     GraphQLInputObjectType,
-    GraphQLInt,
+    GraphQLInt as _GraphQLInt,
     GraphQLList,
     GraphQLNonNull,
     GraphQLScalarType,
-    GraphQLString,
+    GraphQLString as _GraphQLString,
 )
+
+# graphql-core 3.2.x: __new__ returns GraphQLNamedType instead of Self;
+# re-bind scalars with explicit GraphQLScalarType annotation so Pyright narrows correctly.
+GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
+GraphQLInt: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLInt)
+GraphQLFloat: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLFloat)
+GraphQLBoolean: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLBoolean)
 
 # --- Custom scalars ---
 
-DateTime = GraphQLScalarType(
+DateTime: GraphQLScalarType = cast(GraphQLScalarType, GraphQLScalarType(
     "DateTime",
     description="ISO 8601 datetime string",
     serialize=str,
     parse_value=str,
-)
+))
 
-Date = GraphQLScalarType(
+Date: GraphQLScalarType = cast(GraphQLScalarType, GraphQLScalarType(
     "Date",
     description="ISO 8601 date string",
     serialize=str,
     parse_value=str,
-)
+))
 
-JSONScalar = GraphQLScalarType(
+JSONScalar: GraphQLScalarType = cast(GraphQLScalarType, GraphQLScalarType(
     "JSON",
     description="Arbitrary JSON value",
     serialize=lambda v: v,
     parse_value=lambda v: v,
-)
+))
 
-BigInt = GraphQLScalarType(
+BigInt: GraphQLScalarType = cast(GraphQLScalarType, GraphQLScalarType(
     "BigInt",
     description="64-bit integer as string",
     serialize=str,
     parse_value=int,
-)
+))
 
 # --- Type mapping ---
 
-_TYPE_MAP: dict[str, GraphQLScalarType] = {
+_TYPE_MAP: dict[str, GraphQLScalarType] = cast(dict[str, GraphQLScalarType], {
     # String types
     "varchar": GraphQLString,
     "text": GraphQLString,  # views cast array/jsonb/json columns to text (see app.py)
@@ -96,7 +105,7 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = {
     # JSON
     "json": JSONScalar,
     "jsonb": JSONScalar,
-}
+})
 
 
 def trino_to_graphql(trino_type: str) -> GraphQLScalarType | GraphQLList:
@@ -174,13 +183,16 @@ JSONFilter = GraphQLInputObjectType("JSONFilter", lambda: {
 })
 
 # Map GraphQL scalar → filter input type
-FILTER_TYPE_MAP: dict[GraphQLScalarType, GraphQLInputObjectType] = {
-    GraphQLString: StringFilter,
-    GraphQLInt: IntFilter,
-    BigInt: BigIntFilter,
-    GraphQLFloat: FloatFilter,
-    GraphQLBoolean: BooleanFilter,
-    Date: DateFilter,
-    DateTime: DateTimeFilter,
-    JSONScalar: JSONFilter,
-}
+FILTER_TYPE_MAP: dict[GraphQLScalarType, GraphQLInputObjectType] = cast(
+    dict[GraphQLScalarType, GraphQLInputObjectType],
+    {
+        GraphQLString: StringFilter,
+        GraphQLInt: IntFilter,
+        BigInt: BigIntFilter,
+        GraphQLFloat: FloatFilter,
+        GraphQLBoolean: BooleanFilter,
+        Date: DateFilter,
+        DateTime: DateTimeFilter,
+        JSONScalar: JSONFilter,
+    },
+)

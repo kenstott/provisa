@@ -47,8 +47,8 @@ class ApprovalServiceStub(object):
         """
         self.Evaluate = channel.unary_unary(
             "/provisa.auth.ApprovalService/Evaluate",
-            request_serializer=approval__pb2.ApprovalRequest.SerializeToString,
-            response_deserializer=approval__pb2.ApprovalResponse.FromString,
+            request_serializer=approval__pb2.ApprovalRequest.SerializeToString,  # type: ignore[attr-defined]
+            response_deserializer=approval__pb2.ApprovalResponse.FromString,  # type: ignore[attr-defined]
             _registered_method=True,
         )
 
@@ -67,8 +67,8 @@ def add_ApprovalServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
         "Evaluate": grpc.unary_unary_rpc_method_handler(
             servicer.Evaluate,
-            request_deserializer=approval__pb2.ApprovalRequest.FromString,
-            response_serializer=approval__pb2.ApprovalResponse.SerializeToString,
+            request_deserializer=approval__pb2.ApprovalRequest.FromString,  # type: ignore[attr-defined]
+            response_serializer=approval__pb2.ApprovalResponse.SerializeToString,  # type: ignore[attr-defined]
         ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -95,12 +95,12 @@ class ApprovalService(object):
         timeout=None,
         metadata=None,
     ):
-        return grpc.experimental.unary_unary(
+        return grpc.experimental.unary_unary(  # type: ignore[attr-defined]
             request,
             target,
             "/provisa.auth.ApprovalService/Evaluate",
-            approval__pb2.ApprovalRequest.SerializeToString,
-            approval__pb2.ApprovalResponse.FromString,
+            approval__pb2.ApprovalRequest.SerializeToString,  # type: ignore[attr-defined]
+            approval__pb2.ApprovalResponse.FromString,  # type: ignore[attr-defined]
             options,
             channel_credentials,
             insecure,

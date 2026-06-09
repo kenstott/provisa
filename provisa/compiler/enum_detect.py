@@ -15,8 +15,20 @@ allowed values. Generates GraphQLEnumType instances and resolves column types.
 """
 
 import re
+from typing import cast
 
-from graphql import GraphQLEnumType, GraphQLInputField, GraphQLInputObjectType
+from graphql import (
+    GraphQLBoolean as _GraphQLBoolean,
+    GraphQLEnumType,
+    GraphQLInputField,
+    GraphQLInputObjectType,
+    GraphQLInputType,
+    GraphQLList,
+    GraphQLNonNull,
+    GraphQLScalarType,
+)
+
+GraphQLBoolean: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLBoolean)
 
 _GRAPHQL_NAME_RE = re.compile(r"[^a-zA-Z0-9_]")
 
@@ -87,11 +99,11 @@ def build_enum_types(
         for v in values:
             gql_key = _sanitize_enum_value(v)
             gql_values[gql_key] = v
-        result[pg_name] = GraphQLEnumType(
+        result[pg_name] = cast(GraphQLEnumType, GraphQLEnumType(
             gql_name,
             gql_values,
             description=f"Auto-detected from PostgreSQL enum '{pg_name}'",
-        )
+        ))
     return result
 
 
@@ -108,18 +120,21 @@ def build_enum_filter_types(
     """
     result: dict[str, GraphQLInputObjectType] = {}
     for pg_name, gql_enum in enum_types.items():
-        from graphql import GraphQLBoolean, GraphQLList, GraphQLNonNull
-
         filter_name = f"{gql_enum.name}Filter"
-        result[pg_name] = GraphQLInputObjectType(
-            filter_name,
-            lambda _enum=gql_enum: {
-                "eq": GraphQLInputField(_enum),
-                "neq": GraphQLInputField(_enum),
-                "in": GraphQLInputField(GraphQLList(GraphQLNonNull(_enum))),
+
+        def _make_enum_filter_fields(_enum: GraphQLEnumType = gql_enum) -> dict:
+            _e: GraphQLInputType = cast(GraphQLInputType, _enum)
+            _e_nn: GraphQLInputType = cast(GraphQLInputType, GraphQLNonNull(cast(GraphQLEnumType, _enum)))
+            return {
+                "eq": GraphQLInputField(_e),
+                "neq": GraphQLInputField(_e),
+                "in": GraphQLInputField(GraphQLList(_e_nn)),
                 "is_null": GraphQLInputField(GraphQLBoolean),
-            },
-        )
+            }
+
+        result[pg_name] = cast(GraphQLInputObjectType, GraphQLInputObjectType(
+            filter_name, _make_enum_filter_fields,
+        ))
     return result
 
 

@@ -172,8 +172,8 @@ def import_govdata_source(
             Table(
                 source_id=source.id,
                 domain_id=source.domain_id,
-                schema=schema,
-                table=table_name,
+                schema_name=schema,
+                table_name=table_name,
                 governance=source.governance,
                 columns=columns,
                 view_sql=view_sql,

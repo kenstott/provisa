@@ -52,6 +52,7 @@ class KafkaSinkOutput(LiveOutput):
         if not rows:
             return
         self._ensure_producer()
+        assert self._producer is not None
         for row in rows:
             value = json.dumps(row).encode()
             key = None

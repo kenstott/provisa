@@ -157,7 +157,7 @@ async def _paginate(
             link = resp.headers.get("link", "")
             match = re.search(r'<([^>]+)>;\s*rel="next"', link)
             next_url = match.group(1) if match else None
-            params = None  # subsequent pages use full URL from link
+            params = {}  # subsequent pages use full URL from link
 
     elif pagination.type == PaginationType.cursor:
         cursor_param = pagination.cursor_param or "cursor"
@@ -397,7 +397,7 @@ async def _call_grpc(
     stub = reflection_pb2_grpc.ServerReflectionStub(channel)
 
     req = refl_pb2.ServerReflectionRequest(file_containing_symbol=service_name)
-    responses = stub.ServerReflectionInfo(iter([req]))
+    responses = stub.ServerReflectionInfo(iter([req]))  # type: ignore[operator]
 
     for resp in responses:
         for proto_bytes in resp.file_descriptor_response.file_descriptor_proto:
@@ -415,14 +415,14 @@ async def _call_grpc(
             method_desc = svc_desc.FindMethodByName(method_name)
 
             factory = MessageFactory(pool)
-            request_class = factory.GetPrototype(method_desc.input_type)
-            request_msg = request_class(**resolved_params)
+            request_class = factory.GetPrototype(method_desc.input_type)  # type: ignore[attr-defined]
+            request_msg = request_class(**resolved_params)  # type: ignore[operator]
 
             # Unary call
             full_method = f"/{service_name}/{method_name}"
             response_bytes = channel.unary_unary(full_method)(request_msg.SerializeToString())
 
-            response_class = factory.GetPrototype(method_desc.output_type)
+            response_class = factory.GetPrototype(method_desc.output_type)  # type: ignore[attr-defined]
             response_msg = response_class()
             response_msg.ParseFromString(response_bytes)
 

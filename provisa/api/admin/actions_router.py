@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import cast
 
+import asyncpg
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -170,8 +172,8 @@ async def create_function(body: FunctionInput):
     )
     return_schema = json.dumps(body.returnSchema) if body.returnSchema is not None else None
 
-    async with state.pg_pool.acquire() as conn:
-        await function_repo.upsert_function(conn, func, return_schema=return_schema)
+    async with state.pg_pool.acquire() as _conn:
+        await function_repo.upsert_function(cast(asyncpg.Connection, _conn), func, return_schema=return_schema)
 
     log.info("Saved tracked function %s", body.name)
     from provisa.api.app import _rebuild_schemas

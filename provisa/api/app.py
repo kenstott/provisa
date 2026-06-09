@@ -1351,7 +1351,9 @@ async def _load_and_build(config_path: str | None = None) -> None:
         from provisa.core.tenant_context import TenantContextCache
 
         state.tenant_context_cache = TenantContextCache()
-        async with state.pg_pool.acquire() as _rls_conn:
+        pg_pool = state.pg_pool
+        assert pg_pool is not None
+        async with pg_pool.acquire() as _rls_conn:
             await _init_meta_rls(cast(asyncpg.Connection, _rls_conn))
 
     # Apply observability config to state
@@ -1372,7 +1374,9 @@ async def _load_and_build(config_path: str | None = None) -> None:
             state.response_cache_store = RedisCacheStore(redis_url)
         state.response_cache_default_ttl = cache_config.get("default_ttl", 300)
 
-    async with state.pg_pool.acquire() as conn:
+    pg_pool = state.pg_pool
+    assert pg_pool is not None
+    async with pg_pool.acquire() as conn:
         _replace_mode = os.environ.get("PROVISA_CONFIG_REPLACE", "").lower() in ("1", "true", "yes")
         await load_config(
             config, cast(asyncpg.Connection, conn), state.trino_conn, replace=_replace_mode
@@ -1554,7 +1558,8 @@ def _assert_domain_table_unique(tables: list[dict]) -> None:
     """
     locs: dict[tuple[str, str], list[str]] = {}
     for t in tables:
-        locs.setdefault((t["domain_id"], t["table_name"]), []).append(
+        effective_name = t.get("alias") or t["table_name"]
+        locs.setdefault((t["domain_id"], effective_name), []).append(
             f"{t['source_id']}.{t['schema_name']}"
         )
     dupes = {k: v for k, v in locs.items() if len(v) > 1}
@@ -1610,6 +1615,7 @@ def _inject_gql_required_args(
                         "column_name": _arg["name"],
                         "visible_to": [],
                         "native_filter_type": "query_param",
+                        "description": None,
                     }
                 )
 

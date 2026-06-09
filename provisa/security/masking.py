@@ -159,6 +159,8 @@ def build_mask_expression(
         SQL expression string.
     """
     if rule.mask_type == MaskType.regex:
+        assert rule.pattern is not None
+        assert rule.replace is not None
         pattern = rule.pattern.replace("'", "''")
         replace = rule.replace.replace("'", "''")
         return f"REGEXP_REPLACE({column_ref}, '{pattern}', '{replace}')"

@@ -101,7 +101,9 @@ class RedisAPQCache(APQCache):
     async def get(self, sha256_hash: str, tenant_id: str | None = None) -> str | None:
         try:
             await self._connect()
-            return await self._redis.get(self._build_key(sha256_hash, tenant_id))
+            assert self._redis is not None
+            result = await self._redis.get(self._build_key(sha256_hash, tenant_id))
+            return result.decode() if isinstance(result, bytes) else result
         except Exception:
             log.warning("APQ Redis get failed", exc_info=True)
             return None
@@ -109,6 +111,7 @@ class RedisAPQCache(APQCache):
     async def set(self, sha256_hash: str, query: str, tenant_id: str | None = None) -> None:
         try:
             await self._connect()
+            assert self._redis is not None
             await self._redis.setex(self._build_key(sha256_hash, tenant_id), self._ttl, query)
         except Exception:
             log.warning("APQ Redis set failed", exc_info=True)

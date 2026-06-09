@@ -1614,8 +1614,8 @@ class Mutation:
         model = TableModel(
             source_id=input.source_id,
             domain_id=input.domain_id,
-            schema=input.schema_name,
-            table=input.table_name,
+            schema_name=input.schema_name,
+            table_name=input.table_name,
             governance=governance,
             alias=alias,
             description=input.description,
@@ -1736,8 +1736,8 @@ class Mutation:
         model = TableModel(
             source_id=input.source_id,
             domain_id=input.domain_id,
-            schema=input.schema_name,
-            table=input.table_name,
+            schema_name=input.schema_name,
+            table_name=input.table_name,
             governance=governance,
             alias=input.alias,
             description=input.description,

@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import importlib.util
 import logging
-import sys
-
 import re
+import sys
+from typing import Any
 
 import grpc
 import grpc.aio
@@ -56,8 +56,10 @@ def _load_module(path: str, name: str):
 
 def _get_role(context: grpc.aio.ServicerContext) -> str:
     """Extract role from gRPC metadata."""
-    metadata = dict(context.invocation_metadata())
-    role = metadata.get("x-provisa-role")
+    metadata = context.invocation_metadata()
+    meta_dict: dict[str, Any] = dict(metadata)  # type: ignore[arg-type]
+    raw = meta_dict.get("x-provisa-role")
+    role = raw.decode() if isinstance(raw, bytes) else raw
     if not role:
         raise grpc.aio.AbortError(
             grpc.StatusCode.UNAUTHENTICATED, "Missing x-provisa-role metadata"
@@ -80,18 +82,18 @@ class ProvisaServicer:
             # Convert PascalCase type name to snake_case field name
             field_name = _pascal_to_snake(type_name)
 
-            async def handler(request, context):
+            async def query_handler(request, context):
                 async for msg in self._handle_query(request, context, type_name, field_name):
                     yield msg
 
-            return handler
+            return query_handler
         if name.startswith("Insert"):
             type_name = name[len("Insert") :]
 
-            async def handler(request, context):
+            async def insert_handler(request, context):
                 return await self._handle_insert(request, context, type_name)
 
-            return handler
+            return insert_handler
         raise AttributeError(f"{type(self).__name__!r} has no attribute {name!r}")
 
     async def _handle_insert(self, request, context, type_name: str):

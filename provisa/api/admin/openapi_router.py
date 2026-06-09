@@ -20,6 +20,9 @@ Endpoints:
 
 from __future__ import annotations
 import logging
+from typing import cast
+
+import asyncpg
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -84,12 +87,14 @@ async def _load_and_register(
 
     await _ensure_tables(state.pg_pool)
 
-    async with state.pg_pool.acquire() as conn:
+    pool = state.pg_pool
+    assert pool is not None
+    async with pool.acquire() as _conn:
         from provisa.core.models import Source, SourceType
         from provisa.core.repositories import source as source_repo
 
         await source_repo.upsert(
-            conn,
+            cast(asyncpg.Connection, _conn),
             Source(
                 id=source_id,
                 type=SourceType.openapi,
@@ -268,7 +273,8 @@ async def put_openapi_spec(source_id: str, request: Request):
     if state.pg_pool is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    await _ensure_tables(state.pg_pool)
+    put_pool = state.pg_pool
+    await _ensure_tables(put_pool)
 
     specs = getattr(state, "openapi_specs", {})
     existing = specs.get(source_id, {})
@@ -281,7 +287,7 @@ async def put_openapi_spec(source_id: str, request: Request):
     auth_config = existing.get("auth_config")
     cache_ttl = existing.get("cache_ttl", 300)
 
-    async with state.pg_pool.acquire() as conn:
+    async with put_pool.acquire() as conn:
         n_tables, n_mutations = await auto_register_openapi_source(
             source_id,
             spec,

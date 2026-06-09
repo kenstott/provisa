@@ -49,7 +49,14 @@ class CacheStore(ABC):
         """Get a cached result by key. Returns None on miss."""
 
     @abstractmethod
-    async def set(self, key: str, data: bytes, ttl: int, tenant_id: str | None = None) -> None:
+    async def set(
+        self,
+        key: str,
+        data: bytes,
+        ttl: int,
+        tenant_id: str | None = None,
+        table_ids: set[int] | None = None,
+    ) -> None:
         """Store a result with TTL in seconds."""
 
     @abstractmethod
@@ -71,7 +78,14 @@ class NoopCacheStore(CacheStore):
     async def get(self, key: str, tenant_id: str | None = None) -> CachedResult | None:
         return None
 
-    async def set(self, key: str, data: bytes, ttl: int, tenant_id: str | None = None) -> None:
+    async def set(
+        self,
+        key: str,
+        data: bytes,
+        ttl: int,
+        tenant_id: str | None = None,
+        table_ids: set[int] | None = None,
+    ) -> None:
         pass
 
     async def invalidate_by_pattern(self, pattern: str, tenant_id: str | None = None) -> int:
@@ -132,6 +146,7 @@ class RedisCacheStore(CacheStore):
             span.set_attribute("cache.key", key)
             try:
                 await self._connect()
+                assert self._redis is not None
                 rkey = self._prefixed_key(key, tenant_id)
                 pipe = self._redis.pipeline()
                 pipe.get(rkey)
@@ -168,6 +183,7 @@ class RedisCacheStore(CacheStore):
             span.set_attribute("cache.size_bytes", len(data))
             try:
                 await self._connect()
+                assert self._redis is not None
                 import json
 
                 rkey = self._prefixed_key(key, tenant_id)
@@ -187,6 +203,7 @@ class RedisCacheStore(CacheStore):
     async def invalidate_by_pattern(self, pattern: str, tenant_id: str | None = None) -> int:
         try:
             await self._connect()
+            assert self._redis is not None
             prefix = self._prefixed_key("", tenant_id)
             keys = []
             async for key in self._redis.scan_iter(match=prefix + pattern):
@@ -201,6 +218,7 @@ class RedisCacheStore(CacheStore):
     async def invalidate_by_table(self, table_id: int, tenant_id: str | None = None) -> int:
         try:
             await self._connect()
+            assert self._redis is not None
             tkey = self._prefixed_table_key(table_id, tenant_id)
             cache_keys = await self._redis.smembers(tkey)
             if not cache_keys:

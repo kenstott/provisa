@@ -34,9 +34,9 @@ NodeType = GraphQLObjectType(
     name="Node",
     description="A graph node returned by a Cypher query.",
     fields=lambda: {
-        "id": GraphQLField(GraphQLNonNull(GraphQLID), description="Node identifier"),
-        "label": GraphQLField(GraphQLNonNull(GraphQLString), description="Node label (type name)"),
-        "properties": GraphQLField(JSONScalar, description="Node property map"),
+        "id": GraphQLField(GraphQLNonNull(GraphQLID), description="Node identifier"),  # type: ignore[arg-type]
+        "label": GraphQLField(GraphQLNonNull(GraphQLString), description="Node label (type name)"),  # type: ignore[arg-type]
+        "properties": GraphQLField(JSONScalar, description="Node property map"),  # type: ignore[arg-type]
     },
 )
 
@@ -44,11 +44,11 @@ EdgeType = GraphQLObjectType(
     name="Edge",
     description="A graph edge returned by a Cypher query.",
     fields=lambda: {
-        "id": GraphQLField(GraphQLNonNull(GraphQLID), description="Edge identifier"),
-        "type": GraphQLField(GraphQLNonNull(GraphQLString), description="Relationship type"),
-        "startNode": GraphQLField(GraphQLNonNull(NodeType), description="Edge start node"),
-        "endNode": GraphQLField(GraphQLNonNull(NodeType), description="Edge end node"),
-        "properties": GraphQLField(JSONScalar, description="Edge property map"),
+        "id": GraphQLField(GraphQLNonNull(GraphQLID), description="Edge identifier"),  # type: ignore[arg-type]
+        "type": GraphQLField(GraphQLNonNull(GraphQLString), description="Relationship type"),  # type: ignore[arg-type]
+        "startNode": GraphQLField(GraphQLNonNull(NodeType), description="Edge start node"),  # type: ignore[arg-type]
+        "endNode": GraphQLField(GraphQLNonNull(NodeType), description="Edge end node"),  # type: ignore[arg-type]
+        "properties": GraphQLField(JSONScalar, description="Edge property map"),  # type: ignore[arg-type]
     },
 )
 
@@ -57,11 +57,11 @@ PathType = GraphQLObjectType(
     description="A graph path (sequence of nodes and edges) returned by a Cypher query.",
     fields=lambda: {
         "nodes": GraphQLField(
-            GraphQLNonNull(GraphQLList(GraphQLNonNull(NodeType))),
+            GraphQLNonNull(GraphQLList(GraphQLNonNull(NodeType))),  # type: ignore[arg-type]
             description="Ordered node sequence",
         ),
         "edges": GraphQLField(
-            GraphQLNonNull(GraphQLList(GraphQLNonNull(EdgeType))),
+            GraphQLNonNull(GraphQLList(GraphQLNonNull(EdgeType))),  # type: ignore[arg-type]
             description="Ordered edge sequence",
         ),
     },
@@ -72,11 +72,11 @@ CypherResultType = GraphQLObjectType(
     description="Result set from a Cypher query execution.",
     fields=lambda: {
         "columns": GraphQLField(
-            GraphQLNonNull(GraphQLList(GraphQLNonNull(GraphQLString))),
+            GraphQLNonNull(GraphQLList(GraphQLNonNull(GraphQLString))),  # type: ignore[arg-type]
             description="Column names in order",
         ),
         "rows": GraphQLField(
-            GraphQLNonNull(GraphQLList(GraphQLNonNull(JSONScalar))),
+            GraphQLNonNull(GraphQLList(GraphQLNonNull(JSONScalar))),  # type: ignore[arg-type]
             description="Row values — each row maps column name to scalar, Node, Edge, or Path",
         ),
     },

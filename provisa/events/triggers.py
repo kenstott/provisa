@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 
 import asyncpg
 import httpx
@@ -106,12 +106,13 @@ class EventTriggerManager:
             for trigger in self._triggers.values():
                 if not trigger.enabled:
                     continue
-                await self._install_trigger(conn, trigger)
+                await self._install_trigger(cast(asyncpg.Connection, conn), trigger)
 
         # Acquire a dedicated connection for LISTEN
-        self._listen_conn = await pool.acquire()
+        self._listen_conn = cast(asyncpg.Connection, await pool.acquire())
         self._running = True
 
+        assert self._listen_conn is not None
         for trigger in self._triggers.values():
             if not trigger.enabled:
                 continue
@@ -138,7 +139,7 @@ class EventTriggerManager:
         # Drop triggers
         async with pool.acquire() as conn:
             for trigger in self._triggers.values():
-                await self._drop_trigger(conn, trigger)
+                await self._drop_trigger(cast(asyncpg.Connection, conn), trigger)
 
         if self._http_client is not None:
             await self._http_client.aclose()

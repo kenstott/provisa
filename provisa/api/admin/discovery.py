@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import logging as _logging
 import os
+from typing import cast
 
+import asyncpg
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -66,9 +68,14 @@ async def trigger_discovery(body: DiscoverRequest):
         scope_id = body.domain_id
 
     all_candidates = []
-    async with state.pg_pool.acquire() as conn:
+    pool = state.pg_pool
+    assert pool is not None
+    trino_conn = state.trino_conn
+    assert trino_conn is not None
+    async with pool.acquire() as _conn:
+        conn = cast(asyncpg.Connection, _conn)
         fk_candidates = await collect_fk_candidates(
-            state.trino_conn,
+            trino_conn,
             conn,
             body.scope,
             scope_id,
@@ -79,7 +86,7 @@ async def trigger_discovery(body: DiscoverRequest):
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if api_key:
             discovery_input = await collect_metadata(
-                state.trino_conn,
+                trino_conn,
                 conn,
                 body.scope,
                 scope_id,
@@ -102,29 +109,37 @@ async def trigger_discovery(body: DiscoverRequest):
 @router.get("/candidates")
 async def list_candidates():
     """List pending relationship candidates."""
-    async with state.pg_pool.acquire() as conn:
-        return await candidates_repo.list_pending(conn)
+    pool = state.pg_pool
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        return await candidates_repo.list_pending(cast(asyncpg.Connection, _conn))
 
 
 @router.post("/candidates/{candidate_id}/accept")
 async def accept_candidate(candidate_id: int, body: AcceptRequest | None = None):
     """Accept a relationship candidate."""
-    async with state.pg_pool.acquire() as conn:
-        return await candidates_repo.accept(conn, candidate_id, body.name if body else None)
+    pool = state.pg_pool
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        return await candidates_repo.accept(cast(asyncpg.Connection, _conn), candidate_id, body.name if body else None)
 
 
 @router.post("/candidates/{candidate_id}/reject")
 async def reject_candidate(candidate_id: int, body: RejectRequest):
     """Reject a relationship candidate."""
-    async with state.pg_pool.acquire() as conn:
-        await candidates_repo.reject(conn, candidate_id, body.reason)
+    pool = state.pg_pool
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        await candidates_repo.reject(cast(asyncpg.Connection, _conn), candidate_id, body.reason)
     return {"status": "rejected"}
 
 
 @router.get("/candidates/rejected/count")
 async def rejected_count():
     """Count rejected candidates."""
-    async with state.pg_pool.acquire() as conn:
+    pool = state.pg_pool
+    assert pool is not None
+    async with pool.acquire() as conn:
         count = await conn.fetchval(
             "SELECT COUNT(*) FROM relationship_candidates WHERE status = 'rejected'"
         )
@@ -134,6 +149,8 @@ async def rejected_count():
 @router.delete("/candidates/rejected")
 async def clear_rejections():
     """Delete all rejected candidates."""
-    async with state.pg_pool.acquire() as conn:
-        count = await candidates_repo.clear_rejections(conn)
+    pool = state.pg_pool
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        count = await candidates_repo.clear_rejections(cast(asyncpg.Connection, _conn))
     return {"deleted": count}

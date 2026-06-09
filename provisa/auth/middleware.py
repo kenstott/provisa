@@ -111,9 +111,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # Fire-and-forget upsert of user_profiles
         if self._db_pool is not None:
+            _db_pool = self._db_pool
             async def _upsert():
                 try:
-                    async with self._db_pool.acquire() as conn:
+                    async with _db_pool.acquire() as conn:
                         await conn.execute(
                             """INSERT INTO user_profiles (user_id, email, display_name, provider, last_seen)
                                VALUES ($1, $2, $3, $4, NOW())

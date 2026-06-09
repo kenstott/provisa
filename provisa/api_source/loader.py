@@ -23,6 +23,7 @@ from provisa.api_source.models import (
     ApiSource,
     ApiSourceType,
     PaginationConfig,
+    ParamType,
 )
 from provisa.api_source.schema_integration import register_api_columns
 from provisa.compiler.introspect import ColumnMetadata
@@ -81,7 +82,7 @@ async def load_api_sources(
                 name=c["name"],
                 type=ApiColumnType(c.get("type", "string")),
                 filterable=c.get("filterable", True),
-                param_type=_resolve_param_type(c),
+                param_type=ParamType(_resolve_param_type(c)) if _resolve_param_type(c) is not None else None,
                 param_name=c.get("param_name"),
                 object_fields=c.get("object_fields", []),
             )

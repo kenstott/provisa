@@ -226,7 +226,7 @@ async def introspect_grpc(host_port: str) -> list[ApiEndpointCandidate]:
 
     # List services
     req = reflection_pb2.ServerReflectionRequest(list_services="")
-    responses = stub.ServerReflectionInfo(iter([req]))
+    responses = stub.ServerReflectionInfo(iter([req]))  # type: ignore[operator]
 
     service_names: list[str] = []
     for resp in responses:
@@ -238,7 +238,7 @@ async def introspect_grpc(host_port: str) -> list[ApiEndpointCandidate]:
     for svc_name in service_names:
         # Get service descriptor
         req = reflection_pb2.ServerReflectionRequest(file_containing_symbol=svc_name)
-        responses = stub.ServerReflectionInfo(iter([req]))
+        responses = stub.ServerReflectionInfo(iter([req]))  # type: ignore[operator]
 
         for resp in responses:
             for proto_bytes in resp.file_descriptor_response.file_descriptor_proto:

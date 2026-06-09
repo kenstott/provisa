@@ -15,14 +15,20 @@ Generates <Table>_aggregate root query fields with count, sum, avg, min, max.
 
 from __future__ import annotations
 
+from typing import cast
+
 from graphql import (
     GraphQLField,
-    GraphQLFloat,
-    GraphQLInt,
+    GraphQLFloat as _GraphQLFloat,
+    GraphQLInt as _GraphQLInt,
     GraphQLList,
     GraphQLNonNull,
     GraphQLObjectType,
+    GraphQLScalarType,
 )
+
+GraphQLFloat: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLFloat)
+GraphQLInt: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLInt)
 
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.type_map import trino_to_graphql
@@ -88,38 +94,38 @@ def build_aggregate_types(
             comparable_cols.append((col_name, meta.data_type))
 
     # Build sum fields type (numeric only)
-    sum_type = None
+    sum_type: GraphQLObjectType | None = None
     if numeric_cols:
         sum_fields = {}
         for col_name, trino_type in numeric_cols:
             sum_fields[col_name] = GraphQLField(GraphQLFloat)
-        sum_type = GraphQLObjectType(f"{type_name}SumFields", lambda f=sum_fields: f)
+        sum_type = cast(GraphQLObjectType, GraphQLObjectType(f"{type_name}SumFields", lambda f=sum_fields: f))
 
     # Build avg fields type (numeric only)
-    avg_type = None
+    avg_type: GraphQLObjectType | None = None
     if numeric_cols:
         avg_fields = {}
         for col_name, trino_type in numeric_cols:
             avg_fields[col_name] = GraphQLField(GraphQLFloat)
-        avg_type = GraphQLObjectType(f"{type_name}AvgFields", lambda f=avg_fields: f)
+        avg_type = cast(GraphQLObjectType, GraphQLObjectType(f"{type_name}AvgFields", lambda f=avg_fields: f))
 
     # Build min fields type (comparable)
-    min_type = None
+    min_type: GraphQLObjectType | None = None
     if comparable_cols:
         min_fields = {}
         for col_name, trino_type in comparable_cols:
             gql_type = trino_to_graphql(trino_type)
-            min_fields[col_name] = GraphQLField(gql_type)
-        min_type = GraphQLObjectType(f"{type_name}MinFields", lambda f=min_fields: f)
+            min_fields[col_name] = GraphQLField(gql_type)  # type: ignore[arg-type]
+        min_type = cast(GraphQLObjectType, GraphQLObjectType(f"{type_name}MinFields", lambda f=min_fields: f))
 
     # Build max fields type (comparable)
-    max_type = None
+    max_type: GraphQLObjectType | None = None
     if comparable_cols:
         max_fields = {}
         for col_name, trino_type in comparable_cols:
             gql_type = trino_to_graphql(trino_type)
-            max_fields[col_name] = GraphQLField(gql_type)
-        max_type = GraphQLObjectType(f"{type_name}MaxFields", lambda f=max_fields: f)
+            max_fields[col_name] = GraphQLField(gql_type)  # type: ignore[arg-type]
+        max_type = cast(GraphQLObjectType, GraphQLObjectType(f"{type_name}MaxFields", lambda f=max_fields: f))
 
     # Build AggregateFields type
     agg_inner_fields: dict[str, GraphQLField] = {
@@ -134,18 +140,18 @@ def build_aggregate_types(
     if max_type:
         agg_inner_fields["max"] = GraphQLField(max_type)
 
-    agg_fields_type = GraphQLObjectType(
+    agg_fields_type = cast(GraphQLObjectType, GraphQLObjectType(
         f"{type_name}AggregateFields",
         lambda f=agg_inner_fields: f,
-    )
+    ))
 
     # Build top-level Aggregate type
-    aggregate_type = GraphQLObjectType(
+    aggregate_type = cast(GraphQLObjectType, GraphQLObjectType(
         f"{type_name}Aggregate",
         lambda: {
             "aggregate": GraphQLField(agg_fields_type),
             "nodes": GraphQLField(GraphQLList(GraphQLNonNull(row_type))),
         },
-    )
+    ))
 
     return aggregate_type

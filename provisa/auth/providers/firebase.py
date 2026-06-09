@@ -15,9 +15,12 @@ from __future__ import annotations
 from provisa.auth.models import AuthIdentity, AuthProvider
 from provisa.core.secrets import resolve_secrets
 
+firebase_admin = None
+credentials = None
+firebase_auth = None
 try:
     import firebase_admin
-    from firebase_admin import auth as firebase_auth, credentials
+    from firebase_admin import credentials, auth as firebase_auth
 
     _HAS_FIREBASE = True
 except ImportError:
@@ -37,16 +40,16 @@ class FirebaseAuthProvider(AuthProvider):
         # yields "" (no key file) rather than a literal path that would be opened.
         service_account_key = resolve_secrets(firebase_config.get("service_account_key") or "")
         self._project_id = project_id
-        if not firebase_admin._apps:
+        if not firebase_admin._apps:  # type: ignore[union-attr]
             cred = (
-                credentials.Certificate(service_account_key)
+                credentials.Certificate(service_account_key)  # type: ignore[union-attr]
                 if service_account_key
-                else credentials.ApplicationDefault()
+                else credentials.ApplicationDefault()  # type: ignore[union-attr]
             )
-            firebase_admin.initialize_app(cred, {"projectId": project_id})
+            firebase_admin.initialize_app(cred, {"projectId": project_id})  # type: ignore[union-attr]
 
     async def validate_token(self, token: str) -> AuthIdentity:
-        decoded = firebase_auth.verify_id_token(token)
+        decoded = firebase_auth.verify_id_token(token)  # type: ignore[union-attr]
         return AuthIdentity(
             user_id=decoded["uid"],
             email=decoded.get("email"),

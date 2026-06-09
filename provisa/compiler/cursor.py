@@ -18,6 +18,11 @@ from __future__ import annotations
 
 import base64
 import json
+from typing import Any, Protocol
+
+
+class _HasAdd(Protocol):
+    def add(self, value: Any) -> str: ...
 
 
 def encode_cursor(sort_values: list) -> str:
@@ -56,7 +61,7 @@ def cursor_where_clause(
     sort_columns: list[str],
     cursor_values: list,
     direction: str,
-    collector: object,
+    collector: _HasAdd,
     alias: str | None,
 ) -> str:
     """Build a WHERE clause fragment for cursor-based keyset pagination.
@@ -103,7 +108,7 @@ def cursor_where_clause(
 def apply_cursor_pagination(
     args: dict,
     sort_columns: list[str],
-    collector: object,
+    collector: _HasAdd,
     alias: str | None,
 ) -> tuple[str | None, int | None, bool]:
     """Process cursor pagination args and return WHERE fragment + limit + reverse flag.

@@ -501,7 +501,7 @@ def _build_column_fields(
             _type_prefix = ""
             if "__" in table.type_name:
                 _type_prefix = table.type_name.split("__", 1)[0] + "__"
-            gql_type: GraphQLObjectType = _build_object_type(
+            gql_type: GraphQLOutputType = _build_object_type(
                 col_name, object_fields, convention, _obj_registry, _type_prefix
             )
         else:
@@ -509,9 +509,11 @@ def _build_column_fields(
             if enum_gql is not None:
                 gql_type = enum_gql if meta.is_nullable else GraphQLNonNull(enum_gql)
             else:
-                gql_type = trino_to_graphql(meta.data_type)
-                if not meta.is_nullable and not isinstance(gql_type, GraphQLList):
-                    gql_type = GraphQLNonNull(gql_type)
+                scalar_type = trino_to_graphql(meta.data_type)
+                if not meta.is_nullable and not isinstance(scalar_type, GraphQLList):
+                    gql_type = GraphQLNonNull(scalar_type)
+                else:
+                    gql_type = scalar_type
         # Naming priority: explicit alias > convention > raw name
         explicit_alias = col.get("alias")
         if explicit_alias:

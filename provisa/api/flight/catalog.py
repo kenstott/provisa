@@ -248,7 +248,7 @@ def catalog_table_to_arrow_schema(table: CatalogTable) -> pa.Schema:
 
 def catalog_table_to_flight_info(
     table: CatalogTable,
-    location: flight.Location | None = None,
+    location: flight.Location | None = None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 ) -> flight.FlightInfo:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Build a FlightInfo descriptor for a catalog table."""  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     descriptor = flight.FlightDescriptor.for_path(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -261,5 +261,5 @@ def catalog_table_to_flight_info(
         ticket = flight.Ticket(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
             f'{{"domain":"{table.domain_id}","table":"{table.table_name}"}}'.encode("utf-8"),
         )
-        endpoints = [flight.FlightEndpoint(ticket, [location])]
+        endpoints = [flight.FlightEndpoint(ticket, [location])]  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     return flight.FlightInfo(schema, descriptor, endpoints, -1, -1)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

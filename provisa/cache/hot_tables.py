@@ -168,6 +168,7 @@ class HotTableManager:
     ) -> int:
         """Write rows into Redis and in-memory cache. Returns row count."""
         await self._connect()
+        assert self._redis is not None
 
         columns = list(rows[0].keys()) if rows else []
         blob_key = HOT_PREFIX + table_name + ":blob"
@@ -280,6 +281,7 @@ class HotTableManager:
     async def get_rows(self, table_name: str) -> list[dict]:
         """Fetch all rows for a hot table from Redis."""
         await self._connect()
+        assert self._redis is not None
 
         blob_key = HOT_PREFIX + table_name + ":blob"
         data = await self._redis.get(blob_key)
@@ -294,6 +296,7 @@ class HotTableManager:
     async def invalidate(self, table_name: str) -> None:
         """Delete all Redis keys for a hot table."""
         await self._connect()
+        assert self._redis is not None
         blob_key = HOT_PREFIX + table_name + ":blob"
         await self._redis.delete(blob_key)
         self._hot_tables.pop(table_name, None)
@@ -467,7 +470,7 @@ async def _openapi_list_rows(
 
     # Build query params — fill required params with enum values or skip
     params = best_op.get("parameters", [])
-    query_params: list[tuple[str, str]] = []
+    query_params: list[tuple[str, str | int | float | bool | None]] = []
     for p in params:
         if p.get("in") != "query":
             continue

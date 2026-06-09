@@ -44,6 +44,7 @@ class OAuthProvider(AuthProvider):
             resp = httpx.get(self._discovery_url, timeout=10)
             resp.raise_for_status()
             self._jwks_uri = resp.json()["jwks_uri"]
+        assert self._jwks_uri is not None
         return self._jwks_uri
 
     def _get_jwks_client(self) -> jwt.PyJWKClient:

@@ -184,7 +184,7 @@ def _serialize_arrow_table(
         import pyarrow.csv as pcsv
 
         buf = io.BytesIO()
-        pcsv.write_csv(table, buf)
+        pcsv.write_csv(table, buf)  # type: ignore[attr-defined]
         return buf.getvalue(), "text/csv", ".csv"
 
     # JSON/NDJSON — convert through Python dicts

@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import TypedDict, cast
 
 from provisa.core.models import (
+    Cardinality,
     Column,
     Domain,
     Function,
@@ -363,7 +364,7 @@ def _map_relationships(
         src_col = _resolve_column(src_gql, src_field_map)
         tgt_col = _resolve_column(tgt_gql, tgt_field_map)
 
-        cardinality = "many-to-one" if rel.rel_type == "Object" else "one-to-many"
+        cardinality = Cardinality.many_to_one if rel.rel_type == "Object" else Cardinality.one_to_many
         rel_id = f"{source_tid}.{rel.name}"
 
         result.append(Relationship(

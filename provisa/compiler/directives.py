@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from graphql import DocumentNode
 from graphql.language.ast import (
@@ -130,7 +131,7 @@ class QueryDirectives:
 # AST value extraction helper
 # ---------------------------------------------------------------------------
 
-def _arg_value(node: object) -> object:
+def _arg_value(node: Any) -> Any:
     if isinstance(node, StringValueNode):
         return node.value
     if isinstance(node, IntValueNode):
@@ -206,10 +207,12 @@ def extract_directives(document: DocumentNode) -> QueryDirectives:
                     result.redirect_format = str(fmt)
                 threshold = args.get("threshold")
                 if threshold is not None:
+                    assert isinstance(threshold, (int, float, str))
                     result.redirect_threshold = int(threshold)
             elif name == "cached":
                 ttl = args.get("ttl")
                 if ttl is not None:
+                    assert isinstance(ttl, (int, float, str))
                     result.cache_ttl = int(ttl)
             elif name == "noCache":
                 result.no_cache = True

@@ -46,11 +46,23 @@ def build_auth_provider(auth_config: dict, db_pool=None) -> AuthProvider:
     if provider_name == "keycloak":
         from provisa.auth.providers.keycloak import KeycloakAuthProvider
 
-        return KeycloakAuthProvider(auth_config.get("keycloak", {}))
+        kc = auth_config.get("keycloak", {})
+        return KeycloakAuthProvider(
+            server_url=kc["server_url"],
+            realm=kc["realm"],
+            client_id=kc["client_id"],
+            client_secret=kc.get("client_secret"),
+        )
     if provider_name == "oauth":
         from provisa.auth.providers.oauth import OAuthProvider
 
-        return OAuthProvider(auth_config.get("oauth", {}))
+        oa = auth_config.get("oauth", {})
+        return OAuthProvider(
+            discovery_url=oa["discovery_url"],
+            client_id=oa["client_id"],
+            audience=oa.get("audience"),
+            role_claim=oa.get("role_claim", "roles"),
+        )
     raise ValueError(f"Unknown auth provider: {provider_name!r}")
 
 

@@ -38,24 +38,34 @@ class PostgreSQLDriver(DirectDriver):
         min_pool: int = 1,
         max_pool: int = 5,
     ) -> None:
-        kwargs = dict(
-            host=host,
-            port=port,
-            database=database,
-            user=user,
-            password=password,
-            min_size=min_pool,
-            max_size=max_pool,
-        )
         if self._use_pgbouncer:
-            # PgBouncer transaction mode: no prepared statements
-            kwargs["statement_cache_size"] = 0
-        self._pool = await asyncpg.create_pool(**kwargs)
+            self._pool = await asyncpg.create_pool(
+                host=host,
+                port=port,
+                database=database,
+                user=user,
+                password=password,
+                min_size=min_pool,
+                max_size=max_pool,
+                statement_cache_size=0,
+            )
+        else:
+            self._pool = await asyncpg.create_pool(
+                host=host,
+                port=port,
+                database=database,
+                user=user,
+                password=password,
+                min_size=min_pool,
+                max_size=max_pool,
+            )
 
     _ACQUIRE_TIMEOUT = 10.0
 
     async def execute(self, sql: str, params: list | None = None) -> QueryResult:
-        async with self._pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
+        pool = self._pool
+        assert pool is not None
+        async with pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
             if self._use_pgbouncer:
                 # PgBouncer: use conn.fetch directly (no prepared statements)
                 if params:
@@ -90,13 +100,17 @@ class PostgreSQLDriver(DirectDriver):
         return cols
 
     async def execute_ddl(self, sql: str) -> None:
-        async with self._pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
+        pool = self._pool
+        assert pool is not None
+        async with pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
             await conn.execute(sql)
 
     async def fetch_enums(self) -> dict[str, list[str]]:
         from provisa.compiler.enum_detect import fetch_enum_registry
 
-        async with self._pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
+        pool = self._pool
+        assert pool is not None
+        async with pool.acquire(timeout=self._ACQUIRE_TIMEOUT) as conn:
             return await fetch_enum_registry(conn)
 
     async def close(self) -> None:

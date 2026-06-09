@@ -83,6 +83,7 @@ class _TableInfoProto(Protocol):
     visible_columns: list[dict]
     column_metadata: dict[str, ColumnMetadata]
     native_filter_columns: list[dict]
+    alias: str | None
 
 
 # --- Compilation context (built from SchemaInput alongside schema) ---
@@ -103,6 +104,7 @@ class TableMeta:
     column_presets: list = field(default_factory=list)
     source_type: str = ""  # source type string (e.g. "iceberg", "postgresql") for time-travel
     original_table_name: str = ""  # pre-alias name (e.g. "registered_tables"); empty if no alias
+    display_name: str = ""  # user-visible name (DB alias); empty → derived from field_name
 
 
 @dataclass(frozen=True)
@@ -198,6 +200,16 @@ class CompiledQuery:
     api_args: dict = field(default_factory=dict)
     # Python-level row limit applied after grouping (used when LATERAL ops joins are present)
     result_limit: int | None = None
+    # Aggregate MV routing fields (REQ-198/199)
+    is_aggregate: bool = False
+    agg_columns: list[str] = field(default_factory=list)
+    table: str = ""
+    filters: list[str] = field(default_factory=list)
+
+    def with_sql(self, new_sql: str) -> "CompiledQuery":
+        """Return a copy of this CompiledQuery with sql replaced."""
+        import dataclasses
+        return dataclasses.replace(self, sql=new_sql)
 
 
 # --- Build CompilationContext from SchemaInput ---
@@ -257,11 +269,12 @@ def _register_table_in_ctx(
         column_presets=table_preset_map.get(t.table_id, []),
         source_type=src_type,
         original_table_name=t.table_name if physical_name != t.table_name else "",
+        display_name=t.alias or "",
     )
     ctx.tables[t.field_name] = meta
-    _field_part = t.field_name.split("__", 1)[1] if "__" in t.field_name else t.field_name
+    _display = semantic_table_name(meta)
     ctx.virtual_columns[t.table_id] = {
-        "_name_": f"{_d2s(t.domain_id)}.{_field_part}",
+        "_name_": f"{_d2s(t.domain_id)}.{_display}",
         "_domain_": t.domain_id,
     }
     ctx.tables[f"{t.field_name}_aggregate"] = meta
@@ -778,13 +791,18 @@ def _table_ref(meta: TableMeta, use_catalog: bool) -> str:
     return f"{_q(meta.schema_name)}.{_q(meta.table_name)}"
 
 
+def semantic_table_name(meta: TableMeta) -> str:
+    """Bare (unquoted) semantic table name — DB alias if set, else field_name with domain prefix stripped."""
+    if meta.display_name:
+        return meta.display_name
+    return meta.field_name.split("__", 1)[1] if "__" in meta.field_name else meta.field_name
+
+
 def _semantic_table_ref(meta: TableMeta) -> str:
     """Semantic table reference: domain_schema.table_name (as JDBC clients see it)."""
     from provisa.compiler.naming import domain_to_sql_name
 
-    # Strip domain prefix (e.g. "ci__") from field_name — the domain is already the schema name
-    table = meta.field_name.split("__", 1)[1] if "__" in meta.field_name else meta.field_name
-    return f"{_q(domain_to_sql_name(meta.domain_id))}.{_q(table)}"
+    return f"{_q(domain_to_sql_name(meta.domain_id))}.{_q(semantic_table_name(meta))}"
 
 
 def _apply_replacements(sql: str, replacements: dict[str, str]) -> str:
@@ -907,16 +925,16 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
         semantic = _semantic_table_ref(meta)
         physical = _table_ref(meta, use_catalog=False)
         replacements[semantic] = physical
-        # Also handle snake_case variant of the semantic ref (e.g. "meta"."registered_tables")
-        # _semantic_table_ref strips the domain prefix then keeps camelCase; users may write snake_case
+        # Register all name variants: field_name part (may be camelCase) and its snake_case form
         if "__" in meta.field_name:
             table_part = meta.field_name.split("__", 1)[1]
         else:
             table_part = meta.field_name
-        snake_part = to_snake_case(table_part)
-        if snake_part != table_part:
-            domain_sql = domain_to_sql_name(meta.domain_id)
-            replacements[f"{_q(domain_sql)}.{_q(snake_part)}"] = physical
+        domain_sql = domain_to_sql_name(meta.domain_id)
+        for variant in {table_part, to_snake_case(table_part)}:
+            ref = f"{_q(domain_sql)}.{_q(variant)}"
+            if ref not in replacements:
+                replacements[ref] = physical
     sql = _apply_replacements(sql, replacements)
     return normalize_table_refs(sql, ctx)
 

@@ -31,6 +31,9 @@ def _has_aggregate(text: str) -> bool:
 class GroupByMixin:
     """Mixin for _Translator: builds implicit GROUP BY for aggregating queries."""
 
+    def _parse_expr(self, text: str) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]
+        raise NotImplementedError
+
     def _build_group_by(self, return_clause: ReturnClause) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         items = return_clause.items
         if not any(_has_aggregate(item.expression) for item in items):

@@ -33,12 +33,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 except ImportError:  # pragma: no cover
     AsyncIOScheduler = None  # type: ignore[assignment,misc]
+
+from provisa.live.outputs.sse import SSEFanout
+from provisa.live.outputs.kafka import KafkaSinkOutput
 
 log = logging.getLogger(__name__)
 
@@ -51,8 +54,8 @@ class _LiveJob:
     sql: str
     watermark_column: str
     poll_interval: int
-    fanout: object  # SSEFanout
-    kafka_outputs: list  # list[KafkaSinkOutput]
+    fanout: SSEFanout
+    kafka_outputs: list[KafkaSinkOutput]
     scheduler_job_id: str = ""
 
 
@@ -109,8 +112,6 @@ class LiveEngine:
         if query_id in self._jobs:
             log.debug("[LIVE ENGINE] query %s already registered", query_id)
             return
-
-        from provisa.live.outputs.sse import SSEFanout
 
         fanout = SSEFanout(query_id)
         job = _LiveJob(

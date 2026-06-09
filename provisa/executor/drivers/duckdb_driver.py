@@ -44,6 +44,7 @@ class DuckDBDriver(DirectDriver):
         loop = asyncio.get_event_loop()
 
         def _run():
+            assert self._conn is not None
             if params:
                 result = self._conn.execute(sql, params)
             else:

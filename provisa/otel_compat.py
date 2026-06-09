@@ -18,7 +18,7 @@ Unit tests run without opentelemetry installed; production uses the real SDK.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, cast
 
 
 class _NoopSpan:
@@ -55,6 +55,6 @@ def get_tracer(name: str) -> TracerProtocol:
     """Return the OTel tracer for *name*, or a no-op tracer if OTel is absent."""
     try:
         from opentelemetry import trace as _trace
-        return _trace.get_tracer(name)
+        return cast(TracerProtocol, _trace.get_tracer(name))
     except ImportError:
         return _NoopTracer()

@@ -17,7 +17,7 @@ import asyncpg
 from provisa.core.models import Table
 
 
-async def upsert(conn: asyncpg.Connection, table: Table) -> int:
+async def upsert(conn: asyncpg.Connection, table: Table) -> int | None:
     """Upsert a registered table and its columns. Returns the table row id."""
     table_id = await conn.fetchval(
         """

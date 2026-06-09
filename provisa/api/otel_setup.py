@@ -144,10 +144,13 @@ def attach_otlp_exporters(endpoint: str, service_name: str = "provisa") -> None:
 
         resource = Resource.create({"service.name": service_name})
 
+        from typing import cast as _cast
+        from opentelemetry.sdk.trace import TracerProvider as _SdkTracerProvider
+
         provider = trace.get_tracer_provider()
         if hasattr(provider, "add_span_processor"):
             _delay = int(os.environ.get("OTEL_SPAN_EXPORT_DELAY_MILLIS", 1000))
-            provider.add_span_processor(
+            _cast(_SdkTracerProvider, provider).add_span_processor(
                 BatchSpanProcessor(_make_span_exporter(endpoint), schedule_delay_millis=_delay)
             )
 
@@ -256,7 +259,7 @@ def _make_filtering_exporter(
         return inner
 
 
-def setup_otel(app: "object") -> None:
+def setup_otel(app: "Any") -> None:
     """Initialize OpenTelemetry tracing unconditionally.
 
     Always creates a TracerProvider so module-level tracers work everywhere.
@@ -304,9 +307,10 @@ def setup_otel(app: "object") -> None:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
         resource = Resource.create({"service.name": service_name})
-        sampler = ParentBased(TraceIdRatioBased(sample_rate)) if sample_rate < 1.0 else None
+        _sampler = ParentBased(TraceIdRatioBased(sample_rate)) if sample_rate < 1.0 else None
         provider = TracerProvider(
-            resource=resource, **({} if sampler is None else {"sampler": sampler})
+            sampler=_sampler,
+            resource=resource,
         )
         # Always buffer spans in-memory for the live trace panel
         from opentelemetry.sdk.trace import SpanProcessor

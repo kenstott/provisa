@@ -48,11 +48,12 @@ class MongoNotificationProvider(NotificationProvider):
             pipeline.append({"$match": {"operationType": filter_expr}})
 
         self._cursor = collection.watch(pipeline)
+        assert self._cursor is not None
         log.info("MongoProvider: watching collection %s", table)
 
         try:
             async for change in self._cursor:
-                op_type = change.get("operationType", "unknown")
+                op_type = str(change.get("operationType", "unknown"))
                 op = _OP_MAP.get(op_type, op_type)
 
                 if op == "delete":

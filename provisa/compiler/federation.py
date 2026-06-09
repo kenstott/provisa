@@ -17,6 +17,7 @@ Wraps an existing graphql-core schema with Federation v2 directives:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 from graphql import (
     GraphQLArgument,
@@ -26,10 +27,12 @@ from graphql import (
     GraphQLObjectType,
     GraphQLScalarType,
     GraphQLSchema,
-    GraphQLString,
+    GraphQLString as _GraphQLString,
     GraphQLUnionType,
     print_schema,
 )
+
+GraphQLString: GraphQLScalarType = cast(GraphQLScalarType, _GraphQLString)
 
 from provisa.compiler.introspect import ColumnMetadata
 
@@ -177,10 +180,10 @@ def build_federation_schema(
     fed_sdl = generate_federation_sdl(base_schema, key_directives)
 
     # _service field
-    service_type = GraphQLObjectType(
+    service_type = cast(GraphQLObjectType, GraphQLObjectType(
         "_Service",
         {"sdl": GraphQLField(GraphQLNonNull(GraphQLString))},
-    )
+    ))
 
     # Build new query fields = existing + federation fields
     existing_fields = query_type.fields
@@ -195,13 +198,13 @@ def build_federation_schema(
             GraphQLNonNull(GraphQLList(entity_union)),
             args={
                 "representations": GraphQLArgument(
-                    GraphQLNonNull(GraphQLList(GraphQLNonNull(_AnyScalar)))
+                    GraphQLNonNull(GraphQLList(GraphQLNonNull(cast(GraphQLScalarType, _AnyScalar))))
                 ),
             },
         )
         return fields
 
-    new_query = GraphQLObjectType("Query", make_query_fields)
+    new_query = cast(GraphQLObjectType, GraphQLObjectType("Query", make_query_fields))
 
     return GraphQLSchema(
         query=new_query,

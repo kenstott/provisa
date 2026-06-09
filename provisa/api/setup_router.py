@@ -180,7 +180,9 @@ async def run_setup(body: SetupRequest):
         pw_hash = bcrypt.hashpw(body.admin_password.encode("utf-8"), bcrypt.gensalt()).decode(
             "utf-8"
         )
-        async with state.pg_pool.acquire() as conn:
+        pg_pool = state.pg_pool
+        assert pg_pool is not None
+        async with pg_pool.acquire() as conn:
             existing = await conn.fetchrow(
                 "SELECT id FROM local_users WHERE username = $1", body.admin_username
             )

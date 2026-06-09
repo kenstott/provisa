@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ class WarmTableManager:
     def check_promotions(
         self,
         counter: QueryCounter,
-        trino_conn: object,
+        trino_conn: Any,
         threshold: int = DEFAULT_QUERY_THRESHOLD,
         max_rows: int = DEFAULT_MAX_ROWS,
     ) -> list[str]:
@@ -133,7 +134,7 @@ class WarmTableManager:
     def check_demotions(
         self,
         counter: QueryCounter,
-        trino_conn: object,
+        trino_conn: Any,
         threshold: int = DEFAULT_QUERY_THRESHOLD,
     ) -> list[str]:
         """Demote tables that have fallen below query threshold.

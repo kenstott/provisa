@@ -18,7 +18,7 @@ Endpoints:
 from __future__ import annotations
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 log = logging.getLogger(__name__)
@@ -121,8 +121,11 @@ async def _upsert_tables_to_semantic_layer(
     from provisa.api.admin.actions_router import _ensure_tables
 
     await _ensure_tables(pg_pool)
+    from provisa.compiler.naming import to_snake_case
+
     async with pg_pool.acquire() as conn:
         for t in tables:
+            _snake = to_snake_case(t["name"])
             tbl = Table(
                 source_id=source_id,
                 domain_id=domain_id or "",
@@ -130,6 +133,7 @@ async def _upsert_tables_to_semantic_layer(
                 table_name=t["name"],
                 governance=GovernanceLevel.pre_approved,
                 description=t.get("description"),
+                alias=_snake if _snake != t["name"] else None,
                 columns=[
                     Column(
                         name=c["name"],
@@ -183,10 +187,9 @@ async def _upsert_relationships_to_semantic_layer(
 @router.post("")
 async def register_graphql_remote_source(
     body: GraphQLRemoteSourceRequest,
-    request: Request,
 ):
     """Register a GraphQL remote source: introspect schema and auto-register tables/functions."""
-    state = request.app.state
+    from provisa.api.app import state
 
     try:
         tables, functions, auto_relationships = await _introspect_and_map(
@@ -219,8 +222,9 @@ async def register_graphql_remote_source(
     reg_dict["field_overrides"] = body.field_overrides or {}
     state.graphql_remote_sources[body.source_id] = reg_dict
 
-    if getattr(state, "pg_pool", None) is not None:
-        async with state.pg_pool.acquire() as _conn:
+    _pg_pool = state.pg_pool
+    if _pg_pool is not None:
+        async with _pg_pool.acquire() as _conn:
             await _conn.execute(
                 """
                 INSERT INTO sources (id, type, host, port, database, username, dialect, path, description)
@@ -240,9 +244,9 @@ async def register_graphql_remote_source(
             body.source_id,
             body.domain_id,
             tables,
-            state.pg_pool,
+            _pg_pool,
         )
-        await _upsert_relationships_to_semantic_layer(all_relationships, state.pg_pool, state)
+        await _upsert_relationships_to_semantic_layer(all_relationships, _pg_pool, state)
         try:
             from provisa.api.app import _rebuild_schemas
 
@@ -268,9 +272,9 @@ async def register_graphql_remote_source(
 
 
 @router.post("/{source_id}/refresh")
-async def refresh_graphql_remote_source(source_id: str, request: Request):
+async def refresh_graphql_remote_source(source_id: str):
     """Re-introspect a registered remote source and update its table/function registrations."""
-    state = request.app.state
+    from provisa.api.app import state
     sources = getattr(state, "graphql_remote_sources", {})
     if source_id not in sources:
         raise HTTPException(
@@ -297,14 +301,15 @@ async def refresh_graphql_remote_source(source_id: str, request: Request):
     reg["relationships"] = all_relationships
     state.graphql_remote_sources[source_id] = reg
 
-    if getattr(state, "pg_pool", None) is not None:
+    _pg_pool = state.pg_pool
+    if _pg_pool is not None:
         await _upsert_tables_to_semantic_layer(
             source_id,
             reg.get("domain_id", ""),
             tables,
-            state.pg_pool,
+            _pg_pool,
         )
-        await _upsert_relationships_to_semantic_layer(all_relationships, state.pg_pool, state)
+        await _upsert_relationships_to_semantic_layer(all_relationships, _pg_pool, state)
         try:
             from provisa.api.app import _rebuild_schemas
 
@@ -326,8 +331,8 @@ async def refresh_graphql_remote_source(source_id: str, request: Request):
 
 
 @router.get("")
-async def list_graphql_remote_sources(request: Request):
+async def list_graphql_remote_sources():
     """List all registered GraphQL remote sources."""
-    state = request.app.state
+    from provisa.api.app import state
     sources = getattr(state, "graphql_remote_sources", {})
     return list(sources.values())

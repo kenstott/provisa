@@ -40,6 +40,7 @@ class CorrelatedCallMixin:
 
     _lm: CypherLabelMap
     _var_table: dict
+    _call_var_to_lateral: dict
     _param_order: list
     _param_seen: set
     _params: dict
@@ -87,7 +88,7 @@ class CorrelatedCallMixin:
         inner_translator = _Translator(call.body, self._lm, self._params)
         # Pre-populate inner _var_table and mark vars as lateral-bound
         inner_translator._var_table.update(outer_bindings)
-        inner_translator._lateral_bound: set[str] = set(outer_bindings)
+        inner_translator._lateral_bound = set(outer_bindings)  # type: ignore[attr-defined]
 
         try:
             inner_select, inner_params, _ = inner_translator.translate()
@@ -100,7 +101,7 @@ class CorrelatedCallMixin:
                 self._param_order.append(p)
                 self._param_seen.add(p)
 
-        return exp.alias_(
+        return exp.alias_(  # type: ignore[return-value]
             exp.Lateral(this=exp.Subquery(this=inner_select)),
             alias=alias,
         )

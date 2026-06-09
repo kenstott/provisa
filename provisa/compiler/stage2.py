@@ -210,7 +210,7 @@ def _govern_select(node: exp.Select, gov_ctx: GovernanceContext) -> exp.Select:
         return node
 
     # --- Rewrite SELECT projection ---
-    new_exprs: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    new_exprs: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     existing_exprs = node.expressions
 
     for expr in existing_exprs:
@@ -285,7 +285,7 @@ def _maybe_mask_column(
     col: exp.Column,
     alias_to_tid: dict[str, int],
     gov_ctx: GovernanceContext,
-) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Return a mask expression if column has a masking rule, else return col unchanged."""
     tbl_ref = col.table
     col_name = col.name
@@ -320,9 +320,9 @@ def _maybe_mask_column(
 def _expand_star(
     alias_to_tid: dict[str, int],
     gov_ctx: GovernanceContext,
-) -> list[exp.Expression]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+) -> list[exp.Expr]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     """Expand SELECT * to explicit columns, filtered by visibility and masked."""
-    result: list[exp.Expression] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    result: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     for alias, tid in alias_to_tid.items():
         cols = gov_ctx.all_columns.get(tid, [])
         vis = gov_ctx.visible_columns.get(tid)

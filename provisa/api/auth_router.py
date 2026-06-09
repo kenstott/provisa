@@ -25,7 +25,9 @@ async def me(request: Request):
 
     identity = getattr(request.state, "identity", None)
 
-    async with state.pg_pool.acquire() as conn:
+    pg_pool = state.pg_pool
+    assert pg_pool is not None
+    async with pg_pool.acquire() as conn:
         role_rows = await conn.fetch("SELECT id FROM roles")
     all_role_ids = {r["id"] for r in role_rows}
 
@@ -48,7 +50,9 @@ async def me(request: Request):
         if a.role_id in all_role_ids
     ]
 
-    async with state.pg_pool.acquire() as conn:
+    pg_pool2 = state.pg_pool
+    assert pg_pool2 is not None
+    async with pg_pool2.acquire() as conn:
         org_rows = await conn.fetch(
             "SELECT m.org_id, o.name as org_name FROM user_org_memberships m "
             "JOIN orgs o ON o.id = m.org_id WHERE m.user_id = $1",
@@ -82,7 +86,9 @@ async def provider_type():
 @router.get("/invite/{token}")
 async def get_invite(token: str):
     from provisa.api.app import state
-    async with state.pg_pool.acquire() as conn:
+    pg_pool = state.pg_pool
+    assert pg_pool is not None
+    async with pg_pool.acquire() as conn:
         row = await conn.fetchrow(
             """
             SELECT i.token, i.org_id, o.name as org_name, i.role_id, i.expires_at, i.used_at
@@ -139,7 +145,9 @@ async def register(body: RegisterRequest):
     password_hash = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     user_id = str(uuid.uuid4())
 
-    async with state.pg_pool.acquire() as conn:
+    pg_pool = state.pg_pool
+    assert pg_pool is not None
+    async with pg_pool.acquire() as conn:
         existing = await conn.fetchrow("SELECT id FROM local_users WHERE username = $1", body.username)
         if existing:
             from fastapi import HTTPException

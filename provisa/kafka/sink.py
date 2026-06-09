@@ -108,6 +108,7 @@ class KafkaProducer:
                 if key_val is not None:
                     key = str(key_val).encode("utf-8")
 
+            assert self._producer is not None
             self._producer.produce(
                 topic,
                 value=value,
@@ -117,6 +118,7 @@ class KafkaProducer:
             count += 1
 
         # Trigger delivery of buffered messages (non-blocking flush)
+        assert self._producer is not None
         self._producer.poll(0)
         return count
 

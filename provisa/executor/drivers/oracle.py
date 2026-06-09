@@ -49,7 +49,9 @@ class OracleDriver(DirectDriver):
             for i in range(len(params), 0, -1):
                 exec_sql = exec_sql.replace(f"${i}", f":{i}")
 
-        async with self._pool.acquire() as conn:
+        pool = self._pool
+        assert pool is not None
+        async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(exec_sql, params or [])
                 columns = [desc[0].lower() for desc in cur.description] if cur.description else []

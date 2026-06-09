@@ -14,8 +14,10 @@ Names must be valid GraphQL identifiers: [_A-Za-z][_0-9A-Za-z]*.
 """
 
 import re
+from typing import cast
 
 import inflect as _inflect_mod
+from inflect import Word
 
 _inflect = _inflect_mod.engine()
 
@@ -48,16 +50,16 @@ def rel_field_name(target_field_name: str, cardinality: str) -> str:
     else:
         noun, modifiers = parts[0], parts[1:]
     if cardinality == "one-to-many":
-        singular = _inflect.singular_noun(noun)
+        singular = _inflect.singular_noun(cast(Word, noun))
         if singular is False:
             # noun is singular — pluralize it
-            noun = _inflect.plural_noun(noun) or noun
+            noun = _inflect.plural_noun(cast(Word, noun)) or noun
         elif singular.endswith("s") and not noun.endswith("ies"):
             # inflect returned a false singular ending in 's' (e.g. address→addres) — force plural
-            noun = _inflect.plural_noun(noun) or noun
+            noun = _inflect.plural_noun(cast(Word, noun)) or noun
         # else: genuinely plural (e.g. inquiries, orders) — leave as-is
     else:
-        singular = _inflect.singular_noun(noun)
+        singular = _inflect.singular_noun(cast(Word, noun))
         if singular:
             noun = singular
     if not verb_was_stripped and len(parts) > 1:

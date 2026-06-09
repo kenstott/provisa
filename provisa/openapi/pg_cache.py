@@ -52,6 +52,7 @@ def _schema_to_pg_cols(schema: dict | None) -> list[tuple[str, str]]:
         return []
     if schema.get("type") == "array" and "items" in schema:
         schema = schema["items"]
+    assert schema is not None
     props = schema.get("properties", {})
     return [(name, _JSON_TO_PG.get(prop.get("type", "string"), "TEXT")) for name, prop in props.items()]
 
@@ -210,7 +211,7 @@ async def cache_openapi_table(
             r.raise_for_status()
             rows = _normalize_rows(r.json())
         except Exception as exc:
-            _is_client_err = hasattr(exc, "response") and 400 <= exc.response.status_code < 500
+            _is_client_err = isinstance(exc, httpx.HTTPStatusError) and 400 <= exc.response.status_code < 500
             (_log := log.debug if _is_client_err else log.warning)(
                 "OpenAPI fetch failed for %s: %s — creating empty table", url, exc
             )
@@ -267,7 +268,7 @@ async def fill_api_table(
             return 0
         rows = _normalize_rows(data, response_root)
     except Exception as exc:
-        _is_client_err = hasattr(exc, "response") and 400 <= exc.response.status_code < 500
+        _is_client_err = isinstance(exc, httpx.HTTPStatusError) and 400 <= exc.response.status_code < 500
         (_log := log.debug if _is_client_err else log.warning)(
             "fill_api_table fetch failed for %s: %s", url, exc
         )

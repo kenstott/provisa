@@ -22,8 +22,11 @@ from provisa.auth.models import AuthIdentity, AuthProvider
 class BasicAuthProvider(AuthProvider):
     """Validates HTTP Basic credentials against the local_users DB table."""
 
-    auth_scheme: str = "basic"
     provider_name: str = "basic"
+
+    @property
+    def auth_scheme(self) -> str:
+        return "basic"
 
     def __init__(self, db_pool) -> None:
         self._pool = db_pool

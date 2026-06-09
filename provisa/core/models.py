@@ -13,7 +13,7 @@
 import re
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
 
 
 class SourceType(str, Enum):
@@ -306,8 +306,15 @@ class Table(BaseModel):
 
     source_id: str
     domain_id: str
-    schema_name: str = Field(alias="schema", default="default")
-    table_name: str = Field(alias="table")
+    schema_name: str = Field(
+        validation_alias=AliasChoices("schema", "schema_name"),
+        serialization_alias="schema",
+        default="default",
+    )
+    table_name: str = Field(
+        validation_alias=AliasChoices("table", "table_name"),
+        serialization_alias="table",
+    )
     governance: GovernanceLevel
     columns: list[Column]
     column_presets: list[ColumnPreset] = Field(default_factory=list)
@@ -433,7 +440,11 @@ class Function(BaseModel):
 
     name: str  # exposed field name
     source_id: str
-    schema_name: str = Field(alias="schema", default="public")
+    schema_name: str = Field(
+        validation_alias=AliasChoices("schema", "schema_name"),
+        serialization_alias="schema",
+        default="public",
+    )
     function_name: str
     returns: str  # registered table id (source_id.schema.table)
     arguments: list[FunctionArgument] = Field(default_factory=list)
@@ -584,6 +595,7 @@ class GovDataSubject(str, Enum):
     weather = "WEATHER"
     energy = "ENERGY"
     government = "GOVERNMENT"
+    demographics = "DEMOGRAPHICS"
 
 
 # Maps each subject to the GovData schema names it covers.

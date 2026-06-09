@@ -207,6 +207,7 @@ def _tokenize(text: str) -> tuple[list[Token], list[str]]:
         if kind == "COMMENT":
             comments.append(m.group()[2:].strip())  # strip leading //
             continue
+        assert kind is not None
         tokens.append(Token(kind, m.group(), m.start()))
     return tokens, comments
 
@@ -348,7 +349,8 @@ class _Parser:
                 limit = int(float(t.value))
 
             else:
-                raise CypherParseError(f"Unexpected token {self._peek().value!r} at pos {self._peek().pos}")
+                _bad = self._peek()
+                raise CypherParseError(f"Unexpected token {_bad.value!r} at pos {_bad.pos}" if _bad else "Unexpected end of input")
 
         # flush any remaining match clauses (e.g. no RETURN yet flushed them)
         _flush_match_step()
@@ -373,8 +375,9 @@ class _Parser:
         path_var: str | None = None
 
         # Check for path variable assignment: p = shortestPath(...)
+        _tok0 = self._peek()
         if (
-            self._peek() and self._peek().type == "IDENT"
+            _tok0 and _tok0.type == "IDENT"
             and self._pos + 1 < len(self._tokens)
             and self._tokens[self._pos + 1].type == "EQ"
         ):
@@ -395,10 +398,11 @@ class _Parser:
 
         # Handle p=((a)-[...]-(b)) — outer parens group the entire pattern.
         # Detect: next token is LPAREN and the token after is also LPAREN (node start).
+        _tok1 = self._peek()
         has_grouping_paren = (
             path_var is not None
-            and self._peek() is not None
-            and self._peek().type == "LPAREN"
+            and _tok1 is not None
+            and _tok1.type == "LPAREN"
             and self._pos + 1 < len(self._tokens)
             and self._tokens[self._pos + 1].type == "LPAREN"
         )
@@ -445,16 +449,16 @@ class _Parser:
                 variable = self._advance().value
 
         label_alternation = False
-        while self._peek() and self._peek().type == "COLON":
+        while (_tn := self._peek()) and _tn.type == "COLON":
             self._advance()
             labels.append(self._expect("IDENT").value)
             # Support Cypher 5 label alternation: (n:A|B)
-            while self._peek() and self._peek().type == "PIPE":
+            while (_tnp := self._peek()) and _tnp.type == "PIPE":
                 self._advance()  # consume |
                 labels.append(self._expect("IDENT").value)
                 label_alternation = True
 
-        if self._peek() and self._peek().type == "LBRACE":
+        if (_tnlb := self._peek()) and _tnlb.type == "LBRACE":
             props = self._parse_map_literal()
 
         self._expect("RPAREN")
@@ -469,7 +473,8 @@ class _Parser:
             # <- rel ->  means left direction for start of rel
             self._advance()
             rel = self._parse_rel_pattern()
-            if self._peek() and self._peek().type == "ARROW_RIGHT":
+            _tr = self._peek()
+            if _tr and _tr.type == "ARROW_RIGHT":
                 self._advance()
                 direction = "none"  # <-[r]-> bidirectional? treat as none
             else:
@@ -478,15 +483,17 @@ class _Parser:
         else:
             # - or ->
             self._expect("MINUS")
-            if self._peek() and self._peek().type == "LBRACKET":
+            _tlb = self._peek()
+            if _tlb and _tlb.type == "LBRACKET":
                 rel = self._parse_rel_pattern()
-                if self._peek() and self._peek().type == "ARROW_RIGHT":
+                _tar = self._peek()
+                if _tar and _tar.type == "ARROW_RIGHT":
                     self._advance()
                     direction = "right"
                 else:
                     self._expect("MINUS")
                     direction = "none"
-            elif self._peek() and self._peek().type == "ARROW_RIGHT":
+            elif (_tar2 := self._peek()) and _tar2.type == "ARROW_RIGHT":
                 self._advance()
                 rel = RelPattern(variable=None, types=[], min_hops=None, max_hops=None, direction="right")
                 direction = "right"
@@ -511,26 +518,26 @@ class _Parser:
         if t and t.type == "IDENT":
             variable = self._advance().value
 
-        while self._peek() and self._peek().type == "COLON":
+        while (_trc := self._peek()) and _trc.type == "COLON":
             self._advance()
             types.append(self._expect("IDENT").value)
-            if self._peek() and self._peek().type == "PIPE":
+            if (_trp := self._peek()) and _trp.type == "PIPE":
                 self._advance()
 
-        if self._peek() and self._peek().type == "STAR":
+        if (_trs := self._peek()) and _trs.type == "STAR":
             variable_length = True
             self._advance()
-            if self._peek() and self._peek().type == "DOTDOT":
+            if (_trdd := self._peek()) and _trdd.type == "DOTDOT":
                 # *..n
                 self._advance()
                 t = self._expect("NUMBER")
                 max_hops = int(float(t.value))
                 min_hops = 1
-            elif self._peek() and self._peek().type == "NUMBER":
+            elif (_trn := self._peek()) and _trn.type == "NUMBER":
                 n = int(float(self._advance().value))
-                if self._peek() and self._peek().type == "DOTDOT":
+                if (_trdd2 := self._peek()) and _trdd2.type == "DOTDOT":
                     self._advance()
-                    if self._peek() and self._peek().type == "NUMBER":
+                    if (_trn2 := self._peek()) and _trn2.type == "NUMBER":
                         max_hops = int(float(self._advance().value))
                     min_hops = n
                 else:
@@ -556,11 +563,11 @@ class _Parser:
     def _parse_map_literal(self) -> dict[str, Any]:
         self._expect("LBRACE")
         props: dict[str, Any] = {}
-        while self._peek() and self._peek().type != "RBRACE":
+        while (_tmp := self._peek()) and _tmp.type != "RBRACE":
             key = self._expect("IDENT").value
             self._expect("COLON")
             props[key] = self._parse_value()
-            if self._peek() and self._peek().type == "COMMA":
+            if (_tmpc := self._peek()) and _tmpc.type == "COMMA":
                 self._advance()
         self._expect("RBRACE")
         return props
@@ -591,8 +598,7 @@ class _Parser:
         _string_pred_prefixes = {"STARTS", "ENDS"}
         parts: list[str] = []
         depth = 0  # track { } depth for EXISTS/COUNT/COLLECT { } subqueries
-        while self._peek():
-            t = self._peek()
+        while (t := self._peek()):
             if t.type == "LBRACE":
                 depth += 1
             elif t.type == "RBRACE":
@@ -633,8 +639,7 @@ class _Parser:
         while self._peek() and self._peek_val() not in _stop_kws:
             expr_parts: list[str] = []
             depth = 0
-            while self._peek():
-                t = self._peek()
+            while (t := self._peek()):
                 if t.type in ("LBRACKET", "LPAREN", "LBRACE"):
                     depth += 1
                     expr_parts.append(self._advance().value)
@@ -654,7 +659,7 @@ class _Parser:
             if self._opt_keyword("AS"):
                 alias = self._expect("IDENT").value
             items.append(ReturnItem(expression=expr, alias=alias))
-            if self._peek() and self._peek().type == "COMMA":
+            if (_tri := self._peek()) and _tri.type == "COMMA":
                 self._advance()
             else:
                 break
@@ -666,8 +671,7 @@ class _Parser:
         """Parse `UNWIND <expr> AS <var>`."""
         parts: list[str] = []
         depth = 0
-        while self._peek():
-            t = self._peek()
+        while (t := self._peek()):
             if t.type in ("LBRACKET", "LPAREN", "LBRACE"):
                 depth += 1
                 parts.append(self._advance().value)
@@ -692,8 +696,7 @@ class _Parser:
         self._expect("LBRACE")
         inner_tokens: list[Token] = []
         depth = 1
-        while self._peek() is not None:
-            t = self._peek()
+        while (t := self._peek()) is not None:
             if t.type == "LBRACE":
                 depth += 1
             elif t.type == "RBRACE":
@@ -754,7 +757,7 @@ class _Parser:
             if self._match_keyword("ASC", "DESC"):
                 direction = self._advance().value.upper()
             items.append(OrderItem(expression=expr, direction=direction))
-            if self._peek() and self._peek().type == "COMMA":
+            if (_tob := self._peek()) and _tob.type == "COMMA":
                 self._advance()
             else:
                 break

@@ -62,7 +62,7 @@ async def preview_query(
     preview_cypher = _ensure_limit(cypher, limit=5)
     url = f"{base_url}/db/{database}/query/v2"
     headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    auth_arg = httpx.BasicAuth(*auth) if auth else None
+    auth_arg = httpx.BasicAuth(*auth) if auth else httpx.USE_CLIENT_DEFAULT
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(

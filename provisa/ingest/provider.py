@@ -44,7 +44,7 @@ class IngestPollingProvider(NotificationProvider):
         self._engine = engine
         self._poll_interval = poll_interval
 
-    async def watch(self, table: str) -> AsyncGenerator[ChangeEvent, None]:
+    async def watch(self, table: str, filter_expr: str | None = None) -> AsyncGenerator[ChangeEvent, None]:
         watermark: datetime = datetime.now(tz=timezone.utc)
 
         while True:
@@ -60,7 +60,7 @@ class IngestPollingProvider(NotificationProvider):
                 if ts and isinstance(ts, datetime) and ts > watermark:
                     watermark = ts
                 row_data = {k: v for k, v in row.items() if not k.startswith("_")}
-                yield ChangeEvent(operation="INSERT", row=row_data)
+                yield ChangeEvent(operation="INSERT", table=table, row=row_data)
 
     async def _poll(self, table: str, since: datetime) -> list[dict]:
         stmt = text(

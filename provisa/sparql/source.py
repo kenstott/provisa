@@ -29,6 +29,7 @@ from provisa.api_source.models import (
     ApiSourceType,
 )
 from provisa.api_source.normalizers import sparql_bindings
+from provisa.core.auth_models import ApiAuth
 
 
 @dataclass
@@ -38,7 +39,7 @@ class SparqlSourceConfig:
     source_id: str
     endpoint_url: str  # Full SPARQL endpoint URL, e.g. http://fuseki:3030/ds/sparql
     default_graph_uri: str | None = None
-    auth: object | None = None  # ApiAuth instance
+    auth: ApiAuth | None = None
     extra_params: dict[str, str] = field(default_factory=dict)
 
 

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from graphql import DocumentNode, FieldNode
+from graphql import DocumentNode, FieldNode, OperationDefinitionNode
 
 from datetime import datetime, timezone
 
@@ -328,9 +328,9 @@ def compile_mutation(
     results: list[MutationResult] = []
 
     for definition in document.definitions:
-        if not hasattr(definition, "selection_set"):
+        if not isinstance(definition, OperationDefinitionNode):
             continue
-        if hasattr(definition, "operation") and definition.operation.value != "mutation":
+        if definition.operation.value != "mutation":
             continue
 
         for sel in definition.selection_set.selections:

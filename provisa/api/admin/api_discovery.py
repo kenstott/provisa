@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import asyncpg
+from typing import cast
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from urllib.parse import urlparse
@@ -67,7 +68,10 @@ async def discover(req: DiscoverRequest):
     parsed = urlparse(req.spec_url)
     base_url = req.base_url or f"{parsed.scheme}://{parsed.netloc}"
 
-    async with state.pg_pool.acquire() as conn:
+    pool = state.pg_pool
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        conn = cast(asyncpg.Connection, _conn)
         await conn.execute(
             """
             INSERT INTO api_sources (id, type, base_url, spec_url)
@@ -92,8 +96,10 @@ async def get_candidates(source_id: str | None = None):
     if state.pg_pool is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    async with state.pg_pool.acquire() as conn:
-        candidates = await list_candidates(conn, source_id)
+    pool = state.pg_pool
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        candidates = await list_candidates(cast(asyncpg.Connection, _conn), source_id)
 
     return [c.model_dump() for c in candidates]
 
@@ -107,9 +113,11 @@ async def accept(candidate_id: int, req: AcceptRequest | None = None):
         raise HTTPException(status_code=503, detail="Database not connected")
 
     overrides = req.overrides if req else None
+    pool = state.pg_pool
+    assert pool is not None
     try:
-        async with state.pg_pool.acquire() as conn:
-            endpoint = await accept_candidate(conn, candidate_id, overrides)
+        async with pool.acquire() as _conn:
+            endpoint = await accept_candidate(cast(asyncpg.Connection, _conn), candidate_id, overrides)
     except asyncpg.UniqueViolationError as e:
         raise HTTPException(status_code=400, detail=f"Endpoint already registered: {e}")
     except ValueError as e:
@@ -126,7 +134,9 @@ async def reject(candidate_id: int):
     if state.pg_pool is None:
         raise HTTPException(status_code=503, detail="Database not connected")
 
-    async with state.pg_pool.acquire() as conn:
-        await reject_candidate(conn, candidate_id)
+    pool = state.pg_pool
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        await reject_candidate(cast(asyncpg.Connection, _conn), candidate_id)
 
     return {"status": "rejected"}

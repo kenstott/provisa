@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import strawberry
+    import strawberry.types
 
 _ANONYMOUS = "anonymous"
 

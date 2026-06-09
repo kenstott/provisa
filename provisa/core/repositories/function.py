@@ -23,7 +23,7 @@ async def upsert_function(
     conn: asyncpg.Connection,
     func: Function,
     return_schema: str | None = None,
-) -> int:
+) -> int | None:
     """Upsert a tracked DB function. Returns the row id."""
     func_id = await conn.fetchval(
         """
@@ -94,7 +94,7 @@ async def delete_function(conn: asyncpg.Connection, name: str) -> bool:
     return result == "DELETE 1"
 
 
-async def upsert_webhook(conn: asyncpg.Connection, wh: Webhook) -> int:
+async def upsert_webhook(conn: asyncpg.Connection, wh: Webhook) -> int | None:
     """Upsert a tracked webhook. Returns the row id."""
     wh_id = await conn.fetchval(
         """

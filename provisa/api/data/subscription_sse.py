@@ -16,12 +16,15 @@ import asyncio
 import json
 import logging
 import os
-from typing import AsyncGenerator
+from typing import TYPE_CHECKING, Any, AsyncGenerator, cast
+
+if TYPE_CHECKING:
+    from provisa.subscriptions.pg_provider import PgNotificationProvider
 from urllib.parse import urlparse
 
 from fastapi import Request
 from fastapi.responses import JSONResponse, StreamingResponse
-from graphql.language.ast import OperationDefinitionNode, SelectionSetNode
+from graphql.language.ast import FieldNode, OperationDefinitionNode, SelectionSetNode
 from graphql.language import print_ast
 
 log = logging.getLogger(__name__)
@@ -31,7 +34,7 @@ def _collect_related_tables(selection_set: SelectionSetNode, type_name: str, ctx
     """Recursively collect physical table names referenced via joins in the selection."""
     tables: set[str] = set()
     for sel in selection_set.selections:
-        if not hasattr(sel, "name"):
+        if not isinstance(sel, FieldNode):
             continue
         join_key = (type_name, sel.name.value)
         if join_key in ctx.joins:
@@ -73,7 +76,7 @@ async def handle_subscription_sse(
         if isinstance(defn, OperationDefinitionNode):
             sub_selection = defn.selection_set
             for sel in defn.selection_set.selections:
-                if hasattr(sel, "name"):
+                if isinstance(sel, FieldNode):
                     sub_fields.append(sel.name.value)
 
     if not sub_fields or not sub_selection:
@@ -100,7 +103,7 @@ async def handle_subscription_sse(
         )
         if (
             sub_selection.selections
-            and hasattr(sub_selection.selections[0], "selection_set")
+            and isinstance(sub_selection.selections[0], FieldNode)
             and sub_selection.selections[0].selection_set
         )
         else set()
@@ -174,9 +177,12 @@ async def handle_subscription_sse(
         q_doc = _parse(schema, query_text, variables)
         result = await _handle_query(q_doc, ctx, rls, state, variables, role, "json", role_id)
         # JSONResponse stores serialized bytes in .body
-        if hasattr(result, "body"):
-            return json.loads(result.body)
-        return result
+        if isinstance(result, JSONResponse):
+            body = result.body
+            if isinstance(body, memoryview):
+                return json.loads(bytes(body))
+            return json.loads(body)
+        return result  # type: ignore[return-value]
 
     async def generate() -> AsyncGenerator[str, None]:
         task = asyncio.create_task(_on_disconnect())
@@ -223,14 +229,16 @@ async def handle_subscription_sse(
                 if use_polling_fallback:
                     from provisa.subscriptions.polling_provider import PollingNotificationProvider
 
+                    watermark_col: str = cast(str, provider_config["watermark_column"])
                     provider = PollingNotificationProvider(
                         pool=provider_config["pool"],
-                        watermark_column=provider_config["watermark_column"],
+                        watermark_column=watermark_col,
                     )
                 elif use_trino_polling:
                     import os
                     from provisa.subscriptions.trino_polling_provider import TrinoPollingProvider
 
+                    assert effective_watermark is not None
                     provider = TrinoPollingProvider(
                         host=os.environ.get("TRINO_HOST", "localhost"),
                         port=int(os.environ.get("TRINO_PORT", "8080")),
@@ -255,7 +263,7 @@ async def handle_subscription_sse(
                     and hasattr(provider, "watch_many")
                 )
                 watcher = (
-                    provider.watch_many(all_watch_tables)
+                    cast("PgNotificationProvider", provider).watch_many(all_watch_tables)
                     if use_many
                     else provider.watch(table_name)
                 )
@@ -349,9 +357,12 @@ async def _launch_kafka_sink(
 
         q_doc = _parse(schema, query_text, variables)
         result = await _handle_query(q_doc, ctx, rls, state, variables, role, "json", role_id)
-        if hasattr(result, "body"):
-            return json.loads(result.body)
-        return result
+        if isinstance(result, JSONResponse):
+            body = result.body
+            if isinstance(body, memoryview):
+                return json.loads(bytes(body))
+            return json.loads(body)
+        return result  # type: ignore[return-value]
 
     async def _sink_loop() -> None:
         from provisa.kafka.sink import KafkaProducer
@@ -412,7 +423,9 @@ async def _launch_kafka_sink(
                 and hasattr(provider, "watch_many")
             )
             watcher = (
-                provider.watch_many(all_watch_tables) if use_many else provider.watch(table_name)
+                cast("PgNotificationProvider", provider).watch_many(all_watch_tables)
+                if use_many
+                else provider.watch(table_name)
             )
             async for _event in watcher:
                 try:

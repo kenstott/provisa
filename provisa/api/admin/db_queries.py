@@ -10,17 +10,19 @@ from __future__ import annotations
 
 import asyncpg
 import inflect
+from typing import cast
+from inflect import Word as InflectWord
 
 _inflect = inflect.engine()
 
 
 def _to_singular(camel: str) -> str:
     """Singularize camelCase word using inflect with round-trip validation."""
-    candidate = _inflect.singular_noun(camel)
+    candidate = _inflect.singular_noun(cast(InflectWord, camel))
     if candidate is False:
         return camel  # already singular
     # Validate: if round-trip doesn't reconstruct original, inflect got it wrong
-    if _inflect.plural(candidate) == camel:
+    if _inflect.plural(cast(InflectWord, candidate)) == camel:
         return candidate
     return camel
 
