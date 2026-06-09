@@ -12,6 +12,8 @@ services:
       POSTGRES_DB: provisa
       POSTGRES_USER: provisa
       POSTGRES_PASSWORD: provisa
+    ports:
+      - "5432:5432"
     volumes:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
       - pg_data:/var/lib/postgresql/data
@@ -48,6 +50,8 @@ services:
   trino:
     image: trinodb/trino:480
     mem_limit: 10g
+    ports:
+      - "8080:8080"
     volumes:
       - ./trino/etc/config.properties:/etc/trino/config.properties:ro
       - ./trino/etc/jvm.config:/etc/trino/jvm.config:ro
