@@ -137,11 +137,31 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
         from provisa.api_source.trino_cache import rewrite_all_from_cache
 
         _qualified = qualify_with_catalogs(governed_semantic, ctx)
-        _rewrites, _values_ctes = await _materialize_api_to_trino_cache(_qualified, None, state)
+        _rewrites, _values_ctes = await _materialize_api_to_trino_cache(_qualified, state)
         for _tn, _entry in _values_ctes.items():
             _qualified = build_values_cte_sql(_qualified, _tn, _entry)
         if _rewrites:
             _qualified = rewrite_all_from_cache(_qualified, _rewrites)
+        # Detect unrewritten API-source catalogs (e.g. graphql_remote tables with required filters)
+        from provisa.compiler.nf_extractor import find_api_table_names as _find_tbls
+        from provisa.api.data.endpoint import _lookup_gql_remote_table as _lookup_gql
+        import sqlglot as _sg
+        import sqlglot.expressions as _exp
+        try:
+            _tree = _sg.parse_one(_qualified, dialect="postgres")
+            for _tbl in _tree.find_all(_exp.Table):
+                if _tbl.catalog and _tbl.name not in _rewrites and _tbl.name not in _values_ctes:
+                    _gql_reg, _gql_tbl = _lookup_gql(state, _tbl.name)
+                    if _gql_tbl is not None and _gql_tbl.get("required_args"):
+                        _req = [a["name"] for a in _gql_tbl["required_args"]]
+                        raise ValueError(
+                            f"Table {_tbl.name!r} requires filter(s) {_req} — "
+                            "add a WHERE clause with the required parameter(s)"
+                        )
+        except ValueError:
+            raise
+        except Exception:
+            pass
         trino_sql = transpile_to_trino(_qualified)
         return _Plan(
             route=Route.TRINO,
@@ -172,10 +192,13 @@ async def _execute_plan(plan: _Plan) -> QueryResult:
     if plan.route == Route.TRINO:
         if state.trino_conn is None:
             raise RuntimeError("Trino connection not available")
+        assert plan.trino_sql is not None
+        _trino_conn = state.trino_conn
+        _trino_sql = plan.trino_sql
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: execute_trino(state.trino_conn, plan.trino_sql, params=plan.exec_params),
+            lambda: execute_trino(_trino_conn, _trino_sql, params=plan.exec_params),
         )
     else:
         result = await execute_direct(

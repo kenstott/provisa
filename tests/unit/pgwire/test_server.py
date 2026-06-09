@@ -82,8 +82,16 @@ class TestInferBvtype:
         rows = [({"key": "val"},)]
         assert _infer_bvtype(rows, 0) == BVType.JSON
 
-    def test_list_json(self):
+    def test_list_integer_array(self):
         rows = [([1, 2, 3],)]
+        assert _infer_bvtype(rows, 0) == BVType.INTEGERARRAY
+
+    def test_list_string_array(self):
+        rows = [(["a", "b"],)]
+        assert _infer_bvtype(rows, 0) == BVType.STRINGARRAY
+
+    def test_list_empty_json(self):
+        rows = [([],)]
         assert _infer_bvtype(rows, 0) == BVType.JSON
 
     def test_str(self):

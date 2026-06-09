@@ -70,6 +70,8 @@ def _make_ctx_with_fk():
 
     dogs_tm = MagicMock(spec=TableMeta)
     dogs_tm.table_name = "dogs"
+    dogs_tm.field_name = "public__dogs"
+    dogs_tm.display_name = "dogs"
     dogs_tm.schema_name = "public"
     dogs_tm.catalog_name = "provisa"
     dogs_tm.domain_id = "public"
@@ -78,6 +80,8 @@ def _make_ctx_with_fk():
 
     breeds_tm = MagicMock(spec=TableMeta)
     breeds_tm.table_name = "breeds"
+    breeds_tm.field_name = "public__breeds"
+    breeds_tm.display_name = "breeds"
     breeds_tm.schema_name = "public"
     breeds_tm.catalog_name = "provisa"
     breeds_tm.domain_id = "public"
@@ -88,6 +92,8 @@ def _make_ctx_with_fk():
     jm.source_column = "breed_id"
     jm.target_column = "id"
     jm.target = breeds_tm
+    jm.source_constant = None
+    jm.source_expr = None
 
     ctx = MagicMock()
     ctx.tables = {"dog": dogs_tm, "breed": breeds_tm}

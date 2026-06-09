@@ -82,6 +82,8 @@ def _make_ctx_with_tables():
 
     dogs_tm = MagicMock(spec=TableMeta)
     dogs_tm.table_name = "dogs"
+    dogs_tm.field_name = "public__dogs"
+    dogs_tm.display_name = "dogs"
     dogs_tm.schema_name = "public"
     dogs_tm.catalog_name = "provisa"
     dogs_tm.domain_id = "public"

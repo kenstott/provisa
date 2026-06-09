@@ -111,7 +111,13 @@ def _infer_bvtype(rows: list[tuple], col_idx: int) -> BVType:
             return BVType.DATE
         if isinstance(v, datetime.time):
             return BVType.TIME
-        if isinstance(v, (dict, list)):
+        if isinstance(v, list):
+            if v and isinstance(v[0], int):
+                return BVType.INTEGERARRAY
+            if v and isinstance(v[0], str):
+                return BVType.STRINGARRAY
+            return BVType.JSON
+        if isinstance(v, dict):
             return BVType.JSON
         return BVType.TEXT
     return BVType.TEXT
@@ -163,6 +169,12 @@ class ProvisaSession(Session):
     def execute_sql(self, sql: str, params=None) -> ProvisaQueryResult:
         from provisa.pgwire.catalog import answer, classify
 
+        import logging as _lg
+        import os as _os
+        _pglog = _os.path.expanduser("~/pgwire_debug.log")
+        _lg.getLogger("uvicorn.error").warning("[PGWIRE] sql=%r", sql.strip()[:300])
+        with open(_pglog, "a") as _f:
+            _f.write(f"[PGWIRE] sql={sql.strip()[:2000]!r}\n")
         stripped = _substitute_params(sql.strip(), params)
         if classify(stripped) == "INTERCEPT":
             from provisa.api.app import state
@@ -189,6 +201,11 @@ class ProvisaSession(Session):
         except PermissionError as exc:
             raise PermissionError(str(exc)) from exc
         except Exception as exc:
+            import traceback as _tb
+            _tb_str = _tb.format_exc()
+            _lg.getLogger("uvicorn.error").warning("[PGWIRE] EXCEPTION sql=%r tb=%s", stripped[:300], _tb_str)
+            with open(_pglog, "a") as _f:
+                _f.write(f"[PGWIRE] EXCEPTION sql={stripped[:500]!r}\n{_tb_str}\n")
             raise RuntimeError(str(exc)) from exc
 
         return ProvisaQueryResult(result, stripped)
@@ -390,7 +407,7 @@ class ProvisaServer(BuenaVistaServer):
         conn: ProvisaConnection,
         ssl_ctx: ssl.SSLContext | None = None,
     ) -> None:
-        socketserver.ThreadingTCPServer.__init__(self, server_address, ProvisaHandler)
+        socketserver.ThreadingTCPServer.__init__(self, server_address, ProvisaHandler)  # type: ignore[arg-type]
         self.conn = conn
         self.rewriter = None
         self.extensions: dict = {}

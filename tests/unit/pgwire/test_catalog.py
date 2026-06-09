@@ -32,6 +32,7 @@ class _TableMeta:
     type_name: str = ""
     source_type: str = ""
     original_table_name: str = ""
+    display_name: str = ""
     column_presets: dict = field(default_factory=dict)
 
 
