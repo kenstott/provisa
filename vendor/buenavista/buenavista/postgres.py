@@ -10,8 +10,8 @@
 
 import datetime
 import decimal
-import dateutil.parser
 import hashlib
+import uuid as _uuid_mod
 import io
 import json
 import logging
@@ -157,7 +157,7 @@ def _numeric_to_pg_binary(v) -> bytes:
     d_abs = abs(d)
 
     _, _, exp = d_abs.as_tuple()
-    dscale = max(0, -exp) if exp < 0 else 0
+    dscale = max(0, -exp) if isinstance(exp, int) and exp < 0 else 0
 
     s = format(d_abs, "f")
     if "." in s:
@@ -199,7 +199,7 @@ def _numeric_to_pg_binary(v) -> bytes:
 
 PG_UNKNOWN = (705, str)
 BVTYPE_TO_PGTYPE = {
-    BVType.NULL: (-1, lambda v: None),
+    BVType.NULL: (-1, lambda *_: None),
     BVType.ARRAY: (
         2277,
         lambda v: "{" + ",".join(v) + "}",
@@ -314,9 +314,10 @@ class BVContext:
         self.result_cache = {}
         self.has_error = False
         self.authenticated = False
-        self.salt = None
+        self.salt: bytes | None = None
 
     def get_hashed_password(self, auth: dict) -> str:
+        assert self.salt is not None
         user = self.params["user"]
         password = auth[user]
         first = hashlib.md5(password.encode("utf-8") + user.encode("utf-8")).hexdigest()
@@ -348,7 +349,7 @@ class BVContext:
 
     def describe_portal(self, name: str) -> QueryResult:
         stmt, params, result_fmt = self.portals[name]
-        sql, param_oids = self.stmts[stmt]
+        sql, _ = self.stmts[stmt]
         query_result = self.execute_sql(sql=sql, params=params, result_fmt=result_fmt)
         self.result_cache[name] = query_result
         return query_result
@@ -371,7 +372,7 @@ class BVContext:
             return query_result
         else:
             stmt, params, result_fmt = self.portals[name]
-            sql, param_oids = self.stmts[stmt]
+            sql, _ = self.stmts[stmt]
             qr = self.execute_sql(sql=sql, params=params, result_fmt=result_fmt)
             return qr
 
@@ -381,7 +382,7 @@ class BVContext:
     def close_statement(self, name: str):
         del self.stmts[name]
 
-    def add_portal(self, name: str, stmt: str, params: Dict[str, str], result_formats: List[int]):
+    def add_portal(self, name: str, stmt: str, params: List, result_formats: List[int]):
         self.portals[name] = (stmt, params, result_formats)
 
     def close_portal(self, name: str):
@@ -401,9 +402,9 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         self.r = BVBuffer(self.rfile)
         ctx = None
         try:
-            ctx = self.handle_startup(self.server.conn)
+            ctx = self.handle_startup(self.server.conn)  # type: ignore[attr-defined]
             if ctx:
-                self.server.ctxts[ctx.process_id] = ctx
+                self.server.ctxts[ctx.process_id] = ctx  # type: ignore[attr-defined]
             while ctx:
                 type_code = self.r.read_byte()
                 if not type_code or type_code == ClientCommand.TERMINATE:
@@ -413,7 +414,7 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
                 if msglen > 4:
                     payload = self.r.read_bytes(msglen - 4)
                 else:
-                    payload = None
+                    payload = b""
 
                 if not ctx.authenticated:
                     if type_code == ClientCommand.PASSWORD_MESSAGE:
@@ -444,11 +445,11 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
             self.send_error(e)
 
         if ctx:
-            self.server.conn.close_session(ctx.session)
-            del self.server.ctxts[ctx.process_id]
+            self.server.conn.close_session(ctx.session)  # type: ignore[attr-defined]
+            del self.server.ctxts[ctx.process_id]  # type: ignore[attr-defined]
             ctx = None
 
-    def handle_startup(self, conn: Connection) -> BVContext:
+    def handle_startup(self, conn: Connection) -> Optional["BVContext"]:
         msglen = self.r.read_uint32() - 4
         code = self.r.read_uint32()
         if code == 80877103:  ## SSL request
@@ -458,22 +459,22 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
             msg = [x.decode("utf-8") for x in self.r.read_bytes(msglen - 4).split(NULL_BYTE)]
             params = dict(zip(msg[::2], msg[1::2]))
             logger.info("Client connection params: %s", params)
-            ctx = BVContext(conn.create_session(), self.server.rewriter, params)
+            ctx = BVContext(conn.create_session(), self.server.rewriter, params)  # type: ignore[attr-defined]
             self.send_auth_request(ctx)
             return ctx
         elif code == 80877102:  ## Cancel request
             process_id, secret_key = self.r.read_uint32(), self.r.read_uint32()
-            ctx = self.server.ctxts.get(process_id)
+            ctx = self.server.ctxts.get(process_id)  # type: ignore[attr-defined]
             if ctx and ctx.secret_key == secret_key:
-                self.server.conn.close_session(ctx.session)
-                del self.server.ctxts[ctx.process_id]
+                self.server.conn.close_session(ctx.session)  # type: ignore[attr-defined]
+                del self.server.ctxts[ctx.process_id]  # type: ignore[attr-defined]
                 ctx = None
             return None
         else:
             raise Exception(f"Unsupported startup message: {code}")
 
     def send_auth_request(self, ctx: BVContext):
-        if self.server.auth is None:
+        if self.server.auth is None:  # type: ignore[attr-defined]
             self.send_authentication_ok()
             self.handle_post_auth(ctx)
         else:
@@ -489,7 +490,7 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
 
     def handle_md5_password(self, ctx: BVContext, payload: bytes):
         client_side = payload.decode("utf-8").rstrip("\x00")
-        server_side = ctx.get_hashed_password(self.server.auth)
+        server_side = ctx.get_hashed_password(self.server.auth)  # type: ignore[attr-defined]
         if client_side == server_side:
             self.send_authentication_ok()
             self.handle_post_auth(ctx)
@@ -497,7 +498,7 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
             self.send_error("Invalid password")
 
     def handle_post_auth(self, ctx: BVContext):
-        self.send_parameter_status(self.server.conn.parameters())
+        self.send_parameter_status(self.server.conn.parameters())  # type: ignore[attr-defined]
         self.send_backend_key_data(ctx)
         self.send_ready_for_query(ctx)
         ctx.authenticated = True
@@ -509,7 +510,7 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         try:
             if req := Extension.check_json(decoded):
                 method = req.get("method")
-                extension = self.server.extensions.get(method)
+                extension = self.server.extensions.get(method)  # type: ignore[attr-defined]
                 if not extension:
                     raise Exception("Unknown method: " + str(method))
                 else:
@@ -543,7 +544,7 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         buf = BVBuffer(io.BytesIO(ba[query_idx + 1 :]))
         num_params = buf.read_int16()
         param_oids = []
-        for i in range(num_params):
+        for _ in range(num_params):
             param_oids.append(buf.read_int32())
         ctx.add_statement(stmt, sql, param_oids)
         self.send_parse_complete()
@@ -570,12 +571,17 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
         for i in range(num_params):
             nb = buf.read_int32()
             v = buf.read_bytes(nb)
-            typeoid = ctx.stmts[stmt][1][i]
+            stmt_oids = ctx.stmts[stmt][1]
+            typeoid = stmt_oids[i] if i < len(stmt_oids) else 0
             logger.debug("Format: %d, Type: %d", formats[i], typeoid)
             if formats[i] == 0:
                 decoded = v.decode("utf-8")
                 if typeoid == 0:
-                    params.append(dateutil.parser.parse(decoded))
+                    # Unspecified type — store raw string; do not date-parse
+                    if decoded.startswith("{") and decoded.endswith("}"):
+                        params.append(decoded[1:-1].split(","))
+                    else:
+                        params.append(decoded)
                 else:
                     if decoded.startswith("{") and decoded.endswith("}"):
                         params.append(decoded[1:-1].split(","))
@@ -814,4 +820,5 @@ class BuenaVistaServer(socketserver.ThreadingTCPServer):
         self.auth = auth
 
     def verify_request(self, request, client_address) -> bool:
+        del request
         return client_address[0] == "127.0.0.1" or "BUENAVISTA_HOST" in os.environ

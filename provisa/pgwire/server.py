@@ -164,6 +164,7 @@ class ProvisaSession(Session):
         return False
 
     def load_df_function(self, table: str):
+        del table
         return None
 
     def execute_sql(self, sql: str, params=None) -> ProvisaQueryResult:
@@ -284,7 +285,7 @@ class ProvisaHandler(BuenaVistaHandler):
             raise Exception(f"Unsupported startup message code: {code}")
 
     def send_auth_request(self, ctx: BVContext) -> None:
-        # PG auth type 3 = cleartext password
+        del ctx
         self.wfile.write(struct.pack("!cii", ServerResponse.AUTHENTICATION_REQUEST, 8, 3))
         self.wfile.flush()
 
@@ -329,6 +330,26 @@ class ProvisaHandler(BuenaVistaHandler):
         self.send_authentication_ok()
         self.handle_post_auth(ctx)
 
+    def handle_describe(self, ctx: BVContext, payload: bytes) -> None:
+        ba = bytearray(payload)
+        if ba[0] == ord("S"):
+            stmt = ba[1 : len(ba) - 1].decode("utf-8")
+            try:
+                # describe_statement executes with $N→NULL (0-row result) but gives us column schema
+                query_result = ctx.describe_statement(stmt)
+            except Exception as e:
+                self.send_error(e, ctx)
+                return
+            sql = ctx.stmts[stmt][0]
+            indices = {int(m) for m in re.findall(r"\$(\d+)", sql)}
+            # OID 0 = unspecified: tells client how many params without declaring types
+            param_oids = [0] * max(indices) if indices else ctx.stmts[stmt][1]
+            self.send_paramter_description(param_oids)
+            if query_result.has_results():
+                self.send_row_description(query_result)
+            return
+        super().handle_describe(ctx, payload)
+
     def handle_query(self, ctx: BVContext, payload: bytes) -> None:
         decoded = payload.decode("utf-8").rstrip("\x00")
 
@@ -343,7 +364,7 @@ class ProvisaHandler(BuenaVistaHandler):
                 from provisa.pgwire.copy_handler import CopyHandler
 
                 try:
-                    nrows = CopyHandler(self).handle(ctx, stmt)
+                    nrows = CopyHandler(self).handle(ctx, stmt)  # type: ignore[arg-type]
                     self.send_command_complete(f"COPY {nrows}\x00")
                 except PermissionError as exc:
                     self._send_pg_error("ERROR", "42501", str(exc))
@@ -407,7 +428,7 @@ class ProvisaServer(BuenaVistaServer):
         conn: ProvisaConnection,
         ssl_ctx: ssl.SSLContext | None = None,
     ) -> None:
-        socketserver.ThreadingTCPServer.__init__(self, server_address, ProvisaHandler)  # type: ignore[arg-type]
+        socketserver.ThreadingTCPServer.__init__(self, server_address, ProvisaHandler)  # type: ignore
         self.conn = conn
         self.rewriter = None
         self.extensions: dict = {}
@@ -416,6 +437,7 @@ class ProvisaServer(BuenaVistaServer):
         self.ssl_ctx = ssl_ctx
 
     def verify_request(self, request, client_address) -> bool:
+        del request, client_address
         return True
 
 

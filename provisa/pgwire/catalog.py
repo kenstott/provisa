@@ -1101,7 +1101,7 @@ def answer(sql: str, role_id: str, state):
             import os as _os
             _pglog = _os.path.expanduser("~/pgwire_debug.log")
             with open(_pglog, "a") as _f:
-                _f.write(f"[CATALOG] constraint sql={stripped[:300]!r} rows={len(rows)} first={rows[:2]!r}\n")
+                _f.write(f"[CATALOG] constraint sql={stripped[:300]!r} rows={len(rows)} all={rows!r}\n")
         return QueryResult(rows=rows, column_names=col_names)
     except Exception as exc:
         import logging as _logging
