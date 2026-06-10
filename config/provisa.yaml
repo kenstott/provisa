@@ -105,6 +105,7 @@ roles:
   - id: analyst
     capabilities:
       - query_development
+      - ad_hoc_query
     domain_access:
       - sales-analytics
 
