@@ -2061,7 +2061,7 @@ async def _execute_one_field(
     # Cache check
     rls_rules_for_key = rls.rules if rls.has_rules() else {}
     ck = cache_key(compiled.sql, compiled.params, role_id, rls_rules_for_key)
-    cached = None if no_cache else await check_cache(state.response_cache_store, ck)
+    cached = None if (no_cache or output_format != "json") else await check_cache(state.response_cache_store, ck)
     if cached is not None:
         cached_data = json.loads(cached.data)
         field_rows = cached_data.get("data", {}).get(root_field, [])
