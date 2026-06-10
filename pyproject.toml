@@ -121,9 +121,10 @@ exclude_lines = [
 pythonVersion = "3.12"
 typeCheckingMode = "standard"
 include = ["provisa"]
-exclude = ["provisa/proto", "**/__pycache__"]
+exclude = ["provisa/proto", "**/__pycache__", "**/node_modules", "**/.*", ".venv"]
 reportMissingImports = "warning"
 reportMissingModuleSource = "none"
+extraPaths = ["vendor/buenavista"]
 
 [tool.importlinter]
 root_package = "provisa"
