@@ -104,6 +104,16 @@ TYPE_OIDS = {
     ),
     1700: ("NUMERICOID", _decode_numeric, decimal.Decimal(0)),
     2950: ("UUIDOID", lambda v: str(_uuid_mod.UUID(bytes=bytes(v))), ""),
+    26: ("OIDOID", lambda v: struct.unpack("!I", v)[0], 0),
+    0: ("UNSPECIFIED", lambda v: v.decode("utf-8"), ""),
+    1028: (
+        "_OIDOID",
+        lambda v: [
+            struct.unpack_from("!I", v, 20 + i * 8 + 4)[0]
+            for i in range(struct.unpack_from("!i", v, 12)[0])
+        ],
+        [],
+    ),
 }
 
 
@@ -223,7 +233,8 @@ BVTYPE_TO_PGTYPE = {
     BVType.INTEGERARRAY: (
         1007,
         lambda v: "{" + ",".join(str(x) for x in v) + "}",
-        lambda r: ("{" + ",".join(str(x) for x in r) + "}").encode("utf-8"),
+        lambda r: struct.pack("!iiiii", 1, 0, 23, len(r), 1)
+        + b"".join(struct.pack("!ii", 4, x) for x in r),
     ),
     BVType.INTERVAL: (
         1186,
@@ -238,7 +249,13 @@ BVTYPE_TO_PGTYPE = {
     BVType.STRINGARRAY: (
         1009,
         lambda v: "{" + ",".join(v) + "}",
-        lambda r: ("{" + ",".join(r) + "}").encode("utf-8"),
+        lambda r: struct.pack("!iiiii", 1, 0, 25, len(r), 1)
+        + b"".join(
+            (struct.pack("!i", len(s.encode("utf-8"))) + s.encode("utf-8"))
+            if s is not None
+            else struct.pack("!i", -1)
+            for s in r
+        ),
     ),
     BVType.TEXT: (25, str, lambda r: r.encode("utf-8")),
     BVType.TIME: (
@@ -627,6 +644,8 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
             raise Exception(f"Unknown describe type: {describe_type}")
         if query_result.has_results():
             self.send_row_description(query_result)
+        else:
+            self.send_no_data()
 
     def handle_execute(self, ctx: BVContext, payload: bytes):
         logger.debug("Handling execute")
@@ -786,6 +805,9 @@ class BuenaVistaHandler(socketserver.StreamRequestHandler):
 
     def send_close_complete(self):
         self.wfile.write(struct.pack("!ci", ServerResponse.CLOSE_COMPLETE, 4))
+
+    def send_no_data(self):
+        self.wfile.write(struct.pack("!ci", ServerResponse.NO_DATA, 4))
 
     def send_portal_suspend(self):
         self.wfile.write(struct.pack("!ci", ServerResponse.PORTAL_SUSPENDED, 4))

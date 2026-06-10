@@ -71,6 +71,8 @@ def _pg_literal(v) -> str:
         return str(v)
     if isinstance(v, (bytes, bytearray)):
         return "E'\\\\x" + v.hex() + "'"
+    if isinstance(v, (list, tuple)):
+        return "'{" + ",".join(str(x) for x in v) + "}'"
     s = str(v)
     return "'" + s.replace("'", "''") + "'"
 
@@ -90,6 +92,31 @@ def _tag_from_sql(sql: str) -> str:
     if m:
         return m.group(1).upper().split()[0]
     return ""
+
+
+_DUCKDB_TYPE_TO_BVTYPE: dict[str, BVType] = {
+    "INTEGER[]": BVType.INTEGERARRAY,
+    "VARCHAR[]": BVType.STRINGARRAY,
+    "BOOLEAN": BVType.BOOL,
+    "FLOAT": BVType.FLOAT,
+    "DOUBLE": BVType.FLOAT,
+    "DECIMAL": BVType.DECIMAL,
+    "TIMESTAMP": BVType.TIMESTAMP,
+    "DATE": BVType.DATE,
+    "TIME": BVType.TIME,
+}
+_DUCKDB_INT_TYPES = {
+    "INTEGER", "BIGINT", "HUGEINT", "SMALLINT", "TINYINT",
+    "UBIGINT", "UINTEGER", "USMALLINT", "UTINYINT",
+}
+
+
+def _duckdb_type_to_bvtype(type_str: str) -> BVType:
+    if type_str in _DUCKDB_TYPE_TO_BVTYPE:
+        return _DUCKDB_TYPE_TO_BVTYPE[type_str]
+    if type_str in _DUCKDB_INT_TYPES:
+        return BVType.BIGINT
+    return BVType.TEXT
 
 
 def _infer_bvtype(rows: list[tuple], col_idx: int) -> BVType:
@@ -131,7 +158,13 @@ class ProvisaQueryResult(BVQueryResult):
         self._rows = trino_result.rows
         self._cols = trino_result.column_names
         self._status = _tag_from_sql(original_sql)
-        self._types = [_infer_bvtype(self._rows, i) for i in range(len(self._cols))]
+        if trino_result.column_types:
+            self._types = [
+                _duckdb_type_to_bvtype(t) if t else _infer_bvtype(self._rows, i)
+                for i, t in enumerate(trino_result.column_types)
+            ]
+        else:
+            self._types = [_infer_bvtype(self._rows, i) for i in range(len(self._cols))]
 
     def has_results(self) -> bool:
         return len(self._cols) > 0
@@ -170,12 +203,6 @@ class ProvisaSession(Session):
     def execute_sql(self, sql: str, params=None) -> ProvisaQueryResult:
         from provisa.pgwire.catalog import answer, classify
 
-        import logging as _lg
-        import os as _os
-        _pglog = _os.path.expanduser("~/pgwire_debug.log")
-        _lg.getLogger("uvicorn.error").warning("[PGWIRE] sql=%r", sql.strip()[:300])
-        with open(_pglog, "a") as _f:
-            _f.write(f"[PGWIRE] sql={sql.strip()[:2000]!r}\n")
         stripped = _substitute_params(sql.strip(), params)
         if classify(stripped) == "INTERCEPT":
             from provisa.api.app import state
@@ -202,11 +229,7 @@ class ProvisaSession(Session):
         except PermissionError as exc:
             raise PermissionError(str(exc)) from exc
         except Exception as exc:
-            import traceback as _tb
-            _tb_str = _tb.format_exc()
-            _lg.getLogger("uvicorn.error").warning("[PGWIRE] EXCEPTION sql=%r tb=%s", stripped[:300], _tb_str)
-            with open(_pglog, "a") as _f:
-                _f.write(f"[PGWIRE] EXCEPTION sql={stripped[:500]!r}\n{_tb_str}\n")
+            log.warning("[PGWIRE] EXCEPTION sql=%r", stripped[:300], exc_info=True)
             raise RuntimeError(str(exc)) from exc
 
         return ProvisaQueryResult(result, stripped)
@@ -334,19 +357,30 @@ class ProvisaHandler(BuenaVistaHandler):
         ba = bytearray(payload)
         if ba[0] == ord("S"):
             stmt = ba[1 : len(ba) - 1].decode("utf-8")
+            sql = ctx.stmts[stmt][0]
             try:
                 # describe_statement executes with $N→NULL (0-row result) but gives us column schema
                 query_result = ctx.describe_statement(stmt)
             except Exception as e:
                 self.send_error(e, ctx)
                 return
-            sql = ctx.stmts[stmt][0]
             indices = {int(m) for m in re.findall(r"\$(\d+)", sql)}
-            # OID 0 = unspecified: tells client how many params without declaring types
-            param_oids = [0] * max(indices) if indices else ctx.stmts[stmt][1]
+            if "typeinfo_tree" in sql.lower() and indices:
+                # OID 1028 = _oid (oid[]) — asyncpg has a built-in binary codec for this,
+                # so it can encode list(typeoids) and we can decode the binary response.
+                param_oids = [1028]
+                ctx.stmts[stmt] = (sql, param_oids)
+            elif "set_config" in sql.lower() and indices:
+                # set_config takes TEXT params; OID 25 prevents asyncpg from looping on OID 0
+                param_oids = [25] * len(indices)
+            else:
+                # OID 0 = unspecified: tells client how many params without declaring types
+                param_oids = [0] * max(indices) if indices else ctx.stmts[stmt][1]
             self.send_paramter_description(param_oids)
             if query_result.has_results():
                 self.send_row_description(query_result)
+            else:
+                self.send_no_data()
             return
         super().handle_describe(ctx, payload)
 
