@@ -1097,7 +1097,7 @@ def _populate_empty_system_tables(db) -> None:
     db.execute("CREATE TABLE _pg_shdescription (objoid INTEGER, classoid INTEGER, description VARCHAR)")
     db.execute("""CREATE TABLE _pg_extension (
         oid INTEGER, extname VARCHAR, extowner INTEGER, extnamespace INTEGER,
-        extrelocatable BOOLEAN, extversion VARCHAR, extconfig INTEGER[], extcondition VARCHAR)""")
+        extrelocatable BOOLEAN, extversion VARCHAR, extconfig VARCHAR[], extcondition VARCHAR[])""")
     db.execute("""CREATE TABLE _pg_enum (
         oid INTEGER, enumtypid INTEGER, enumsortorder REAL, enumlabel VARCHAR)""")
     db.execute("""CREATE TABLE _pg_stat_activity (
