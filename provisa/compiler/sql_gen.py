@@ -792,10 +792,13 @@ def _table_ref(meta: TableMeta, use_catalog: bool) -> str:
 
 
 def semantic_table_name(meta: TableMeta) -> str:
-    """Bare (unquoted) semantic table name — DB alias if set, else field_name with domain prefix stripped."""
-    if meta.display_name:
-        return meta.display_name
-    return meta.field_name.split("__", 1)[1] if "__" in meta.field_name else meta.field_name
+    """Bare (unquoted) semantic table name — central naming authority always."""
+    from provisa.compiler.naming import to_snake_case
+
+    raw = meta.display_name if meta.display_name else (
+        meta.field_name.split("__", 1)[1] if "__" in meta.field_name else meta.field_name
+    )
+    return to_snake_case(raw)
 
 
 def _semantic_table_ref(meta: TableMeta) -> str:

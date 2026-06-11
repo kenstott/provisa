@@ -130,7 +130,7 @@ def introspect_tables(
         result[table["id"]] = [
             ColumnMetadata(
                 column_name=c["column_name"],
-                data_type=c["data_type"].lower(),
+                data_type=(c["data_type"] or "varchar").lower(),
                 is_nullable=not c.get("is_primary_key", False),
             )
             for c in table["columns"]
