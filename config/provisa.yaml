@@ -12,6 +12,7 @@ sources:
     type: kafka
     host: ${env:KAFKA_HOST:-kafka}
     port: 9092
+    database: support_kafka
     description: Live support ticket stream from the customer helpdesk — captures issue submissions and status changes in real time for support operations and SLA tracking
 
 domains:

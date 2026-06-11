@@ -38,6 +38,7 @@ tables:
     columns:
       - name: id
         visible_to: [admin, analyst]
+        is_primary_key: true
       - name: customer_id
         visible_to: [admin, analyst]
       - name: product_id
@@ -58,6 +59,7 @@ tables:
     description: Customer master — accounts registered with the business, including contact details and regional assignment used for sales territory reporting
     columns:
       - name: id
+        is_primary_key: true
         visible_to: [admin, analyst]
       - name: name
         visible_to: [admin, analyst]
@@ -73,6 +75,7 @@ tables:
     description: Product catalog — all SKUs offered for sale, with pricing and category classification maintained by the product management team
     columns:
       - name: id
+        is_primary_key: true
         visible_to: [admin, analyst]
       - name: name
         visible_to: [admin, analyst]
@@ -80,26 +83,6 @@ tables:
         visible_to: [admin]
       - name: category
         visible_to: [admin, analyst]
-  - source_id: sales-pg
-    domain_id: pet-store
-    schema: pet_store
-    table: pets
-    governance: pre-approved
-    description: Pet inventory — animals available for adoption or purchase, including breed and pricing information
-    columns:
-      - name: id
-        visible_to: [admin, analyst]
-      - name: name
-        visible_to: [admin, analyst]
-      - name: species
-        visible_to: [admin, analyst]
-      - name: breed_name
-        visible_to: [admin, analyst]
-      - name: price
-        visible_to: [admin]
-      - name: available
-        visible_to: [admin, analyst]
-
 relationships:
   - id: orders-to-customers
     source_table_id: orders
@@ -122,6 +105,7 @@ roles:
   - id: analyst
     capabilities:
       - query_development
+      - ad_hoc_query
     domain_access:
       - sales-analytics
 
@@ -204,6 +188,7 @@ observability:
   log_level: WARNING
   compact_cron: "* * * * *"
   compact_batch_size: 1000
+  s3_endpoint: "http://localhost:9000"
   telemetry_filter:
     redact_sql_literals: false       # strip literal values from db.statement before export to internal endpoint
     redact_attributes: []            # attribute names to drop entirely before export to internal endpoint
