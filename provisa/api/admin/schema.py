@@ -1486,11 +1486,14 @@ class Mutation:
     @strawberry.mutation
     async def delete_source(self, id: str) -> MutationResult:
         from provisa.core.repositories import source as source_repo
+        from provisa.api.app import state
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
             deleted = await source_repo.delete(cast(asyncpg.Connection, conn), id)
         if deleted:
+            state.graphql_remote_sources.pop(id, None)
+            await _rebuild_schemas()
             return MutationResult(success=True, message=f"Source {id!r} deleted")
         return MutationResult(success=False, message=f"Source {id!r} not found")
 
