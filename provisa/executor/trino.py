@@ -43,6 +43,7 @@ class QueryResult:
 
     rows: list[tuple]
     column_names: list[str]
+    column_types: list[str] | None = None
 
 
 def _alive(conn: trino.dbapi.Connection) -> bool:

@@ -215,7 +215,7 @@ BVTYPE_TO_PGTYPE = {
         lambda v: "{" + ",".join(v) + "}",
         lambda r: ("{" + ",".join(r) + "}").encode("utf-8"),
     ),
-    BVType.BIGINT: (20, str, lambda r: int.to_bytes(r, 8, "big")),
+    BVType.BIGINT: (20, str, lambda r: r.to_bytes(8, "big", signed=True)),
     BVType.BOOL: (
         16,
         lambda v: "true" if v else "false",
@@ -229,7 +229,7 @@ BVTYPE_TO_PGTYPE = {
     ),
     BVType.DECIMAL: (1700, str, _numeric_to_pg_binary),
     BVType.FLOAT: (701, str, lambda r: struct.pack("!d", r)),
-    BVType.INTEGER: (23, str, lambda r: int.to_bytes(r, 4, "big")),
+    BVType.INTEGER: (23, str, lambda r: r.to_bytes(4, "big", signed=True)),
     BVType.INTEGERARRAY: (
         1007,
         lambda v: "{" + ",".join(str(x) for x in v) + "}",

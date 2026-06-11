@@ -204,7 +204,8 @@ class ProvisaSession(Session):
         from provisa.pgwire.catalog import answer, classify
 
         stripped = _substitute_params(sql.strip(), params)
-        if classify(stripped) == "INTERCEPT":
+        disposition = classify(stripped)
+        if disposition == "INTERCEPT":
             from provisa.api.app import state
 
             result = answer(stripped, self.role_id or "", state)

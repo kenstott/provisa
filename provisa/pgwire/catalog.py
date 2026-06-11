@@ -1426,25 +1426,11 @@ def _fetch_row_counts(ctx, idx: CatalogIndex, trino_conn) -> dict[int, float]:
 
 def _build_catalog_db(role_id: str, state):
     import duckdb
-    import os as _os2
-    _pglog2 = _os2.path.expanduser("~/pgwire_debug.log")
-    with open(_pglog2, "a") as _f2:
-        _ctx_keys = list((state.contexts or {}).keys())[:10]
-        _f2.write(f"[CATALOG] build_catalog_db role_id={role_id!r} ctx_keys={_ctx_keys}\n")
 
     db = duckdb.connect(":memory:")
     ctx = state.contexts.get(role_id)
     col_types: dict = state.schema_build_cache.get("column_types", {})
-    with open(_pglog2, "a") as _f2:
-        _ntables = len(ctx.tables) if ctx else 0
-        _njoins = len(ctx.joins) if ctx else 0
-        _npk = len(ctx.pk_columns) if ctx else 0
-        _ncoltypes = len(col_types)
-        _f2.write(f"[CATALOG] built ntables={_ntables} njoins={_njoins} npk_tables={_npk} col_type_tables={_ncoltypes}\n")
-
     idx = _build_catalog_index(ctx, col_types)
-    with open(_pglog2, "a") as _f2:
-        _f2.write(f"[CATALOG] idx all_cols={len(idx.all_cols)} tables={len(idx.tables)}\n")
 
     now = time.monotonic()
     cached = _row_count_cache.get(role_id)
@@ -1711,6 +1697,11 @@ def answer(sql: str, role_id: str, state):
             )
         return _handle_typeinfo_tree(oids)
 
+    if "pg_get_keywords" in stripped.lower():
+        # pg_get_keywords() is a SRF — rewriter turns it into scalar NULL, breaking FROM clause.
+        # DBeaver uses it only for SQL autocomplete keyword exclusion; return empty string.
+        return QueryResult(rows=[(None,)], column_names=["string_agg"], column_types=["VARCHAR"])
+
     rewritten = stripped
     db = None
     try:
@@ -1727,20 +1718,8 @@ def answer(sql: str, role_id: str, state):
         rows = [tuple(r) for r in cur.fetchall()]
         col_names = [desc[0] for desc in (cur.description or [])]
         col_types = [str(desc[1]) for desc in (cur.description or [])]
-        import os as _os3
-        _pglog3 = _os3.path.expanduser("~/pgwire_debug.log")
-        with open(_pglog3, "a") as _f3:
-            _f3.write(f"[CATALOG] sql={stripped[:120]!r} rewritten={rewritten[:120]!r} rows={len(rows)}\n")
-            if col_names:
-                _f3.write(f"  cols={col_names}\n")
-            for _r in rows[:5]:
-                _f3.write(f"  {list(_r)}\n")
         return QueryResult(rows=rows, column_names=col_names, column_types=col_types)
     except Exception as exc:
-        import os as _os_err
-        _pglog_err = _os_err.path.expanduser("~/pgwire_debug.log")
-        with open(_pglog_err, "a") as _ferr:
-            _ferr.write(f"[CATALOG ERROR] sql={stripped[:200]!r} rewritten={rewritten[:200]!r}: {exc}\n")
         log.error("[CATALOG] DuckDB error sql=%r rewritten=%r: %s", stripped[:200], rewritten[:200], exc)
         raise
     finally:
