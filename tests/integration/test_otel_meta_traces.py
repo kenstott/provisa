@@ -21,9 +21,11 @@ This tests the full path:
 
 from __future__ import annotations
 
+import os
 import time
 import uuid
 
+import httpx
 import pytest
 import pytest_asyncio
 
@@ -35,42 +37,58 @@ SPAN_NAME = "provisa.query.trino"
 
 QUERY_TEXT = "{ ps__pets(limit: 1) { id } }"
 
+_BASE_URL = os.environ.get("PROVISA_URL", "http://localhost:8000")
+
+
+def _admin_gql(query: str) -> dict:
+    resp = httpx.post(f"{_BASE_URL}/admin/graphql", json={"query": query}, timeout=120)
+    resp.raise_for_status()
+    return resp.json()
+
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
-async def _ensure_pets_registered(pg_pool):
-    """Ensure source, domain, and registered_tables have a pets row so the _meta join resolves."""
-    inserted_source = False
-    inserted_domain = False
-    inserted_id = None
-    async with pg_pool.acquire() as conn:
-        src = await conn.fetchrow(
-            "INSERT INTO sources (id, type) VALUES ('pet-store-pg', 'postgresql')"
-            " ON CONFLICT (id) DO NOTHING RETURNING id"
-        )
-        inserted_source = src is not None
-        dom = await conn.fetchrow(
-            "INSERT INTO domains (id, description) VALUES ('pet-store', 'Pet store')"
-            " ON CONFLICT (id) DO NOTHING RETURNING id"
-        )
-        inserted_domain = dom is not None
-        row = await conn.fetchrow(
-            """
-            INSERT INTO registered_tables
-                (source_id, domain_id, schema_name, table_name, governance)
-            VALUES ('pet-store-pg', 'pet-store', 'pet_store', 'pets', 'pre-approved')
-            ON CONFLICT (source_id, schema_name, table_name) DO NOTHING
-            RETURNING id
-            """
-        )
-        inserted_id = row["id"] if row else None
+async def _ensure_pets_registered():
+    """Register source/domain/table via admin mutations so _rebuild_schemas runs."""
+    src_result = _admin_gql(
+        'mutation { createSource(input: {id: "pet-store-pg", type: "postgresql"}) { success } }'
+    )
+    inserted_source = src_result.get("data", {}).get("createSource", {}).get("success", False)
+
+    dom_result = _admin_gql(
+        'mutation { createDomain(input: {id: "pet-store", description: "Pet store"}) { success } }'
+    )
+    inserted_domain = dom_result.get("data", {}).get("createDomain", {}).get("success", False)
+
+    tbl_result = _admin_gql("""
+        mutation {
+            registerTable(input: {
+                sourceId: "pet-store-pg", domainId: "pet-store",
+                schemaName: "pet_store", tableName: "pets",
+                governance: "pre-approved",
+                columns: [
+                    {name: "id", isPrimaryKey: true, visibleTo: ["admin"], writableBy: [], unmaskedTo: []},
+                    {name: "name", visibleTo: ["admin"], writableBy: [], unmaskedTo: []},
+                    {name: "species", visibleTo: ["admin"], writableBy: [], unmaskedTo: []}
+                ]
+            }) { success message }
+        }
+    """)
+    tbl_msg = tbl_result.get("data", {}).get("registerTable", {}).get("message", "")
+    table_id: int | None = None
+    if "id=" in tbl_msg:
+        try:
+            table_id = int(tbl_msg.split("id=")[1].rstrip(")"))
+        except (ValueError, IndexError):
+            pass
+
     yield
-    async with pg_pool.acquire() as conn:
-        if inserted_id is not None:
-            await conn.execute("DELETE FROM registered_tables WHERE id = $1", inserted_id)
-        if inserted_domain:
-            await conn.execute("DELETE FROM domains WHERE id = 'pet-store'")
-        if inserted_source:
-            await conn.execute("DELETE FROM sources WHERE id = 'pet-store-pg'")
+
+    if table_id is not None:
+        _admin_gql(f'mutation {{ deleteTable(id: {table_id}) {{ success }} }}')
+    if inserted_domain:
+        _admin_gql('mutation { deleteDomain(id: "pet-store") { success } }')
+    if inserted_source:
+        _admin_gql('mutation { deleteSource(id: "pet-store-pg") { success } }')
 
 
 def _insert_test_trace(trino_conn, table_name: str, trace_id: str, span_id: str) -> None:

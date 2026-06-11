@@ -77,6 +77,9 @@ SAMPLE_INTROSPECTION_RESPONSE = {
 }
 
 
+_REGISTERED_SOURCE_IDS = ["test-remote", "list-test-remote", "refresh-remote"]
+
+
 @pytest_asyncio.fixture(scope="module", loop_scope="session")
 async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
@@ -89,6 +92,11 @@ async def client():
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
             yield c
+            for sid in _REGISTERED_SOURCE_IDS:
+                await c.post(
+                    "/admin/graphql",
+                    json={"query": f'mutation {{ deleteSource(id: "{sid}") {{ success }} }}'},
+                )
 
 
 class TestGraphQLRemoteSourceRegistration:

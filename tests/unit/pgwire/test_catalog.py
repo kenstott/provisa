@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
 
 from provisa.pgwire.catalog import answer, classify
 
@@ -250,3 +251,203 @@ class TestAnswerPgCatalog:
             state,
         )
         assert result.rows == [] or all(r[0] is None for r in result.rows)
+
+    def test_pg_constraint_column_types_include_integerarray(self):
+        """answer() must return column_types for pg_constraint even when 0 rows.
+
+        DBeaver's Statement Describe step runs the constraint query with a fake
+        conrelid (no rows returned). ProvisaQueryResult must still send the
+        correct OID (1007, int4[]) for conkey/confkey rather than OID 25 (text).
+        This requires column_types to carry DuckDB's schema-level type info.
+        """
+        state = self._state_with_table()
+        result = answer(
+            "SELECT c.oid, c.* FROM pg_catalog.pg_constraint AS c WHERE c.conrelid = NULL",
+            "testrole",
+            state,
+        )
+        assert result.column_types is not None, "column_types must be populated from DuckDB cursor"
+        col_idx = {n: i for i, n in enumerate(result.column_names)}
+        assert "conkey" in col_idx, f"conkey missing from columns: {result.column_names}"
+        assert "confkey" in col_idx, f"confkey missing from columns: {result.column_names}"
+        assert result.column_types[col_idx["conkey"]] == "INTEGER[]", (
+            f"conkey must be INTEGER[], got {result.column_types[col_idx['conkey']]}"
+        )
+        assert result.column_types[col_idx["confkey"]] == "INTEGER[]", (
+            f"confkey must be INTEGER[], got {result.column_types[col_idx['confkey']]}"
+        )
+
+    def test_provisaqueryresult_uses_column_types_for_empty_rows(self):
+        """ProvisaQueryResult must emit INTEGERARRAY for conkey even with 0 rows."""
+        from buenavista.core import BVType
+        from provisa.pgwire.server import ProvisaQueryResult
+
+        state = self._state_with_table()
+        result = answer(
+            "SELECT c.oid, c.* FROM pg_catalog.pg_constraint AS c WHERE c.conrelid = NULL",
+            "testrole",
+            state,
+        )
+        assert result.rows == [], "0 rows expected for non-existent conrelid"
+        qr = ProvisaQueryResult(result)
+        col_idx = {result.column_names[i]: i for i in range(len(result.column_names))}
+        assert "conkey" in col_idx, f"conkey missing: {result.column_names}"
+        _, bvtype = qr.column(col_idx["conkey"])
+        assert bvtype == BVType.INTEGERARRAY, f"Expected INTEGERARRAY for conkey, got {bvtype}"
+
+
+def _make_pet_store_state() -> Any:
+    """Multi-table, multi-schema context mirroring pet_store: meta.pets FK→ meta.registered_tables."""
+    from provisa.compiler.sql_gen import TableMeta, JoinMeta as _JoinMeta
+
+    pets = MagicMock(spec=TableMeta)
+    pets.table_id = 10
+    pets.field_name = "meta__pets"
+    pets.catalog_name = "provisa"
+    pets.schema_name = "meta"
+    pets.table_name = "pets"
+    pets.domain_id = "meta"
+    pets.type_name = "Pet"
+    pets.display_name = "pets"
+
+    reg = MagicMock(spec=TableMeta)
+    reg.table_id = 11
+    reg.field_name = "meta__registeredTables"
+    reg.catalog_name = "provisa"
+    reg.schema_name = "meta"
+    reg.table_name = "registered_tables"
+    reg.domain_id = "meta"
+    reg.type_name = "RegisteredTable"
+    reg.display_name = "registeredTables"
+
+    col_types = {
+        10: [
+            _ColMeta("id", "integer", False),
+            _ColMeta("name", "varchar", True),
+            _ColMeta("species", "varchar", True),
+            _ColMeta("registered_table_id", "integer", True),
+        ],
+        11: [
+            _ColMeta("id", "integer", False),
+            _ColMeta("name", "varchar", True),
+        ],
+    }
+    fk = MagicMock(spec=_JoinMeta)
+    fk.source_column = "registered_table_id"
+    fk.target_column = "id"
+    fk.source_column_type = "integer"
+    fk.target_column_type = "integer"
+    fk.target = reg
+    fk.cardinality = "many-to-one"
+    fk.source_constant = None
+    fk.source_expr = None
+
+    ctx = MagicMock()
+    ctx.tables = {"pets": pets, "registered_tables": reg}
+    ctx.joins = {("Pet", "registered_table"): fk}
+    ctx.pk_columns = {10: ["id"], 11: ["id"]}
+    state = MagicMock()
+    state.contexts = {"testrole": ctx}
+    state.schema_build_cache = {"column_types": col_types, "tables": []}
+    return state
+
+
+class TestDBeaverERDiagram:
+    """Simulate the exact queries DBeaver fires to render an ER diagram.
+
+    DBeaver flow:
+    1. pg_namespace → resolve 'meta' → ns_oid
+    2. pg_class WHERE relnamespace=ns_oid → table OIDs
+    3. pg_attribute JOIN pg_class WHERE relnamespace=ns_oid → columns per table
+    4. pg_constraint WHERE conrelid=pets_oid → FK rows with conkey/confkey
+    """
+
+    @pytest.fixture
+    def state(self):
+        return _make_pet_store_state()
+
+    def _pets_oid(self, state):
+        result = answer("SELECT oid, relname FROM pg_catalog.pg_class", "testrole", state)
+        return next(r[0] for r in result.rows if r[1] == "pets")
+
+    def _meta_ns_oid(self, state):
+        result = answer("SELECT oid, nspname FROM pg_catalog.pg_namespace", "testrole", state)
+        return next(r[0] for r in result.rows if r[1] == "meta")
+
+    def test_meta_schema_in_pg_namespace(self, state):
+        result = answer("SELECT oid, nspname FROM pg_catalog.pg_namespace", "testrole", state)
+        names = [r[1] for r in result.rows]
+        assert "meta" in names, f"meta missing from pg_namespace: {names}"
+
+    def test_pg_class_returns_snake_case_names(self, state):
+        result = answer("SELECT relname FROM pg_catalog.pg_class", "testrole", state)
+        names = [r[0] for r in result.rows]
+        assert "pets" in names
+        assert "registered_tables" in names
+        assert "registeredTables" not in names, "camelCase leaked into pg_class.relname"
+
+    def test_pg_attribute_returns_columns_for_pets(self, state):
+        pets_oid = self._pets_oid(state)
+        result = answer(
+            f"SELECT attname, attnum FROM pg_catalog.pg_attribute"
+            f" WHERE attrelid={pets_oid} AND attnum>0 AND attisdropped=false",
+            "testrole", state,
+        )
+        col_names = [r[0] for r in result.rows]
+        assert "id" in col_names, f"id missing: {col_names}"
+        assert "name" in col_names, f"name missing: {col_names}"
+        assert "registered_table_id" in col_names, f"registered_table_id missing: {col_names}"
+        assert len(col_names) == 4, f"expected 4 columns, got {col_names}"
+
+    def test_bulk_er_diagram_query_returns_columns(self, state):
+        """DBeaver bulk query: pg_attribute JOIN pg_class WHERE relnamespace=meta_oid."""
+        meta_oid = self._meta_ns_oid(state)
+        result = answer(
+            f"""SELECT c.oid, a.attname, a.atttypid, a.attnum
+                FROM pg_catalog.pg_attribute a, pg_catalog.pg_class c
+                WHERE a.attrelid=c.oid AND c.relnamespace={meta_oid}
+                AND a.attnum>0 AND NOT a.attisdropped
+                ORDER BY c.oid, a.attnum""",
+            "testrole", state,
+        )
+        assert len(result.rows) == 6, f"expected 6 cols (4 pets + 2 reg), got {len(result.rows)}: {result.rows}"
+        col_names = [r[1] for r in result.rows]
+        assert "id" in col_names
+        assert "registered_table_id" in col_names
+
+    def test_pg_constraint_returns_fk_for_pets(self, state):
+        pets_oid = self._pets_oid(state)
+        result = answer(
+            f"SELECT oid, conname, contype, conrelid, confrelid, conkey, confkey"
+            f" FROM pg_catalog.pg_constraint WHERE conrelid={pets_oid}",
+            "testrole", state,
+        )
+        fk_rows = [r for r in result.rows if r[2] == "f"]
+        assert len(fk_rows) >= 1, f"no FK rows for pets (oid={pets_oid}): {result.rows}"
+        fk = fk_rows[0]
+        assert fk[4] is not None, "confrelid (FK target OID) must be set"
+        assert fk[5] is not None and len(fk[5]) > 0, f"conkey must be non-empty: {fk[5]}"
+        assert fk[6] is not None and len(fk[6]) > 0, f"confkey must be non-empty: {fk[6]}"
+        assert fk[5][0] > 0, f"conkey attnum must be positive, got {fk[5]}"
+        assert fk[6][0] > 0, f"confkey attnum must be positive, got {fk[6]}"
+
+    def test_fk_conkey_matches_registered_table_id_attnum(self, state):
+        """conkey must point to registered_table_id's attnum (4th col → 4)."""
+        pets_oid = self._pets_oid(state)
+        attr_result = answer(
+            f"SELECT attname, attnum FROM pg_catalog.pg_attribute"
+            f" WHERE attrelid={pets_oid} AND attnum>0 ORDER BY attnum",
+            "testrole", state,
+        )
+        attnum_map = {r[0]: r[1] for r in attr_result.rows}
+        expected_attnum = attnum_map["registered_table_id"]
+
+        con_result = answer(
+            f"SELECT conkey FROM pg_catalog.pg_constraint WHERE conrelid={pets_oid} AND contype='f'",
+            "testrole", state,
+        )
+        assert len(con_result.rows) >= 1
+        conkey = con_result.rows[0][0]
+        assert conkey[0] == expected_attnum, (
+            f"conkey[0]={conkey[0]} must equal registered_table_id attnum={expected_attnum}"
+        )
