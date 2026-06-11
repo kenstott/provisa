@@ -362,6 +362,24 @@ async def _dispatch_execution(
             status_code=504,
             content={"error": f"Query timed out after {_timeout:.0f}s", "sql": trino_sql},
         )
+    except _trino_exc.TrinoConnectionError as exc:
+        log.warning("Cypher execution: Trino connection failed: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql},
+        )
+    except _trino_exc.TrinoQueryError as exc:
+        log.warning("Cypher execution: Trino query error: %s", exc)
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql},
+        )
+    except OSError as exc:
+        log.warning("Cypher execution: network error: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql},
+        )
     except Exception as exc:
         log.exception("Cypher execution failed: %s", trino_sql)
         return JSONResponse(
