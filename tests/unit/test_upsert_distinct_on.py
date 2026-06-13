@@ -343,7 +343,7 @@ def schema_and_ctx():
 class TestDistinctOn:
     def test_distinct_on_single_column_in_sql(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders(distinct_on: [customer_id]) { id customerId } }")
+        doc = parse("{ orders(distinct_on: [customerId]) { id customerId } }")
         assert not validate(schema, doc)
         results = compile_query(doc, ctx)
         sql = results[0].sql
@@ -361,7 +361,7 @@ class TestDistinctOn:
 
     def test_distinct_on_multiple_columns_comma_separated(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders(distinct_on: [customer_id, region]) { id customerId region } }")
+        doc = parse("{ orders(distinct_on: [customerId, region]) { id customerId region } }")
         assert not validate(schema, doc)
         results = compile_query(doc, ctx)
         sql = results[0].sql
@@ -379,8 +379,8 @@ class TestDistinctOn:
         doc = parse("""
             {
                 orders(
-                    distinct_on: [customer_id]
-                    order_by: [{ customer_id: asc }]
+                    distinct_on: [customerId]
+                    order_by: [{ customerId: asc }]
                 ) { id customerId }
             }
         """)

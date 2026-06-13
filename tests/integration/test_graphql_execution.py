@@ -21,6 +21,7 @@ import pytest_asyncio
 from graphql import parse, validate
 
 from provisa.compiler.introspect import ColumnMetadata
+from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import build_context, compile_query
 from provisa.executor.direct import execute_direct
@@ -40,6 +41,7 @@ def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> 
 
 def _build_schema_and_ctx(*, relay_pagination: bool = False):
     """Build a minimal SchemaInput + CompilationContext matching the test DB schema."""
+    _naming.configure(gql="snake")
     tables = [
         {
             "id": 1,
@@ -108,7 +110,6 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
         role=role,
         domains=domains,
         relay_pagination=relay_pagination,
-        naming_convention="snake",
     )
     schema = generate_schema(si)
     ctx = build_context(si)

@@ -10,6 +10,7 @@
 
 """Integration tests for config loader — YAML → PG round-trip."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -29,7 +30,7 @@ pytestmark = [pytest.mark.integration]
 
 SCHEMA_SQL = (Path(__file__).parent.parent.parent / "provisa" / "core" / "schema.sql").read_text()
 FIXTURE_CONFIG = Path(__file__).parent.parent / "fixtures" / "sample_config.yaml"
-MAIN_CONFIG = Path(__file__).parent.parent.parent / "config" / "provisa.yaml"
+MAIN_CONFIG = Path(os.environ.get("PROVISA_CONFIG", str(Path(__file__).parent.parent.parent / "config" / "provisa.yaml")))
 
 
 @pytest_asyncio.fixture(scope="module", loop_scope="session")

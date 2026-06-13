@@ -56,7 +56,6 @@ async def _compile(
 
 _FIXTURE_CONFIG = Path(__file__).parent.parent / "fixtures" / "sample_config.yaml"
 _SCHEMA_SQL = Path(__file__).parent.parent.parent / "provisa" / "core" / "schema.sql"
-_MAIN_CONFIG = Path(__file__).parent.parent.parent / "config" / "provisa.yaml"
 _LIVE_URL = os.environ.get("PROVISA_URL", "http://localhost:8000")
 
 
@@ -157,11 +156,6 @@ async def _register_demo_data_on_live_server():
         await ac.post(
             "/admin/graphql",
             json={"query": 'mutation { deleteDomain(id: "shelter") { success } }'},
-        )
-        await ac.put(
-            "/admin/config",
-            content=_MAIN_CONFIG.read_bytes(),
-            headers={"Content-Type": "application/x-yaml"},
         )
 
 

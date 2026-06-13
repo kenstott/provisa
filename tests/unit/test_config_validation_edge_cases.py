@@ -469,7 +469,7 @@ class TestValidMinimalConfig:
         assert config.functions == []
         assert config.webhooks == []
 
-    def test_minimal_config_default_naming_convention_is_camel_case(self):
+    def test_minimal_config_default_gql_naming_convention_is_camel_case(self):
         config = parse_config_dict(_minimal_config())
         assert config.naming.convention == "apollo_graphql"
 

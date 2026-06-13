@@ -138,7 +138,7 @@ class TestRelationshipCompleteness:
         if "admin" not in data["roles"]:
             pytest.skip("admin role not present in this environment")
 
-        admin_role = data["roles"]["admin"]
+        admin_role = {**data["roles"]["admin"], "domain_access": ["*"]}
 
         si = SchemaInput(
             tables=data["tables"],

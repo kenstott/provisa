@@ -25,6 +25,7 @@ from provisa.compiler.mutation_gen import (
     apply_column_presets,
     compile_mutation,
 )
+from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import build_context
 from provisa.executor.direct import execute_direct
@@ -46,6 +47,7 @@ def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> 
 
 def _build_schema_and_ctx():
     """Build a minimal SchemaInput + CompilationContext for mutation tests."""
+    _naming.configure(gql="snake")
     tables = [
         {
             "id": 1,
@@ -84,7 +86,6 @@ def _build_schema_and_ctx():
         role=role,
         domains=domains,
         source_types={"sales-pg": "postgresql"},
-        naming_convention="snake",
     )
     schema = generate_schema(si)
     ctx = build_context(si)

@@ -14,6 +14,7 @@ import pytest
 from graphql import parse, validate
 
 from provisa.compiler.introspect import ColumnMetadata
+from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import (
     ColumnRef,
@@ -29,6 +30,7 @@ def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> 
 
 
 def _build_schema_and_ctx():
+    _naming.configure(gql="snake")
     tables = [
         {
             "id": 1,
@@ -412,11 +414,11 @@ class TestRelayPaginationOptIn:
         assert "orders_connection" not in schema.query_type.fields
 
     def test_regular_fields_present_regardless_of_relay(self):
+        _naming.configure(gql="snake")
         si = SchemaInput(
             tables=_base_tables(), relationships=[], column_types=_base_column_types(),
             naming_rules=[], role=_base_role(), domains=_base_domains(),
             relay_pagination=False,
-            naming_convention="snake",
         )
         schema = generate_schema(si)
         assert "orders" in schema.query_type.fields

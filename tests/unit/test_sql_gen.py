@@ -460,7 +460,7 @@ class TestPagination:
 class TestDistinctOn:
     def test_distinct_on_single_column(self, schema_and_ctx):
         schema, ctx = schema_and_ctx
-        doc = parse("{ orders(distinct_on: [customer_id]) { id customerId amount } }")
+        doc = parse("{ orders(distinct_on: [customerId]) { id customerId amount } }")
         assert not validate(schema, doc)
         results = compile_query(doc, ctx)
         sql = results[0].sql

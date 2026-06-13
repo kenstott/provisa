@@ -47,7 +47,7 @@ async def _get_sdl(client: AsyncClient, role: str = "admin") -> str:
     return resp.text
 
 
-async def _set_naming_convention(client: AsyncClient, convention: str) -> None:
+async def _set_gql_naming_convention(client: AsyncClient, convention: str) -> None:
     """Use the admin API to update the global naming convention and rebuild schemas."""
     resp = await client.post(
         "/admin/graphql",
@@ -73,7 +73,7 @@ async def _set_naming_convention(client: AsyncClient, convention: str) -> None:
 class TestNamingConventionReload:
     async def test_snake_case_produces_snake_case_fields(self, client):
         """Default snake_case convention keeps DB column names as-is in SDL."""
-        await _set_naming_convention(client, "snake_case")
+        await _set_gql_naming_convention(client, "snake_case")
         sdl = await _get_sdl(client)
         # snake_case fields remain lower_snake — no camelCase transformations
         assert "type Query" in sdl
@@ -83,7 +83,7 @@ class TestNamingConventionReload:
 
     async def test_camel_case_convention_transforms_fields(self, client):
         """Changing to camelCase is immediately reflected in SDL without restart."""
-        await _set_naming_convention(client, "camelCase")
+        await _set_gql_naming_convention(client, "camelCase")
         sdl = await _get_sdl(client)
 
         # SDL should no longer have snake_case field names for multi-word columns
@@ -95,11 +95,11 @@ class TestNamingConventionReload:
         assert schema.query_type is not None
 
         # Restore to snake_case for subsequent tests
-        await _set_naming_convention(client, "snake_case")
+        await _set_gql_naming_convention(client, "snake_case")
 
     async def test_pascal_case_convention_transforms_field_names(self, client):
         """Changing to PascalCase is immediately reflected in field names."""
-        await _set_naming_convention(client, "PascalCase")
+        await _set_gql_naming_convention(client, "PascalCase")
         sdl = await _get_sdl(client)
 
         assert "type Query" in sdl
@@ -107,14 +107,14 @@ class TestNamingConventionReload:
         schema = build_schema(sdl)
         assert schema.query_type is not None
 
-        await _set_naming_convention(client, "snake_case")
+        await _set_gql_naming_convention(client, "snake_case")
 
     async def test_convention_change_does_not_require_restart(self, client):
         """Schema is updated in-process — no service restart needed (REQ-253)."""
         # Record fields before change
         sdl_before = await _get_sdl(client)
 
-        await _set_naming_convention(client, "camelCase")
+        await _set_gql_naming_convention(client, "camelCase")
         sdl_after = await _get_sdl(client)
 
         # At minimum, both SDLs are valid GraphQL
@@ -122,11 +122,11 @@ class TestNamingConventionReload:
         build_schema(sdl_before)
         build_schema(sdl_after)
 
-        await _set_naming_convention(client, "snake_case")
+        await _set_gql_naming_convention(client, "snake_case")
 
     async def test_all_roles_see_updated_schema(self, client):
         """Convention change updates schema for every role, not just admin."""
-        await _set_naming_convention(client, "camelCase")
+        await _set_gql_naming_convention(client, "camelCase")
 
         sdl_admin = await _get_sdl(client, role="admin")
         sdl_analyst = await _get_sdl(client, role="analyst")
@@ -135,7 +135,7 @@ class TestNamingConventionReload:
         build_schema(sdl_admin)
         build_schema(sdl_analyst)
 
-        await _set_naming_convention(client, "snake_case")
+        await _set_gql_naming_convention(client, "snake_case")
 
 
 class TestNamingRulesReload:

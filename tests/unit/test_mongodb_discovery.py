@@ -38,7 +38,7 @@ def _make_source_row(source_id: str = "mongo-src", source_type: str = "mongodb")
         "dialect": None,
         "cache_enabled": True,
         "cache_ttl": None,
-        "naming_convention": None,
+        "gql_naming_convention": None,
     }
 
 

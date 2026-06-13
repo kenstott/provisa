@@ -14,6 +14,7 @@ import pytest
 from graphql import parse, validate
 
 from provisa.compiler.introspect import ColumnMetadata
+from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import (
     CompilationContext,
@@ -29,6 +30,7 @@ def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> 
 def _build_schema_and_ctx(
     tables=None, relationships=None, role_id="admin", naming_rules=None
 ):
+    _naming.configure(gql="snake")
     if tables is None:
         tables = [
             {
@@ -96,7 +98,6 @@ def _build_schema_and_ctx(
         naming_rules=naming_rules or [],
         role=role,
         domains=domains,
-        naming_convention="snake",
     )
     schema = generate_schema(si)
     ctx = build_context(si)
@@ -221,6 +222,7 @@ class TestAggregate:
         assert "nodes" in agg_type.fields
 
     def test_aggregate_role_gating(self):
+        _naming.configure(gql="snake")
         tables = [
             {
                 "id": 1, "source_id": "pg", "domain_id": "d",
@@ -241,7 +243,6 @@ class TestAggregate:
             naming_rules=[],
             role={"id": "limited", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
-            naming_convention="snake",
         )
         schema = generate_schema(si)
         agg_type = schema.query_type.fields["orders_aggregate"].type
@@ -270,6 +271,7 @@ class TestAggregate:
         assert "eu" in q.params
 
     def test_aggregate_no_numeric_columns_only_count(self):
+        _naming.configure(gql="snake")
         tables = [
             {
                 "id": 1, "source_id": "pg", "domain_id": "d",
@@ -289,7 +291,6 @@ class TestAggregate:
             naming_rules=[],
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
-            naming_convention="snake",
         )
         schema = generate_schema(si)
         agg_type = schema.query_type.fields["tags_aggregate"].type
@@ -346,6 +347,7 @@ class TestAggregate:
         assert select_part.count(",") >= 3
 
     def test_aggregate_excludes_relationship_fields_from_sum_avg(self):
+        _naming.configure(gql="snake")
         tables = [
             {
                 "id": 1, "source_id": "pg", "domain_id": "d",
@@ -381,7 +383,6 @@ class TestAggregate:
             naming_rules=[],
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
-            naming_convention="snake",
         )
         schema = generate_schema(si)
         agg_type = schema.query_type.fields["orders_aggregate"].type
@@ -443,6 +444,7 @@ class TestAggregate:
         assert q.nodes_columns is None
 
     def test_aggregate_per_role_gating_admin_vs_analyst(self):
+        _naming.configure(gql="snake")
         tables = [
             {
                 "id": 1, "source_id": "pg", "domain_id": "d",
@@ -469,7 +471,6 @@ class TestAggregate:
             naming_rules=[],
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
-            naming_convention="snake",
         )
         schema_admin = generate_schema(si_admin)
         agg_admin = schema_admin.query_type.fields["orders_aggregate"].type
@@ -484,7 +485,6 @@ class TestAggregate:
             naming_rules=[],
             role={"id": "analyst", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
-            naming_convention="snake",
         )
         schema_analyst = generate_schema(si_analyst)
         agg_analyst = schema_analyst.query_type.fields["orders_aggregate"].type

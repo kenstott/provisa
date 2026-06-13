@@ -34,6 +34,7 @@ import pytest
 from graphql import GraphQLSchema
 from pydantic import ValidationError
 
+from provisa.compiler import naming as _naming
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.core.config_loader import parse_config_dict
@@ -80,6 +81,7 @@ def _col(name: str, data_type: str = "integer", nullable: bool = False) -> Colum
 
 def _make_schema_input(convention: str = "snake", domain_prefix: bool = False) -> SchemaInput:
     """Build a SchemaInput that mirrors what _load_and_build assembles at runtime."""
+    _naming.configure(gql=convention)
     return SchemaInput(
         tables=[{
             "id": 1,
@@ -90,8 +92,8 @@ def _make_schema_input(convention: str = "snake", domain_prefix: bool = False) -
             "governance": "pre-approved",
             "description": None,
             "alias": None,
-            "naming_convention": None,
-            "source_naming_convention": None,
+            "gql_naming_convention": None,
+            "source_gql_naming_convention": None,
             "relay_pagination": None,
             "hot": None,
             "columns": [
@@ -137,7 +139,6 @@ def _make_schema_input(convention: str = "snake", domain_prefix: bool = False) -
         domains=[{"id": "sales", "description": ""}],
         source_types={"pg-src": "postgresql"},
         domain_prefix=domain_prefix,
-        naming_convention=convention,
     )
 
 
@@ -162,8 +163,8 @@ class TestNamingConventionTriggersRebuild:
 
     def test_snake_and_camel_schemas_differ_on_column_fields(self):
         snake_si = _make_schema_input(convention="snake")
-        camel_si = _make_schema_input(convention="apollo_graphql")
         snake_schema = generate_schema(snake_si)
+        camel_si = _make_schema_input(convention="apollo_graphql")
         camel_schema = generate_schema(camel_si)
 
         def _unwrap(field):
@@ -215,9 +216,8 @@ class TestNamingConventionTriggersRebuild:
             return t
 
         si_v1 = _make_schema_input(convention="snake")
-        si_v2 = _make_schema_input(convention="apollo_graphql")
-
         schema_v1 = generate_schema(si_v1)
+        si_v2 = _make_schema_input(convention="apollo_graphql")
         schema_v2 = generate_schema(si_v2)
 
         type_v1 = _unwrap(schema_v1.query_type.fields["order_items"])

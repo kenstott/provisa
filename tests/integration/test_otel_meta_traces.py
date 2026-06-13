@@ -46,7 +46,7 @@ def _admin_gql(query: str) -> dict:
     return resp.json()
 
 
-@pytest_asyncio.fixture(scope="module", autouse=True)
+@pytest_asyncio.fixture(scope="module")
 async def _ensure_pets_registered():
     """Register source/domain/table via admin mutations so _rebuild_schemas runs."""
     src_result = _admin_gql(
@@ -166,7 +166,7 @@ class TestOtelMetaTraces:
             f"trace_id {trace_id!r} not found in otel.signals.queries after insert"
         )
 
-    async def test_meta_traces_returns_rows_for_table(self, live_client, trino_conn):
+    async def test_meta_traces_returns_rows_for_table(self, live_client, trino_conn, _ensure_pets_registered):
         """_meta._traces returns at least one row after a trace is inserted for the table."""
         trace_id = uuid.uuid4().hex
         span_id = uuid.uuid4().hex[:16]
@@ -211,7 +211,7 @@ class TestOtelMetaTraces:
             f"Expected a provisa.query* span. Got: {span_names}"
         )
 
-    async def test_meta_queries_returns_rows_for_table(self, live_client, trino_conn):
+    async def test_meta_queries_returns_rows_for_table(self, live_client, trino_conn, _ensure_pets_registered):
         """_meta._queries returns at least one row via the queries view."""
         trace_id = uuid.uuid4().hex
         span_id = uuid.uuid4().hex[:16]

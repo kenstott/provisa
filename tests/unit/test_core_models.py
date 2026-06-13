@@ -66,7 +66,7 @@ class TestSource:
         assert s.pgbouncer_port == 6432
         assert s.cache_enabled is True
         assert s.cache_ttl is None
-        assert s.naming_convention is None
+        assert s.gql_naming_convention is None
         assert s.federation_hints == {}
 
     def test_source_id_must_start_with_letter(self):
@@ -428,7 +428,7 @@ class TestTable:
         assert t.alias is None
         assert t.description is None
         assert t.cache_ttl is None
-        assert t.naming_convention is None
+        assert t.gql_naming_convention is None
         assert t.hot is None
         assert t.relay_pagination is None
         assert t.live is None

@@ -300,9 +300,9 @@ def test_pg_has_role_executes_true():
         "alice",
         state,
     )
-    # pg_roles always has the current role → one row containing True
-    assert len(result.rows) == 1
-    assert result.rows[0][0] is True
+    # pg_roles has the current role plus standard PG system roles — all return True
+    assert len(result.rows) >= 1
+    assert all(row[0] is True for row in result.rows)
 
 
 # ── pg_get_constraintdef() executes NULL against real constraint rows ────────

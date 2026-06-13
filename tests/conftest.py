@@ -18,6 +18,20 @@ import pytest
 import pytest_asyncio
 import trino
 
+from provisa.compiler import naming as _naming
+
+
+@pytest.fixture(autouse=True)
+def _reset_naming_convention():
+    """Reset global naming convention to defaults after each test.
+
+    Tests that call _naming.configure() mutate module-level state. Without
+    this reset, convention leaks across test boundaries causing failures in
+    tests that rely on the default apollo_graphql (camelCase) convention.
+    """
+    yield
+    _naming.configure(gql="apollo_graphql", sql="snake")
+
 
 def _server_reachable(url: str) -> bool:
     import urllib.request
