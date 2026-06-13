@@ -166,27 +166,14 @@ async def _execute_multi_call(
     ctx: CompilationContext,
     assemble_rows: Any,
     to_serializable: Any,
-    build_governance_context: Any,
-    RLSContext: Any,
 ) -> Response:
     """Execute independent (non-correlated) CALL subqueries and CROSS JOIN results."""
-    rls = state.rls_contexts.get(role_id, RLSContext.empty())  # type: ignore[union-attr]
-    try:
-        gov_ctx = build_governance_context(
-            role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])  # type: ignore[union-attr]
-        )
-    except Exception as exc:
-        log.exception("Cypher governance setup failed")
-        return JSONResponse(
-            status_code=500, content={"error": f"Governance setup failed: {exc}"}
-        )
-
     all_rows: list[list[dict]] = []
     merged_graph_vars: dict = {}
     for call_sq in non_corr_calls:
         try:
             rows_i, gvars_i = await _execute_call_body(
-                call_sq.body, label_map, body.params, state, gov_ctx, ctx, role_id
+                call_sq.body, label_map, body.params, state, ctx, role_id
             )
             all_rows.append(rows_i)
             merged_graph_vars.update(gvars_i)
@@ -219,8 +206,6 @@ def _build_sql_from_ast(
     apply_graph_rewrites: Any,
 ) -> tuple[Any, list, dict] | Response:
     """Stages 1-2: translate Cypher AST → SQL AST with graph rewrites. Returns (sql_str, ordered_params, graph_vars) or error Response."""
-    import sqlglot
-
     try:
         sql_ast, ordered_params, graph_vars = cypher_to_sql(ast, label_map, body.params)
     except Exception as exc:
@@ -245,79 +230,6 @@ def _build_sql_from_ast(
         return JSONResponse(status_code=500, content={"error": f"SQL generation failed: {exc}"})
 
     return sql_str, ordered_params, graph_vars
-
-
-def _apply_governance_pipeline(
-    sql_str: str,
-    role_id: str,
-    state: AppState,
-    ctx: CompilationContext,
-    make_semantic_sql: Any,
-    build_governance_context: Any,
-    apply_governance: Any,
-    RLSContext: Any,
-) -> tuple[str, str, Any] | Response:
-    """Stage 3: semantic SQL + RLS/masking. Returns (semantic_sql, governed_sql, gov_ctx) or error Response."""
-    try:
-        rls = state.rls_contexts.get(role_id, RLSContext.empty())  # type: ignore[union-attr]
-        gov_ctx = build_governance_context(
-            role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])  # type: ignore[union-attr]
-        )
-        semantic_sql = make_semantic_sql(sql_str, ctx)
-
-        from provisa.compiler.sql_validator import validate_sql
-
-        _role_dict = state.roles.get(role_id) or {}  # type: ignore[union-attr]
-        _violations = validate_sql(
-            semantic_sql,
-            ctx,
-            gov_ctx,
-            _role_dict,
-            getattr(state, "tables", []),
-            bypass_relationship_guard=True,
-            bypass_uncovered_relationships=True,
-        )
-        if _violations:
-            return JSONResponse(
-                status_code=403,
-                content={
-                    "violations": [{"code": v.code, "message": v.message} for v in _violations]
-                },
-            )
-
-        governed_sql = apply_governance(semantic_sql, gov_ctx)
-    except Exception as exc:
-        log.exception("Cypher governance failed")
-        return JSONResponse(status_code=500, content={"error": f"Governance failed: {exc}"})
-
-    return semantic_sql, governed_sql, gov_ctx
-
-
-def _rewrite_to_physical(
-    governed_sql: str,
-    ctx: CompilationContext,
-    state: AppState,
-    rewrite_semantic_to_trino_physical: Any,
-) -> tuple[str, str] | Response:
-    """Stage 4: semantic → Trino-physical refs, view expansion, transpile. Returns (exec_sql, trino_sql) or error Response."""
-    import sqlglot
-
-    try:
-        exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
-        if state.view_sql_map:  # type: ignore[union-attr]
-            from provisa.compiler.view_expand import expand_view_refs
-            exec_sql = expand_view_refs(exec_sql, state.view_sql_map)  # type: ignore[union-attr]
-    except Exception as exc:
-        log.exception("Cypher physical rewrite failed")
-        return JSONResponse(status_code=500, content={"error": f"Physical rewrite failed: {exc}"})
-
-    try:
-        trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
-    except Exception as exc:
-        log.exception("Cypher SQL transpile failed")
-        return JSONResponse(status_code=500, content={"error": f"Transpile failed: {exc}"})
-
-    return exec_sql, trino_sql
 
 
 async def _dispatch_execution(
@@ -450,17 +362,15 @@ async def cypher_query(
 
     try:
         from provisa.cypher.parser import parse_cypher, CypherParseError
-        from provisa.cypher.translator import (
-            cypher_to_sql,
-            CypherCrossSourceError,
-            CypherTranslateError,
-        )
+        from provisa.cypher.translator import cypher_to_sql
         from provisa.cypher.graph_rewriter import apply_graph_rewrites
         from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
         from provisa.cypher.assembler import assemble_rows, to_serializable
+        from provisa.compiler.sql_gen import make_semantic_sql
+        from provisa.compiler.stage2 import build_governance_context
         from provisa.compiler.rls import RLSContext
-        from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_trino_physical
-        from provisa.compiler.stage2 import apply_governance, build_governance_context
+        from provisa.compiler.sql_validator import validate_sql as _validate_sql
+        from provisa.pgwire._pipeline import _govern_and_route_compiled
     except Exception as exc:
         log.exception("Cypher imports failed")
         return JSONResponse(status_code=500, content={"error": f"Import failed: {exc}"})
@@ -496,7 +406,7 @@ async def cypher_query(
     if _non_corr_calls and not ast.match_clauses:
         return await _execute_multi_call(
             _non_corr_calls, label_map, body, state, role_id, ctx,
-            assemble_rows, to_serializable, build_governance_context, RLSContext,
+            assemble_rows, to_serializable,
         )
 
     # Stages 1-2: Translate + graph rewrites
@@ -505,24 +415,36 @@ async def cypher_query(
         return _sql_result
     sql_str, ordered_params, graph_vars = _sql_result
 
-    # Stage 3: Governance
-    _gov_result = _apply_governance_pipeline(
-        sql_str, role_id, state, ctx,
-        make_semantic_sql, build_governance_context, apply_governance, RLSContext,
+    # Stage 3: Semantic conversion + access validation (transport responsibility)
+    semantic_sql = make_semantic_sql(sql_str, ctx)
+    rls = state.rls_contexts.get(role_id, RLSContext.empty())
+    _gov_ctx_for_validate = build_governance_context(
+        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
     )
-    if isinstance(_gov_result, Response):
-        return _gov_result
-    semantic_sql, governed_sql, _gov_ctx = _gov_result
-
-    # Stage 4: Physical rewrite
-    _phys_result = _rewrite_to_physical(governed_sql, ctx, state, rewrite_semantic_to_trino_physical)
-    if isinstance(_phys_result, Response):
-        return _phys_result
-    exec_sql, trino_sql = _phys_result
+    _role_dict = state.roles.get(role_id) or {}
+    _violations = _validate_sql(
+        semantic_sql, ctx, _gov_ctx_for_validate, _role_dict, getattr(state, "tables", []),
+        bypass_relationship_guard=True, bypass_uncovered_relationships=True,
+    )
+    if _violations:
+        return JSONResponse(
+            status_code=403,
+            content={"violations": [{"code": v.code, "message": v.message} for v in _violations]},
+        )
 
     resolved_params = [body.params.get(name) for name in ordered_params]
-
     span_attrs: dict[str, str] = _span_attrs_from_semantic_sql(semantic_sql, role_id, body.query)
+
+    # Stage 4: Pipeline (governance + routing)
+    try:
+        plan = await _govern_and_route_compiled(
+            semantic_sql, role_id, exec_params=resolved_params or None,
+        )
+    except PermissionError as exc:
+        return JSONResponse(status_code=403, content={"error": str(exc)})
+    except Exception as exc:
+        log.exception("Cypher governance/routing failed")
+        return JSONResponse(status_code=500, content={"error": f"Governance failed: {exc}"})
 
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:
@@ -530,6 +452,8 @@ async def cypher_query(
     _t0 = _time.perf_counter()
 
     # Stage 5: Execute
+    exec_sql = plan.exec_sql or ""
+    trino_sql = plan.trino_sql or ""
     _exec_result = await _dispatch_execution(exec_sql, trino_sql, resolved_params, state, span_attrs)
     if isinstance(_exec_result, Response):
         return _exec_result
@@ -942,27 +866,28 @@ async def _execute_call_body(
     label_map: Any,
     params: dict,
     state: Any,
-    gov_ctx: Any,
     ctx: Any,
     role_id: str = "default",
 ) -> tuple[list[dict], dict]:
     """Full pipeline execution for a single CALL subquery body."""
     from provisa.cypher.translator import cypher_to_sql
     from provisa.cypher.graph_rewriter import apply_graph_rewrites
-    from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_trino_physical
-    from provisa.compiler.stage2 import apply_governance
+    from provisa.compiler.sql_gen import make_semantic_sql
     from provisa.compiler.nf_extractor import extract_nf_args, find_api_table_names
-    import sqlglot
+    from provisa.pgwire._pipeline import _govern_and_route_compiled
 
     sql_ast, ordered_params, graph_vars = cypher_to_sql(call_body, label_map, params)
     sql_ast = apply_graph_rewrites(sql_ast, graph_vars, label_map)
     sql_str = sql_ast.sql(dialect="postgres")
     semantic_sql = make_semantic_sql(sql_str, ctx)
     _cb_span_attrs: dict[str, str] = _span_attrs_from_semantic_sql(semantic_sql, role_id)
-    governed_sql = apply_governance(semantic_sql, gov_ctx)
-    exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
-    trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
     resolved_params = [params.get(name) for name in ordered_params]
+
+    plan = await _govern_and_route_compiled(
+        semantic_sql, role_id, exec_params=resolved_params or None,
+    )
+    exec_sql = plan.exec_sql or ""
+    trino_sql = plan.trino_sql or ""
 
     clean_exec_sql, clean_params, nf_args = extract_nf_args(exec_sql, resolved_params)
     api_table_names = find_api_table_names(exec_sql)

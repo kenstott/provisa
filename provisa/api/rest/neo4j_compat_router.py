@@ -84,9 +84,8 @@ async def neo4j_query_v2(
     from provisa.cypher.graph_rewriter import apply_graph_rewrites
     from provisa.cypher.params import collect_param_names, bind_params, CypherParamError
     from provisa.cypher.assembler import assemble_rows, to_serializable
-    from provisa.compiler.rls import RLSContext
-    from provisa.compiler.sql_gen import make_semantic_sql, rewrite_semantic_to_trino_physical
-    from provisa.compiler.stage2 import apply_governance, build_governance_context
+    from provisa.compiler.sql_gen import make_semantic_sql
+    from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
 
     role_id = _resolve_role_id(request, state)
     ctx = state.contexts.get(role_id)
@@ -120,26 +119,24 @@ async def neo4j_query_v2(
         log.exception("Cypher SQL render failed")
         return _error_response(f"SQL generation failed: {exc}", "DatabaseError")
 
-    rls = state.rls_contexts.get(role_id, RLSContext.empty())
-    gov_ctx = build_governance_context(
-        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
-    )
     semantic_sql = make_semantic_sql(sql_str, ctx)
-    governed_sql = apply_governance(semantic_sql, gov_ctx)
-    exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
-
-    try:
-        trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
-    except Exception as exc:
-        log.exception("Cypher SQL transpile failed")
-        return _error_response(f"Transpile failed: {exc}", "DatabaseError")
-
     resolved_params = [body.parameters.get(name) for name in ordered_params]
 
     try:
-        rows = await _execute(trino_sql, resolved_params, state)
+        plan = await _govern_and_route_compiled(
+            semantic_sql, role_id, exec_params=resolved_params or None,
+        )
+    except PermissionError as exc:
+        return _error_response(str(exc), "Forbidden")
     except Exception as exc:
-        log.exception("Cypher execution failed: %s", trino_sql)
+        log.exception("Cypher governance failed")
+        return _error_response(f"Governance failed: {exc}", "DatabaseError")
+
+    try:
+        result = await _execute_plan(plan)
+        rows = [dict(zip(result.column_names, row)) for row in result.rows]
+    except Exception as exc:
+        log.exception("Cypher execution failed")
         return _error_response(f"Execution failed: {_federation_error(exc)}", "DatabaseError")
 
     try:
@@ -208,14 +205,14 @@ def _error_response(message: str, code: str, status: int = 400) -> JSONResponse:
     )
 
 
-def _resolve_role_id(request: Request, state: object) -> str:
+def _resolve_role_id(request: Request, state: object) -> str:  # object-ok: circular-import boundary
     roles: dict = getattr(state, "roles", {})
     if roles:
         return next(iter(roles))
     return "default"
 
 
-async def _execute(sql: str, params: list, state: object) -> list[dict]:
+async def _execute(sql: str, params: list, state: object) -> list[dict]:  # object-ok: circular-import boundary
     import asyncio
 
     trino_conn = getattr(state, "trino_conn", None)

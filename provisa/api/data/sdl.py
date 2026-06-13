@@ -90,7 +90,6 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
         source_types=state.source_types,
         domain_prefix=cache["domain_prefix"],
         physical_table_map=cache["physical_table_map"],
-        naming_convention=cache["naming_convention"],
         functions=cache["functions"],
         webhooks=cache["webhooks"],
         enum_types=cache["enum_types"],

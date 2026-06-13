@@ -30,10 +30,8 @@ from graphql import GraphQLObjectType, GraphQLSchema
 from provisa.api._query_helpers import (
     build_graphql_query as _build_graphql_query_shared,
     get_scalar_fields as _get_scalar_fields_shared,
-    route_and_execute,
 )
 from provisa.compiler.parser import GraphQLValidationError, parse_query
-from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import compile_query
 
 log = logging.getLogger(__name__)
@@ -148,7 +146,6 @@ def create_rest_router(state: Any) -> APIRouter:
 
         schema = state.schemas[role_id]
         ctx = state.contexts[role_id]
-        rls = state.rls_contexts.get(role_id, RLSContext.empty())
 
         # Validate table exists
         query_type = schema.query_type
@@ -190,18 +187,16 @@ def create_rest_router(state: Any) -> APIRouter:
 
         compiled = compiled_queries[0]
 
-        # Apply RLS
-        from provisa.compiler.rls import inject_rls
-        compiled = inject_rls(compiled, ctx, rls)
-
-        # Apply masking
-        from provisa.compiler.mask_inject import inject_masking
-        compiled = inject_masking(
-            compiled, ctx, state.masking_rules, role_id,
-        )
-
+        from provisa.pgwire._pipeline import _govern_and_route_compiled, _execute_plan
         try:
-            result = await route_and_execute(compiled, state)
+            plan = await _govern_and_route_compiled(
+                compiled.sql, role_id,
+                exec_params=compiled.params or None,
+                state=state,
+            )
+            result = await _execute_plan(plan, state)
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
         except HTTPException:
             raise
         except Exception as e:

@@ -133,9 +133,10 @@ class AppState:
     pg_notify_tables: set[str] = set()  # table_names with pg_notify triggers installed
     table_watermarks: dict[str, str] = {}  # table_name → watermark_column (for polling fallback)
     _scheduler: Any | None = None  # APScheduler instance for scheduled queries
-    global_naming_convention: str = (
+    global_gql_naming_convention: str = (
         "apollo_graphql"  # runtime override; set via updateNamingConvention
     )
+    global_sql_naming_convention: str = "snake"
     otel_compact_cron: str = "* * * * *"  # cron for Parquet→Iceberg compaction
     otel_compact_batch_size: int = 1000  # rows per INSERT batch during compaction
     otel_compact_file_chunk: int = 50  # Parquet files processed per compaction chunk
@@ -161,7 +162,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         DROP VIEW IF EXISTS public.registered_tables_meta CASCADE;
         CREATE VIEW public.registered_tables_meta AS
         SELECT id, source_id, domain_id, schema_name, table_name, governance,
-               alias, description, cache_ttl, naming_convention, watermark_column,
+               alias, description, cache_ttl, gql_naming_convention, watermark_column,
                column_presets::text AS column_presets,
                view_sql, data_product,
                l1_cluster, l2_cluster, l3_cluster, clusters_computed_at,
@@ -1572,11 +1573,15 @@ def _assert_domain_table_unique(tables: list[dict]) -> None:
 
 def _resolve_naming_config(raw_config: dict | None) -> tuple[bool, dict | None]:
     """Load naming config from raw_config or disk. Returns (domain_prefix, resolved_raw_config)."""
+    from provisa.compiler import naming as _naming
+
     domain_prefix = False
     if raw_config:
         domain_prefix = raw_config.get("naming", {}).get("domain_prefix", False)
         if raw_config.get("naming", {}).get("convention"):
-            state.global_naming_convention = raw_config["naming"]["convention"]
+            state.global_gql_naming_convention = raw_config["naming"]["convention"]
+        if raw_config.get("naming", {}).get("sql_convention"):
+            state.global_sql_naming_convention = raw_config["naming"]["sql_convention"]
     else:
         config_path = os.environ.get("PROVISA_CONFIG", "config/provisa.yaml")
         path = Path(config_path)
@@ -1586,7 +1591,13 @@ def _resolve_naming_config(raw_config: dict | None) -> tuple[bool, dict | None]:
             if isinstance(raw_config, dict):
                 domain_prefix = raw_config.get("naming", {}).get("domain_prefix", False)
                 if raw_config.get("naming", {}).get("convention"):
-                    state.global_naming_convention = raw_config["naming"]["convention"]
+                    state.global_gql_naming_convention = raw_config["naming"]["convention"]
+                if raw_config.get("naming", {}).get("sql_convention"):
+                    state.global_sql_naming_convention = raw_config["naming"]["sql_convention"]
+    _naming.configure(
+        gql=state.global_gql_naming_convention,
+        sql=state.global_sql_naming_convention,
+    )
     return domain_prefix, raw_config
 
 
@@ -1886,7 +1897,6 @@ def _build_and_register_schemas(
             source_catalogs=state.source_catalogs,
             domain_prefix=domain_prefix,
             physical_table_map={**_META_TABLE_ALIAS, **(kafka_physical or {})},
-            naming_convention=state.global_naming_convention,
             functions=tracked_functions,
             webhooks=tracked_webhooks,
             enum_types=state.pg_enum_types,
@@ -2032,7 +2042,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 state.source_allowed_domains[src_id] = pg_domains
         for tbl in tables:
             src = sources.get(tbl["source_id"], {})
-            tbl["source_naming_convention"] = src.get("naming_convention")
+            tbl["source_gql_naming_convention"] = src.get("gql_naming_convention")
 
         # Ensure ops Iceberg tables exist before introspection — idempotent, self-healing
         # if _seed_ops_trino failed at startup because the otel catalog wasn't ready yet.
@@ -2130,7 +2140,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         "naming_rules": naming_rules,
         "domains": domains,
         "domain_prefix": domain_prefix,
-        "naming_convention": state.global_naming_convention,
+        "sql_naming_convention": state.global_sql_naming_convention,
         "functions": tracked_functions,
         "webhooks": tracked_webhooks,
         "enum_types": state.pg_enum_types,
@@ -2745,6 +2755,13 @@ def create_app() -> FastAPI:
 
     admin_router = GraphQLRouter(admin_schema, context_getter=_admin_graphql_context)
     app.include_router(admin_router, prefix="/admin/graphql")
+
+    @app.middleware("http")
+    async def _admin_graphql_schema_version_header(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/admin/graphql"):
+            response.headers["X-Schema-Version"] = str(state.schema_version)
+        return response
 
     from provisa.api.admin.discovery import router as discovery_router
 

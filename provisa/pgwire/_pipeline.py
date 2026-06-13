@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 from provisa.executor.trino import QueryResult
 
@@ -32,6 +33,8 @@ class _Plan:
     source_id: str
     dialect: str
     exec_params: list | None = field(default=None)
+    # Trino-specific: catalog-qualified postgres SQL (pre-transpile, for NF args extraction)
+    exec_sql: str | None = field(default=None)
     # Trino-specific: fully qualified SQL ready to run
     trino_sql: str | None = field(default=None)
 
@@ -68,8 +71,8 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
     normalized_sql = rewrite_semantic_to_physical(raw_sql, ctx)
     try:
         sqlglot.parse_one(normalized_sql, read="postgres")
-    except Exception:
-        normalized_sql = raw_sql
+    except Exception as exc:
+        raise ValueError(f"SQL parse error after name rewrite: {exc}") from exc
 
     gov_ctx = build_governance_context(
         role_id,
@@ -183,8 +186,9 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
         )
 
 
-async def _execute_plan(plan: _Plan) -> QueryResult:
-    from provisa.api.app import state
+async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:
+    if state is None:
+        from provisa.api.app import state  # type: ignore[assignment]
     from provisa.executor.direct import execute_direct
     from provisa.executor.trino import execute_trino
     from provisa.transpiler.router import Route
@@ -200,6 +204,24 @@ async def _execute_plan(plan: _Plan) -> QueryResult:
             None,
             lambda: execute_trino(_trino_conn, _trino_sql, params=plan.exec_params),
         )
+    elif plan.source_id == "provisa-admin" or not state.source_pools.has(plan.source_id):
+        # Admin-owned tables (meta.*) live in the provisa pg_pool, not source_pools.
+        pg_pool = state.pg_pool
+        if pg_pool is None:
+            raise RuntimeError("Admin pg_pool not available")
+        import asyncpg as _asyncpg
+        async with pg_pool.acquire() as _conn:
+            _conn = _conn  # type: ignore[assignment]
+            _rows = await _conn.fetch(plan.sql)
+            if _rows:
+                col_names = list(_rows[0].keys())
+                rows = [tuple(r) for r in _rows]
+            else:
+                # Execute again for column names via a describe-style query
+                stmt = await _conn.prepare(plan.sql)
+                col_names = [a.name for a in stmt.get_attributes()]
+                rows = []
+        result = QueryResult(rows=rows, column_names=col_names)
     else:
         result = await execute_direct(
             state.source_pools,
@@ -208,6 +230,91 @@ async def _execute_plan(plan: _Plan) -> QueryResult:
             plan.exec_params,
         )
     return result
+
+
+async def _govern_and_route_compiled(
+    sql: str,
+    role_id: str,
+    *,
+    exec_params: list | None = None,
+    state: Any | None = None,
+) -> _Plan:
+    """Governance + routing for already-physical SQL.
+
+    Used by GQL and Cypher transport paths after language-specific compilation.
+    No AD_HOC_QUERY capability check, no SQL validation.
+    """
+    if state is None:
+        from provisa.api.app import state  # type: ignore[assignment]
+    from provisa.api.data.endpoint import _materialize_api_to_trino_cache
+    from provisa.api_source.trino_cache import rewrite_all_from_cache
+    from provisa.cache.hot_tables import build_values_cte_sql
+    from provisa.compiler.rls import RLSContext
+    from provisa.compiler.sql_gen import rewrite_semantic_to_trino_physical
+    from provisa.compiler.stage2 import apply_governance, build_governance_context, extract_sources
+    from provisa.transpiler.router import Route, decide_route
+    from provisa.transpiler.transpile import transpile, transpile_to_trino
+
+    if role_id not in state.contexts:
+        raise PermissionError(f"No schema for role {role_id!r}")
+
+    ctx = state.contexts[role_id]
+    rls = state.rls_contexts.get(role_id, RLSContext.empty())
+
+    gov_ctx = build_governance_context(
+        role_id,
+        rls,
+        state.masking_rules,
+        ctx,
+        getattr(state, "tables", []),
+    )
+
+    governed_sql = apply_governance(sql, gov_ctx)
+
+    sources = extract_sources(governed_sql, gov_ctx, ctx)
+    _default_source = next(
+        (sid for sid, t in state.source_types.items() if t in ("postgresql", "mysql", "sqlite")),
+        next(iter(state.source_pools.source_ids), "pg"),
+    )
+    decision = decide_route(
+        sources=sources or {_default_source},
+        source_types=state.source_types,
+        source_dialects=state.source_dialects,
+        source_dsns=getattr(state, "source_dsns", None),
+    )
+
+    if decision.route == Route.TRINO:
+        _exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
+        _view_map = getattr(state, "view_sql_map", None)
+        if _view_map:
+            from provisa.compiler.view_expand import expand_view_refs
+            _exec_sql = expand_view_refs(_exec_sql, _view_map)
+        _exec_sql_base = _exec_sql
+        _rewrites, _values_ctes = await _materialize_api_to_trino_cache(_exec_sql, state)
+        for _tn, _entry in _values_ctes.items():
+            _exec_sql = build_values_cte_sql(_exec_sql, _tn, _entry)
+        if _rewrites:
+            _exec_sql = rewrite_all_from_cache(_exec_sql, _rewrites)
+        trino_sql = transpile_to_trino(_exec_sql)
+        return _Plan(
+            route=Route.TRINO,
+            sql=governed_sql,
+            source_id=_default_source,
+            dialect="trino",
+            exec_params=exec_params,
+            exec_sql=_exec_sql_base,
+            trino_sql=trino_sql,
+        )
+    else:
+        dialect = decision.dialect or "postgres"
+        sql_to_run = transpile(governed_sql, dialect)
+        return _Plan(
+            route=decision.route,
+            sql=sql_to_run,
+            source_id=decision.source_id or _default_source,
+            dialect=dialect,
+            exec_params=exec_params,
+        )
 
 
 async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:

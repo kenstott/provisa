@@ -36,14 +36,12 @@ from provisa.api.flight.catalog import (
     catalog_table_to_flight_info,
 )
 from provisa.compiler.parser import parse_query
-from provisa.compiler.rls import RLSContext, inject_rls
-from provisa.compiler.sampling import apply_sampling, get_sample_size
+from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import compile_query
 from provisa.executor.direct import execute_direct
 from provisa.executor.formats.arrow import rows_to_arrow_table
 from provisa.security.rights import Capability, has_capability
 from provisa.transpiler.router import Route, decide_route
-from provisa.transpiler.transpile import transpile, transpile_to_trino
 
 if TYPE_CHECKING:
     from graphql import DocumentNode, GraphQLSchema
@@ -355,14 +353,6 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
         """Execute a Cypher query ticket and return Arrow record batches."""
         import concurrent.futures
 
-        import sqlglot
-
-        from provisa.compiler.rls import RLSContext
-        from provisa.compiler.sql_gen import (
-            make_semantic_sql,
-            rewrite_semantic_to_trino_physical,
-        )
-        from provisa.compiler.stage2 import apply_governance, build_governance_context
         from provisa.cypher.assembler import assemble_rows, to_serializable
         from provisa.cypher.graph_rewriter import apply_graph_rewrites
         from provisa.cypher.label_map import CypherLabelMap
@@ -377,6 +367,7 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
             CypherTranslateError,
             cypher_to_sql,
         )
+        from provisa.pgwire._pipeline import _govern_and_route_compiled
 
         query_text = str(request.get("query", ""))
         role_id = str(request.get("role", "admin"))
@@ -387,7 +378,6 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
             raise flight.FlightServerError(f"No schema for role {role_id!r}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         ctx = self._state.contexts[role_id]
-        rls = self._state.rls_contexts.get(role_id, RLSContext.empty())
 
         try:
             ast = parse_cypher(query_text)
@@ -414,27 +404,28 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
         except Exception as exc:
             raise flight.FlightServerError(f"Cypher SQL render failed: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        gov_ctx = build_governance_context(
-            role_id,
-            rls,
-            self._state.masking_rules,
-            ctx,
-            getattr(self._state, "tables", []),
-        )
+        from provisa.compiler.sql_gen import make_semantic_sql
         semantic_sql = make_semantic_sql(sql_str, ctx)
-        governed_sql = apply_governance(semantic_sql, gov_ctx)
-        exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
-
-        try:
-            trino_sql = sqlglot.transpile(exec_sql, read="postgres", write="trino")[0]
-        except Exception as exc:
-            raise flight.FlightServerError(f"Cypher transpile failed: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         resolved_params = [params.get(name) for name in ordered_params]
+
+        try:
+            plan = asyncio.run_coroutine_threadsafe(
+                _govern_and_route_compiled(semantic_sql, role_id, exec_params=resolved_params or None, state=self._state),
+                self._main_loop,
+            ).result()
+        except PermissionError as exc:
+            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        except ValueError as exc:
+            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         trino_conn = getattr(self._state, "trino_conn", None)
         if trino_conn is None:
             raise flight.FlightServerError("Federation engine not connected")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+
+        trino_sql = plan.trino_sql
+        if trino_sql is None:
+            raise flight.FlightServerError(f"Route {plan.route!r} is not supported for Cypher via Flight")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         def _run() -> list[dict[str, object]]:
             cursor = trino_conn.cursor()
@@ -476,115 +467,61 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
         return self._do_get_graphql(request)
 
     def _do_get_sql_governed(self, request: dict[str, object]) -> flight.RecordBatchStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """Execute SQL through Stage 2 governance against the full role schema.
-
-        Applies RLS, column masking, and visibility rules for the request role
-        before execution.
-        """
-        import sqlglot
-        import sqlglot.expressions as exp
-
-        from provisa.compiler.rls import RLSContext
-        from provisa.compiler.sql_gen import rewrite_semantic_to_physical
-        from provisa.compiler.stage2 import (
-            apply_governance,
-            build_governance_context,
-            extract_sources,
-        )
+        """Execute SQL through the shared governance pipeline and return Arrow record batches."""
+        from provisa.compiler.sql_gen import ColumnRef
         from provisa.executor.direct import execute_direct
         from provisa.executor.trino_flight import execute_trino_flight_arrow
+        from provisa.pgwire._pipeline import _govern_and_route
 
         sql = str(request.get("query", ""))
         role_id = str(request.get("role", "admin"))
 
-        if role_id not in self._state.contexts:
-            raise flight.FlightServerError(f"No schema for role {role_id!r}")  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-
-        ctx = self._state.contexts[role_id]
-        rls = self._state.rls_contexts.get(role_id, RLSContext.empty())
-        role = self._state.roles.get(role_id)
-
-        if role and not has_capability(role, Capability.AD_HOC_QUERY):
-            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                f"Role {role_id!r} lacks required capability: ad_hoc_query"
-            )
-
         try:
-            parsed_tree = sqlglot.parse_one(sql, read="postgres")
-        except Exception as exc:
-            raise flight.FlightServerError(f"SQL parse error: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            plan = asyncio.run_coroutine_threadsafe(
+                _govern_and_route(sql, role_id),
+                self._main_loop,
+            ).result()
+        except PermissionError as exc:
+            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        except ValueError as exc:
+            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        gov_ctx = build_governance_context(
-            role_id,
-            rls,
-            self._state.masking_rules,
-            ctx,
-            getattr(self._state, "tables", []),
-        )
-
-        forbidden = [
-            (f"{t.db}.{t.name}" if t.db else t.name)
-            for t in parsed_tree.find_all(exp.Table)
-            if (f"{t.db}.{t.name}" if t.db else t.name) not in gov_ctx.table_map
-            and t.name not in gov_ctx.table_map
-        ]
-        if forbidden:
-            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-                f"Tables not accessible for role {role_id!r}: {', '.join(forbidden)}"
-            )
-
-        governed = apply_governance(sql, gov_ctx)
-        sources = extract_sources(governed, gov_ctx, ctx)
-        _default_source = next(
-            (
-                sid
-                for sid, t in self._state.source_types.items()
-                if t in ("postgresql", "mysql", "sqlite")
-            ),
-            next(iter(self._state.source_pools), "pg"),  # type: ignore[call-overload]  # preexisting: SourcePool iteration relied on implicit Any before _state was typed; behavior preserved
-        )
-        decision = decide_route(
-            sources=sources or {_default_source},
-            source_types=self._state.source_types,
-            source_dialects=self._state.source_dialects,
-            source_dsns=getattr(self._state, "source_dsns", None),
-        )
-        physical = rewrite_semantic_to_physical(governed, ctx)
-
-        if decision.route == Route.TRINO:
-            sql_to_run = transpile_to_trino(physical)
+        if plan.route == Route.TRINO:
             if self._state.flight_client is None:
                 raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
                     "Zaychik Flight SQL proxy is not configured. "
                     "Set ZAYCHIK_HOST/ZAYCHIK_PORT and ensure the service is running."
                 )
-            table = execute_trino_flight_arrow(self._state.flight_client, sql_to_run, [])
+            assert plan.trino_sql is not None
+            table = execute_trino_flight_arrow(self._state.flight_client, plan.trino_sql, [])
             return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        else:
-            sql_to_run = transpile(physical, decision.dialect or "postgres")
+        elif plan.route == Route.DIRECT:
             result = asyncio.run_coroutine_threadsafe(
                 execute_direct(
                     self._state.source_pools,
-                    decision.source_id or _default_source,
-                    sql_to_run,
-                    [],
+                    plan.source_id,
+                    plan.sql,
+                    plan.exec_params or [],
                 ),
                 self._main_loop,
             ).result()
-
-        from provisa.compiler.sql_gen import ColumnRef
-
-        columns = [
-            ColumnRef(field_name=c, column=c, alias=None, nested_in=None)
-            for c in result.column_names
-        ]
-        table = rows_to_arrow_table(result.rows, columns)
-        return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            columns = [
+                ColumnRef(field_name=c, column=c, alias=None, nested_in=None)
+                for c in result.column_names
+            ]
+            table = rows_to_arrow_table(result.rows, columns)
+            return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        else:
+            raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                f"Route {plan.route!r} is not supported for SQL via Flight"
+            )
 
     def _do_get_graphql(
         self, request: dict[str, object]
     ) -> flight.RecordBatchStream | flight.GeneratorStream:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Execute a GraphQL query ticket and return Arrow record batches."""
+        from provisa.pgwire._pipeline import _govern_and_route_compiled
+
         role_id = str(request.get("role", ""))
         _role = self._state.roles.get(role_id)
         if _role and not has_capability(_role, Capability.AD_HOC_QUERY):
@@ -593,42 +530,30 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
             )
 
         ticket_bytes = json.dumps(request).encode("utf-8")
-        document, ctx, rls, role, compiled, decision, variables = self._compile_query(ticket_bytes)
+        document, ctx, _rls, _role_dict, compiled, _decision, variables = self._compile_query(ticket_bytes)
 
-        compiled_for_exec = compiled
-        sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
+        try:
+            plan = asyncio.run_coroutine_threadsafe(
+                _govern_and_route_compiled(compiled.sql, role_id, state=self._state),
+                self._main_loop,
+            ).result()
+        except PermissionError as exc:
+            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        except ValueError as exc:
+            raise flight.FlightServerError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
-        if (
-            decision.route == Route.DIRECT
-            and decision.source_id
-            and self._state.source_pools.has(decision.source_id)
-        ):
-            compiled_for_exec = inject_rls(compiled_for_exec, ctx, rls)
-            if sampling:
-                compiled_for_exec = apply_sampling(compiled_for_exec, get_sample_size())
-            target_sql = transpile(compiled_for_exec.sql, decision.dialect or "postgres")
+        if plan.route == Route.DIRECT:
             result = asyncio.run_coroutine_threadsafe(
                 execute_direct(
                     self._state.source_pools,
-                    decision.source_id,
-                    target_sql,
-                    compiled_for_exec.params,
+                    plan.source_id,
+                    plan.sql,
+                    plan.exec_params or compiled.params,
                 ),
                 self._main_loop,
             ).result()
             table = rows_to_arrow_table(result.rows, compiled.columns)
             return flight.RecordBatchStream(table)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-
-        compiled_for_exec = compile_query(
-            document,
-            ctx,
-            variables,
-            use_catalog=True,
-        )[0]
-        compiled_for_exec = inject_rls(compiled_for_exec, ctx, rls)
-        if sampling:
-            compiled_for_exec = apply_sampling(compiled_for_exec, get_sample_size())
-        trino_sql = transpile_to_trino(compiled_for_exec.sql)
 
         if self._state.flight_client is None:
             raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -637,9 +562,10 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
             )
         from provisa.executor.trino_flight import execute_trino_flight_stream
 
+        assert plan.trino_sql is not None
         arrow_schema, batch_gen = execute_trino_flight_stream(
             self._state.flight_client,
-            trino_sql,
-            compiled_for_exec.params,
+            plan.trino_sql,
+            compiled.params,
         )
         return flight.GeneratorStream(arrow_schema, batch_gen)  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

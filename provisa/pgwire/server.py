@@ -209,6 +209,7 @@ class ProvisaSession(Session):
             from provisa.api.app import state
 
             result = answer(stripped, self.role_id or "", state)
+            log.debug("[RESULT] cols=%r rows=%r", result.column_names, result.rows[:3] if result.rows else [])
             return ProvisaQueryResult(result, stripped)
 
         if self.role_id is None:
@@ -356,9 +357,19 @@ class ProvisaHandler(BuenaVistaHandler):
 
     def handle_describe(self, ctx: BVContext, payload: bytes) -> None:
         ba = bytearray(payload)
-        if ba[0] == ord("S"):
+        if ba[0] == ord("P"):
+            portal = ba[1 : len(ba) - 1].decode("utf-8")
+            stmt_name = ctx.portals.get(portal, (None,))[0] if portal in ctx.portals else None
+            if stmt_name is not None and not ctx.stmts.get(stmt_name, ("x",))[0].strip():
+                self.send_no_data()
+                return
+        elif ba[0] == ord("S"):
             stmt = ba[1 : len(ba) - 1].decode("utf-8")
             sql = ctx.stmts[stmt][0]
+            if not sql.strip():
+                self.send_paramter_description([])
+                self.send_no_data()
+                return
             try:
                 # describe_statement executes with $N→NULL (0-row result) but gives us column schema
                 query_result = ctx.describe_statement(stmt)
@@ -384,6 +395,16 @@ class ProvisaHandler(BuenaVistaHandler):
                 self.send_no_data()
             return
         super().handle_describe(ctx, payload)
+
+    def handle_execute(self, ctx: BVContext, payload: bytes) -> None:
+        ba = bytearray(payload)
+        portal_idx = ba.index(0)
+        portal = ba[:portal_idx].decode("utf-8")
+        stmt_name = ctx.portals.get(portal, (None,))[0] if portal in ctx.portals else None
+        if stmt_name is not None and not ctx.stmts.get(stmt_name, ("x",))[0].strip():
+            self.wfile.write(struct.pack("!ci", ServerResponse.EMPTY_QUERY_RESPONSE, 4))
+            return
+        super().handle_execute(ctx, payload)
 
     def handle_query(self, ctx: BVContext, payload: bytes) -> None:
         decoded = payload.decode("utf-8").rstrip("\x00")
@@ -463,7 +484,7 @@ class ProvisaServer(BuenaVistaServer):
         conn: ProvisaConnection,
         ssl_ctx: ssl.SSLContext | None = None,
     ) -> None:
-        socketserver.ThreadingTCPServer.__init__(self, server_address, ProvisaHandler)  # type: ignore
+        socketserver.ThreadingTCPServer.__init__(self, server_address, ProvisaHandler)  # type: ignore[arg-type]
         self.conn = conn
         self.rewriter = None
         self.extensions: dict = {}
@@ -483,9 +504,20 @@ def start_pgwire_server(
     loop: asyncio.AbstractEventLoop,
 ) -> ProvisaServer:
     """Start the pgwire server in a daemon thread. Returns the server instance."""
+    import os
+
     global _loop
     with _loop_lock:
         _loop = loop
+
+    _debug_log = os.path.expanduser("~/pgwire_debug.log")
+    _fh = logging.FileHandler(_debug_log)
+    _fh.setLevel(logging.DEBUG)
+    _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logging.getLogger("provisa.pgwire").addHandler(_fh)
+    logging.getLogger("provisa.pgwire").setLevel(logging.DEBUG)
+    logging.getLogger("buenavista").addHandler(_fh)
+    logging.getLogger("buenavista").setLevel(logging.DEBUG)
 
     conn = ProvisaConnection()
     server = ProvisaServer((host, port), conn, ssl_ctx=ssl_ctx)
