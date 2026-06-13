@@ -52,6 +52,7 @@ _TABLE_MAP: dict[tuple[str, str], str] = {
     ("pg_catalog", "pg_constraint"): "_pg_constraint",
     ("pg_catalog", "pg_proc"): "_pg_proc",
     ("pg_catalog", "pg_roles"): "_pg_roles",
+    ("pg_catalog", "pg_user"): "_pg_user",
     ("pg_catalog", "pg_auth_members"): "_pg_auth_members",
     ("pg_catalog", "pg_database"): "_pg_database",
     ("pg_catalog", "pg_settings"): "_pg_settings",
@@ -73,12 +74,17 @@ _TABLE_MAP: dict[tuple[str, str], str] = {
     ("pg_catalog", "pg_aggregate"): "_pg_aggregate",
     ("pg_catalog", "pg_language"): "_pg_language",
     ("pg_catalog", "pg_operator"): "_pg_operator",
+    ("pg_catalog", "pg_opfamily"): "_pg_opfamily",
+    ("pg_catalog", "pg_opclass"): "_pg_opclass",
+    ("pg_catalog", "pg_amop"): "_pg_amop",
+    ("pg_catalog", "pg_amproc"): "_pg_amproc",
     ("pg_catalog", "pg_cast"): "_pg_cast",
     ("pg_catalog", "pg_collation"): "_pg_collation",
     ("pg_catalog", "pg_range"): "_pg_range",
     ("pg_catalog", "pg_foreign_table"): "_pg_foreign_table",
     ("pg_catalog", "pg_foreign_server"): "_pg_foreign_server",
     ("pg_catalog", "pg_user_mapping"): "_pg_user_mapping",
+    ("pg_catalog", "pg_user_mappings"): "_pg_user_mappings",
     ("pg_catalog", "pg_foreign_data_wrapper"): "_pg_foreign_data_wrapper",
     ("pg_catalog", "pg_sequence"): "_pg_sequence",
     ("pg_catalog", "pg_policy"): "_pg_policy",
@@ -88,6 +94,9 @@ _TABLE_MAP: dict[tuple[str, str], str] = {
     ("pg_catalog", "pg_event_trigger"): "_pg_event_trigger",
     ("pg_catalog", "pg_stat_user_indexes"): "_pg_stat_user_indexes",
     ("pg_catalog", "pg_locks"): "_pg_locks",
+    ("pg_catalog", "pg_stat_ssl"): "_pg_stat_ssl",
+    ("pg_catalog", "pg_timezone_names"): "_pg_timezone_names",
+    ("pg_catalog", "pg_timezone_abbrevs"): "_pg_timezone_abbrevs",
     ("information_schema", "key_column_usage"): "_is_key_column_usage",
     ("information_schema", "table_constraints"): "_is_table_constraints",
     ("information_schema", "referential_constraints"): "_is_referential_constraints",
@@ -645,7 +654,7 @@ _KNOWN_SETTINGS = {
     "integer_datetimes": "on",
     "standard_conforming_strings": "on",
     "intervalstyle": "postgres",
-    "search_path": '"$user", public',
+    "search_path": 'public, "$user"',
     "extra_float_digits": "0",
     "application_name": "",
     "is_superuser": "on",
@@ -782,7 +791,7 @@ class CatalogIndex:
 
 def _build_catalog_index(ctx, col_types: dict) -> CatalogIndex:
     """Build the CatalogIndex once. All populate functions read from it — nothing recomputes."""
-    from provisa.compiler.naming import domain_to_sql_name
+    from provisa.compiler.naming import domain_to_sql_name, apply_sql_name
     from provisa.compiler.sql_gen import semantic_table_name
 
     idx = CatalogIndex()
@@ -817,11 +826,15 @@ def _build_catalog_index(ctx, col_types: dict) -> CatalogIndex:
         idx.table_id_to_oid[tm.table_id] = toid
         idx.toid_to_table[toid] = (cat, sch, tname)
 
+        _p2s_raw = getattr(ctx, "physical_to_sql", None)
+        _p2s: dict = _p2s_raw if isinstance(_p2s_raw, dict) else {}
         real_cols = col_types.get(tm.table_id, [])
         for i, col in enumerate(real_cols, 1):
-            idx.all_cols.append((toid, col.column_name, col.data_type, col.is_nullable, i))
-            idx.col_attnum[(toid, col.column_name)] = i
-            idx.attnum_to_col[(toid, i)] = col.column_name
+            phys = col.column_name
+            exposed = _p2s.get((tm.table_id, phys)) or apply_sql_name(phys) or phys
+            idx.all_cols.append((toid, exposed, col.data_type, col.is_nullable, i))
+            idx.col_attnum[(toid, exposed)] = i
+            idx.attnum_to_col[(toid, i)] = exposed
 
         virtual = getattr(ctx, "virtual_columns", {}).get(tm.table_id, {})
         for j, vcol in enumerate(virtual, len(real_cols) + 1):
@@ -947,7 +960,9 @@ def _populate_pg_class(db, idx: CatalogIndex, row_counts: dict[int, float] | Non
         db.executemany(f"INSERT INTO _pg_class VALUES ({','.join(['?'] * 33)})", pg_class_rows)
 
 
-def _populate_pg_description(db, idx: CatalogIndex, raw_tables: list) -> None:
+def _populate_pg_description(db, idx: CatalogIndex, raw_tables: list, raw_domains: list | None = None) -> None:
+    from provisa.compiler.naming import domain_to_sql_name
+
     tid_desc: dict[int, str] = {}
     tid_col_desc: dict[int, dict[str, str]] = {}
     for rt in raw_tables:
@@ -967,10 +982,18 @@ def _populate_pg_description(db, idx: CatalogIndex, raw_tables: list) -> None:
         if cdesc:
             tid_col_desc[_tid] = cdesc
 
-    if not tid_desc and not tid_col_desc:
-        return
-
     desc_rows: list[tuple] = []
+
+    # Namespace (schema/domain) descriptions
+    for dom in (raw_domains or []):
+        _did = dom["id"] if isinstance(dom, dict) else getattr(dom, "id", None)
+        _ddesc = dom["description"] if isinstance(dom, dict) else getattr(dom, "description", None)
+        if not _did or not _ddesc:
+            continue
+        ns_oid = idx.ns_map.get(domain_to_sql_name(_did))
+        if ns_oid is not None:
+            desc_rows.append((ns_oid, "pg_namespace", 0, _ddesc))
+
     for _, _, _, table_id, toid in idx.tables:
         tdesc = tid_desc.get(table_id)
         if tdesc:
@@ -1077,15 +1100,15 @@ def _populate_empty_system_tables(db) -> None:
         indisunique BOOLEAN, indisprimary BOOLEAN, indisexclusion BOOLEAN,
         indimmediate BOOLEAN, indisclustered BOOLEAN, indisvalid BOOLEAN,
         indcheckxmin BOOLEAN, indisready BOOLEAN, indislive BOOLEAN,
-        indisreplident BOOLEAN, indkey VARCHAR, indcollation VARCHAR,
-        indclass VARCHAR, indoption VARCHAR, indexprs VARCHAR, indpred VARCHAR)""")
+        indisreplident BOOLEAN, indkey INTEGER[], indcollation INTEGER[],
+        indclass INTEGER[], indoption SMALLINT[], indexprs VARCHAR, indpred VARCHAR)""")
     db.execute("""CREATE TABLE _pg_proc (
         oid INTEGER, proname VARCHAR, pronamespace INTEGER, proowner INTEGER,
         prolang INTEGER, procost REAL, prorows REAL, provariadic INTEGER,
         prosupport VARCHAR, prokind VARCHAR, prosecdef BOOLEAN, proleakproof BOOLEAN,
         proisstrict BOOLEAN, proretset BOOLEAN, provolatile VARCHAR, proparallel VARCHAR,
         pronargs SMALLINT, pronargdefaults SMALLINT, prorettype INTEGER,
-        proargtypes VARCHAR, proallargtypes VARCHAR, proargmodes VARCHAR,
+        proargtypes INTEGER[], proallargtypes INTEGER[], proargmodes VARCHAR[],
         proargnames VARCHAR, proargdefaults VARCHAR, protrftypes VARCHAR,
         prosrc VARCHAR, probin VARCHAR, prosqlbody VARCHAR,
         proconfig VARCHAR, proacl VARCHAR)""")
@@ -1093,6 +1116,8 @@ def _populate_empty_system_tables(db) -> None:
         "CREATE TABLE _pg_auth_members (roleid INTEGER, member INTEGER, grantor INTEGER, admin_option BOOLEAN)"
     )
     db.execute("CREATE TABLE _pg_tablespace (oid INTEGER, spcname VARCHAR, spcowner INTEGER, spcacl VARCHAR, spcoptions VARCHAR)")
+    db.execute("INSERT INTO _pg_tablespace VALUES (1663, 'pg_default', 10, NULL, NULL)")
+    db.execute("INSERT INTO _pg_tablespace VALUES (1664, 'pg_global', 10, NULL, NULL)")
     db.execute("CREATE TABLE _pg_conversion (oid INTEGER, conname VARCHAR, connamespace INTEGER, conowner INTEGER, conforencoding INTEGER, contoencoding INTEGER, conproc INTEGER, condefault BOOLEAN)")
     db.execute("CREATE TABLE _pg_shdescription (objoid INTEGER, classoid INTEGER, description VARCHAR)")
     db.execute("""CREATE TABLE _pg_extension (
@@ -1135,11 +1160,16 @@ def _populate_empty_system_tables(db) -> None:
     db.execute("CREATE TABLE _pg_language (oid INTEGER, lanname VARCHAR, lanowner INTEGER, lanispl BOOLEAN, lanpltrusted BOOLEAN, lanplcallfoid INTEGER, laninline INTEGER, lanvalidator INTEGER, lanacl VARCHAR)")
     db.execute("CREATE TABLE _pg_operator (oid INTEGER, oprname VARCHAR, oprnamespace INTEGER, oprowner INTEGER, oprkind VARCHAR, oprcanmerge BOOLEAN, oprcanhash BOOLEAN, oprleft INTEGER, oprright INTEGER, oprresult INTEGER, oprcom INTEGER, oprnegate INTEGER, oprcode INTEGER, oprrest INTEGER, oprjoin INTEGER)")
     db.execute("CREATE TABLE _pg_cast (oid INTEGER, castsource INTEGER, casttarget INTEGER, castfunc INTEGER, castcontext VARCHAR, castmethod VARCHAR)")
+    db.execute("CREATE TABLE _pg_opfamily (oid INTEGER, opfmethod INTEGER, opfname VARCHAR, opfnamespace INTEGER, opfowner INTEGER)")
+    db.execute("CREATE TABLE _pg_opclass (oid INTEGER, opcmethod INTEGER, opcname VARCHAR, opcnamespace INTEGER, opcowner INTEGER, opcfamily INTEGER, opcintype INTEGER, opcdefault BOOLEAN, opckeytype INTEGER)")
+    db.execute("CREATE TABLE _pg_amop (oid INTEGER, amopfamily INTEGER, amoplefttype INTEGER, amoprighttype INTEGER, amopstrategy SMALLINT, amoppurpose VARCHAR, amopopr INTEGER, amopmethod INTEGER, amopsortfamily INTEGER)")
+    db.execute("CREATE TABLE _pg_amproc (oid INTEGER, amprocfamily INTEGER, amproclefttype INTEGER, amprocrighttype INTEGER, amprocnum SMALLINT, amproc INTEGER)")
     db.execute("CREATE TABLE _pg_collation (oid INTEGER, collname VARCHAR, collnamespace INTEGER, collowner INTEGER, collprovider VARCHAR, collisdeterministic BOOLEAN, collencoding INTEGER, collcollate VARCHAR, collctype VARCHAR, collversion VARCHAR)")
     db.execute("CREATE TABLE _pg_range (rngtypid INTEGER, rngsubtype INTEGER, rngmultitypid INTEGER, rngcollation INTEGER, rngsubopc INTEGER, rngcanonical INTEGER, rngsubdiff INTEGER)")
     db.execute("CREATE TABLE _pg_foreign_table (ftrelid INTEGER, ftserver INTEGER, ftoptions VARCHAR)")
     db.execute("CREATE TABLE _pg_foreign_server (oid INTEGER, srvname VARCHAR, srvowner INTEGER, srvfdw INTEGER, srvtype VARCHAR, srvversion VARCHAR, srvacl VARCHAR, srvoptions VARCHAR)")
     db.execute("CREATE TABLE _pg_user_mapping (oid INTEGER, umuser INTEGER, umserver INTEGER, umoptions VARCHAR)")
+    db.execute("CREATE TABLE _pg_user_mappings (umid INTEGER, srvid INTEGER, srvname VARCHAR, umuser INTEGER, usename VARCHAR, umoptions VARCHAR)")
     db.execute("CREATE TABLE _pg_foreign_data_wrapper (oid INTEGER, fdwname VARCHAR, fdwowner INTEGER, fdwhandler INTEGER, fdwvalidator INTEGER, fdwacl VARCHAR, fdwoptions VARCHAR)")
     db.execute("CREATE TABLE _pg_sequence (seqrelid INTEGER, seqtypid INTEGER, seqstart BIGINT, seqincrement BIGINT, seqmax BIGINT, seqmin BIGINT, seqcache BIGINT, seqcycle BOOLEAN)")
     db.execute("CREATE TABLE _pg_policy (oid INTEGER, polname VARCHAR, polrelid INTEGER, polcmd VARCHAR, polpermissive BOOLEAN, polroles VARCHAR, polqual VARCHAR, polwithcheck VARCHAR)")
@@ -1149,6 +1179,10 @@ def _populate_empty_system_tables(db) -> None:
     db.execute("CREATE TABLE _pg_event_trigger (oid INTEGER, evtname VARCHAR, evtevent VARCHAR, evtowner INTEGER, evtfoid INTEGER, evtenabled VARCHAR, evttags VARCHAR)")
     db.execute("CREATE TABLE _pg_stat_user_indexes (relid INTEGER, indexrelid INTEGER, schemaname VARCHAR, relname VARCHAR, indexrelname VARCHAR, idx_scan BIGINT, idx_tup_read BIGINT, idx_tup_fetch BIGINT)")
     db.execute("CREATE TABLE _pg_locks (locktype VARCHAR, database INTEGER, relation INTEGER, page INTEGER, tuple SMALLINT, virtualxid VARCHAR, transactionid INTEGER, classid INTEGER, objid INTEGER, objsubid SMALLINT, virtualtransaction VARCHAR, pid INTEGER, mode VARCHAR, granted BOOLEAN, fastpath BOOLEAN, waitstart VARCHAR)")
+    db.execute("CREATE TABLE _pg_stat_ssl (pid INTEGER, ssl BOOLEAN, version VARCHAR, cipher VARCHAR, bits INTEGER, client_dn VARCHAR, client_serial VARCHAR, issuer_dn VARCHAR)")
+    db.execute("INSERT INTO _pg_stat_ssl VALUES (0, false, NULL, NULL, NULL, NULL, NULL, NULL)")
+    db.execute("CREATE TABLE _pg_timezone_names (name VARCHAR, abbrev VARCHAR, utc_offset VARCHAR, is_dst BOOLEAN)")
+    db.execute("CREATE TABLE _pg_timezone_abbrevs (abbrev VARCHAR, utc_offset VARCHAR, is_dst BOOLEAN)")
     db.execute("CREATE TABLE _is_role_table_grants (grantor VARCHAR, grantee VARCHAR, table_catalog VARCHAR, table_schema VARCHAR, table_name VARCHAR, privilege_type VARCHAR, is_grantable VARCHAR, with_hierarchy VARCHAR)")
     db.execute("CREATE TABLE _is_role_column_grants (grantor VARCHAR, grantee VARCHAR, table_catalog VARCHAR, table_schema VARCHAR, table_name VARCHAR, column_name VARCHAR, privilege_type VARCHAR, is_grantable VARCHAR)")
     db.execute("CREATE TABLE _is_triggers (trigger_catalog VARCHAR, trigger_schema VARCHAR, trigger_name VARCHAR, event_manipulation VARCHAR, event_object_catalog VARCHAR, event_object_schema VARCHAR, event_object_table VARCHAR, action_order INTEGER, action_condition VARCHAR, action_statement VARCHAR, action_orientation VARCHAR, action_timing VARCHAR, action_reference_old_table VARCHAR, action_reference_new_table VARCHAR, action_reference_old_row VARCHAR, action_reference_new_row VARCHAR, created VARCHAR)")
@@ -1159,16 +1193,56 @@ def _populate_empty_system_tables(db) -> None:
     db.execute("CREATE TABLE _is_applicable_roles (grantee VARCHAR, role_name VARCHAR, is_grantable VARCHAR)")
 
 
-def _populate_pg_roles_and_database(db, role_id: str) -> None:
+_PG_SYSTEM_ROLES: list[tuple] = [
+    # OID, name, super, inherit, createrole, createdb, canlogin, replication, connlimit, bypassrls
+    (3386, "pg_monitor",               False, True,  False, False, False, False, -1, False),
+    (3387, "pg_read_all_settings",     False, True,  False, False, False, False, -1, False),
+    (3388, "pg_read_all_stats",        False, True,  False, False, False, False, -1, False),
+    (3389, "pg_stat_scan_tables",      False, True,  False, False, False, False, -1, False),
+    (4200, "pg_signal_backend",        False, True,  False, False, False, False, -1, False),
+    (4569, "pg_read_server_files",     False, True,  False, False, False, False, -1, False),
+    (4570, "pg_write_server_files",    False, True,  False, False, False, False, -1, False),
+    (4571, "pg_execute_server_program",False, True,  False, False, False, False, -1, False),
+]
+
+
+def _populate_pg_roles_and_database(db, role_id: str, state=None) -> None:
     db.execute("""CREATE TABLE _pg_roles (
         oid INTEGER, rolname VARCHAR, rolsuper BOOLEAN, rolinherit BOOLEAN,
         rolcreaterole BOOLEAN, rolcreatedb BOOLEAN, rolcanlogin BOOLEAN,
         rolreplication BOOLEAN, rolconnlimit INTEGER, rolpassword VARCHAR,
         rolvaliduntil VARCHAR, rolbypassrls BOOLEAN, rolconfig VARCHAR)""")
-    db.execute(
-        "INSERT INTO _pg_roles VALUES (10,?,FALSE,TRUE,FALSE,FALSE,TRUE,FALSE,-1,NULL,NULL,FALSE,NULL)",
-        [role_id],
-    )
+
+    rows: list[tuple] = []
+    seen_names: set[str] = set()
+    # Provisa roles from state (all defined roles, not just the connected one)
+    _roles_attr = getattr(state, "roles", None)
+    provisa_roles = list(_roles_attr.values()) if isinstance(_roles_attr, dict) else []
+    for i, role in enumerate(provisa_roles):
+        rname = role["id"] if isinstance(role, dict) else getattr(role, "id", None)
+        if not rname or rname in seen_names:
+            continue
+        seen_names.add(rname)
+        roid = 10 + i
+        rows.append((roid, rname, False, True, False, False, True, False, -1, None, None, False, None))
+    # Ensure the connected role is present even if state.roles is empty
+    if role_id not in seen_names:
+        rows.append((10, role_id, False, True, False, False, True, False, -1, None, None, False, None))
+        seen_names.add(role_id)
+    # Standard PG system roles
+    for oid, name, sup, inh, crrole, crdb, login, repl, conn, byp in _PG_SYSTEM_ROLES:
+        if name not in seen_names:
+            rows.append((oid, name, sup, inh, crrole, crdb, login, repl, conn, None, None, byp, None))
+            seen_names.add(name)
+
+    db.executemany("INSERT INTO _pg_roles VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", rows)
+    db.execute("""CREATE TABLE _pg_user AS
+        SELECT oid AS usesysid, rolname AS usename,
+               rolcreatedb AS usecreatedb, rolsuper AS usesuper,
+               rolreplication AS userepl, rolbypassrls AS usebypassrls,
+               '********' AS passwd, rolvaliduntil AS valuntil,
+               rolconfig AS useconfig
+        FROM _pg_roles WHERE rolcanlogin""")
     db.execute("""CREATE TABLE _pg_database (
         oid INTEGER, datname VARCHAR, datdba INTEGER, encoding INTEGER,
         datlocprovider VARCHAR, datistemplate BOOLEAN, datallowconn BOOLEAN,
@@ -1297,17 +1371,20 @@ def _build_fk_constraint_rows(
             or jm.source_expr is not None
             or jm.source_column.startswith("__")
         )
-        col_label = join_field if is_synthetic else jm.source_column
+        from provisa.compiler.naming import apply_sql_name
+        src_col_sql = apply_sql_name(jm.source_column) or jm.source_column
+        tgt_col_sql = apply_sql_name(jm.target_column) or jm.target_column
+        col_label = join_field if is_synthetic else src_col_sql
         src_sem_name = semantic_table_name(src_tm)
         base_name = f"fk_{src_sem_name}__{col_label}"
         tgt_sem_name = semantic_table_name(jm.target)
         con_name = base_name if base_name not in used_names else f"{base_name}__{tgt_sem_name}"
         used_names.add(con_name)
-        attnum_col = jm.source_column
-        if attnum_col.startswith("__"):
+        attnum_col = src_col_sql
+        if jm.source_column.startswith("__"):
             attnum_col = "_name_"
         src_attnum = idx.col_attnum.get((src_toid, attnum_col), 0)
-        tgt_attnum = idx.col_attnum.get((tgt_toid, jm.target_column), 0)
+        tgt_attnum = idx.col_attnum.get((tgt_toid, tgt_col_sql), 0)
         if src_attnum == 0:
             continue
         rows.append(
@@ -1428,6 +1505,19 @@ def _build_catalog_db(role_id: str, state):
     import duckdb
 
     db = duckdb.connect(":memory:")
+    db.execute("CREATE MACRO pg_backend_pid() AS 0")
+    db.execute("CREATE MACRO age(x) AS 0")
+    db.execute("CREATE MACRO quote_ident(x) AS '\"' || replace(x, '\"', '\"\"') || '\"'")
+    db.execute("""CREATE MACRO pg_available_extensions() AS TABLE
+        SELECT CAST(NULL AS VARCHAR) AS name, CAST(NULL AS VARCHAR) AS default_version,
+               CAST(NULL AS VARCHAR) AS installed_version, CAST(NULL AS VARCHAR) AS comment
+        LIMIT 0""")
+    db.execute("""CREATE MACRO pg_available_extension_versions() AS TABLE
+        SELECT CAST(NULL AS VARCHAR) AS name, CAST(NULL AS VARCHAR) AS version,
+               FALSE AS installed, FALSE AS superuser, FALSE AS trusted,
+               FALSE AS relocatable, CAST(NULL AS VARCHAR) AS schema,
+               CAST(NULL AS VARCHAR[]) AS requires, CAST(NULL AS VARCHAR) AS comment
+        LIMIT 0""")
     ctx = state.contexts.get(role_id)
     col_types: dict = state.schema_build_cache.get("column_types", {})
     idx = _build_catalog_index(ctx, col_types)
@@ -1450,9 +1540,10 @@ def _build_catalog_db(role_id: str, state):
     _populate_pg_type(db)
     _populate_empty_system_tables(db)
     raw_tables = state.schema_build_cache.get("tables", []) if state else []
-    _populate_pg_description(db, idx, raw_tables)
+    raw_domains = state.schema_build_cache.get("domains", []) if state else []
+    _populate_pg_description(db, idx, raw_tables, raw_domains)
     constraint_rows = _populate_pg_constraint(db, ctx, idx)
-    _populate_pg_roles_and_database(db, role_id)
+    _populate_pg_roles_and_database(db, role_id, state)
     _populate_pg_settings(db)
     _populate_pg_tables_and_am(db, idx)
     _populate_is_constraints(db, constraint_rows, idx)
@@ -1464,6 +1555,19 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
     """Rewrite catalog table refs for DuckDB and transpile from postgres dialect."""
     import sqlglot
     import sqlglot.expressions as exp
+    import re as _pre_re
+
+    # Convert PG array literals with type casts to DuckDB array syntax before
+    # sqlglot parses — sqlglot misparses e.g. '{16395}'::oid[] (treats [] as
+    # bracket indexing, not array type), causing a silent fallback to original SQL.
+    # '{a,b,c}'::type[] → [a,b,c]
+    sql = _pre_re.sub(
+        r"'\{([^}]*)\}'::\w+(?:\[\])+",
+        lambda m: "[" + m.group(1) + "]",
+        sql,
+    )
+    # ARRAY[a,b]::type[] → ARRAY[a,b] (strip redundant cast; DuckDB infers type)
+    sql = _pre_re.sub(r"(ARRAY\[[^\]]*\])::\w+(?:\[\])+", r"\1", sql, flags=_pre_re.IGNORECASE)
 
     try:
         tree = sqlglot.parse_one(sql, read="postgres")
@@ -1472,6 +1576,25 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
 
     def _transform(node: exp.Expression) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         if isinstance(node, exp.Table):
+            # Schema-qualified scalar function used as a TVF (e.g. pg_catalog.pg_indexam_has_property(...) amcanorder).
+            # Rewrite to a lateral subquery so DuckDB can parse it.
+            if isinstance(node.this, exp.Anonymous):
+                fn_result = _transform(node.this)
+                col_name = node.alias if node.alias else node.this.name.lower()
+                if fn_result is node.this:
+                    # Function not rewritten to a scalar — strip schema qualifier so
+                    # DuckDB can call its own TABLE macro (e.g. pg_available_extensions).
+                    new_tbl = exp.Table(this=node.this)
+                    if node.alias:
+                        new_tbl.set("alias", node.args.get("alias"))
+                    return new_tbl
+                # Function rewritten to a scalar — wrap in a derived table so it is
+                # valid in FROM/JOIN position (e.g. pg_indexam_has_property → false).
+                inner = exp.select(exp.alias_(fn_result, col_name))
+                return exp.Subquery(
+                    this=inner,
+                    alias=exp.TableAlias(this=exp.Identifier(this=f"_tvf_{col_name}", quoted=False)),
+                )
             db = node.db.lower() if node.db else ""
             name = node.name.lower() if node.name else ""
             mapped = _TABLE_MAP.get((db, name)) or (
@@ -1481,9 +1604,27 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
                 new_tbl = exp.Table(this=exp.Identifier(this=mapped, quoted=False))
                 if node.alias:
                     new_tbl.set("alias", node.args.get("alias"))
+                else:
+                    # Preserve original name as alias so unqualified column refs
+                    # like `pg_opclass.oid` continue to resolve after rename.
+                    new_tbl.set("alias", exp.TableAlias(this=exp.Identifier(this=name, quoted=False)))
                 return new_tbl
         if isinstance(node, exp.Anonymous):
             fn = node.name.lower()
+            if fn == "array_length":
+                args = node.args.get("expressions", [])
+                return exp.Anonymous(this="len", expressions=[args[0]] if args else [exp.null()])
+            if fn == "current_schemas":
+                args = node.args.get("expressions", [])
+                include_implicit = True
+                if args and isinstance(args[0], exp.Boolean):
+                    include_implicit = args[0].this
+                elif args and isinstance(args[0], exp.false().__class__):
+                    include_implicit = False
+                base = exp.select(exp.Anonymous(this="list", expressions=[exp.column("nspname")])).from_("_pg_namespace")
+                if not include_implicit:
+                    base = base.where("nspname NOT IN ('pg_catalog', 'information_schema')")
+                return exp.Subquery(this=base)
             if "pg_get_userbyid" in fn or "pg_get_role_name" in fn:
                 return exp.Literal.string("provisa")
             if fn.startswith("pg_get_") or "pg_tablespace_location" in fn:
@@ -1491,7 +1632,14 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
             if "pg_encoding_to_char" in fn:
                 return exp.Literal.string("UTF8")
             if "format_type" in fn:
-                return exp.Literal.string("text")
+                args = node.args.get("expressions", [])
+                typid_expr = args[0] if args else exp.null()
+                subq = (
+                    exp.select(exp.column("typname"))
+                    .from_("_pg_type")
+                    .where(exp.EQ(this=exp.column("oid"), expression=typid_expr))
+                )
+                return exp.Subquery(this=subq)
             if "obj_description" in fn or "shobj_description" in fn:
                 args = node.args.get("expressions", [])
                 oid_expr = args[0] if args else exp.null()
@@ -1525,6 +1673,11 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
                 return exp.Literal.number(0)
             if "pg_table_is_visible" in fn or "pg_has_role" in fn:
                 return exp.true()
+            if fn == "encode":
+                # PG encode(bytea, format) → return NULL; our catalog columns are VARCHAR not bytea
+                return exp.null()
+            if fn in ("pg_indexam_has_property", "pg_am_has_property", "pg_index_has_property", "pg_index_column_has_property"):
+                return exp.false()
             if fn in ("current_user", "session_user"):
                 return exp.Literal.string(role_id)
             if fn in ("current_database",):
@@ -1539,6 +1692,10 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
                 return exp.Literal.string(_KNOWN_SETTINGS.get(key, ""))
         if type(node).__name__ == "CurrentUser":
             return exp.Literal.string(role_id)
+        if type(node).__name__ == "CurrentDatabase":
+            return exp.Literal.string("provisa")
+        if type(node).__name__ == "CurrentSchema":
+            return exp.Literal.string("public")
         if isinstance(node, exp.Dot):
             # Strip schema qualifier from schema-qualified expressions: pg_catalog.TRUE → TRUE
             left = node.this
@@ -1546,6 +1703,17 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
                 # Re-apply transform to inner node so schema-qualified function calls
                 # like pg_catalog.pg_encoding_to_char(...) are fully handled
                 return _transform(node.expression)
+        if isinstance(node, exp.EQ):
+            # Rewrite `val = ANY(arr)` → `list_contains(arr, val)` so DuckDB
+            # does not expand ANY into an internal subquery, which it rejects
+            # on the outer side of non-inner JOINs.
+            lhs, rhs = node.this, node.expression
+            if isinstance(rhs, exp.Any):
+                arr = rhs.this
+                return exp.Anonymous(this="list_contains", expressions=[arr.transform(_transform), lhs.transform(_transform)])
+            if isinstance(lhs, exp.Any):
+                arr = lhs.this
+                return exp.Anonymous(this="list_contains", expressions=[arr.transform(_transform), rhs.transform(_transform)])
         if isinstance(node, exp.Cast):
             dtype = node.args.get("to")
             dtype_str = str(dtype).lower() if dtype else ""
@@ -1553,7 +1721,11 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
                 return node.this
             if dtype_str in ("oid", "xid", "tid", "cid"):
                 return exp.Literal.number(0)
+            if dtype_str == "name":
+                return exp.cast(node.this, "VARCHAR")
         if isinstance(node, exp.Column):
+            if node.name.lower() in ("xmin", "xmax", "cmin", "cmax", "ctid"):
+                return exp.cast(exp.Literal.number(0), "INTEGER")
             if node.name.lower() in ("current_user", "session_user"):
                 return exp.Literal.string(role_id)
             # Rewrite schema-qualified column refs: pg_catalog.pg_class.col → _pg_class.col
@@ -1562,8 +1734,7 @@ def _rewrite_for_duckdb(sql: str, role_id: str = "") -> str:
             tbl = node.args.get("table")
             tname = tbl.name.lower() if tbl and hasattr(tbl, "name") else ""
             if db in _INTERCEPT_SCHEMAS and tname:
-                mapped = _TABLE_MAP.get((db, tname)) or tname
-                return exp.column(node.name, table=mapped)
+                return exp.column(node.name, table=tname)
         return node
 
     try:
