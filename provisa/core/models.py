@@ -163,7 +163,7 @@ class Source(BaseModel):
     cache_ttl: int | None = None  # overrides global default; None = inherit
     cache_catalog: str | None = None  # Trino catalog for API cache; None = source's own catalog
     cache_schema: str = "api_cache"  # schema within that catalog
-    naming_convention: str | None = None  # overrides global; None = inherit
+    gql_naming_convention: str | None = None  # overrides global; None = inherit
     federation_hints: dict[str, str] = Field(default_factory=dict)  # Trino session props
     allowed_domains: list[str] = Field(
         default_factory=list
@@ -224,10 +224,11 @@ class NamingRule(BaseModel):
 
 class NamingConfig(BaseModel):
     convention: str = "apollo_graphql"
+    sql_convention: str = "snake"
     rules: list[NamingRule] = Field(default_factory=list)
     relay_pagination: bool = False  # opt-in: generate _connection fields + Edge/PageInfo types
 
-    @field_validator("convention")
+    @field_validator("convention", "sql_convention")
     @classmethod
     def _validate_convention(cls, v: str) -> str:
         from provisa.compiler.naming import VALID_CONVENTIONS
@@ -321,7 +322,7 @@ class Table(BaseModel):
     alias: str | None = None  # GraphQL type/field name override
     description: str | None = None  # GraphQL type description
     cache_ttl: int | None = None  # overrides source-level; None = inherit
-    naming_convention: str | None = None  # overrides source; None = inherit
+    gql_naming_convention: str | None = None  # overrides source; None = inherit
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
     relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
     live: LiveDeliveryConfig | None = None  # live query delivery config (Phase AM)

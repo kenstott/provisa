@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS sources (
     dialect       TEXT NOT NULL DEFAULT '',
     cache_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     cache_ttl     INTEGER,
-    naming_convention TEXT,
+    gql_naming_convention TEXT,
     path          TEXT  -- file path or URL for file-based sources (csv, parquet, sqlite)
     -- password never stored; resolved at runtime via secrets provider
 );
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     alias       TEXT,
     description TEXT,
     cache_ttl   INTEGER,
-    naming_convention TEXT,
+    gql_naming_convention TEXT,
     watermark_column TEXT,
     UNIQUE (source_id, schema_name, table_name)
 );
