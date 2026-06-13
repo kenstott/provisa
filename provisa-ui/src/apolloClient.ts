@@ -9,6 +9,7 @@
 // permission from the copyright holder.
 
 import { ApolloClient, InMemoryCache, HttpLink, ApolloLink } from "@apollo/client";
+import { map } from "rxjs/operators";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -51,6 +52,7 @@ const cache = new InMemoryCache({
 const CACHE_VERSION = "3";
 const CACHE_KEY = "apollo-cache";
 const CACHE_VERSION_KEY = "apollo-cache-version";
+const SCHEMA_VERSION_KEY = "admin-schema-version";
 
 if (typeof window !== "undefined") {
   const stored = localStorage.getItem(CACHE_KEY);
@@ -66,9 +68,31 @@ if (typeof window !== "undefined") {
   }
 }
 
+// Afterware: read X-Schema-Version from every /admin/graphql response.
+// When the server-side version advances (schema rebuilt after table mutations),
+// reset the store so all active queries re-fetch and stale cached data is evicted.
+let _resetting = false;
+const schemaVersionLink = new ApolloLink((operation, forward) =>
+  forward(operation).pipe(map((response) => {
+    if (typeof window === "undefined" || _resetting) return response;
+    const ctx = operation.getContext();
+    const version = ctx.response?.headers?.get("x-schema-version");
+    if (version === null || version === undefined) return response;
+    const stored = localStorage.getItem(SCHEMA_VERSION_KEY);
+    if (stored !== null && stored !== version) {
+      localStorage.setItem(SCHEMA_VERSION_KEY, version);
+      _resetting = true;
+      client.resetStore().finally(() => { _resetting = false; });
+    } else if (stored === null) {
+      localStorage.setItem(SCHEMA_VERSION_KEY, version);
+    }
+    return response;
+  }))
+);
+
 export const client = new ApolloClient({
   ssrMode: typeof window === "undefined",
-  link: authLink.concat(httpLink),
+  link: ApolloLink.from([authLink, schemaVersionLink, httpLink]),
   cache,
   defaultOptions: {
     watchQuery: {
