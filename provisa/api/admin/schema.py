@@ -202,7 +202,7 @@ def _source_from_row(row) -> SourceType:
         dialect=row["dialect"],
         cache_enabled=row.get("cache_enabled", True),
         cache_ttl=row.get("cache_ttl"),
-        naming_convention=row.get("naming_convention"),
+        gql_naming_convention=row.get("gql_naming_convention"),
         path=row.get("path"),
         allowed_domains=list(row.get("allowed_domains") or []),
         description=row.get("description") or "",
@@ -306,6 +306,7 @@ async def _fetch_table_with_columns(conn, row, all_tables: list | None = None, u
         "FROM table_columns WHERE table_id = $1 ORDER BY id",
         row["id"],
     )
+    from provisa.compiler.naming import apply_sql_name
     columns = [
         TableColumnType(
             id=r["id"],
@@ -319,6 +320,7 @@ async def _fetch_table_with_columns(conn, row, all_tables: list | None = None, u
             mask_value=r.get("mask_value"),
             mask_precision=r.get("mask_precision"),
             alias=r.get("alias"),
+            computed_sql_alias=r.get("alias") or apply_sql_name(r["column_name"]) or r["column_name"],
             description=r.get("description"),
             data_type=r.get("data_type"),
             native_filter_type=r.get("native_filter_type"),
@@ -380,7 +382,7 @@ async def _fetch_table_with_columns(conn, row, all_tables: list | None = None, u
         alias=row.get("alias"),
         description=row.get("description"),
         cache_ttl=row.get("cache_ttl"),
-        naming_convention=row.get("naming_convention"),
+        gql_naming_convention=row.get("gql_naming_convention"),
         watermark_column=row.get("watermark_column"),
         columns=columns,
         column_presets=presets,
@@ -624,7 +626,7 @@ class Query:
     async def relationships(self) -> list[RelationshipType]:
         from provisa.api.app import state
 
-        convention = state.global_naming_convention
+        convention = state.global_gql_naming_convention
         pool = await _get_pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch(
@@ -883,7 +885,7 @@ class Query:
         pool = await _get_pool()
         async with pool.acquire() as conn:
             convention = await conn.fetchval(
-                "SELECT naming_convention FROM sources WHERE id = $1", source_id
+                "SELECT gql_naming_convention FROM sources WHERE id = $1", source_id
             ) or "apollo_graphql"
             _c = apply_convention(table_name, convention)
             candidate: str = _c if _c is not None else table_name
@@ -1597,9 +1599,9 @@ class Mutation:
 
             async with pool.acquire() as conn:
                 src = await conn.fetchrow(
-                    "SELECT naming_convention FROM sources WHERE id = $1", input.source_id
+                    "SELECT gql_naming_convention FROM sources WHERE id = $1", input.source_id
                 )
-            convention = (src["naming_convention"] if src else None) or "apollo_graphql"
+            convention = (src["gql_naming_convention"] if src else None) or "apollo_graphql"
             alias = apply_convention(input.table_name, convention)
 
         from provisa.core.models import ColumnPreset as ColumnPresetModel
@@ -1949,24 +1951,27 @@ class Mutation:
     # ── Admin: Naming Convention ──
 
     @strawberry.mutation
-    async def update_naming_convention(self, convention: str) -> MutationResult:
+    async def update_gql_naming_convention(self, convention: str) -> MutationResult:
         """Set the global naming convention and rebuild schemas for all roles."""
         from provisa.api.app import state
 
-        state.global_naming_convention = convention
+        from provisa.compiler import naming as _naming
+
+        state.global_gql_naming_convention = convention
+        _naming.configure(gql=convention, sql=state.global_sql_naming_convention)
         await _rebuild_schemas()
         return MutationResult(success=True, message=f"Naming convention set to {convention!r}")
 
     @strawberry.mutation
     async def update_source_naming(
-        self, source_id: str, naming_convention: Optional[str] = None
+        self, source_id: str, gql_naming_convention: Optional[str] = None
     ) -> MutationResult:
         """Update naming convention for a source."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute(
-                "UPDATE sources SET naming_convention = $1 WHERE id = $2",
-                naming_convention,
+                "UPDATE sources SET gql_naming_convention = $1 WHERE id = $2",
+                gql_naming_convention,
                 source_id,
             )
             if result == "UPDATE 0":
@@ -2003,14 +2008,14 @@ class Mutation:
 
     @strawberry.mutation
     async def update_table_naming(
-        self, table_id: int, naming_convention: Optional[str] = None
+        self, table_id: int, gql_naming_convention: Optional[str] = None
     ) -> MutationResult:
         """Update naming convention for a registered table."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute(
-                "UPDATE registered_tables SET naming_convention = $1 WHERE id = $2",
-                naming_convention,
+                "UPDATE registered_tables SET gql_naming_convention = $1 WHERE id = $2",
+                gql_naming_convention,
                 table_id,
             )
             if result == "UPDATE 0":

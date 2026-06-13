@@ -26,7 +26,7 @@ class SourceType:
     dialect: str
     cache_enabled: bool
     cache_ttl: int | None
-    naming_convention: str | None
+    gql_naming_convention: str | None
     path: str | None
     allowed_domains: list[str] = strawberry.field(default_factory=list)
     description: str = ""
@@ -59,7 +59,7 @@ class RegisteredTableType:
     alias: str | None
     description: str | None
     cache_ttl: int | None
-    naming_convention: str | None
+    gql_naming_convention: str | None
     watermark_column: str | None
     columns: list[TableColumnType]
     column_presets: list[ColumnPresetType] = strawberry.field(default_factory=list)
@@ -82,6 +82,7 @@ class TableColumnType:
     mask_value: str | None
     mask_precision: str | None
     alias: str | None
+    computed_sql_alias: str
     description: str | None
     data_type: str | None = None
     native_filter_type: str | None = None

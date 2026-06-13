@@ -106,8 +106,9 @@ function applyConvention(name: string, convention: string | null | undefined): s
   if (convention === "snake_case") return toSnakeCase(name);
   if (convention === "camelCase") return toCamelCase(name);
   if (convention === "PascalCase") return toPascalCase(name);
-  return name;
+  return toSnakeCase(name);
 }
+
 
 function normalizeDomain(domain: string): string {
   return domain.replace(/[^a-zA-Z0-9]/g, "_").replace(/^_+|_+$/g, "");
@@ -164,7 +165,7 @@ interface ColumnForm {
 export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { tables, refetch: refetchTables } = useTables();
+  const { tables, loading: tablesLoading, refetch: refetchTables } = useTables();
   const { sources, refetch: refetchSources } = useSources();
   const { domains, refetch: refetchDomains } = useDomains();
   const { roles, refetch: refetchRoles } = useRoles();
@@ -623,7 +624,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         setError(result.message);
         return;
       }
-      await handleNamingChange(editingTable.id, editingTable.namingConvention ?? "");
+      await handleNamingChange(editingTable.id, editingTable.gqlNamingConvention ?? "");
       const ttlEdit = cacheTtlEdits[editingTable.id];
       if (ttlEdit?.dirty) await handleSaveTableCache(editingTable.id);
       setEditingTable(null);
@@ -635,7 +636,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     }
   };
 
-  if (loading) return <div className="page">Loading tables...</div>;
+  if (loading || tablesLoading) return <div className="page">Loading tables...</div>;
 
   return (
     <div className="page">
@@ -748,7 +749,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             })()}
           </label>
           <label>
-            Alias{" "}
+            SQL Alias{" "}
             <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>(optional)</span>
             <input
               value={tableAlias}
@@ -816,7 +817,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                   <span className="col-flex-header">Visible To (Read)</span>
                   <span className="col-flex-header">Writable By (R/W)</span>
                   <span className="col-flex-header">Masking</span>
-                  <span className="col-flex-header">Alias</span>
+                  <span className="col-flex-header">SQL Alias</span>
                   <span className="col-flex-header">Description</span>
                   <span className="col-flex-header">Scope</span>
                 </div>
@@ -859,12 +860,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                         <option value="truncate">Truncate</option>
                       </select>
                       <input
-                        value={col.alias}
+                        value={col.alias || ""}
                         onChange={(e) => updateCol(i, "alias", e.target.value)}
-                        placeholder={applyConvention(
-                          col.name,
-                          sources.find((s) => s.id === sourceId)?.namingConvention,
-                        )}
                         className="col-flex-input"
                       />
                       <input
@@ -1010,9 +1007,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                       {t.governance}
                     </td>
                     <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                      {NAMING_CONVENTIONS.find((nc) => nc.value === (t.namingConvention ?? ""))
+                      {NAMING_CONVENTIONS.find((nc) => nc.value === (t.gqlNamingConvention ?? ""))
                         ?.label ??
-                        t.namingConvention ??
+                        t.gqlNamingConvention ??
                         "Inherit (source)"}
                     </td>
                     <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
@@ -1067,7 +1064,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                 <tr>
                                   <th>Column</th>
                                   <th>PK</th>
-                                  <th>Alias</th>
+                                  <th>SQL Alias</th>
                                   <th>Description</th>
                                   <th>Visible To (Read)</th>
                                   <th>Writable By (R/W)</th>
@@ -1110,7 +1107,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                           </span>
                                         )}
                                       </td>
-                                      <td>{c.alias || ""}</td>
+                                      <td style={{ color: c.alias ? "white" : "var(--text-muted)" }}>{c.computedSqlAlias}</td>
                                       <td className="reasoning-cell">{c.description || ""}</td>
                                       <td>
                                         {c.visibleTo.length > 0 ? c.visibleTo.join(", ") : "all"}
@@ -1450,7 +1447,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                 <span
                                   style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}
                                 >
-                                  Alias{" "}
+                                  SQL Alias{" "}
                                   <span
                                     title="The GraphQL/Cypher field name exposed in the API. Defaults to the table name. Changing this renames the entity across all queries and SDL docs."
                                     style={{
@@ -1492,11 +1489,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                   </span>
                                 </span>
                                 <select
-                                  value={editingTable.namingConvention ?? ""}
+                                  value={editingTable.gqlNamingConvention ?? ""}
                                   onChange={(e) =>
                                     setEditingTable({
                                       ...editingTable,
-                                      namingConvention: e.target.value || null,
+                                      gqlNamingConvention: e.target.value || null,
                                     })
                                   }
                                 >
@@ -1703,7 +1700,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                 <tr>
                                   <th>Column</th>
                                   <th>PK</th>
-                                  <th>Alias</th>
+                                  <th>SQL Alias</th>
                                   <th>Description</th>
                                   <th>Visible To (Read)</th>
                                   <th>Writable By (R/W)</th>
@@ -1751,16 +1748,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                       </td>
                                       <td>
                                         <input
-                                          value={c.alias || ""}
+                                          value={c.alias || c.computedSqlAlias}
                                           onChange={(e) =>
                                             updateEditCol(i, "alias", e.target.value)
                                           }
-                                          placeholder={applyConvention(
-                                            c.columnName,
-                                            editingTable.namingConvention ??
-                                              sources.find((s) => s.id === editingTable.sourceId)
-                                                ?.namingConvention,
-                                          )}
                                         />
                                       </td>
                                       <td>

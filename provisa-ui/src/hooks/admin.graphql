@@ -17,6 +17,7 @@ fragment ColumnFields on TableColumnType {
   maskValue
   maskPrecision
   alias
+  computedSqlAlias
   description
   nativeFilterType
   isPrimaryKey
@@ -54,7 +55,7 @@ query SourcesQuery {
     dialect
     cacheEnabled
     cacheTtl
-    namingConvention
+    gqlNamingConvention
     allowedDomains
     description
   }
@@ -79,7 +80,7 @@ query TablesQuery {
     alias
     description
     cacheTtl
-    namingConvention
+    gqlNamingConvention
     watermarkColumn
     apiEndpoint
     viewSql
@@ -328,14 +329,14 @@ mutation UpdateTableCache($tableId: Int!, $cacheTtl: Int) {
   }
 }
 
-mutation UpdateSourceNaming($sourceId: String!, $namingConvention: String) {
-  updateSourceNaming(sourceId: $sourceId, namingConvention: $namingConvention) {
+mutation UpdateSourceNaming($sourceId: String!, $gqlNamingConvention: String) {
+  updateSourceNaming(sourceId: $sourceId, gqlNamingConvention: $gqlNamingConvention) {
     ...MutationResult
   }
 }
 
-mutation UpdateTableNaming($tableId: Int!, $namingConvention: String) {
-  updateTableNaming(tableId: $tableId, namingConvention: $namingConvention) {
+mutation UpdateTableNaming($tableId: Int!, $gqlNamingConvention: String) {
+  updateTableNaming(tableId: $tableId, gqlNamingConvention: $gqlNamingConvention) {
     ...MutationResult
   }
 }

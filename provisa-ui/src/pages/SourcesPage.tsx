@@ -214,7 +214,7 @@ export function SourcesPage() {
     database: "",
     username: "",
     password: "",
-    namingConvention: "",
+    gqlNamingConvention: "",
     cacheTtl: "",
     cacheEnabled: true,
     path: "" as string,
@@ -343,7 +343,7 @@ export function SourcesPage() {
       database: s.database ?? "",
       username: s.username ?? "",
       password: "",
-      namingConvention: s.namingConvention ?? "",
+      gqlNamingConvention: s.gqlNamingConvention ?? "",
       cacheTtl: s.cacheTtl != null ? String(s.cacheTtl) : "",
       cacheEnabled: s.cacheEnabled,
       path: s.path ?? "",
@@ -381,7 +381,7 @@ export function SourcesPage() {
       database: "",
       username: "",
       password: "",
-      namingConvention: "",
+      gqlNamingConvention: "",
       cacheTtl: "",
       cacheEnabled: true,
       path: "",
@@ -398,7 +398,7 @@ export function SourcesPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const { namingConvention: _nc, cacheTtl: _ct, cacheEnabled: _ce, ...coreForm } = form;
+      const { gqlNamingConvention: _nc, cacheTtl: _ct, cacheEnabled: _ce, ...coreForm } = form;
       const sourcePayload = {
         ...coreForm,
         path: FILE_SOURCES.has(form.type) ? form.path || null : null,
@@ -429,7 +429,7 @@ export function SourcesPage() {
         if (!cacheResult.success) throw new Error(cacheResult.message);
         const namingResult = await updateSourceNaming(
           effectiveId,
-          form.namingConvention === "" ? null : form.namingConvention,
+          form.gqlNamingConvention === "" ? null : form.gqlNamingConvention,
         );
         if (!namingResult.success) throw new Error(namingResult.message);
         const parsedDomains = form.allowedDomains
@@ -1819,8 +1819,8 @@ export function SourcesPage() {
           <label>
             Naming Convention
             <select
-              value={form.namingConvention}
-              onChange={(e) => setForm({ ...form, namingConvention: e.target.value })}
+              value={form.gqlNamingConvention}
+              onChange={(e) => setForm({ ...form, gqlNamingConvention: e.target.value })}
             >
               {NAMING_CONVENTIONS.map((nc) => (
                 <option key={nc.value} value={nc.value}>
@@ -1992,7 +1992,7 @@ export function SourcesPage() {
                     <td>{s.port || "—"}</td>
                     <td>{s.database || "—"}</td>
                     <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                      {s.namingConvention || "inherit"}
+                      {s.gqlNamingConvention || "inherit"}
                     </td>
                     <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                       {s.cacheEnabled ? "on" : "off"}
@@ -2120,7 +2120,7 @@ export function SourcesPage() {
                                   ["Port", s.port || "—"],
                                   ["Database", s.database || "—"],
                                   ["Username", s.username || "—"],
-                                  ["Naming", s.namingConvention || "inherit (global)"],
+                                  ["Naming", s.gqlNamingConvention || "inherit (global)"],
                                   ["Cache", s.cacheEnabled ? "enabled" : "disabled"],
                                   ["Cache TTL", s.cacheTtl != null ? `${s.cacheTtl}s` : "inherit"],
                                   ["Effective TTL", getEffectiveTtl(s)],

@@ -320,8 +320,8 @@ export function useUpdateSourceNaming() {
     UpdateSourceNaming,
   );
   return {
-    updateSourceNaming: async (sourceId: string, namingConvention: string | null) => {
-      const result = await updateSourceNaming({ variables: { sourceId, namingConvention } });
+    updateSourceNaming: async (sourceId: string, gqlNamingConvention: string | null) => {
+      const result = await updateSourceNaming({ variables: { sourceId, gqlNamingConvention } });
       return (result.data?.updateSourceNaming ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
@@ -333,8 +333,8 @@ export function useUpdateTableNaming() {
     UpdateTableNaming,
   );
   return {
-    updateTableNaming: async (tableId: number, namingConvention: string | null) => {
-      const result = await updateTableNaming({ variables: { tableId, namingConvention } });
+    updateTableNaming: async (tableId: number, gqlNamingConvention: string | null) => {
+      const result = await updateTableNaming({ variables: { tableId, gqlNamingConvention } });
       return (result.data?.updateTableNaming ?? { success: false, message: "" }) as MutationResult;
     },
     loading,

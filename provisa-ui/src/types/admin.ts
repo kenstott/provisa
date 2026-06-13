@@ -20,7 +20,7 @@ export interface Source {
   dialect: string | null;
   cacheEnabled: boolean;
   cacheTtl: number | null;
-  namingConvention: string | null;
+  gqlNamingConvention: string | null;
   path: string | null;
   allowedDomains: string[];
   description: string;
@@ -56,6 +56,7 @@ export interface TableColumn {
   maskValue: string | null;
   maskPrecision: string | null;
   alias: string | null;
+  computedSqlAlias: string;
   description: string | null;
   dataType: string | null;
   nativeFilterType: string | null;
@@ -83,7 +84,7 @@ export interface RegisteredTable {
   alias: string | null;
   description: string | null;
   cacheTtl: number | null;
-  namingConvention: string | null;
+  gqlNamingConvention: string | null;
   watermarkColumn: string | null;
   columns: TableColumn[];
   columnPresets: ColumnPreset[];
