@@ -44,7 +44,8 @@ from provisa.compiler.aggregate_gen import build_aggregate_types
 from provisa.compiler.enum_detect import build_enum_filter_types, resolve_column_type
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import (
-    apply_convention,
+    active_gql_convention,
+    apply_gql_name,
     domain_gql_alias,
     domain_to_sql_name,
     generate_name,
@@ -76,7 +77,6 @@ class SchemaInput:
     source_catalogs: dict[str, str] | None = None  # source_id → Trino catalog name
     domain_prefix: bool = False  # prepend domain_id__ to all names
     physical_table_map: dict[str, str] | None = None  # virtual → physical table name
-    naming_convention: str = "apollo_graphql"
     relay_pagination: bool = False  # global opt-in for _connection fields
     functions: list[dict] = field(default_factory=list)  # tracked DB functions
     webhooks: list[dict] = field(default_factory=list)  # tracked webhooks
@@ -110,7 +110,7 @@ class _TableInfo:
     )  # [{column_name, native_filter_type}]
     alias: str | None = None  # explicit GraphQL name override
     description: str | None = None  # GraphQL type/field description
-    naming_convention: str = "apollo_graphql"  # resolved convention for this table
+    gql_convention_override: str | None = None  # None = use naming.active_gql_convention()
     relay_pagination: bool = False  # resolved relay flag for this table
     gql_fields: dict[str, GraphQLField] = field(default_factory=dict)
 
@@ -350,10 +350,9 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
                 for name in col_meta
             ]
 
-        # Resolve naming convention: table → source → global
-        table_conv = table.get("naming_convention")
-        source_conv = table.get("source_naming_convention")
-        resolved_conv = table_conv or source_conv or si.naming_convention
+        table_conv = table.get("gql_naming_convention")
+        source_conv = table.get("source_gql_naming_convention")
+        resolved_conv = table_conv or source_conv or None
 
         # Resolve relay_pagination: table → source → global (None = inherit)
         table_relay = table.get("relay_pagination")
@@ -379,7 +378,7 @@ def _build_visible_tables(si: SchemaInput) -> list[_TableInfo]:
                 column_metadata=col_meta,
                 alias=table.get("alias"),
                 description=table.get("description"),
-                naming_convention=resolved_conv,
+                gql_convention_override=resolved_conv,
                 relay_pagination=resolved_relay,
             )
         )
@@ -416,7 +415,7 @@ def _assign_names(
                 domain_table_names,
                 naming_rules,
                 alias=t.alias,
-                convention=t.naming_convention,
+                convention=t.gql_convention_override or active_gql_convention(),
             )
             if domain_prefix:
                 alias = (domain_alias_map or {}).get(domain_id)
@@ -441,7 +440,7 @@ _OBJECT_FIELD_TYPE_MAP: dict[str, GraphQLScalarType] = {
 def _build_object_type(
     col_name: str,
     object_fields: list[dict],
-    convention: str,
+    override: str | None,
     registry: dict[str, GraphQLObjectType],
     type_prefix: str = "",
 ) -> GraphQLObjectType:
@@ -452,10 +451,10 @@ def _build_object_type(
     sub_fields: dict[str, GraphQLField] = {}
     for sf in object_fields:
         sf_name = sf["name"]
-        sf_alias = sf.get("alias") or apply_convention(sf_name, convention) or sf_name
+        sf_alias = sf.get("alias") or apply_gql_name(sf_name, override) or sf_name
         nested = sf.get("fields") or []
         if nested and sf.get("type") == "object":
-            sf_gql: GraphQLOutputType = _build_object_type(sf_name, nested, convention, registry)
+            sf_gql: GraphQLOutputType = _build_object_type(sf_name, nested, override, registry)
         else:
             sf_gql = _OBJECT_FIELD_TYPE_MAP.get(sf.get("type", "string"), GraphQLString)
         sub_fields[sf_alias] = GraphQLField(sf_gql, description=sf.get("description"))
@@ -466,7 +465,7 @@ def _build_object_type(
 
 def _build_column_fields(
     table: _TableInfo,
-    convention: str = "apollo_graphql",
+    override: str | None = None,
     enum_types: dict | None = None,
     object_type_registry: dict[str, GraphQLObjectType] | None = None,
 ) -> dict[str, GraphQLField]:
@@ -502,7 +501,7 @@ def _build_column_fields(
             if "__" in table.type_name:
                 _type_prefix = table.type_name.split("__", 1)[0] + "__"
             gql_type: GraphQLOutputType = _build_object_type(
-                col_name, object_fields, convention, _obj_registry, _type_prefix
+                col_name, object_fields, override, _obj_registry, _type_prefix
             )
         else:
             enum_gql = resolve_column_type(meta.data_type, _enums)
@@ -519,11 +518,20 @@ def _build_column_fields(
         if explicit_alias:
             field_name = explicit_alias
         else:
-            conv_alias = apply_convention(col_name, convention)
+            conv_alias = apply_gql_name(col_name, override)
             field_name = conv_alias if conv_alias else col_name
         description = col.get("description")
         fields[field_name] = GraphQLField(gql_type, description=description)
     return fields
+
+
+def _gql_col_name(col: dict, table: _TableInfo) -> str:
+    """Return the GQL-exposed name for a column (alias > convention > raw physical)."""
+    if alias := col.get("alias"):
+        return alias
+    raw = col["column_name"]
+    conv = apply_gql_name(raw, table.gql_convention_override)
+    return conv if conv else raw
 
 
 def _build_where_input(
@@ -537,6 +545,7 @@ def _build_where_input(
     input_fields: dict[str, GraphQLInputField] = {}
     for col in table.visible_columns:
         col_name = col["column_name"]
+        gql_name = _gql_col_name(col, table)
         meta = table.column_metadata.get(col_name.lower())
         if meta is None:
             continue  # already validated in _build_column_fields
@@ -546,13 +555,13 @@ def _build_where_input(
             pg_name = pg_name.rsplit(".", 1)[1]
         enum_filter = _enum_filters.get(pg_name)
         if enum_filter:
-            input_fields[col_name] = GraphQLInputField(enum_filter)
+            input_fields[gql_name] = GraphQLInputField(enum_filter)
         else:
             gql_type = trino_to_graphql(meta.data_type)
             scalar = gql_type.of_type if isinstance(gql_type, GraphQLList) else gql_type
             filter_type = FILTER_TYPE_MAP.get(scalar)
             if filter_type:
-                input_fields[col_name] = GraphQLInputField(filter_type)
+                input_fields[gql_name] = GraphQLInputField(filter_type)
 
     # Virtual columns support eq/neq filtering
     _str_filter = FILTER_TYPE_MAP.get(GraphQLString)
@@ -593,7 +602,7 @@ def _build_order_by_inputs(
 
     for t in tables:
         visible_col_names = [
-            c["column_name"]
+            _gql_col_name(c, t)
             for c in t.visible_columns
             if c["column_name"].lower() in t.column_metadata
         ]
@@ -628,7 +637,7 @@ def _build_distinct_on_enum(
     table: _TableInfo,
 ) -> GraphQLEnumType | None:
     visible_col_names = [
-        c["column_name"]
+        _gql_col_name(c, table)
         for c in table.visible_columns
         if c["column_name"].lower() in table.column_metadata
     ]
@@ -1142,7 +1151,6 @@ def _build_native_filter_args(
 def _build_aggregate_query_field(
     t: _TableInfo,
     gql_type: GraphQLObjectType,
-    naming_convention: str,
     enum_types: dict,
 ) -> tuple[str, GraphQLField] | None:
     agg_type = build_aggregate_types(t.type_name, t.visible_columns, t.column_metadata, gql_type)
@@ -1152,7 +1160,7 @@ def _build_aggregate_query_field(
     agg_where = _build_where_input(t, f"{t.type_name}Agg", enum_types=enum_types)
     if agg_where:
         agg_args["where"] = GraphQLArgument(agg_where)
-    if naming_convention == "apollo_graphql":
+    if (t.gql_convention_override or active_gql_convention()) == "apollo_graphql":
         agg_field_name = f"{t.field_name}Aggregate"
     else:
         agg_field_name = f"{t.field_name}_aggregate"
@@ -1224,7 +1232,7 @@ def _build_mutation_fields_for_table(
         ),
     )
 
-    conv = t.naming_convention
+    conv = t.gql_convention_override or active_gql_convention()
     result: dict[str, GraphQLField] = {}
     result[_mutation_name("insert", t.field_name, conv)] = GraphQLField(
         GraphQLNonNull(response_type),
@@ -1280,7 +1288,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
     for t in tables:
         t.gql_fields = _build_column_fields(
             t,
-            convention=t.naming_convention,
+            override=t.gql_convention_override,
             enum_types=si.enum_types,
             object_type_registry=_object_type_registry,
         )
@@ -1353,7 +1361,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         query_fields[t.field_name] = GraphQLField(GraphQLList(GraphQLNonNull(gql_type)), args=args)
 
         agg_result = _build_aggregate_query_field(
-            t, gql_type, si.naming_convention, si.enum_types
+            t, gql_type, si.enum_types
         )
         if agg_result:
             query_fields[agg_result[0]] = agg_result[1]

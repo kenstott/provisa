@@ -150,7 +150,9 @@ class CompilationContext:
     # table_id → user-designated PK column names (informational; empty = heuristic only)
     pk_columns: dict[int, list[str]] = field(default_factory=dict)
     # (table_id, gql_field_name) → physical_column_name (only when they differ)
-    gql_to_physical: dict[tuple[int, str], str] = field(default_factory=dict)
+    exposed_to_physical: dict[tuple[int, str], str] = field(default_factory=dict)
+    # (table_id, physical_column_name) → sql_exposed_name (alias direct, or apply_sql_name(phys))
+    physical_to_sql: dict[tuple[int, str], str] = field(default_factory=dict)
     # table_id → set of column names that require native API params (_nf_ prefix)
     native_filter_columns: dict[int, set[str]] = field(default_factory=dict)
     # table_id → {virtual_col_name → literal_value}
@@ -250,7 +252,7 @@ def _register_table_in_ctx(
     table_preset_map: dict[int, list],
 ) -> None:
     """Register one visible table and its column metadata into ctx."""
-    from provisa.compiler.naming import apply_convention, domain_to_sql_name as _d2s
+    from provisa.compiler.naming import apply_gql_name, apply_sql_name, domain_to_sql_name as _d2s
     from provisa.compiler.schema_gen import SchemaInput
 
     assert isinstance(si, SchemaInput)
@@ -309,13 +311,16 @@ def _register_table_in_ctx(
         nfc["column_name"] for nfc in t.native_filter_columns
     }
 
-    convention = si.naming_convention
     for col in t.visible_columns:
         col_path = col.get("path")
         phys = col["column_name"]
-        gql = col.get("alias") or apply_convention(phys, convention) or phys
+        gql = col.get("alias") or apply_gql_name(phys, getattr(t, "gql_convention_override", None)) or phys
         if gql != phys:
-            ctx.gql_to_physical[(t.table_id, gql)] = phys
+            ctx.exposed_to_physical[(t.table_id, gql)] = phys
+        sql_name = col.get("alias") or apply_sql_name(phys) or phys
+        if sql_name != phys and sql_name != gql:
+            ctx.exposed_to_physical[(t.table_id, sql_name)] = phys
+        ctx.physical_to_sql[(t.table_id, phys)] = sql_name
         if col_path:
             ctx.column_paths[(t.table_id, gql)] = col_path
 
@@ -657,17 +662,20 @@ def _compile_where(
     collector: ParamCollector,
     alias: str | None,
     virtual_vals: dict[str, str] | None = None,
+    table_id: int | None = None,
+    exposed_to_physical: dict | None = None,
 ) -> str:
     """Compile a where input object to a SQL WHERE clause fragment."""
     parts: list[str] = []
+    _e2p = exposed_to_physical or {}
 
     for key, value in where_obj.items():
         if key == "_and":
-            sub_parts = [_compile_where(sub, collector, alias, virtual_vals) for sub in value]
+            sub_parts = [_compile_where(sub, collector, alias, virtual_vals, table_id, exposed_to_physical) for sub in value]
             parts.append(f"({' AND '.join(sub_parts)})")
             continue
         if key == "_or":
-            sub_parts = [_compile_where(sub, collector, alias, virtual_vals) for sub in value]
+            sub_parts = [_compile_where(sub, collector, alias, virtual_vals, table_id, exposed_to_physical) for sub in value]
             parts.append(f"({' OR '.join(sub_parts)})")
             continue
 
@@ -677,8 +685,9 @@ def _compile_where(
             parts.extend(_compile_virtual_col_filter(vv, value))
             continue
 
-        # Column filter: key is column name, value is filter object
-        col = _q(key) if alias is None else f"{_q(alias)}.{_q(key)}"
+        # Column filter: map GQL name → physical name, then quote
+        phys_key = _e2p.get((table_id, key), key) if table_id is not None else key
+        col = _q(phys_key) if alias is None else f"{_q(alias)}.{_q(phys_key)}"
         parts.extend(_compile_column_filter(col, value, collector))
 
     return " AND ".join(parts) if parts else "TRUE"
@@ -700,6 +709,8 @@ _DIRECTION_SQL = {
 def _compile_order_by(
     order_by_list: list[dict],
     alias: str | None,
+    table_id: int | None = None,
+    exposed_to_physical: dict | None = None,
 ) -> str:
     """Compile order_by input list to SQL ORDER BY clause.
 
@@ -708,12 +719,14 @@ def _compile_order_by(
     desc_nulls_last.
     """
     parts: list[str] = []
+    _e2p = exposed_to_physical or {}
     for item in order_by_list:
         for col_name, direction in item.items():
             sql_dir = _DIRECTION_SQL.get(direction)
             if sql_dir is None:
                 raise ValueError(f"Unknown order direction: {direction!r}")
-            col = _q(col_name) if alias is None else f"{_q(alias)}.{_q(col_name)}"
+            phys_col = _e2p.get((table_id, col_name), col_name) if table_id is not None else col_name
+            col = _q(phys_col) if alias is None else f"{_q(alias)}.{_q(phys_col)}"
             parts.append(f"{col} {sql_dir}")
     return ", ".join(parts)
 
@@ -1044,8 +1057,11 @@ def _lateral_join(
     collector: ParamCollector,
     variables: dict | None,
     use_catalog: bool,
+    exposed_to_physical: dict | None = None,
 ) -> str:
     args = _field_args(field_node, variables)
+    _tid = join_meta.target.table_id
+    _e2p = exposed_to_physical or {}
     if join_meta.target_expr is not None:
         _lat_tgt_expr = join_meta.target_expr.replace("{alias}", _q(join_alias))
     else:
@@ -1065,19 +1081,21 @@ def _lateral_join(
             collector,
             None,
             None,
+            _tid,
+            exposed_to_physical,
         )
         sql += f" AND ({where_sql})"
     if "distinct_on" in args:
         distinct_cols = args["distinct_on"]
         if isinstance(distinct_cols, str):
             distinct_cols = [distinct_cols]
-        distinct_prefix = ", ".join(_q(c) for c in distinct_cols)
+        distinct_prefix = ", ".join(_q(_e2p.get((_tid, c), c)) for c in distinct_cols)
         sql = sql.replace("SELECT *", f"SELECT DISTINCT ON ({distinct_prefix}) *", 1)
     if "order_by" in args:
         order_by_val = args["order_by"]
         if isinstance(order_by_val, dict):
             order_by_val = [order_by_val]
-        sql += f" ORDER BY {_compile_order_by(order_by_val, None)}"
+        sql += f" ORDER BY {_compile_order_by(order_by_val, None, _tid, exposed_to_physical)}"
     limit_value = args.get("limit", join_meta.default_limit)
     if limit_value is not None:
         limit_value = _extract_non_negative_int(limit_value, "limit")
@@ -1187,7 +1205,7 @@ def _emit_agg_subqueries(
                 variables,
             )
         else:
-            phys_col = ctx.gql_to_physical.get((table_meta.table_id, name), name)
+            phys_col = ctx.exposed_to_physical.get((table_meta.table_id, name), name)
             col_alias = nesting_path.replace(".", "__") + "__" + key
             if extra_joins and agg_limit is not None:
                 select_parts.append(
@@ -1361,7 +1379,7 @@ def _build_rel_json_kv(
                 if sub_kv:
                     kv_pairs.append(f"KEY '{key}' VALUE json_object({', '.join(sub_kv)})")
             else:
-                phys_col = ctx.gql_to_physical.get((table_meta.table_id, name), name)
+                phys_col = ctx.exposed_to_physical.get((table_meta.table_id, name), name)
                 kv_pairs.append(f"KEY '{key}' VALUE {_q(table_alias)}.{_q(phys_col)}")
 
     return kv_pairs, alias_counter
@@ -1504,6 +1522,7 @@ def _collect_nested_columns(
                         collector,
                         variables,
                         use_catalog,
+                        ctx.exposed_to_physical,
                     )
                 )
             elif _use_agg and nested_sel.selection_set:
@@ -1609,7 +1628,7 @@ def _collect_nested_columns(
                 continue
             # Scalar column from the parent join
             nested_response_key = nested_sel.alias.value if nested_sel.alias else nested_name
-            nested_phys = ctx.gql_to_physical.get((parent_table.table_id, nested_name), nested_name)
+            nested_phys = ctx.exposed_to_physical.get((parent_table.table_id, nested_name), nested_name)
             if nested_phys in _VIRTUAL_COLS:
                 _nvc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(nested_phys, "")
                 col_expr = _sql_str_literal(_nvc)
@@ -1721,6 +1740,7 @@ def _compile_root_field(
                         collector,
                         variables,
                         use_catalog,
+                        ctx.exposed_to_physical,
                     )
                 )
                 if sel.selection_set:
@@ -1853,7 +1873,7 @@ def _compile_root_field(
             response_key = sel.alias.value if sel.alias else sel_name
             gql_field_name = response_key
             col_path = ctx.column_paths.get((table.table_id, sel_name))
-            phys_name = ctx.gql_to_physical.get((table.table_id, sel_name), sel_name)
+            phys_name = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
             if col_path:
                 # path is "source_col.key1.key2" → PG JSON extraction
                 # Emits PG syntax; SQLGlot transpiles to Trino json_extract_scalar
@@ -1955,8 +1975,12 @@ def _compile_root_field(
         distinct_cols = args["distinct_on"]
         if isinstance(distinct_cols, str):
             distinct_cols = [distinct_cols]
+        _e2p_d = ctx.exposed_to_physical
+        _tid_d = table.table_id
         parts_d = [
-            _q(c) if root_alias is None else f"{_q(root_alias)}.{_q(c)}" for c in distinct_cols
+            _q(_e2p_d.get((_tid_d, c), c)) if root_alias is None
+            else f"{_q(root_alias)}.{_q(_e2p_d.get((_tid_d, c), c))}"
+            for c in distinct_cols
         ]
         distinct_prefix = f"DISTINCT ON ({', '.join(parts_d)}) "
         sql = f"SELECT {distinct_prefix}{sql[len('SELECT ') :]}"
@@ -1964,7 +1988,7 @@ def _compile_root_field(
     # WHERE
     if "where" in args:
         _vvals = ctx.virtual_columns.get(table.table_id)
-        where_sql = _compile_where(args["where"], collector, root_alias, _vvals)
+        where_sql = _compile_where(args["where"], collector, root_alias, _vvals, table.table_id, ctx.exposed_to_physical)
         sql += f" WHERE {where_sql}"
 
     # ORDER BY
@@ -1972,7 +1996,7 @@ def _compile_root_field(
         order_by_val = args["order_by"]
         if isinstance(order_by_val, dict):
             order_by_val = [order_by_val]
-        order_sql = _compile_order_by(order_by_val, root_alias)
+        order_sql = _compile_order_by(order_by_val, root_alias, table.table_id, ctx.exposed_to_physical)
         sql += f" ORDER BY {order_sql}"
 
     # LIMIT / OFFSET
@@ -2118,20 +2142,23 @@ def _build_agg_func_parts(
     agg_key: str,
     func_aliases: dict[str, str],
     col_aliases: dict[str, dict[str, str]],
+    table_id: int,
+    exposed_to_physical: dict[tuple[int, str], str],
 ) -> tuple[list[str], list[ColumnRef]]:
     """Build SELECT parts and ColumnRefs for one aggregate function (SUM/AVG/MIN/MAX)."""
     select_parts: list[str] = []
     columns: list[ColumnRef] = []
     fn_key = func_aliases.get(func_name, func_name)
     for col_name in cols:
+        phys = exposed_to_physical.get((table_id, col_name), col_name)
         field_name = col_aliases.get(func_name, {}).get(col_name, col_name)
-        expr = f"{sql_func}({_q(col_name)})"
+        expr = f"{sql_func}({_q(phys)})"
         if field_name != col_name:
             expr += f" AS {_q(field_name)}"
         select_parts.append(expr)
         columns.append(
             ColumnRef(
-                alias=None, column=col_name, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"
+                alias=None, column=phys, field_name=field_name, nested_in=f"{agg_key}.{fn_key}"
             )
         )
     return select_parts, columns
@@ -2142,6 +2169,8 @@ def _build_nodes_sql(
     ref: str,
     args: dict,
     agg_vvals: dict[str, str] | None,
+    table_id: int,
+    exposed_to_physical: dict[tuple[int, str], str],
 ) -> tuple[str | None, list[ColumnRef] | None, list]:
     """Build the nodes sub-query SQL, columns, and params (or Nones when not requested)."""
     nodes_select_parts: list[str] = []
@@ -2155,9 +2184,10 @@ def _build_nodes_sql(
                 if not isinstance(node_sel, FieldNode):
                     continue
                 col_name = node_sel.name.value
-                nodes_select_parts.append(_q(col_name))
+                phys = exposed_to_physical.get((table_id, col_name), col_name)
+                nodes_select_parts.append(_q(phys))
                 nodes_cols.append(
-                    ColumnRef(alias=None, column=col_name, field_name=col_name, nested_in=None)
+                    ColumnRef(alias=None, column=phys, field_name=col_name, nested_in=None)
                 )
     if not nodes_select_parts:
         return None, None, []
@@ -2165,7 +2195,7 @@ def _build_nodes_sql(
     nodes_params: list = []
     if "where" in args:
         nodes_collector = ParamCollector()
-        nodes_where_sql = _compile_where(args["where"], nodes_collector, None, agg_vvals)
+        nodes_where_sql = _compile_where(args["where"], nodes_collector, None, agg_vvals, table_id, exposed_to_physical)
         nodes_sql += f" WHERE {nodes_where_sql}"
         nodes_params = nodes_collector.params
     return nodes_sql, nodes_cols, nodes_params
@@ -2203,7 +2233,7 @@ def _compile_aggregate_field(
         ("min", "MIN", min_cols),
         ("max", "MAX", max_cols),
     ):
-        sp, cr = _build_agg_func_parts(sql_func, func_name, cols, agg_key, func_aliases, col_aliases)
+        sp, cr = _build_agg_func_parts(sql_func, func_name, cols, agg_key, func_aliases, col_aliases, table.table_id, ctx.exposed_to_physical)
         select_parts.extend(sp)
         columns.extend(cr)
 
@@ -2221,7 +2251,7 @@ def _compile_aggregate_field(
 
     _agg_vvals = ctx.virtual_columns.get(table.table_id)
     if "where" in args:
-        where_sql = _compile_where(args["where"], collector, None, _agg_vvals)
+        where_sql = _compile_where(args["where"], collector, None, _agg_vvals, table.table_id, ctx.exposed_to_physical)
         sql += f" WHERE {where_sql}"
 
     # Build nodes SQL: plain SELECT with same WHERE, no aggregate functions
@@ -2230,7 +2260,7 @@ def _compile_aggregate_field(
     nodes_params: list = []
     if has_nodes:
         nodes_sql, nodes_columns, nodes_params = _build_nodes_sql(
-            field_node, ref, args, _agg_vvals
+            field_node, ref, args, _agg_vvals, table.table_id, ctx.exposed_to_physical
         )
 
     return CompiledQuery(
@@ -2311,7 +2341,8 @@ def rewrite_hot_joins(compiled: CompiledQuery, hot_manager: object) -> CompiledQ
             value_rows.append(f"({', '.join(vals)})")
 
         col_defs = ", ".join(f'"{c}"' for c in col_names)
-        cte_sql = f"{cte_name}({col_defs}) AS (VALUES {', '.join(value_rows)})"
+        col_suffix = f"({col_defs})" if col_defs else ""
+        cte_sql = f"{cte_name}{col_suffix} AS (VALUES {', '.join(value_rows)})"
         ctes.append(cte_sql)
 
         # Replace the JOIN target with the CTE name
@@ -2372,7 +2403,7 @@ def _compile_connection_field(
         if not isinstance(sel, FieldNode):
             continue
         sel_name = sel.name.value
-        phys_name = ctx.gql_to_physical.get((table.table_id, sel_name), sel_name)
+        phys_name = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
         select_parts.append(_q(phys_name))
         columns.append(ColumnRef(None, phys_name, sel_name, None))
 
@@ -2396,7 +2427,7 @@ def _compile_connection_field(
     where_parts: list[str] = []
     if "where" in args:
         _conn_vvals = ctx.virtual_columns.get(table.table_id)
-        where_parts.append(_compile_where(args["where"], collector, None, _conn_vvals))
+        where_parts.append(_compile_where(args["where"], collector, None, _conn_vvals, table.table_id, ctx.exposed_to_physical))
 
     cursor_where, effective_limit, is_backward = apply_cursor_pagination(
         args,
@@ -2413,7 +2444,7 @@ def _compile_connection_field(
         order_by_val = args["order_by"]
         if isinstance(order_by_val, dict):
             order_by_val = [order_by_val]
-        order_sql = _compile_order_by(order_by_val, None)
+        order_sql = _compile_order_by(order_by_val, None, table.table_id, ctx.exposed_to_physical)
         if is_backward:
             order_sql = reverse_order(order_sql)
         sql += f" ORDER BY {order_sql}"
