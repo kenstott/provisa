@@ -150,6 +150,28 @@ def mutation_style(convention: str) -> str:
     return "camel"  # apollo_graphql
 
 
+_gql_convention: str = "apollo_graphql"
+_sql_convention: str = "snake"
+
+
+def configure(gql: str = "apollo_graphql", sql: str = "snake") -> None:
+    global _gql_convention, _sql_convention
+    _gql_convention = gql
+    _sql_convention = sql
+
+
+def active_gql_convention() -> str:
+    return _gql_convention
+
+
+def apply_gql_name(name: str, override: str | None = None) -> str | None:
+    return apply_convention(name, override or _gql_convention)
+
+
+def apply_sql_name(name: str, override: str | None = None) -> str | None:
+    return apply_convention(name, override or _sql_convention)
+
+
 def apply_convention(name: str, convention: str) -> str | None:
     """Apply a naming convention preset to produce an alias.
 
@@ -159,8 +181,6 @@ def apply_convention(name: str, convention: str) -> str | None:
     """
     canon = _canonical_convention(convention)
     if canon == "snake_case":
-        if name and name[0].islower() and any(c.isupper() for c in name):
-            return None
         result = _to_snake_case(name)
         return result if result != name else None
     if canon == "camelCase":
