@@ -38,6 +38,8 @@ services:
 
   redis:
     image: redis:7-alpine
+    ports:
+      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -97,6 +99,8 @@ services:
 
   zaychik:
     build: ./zaychik
+    ports:
+      - "8480:8480"
     environment:
       TF_TRINO_HOST: trino
       TF_TRINO_PORT: 8080
