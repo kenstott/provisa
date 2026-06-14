@@ -650,14 +650,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     <div className="page">
       <div className="page-header">
         <h2>{viewsOnly ? "Views" : "Registered Tables"}</h2>
-        <div style={{ flex: "0 1 180px", minWidth: 0 }}>
-          <FilterInput
-            value={tableSearch}
-            onChange={setTableSearch}
-            placeholder={viewsOnly ? "Filter views…" : "Filter by source, domain, or table…"}
-          />
-        </div>
-        <div style={{ display: "flex", gap: "0.35rem", alignItems: "center", flexShrink: 0 }}>
+        <FilterInput
+          value={tableSearch}
+          onChange={setTableSearch}
+          placeholder={viewsOnly ? "Filter views…" : "Filter by source, domain, or table…"}
+        />
+        <div className="page-actions">
           <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Group by:</span>
           <select
             value={groupBy}
@@ -668,8 +666,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             <option value="source">Source</option>
             <option value="domain">Domain</option>
           </select>
-        </div>
-        <div className="page-actions">
           {!viewsOnly && (
             <button onClick={() => setShowForm(!showForm)}>{showForm ? "Cancel" : "+ Table"}</button>
           )}
