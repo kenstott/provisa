@@ -293,6 +293,14 @@ async def _dispatch_execution(
             content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql},
         )
     except Exception as exc:
+        import httpx as _httpx
+
+        if isinstance(exc, (_httpx.ConnectError, _httpx.NetworkError, _httpx.TimeoutException, _httpx.InvalidURL, _httpx.UnsupportedProtocol)):
+            log.warning("Cypher execution: HTTP network error: %s", exc)
+            return JSONResponse(
+                status_code=503,
+                content={"error": f"Execution failed: {_federation_error(exc)}", "sql": trino_sql},
+            )
         log.exception("Cypher execution failed: %s", trino_sql)
         return JSONResponse(
             status_code=500,
