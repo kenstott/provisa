@@ -27,6 +27,8 @@ if (fs.existsSync(rootEnv)) {
 }
 
 export default defineConfig({
+  globalSetup: "./e2e/global-setup.ts",
+  globalTeardown: "./e2e/global-teardown.ts",
   testDir: "./e2e",
   testMatch: /[/\\][^.][^/\\]*\.spec\.ts$/,
   timeout: 30000,
