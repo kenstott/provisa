@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     domain_id   TEXT NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
     schema_name TEXT NOT NULL,
     table_name  TEXT NOT NULL,
-    governance  TEXT NOT NULL CHECK (governance IN ('pre-approved', 'registry-required')),
+    governance  TEXT NOT NULL DEFAULT 'pre-approved',
     alias       TEXT,
     description TEXT,
     cache_ttl   INTEGER,
@@ -112,8 +112,7 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_sql TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS data_product BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE registered_tables DROP CONSTRAINT IF EXISTS registered_tables_governance_check;
-    ALTER TABLE registered_tables ADD CONSTRAINT registered_tables_governance_check
-        CHECK (governance IN ('pre-approved', 'registry-required', 'suggested'));
+    ALTER TABLE registered_tables ALTER COLUMN governance SET DEFAULT 'pre-approved';
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

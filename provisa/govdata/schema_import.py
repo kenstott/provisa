@@ -28,7 +28,6 @@ from provisa.core.models import (
     Cardinality,
     Column,
     GovDataSource,
-    GovernanceLevel,  # noqa: F401 — referenced via source.governance at runtime
     Relationship,
     Table,
 )
@@ -174,7 +173,6 @@ def import_govdata_source(
                 domain_id=source.domain_id,
                 schema_name=schema,
                 table_name=table_name,
-                governance=source.governance,
                 columns=columns,
                 view_sql=view_sql,
             )

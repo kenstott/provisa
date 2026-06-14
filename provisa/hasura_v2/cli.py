@@ -19,7 +19,6 @@ from pathlib import Path
 
 import yaml
 
-from provisa.core.models import GovernanceLevel
 from provisa.hasura_v2.mapper import convert_metadata
 from provisa.hasura_v2.parser import parse_metadata_dir
 from provisa.import_shared.warnings import WarningCollector
@@ -98,13 +97,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Schema-to-domain mappings as KEY=VAL pairs",
     )
     parser.add_argument(
-        "--governance-default",
-        type=str,
-        choices=["pre-approved", "registry-required"],
-        default="pre-approved",
-        help="Default governance level for tables",
-    )
-    parser.add_argument(
         "--auth-env-file",
         type=str,
         default=None,
@@ -133,7 +125,6 @@ def main(argv: list[str] | None = None) -> int:
     metadata = parse_metadata_dir(metadata_dir, collector)
 
     # Map
-    governance = GovernanceLevel(args.governance_default)
     domain_map = _parse_domain_map(args.domain_map)
     auth_env = _load_auth_env(args.auth_env_file)
     source_overrides = _load_source_overrides(args.source_overrides)
@@ -141,7 +132,6 @@ def main(argv: list[str] | None = None) -> int:
     config = convert_metadata(
         metadata,
         collector=collector,
-        governance_default=governance,
         domain_map=domain_map,
         auth_env=auth_env,
         source_overrides=source_overrides,

@@ -22,7 +22,6 @@ from provisa.core.models import (
     EventTrigger,
     Function,
     FunctionArgument,
-    GovernanceLevel,
     NamingConfig,
     ProvisaConfig,
     Relationship,
@@ -194,7 +193,6 @@ def _table_id(source_name: str, schema: str, table_name: str) -> str:
 def _map_table(
     ht: HasuraTable,
     source_name: str,
-    governance: GovernanceLevel,
     collector: WarningCollector,
 ) -> tuple[Table, list[RLSRule], list[Relationship], list[Function]]:
     """Map a Hasura table to Provisa Table + side-effects."""
@@ -258,7 +256,6 @@ def _map_table(
         domain_id="default",
         schema_name=ht.schema_name,
         table_name=ht.name,
-        governance=governance,
         columns=columns,
         alias=table_alias,
     )
@@ -379,7 +376,6 @@ def _map_action(
 def convert_metadata(
     metadata: HasuraMetadata,
     collector: WarningCollector | None = None,
-    governance_default: GovernanceLevel = GovernanceLevel.pre_approved,
     domain_map: dict[str, str] | None = None,
     auth_env: dict[str, str] | None = None,
     source_overrides: dict[str, Any] | None = None,
@@ -389,7 +385,6 @@ def convert_metadata(
     Args:
         metadata: Parsed Hasura v2 metadata.
         collector: Warning collector for unsupported features.
-        governance_default: Default governance level for tables.
         domain_map: Optional schema->domain mapping.
         auth_env: Optional auth environment variables.
         source_overrides: Optional per-source connection overrides.
@@ -426,7 +421,7 @@ def convert_metadata(
     for hs in metadata.sources:
         for ht in hs.tables:
             table, rls_rules, rels, fns = _map_table(
-                ht, hs.name, governance_default, collector,
+                ht, hs.name, collector,
             )
             # Apply domain mapping
             dm_key = f"{ht.schema_name}"

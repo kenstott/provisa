@@ -109,7 +109,7 @@ async def upsert_table(
 ) -> None:
     """Register an OpenAPI GET operation as a virtual table and api_endpoint."""
     import json
-    from provisa.core.models import Column, GovernanceLevel, Table
+    from provisa.core.models import Column, Table
     from provisa.core.repositories import table as table_repo
 
     columns = _schema_to_columns(query.response_schema)
@@ -132,7 +132,6 @@ async def upsert_table(
         schema_name="openapi",
         table_name=table_name,
         alias=alias if alias != table_name else None,
-        governance=GovernanceLevel.pre_approved,
         columns=[
             Column(
                 name=c["name"],

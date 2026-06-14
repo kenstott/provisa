@@ -1460,7 +1460,6 @@ export function SqlPage() {
     setViewSaving(true);
     setViewMsg("");
     try {
-      const governance = canCreateView ? "pre-approved" : "suggested";
       const sql = viewSqlNormalized;
       const columns = viewColumns.map((c) => ({
         name: c.name,
@@ -1485,7 +1484,6 @@ export function SqlPage() {
         domainId: viewDomainId.trim(),
         schemaName: "views",
         tableName: viewId.trim(),
-        governance,
         alias: viewId.trim(),
         description: viewDescription.trim() || undefined,
         viewSql: sql,
@@ -2408,7 +2406,6 @@ export function SqlPage() {
                         domainId: viewTable.domainId ?? "",
                         schemaName: viewTable.schemaName ?? "",
                         tableName: viewTable.tableName,
-                        governance: viewTable.governance ?? "pre-approved",
                         alias: viewTable.alias ?? undefined,
                         description: viewTable.description ?? undefined,
                         watermarkColumn: viewTable.watermarkColumn ?? null,

@@ -22,11 +22,10 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int | None:
     table_id = await conn.fetchval(
         """
         INSERT INTO registered_tables
-            (source_id, domain_id, schema_name, table_name, governance, alias, description, watermark_column, column_presets, view_sql, data_product)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            (source_id, domain_id, schema_name, table_name, alias, description, watermark_column, column_presets, view_sql, data_product)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         ON CONFLICT (source_id, schema_name, table_name) DO UPDATE SET
             domain_id = EXCLUDED.domain_id,
-            governance = EXCLUDED.governance,
             alias = EXCLUDED.alias,
             description = EXCLUDED.description,
             watermark_column = EXCLUDED.watermark_column,
@@ -39,7 +38,6 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int | None:
         table.domain_id,
         table.schema_name,
         table.table_name,
-        table.governance.value,
         getattr(table, "alias", None),
         getattr(table, "description", None),
         getattr(table, "watermark_column", None),

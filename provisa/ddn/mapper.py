@@ -21,7 +21,6 @@ from provisa.core.models import (
     Domain,
     Function,
     FunctionArgument,
-    GovernanceLevel,
     NamingConfig,
     ProvisaConfig,
     Relationship,
@@ -187,7 +186,6 @@ def _map_model_to_table(
     ot: DDNObjectType,
     field_col_maps: dict[str, dict[str, str]],
     type_perms_idx: dict[str, list[DDNTypePermission]],
-    governance: GovernanceLevel,
     domain_map: dict[str, str],
 ) -> Table:
     """Map a DDN Model + ObjectType to a Provisa Table."""
@@ -229,7 +227,6 @@ def _map_model_to_table(
         domain_id=domain_id,
         schema_name="public",
         table_name=collection,
-        governance=governance,
         columns=columns,
         alias=alias,
     )
@@ -457,7 +454,6 @@ def _map_aggregate_expressions(
 def convert_hml(
     metadata: DDNMetadata,
     collector: WarningCollector | None = None,
-    governance_default: GovernanceLevel = GovernanceLevel.pre_approved,
     domain_map: dict[str, str] | None = None,
     source_overrides: SourceOverrides | None = None,
 ) -> ProvisaConfig:
@@ -466,7 +462,6 @@ def convert_hml(
     Args:
         metadata: Parsed DDN metadata.
         collector: Warning collector for unsupported features.
-        governance_default: Default governance level for tables.
         domain_map: Optional subgraph->domain mapping.
         source_overrides: Optional per-source connection overrides.
     """
@@ -506,7 +501,7 @@ def convert_hml(
             continue
         table = _map_model_to_table(
             model, ot, field_col_maps, type_perms_idx,
-            governance_default, domain_map,
+            domain_map,
         )
         tables.append(table)
 

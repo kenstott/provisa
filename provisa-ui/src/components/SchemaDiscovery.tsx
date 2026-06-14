@@ -141,7 +141,6 @@ export function SchemaDiscovery({
     domainId: "",
     schemaName: "default",
     tableName: "",
-    governance: "open",
   });
   const [registering, setRegistering] = useState(false);
   const { registerTable } = useRegisterTable();
@@ -208,7 +207,6 @@ export function SchemaDiscovery({
         domainId: regForm.domainId,
         schemaName: regForm.schemaName,
         tableName: regForm.tableName,
-        governance: regForm.governance,
         columns: selected.map((c) => ({
           name: c.alias || c.name,
           visibleTo: ["*"],
@@ -365,17 +363,6 @@ export function SchemaDiscovery({
                 onChange={(e) => setRegForm({ ...regForm, tableName: e.target.value })}
                 placeholder="e.g. user_events"
               />
-            </label>
-            <label>
-              Governance
-              <select
-                value={regForm.governance}
-                onChange={(e) => setRegForm({ ...regForm, governance: e.target.value })}
-              >
-                <option value="open">open</option>
-                <option value="restricted">restricted</option>
-                <option value="confidential">confidential</option>
-              </select>
             </label>
             <button onClick={handleRegister} disabled={registering}>
               {registering ? "Registering..." : "Register Table"}

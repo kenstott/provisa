@@ -116,7 +116,7 @@ async def _upsert_tables_to_semantic_layer(
     pg_pool,
 ) -> None:
     """Write discovered GraphQL tables into registered_tables with descriptions."""
-    from provisa.core.models import Column, GovernanceLevel, Table
+    from provisa.core.models import Column, Table
     from provisa.core.repositories import table as table_repo
     from provisa.api.admin.actions_router import _ensure_tables
 
@@ -131,7 +131,6 @@ async def _upsert_tables_to_semantic_layer(
                 domain_id=domain_id or "",
                 schema_name="graphql",
                 table_name=t["name"],
-                governance=GovernanceLevel.pre_approved,
                 description=t.get("description"),
                 alias=_snake if _snake != t["name"] else None,
                 columns=[

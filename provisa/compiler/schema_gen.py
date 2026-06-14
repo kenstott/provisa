@@ -928,8 +928,6 @@ def _build_subscription_fields(
 
     for t in tables:
         raw = raw_by_id.get(t.table_id, {})
-        if raw.get("governance") != "pre-approved":
-            continue
         source_type = (si.source_types or {}).get(t.source_id, "")
         if source_type not in _CDC_SOURCES and not raw.get("watermark_column"):
             continue

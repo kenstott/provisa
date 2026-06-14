@@ -70,11 +70,6 @@ class SourceType(str, Enum):
     govdata = "govdata"
 
 
-class GovernanceLevel(str, Enum):
-    pre_approved = "pre-approved"
-    registry_required = "registry-required"
-    suggested = "suggested"
-
 
 class Cardinality(str, Enum):
     many_to_one = "many-to-one"
@@ -316,7 +311,6 @@ class Table(BaseModel):
         validation_alias=AliasChoices("table", "table_name"),
         serialization_alias="table",
     )
-    governance: GovernanceLevel
     columns: list[Column]
     column_presets: list[ColumnPreset] = Field(default_factory=list)
     alias: str | None = None  # GraphQL type/field name override
@@ -632,7 +626,6 @@ class GovDataSource(BaseModel):
     start_year: int | None = None
     end_year: int | None = None
     ciks: str | None = None
-    governance: GovernanceLevel = GovernanceLevel.pre_approved
 
 
 class GovDataSubscription(BaseModel):

@@ -92,7 +92,6 @@ def _endpoint_to_table_dict(
         "domain_id": domain_id,
         "schema_name": "api",
         "table_name": endpoint.table_name,
-        "governance": "pre-approved",
         "columns": columns_for_table,
     }
 

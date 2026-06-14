@@ -40,7 +40,6 @@ class SDLConfig:
     """Configuration for exposing an MV in the GraphQL SDL."""
 
     domain_id: str
-    governance: str = "pre-approved"
     columns: list[dict] | None = None  # [{name, visible_to: [roles]}]
 
 

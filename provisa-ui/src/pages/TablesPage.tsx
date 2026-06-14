@@ -193,7 +193,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const toggleGroupBy = (col: "source" | "domain") =>
     setGroupBy((prev) => (prev.includes(col) ? prev.filter((g) => g !== col) : [...prev, col]));
-  const [sortCol, setSortCol] = useState<"source" | "domain" | "table" | "governance" | "cols">("source");
+  const [sortCol, setSortCol] = useState<"source" | "domain" | "table" | "cols">("source");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const { checkedDomains } = useDomainFilter();
   const { domainAccess } = useAuth();
@@ -205,7 +205,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [tableName, setTableName] = useState("");
   const [tableAlias, setTableAlias] = useState("");
   const [tableDescription, setTableDescription] = useState("");
-  const [governance, setGovernance] = useState("pre-approved");
   const [columns, setColumns] = useState<ColumnForm[]>([]);
   const [watermarkColumn, setWatermarkColumn] = useState<string>("");
   const [dataProduct, setDataProduct] = useState(false);
@@ -477,7 +476,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         domainId,
         schemaName: domainId ? normalizeDomain(domainId) : schemaName,
         tableName,
-        governance,
         alias: tableAlias || undefined,
         description: tableDescription || undefined,
         watermarkColumn: watermarkColumn || null,
@@ -604,7 +602,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         domainId: editingTable.domainId,
         schemaName: editingTable.schemaName,
         tableName: editingTable.tableName,
-        governance: editingTable.governance,
         alias: editingTable.alias || undefined,
         description: editingTable.description || undefined,
         watermarkColumn: editingTable.watermarkColumn || null,
@@ -961,7 +958,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 ["source", "Source"],
                 ["domain", "Domain"],
                 ["table", "Table"],
-                ["governance", "Governance"],
               ] as const
             ).map(([col, label]) => {
               const isGroupable = col === "source" || col === "domain";
@@ -1036,7 +1032,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               if (sortCol === "source") cmp = a.sourceId.localeCompare(b.sourceId);
               else if (sortCol === "domain") cmp = (a.domainId ?? "").localeCompare(b.domainId ?? "");
               else if (sortCol === "table") cmp = (a.alias || a.tableName).localeCompare(b.alias || b.tableName);
-              else if (sortCol === "governance") cmp = a.governance.localeCompare(b.governance);
               else if (sortCol === "cols") cmp = a.columns.length - b.columns.length;
               return sortDir === "asc" ? cmp : -cmp;
             });
@@ -1150,9 +1145,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                           {t.description}
                         </div>
                       )}
-                    </td>
-                    <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                      {t.governance}
                     </td>
                     <td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                       {NAMING_CONVENTIONS.find((nc) => nc.value === (t.gqlNamingConvention ?? ""))

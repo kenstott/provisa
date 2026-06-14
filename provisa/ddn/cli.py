@@ -19,7 +19,7 @@ from pathlib import Path
 
 import yaml
 
-from provisa.core.models import GovernanceLevel, ProvisaConfig
+from provisa.core.models import ProvisaConfig
 from provisa.ddn.mapper import convert_hml
 from provisa.ddn.parser import parse_hml_dir
 from provisa.import_shared.warnings import WarningCollector
@@ -84,13 +84,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Subgraph-to-domain mappings as KEY=VAL pairs",
     )
     parser.add_argument(
-        "--governance-default",
-        type=str,
-        choices=["pre-approved", "registry-required"],
-        default="pre-approved",
-        help="Default governance level for tables",
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Parse and validate without writing output",
@@ -113,14 +106,12 @@ def main(argv: list[str] | None = None) -> int:
     metadata = parse_hml_dir(hml_dir, collector)
 
     # Map
-    governance = GovernanceLevel(args.governance_default)
     domain_map = _parse_domain_map(args.domain_map)
     source_overrides = _load_source_overrides(args.source_overrides)
 
     config = convert_hml(
         metadata,
         collector=collector,
-        governance_default=governance,
         domain_map=domain_map,
         source_overrides=source_overrides,
     )

@@ -159,7 +159,7 @@ async def _register_schema(
     domain_id: str,
 ) -> tuple[int, int]:
     """Upsert virtual tables and tracked functions for discovered gRPC methods."""
-    from provisa.core.models import Column, GovernanceLevel, Table
+    from provisa.core.models import Column, Table
     from provisa.core.repositories import table as table_repo
 
     prefix = f"{namespace}__" if namespace else ""
@@ -213,7 +213,6 @@ async def _register_schema(
             domain_id=domain_id or "",
             schema_name="grpc_remote",
             table_name=table_name,
-            governance=GovernanceLevel.pre_approved,
             columns=output_cols + nf_cols,
         )
         await table_repo.upsert(conn, tbl)

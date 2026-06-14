@@ -75,7 +75,6 @@ class RedirectConfig:
 def should_redirect(
     result: QueryResult,
     config: RedirectConfig,
-    table_governance: dict[int, str] | None = None,
     target_table_ids: list[int] | None = None,
     *,
     force: bool = False,
@@ -85,16 +84,9 @@ def should_redirect(
     Returns False if:
     - Redirect is disabled
     - Row count is below threshold (unless force=True)
-    - Any target table is pre-approved (REQ-006)
     """
     if not config.enabled:
         return False
-
-    # Pre-approved tables cannot use redirect (REQ-006)
-    if table_governance and target_table_ids:
-        for tid in target_table_ids:
-            if table_governance.get(tid) == "pre-approved":
-                return False
 
     if force:
         return True

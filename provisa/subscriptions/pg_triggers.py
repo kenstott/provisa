@@ -60,8 +60,6 @@ async def ensure_pg_notify_triggers(
     """
     installed: set[str] = set()
     for tbl in tables:
-        if tbl.get("governance") != "pre-approved":
-            continue
         source_type = source_types.get(tbl["source_id"], "")
         if source_type != "postgresql":
             continue
