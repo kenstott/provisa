@@ -71,6 +71,9 @@ def build_values_cte_sql(sql: str, table_name: str, entry: "HotTableEntry") -> s
     import sqlglot
     import sqlglot.expressions as exp
 
+    if not entry.column_names:
+        return sql
+
     cte_name = f"_hot_{table_name}"
     col_defs = ", ".join(f'"{c}"' for c in entry.column_names)
 
