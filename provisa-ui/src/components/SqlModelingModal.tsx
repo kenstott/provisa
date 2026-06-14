@@ -27,7 +27,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { oneDark } from "@codemirror/theme-one-dark";
 import type { EditorView } from "@codemirror/view";
-import { runSql } from "../api/admin";
+import { runSql, nlToSql } from "../api/admin";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
 import type { Domain, Relationship, RegisteredTable } from "../types/admin";
 
@@ -728,6 +728,9 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [nlText, setNlText] = useState("");
+  const [nlLoading, setNlLoading] = useState(false);
+  const [nlError, setNlError] = useState("");
   const resizingRef = useRef<{ col: string; startX: number; startW: number } | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
 
@@ -1539,6 +1542,92 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
               }}
             >
               <>
+                {/* NL prompt bar */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.5rem",
+                    padding: "0.4rem 0.75rem",
+                    borderBottom: "1px solid var(--border)",
+                    flexShrink: 0,
+                    background: "var(--surface)",
+                  }}
+                >
+                  <div style={{ flex: 1, position: "relative", minWidth: 0 }}>
+                    <input
+                      type="text"
+                      value={nlText}
+                      placeholder="Ask in plain English — generates SQL…"
+                      onChange={(e) => {
+                        setNlText(e.target.value);
+                        setNlError("");
+                      }}
+                      onKeyDown={async (e) => {
+                        if (e.key === "Enter" && nlText.trim() && !nlLoading) {
+                          setNlLoading(true);
+                          setNlError("");
+                          const result = await nlToSql(nlText.trim(), role);
+                          setNlLoading(false);
+                          if (result.error) {
+                            setNlError(result.error);
+                          } else {
+                            setSqlText(result.sql);
+                          }
+                        }
+                      }}
+                      style={{
+                        width: "100%",
+                        fontSize: "0.8rem",
+                        padding: "0.25rem 1.6rem 0.25rem 0.5rem",
+                        borderRadius: "4px",
+                        border: nlError
+                          ? "1px solid var(--destructive)"
+                          : "1px solid var(--border)",
+                        background: "var(--bg)",
+                        color: "var(--text)",
+                        outline: "none",
+                        opacity: nlLoading ? 0.6 : 1,
+                      }}
+                      disabled={nlLoading}
+                      title={nlError || undefined}
+                    />
+                    {nlLoading && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          right: "0.4rem",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          fontSize: "0.7rem",
+                          color: "var(--text-muted)",
+                        }}
+                      >
+                        …
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    className="btn-primary"
+                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem", flexShrink: 0 }}
+                    disabled={!nlText.trim() || nlLoading}
+                    onClick={async () => {
+                      if (!nlText.trim() || nlLoading) return;
+                      setNlLoading(true);
+                      setNlError("");
+                      const result = await nlToSql(nlText.trim(), role);
+                      setNlLoading(false);
+                      if (result.error) {
+                        setNlError(result.error);
+                      } else {
+                        setSqlText(result.sql);
+                      }
+                    }}
+                  >
+                    {nlLoading ? "Generating…" : "Generate SQL"}
+                  </button>
+                </div>
+
                 {/* Editor */}
                 <div
                   style={{

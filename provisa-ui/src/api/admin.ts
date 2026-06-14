@@ -404,7 +404,12 @@ export async function nlToSql(
       const text = await resp.text();
       return { sql: "", attempts: 0, error: text };
     }
-    return await resp.json();
+    const result = await resp.json();
+    if (result.sql) {
+      const { format } = await import("sql-formatter");
+      result.sql = format(result.sql, { language: "trino", tabWidth: 2, keywordCase: "upper" });
+    }
+    return result;
   } catch (e) {
     return { sql: "", attempts: 0, error: e instanceof Error ? e.message : String(e) };
   }
