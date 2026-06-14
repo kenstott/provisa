@@ -80,7 +80,6 @@ export interface RegisteredTable {
   domainId: string;
   schemaName: string;
   tableName: string;
-  governance: string;
   alias: string | null;
   description: string | null;
   cacheTtl: number | null;
@@ -99,6 +98,7 @@ export interface Relationship {
   sourceTableId: number;
   targetTableId: number | null;
   sourceTableName: string;
+  sourceDomainId: string;
   targetTableName: string;
   sourceColumn: string;
   targetColumn: string | null;

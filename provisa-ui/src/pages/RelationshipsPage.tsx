@@ -63,6 +63,12 @@ export function RelationshipsPage() {
   const [relSearch, setRelSearch] = useState(() => searchParams.get("search") ?? "");
   const [relPage, setRelPage] = useState(0);
   const PAGE_SIZE = 50;
+  const [sortCol, setSortCol] = useState<"id" | "domain" | "source" | "target" | "cardinality">("id");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [groupBy, setGroupBy] = useState<Array<"domain" | "cardinality" | "materialize">>([]);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const toggleGroupBy = (col: "domain" | "cardinality" | "materialize") =>
+    setGroupBy((prev) => (prev.includes(col) ? prev.filter((g) => g !== col) : [...prev, col]));
   const [showModelingModal, setShowModelingModal] = useState(false);
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
 
@@ -228,7 +234,7 @@ export function RelationshipsPage() {
       setEditingRel({
         id: String(rel.id),
         originalId: String(rel.id),
-        sourceDomain: tableDomainById[rel.sourceTableId] ?? "",
+        sourceDomain: rel.sourceDomainId ? normalizeDomain(rel.sourceDomainId) : "",
         sourceTableId: rel.sourceTableName,
         sourceColumn: rel.sourceColumn,
         targetType: isComputed ? "function" : "table",
@@ -284,7 +290,7 @@ export function RelationshipsPage() {
         sourceColumn: r.targetColumn ?? "",
         targetType: "table",
         targetTableId: r.sourceTableName,
-        targetDomain: tableDomainById[r.sourceTableId] ?? "",
+        targetDomain: r.sourceDomainId ?? "",
         targetColumn: r.sourceColumn,
         cardinality: flipCardinality(r.cardinality),
         alias: cqlSuggestion,
@@ -323,7 +329,7 @@ export function RelationshipsPage() {
   const matchesFilter = (r: Relationship) => {
     if (remoteTableIds.has(r.sourceTableId)) return false;
     if (selectedDomain !== "all") {
-      const srcDomain = tableDomainById[r.sourceTableId];
+      const srcDomain = r.sourceDomainId ? normalizeDomain(r.sourceDomainId) : undefined;
       const tgtDomain = r.targetTableId != null ? tableDomainById[r.targetTableId] : null;
       const ownerDomain = r.ownerDomainId ? normalizeDomain(r.ownerDomainId) : null;
       if (srcDomain !== selectedDomain && tgtDomain !== selectedDomain && ownerDomain !== selectedDomain)
@@ -398,63 +404,241 @@ export function RelationshipsPage() {
       )}
 
       <div style={{ overflowX: "auto" }}>
-      <table className="data-table">
+      <table className="data-table" style={{ width: "100%", tableLayout: "fixed" }}>
         <thead>
           <tr>
-            <th>ID</th>
-            <th>Domain</th>
-            <th>Source</th>
-            <th>Target</th>
-            <th>GQL / CQL Alias</th>
-            <th>Cardinality</th>
-            <th>Materialize</th>
-            <th style={{ whiteSpace: "nowrap" }}>Refresh (s)</th>
+            {(
+              [
+                ["id", "ID", "14%", false],
+                ["domain", "Domain", "7%", true],
+                ["source", "Source", "15%", false],
+                ["target", "Target", "15%", false],
+              ] as const
+            ).map(([col, label, width, isGroupable]) => {
+              const groupLevel = isGroupable ? groupBy.indexOf(col as "domain" | "cardinality" | "materialize") : -1;
+              const isGrouped = groupLevel !== -1;
+              return (
+                <th key={col} style={{ width, whiteSpace: "nowrap" }}>
+                  <span
+                    onClick={() => {
+                      if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                      else { setSortCol(col); setSortDir("asc"); }
+                    }}
+                    style={{ cursor: "pointer", userSelect: "none" }}
+                  >
+                    {label}{" "}
+                    <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
+                      {sortCol === col ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
+                    </span>
+                  </span>
+                  {isGroupable && (
+                    <span
+                      title={isGrouped ? `Ungroup (level ${groupLevel + 1})` : `Group by ${label}`}
+                      onClick={() => toggleGroupBy(col as "domain" | "cardinality" | "materialize")}
+                      style={{
+                        marginLeft: "0.3rem",
+                        fontSize: "0.65rem",
+                        cursor: "pointer",
+                        userSelect: "none",
+                        opacity: isGrouped ? 1 : 0.35,
+                        color: isGrouped ? "var(--primary, #6366f1)" : undefined,
+                      }}
+                    >
+                      {isGrouped ? `⊞${groupLevel + 1}` : "⊞"}
+                    </span>
+                  )}
+                </th>
+              );
+            })}
+            <th style={{ width: "20%" }}>GQL / CQL Alias</th>
+            {(
+              [["cardinality", "Cardinality", "11%"], ["materialize", "Materialize", "10%"]] as const
+            ).map(([col, label, width]) => {
+              const groupLevel = groupBy.indexOf(col as "cardinality" | "materialize");
+              const isGrouped = groupLevel !== -1;
+              return (
+                <th key={col} style={{ width, whiteSpace: "nowrap" }}>
+                  <span
+                    onClick={() => {
+                      if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                      else { setSortCol(col); setSortDir("asc"); }
+                    }}
+                    style={{ cursor: "pointer", userSelect: "none" }}
+                  >
+                    {label}{" "}
+                    <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
+                      {sortCol === col ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
+                    </span>
+                  </span>
+                  <span
+                    title={isGrouped ? `Ungroup (level ${groupLevel + 1})` : `Group by ${label}`}
+                    onClick={() => toggleGroupBy(col as "cardinality" | "materialize")}
+                    style={{
+                      marginLeft: "0.3rem",
+                      fontSize: "0.65rem",
+                      cursor: "pointer",
+                      userSelect: "none",
+                      opacity: isGrouped ? 1 : 0.35,
+                      color: isGrouped ? "var(--primary, #6366f1)" : undefined,
+                    }}
+                  >
+                    {isGrouped ? `⊞${groupLevel + 1}` : "⊞"}
+                  </span>
+                </th>
+              );
+            })}
+            <th style={{ width: "8%", whiteSpace: "nowrap" }}>Refresh (s)</th>
           </tr>
         </thead>
         <tbody>
-          {rels.length > 75 && !relSearch.trim() ? (
-            <tr>
-              <td
-                colSpan={8}
-                style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}
-              >
-                {rels.length} relationships — use the filter above to browse
-              </td>
-            </tr>
-          ) : (
-            rels
-              .filter((r) => {
-                if (tableSourceById[r.sourceTableId] === "provisa-admin") return false;
-                return matchesFilter(r);
-              })
-              .slice(relPage * PAGE_SIZE, (relPage + 1) * PAGE_SIZE)
-              .map((r) => {
-                const id = String(r.id);
+          {(() => {
+            const filtered = rels.filter((r) => {
+              if (tableSourceById[r.sourceTableId] === "provisa-admin") return false;
+              return matchesFilter(r);
+            });
+
+            if (filtered.length > 75 && !relSearch.trim() && groupBy.length === 0) {
+              return (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
+                    {filtered.length} relationships — use the filter above to browse
+                  </td>
+                </tr>
+              );
+            }
+
+            filtered.sort((a, b) => {
+              let cmp = 0;
+              if (sortCol === "id") cmp = String(a.id).localeCompare(String(b.id));
+              else if (sortCol === "domain") cmp = (a.sourceDomainId ?? "").localeCompare(b.sourceDomainId ?? "");
+              else if (sortCol === "source") cmp = a.sourceTableName.localeCompare(b.sourceTableName);
+              else if (sortCol === "target") cmp = (a.targetTableName ?? "").localeCompare(b.targetTableName ?? "");
+              else if (sortCol === "cardinality") cmp = a.cardinality.localeCompare(b.cardinality);
+              return sortDir === "asc" ? cmp : -cmp;
+            });
+
+            const getGroupKey = (r: Relationship, col: "domain" | "cardinality" | "materialize") =>
+              col === "domain" ? (r.sourceDomainId ? normalizeDomain(r.sourceDomainId) : "(none)") : col === "materialize" ? (r.materialize ? "Materialized" : "Not Materialized") : r.cardinality;
+            const colLabel = (col: "domain" | "cardinality" | "materialize") =>
+              col === "domain" ? "Domain" : col === "materialize" ? "Materialize" : "Cardinality";
+
+            type GroupItem =
+              | { type: "header"; level: 1 | 2 | 3; key: string; label: string; count: number }
+              | { type: "row"; r: Relationship };
+
+            let items: GroupItem[];
+
+            if (groupBy.length === 0) {
+              items = filtered
+                .slice(relPage * PAGE_SIZE, (relPage + 1) * PAGE_SIZE)
+                .map((r) => ({ type: "row" as const, r }));
+            } else {
+              items = [];
+              const l1Col = groupBy[0];
+              const l2Col = groupBy[1];
+              const l3Col = groupBy[2];
+              const l1Map = new Map<string, Relationship[]>();
+              for (const r of filtered) {
+                const k = getGroupKey(r, l1Col);
+                if (!l1Map.has(k)) l1Map.set(k, []);
+                l1Map.get(k)!.push(r);
+              }
+              for (const [l1Key, l1Rels] of [...l1Map.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+                items.push({ type: "header", level: 1, key: l1Key, label: `${colLabel(l1Col)}: ${l1Key}`, count: l1Rels.length });
+                if (collapsedGroups.has(l1Key)) continue;
+                if (!l2Col) {
+                  for (const r of l1Rels) items.push({ type: "row", r });
+                } else {
+                  const l2Map = new Map<string, Relationship[]>();
+                  for (const r of l1Rels) {
+                    const k = getGroupKey(r, l2Col);
+                    if (!l2Map.has(k)) l2Map.set(k, []);
+                    l2Map.get(k)!.push(r);
+                  }
+                  for (const [l2Key, l2Rels] of [...l2Map.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+                    const compositeKey = `${l1Key}|${l2Key}`;
+                    items.push({ type: "header", level: 2, key: compositeKey, label: `${colLabel(l2Col)}: ${l2Key}`, count: l2Rels.length });
+                    if (collapsedGroups.has(compositeKey)) continue;
+                    if (!l3Col) {
+                      for (const r of l2Rels) items.push({ type: "row", r });
+                    } else {
+                      const l3Map = new Map<string, Relationship[]>();
+                      for (const r of l2Rels) {
+                        const k = getGroupKey(r, l3Col);
+                        if (!l3Map.has(k)) l3Map.set(k, []);
+                        l3Map.get(k)!.push(r);
+                      }
+                      for (const [l3Key, l3Rels] of [...l3Map.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+                        const l3CompositeKey = `${compositeKey}|${l3Key}`;
+                        items.push({ type: "header", level: 3, key: l3CompositeKey, label: `${colLabel(l3Col)}: ${l3Key}`, count: l3Rels.length });
+                        if (collapsedGroups.has(l3CompositeKey)) continue;
+                        for (const r of l3Rels) items.push({ type: "row", r });
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            return items.map((item) => {
+              if (item.type === "header") {
+                const lvl = item.level;
                 return (
-                  <RelationshipRow
-                    key={r.id}
-                    rel={r}
-                    isExpanded={expanded === id}
-                    onToggle={() => {
-                      setExpanded(expanded === id ? null : id);
-                      setEditingRel(null);
-                    }}
-                    editingRel={editingRel}
-                    setEditingRel={setEditingRel}
-                    canManage={canManage}
-                    onStartEdit={() => startEditing(r)}
-                    onReverse={() => setReverseForm(buildReverse(r))}
-                    onDelete={() => handleDelete(id)}
-                    onEditSave={handleEditSave}
-                    saving={saving}
-                    tables={tables}
-                    functions={functions}
-                    tableDomainById={tableDomainById}
-                    normalizeDomain={normalizeDomain}
-                  />
+                  <tr key={`grp-${item.key}`}>
+                    <td
+                      colSpan={8}
+                      onClick={() =>
+                        setCollapsedGroups((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(item.key)) next.delete(item.key);
+                          else next.add(item.key);
+                          return next;
+                        })
+                      }
+                      style={{
+                        fontWeight: lvl === 1 ? 600 : lvl === 2 ? 500 : 400,
+                        fontSize: lvl === 1 ? "0.8rem" : "0.75rem",
+                        padding: lvl === 1 ? "0.35rem 0.75rem" : lvl === 2 ? "0.25rem 1.5rem" : "0.2rem 2.25rem",
+                        color: "var(--text-muted)",
+                        background: lvl === 1 ? "var(--surface)" : lvl === 2 ? "var(--surface-raised, var(--surface))" : "var(--bg)",
+                        borderTop: lvl === 1 ? "2px solid var(--border)" : "1px solid var(--border)",
+                        cursor: "pointer",
+                        userSelect: "none",
+                      }}
+                    >
+                      {collapsedGroups.has(item.key) ? "▶" : "▼"} {item.label}{" "}
+                      <span style={{ fontWeight: "normal", opacity: 0.7 }}>({item.count})</span>
+                    </td>
+                  </tr>
                 );
-              })
-          )}
+              }
+              const r = item.r;
+              const id = String(r.id);
+              return (
+                <RelationshipRow
+                  key={r.id}
+                  rel={r}
+                  isExpanded={expanded === id}
+                  onToggle={() => {
+                    setExpanded(expanded === id ? null : id);
+                    setEditingRel(null);
+                  }}
+                  editingRel={editingRel}
+                  setEditingRel={setEditingRel}
+                  canManage={canManage}
+                  onStartEdit={() => startEditing(r)}
+                  onReverse={() => setReverseForm(buildReverse(r))}
+                  onDelete={() => handleDelete(id)}
+                  onEditSave={handleEditSave}
+                  saving={saving}
+                  tables={tables}
+                  functions={functions}
+                  tableDomainById={tableDomainById}
+                  normalizeDomain={normalizeDomain}
+                />
+              );
+            });
+          })()}
         </tbody>
       </table>
       </div>

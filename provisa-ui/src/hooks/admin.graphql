@@ -76,7 +76,6 @@ query TablesQuery {
     domainId
     schemaName
     tableName
-    governance
     alias
     description
     cacheTtl
@@ -101,6 +100,7 @@ query RelationshipsQuery {
     sourceTableId
     targetTableId
     sourceTableName
+    sourceDomainId
     targetTableName
     sourceColumn
     targetColumn

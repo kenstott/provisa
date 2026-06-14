@@ -244,6 +244,7 @@ def _rel_from_row(row, convention: str = "apollo_graphql") -> RelationshipType:
         source_table_id=row["source_table_id"],
         target_table_id=row.get("target_table_id"),
         source_table_name=row.get("source_table_name", ""),
+        source_domain_id=row.get("source_domain_id") or "",
         target_table_name=target_table_name,
         source_column=source_column,
         target_column=row.get("target_column"),
@@ -378,7 +379,6 @@ async def _fetch_table_with_columns(conn, row, all_tables: list | None = None, u
         domain_id=row["domain_id"],
         schema_name=row["schema_name"],
         table_name=row["table_name"],
-        governance=row["governance"],
         alias=row.get("alias"),
         description=row.get("description"),
         cache_ttl=row.get("cache_ttl"),
@@ -632,11 +632,13 @@ class Query:
             rows = await conn.fetch(
                 "SELECT r.*, "
                 "st.table_name AS source_table_name, "
+                "st.domain_id AS source_domain_id, "
                 "tt.table_name AS target_table_name "
                 "FROM relationships r "
                 "JOIN registered_tables st ON r.source_table_id = st.id "
                 "LEFT JOIN registered_tables tt ON r.target_table_id = tt.id "
                 "WHERE r.id NOT LIKE 'gql_auto__%' "
+                "AND r.id NOT LIKE 'meta:%' "
                 "ORDER BY r.id"
             )
             return [_rel_from_row(r, convention) for r in rows]
@@ -1567,19 +1569,11 @@ class Mutation:
         else:
             require_capability(info, "table_registration", domain_id=input.domain_id)
         from provisa.core.models import (
-            GovernanceLevel,
             Table as TableModel,
         )
         from provisa.core.repositories import table as table_repo
 
         pool = await _get_pool()
-        try:
-            governance = GovernanceLevel(input.governance)
-        except ValueError:
-            return MutationResult(
-                success=False,
-                message=f"Invalid governance level: {input.governance!r}",
-            )
         columns = _build_column_models(input.columns)
         # A view's columns are defined by its SQL — if the caller supplied none
         # (e.g. the SQL was edited after the column snapshot), derive them from the
@@ -1621,7 +1615,6 @@ class Mutation:
             domain_id=input.domain_id,
             schema_name=input.schema_name,
             table_name=input.table_name,
-            governance=governance,
             alias=alias,
             description=input.description,
             columns=columns,
@@ -1701,19 +1694,11 @@ class Mutation:
 
         require_capability(info, "table_registration", domain_id=input.domain_id)
         from provisa.core.models import (
-            GovernanceLevel,
             Table as TableModel,
         )
         from provisa.core.repositories import table as table_repo
 
         pool = await _get_pool()
-        try:
-            governance = GovernanceLevel(input.governance)
-        except ValueError:
-            return MutationResult(
-                success=False,
-                message=f"Invalid governance level: {input.governance!r}",
-            )
         columns = _build_column_models(input.columns)
         # Re-derive a view's columns from its SQL when none are supplied (e.g. the SQL
         # was edited without re-running it), so an edit can't leave the view schema-less.
@@ -1743,7 +1728,6 @@ class Mutation:
             domain_id=input.domain_id,
             schema_name=input.schema_name,
             table_name=input.table_name,
-            governance=governance,
             alias=input.alias,
             description=input.description,
             columns=columns,

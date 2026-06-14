@@ -55,7 +55,6 @@ class RegisteredTableType:
     domain_id: str
     schema_name: str
     table_name: str
-    governance: str
     alias: str | None
     description: str | None
     cache_ttl: int | None
@@ -113,6 +112,7 @@ class RelationshipType:
     source_table_id: int
     target_table_id: int | None
     source_table_name: str
+    source_domain_id: str
     target_table_name: str
     source_column: str
     target_column: str | None
@@ -206,7 +206,6 @@ class TableInput:
     domain_id: str
     schema_name: str
     table_name: str
-    governance: str
     columns: list[ColumnInput]
     alias: str | None = None
     description: str | None = None

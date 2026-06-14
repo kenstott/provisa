@@ -59,7 +59,7 @@ export function RelationshipRow({
         }}
       >
         <td>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", overflowWrap: "anywhere" }}>
             {r.autoSuggested && (
               <span
                 title="Auto-tracked from FK constraint"
@@ -71,21 +71,22 @@ export function RelationshipRow({
                   background: "var(--text-muted)",
                   color: "var(--bg)",
                   letterSpacing: "0.03em",
+                  flexShrink: 0,
                 }}
               >
                 FK
               </span>
             )}
-            {r.id}
+            <span>{r.id.replace(/([_\-:])/g, "$1​")}</span>
           </div>
         </td>
-        <td>{tableDomainById[r.sourceTableId] || "—"}</td>
-        <td>
-          {tableDomainById[r.sourceTableId]
-            ? `${tableDomainById[r.sourceTableId]}.${r.sourceTableName}.${r.sourceColumn}`
+        <td>{r.sourceDomainId || "—"}</td>
+        <td style={{ wordBreak: "break-all", overflowWrap: "anywhere" }}>
+          {r.sourceDomainId
+            ? `${r.sourceDomainId}.${r.sourceTableName}.${r.sourceColumn}`
             : `${r.sourceTableName}.${r.sourceColumn}`}
         </td>
-        <td>
+        <td style={{ wordBreak: "break-all", overflowWrap: "anywhere" }}>
           {r.targetFunctionName
             ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})`
             : tableDomainById[r.targetTableId!]
@@ -159,8 +160,8 @@ export function RelationshipRow({
                     <strong>Source</strong>
                   </dt>
                   <dd style={{ color: "var(--text)", margin: 0 }}>
-                    {tableDomainById[r.sourceTableId]
-                      ? `${tableDomainById[r.sourceTableId]}.${r.sourceTableName}.${r.sourceColumn}`
+                    {r.sourceDomainId
+                      ? `${r.sourceDomainId}.${r.sourceTableName}.${r.sourceColumn}`
                       : `${r.sourceTableName}.${r.sourceColumn}`}
                   </dd>
                   <dt style={{ color: "var(--text-muted)" }}>
@@ -488,30 +489,18 @@ export function RelationshipRow({
                 </div>
                 <div className="form-row">
                   {editingRel.targetType === "table" && (
-                    <label>
+                    <label style={{ flex: "0 0 auto" }}>
                       Cardinality
                       <select
                         value={editingRel.cardinality}
                         onChange={(e) =>
                           setEditingRel({ ...editingRel, cardinality: e.target.value })
                         }
+                        style={{ width: `${editingRel.cardinality.length + 4}ch` }}
                       >
                         <option value="many-to-one">many-to-one</option>
                         <option value="one-to-many">one-to-many</option>
                       </select>
-                      {editingRel.cardinality === "many-to-one" && (
-                        <span
-                          style={{
-                            color: "var(--warning, #b45309)",
-                            fontSize: "0.78rem",
-                            marginTop: "0.25rem",
-                            display: "block",
-                          }}
-                        >
-                          Warning: if this join returns more than one row per parent, only the first
-                          value will be used.
-                        </span>
-                      )}
                     </label>
                   )}
                   <label
@@ -563,6 +552,17 @@ export function RelationshipRow({
                     </label>
                   )}
                 </div>
+                {editingRel.targetType === "table" && editingRel.cardinality === "many-to-one" && (
+                  <span
+                    style={{
+                      color: "var(--warning, #b45309)",
+                      fontSize: "0.78rem",
+                      display: "block",
+                    }}
+                  >
+                    Warning: if this join returns more than one row per parent, only the first value will be used.
+                  </span>
+                )}
                 <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
                   <button className="btn-icon" title="Cancel" onClick={() => setEditingRel(null)}>
                     <X size={14} />
