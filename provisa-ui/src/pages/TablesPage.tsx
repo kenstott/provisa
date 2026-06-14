@@ -650,27 +650,24 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     <div className="page">
       <div className="page-header">
         <h2>{viewsOnly ? "Views" : "Registered Tables"}</h2>
-        <FilterInput
-          value={tableSearch}
-          onChange={setTableSearch}
-          placeholder={viewsOnly ? "Filter views…" : "Filter by source, domain, or table…"}
-        />
-        <div style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
-          <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>Group by:</span>
-          {(["", "source", "domain"] as const).map((g) => (
-            <button
-              key={g || "none"}
-              onClick={() => setGroupBy(g)}
-              style={{
-                fontSize: "0.78rem",
-                padding: "0.2rem 0.5rem",
-                background: groupBy === g ? "var(--primary)" : undefined,
-                color: groupBy === g ? "var(--primary-fg, #fff)" : undefined,
-              }}
-            >
-              {g || "None"}
-            </button>
-          ))}
+        <div style={{ flex: "0 1 180px", minWidth: 0 }}>
+          <FilterInput
+            value={tableSearch}
+            onChange={setTableSearch}
+            placeholder={viewsOnly ? "Filter views…" : "Filter by source, domain, or table…"}
+          />
+        </div>
+        <div style={{ display: "flex", gap: "0.35rem", alignItems: "center", flexShrink: 0 }}>
+          <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Group by:</span>
+          <select
+            value={groupBy}
+            onChange={(e) => setGroupBy(e.target.value as "" | "source" | "domain")}
+            style={{ fontSize: "0.78rem", padding: "0.2rem 0.4rem" }}
+          >
+            <option value="">None</option>
+            <option value="source">Source</option>
+            <option value="domain">Domain</option>
+          </select>
         </div>
         <div className="page-actions">
           {!viewsOnly && (
