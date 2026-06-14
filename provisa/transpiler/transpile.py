@@ -869,22 +869,22 @@ def _split_where_conditions_general(
 
 
 def _col_references_any(expr: exp.Expression, aliases: set[str]) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    """Return True if expr is a Column whose table qualifier is in aliases."""
-    if isinstance(expr, exp.Column):
-        tbl = expr.args.get("table")
-        if tbl is not None:
-            return tbl.name in aliases
+    """Return True if expr or any descendant Column has a table qualifier in aliases."""
+    for col in expr.find_all(exp.Column):
+        tbl = col.args.get("table")
+        if tbl is not None and tbl.name in aliases:
+            return True
     return False
 
 
 def _is_qualified_outer_col(expr: exp.Expression, inner_aliases: set[str]) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-    """Return True if expr is a Column with a table qualifier not in inner_aliases.
+    """Return True if expr or any descendant Column has a table qualifier not in inner_aliases.
 
     Literals, unqualified columns, and inner-table columns all return False.
     Only a column explicitly qualified with an outer table alias returns True.
     """
-    if isinstance(expr, exp.Column):
-        tbl = expr.args.get("table")
+    for col in expr.find_all(exp.Column):
+        tbl = col.args.get("table")
         if tbl is not None and tbl.name not in inner_aliases:
             return True
     return False
