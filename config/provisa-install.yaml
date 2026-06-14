@@ -87,23 +87,23 @@ relationships:
   source_column: breed_name
   source_table_id: pets
   target_column: name
-  target_table_id: animalBreeds
+  target_table_id: animal_breeds
 - alias: PETS_OF_BREED
   cardinality: one-to-many
   id: shelter-breed-to-pets
   source_column: name
-  source_table_id: animalBreeds
+  source_table_id: animal_breeds
   target_column: breed_name
   target_table_id: pets
 - cardinality: many-to-one
   id: pets-to-shelter-assignments
   source_column: breed_name
   source_table_id: pets
-  target_column: breedName
+  target_column: breed_name
   target_table_id: assignments
 - cardinality: one-to-many
   id: shelter-assignments-to-pets
-  source_column: breedName
+  source_column: breed_name
   source_table_id: assignments
   target_column: breed_name
   target_table_id: pets
@@ -473,6 +473,7 @@ tables:
     visible_to:
     - admin
     - analyst
+  alias: animal_breeds
   description: "Full breed catalog \u2014 use to answer what care protocols apply\
     \ and which adopter profiles match each species in custody"
   domain_id: shelter
@@ -508,6 +509,7 @@ tables:
     visible_to:
     - admin
     - analyst
+  alias: animal_breed
   description: "Care requirements and placement context for a single breed \u2014\
     \ use before making a staffing assignment or adoption decision"
   domain_id: shelter
@@ -656,6 +658,7 @@ tables:
     visible_to:
     - admin
     - analyst
+  alias: assignments_by_employee
   description: "All breeds a given staff member is accountable for \u2014 use to assess\
     \ workload before adding a new assignment"
   domain_id: shelter
@@ -691,6 +694,7 @@ tables:
     visible_to:
     - admin
     - analyst
+  alias: assignments_by_breed
   description: "All staff responsible for a breed \u2014 use to verify minimum keeper\
     \ coverage and identify backup gaps"
   domain_id: shelter
@@ -758,6 +762,7 @@ tables:
     visible_to:
     - admin
     - analyst
+  alias: schedule_by_employee
   description: "A staff member's shift coverage for the week \u2014 use for availability\
     \ checks before scheduling a new assignment or event"
   domain_id: shelter

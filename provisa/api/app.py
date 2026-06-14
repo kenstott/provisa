@@ -341,8 +341,8 @@ async def _seed_meta_domain(conn: asyncpg.Connection) -> None:
         table_id = await conn.fetchval(
             """
             INSERT INTO registered_tables
-                (source_id, domain_id, schema_name, table_name, governance)
-            VALUES ('provisa-admin', 'meta', 'public', $1, 'pre-approved')
+                (source_id, domain_id, schema_name, table_name)
+            VALUES ('provisa-admin', 'meta', 'public', $1)
             ON CONFLICT (source_id, schema_name, table_name)
                 DO UPDATE SET domain_id = 'meta'
             RETURNING id
@@ -447,8 +447,8 @@ async def _seed_ops_pg(conn: asyncpg.Connection) -> None:
         table_id = await conn.fetchval(
             """
             INSERT INTO registered_tables
-                (source_id, domain_id, schema_name, table_name, governance)
-            VALUES ('provisa-otel', 'ops', 'signals', $1, 'pre-approved')
+                (source_id, domain_id, schema_name, table_name)
+            VALUES ('provisa-otel', 'ops', 'signals', $1)
             ON CONFLICT (source_id, schema_name, table_name)
                 DO UPDATE SET domain_id = 'ops'
             RETURNING id
@@ -472,8 +472,8 @@ async def _seed_ops_pg(conn: asyncpg.Connection) -> None:
         table_id = await conn.fetchval(
             """
             INSERT INTO registered_tables
-                (source_id, domain_id, schema_name, table_name, governance)
-            VALUES ('provisa-otel', 'ops', 'signals', $1, 'pre-approved')
+                (source_id, domain_id, schema_name, table_name)
+            VALUES ('provisa-otel', 'ops', 'signals', $1)
             ON CONFLICT (source_id, schema_name, table_name)
                 DO UPDATE SET domain_id = 'ops'
             RETURNING id
@@ -868,7 +868,6 @@ def _process_kafka_sources(raw_config: dict) -> None:
                 "schema": "default",
                 "table": gql_table_name,
                 "description": topic.get("description", ""),
-                "governance": "pre-approved",
                 "columns": [
                     {
                         "name": col.get("name", col) if isinstance(col, dict) else col,
@@ -1089,7 +1088,6 @@ def _load_mv_and_views_config(raw_config: dict) -> None:
             sc = mvc["sdl_config"]
             sdl_cfg = SDLConfig(
                 domain_id=sc["domain_id"],
-                governance=sc.get("governance", "pre-approved"),
                 columns=sc.get("columns"),
             )
         mv = MVDefinition(
@@ -1114,7 +1112,6 @@ def _load_mv_and_views_config(raw_config: dict) -> None:
                 "domain_id": sdl_cfg.domain_id,
                 "schema": mvc.get("target_schema", "mv_cache"),
                 "table": mv.target_table,
-                "governance": sdl_cfg.governance,
                 "columns": sdl_cfg.columns or [],
             }
             raw_config.setdefault("tables", []).append(mv_table)
@@ -1130,7 +1127,6 @@ def _load_mv_and_views_config(raw_config: dict) -> None:
             view_sql = view_cfg["sql"]
             materialize = view_cfg.get("materialize", False)
             domain_id = view_cfg.get("domain_id", "default")
-            governance = view_cfg.get("governance", "pre-approved")
             description = view_cfg.get("description")
             refresh_interval = view_cfg.get("refresh_interval", 300)
 
@@ -1143,7 +1139,6 @@ def _load_mv_and_views_config(raw_config: dict) -> None:
                 "domain_id": domain_id,
                 "schema": view_schema,
                 "table": view_table_name,
-                "governance": governance,
                 "description": description,
                 "alias": view_cfg.get("alias"),
                 "columns": view_cfg.get("columns", []),
@@ -2510,12 +2505,12 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                 async with _demo_pool.acquire() as _rel_conn:
                     _pg_rel = cast(asyncpg.Connection, _rel_conn)
                     for _rel_id, _src_tbl, _tgt_tbl, _src_col, _tgt_col, _card, _alias in [
-                        ("employees_to_assignments", "employees", "assignments", "id", "employeeId", "one-to-many", None),
-                        ("pets-to-shelter-breed", "pets", "animalBreeds", "breed_name", "name", "many-to-one", "BREED_INFO"),
-                        ("shelter-breed-to-pets", "animalBreeds", "pets", "name", "breed_name", "one-to-many", "PETS_OF_BREED"),
-                        ("pets-to-shelter-assignments", "pets", "assignments", "breed_name", "breedName", "many-to-one", None),
-                        ("shelter-assignments-to-pets", "assignments", "pets", "breedName", "breed_name", "one-to-many", None),
-                        ("shelter-assignments-to-employees", "assignments", "employees", "employeeId", "id", "many-to-one", None),
+                        ("employees_to_assignments", "employees", "assignments", "id", "employee_id", "one-to-many", None),
+                        ("pets-to-shelter-breed", "pets", "animal_breeds", "breed_name", "name", "many-to-one", "BREED_INFO"),
+                        ("shelter-breed-to-pets", "animal_breeds", "pets", "name", "breed_name", "one-to-many", "PETS_OF_BREED"),
+                        ("pets-to-shelter-assignments", "pets", "assignments", "breed_name", "breed_name", "many-to-one", None),
+                        ("shelter-assignments-to-pets", "assignments", "pets", "breed_name", "breed_name", "one-to-many", None),
+                        ("shelter-assignments-to-employees", "assignments", "employees", "employee_id", "id", "many-to-one", None),
                     ]:
                         try:
                             await rel_repo.upsert(

@@ -546,18 +546,19 @@ def _build_multihop_lines(selected_types: set[str], lm, sql_domain_fn) -> list[s
             if path_key in _seen_path_keys:
                 continue
             _seen_path_keys.add(path_key)
+            from provisa.compiler.sql_gen import semantic_table_name as _stn
             node_chain = [src_nm] + [lm.nodes[r.target_label] for r in shortest]
             hops_str = " → ".join(
-                f"{sql_domain_fn(n.domain_id)}.{n.table_name}" for n in node_chain
+                f"{sql_domain_fn(n.domain_id)}.{_stn(n)}" for n in node_chain
             )
             multihop_lines.append(f"Multi-hop path ({len(shortest)} hops): {hops_str}")
             for r in shortest:
                 s_nm = lm.nodes[r.source_label]
                 t_nm = lm.nodes[r.target_label]
                 multihop_lines.append(
-                    f"  JOIN {sql_domain_fn(t_nm.domain_id)}.{t_nm.table_name}"
-                    f" ON {s_nm.table_name}.{r.join_source_column}"
-                    f" = {t_nm.table_name}.{r.join_target_column}"
+                    f"  JOIN {sql_domain_fn(t_nm.domain_id)}.{_stn(t_nm)}"
+                    f" ON {_stn(s_nm)}.{r.join_source_column}"
+                    f" = {_stn(t_nm)}.{r.join_target_column}"
                 )
     return multihop_lines
 
@@ -582,19 +583,26 @@ def _build_schema_block(
     sql_domain_fn,
     multihop_lines: list[str],
 ) -> str:
+    from provisa.compiler.sql_gen import semantic_table_name
+
     schema_lines: list[str] = []
     for tbl in all_tables:
         if tbl.type_name not in relevant_type_names:
             continue
         cols = ctx.aggregate_columns.get(tbl.table_id, [])
-        col_list = ", ".join(col_name for col_name, _ in cols)
-        schema_lines.append(f"Table {sql_domain_fn(tbl.domain_id)}.{tbl.table_name}")
+        col_list = ", ".join(
+            ctx.physical_to_sql.get((tbl.table_id, col_name), col_name)
+            for col_name, _ in cols
+        )
+        tbl_sql = semantic_table_name(tbl)
+        schema_lines.append(f"Table {sql_domain_fn(tbl.domain_id)}.{tbl_sql}")
         schema_lines.append(f"  Columns: {col_list or '(unknown)'}")
         for (src_type, _), jm in ctx.joins.items():
             if src_type == tbl.type_name:
+                tgt_sql = semantic_table_name(jm.target)
                 schema_lines.append(
-                    f"  Approved JOIN: {sql_domain_fn(jm.target.domain_id)}.{jm.target.table_name} "
-                    f"ON {tbl.table_name}.{jm.source_column} = {jm.target.table_name}.{jm.target_column}"
+                    f"  Approved JOIN: {sql_domain_fn(jm.target.domain_id)}.{tgt_sql} "
+                    f"ON {tbl_sql}.{jm.source_column} = {tgt_sql}.{jm.target_column}"
                 )
 
     schema_block = "\n".join(schema_lines)
@@ -631,7 +639,7 @@ async def _run_sql_generation_loop(
         "5. Never use table aliases. In SELECT, ON, and WHERE, qualify every column "
         "with the BARE table name only — never the domain/schema prefix. Use "
         "table.column exactly as written in the approved joins (e.g. inquiries.user_id "
-        "and shelter__animalBreeds.name — NOT pet_store.inquiries.user_id, NOT ab.name). "
+        "and animal_breeds.name — NOT pet_store.inquiries.user_id, NOT ab.name). "
         "The domain prefix (pet_store., shelter.) is used ONLY in FROM/JOIN table refs, "
         "never in a column reference. A FROM/JOIN clause must not introduce an alias "
         "either (write 'JOIN pet_store.pets ON ...', never 'JOIN pet_store.pets p ON ...').\n"
