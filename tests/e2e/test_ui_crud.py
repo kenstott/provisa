@@ -25,7 +25,7 @@ from httpx import ASGITransport, AsyncClient
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
 
@@ -41,7 +41,7 @@ async def client():
 
 async def _gql(client, query: str, variables: dict | None = None):
     """Helper: send GraphQL to /admin/graphql, return parsed data or raise."""
-    payload = {"query": query}
+    payload: dict[str, object] = {"query": query}
     if variables:
         payload["variables"] = variables
     resp = await client.post(

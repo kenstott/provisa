@@ -12,7 +12,7 @@ from httpx import ASGITransport, AsyncClient
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 async def client():
     """Create test client against the FastAPI app with full startup."""
     os.environ.setdefault("PG_PASSWORD", "provisa")

@@ -22,7 +22,7 @@ from httpx import ASGITransport, AsyncClient
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
 
@@ -38,6 +38,13 @@ async def client():
 
 class TestInsert:
     async def test_insert_customer(self, client):
+        await client.post(
+            "/data/graphql",
+            json={
+                "query": "mutation { sa__deleteCustomers(where: { id: { eq: 9999 } }) { affected_rows } }",
+                "role": "admin",
+            },
+        )
         resp = await client.post(
             "/data/graphql",
             json={

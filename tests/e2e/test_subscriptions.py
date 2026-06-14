@@ -10,8 +10,6 @@
 
 """E2E tests for SSE subscription endpoint (Phase AB)."""
 
-import asyncio
-import json
 import os
 from unittest.mock import MagicMock, patch
 
@@ -21,7 +19,7 @@ from httpx import ASGITransport, AsyncClient
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
 

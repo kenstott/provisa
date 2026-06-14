@@ -18,7 +18,7 @@ from httpx import ASGITransport, AsyncClient
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 async def client(pg_pool):
     os.environ.setdefault("PG_PASSWORD", "provisa")
 

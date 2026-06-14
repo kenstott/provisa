@@ -18,7 +18,7 @@ from httpx import ASGITransport, AsyncClient
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
     os.environ["PROVISA_CONFIG_REPLACE"] = "1"
@@ -27,10 +27,13 @@ async def client():
 
     app = create_app()
 
-    async with app.router.lifespan_context(app):
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as c:
-            yield c
+    try:
+        async with app.router.lifespan_context(app):
+            transport = ASGITransport(app=app)
+            async with AsyncClient(transport=transport, base_url="http://test") as c:
+                yield c
+    finally:
+        os.environ.pop("PROVISA_CONFIG_REPLACE", None)
 
 
 class TestGraphiQL:

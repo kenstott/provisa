@@ -27,7 +27,7 @@ from httpx import ASGITransport, AsyncClient
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio]
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="module")
 async def client():
     os.environ.setdefault("PG_PASSWORD", "provisa")
 
@@ -54,7 +54,7 @@ async def _set_gql_naming_convention(client: AsyncClient, convention: str) -> No
         json={
             "query": """
                 mutation UpdateNaming($convention: String!) {
-                    updateNamingConvention(convention: $convention) {
+                    updateGqlNamingConvention(convention: $convention) {
                         success
                         message
                     }
@@ -65,7 +65,7 @@ async def _set_gql_naming_convention(client: AsyncClient, convention: str) -> No
     )
     assert resp.status_code == 200
     result = resp.json()
-    assert result["data"]["updateNamingConvention"]["success"], (
+    assert result["data"]["updateGqlNamingConvention"]["success"], (
         f"Failed to set convention to {convention!r}: {result}"
     )
 
