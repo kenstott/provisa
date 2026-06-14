@@ -171,6 +171,26 @@ def _free_port() -> int:
 
 
 @pytest.fixture(scope="session", autouse=True)
+def _wait_for_trino():
+    """Block until Trino core catalogs are ready or 3 minutes elapse."""
+    host = os.environ.get("TRINO_HOST", "localhost")
+    port = int(os.environ.get("TRINO_PORT", "8080"))
+    deadline = time.monotonic() + 180
+    while time.monotonic() < deadline:
+        try:
+            conn = trino.dbapi.connect(host=host, port=port, user="test")
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            cur.fetchone()
+            cur.execute("SHOW SCHEMAS FROM sales_pg")
+            cur.fetchall()
+            conn.close()
+            return
+        except Exception:
+            time.sleep(3)
+
+
+@pytest.fixture(scope="session", autouse=True)
 def _reserve_flight_port():
     """Allocate a free port for the Arrow Flight server before any test starts.
 
