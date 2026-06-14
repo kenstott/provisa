@@ -189,6 +189,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [tableSearch, setTableSearch] = useState(() => searchParams.get("source") ?? "");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
+  const [groupBy, setGroupBy] = useState<"" | "source" | "domain">("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [sortCol, setSortCol] = useState<"id" | "source" | "domain" | "table" | "governance" | "cols">("id");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const { checkedDomains } = useDomainFilter();
   const { domainAccess } = useAuth();
 
@@ -431,7 +435,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   // Reset pagination when filters change
   useEffect(() => {
     setPage(0);
-  }, [tableSearch, checkedDomains]);
+  }, [tableSearch, checkedDomains, groupBy]);
+
+  useEffect(() => {
+    setCollapsedGroups(new Set());
+  }, [groupBy]);
 
   const handleSubmit = async () => {
     setError(null);
@@ -647,6 +655,23 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           onChange={setTableSearch}
           placeholder={viewsOnly ? "Filter views…" : "Filter by source, domain, or table…"}
         />
+        <div style={{ display: "flex", gap: "0.25rem", alignItems: "center" }}>
+          <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>Group by:</span>
+          {(["", "source", "domain"] as const).map((g) => (
+            <button
+              key={g || "none"}
+              onClick={() => setGroupBy(g)}
+              style={{
+                fontSize: "0.78rem",
+                padding: "0.2rem 0.5rem",
+                background: groupBy === g ? "var(--primary)" : undefined,
+                color: groupBy === g ? "var(--primary-fg, #fff)" : undefined,
+              }}
+            >
+              {g || "None"}
+            </button>
+          ))}
+        </div>
         <div className="page-actions">
           {!viewsOnly && (
             <button onClick={() => setShowForm(!showForm)}>{showForm ? "Cancel" : "+ Table"}</button>
@@ -946,15 +971,44 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       <table className="data-table">
         <thead>
           <tr>
-            <th>ID</th>
-            <th>Source</th>
-            <th>Domain</th>
-            <th>Table</th>
-            <th>Governance</th>
+            {(
+              [
+                ["id", "ID"],
+                ["source", "Source"],
+                ["domain", "Domain"],
+                ["table", "Table"],
+                ["governance", "Governance"],
+              ] as const
+            ).map(([col, label]) => (
+              <th
+                key={col}
+                onClick={() => {
+                  if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                  else { setSortCol(col); setSortDir("asc"); }
+                }}
+                style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+              >
+                {label}{" "}
+                <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
+                  {sortCol === col ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
+                </span>
+              </th>
+            ))}
             <th>Naming</th>
             <th>Cache TTL</th>
             <th>Effective TTL</th>
-            <th>Cols</th>
+            <th
+              onClick={() => {
+                if (sortCol === "cols") setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                else { setSortCol("cols"); setSortDir("asc"); }
+              }}
+              style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+            >
+              Cols{" "}
+              <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
+                {sortCol === "cols" ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
+              </span>
+            </th>
             <th></th>
           </tr>
         </thead>
@@ -970,10 +1024,81 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
               return terms.every((term) => haystack.includes(term));
             });
-            const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-            return paged.map((t) => {
+
+            filtered.sort((a, b) => {
+              let cmp = 0;
+              if (sortCol === "id") cmp = a.id - b.id;
+              else if (sortCol === "source") cmp = a.sourceId.localeCompare(b.sourceId);
+              else if (sortCol === "domain") cmp = (a.domainId ?? "").localeCompare(b.domainId ?? "");
+              else if (sortCol === "table") cmp = (a.alias || a.tableName).localeCompare(b.alias || b.tableName);
+              else if (sortCol === "governance") cmp = a.governance.localeCompare(b.governance);
+              else if (sortCol === "cols") cmp = a.columns.length - b.columns.length;
+              return sortDir === "asc" ? cmp : -cmp;
+            });
+
+            let toRender: RegisteredTable[];
+            const groupHeaderAtIndex = new Map<number, string>();
+            const groupKeyByIndex = new Map<number, string>();
+            if (groupBy !== "") {
+              const groups = new Map<string, RegisteredTable[]>();
+              for (const t of filtered) {
+                const key =
+                  groupBy === "source"
+                    ? t.sourceId
+                    : t.domainId
+                      ? normalizeDomain(t.domainId)
+                      : "(none)";
+                if (!groups.has(key)) groups.set(key, []);
+                groups.get(key)!.push(t);
+              }
+              toRender = [];
+              for (const key of [...groups.keys()].sort()) {
+                const startIdx = toRender.length;
+                groupHeaderAtIndex.set(startIdx, `${key} (${groups.get(key)!.length})`);
+                for (let i = 0; i < groups.get(key)!.length; i++) {
+                  groupKeyByIndex.set(startIdx + i, key);
+                }
+                toRender.push(...groups.get(key)!);
+              }
+            } else {
+              toRender = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+            }
+
+            return toRender.flatMap((t, renderIdx) => {
+              const groupHeader = groupHeaderAtIndex.get(renderIdx);
+              const rowGroupKey = groupKeyByIndex.get(renderIdx);
+              if (rowGroupKey && collapsedGroups.has(rowGroupKey)) {
+                return groupHeader !== undefined
+                  ? [
+                      <tr key={`grp-${rowGroupKey}`}>
+                        <td
+                          colSpan={10}
+                          style={{
+                            fontWeight: 600,
+                            fontSize: "0.8rem",
+                            padding: "0.35rem 0.75rem",
+                            color: "var(--text-muted)",
+                            background: "var(--surface)",
+                            borderTop: "2px solid var(--border)",
+                            cursor: "pointer",
+                          }}
+                          onClick={() =>
+                            setCollapsedGroups((prev) => {
+                              const next = new Set(prev);
+                              next.delete(rowGroupKey);
+                              return next;
+                            })
+                          }
+                        >
+                          ▶ {groupBy === "source" ? "Source: " : "Domain: "}
+                          {groupHeader}
+                        </td>
+                      </tr>,
+                    ]
+                  : [];
+              }
               const isEditing = editingTable?.id === t.id;
-              return (
+              const row = (
                 <Fragment key={t.id}>
                   <tr
                     onClick={() => {
@@ -1939,6 +2064,37 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                   )}
                 </Fragment>
               );
+              return groupHeader !== undefined
+                ? [
+                    <tr key={`grp-${rowGroupKey}`}>
+                      <td
+                        colSpan={10}
+                        style={{
+                          fontWeight: 600,
+                          fontSize: "0.8rem",
+                          padding: "0.35rem 0.75rem",
+                          color: "var(--text-muted)",
+                          background: "var(--surface)",
+                          borderTop: "2px solid var(--border)",
+                          cursor: "pointer",
+                          userSelect: "none",
+                        }}
+                        onClick={() =>
+                          setCollapsedGroups((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(rowGroupKey!)) next.delete(rowGroupKey!);
+                            else next.add(rowGroupKey!);
+                            return next;
+                          })
+                        }
+                      >
+                        ▼ {groupBy === "source" ? "Source: " : "Domain: "}
+                        {groupHeader}
+                      </td>
+                    </tr>,
+                    row,
+                  ]
+                : [row];
             });
           })()}
         </tbody>
@@ -1955,6 +2111,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
           return terms.every((term) => haystack.includes(term));
         });
+        if (groupBy !== "") return null;
         const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
         if (totalPages === 1) return null;
         return (
