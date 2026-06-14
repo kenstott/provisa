@@ -189,9 +189,11 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [tableSearch, setTableSearch] = useState(() => searchParams.get("source") ?? "");
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
-  const [groupBy, setGroupBy] = useState<"" | "source" | "domain">("");
+  const [groupBy, setGroupBy] = useState<Array<"source" | "domain">>([]);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [sortCol, setSortCol] = useState<"id" | "source" | "domain" | "table" | "governance" | "cols">("id");
+  const toggleGroupBy = (col: "source" | "domain") =>
+    setGroupBy((prev) => (prev.includes(col) ? prev.filter((g) => g !== col) : [...prev, col]));
+  const [sortCol, setSortCol] = useState<"source" | "domain" | "table" | "governance" | "cols">("source");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const { checkedDomains } = useDomainFilter();
   const { domainAccess } = useAuth();
@@ -439,7 +441,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
   useEffect(() => {
     setCollapsedGroups(new Set());
-  }, [groupBy]);
+  }, [groupBy.join(",")]);
 
   const handleSubmit = async () => {
     setError(null);
@@ -656,16 +658,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           placeholder={viewsOnly ? "Filter views…" : "Filter by source, domain, or table…"}
         />
         <div className="page-actions">
-          <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", whiteSpace: "nowrap" }}>Group by:</span>
-          <select
-            value={groupBy}
-            onChange={(e) => setGroupBy(e.target.value as "" | "source" | "domain")}
-            style={{ fontSize: "0.78rem", padding: "0.2rem 0.4rem" }}
-          >
-            <option value="">None</option>
-            <option value="source">Source</option>
-            <option value="domain">Domain</option>
-          </select>
           {!viewsOnly && (
             <button onClick={() => setShowForm(!showForm)}>{showForm ? "Cancel" : "+ Table"}</button>
           )}
@@ -966,27 +958,48 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           <tr>
             {(
               [
-                ["id", "ID"],
                 ["source", "Source"],
                 ["domain", "Domain"],
                 ["table", "Table"],
                 ["governance", "Governance"],
               ] as const
-            ).map(([col, label]) => (
-              <th
-                key={col}
-                onClick={() => {
-                  if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-                  else { setSortCol(col); setSortDir("asc"); }
-                }}
-                style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
-              >
-                {label}{" "}
-                <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
-                  {sortCol === col ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
-                </span>
-              </th>
-            ))}
+            ).map(([col, label]) => {
+              const isGroupable = col === "source" || col === "domain";
+              const groupLevel = groupBy.indexOf(col);
+              const isGrouped = groupLevel !== -1;
+              return (
+                <th key={col} style={{ whiteSpace: "nowrap" }}>
+                  <span
+                    onClick={() => {
+                      if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+                      else { setSortCol(col); setSortDir("asc"); }
+                    }}
+                    style={{ cursor: "pointer", userSelect: "none" }}
+                  >
+                    {label}{" "}
+                    <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
+                      {sortCol === col ? (sortDir === "asc" ? "▲" : "▼") : "⇅"}
+                    </span>
+                  </span>
+                  {isGroupable && (
+                    <span
+                      title={isGrouped ? `Ungroup (level ${groupLevel + 1})` : `Group by ${label}`}
+                      onClick={() => toggleGroupBy(col)}
+                      style={{
+                        marginLeft: "0.3rem",
+                        fontSize: "0.65rem",
+                        cursor: "pointer",
+                        userSelect: "none",
+                        opacity: isGrouped ? 1 : 0.35,
+                        color: isGrouped ? "var(--primary, #6366f1)" : undefined,
+                      }}
+                    >
+                      {isGrouped ? `⊞${groupLevel + 1}` : "⊞"}
+                    </span>
+                  )}
+                </th>
+              );
+            })}
             <th>Naming</th>
             <th>Cache TTL</th>
             <th>Effective TTL</th>
@@ -1020,8 +1033,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
             filtered.sort((a, b) => {
               let cmp = 0;
-              if (sortCol === "id") cmp = a.id - b.id;
-              else if (sortCol === "source") cmp = a.sourceId.localeCompare(b.sourceId);
+              if (sortCol === "source") cmp = a.sourceId.localeCompare(b.sourceId);
               else if (sortCol === "domain") cmp = (a.domainId ?? "").localeCompare(b.domainId ?? "");
               else if (sortCol === "table") cmp = (a.alias || a.tableName).localeCompare(b.alias || b.tableName);
               else if (sortCol === "governance") cmp = a.governance.localeCompare(b.governance);
@@ -1029,67 +1041,86 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
               return sortDir === "asc" ? cmp : -cmp;
             });
 
-            let toRender: RegisteredTable[];
-            const groupHeaderAtIndex = new Map<number, string>();
-            const groupKeyByIndex = new Map<number, string>();
-            if (groupBy !== "") {
-              const groups = new Map<string, RegisteredTable[]>();
-              for (const t of filtered) {
-                const key =
-                  groupBy === "source"
-                    ? t.sourceId
-                    : t.domainId
-                      ? normalizeDomain(t.domainId)
-                      : "(none)";
-                if (!groups.has(key)) groups.set(key, []);
-                groups.get(key)!.push(t);
-              }
-              toRender = [];
-              for (const key of [...groups.keys()].sort()) {
-                const startIdx = toRender.length;
-                groupHeaderAtIndex.set(startIdx, `${key} (${groups.get(key)!.length})`);
-                for (let i = 0; i < groups.get(key)!.length; i++) {
-                  groupKeyByIndex.set(startIdx + i, key);
-                }
-                toRender.push(...groups.get(key)!);
-              }
+            const getGroupKey = (t: RegisteredTable, col: "source" | "domain") =>
+              col === "source" ? t.sourceId : (t.domainId ? normalizeDomain(t.domainId) : "(none)");
+
+            const colLabel = (col: "source" | "domain") => col === "source" ? "Source" : "Domain";
+
+            type GroupItem =
+              | { type: "header"; level: 1 | 2; key: string; label: string; count: number }
+              | { type: "row"; t: RegisteredTable };
+
+            let items: GroupItem[];
+
+            if (groupBy.length === 0) {
+              items = filtered
+                .slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+                .map((t) => ({ type: "row" as const, t }));
             } else {
-              toRender = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+              items = [];
+              const l1Col = groupBy[0];
+              const l2Col = groupBy[1];
+              const l1Map = new Map<string, RegisteredTable[]>();
+              for (const t of filtered) {
+                const k = getGroupKey(t, l1Col);
+                if (!l1Map.has(k)) l1Map.set(k, []);
+                l1Map.get(k)!.push(t);
+              }
+              for (const [l1Key, l1Tables] of [...l1Map.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+                items.push({ type: "header", level: 1, key: l1Key, label: `${colLabel(l1Col)}: ${l1Key}`, count: l1Tables.length });
+                if (collapsedGroups.has(l1Key)) continue;
+                if (!l2Col) {
+                  for (const t of l1Tables) items.push({ type: "row", t });
+                } else {
+                  const l2Map = new Map<string, RegisteredTable[]>();
+                  for (const t of l1Tables) {
+                    const k = getGroupKey(t, l2Col);
+                    if (!l2Map.has(k)) l2Map.set(k, []);
+                    l2Map.get(k)!.push(t);
+                  }
+                  for (const [l2Key, l2Tables] of [...l2Map.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+                    const compositeKey = `${l1Key}|${l2Key}`;
+                    items.push({ type: "header", level: 2, key: compositeKey, label: `${colLabel(l2Col)}: ${l2Key}`, count: l2Tables.length });
+                    if (collapsedGroups.has(compositeKey)) continue;
+                    for (const t of l2Tables) items.push({ type: "row", t });
+                  }
+                }
+              }
             }
 
-            return toRender.flatMap((t, renderIdx) => {
-              const groupHeader = groupHeaderAtIndex.get(renderIdx);
-              const rowGroupKey = groupKeyByIndex.get(renderIdx);
-              if (rowGroupKey && collapsedGroups.has(rowGroupKey)) {
-                return groupHeader !== undefined
-                  ? [
-                      <tr key={`grp-${rowGroupKey}`}>
-                        <td
-                          colSpan={10}
-                          style={{
-                            fontWeight: 600,
-                            fontSize: "0.8rem",
-                            padding: "0.35rem 0.75rem",
-                            color: "var(--text-muted)",
-                            background: "var(--surface)",
-                            borderTop: "2px solid var(--border)",
-                            cursor: "pointer",
-                          }}
-                          onClick={() =>
-                            setCollapsedGroups((prev) => {
-                              const next = new Set(prev);
-                              next.delete(rowGroupKey);
-                              return next;
-                            })
-                          }
-                        >
-                          ▶ {groupBy === "source" ? "Source: " : "Domain: "}
-                          {groupHeader}
-                        </td>
-                      </tr>,
-                    ]
-                  : [];
+            return items.map((item) => {
+              if (item.type === "header") {
+                const isL1 = item.level === 1;
+                return (
+                  <tr key={`grp-${item.key}`}>
+                    <td
+                      colSpan={9}
+                      onClick={() =>
+                        setCollapsedGroups((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(item.key)) next.delete(item.key);
+                          else next.add(item.key);
+                          return next;
+                        })
+                      }
+                      style={{
+                        fontWeight: isL1 ? 600 : 500,
+                        fontSize: isL1 ? "0.8rem" : "0.75rem",
+                        padding: isL1 ? "0.35rem 0.75rem" : "0.25rem 1.5rem",
+                        color: isL1 ? "var(--text-muted)" : "var(--text-muted)",
+                        background: isL1 ? "var(--surface)" : "var(--surface-raised, var(--surface))",
+                        borderTop: isL1 ? "2px solid var(--border)" : "1px solid var(--border)",
+                        cursor: "pointer",
+                        userSelect: "none",
+                      }}
+                    >
+                      {collapsedGroups.has(item.key) ? "▶" : "▼"} {item.label}{" "}
+                      <span style={{ fontWeight: "normal", opacity: 0.7 }}>({item.count})</span>
+                    </td>
+                  </tr>
+                );
               }
+              const t = item.t;
               const isEditing = editingTable?.id === t.id;
               const row = (
                 <Fragment key={t.id}>
@@ -1100,7 +1131,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     }}
                     className="clickable"
                   >
-                    <td>{t.id}</td>
                     <td>{t.sourceId}</td>
                     <td>{t.domainId ? normalizeDomain(t.domainId) : ""}</td>
                     <td style={{ fontFamily: "monospace", fontSize: "0.9rem" }}>
@@ -1174,7 +1204,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                   </tr>
                   {expanded === t.id && (
                     <tr key={`${t.id}-cols`}>
-                      <td colSpan={13} style={{ padding: 0 }}>
+                      <td colSpan={12} style={{ padding: 0 }}>
                         {!isEditing ? (
                           <>
                             <table className="data-table" style={{ margin: 0 }}>
@@ -2057,37 +2087,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                   )}
                 </Fragment>
               );
-              return groupHeader !== undefined
-                ? [
-                    <tr key={`grp-${rowGroupKey}`}>
-                      <td
-                        colSpan={10}
-                        style={{
-                          fontWeight: 600,
-                          fontSize: "0.8rem",
-                          padding: "0.35rem 0.75rem",
-                          color: "var(--text-muted)",
-                          background: "var(--surface)",
-                          borderTop: "2px solid var(--border)",
-                          cursor: "pointer",
-                          userSelect: "none",
-                        }}
-                        onClick={() =>
-                          setCollapsedGroups((prev) => {
-                            const next = new Set(prev);
-                            if (next.has(rowGroupKey!)) next.delete(rowGroupKey!);
-                            else next.add(rowGroupKey!);
-                            return next;
-                          })
-                        }
-                      >
-                        ▼ {groupBy === "source" ? "Source: " : "Domain: "}
-                        {groupHeader}
-                      </td>
-                    </tr>,
-                    row,
-                  ]
-                : [row];
+              return row;
             });
           })()}
         </tbody>
@@ -2104,7 +2104,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           const haystack = [t.sourceId, t.tableName, t.domainId ?? ""].join(" ").toLowerCase();
           return terms.every((term) => haystack.includes(term));
         });
-        if (groupBy !== "") return null;
+        if (groupBy.length > 0) return null;
         const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
         if (totalPages === 1) return null;
         return (
