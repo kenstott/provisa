@@ -1,0 +1,49 @@
+{
+  "tableName": "adoption_events",
+  "schemaName": "default",
+  "topicName": "pet.adoption_events",
+  "key": {
+    "dataFormat": "raw",
+    "fields": [
+      {
+        "name": "event_key",
+        "type": "VARCHAR"
+      }
+    ]
+  },
+  "message": {
+    "dataFormat": "json",
+    "fields": [
+      {
+        "name": "event_type",
+        "type": "VARCHAR",
+        "mapping": "event_type"
+      },
+      {
+        "name": "inquiry_id",
+        "type": "INTEGER",
+        "mapping": "inquiry_id"
+      },
+      {
+        "name": "pet_id",
+        "type": "INTEGER",
+        "mapping": "pet_id"
+      },
+      {
+        "name": "user_id",
+        "type": "INTEGER",
+        "mapping": "user_id"
+      },
+      {
+        "name": "status",
+        "type": "VARCHAR",
+        "mapping": "status"
+      },
+      {
+        "name": "occurred_at",
+        "type": "VARCHAR",
+        "mapping": "occurred_at"
+      }
+    ]
+  }
+}
