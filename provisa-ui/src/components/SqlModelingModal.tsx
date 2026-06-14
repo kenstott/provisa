@@ -1125,15 +1125,15 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
         const lt = aliasMap[la.toLowerCase()] || la.toLowerCase();
         const rt = aliasMap[ra.toLowerCase()] || ra.toLowerCase();
         const existingRel = findExisting(lt, lc, rt, rc);
+        if (existingRel) continue;
         newCandidates.push({
-          id: existingRel ? existingRel.alias || existingRel.id.toString() : `${lt}-${lc}-to-${rt}`,
+          id: `${lt}-${lc}-to-${rt}`,
           sourceTable: lt,
           sourceCol: lc,
           targetTable: rt,
           targetCol: rc,
-          cardinality: existingRel?.cardinality ?? "many-to-one",
+          cardinality: "many-to-one",
           promoted: false,
-          existingRel,
         });
       }
     }
@@ -1183,7 +1183,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
               SQL Modeling
             </span>
             <span style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
-              Extract JOIN conditions as relationship candidates
+              Extract JOIN conditions as new relationship candidates — existing relationships are excluded
             </span>
             {/* SQL | Canvas toggle */}
             <div
@@ -1768,7 +1768,7 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                   <div style={{ flex: 1 }} />
                   <button
                     className="btn-secondary"
-                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem" }}
+                    style={{ fontSize: "0.78rem", padding: "0.25rem 0.6rem", flexShrink: 0 }}
                     onClick={handleExtractJoins}
                     disabled={!sqlText.trim()}
                   >
@@ -2316,8 +2316,8 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                             fontSize: "0.85rem",
                           }}
                         >
-                          Click "Extract Joins" to parse JOIN conditions into relationship
-                          candidates.
+                          Click "Extract Joins" to find new relationships. JOIN conditions that
+                          already have a registered relationship are excluded.
                         </div>
                       ) : (
                         <table className="data-table" style={{ fontSize: "0.78rem" }}>
@@ -2332,33 +2332,19 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                           </thead>
                           <tbody>
                             {candidates.map((c, idx) => (
-                              <tr
-                                key={idx}
-                                style={
-                                  c.existingRel
-                                    ? {
-                                        opacity: 0.65,
-                                        background: "var(--surface-raised, rgba(0,0,0,0.04))",
-                                      }
-                                    : undefined
-                                }
-                              >
+                              <tr key={idx}>
                                 <td>
-                                  {c.existingRel ? (
-                                    <span style={{ fontFamily: "monospace" }}>{c.id}</span>
-                                  ) : (
-                                    <input
-                                      value={c.id}
-                                      onChange={(e) =>
-                                        setCandidates((prev) =>
-                                          prev.map((item, i) =>
-                                            i === idx ? { ...item, id: e.target.value } : item,
-                                          ),
-                                        )
-                                      }
-                                      style={{ width: "100%", fontSize: "0.78rem" }}
-                                    />
-                                  )}
+                                  <input
+                                    value={c.id}
+                                    onChange={(e) =>
+                                      setCandidates((prev) =>
+                                        prev.map((item, i) =>
+                                          i === idx ? { ...item, id: e.target.value } : item,
+                                        ),
+                                      )
+                                    }
+                                    style={{ width: "100%", fontSize: "0.78rem" }}
+                                  />
                                 </td>
                                 <td>
                                   <span
@@ -2387,39 +2373,25 @@ export function SqlModelingModal({ tables, existingRels, onClose, onPromote }: P
                                   {c.targetCol}
                                 </td>
                                 <td>
-                                  {c.existingRel ? (
-                                    <span>{c.cardinality}</span>
-                                  ) : (
-                                    <select
-                                      value={c.cardinality}
-                                      onChange={(e) =>
-                                        setCandidates((prev) =>
-                                          prev.map((item, i) =>
-                                            i === idx
-                                              ? { ...item, cardinality: e.target.value }
-                                              : item,
-                                          ),
-                                        )
-                                      }
-                                      style={{ fontSize: "0.78rem" }}
-                                    >
-                                      <option value="many-to-one">many-to-one</option>
-                                      <option value="one-to-many">one-to-many</option>
-                                    </select>
-                                  )}
+                                  <select
+                                    value={c.cardinality}
+                                    onChange={(e) =>
+                                      setCandidates((prev) =>
+                                        prev.map((item, i) =>
+                                          i === idx
+                                            ? { ...item, cardinality: e.target.value }
+                                            : item,
+                                        ),
+                                      )
+                                    }
+                                    style={{ fontSize: "0.78rem" }}
+                                  >
+                                    <option value="many-to-one">many-to-one</option>
+                                    <option value="one-to-many">one-to-many</option>
+                                  </select>
                                 </td>
                                 <td>
-                                  {c.existingRel ? (
-                                    <span
-                                      style={{
-                                        color: "var(--text-muted)",
-                                        fontSize: "0.72rem",
-                                        whiteSpace: "nowrap",
-                                      }}
-                                    >
-                                      already exists
-                                    </span>
-                                  ) : c.promoted ? (
+                                  {c.promoted ? (
                                     <span style={{ color: "var(--approve)", fontSize: "0.78rem" }}>
                                       ✓ Promoted
                                     </span>
