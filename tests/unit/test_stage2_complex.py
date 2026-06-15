@@ -430,4 +430,3 @@ class TestBuildGovernanceContext:
         rls = _FakeRLSContext({})
         gov = build_governance_context("role-a", rls, {}, ctx, tables)
         assert gov.table_map.get("orders") == 1
-        assert gov.table_map.get("public.orders") == 1

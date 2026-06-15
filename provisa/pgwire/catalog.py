@@ -831,7 +831,7 @@ def _build_catalog_index(ctx, col_types: dict) -> CatalogIndex:
         real_cols = col_types.get(tm.table_id, [])
         for i, col in enumerate(real_cols, 1):
             phys = col.column_name
-            exposed = _p2s.get((tm.table_id, phys)) or apply_sql_name(phys) or phys
+            exposed = _p2s.get((tm.table_id, phys)) or apply_sql_name(phys)
             idx.all_cols.append((toid, exposed, col.data_type, col.is_nullable, i))
             idx.col_attnum[(toid, exposed)] = i
             idx.attnum_to_col[(toid, i)] = exposed
@@ -1372,8 +1372,8 @@ def _build_fk_constraint_rows(
             or jm.source_column.startswith("__")
         )
         from provisa.compiler.naming import apply_sql_name
-        src_col_sql = apply_sql_name(jm.source_column) or jm.source_column
-        tgt_col_sql = apply_sql_name(jm.target_column) or jm.target_column
+        src_col_sql = apply_sql_name(jm.source_column)
+        tgt_col_sql = apply_sql_name(jm.target_column)
         col_label = join_field if is_synthetic else src_col_sql
         src_sem_name = semantic_table_name(src_tm)
         base_name = f"fk_{src_sem_name}__{col_label}"

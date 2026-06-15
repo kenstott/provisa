@@ -536,43 +536,17 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
 
 
 def _lookup_ep(state, table_name: str):
-    """Find API endpoint by table name, tolerating camelCase/snake_case mismatch."""
-    from provisa.compiler.naming import to_snake_case
-
+    """Find API endpoint by table name."""
     ep_map: dict = getattr(state, "api_endpoints", {})
-    ep = ep_map.get(table_name)
-    if ep is not None:
-        return ep
-    snake_tn = to_snake_case(table_name)
-    for key, val in ep_map.items():
-        if to_snake_case(key) == snake_tn:
-            return val
-    return None
+    return ep_map.get(table_name)
 
 
 def _lookup_gql_remote_table(state, table_name: str):
-    """Find a graphql_remote table registration by GQL field name or stored name."""
-    from provisa.compiler.naming import to_snake_case
-
+    """Find a graphql_remote table registration by SQL table name (snake_case)."""
     gql_srcs = getattr(state, "graphql_remote_sources", {})
-    snake_tn = to_snake_case(table_name)
-    # Strip domain prefix (e.g. "shelter__animalBreed" → "animalBreed") for matching
-    bare_tn = table_name.split("__", 1)[1] if "__" in table_name else table_name
-    snake_bare = to_snake_case(bare_tn)
     for reg in gql_srcs.values():
         for tbl in reg.get("tables", []):
-            tbl_name = tbl["name"]
-            tbl_field = tbl.get("field_name", "")
-            if (
-                tbl_name == table_name
-                or tbl_field == table_name
-                or to_snake_case(tbl_name) == snake_tn
-                or to_snake_case(tbl_field) == snake_tn
-                or tbl_name == bare_tn
-                or tbl_field == bare_tn
-                or to_snake_case(tbl_name) == snake_bare
-                or to_snake_case(tbl_field) == snake_bare
-            ):
+            if tbl["sql_name"] == table_name:
                 return reg, tbl
     return None, None
 
@@ -692,10 +666,13 @@ async def _mat_gql_remote_table(
             }
             if _covered:
                 col_dicts = [c for c in col_dicts if c["name"] not in _covered]
-    col_names = [c["name"] for c in col_dicts]
+    from provisa.compiler.naming import apply_sql_name as _apply_sql_name
+    # Map raw GQL field name → SQL name (snake_case) so CTE headers match SQL column refs
+    _gql_to_sql = {c["name"]: _apply_sql_name(c["name"]) for c in col_dicts}
+    col_names = [_gql_to_sql[c["name"]] for c in col_dicts]
     col_selections = [c.get("gql_selection", c["name"]) for c in col_dicts]
     col_objs = [
-        _GCol(name=c["name"], type=_GQL_TYPE_MAP.get(c.get("type", "text"), "string"))
+        _GCol(name=_gql_to_sql[c["name"]], type=_GQL_TYPE_MAP.get(c.get("type", "text"), "string"))
         for c in col_dicts
     ]
 
@@ -720,9 +697,10 @@ async def _mat_gql_remote_table(
             limit=state.config.graphql_remote.max_list_items,
             pagination=gql_tbl.get("pagination"),
         )
+        # Remap row keys from GQL camelCase to SQL snake_case to match CTE column headers
+        gql_rows = [{_gql_to_sql.get(k, k): v for k, v in row.items()} for row in gql_rows]
     except Exception as fetch_exc:
-        log.warning("[GQL REMOTE] fetch failed for %s: %s — skipping", tn, fetch_exc)
-        return
+        raise RuntimeError(f"GQL remote fetch failed for {tn!r}: {fetch_exc}") from fetch_exc
 
     # Hydrate to Trino cache (best-effort)
     try:

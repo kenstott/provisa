@@ -1510,10 +1510,14 @@ async def _load_graphql_remote_sources_from_db() -> None:
                                 pass
                         columns.append(col_dict)
                     tname = tr["table_name"]
+                    _snake_field = tname.split("__", 1)[-1]
+                    _camel_parts = _snake_field.split("_")
+                    _field_name = _camel_parts[0] + "".join(p.capitalize() for p in _camel_parts[1:])
                     tables.append(
                         {
                             "name": tname,
-                            "field_name": tname,
+                            "sql_name": tname,
+                            "field_name": _field_name,
                             "source_id": source_id,
                             "columns": columns,
                             "domain_id": tr["domain_id"] or "",
@@ -1602,13 +1606,15 @@ def _inject_gql_required_args(
     """Inject required GQL args as native filter columns for graphql_remote tables."""
     if not gql_remote_srcs:
         return
+    from provisa.compiler.naming import apply_sql_name as _asn
     _gql_req_args: dict[tuple, list[dict]] = {}
     for _reg in gql_remote_srcs.values():
         _sid = _reg.get("source_id", "")
         for _tbl in _reg.get("tables", []):
             _req = _tbl.get("required_args", [])
             if _req:
-                _gql_req_args[(_sid, _tbl["name"])] = _req
+                _sql_tbl_name = _tbl.get("sql_name") or _asn(_tbl["name"])
+                _gql_req_args[(_sid, _sql_tbl_name)] = _req
     if _gql_req_args:
         for _tbl in tables:
             _key = (_tbl["source_id"], _tbl["table_name"])
@@ -2175,7 +2181,7 @@ def _prewarm_govdata_jvm(_log: logging.Logger) -> None:
         try:
             import os as _os
             from provisa.govdata.source import _jvm_lock as _lock
-            from askamerica.engine import DEFAULT_SCHEMAS as _DS, start_jvm as _start_jvm
+            from askamerica.engine import DEFAULT_SCHEMAS as _DS, start_jvm as _start_jvm  # type: ignore[import-untyped]
 
             with _lock:
                 if "ASKAMERICA_SCHEMAS" not in _os.environ:

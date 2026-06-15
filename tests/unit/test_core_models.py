@@ -21,7 +21,6 @@ from provisa.core.models import (
     EventTrigger,
     Function,
     FunctionArgument,
-    GovernanceLevel,
     HotTablesConfig,
     InlineType,
     LiveDeliveryConfig,
@@ -53,7 +52,7 @@ class TestSource:
     def test_valid_postgresql_defaults(self):
         s = Source(
             id="pg1",
-            type="postgresql",
+            type=SourceType.postgresql,
             host="localhost",
             port=5432,
             database="mydb",
@@ -73,7 +72,7 @@ class TestSource:
         with pytest.raises(ValidationError):
             Source(
                 id="1bad",
-                type="postgresql",
+                type=SourceType.postgresql,
                 host="h",
                 port=5432,
                 database="d",
@@ -85,7 +84,7 @@ class TestSource:
         with pytest.raises(ValidationError):
             Source(
                 id="bad!id",
-                type="postgresql",
+                type=SourceType.postgresql,
                 host="h",
                 port=5432,
                 database="d",
@@ -96,7 +95,7 @@ class TestSource:
     def test_source_id_hyphens_and_underscores_allowed(self):
         s = Source(
             id="my-pg_source1",
-            type="postgresql",
+            type=SourceType.postgresql,
             host="h",
             port=5432,
             database="d",
@@ -108,7 +107,7 @@ class TestSource:
     def test_catalog_name_replaces_hyphens(self):
         s = Source(
             id="sales-pg-prod",
-            type="postgresql",
+            type=SourceType.postgresql,
             host="h",
             port=5432,
             database="d",
@@ -121,7 +120,7 @@ class TestSource:
         for stype, connector in SOURCE_TO_CONNECTOR.items():
             s = Source(
                 id="src",
-                type=stype,
+                type=SourceType(stype),
                 host="h",
                 port=5432,
                 database="d",
@@ -133,7 +132,7 @@ class TestSource:
     def test_dialect_postgres(self):
         s = Source(
             id="pg",
-            type="postgresql",
+            type=SourceType.postgresql,
             host="h",
             port=5432,
             database="d",
@@ -145,7 +144,7 @@ class TestSource:
     def test_dialect_none_for_nosql(self):
         s = Source(
             id="m",
-            type="mongodb",
+            type=SourceType.mongodb,
             host="h",
             port=27017,
             database="d",
@@ -157,7 +156,7 @@ class TestSource:
     def test_jdbc_url_postgresql(self):
         s = Source(
             id="pg",
-            type="postgresql",
+            type=SourceType.postgresql,
             host="db.example.com",
             port=5432,
             database="sales",
@@ -169,7 +168,7 @@ class TestSource:
     def test_jdbc_url_mysql(self):
         s = Source(
             id="my",
-            type="mysql",
+            type=SourceType.mysql,
             host="db.local",
             port=3306,
             database="app",
@@ -181,7 +180,7 @@ class TestSource:
     def test_jdbc_url_mariadb(self):
         s = Source(
             id="ma",
-            type="mariadb",
+            type=SourceType.mariadb,
             host="db.local",
             port=3307,
             database="app",
@@ -193,7 +192,7 @@ class TestSource:
     def test_jdbc_url_sqlserver(self):
         s = Source(
             id="ss",
-            type="sqlserver",
+            type=SourceType.sqlserver,
             host="sql.local",
             port=1433,
             database="MyDB",
@@ -207,7 +206,7 @@ class TestSource:
     def test_jdbc_url_oracle(self):
         s = Source(
             id="ora",
-            type="oracle",
+            type=SourceType.oracle,
             host="ora.local",
             port=1521,
             database="ORCLDB",
@@ -221,7 +220,7 @@ class TestSource:
     def test_jdbc_url_empty_for_mongodb(self):
         s = Source(
             id="mg",
-            type="mongodb",
+            type=SourceType.mongodb,
             host="mongo.local",
             port=27017,
             database="d",
@@ -233,7 +232,7 @@ class TestSource:
     def test_jdbc_url_empty_for_cassandra(self):
         s = Source(
             id="cs",
-            type="cassandra",
+            type=SourceType.cassandra,
             host="cs.local",
             port=9042,
             database="d",
@@ -245,7 +244,7 @@ class TestSource:
     def test_jdbc_url_empty_for_snowflake(self):
         s = Source(
             id="sf",
-            type="snowflake",
+            type=SourceType.snowflake,
             host="acc.snowflakecomputing.com",
             port=443,
             database="d",
@@ -257,7 +256,7 @@ class TestSource:
     def test_pool_min_max_custom(self):
         s = Source(
             id="pg",
-            type="postgresql",
+            type=SourceType.postgresql,
             host="h",
             port=5432,
             database="d",
@@ -272,7 +271,7 @@ class TestSource:
     def test_federation_hints_stored(self):
         s = Source(
             id="pg",
-            type="postgresql",
+            type=SourceType.postgresql,
             host="h",
             port=5432,
             database="d",
@@ -392,15 +391,15 @@ class TestColumnPreset:
 
 class TestTable:
     def _make(self, **overrides):
-        defaults = dict(
+        defaults: dict = dict(
             source_id="pg1",
             domain_id="sales",
-            **{"schema": "public", "table": "orders"},
-            governance="pre-approved",
+            schema_name="public",
+            table_name="orders",
             columns=[Column(name="id", visible_to=["admin"])],
         )
         defaults.update(overrides)
-        return Table(**defaults)
+        return Table.model_validate(defaults)
 
     def test_schema_alias(self):
         t = self._make()
@@ -409,18 +408,6 @@ class TestTable:
     def test_table_alias(self):
         t = self._make()
         assert t.table_name == "orders"
-
-    def test_governance_pre_approved(self):
-        t = self._make(governance="pre-approved")
-        assert t.governance == GovernanceLevel.pre_approved
-
-    def test_governance_registry_required(self):
-        t = self._make(governance="registry-required")
-        assert t.governance == GovernanceLevel.registry_required
-
-    def test_invalid_governance_rejected(self):
-        with pytest.raises(ValidationError):
-            self._make(governance="open")
 
     def test_table_defaults(self):
         t = self._make()
@@ -447,6 +434,7 @@ class TestTable:
             outputs=[LiveOutputConfig(type="sse")],
         )
         t = self._make(live=live)
+        assert t.live is not None
         assert t.live.query_id == "q-abc123"
         assert t.live.outputs[0].type == "sse"
 
@@ -464,7 +452,7 @@ class TestRelationship:
             target_table_id="customers",
             source_column="customer_id",
             target_column="id",
-            cardinality="many-to-one",
+            cardinality=Cardinality.many_to_one,
         )
         assert r.cardinality == Cardinality.many_to_one
         assert r.materialize is False
@@ -477,7 +465,7 @@ class TestRelationship:
             target_table_id="orders",
             source_column="id",
             target_column="customer_id",
-            cardinality="one-to-many",
+            cardinality=Cardinality.one_to_many,
         )
         assert r.cardinality == Cardinality.one_to_many
 
@@ -488,7 +476,7 @@ class TestRelationship:
             target_table_id="b",
             source_column="aid",
             target_column="id",
-            cardinality="many-to-one",
+            cardinality=Cardinality.many_to_one,
             materialize=True,
             refresh_interval=60,
         )
@@ -497,14 +485,14 @@ class TestRelationship:
 
     def test_invalid_cardinality(self):
         with pytest.raises(ValidationError):
-            Relationship(
-                id="r1",
-                source_table_id="a",
-                target_table_id="b",
-                source_column="c",
-                target_column="d",
-                cardinality="one-to-one",
-            )
+            Relationship.model_validate({
+                "id": "r1",
+                "source_table_id": "a",
+                "target_table_id": "b",
+                "source_column": "c",
+                "target_column": "d",
+                "cardinality": "one-to-one",
+            })
 
 
 # ---------------------------------------------------------------------------
@@ -729,7 +717,7 @@ class TestFunction:
         fn = Function(
             name="get_order",
             source_id="pg1",
-            **{"schema": "public"},
+            schema_name="public",
             function_name="get_order_fn",
             returns="pg1.public.orders",
         )
@@ -742,7 +730,7 @@ class TestFunction:
         fn = Function(
             name="get_order",
             source_id="pg1",
-            **{"schema": "public"},
+            schema_name="public",
             function_name="get_order_fn",
             returns="pg1.public.orders",
             arguments=[FunctionArgument(name="order_id", type="Int")],

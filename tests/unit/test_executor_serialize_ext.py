@@ -381,50 +381,6 @@ class TestShouldRedirectAdditional:
             _result(100), _redirect_config(enabled=False), force=True,
         )
 
-    def test_pre_approved_blocks_regardless_of_count(self):
-        assert not should_redirect(
-            _result(5000), _redirect_config(),
-            table_governance={42: "pre-approved"},
-            target_table_ids=[42],
-        )
-
-    def test_pre_approved_blocks_force(self):
-        assert not should_redirect(
-            _result(1), _redirect_config(),
-            table_governance={1: "pre-approved"},
-            target_table_ids=[1],
-            force=True,
-        )
-
-    def test_governance_with_no_target_ids_redirects(self):
-        """table_governance populated but no target_table_ids — redirect allowed."""
-        assert should_redirect(
-            _result(100), _redirect_config(),
-            table_governance={1: "pre-approved"},
-            target_table_ids=None,
-        )
-
-    def test_target_ids_but_no_governance_redirects(self):
-        assert should_redirect(
-            _result(100), _redirect_config(),
-            table_governance=None,
-            target_table_ids=[1],
-        )
-
-    def test_registry_required_does_not_block_redirect(self):
-        assert should_redirect(
-            _result(100), _redirect_config(),
-            table_governance={1: "registry-required"},
-            target_table_ids=[1],
-        )
-
-    def test_mixed_one_pre_approved_blocks_all(self):
-        assert not should_redirect(
-            _result(100), _redirect_config(),
-            table_governance={1: "registry-required", 2: "pre-approved"},
-            target_table_ids=[1, 2],
-        )
-
 
 # ---------------------------------------------------------------------------
 # RedirectConfig — from_env and defaults

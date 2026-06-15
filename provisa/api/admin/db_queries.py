@@ -37,12 +37,10 @@ def derive_graphql_alias(
     """
     if not target_table_name:
         return None
-    from provisa.compiler.naming import rel_field_name, to_snake_case
+    from provisa.compiler.naming import rel_field_name, apply_convention
 
     name = rel_field_name(target_table_name, cardinality)
-    if convention in ("snake", "hasura_graphql"):
-        return to_snake_case(name)
-    return name
+    return apply_convention(name, convention)
 
 
 def derive_cypher_alias(source_column: str, cardinality: str) -> str:

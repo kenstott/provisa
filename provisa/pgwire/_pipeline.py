@@ -46,7 +46,7 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
     from provisa.api.app import state
     from provisa.compiler.rls import RLSContext
     from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
-    from provisa.compiler.sql_gen import qualify_with_catalogs, rewrite_semantic_to_physical
+    from provisa.compiler.sql_gen import qualify_with_catalogs
     from provisa.compiler.stage2 import apply_governance, build_governance_context, extract_sources
     from provisa.compiler.sql_validator import validate_sql
     from provisa.transpiler.router import Route, decide_route
@@ -68,11 +68,11 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
     raw_sql, embedded_params = extract_params_comment(sql)
     raw_sql, sql_opts_out = extract_relationship_guard_comment(raw_sql)
 
-    normalized_sql = rewrite_semantic_to_physical(raw_sql, ctx)
+    normalized_sql = raw_sql
     try:
         sqlglot.parse_one(normalized_sql, read="postgres")
     except Exception as exc:
-        raise ValueError(f"SQL parse error after name rewrite: {exc}") from exc
+        raise ValueError(f"SQL parse error: {exc}") from exc
 
     gov_ctx = build_governance_context(
         role_id,
@@ -145,22 +145,25 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
             _qualified = build_values_cte_sql(_qualified, _tn, _entry)
         if _rewrites:
             _qualified = rewrite_all_from_cache(_qualified, _rewrites)
-        # Detect unrewritten API-source catalogs (e.g. graphql_remote tables with required filters)
-        from provisa.compiler.nf_extractor import find_api_table_names as _find_tbls
+        _known_cats_pgwire = set(getattr(state, "source_catalogs", {}).values()) | {"iceberg", "otel", "results"}
         from provisa.api.data.endpoint import _lookup_gql_remote_table as _lookup_gql
         import sqlglot as _sg
         import sqlglot.expressions as _exp
         try:
             _tree = _sg.parse_one(_qualified, dialect="postgres")
             for _tbl in _tree.find_all(_exp.Table):
-                if _tbl.catalog and _tbl.name not in _rewrites and _tbl.name not in _values_ctes:
-                    _gql_reg, _gql_tbl = _lookup_gql(state, _tbl.name)
+                if _tbl.catalog and _tbl.catalog not in _known_cats_pgwire:
+                    _, _gql_tbl = _lookup_gql(state, _tbl.name)
                     if _gql_tbl is not None and _gql_tbl.get("required_args"):
                         _req = [a["name"] for a in _gql_tbl["required_args"]]
                         raise ValueError(
                             f"Table {_tbl.name!r} requires filter(s) {_req} — "
                             "add a WHERE clause with the required parameter(s)"
                         )
+                    raise ValueError(
+                        f"Table {_tbl.name!r} references unknown catalog {_tbl.catalog!r} — "
+                        "GQL remote fetch failed or source not loaded"
+                    )
         except ValueError:
             raise
         except Exception:
@@ -250,7 +253,7 @@ async def _govern_and_route_compiled(
     from provisa.api_source.trino_cache import rewrite_all_from_cache
     from provisa.cache.hot_tables import build_values_cte_sql
     from provisa.compiler.rls import RLSContext
-    from provisa.compiler.sql_gen import rewrite_semantic_to_trino_physical
+    from provisa.compiler.sql_gen import rewrite_semantic_to_physical, rewrite_semantic_to_trino_physical
     from provisa.compiler.stage2 import apply_governance, build_governance_context, extract_sources
     from provisa.transpiler.router import Route, decide_route
     from provisa.transpiler.transpile import transpile, transpile_to_trino
@@ -295,6 +298,29 @@ async def _govern_and_route_compiled(
             _exec_sql = build_values_cte_sql(_exec_sql, _tn, _entry)
         if _rewrites:
             _exec_sql = rewrite_all_from_cache(_exec_sql, _rewrites)
+        _known_cats = set(getattr(state, "source_catalogs", {}).values()) | {"iceberg", "otel", "results"}
+        import sqlglot as _sg2
+        import sqlglot.expressions as _exp2
+        from provisa.api.data.endpoint import _lookup_gql_remote_table as _lookup_gql2
+        try:
+            _tree2 = _sg2.parse_one(_exec_sql, dialect="postgres")
+            for _tbl2 in _tree2.find_all(_exp2.Table):
+                if _tbl2.catalog and _tbl2.catalog not in _known_cats:
+                    _, _gql_tbl2 = _lookup_gql2(state, _tbl2.name)
+                    if _gql_tbl2 is not None and _gql_tbl2.get("required_args"):
+                        _req2 = [a["name"] for a in _gql_tbl2["required_args"]]
+                        raise ValueError(
+                            f"Table {_tbl2.name!r} requires filter(s) {_req2} — "
+                            "add a WHERE clause with the required parameter(s)"
+                        )
+                    raise ValueError(
+                        f"Table {_tbl2.name!r} references unknown catalog {_tbl2.catalog!r} — "
+                        "GQL remote fetch failed or source not loaded"
+                    )
+        except ValueError:
+            raise
+        except Exception:
+            pass
         trino_sql = transpile_to_trino(_exec_sql)
         return _Plan(
             route=Route.TRINO,
@@ -307,10 +333,14 @@ async def _govern_and_route_compiled(
         )
     else:
         dialect = decision.dialect or "postgres"
-        sql_to_run = transpile(governed_sql, dialect)
+        # Rewrite semantic names to physical (no catalog) before transpile.
+        # Input sql is semantic; direct drivers don't understand domain-qualified refs.
+        physical_sql = rewrite_semantic_to_physical(governed_sql, ctx)
+        sql_to_run = transpile(physical_sql, dialect)
         return _Plan(
             route=decision.route,
             sql=sql_to_run,
+            exec_sql=physical_sql,
             source_id=decision.source_id or _default_source,
             dialect=dialect,
             exec_params=exec_params,

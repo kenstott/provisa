@@ -546,19 +546,18 @@ def _build_multihop_lines(selected_types: set[str], lm, sql_domain_fn) -> list[s
             if path_key in _seen_path_keys:
                 continue
             _seen_path_keys.add(path_key)
-            from provisa.compiler.sql_gen import semantic_table_name as _stn
             node_chain = [src_nm] + [lm.nodes[r.target_label] for r in shortest]
             hops_str = " → ".join(
-                f"{sql_domain_fn(n.domain_id)}.{_stn(n)}" for n in node_chain
+                f"{sql_domain_fn(n.domain_id)}.{n.table_name}" for n in node_chain
             )
             multihop_lines.append(f"Multi-hop path ({len(shortest)} hops): {hops_str}")
             for r in shortest:
                 s_nm = lm.nodes[r.source_label]
                 t_nm = lm.nodes[r.target_label]
                 multihop_lines.append(
-                    f"  JOIN {sql_domain_fn(t_nm.domain_id)}.{_stn(t_nm)}"
-                    f" ON {_stn(s_nm)}.{r.join_source_column}"
-                    f" = {_stn(t_nm)}.{r.join_target_column}"
+                    f"  JOIN {sql_domain_fn(t_nm.domain_id)}.{t_nm.table_name}"
+                    f" ON {s_nm.table_name}.{r.join_source_column}"
+                    f" = {t_nm.table_name}.{r.join_target_column}"
                 )
     return multihop_lines
 

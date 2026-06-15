@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { toSnakeCase, toCamelCase, toPascalCase, applyConvention } from "../naming";
 import { useState, useEffect, Fragment, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Trash2, Pencil, Sparkles, Save, X, Loader2 } from "lucide-react";
@@ -87,27 +88,6 @@ function DescriptionField({
   );
 }
 
-function toSnakeCase(name: string): string {
-  let s = name.replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2");
-  s = s.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
-  return s.toLowerCase();
-}
-
-function toCamelCase(name: string): string {
-  return toSnakeCase(name).replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-}
-
-function toPascalCase(name: string): string {
-  const cc = toCamelCase(name);
-  return cc.charAt(0).toUpperCase() + cc.slice(1);
-}
-
-function applyConvention(name: string, convention: string | null | undefined): string {
-  if (convention === "snake_case") return toSnakeCase(name);
-  if (convention === "camelCase") return toCamelCase(name);
-  if (convention === "PascalCase") return toPascalCase(name);
-  return toSnakeCase(name);
-}
 
 
 function normalizeDomain(domain: string): string {

@@ -17,7 +17,6 @@ from provisa.core.models import (
     Cardinality,
     Column,
     Domain,
-    GovernanceLevel,
     NamingConfig,
     NamingRule,
     ProvisaConfig,
@@ -34,7 +33,7 @@ class TestSource:
     def test_valid_postgresql_source(self):
         s = Source(
             id="pg1",
-            type="postgresql",
+            type=SourceType.postgresql,
             host="localhost",
             port=5432,
             database="mydb",
@@ -50,7 +49,7 @@ class TestSource:
     def test_catalog_name_sanitizes_hyphens(self):
         s = Source(
             id="my-pg-source",
-            type="postgresql",
+            type=SourceType.postgresql,
             host="h",
             port=5432,
             database="d",
@@ -61,7 +60,7 @@ class TestSource:
 
     def test_invalid_source_type_rejected(self):
         with pytest.raises(ValidationError):
-            Source(
+            Source.model_validate(dict(
                 id="bad",
                 type="not_a_real_database",
                 host="h",
@@ -69,12 +68,12 @@ class TestSource:
                 database="d",
                 username="u",
                 password="p",
-            )
+            ))
 
     def test_mysql_jdbc_url(self):
         s = Source(
             id="m1",
-            type="mysql",
+            type=SourceType.mysql,
             host="db.local",
             port=3306,
             database="app",
@@ -86,7 +85,7 @@ class TestSource:
     def test_sqlserver_jdbc_url(self):
         s = Source(
             id="ss1",
-            type="sqlserver",
+            type=SourceType.sqlserver,
             host="sql.local",
             port=1433,
             database="app",
@@ -98,7 +97,7 @@ class TestSource:
     def test_mongodb_no_jdbc(self):
         s = Source(
             id="m1",
-            type="mongodb",
+            type=SourceType.mongodb,
             host="mongo.local",
             port=27017,
             database="app",
@@ -123,33 +122,12 @@ class TestTable:
         t = Table(
             source_id="pg1",
             domain_id="sales",
-            **{"schema": "public", "table": "orders"},
-            governance="pre-approved",
+            schema_name="public",
+            table_name="orders",
             columns=[Column(name="id", visible_to=["admin"])],
         )
         assert t.schema_name == "public"
         assert t.table_name == "orders"
-        assert t.governance == GovernanceLevel.pre_approved
-
-    def test_table_registry_required(self):
-        t = Table(
-            source_id="pg1",
-            domain_id="sales",
-            **{"schema": "public", "table": "t"},
-            governance="registry-required",
-            columns=[],
-        )
-        assert t.governance == GovernanceLevel.registry_required
-
-    def test_invalid_governance_rejected(self):
-        with pytest.raises(ValidationError):
-            Table(
-                source_id="pg1",
-                domain_id="sales",
-                **{"schema": "public", "table": "t"},
-                governance="invalid",
-                columns=[],
-            )
 
 
 class TestRelationship:
@@ -160,20 +138,20 @@ class TestRelationship:
             target_table_id="customers",
             source_column="customer_id",
             target_column="id",
-            cardinality="many-to-one",
+            cardinality=Cardinality.many_to_one,
         )
         assert r.cardinality == Cardinality.many_to_one
 
     def test_invalid_cardinality_rejected(self):
         with pytest.raises(ValidationError):
-            Relationship(
+            Relationship.model_validate(dict(
                 id="r1",
                 source_table_id="a",
                 target_table_id="b",
                 source_column="c",
                 target_column="d",
                 cardinality="invalid",
-            )
+            ))
 
 
 class TestRole:

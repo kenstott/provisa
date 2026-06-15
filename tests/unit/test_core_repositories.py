@@ -20,7 +20,6 @@ from provisa.core.models import (
     Domain,
     Function,
     FunctionArgument,
-    GovernanceLevel,
     InlineType,
     RLSRule,
     Relationship,
@@ -49,7 +48,7 @@ from provisa.core.repositories import (
 def _source(id="pg1", type="postgresql", **kwargs):
     return Source(
         id=id,
-        type=type,
+        type=SourceType(type),
         host=kwargs.get("host", "localhost"),
         port=kwargs.get("port", 5432),
         database=kwargs.get("database", "provisa"),
@@ -71,17 +70,17 @@ def _role(id="analyst", capabilities=None, domain_access=None):
 
 
 def _table(source_id="pg1", schema="public", table="orders", domain_id="sales",
-           governance="pre-approved", columns=None):
-    return Table(
-        source_id=source_id,
-        domain_id=domain_id,
-        **{"schema": schema, "table": table},
-        governance=governance,
-        columns=columns or [
+           governance=None, columns=None):
+    return Table.model_validate({
+        "source_id": source_id,
+        "domain_id": domain_id,
+        "schema_name": schema,
+        "table_name": table,
+        "columns": columns or [
             Column(name="id", visible_to=["admin", "analyst"]),
             Column(name="amount", visible_to=["admin"]),
         ],
-    )
+    })
 
 
 def _relationship(
@@ -92,14 +91,14 @@ def _relationship(
     target_column="id",
     cardinality="many-to-one",
 ):
-    return Relationship(
+    return Relationship.model_validate(dict(
         id=id,
         source_table_id=source_table_id,
         target_table_id=target_table_id,
         source_column=source_column,
         target_column=target_column,
         cardinality=cardinality,
-    )
+    ))
 
 
 def _rls_rule(table_id="orders", role_id="analyst", filter="region = 'us'"):
@@ -107,10 +106,10 @@ def _rls_rule(table_id="orders", role_id="analyst", filter="region = 'us'"):
 
 
 def _function(**kwargs):
-    defaults = dict(
+    defaults: dict = dict(
         name="get_order",
         source_id="pg1",
-        **{"schema": "public"},
+        schema_name="public",
         function_name="get_order_fn",
         returns="pg1.public.orders",
         arguments=[FunctionArgument(name="order_id", type="Int")],
@@ -120,11 +119,11 @@ def _function(**kwargs):
         description="Fetch order by id",
     )
     defaults.update(kwargs)
-    return Function(**defaults)
+    return Function.model_validate(defaults)
 
 
 def _webhook(**kwargs):
-    defaults = dict(
+    defaults: dict = dict(
         name="notify",
         url="https://hook.example.com/notify",
         method="POST",
@@ -137,7 +136,7 @@ def _webhook(**kwargs):
         description="Send notification",
     )
     defaults.update(kwargs)
-    return Webhook(**defaults)
+    return Webhook.model_validate(defaults)
 
 
 def _make_conn():
@@ -149,23 +148,8 @@ def _make_conn():
     return conn
 
 
-def _make_row(**kwargs):
-    """Return a MagicMock that acts as an asyncpg Row (supports dict conversion)."""
-    row = MagicMock()
-    row.__iter__ = MagicMock(return_value=iter(kwargs.items()))
-    row.keys = MagicMock(return_value=list(kwargs.keys()))
-    # Support dict(row) via mapping protocol
-    row.__class__ = type("FakeRow", (), {"keys": lambda s: list(kwargs.keys())})
-    # Simplest approach: make it return a real dict from dict()
-    # asyncpg rows support dict() via __iter__ of (key, value) pairs
-    # We'll use a simpler approach: monkey-patch
-    real_dict = dict(**kwargs)
-    row._real = real_dict
-
-    class _Row(dict):
-        pass
-
-    return _Row(kwargs)
+def _make_row(**kwargs) -> dict:
+    return dict(kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +295,7 @@ class TestDomainRepo:
         conn = _make_conn()
         conn.fetchrow = AsyncMock(return_value=_make_row(id="sales", description="Sales"))
         result = await domain_repo.get(conn, "sales")
+        assert result is not None
         assert result["id"] == "sales"
 
     @pytest.mark.asyncio
@@ -370,6 +355,7 @@ class TestRoleRepo:
                                    domain_access=["sales"])
         )
         result = await role_repo.get(conn, "analyst")
+        assert result is not None
         assert result["id"] == "analyst"
 
     @pytest.mark.asyncio
@@ -523,16 +509,6 @@ class TestTableRepo:
         conn.execute = AsyncMock(return_value="DELETE 0")
         assert await table_repo.delete(conn, 99) is False
 
-    @pytest.mark.asyncio
-    async def test_upsert_passes_governance_value(self):
-        conn = _make_conn()
-        conn.fetchval = AsyncMock(return_value=1)
-        conn.execute = AsyncMock(return_value="OK")
-        tbl = _table(governance="registry-required")
-        await table_repo.upsert(conn, tbl)
-        sql, *args = conn.fetchval.call_args[0]
-        assert "registry-required" in args
-
 
 # ---------------------------------------------------------------------------
 # relationship_repo
@@ -609,6 +585,7 @@ class TestRelationshipRepo:
             cardinality="many-to-one", materialize=False, refresh_interval=300,
         ))
         result = await rel_repo.get(conn, "orders-customers")
+        assert result is not None
         assert result["id"] == "orders-customers"
 
     @pytest.mark.asyncio
@@ -718,6 +695,7 @@ class TestRLSRepo:
             id=1, table_id=1, role_id="analyst", filter_expr="region = 'us'"
         ))
         result = await rls_repo.get_for_table_role(conn, 1, "analyst")
+        assert result is not None
         assert result["filter_expr"] == "region = 'us'"
 
     @pytest.mark.asyncio
@@ -750,19 +728,19 @@ class TestRLSRepo:
     async def test_delete_returns_true(self):
         conn = _make_conn()
         conn.execute = AsyncMock(return_value="DELETE 1")
-        assert await rls_repo.delete(conn, 1, "analyst") is True
+        assert await rls_repo.delete(conn, "analyst", table_id=1) is True
 
     @pytest.mark.asyncio
     async def test_delete_returns_false_when_missing(self):
         conn = _make_conn()
         conn.execute = AsyncMock(return_value="DELETE 0")
-        assert await rls_repo.delete(conn, 99, "analyst") is False
+        assert await rls_repo.delete(conn, "analyst", table_id=99) is False
 
     @pytest.mark.asyncio
     async def test_delete_sql_correct(self):
         conn = _make_conn()
         conn.execute = AsyncMock(return_value="DELETE 1")
-        await rls_repo.delete(conn, 3, "admin")
+        await rls_repo.delete(conn, "admin", table_id=3)
         sql, *args = conn.execute.call_args[0]
         assert "DELETE FROM rls_rules" in sql
         assert 3 in args

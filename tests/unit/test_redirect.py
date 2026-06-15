@@ -42,29 +42,6 @@ class TestShouldRedirect:
     def test_disabled_no_redirect(self):
         assert not should_redirect(_result(100), _config(enabled=False))
 
-    def test_pre_approved_table_no_redirect(self):
-        """REQ-006: pre-approved tables cannot use redirect."""
-        assert not should_redirect(
-            _result(100), _config(),
-            table_governance={1: "pre-approved"},
-            target_table_ids=[1],
-        )
-
-    def test_registry_required_table_redirects(self):
-        assert should_redirect(
-            _result(100), _config(),
-            table_governance={1: "registry-required"},
-            target_table_ids=[1],
-        )
-
-    def test_mixed_tables_pre_approved_blocks(self):
-        """If any table is pre-approved, no redirect."""
-        assert not should_redirect(
-            _result(100), _config(),
-            table_governance={1: "registry-required", 2: "pre-approved"},
-            target_table_ids=[1, 2],
-        )
-
     def test_no_governance_info_redirects(self):
         """Without governance info, redirect based on threshold only."""
         assert should_redirect(_result(100), _config())
@@ -82,15 +59,6 @@ class TestShouldRedirect:
     def test_force_redirect_disabled_no_redirect(self):
         """Force cannot override disabled redirect."""
         assert not should_redirect(_result(100), _config(enabled=False), force=True)
-
-    def test_force_redirect_pre_approved_blocked(self):
-        """REQ-006 still applies even with force."""
-        assert not should_redirect(
-            _result(5), _config(),
-            table_governance={1: "pre-approved"},
-            target_table_ids=[1],
-            force=True,
-        )
 
 
 class TestRedirectConfig:

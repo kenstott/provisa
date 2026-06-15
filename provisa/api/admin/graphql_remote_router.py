@@ -121,27 +121,39 @@ async def _upsert_tables_to_semantic_layer(
     from provisa.api.admin.actions_router import _ensure_tables
 
     await _ensure_tables(pg_pool)
-    from provisa.compiler.naming import to_snake_case
+    from provisa.compiler.naming import apply_sql_name
 
     async with pg_pool.acquire() as conn:
+        # Delete stale rows (e.g. pre-fix camelCase names) before upserting fresh sql-convention set
+        await conn.execute(
+            "DELETE FROM registered_tables WHERE source_id = $1 AND schema_name = 'graphql'",
+            source_id,
+        )
         for t in tables:
-            _snake = to_snake_case(t["name"])
+            _sql_name = apply_sql_name(t["name"])
             tbl = Table(
                 source_id=source_id,
                 domain_id=domain_id or "",
                 schema_name="graphql",
-                table_name=t["name"],
+                table_name=_sql_name,
                 description=t.get("description"),
-                alias=_snake if _snake != t["name"] else None,
+                alias=None,
                 columns=[
                     Column(
-                        name=c["name"],
+                        name=apply_sql_name(c["name"]),
                         visible_to=[],
                         description=c.get("description"),
                         data_type=_PROVISA_TO_TRINO_TYPE.get(c.get("type") or "text", "varchar"),
                         object_fields=_build_object_fields(c.get("gql_object_fields") or []),
                     )
                     for c in t.get("columns", [])
+                ] + [
+                    Column(
+                        name=f"_nf_{apply_sql_name(a['name'])}",
+                        visible_to=[],
+                        native_filter_type="query_param",
+                    )
+                    for a in t.get("required_args", [])
                 ],
             )
             await table_repo.upsert(conn, tbl)

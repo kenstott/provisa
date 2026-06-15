@@ -43,3 +43,31 @@ export function splitCypherLabels(fieldName: string): [string | null, string] {
 export function tableLabel(dbTableName: string): string {
   return splitCypherLabels(dbTableName)[1];
 }
+
+/** Mirror of Python apply_sql_name (snake convention): camelCase/PascalCase → snake_case. */
+export function toSnakeCase(name: string): string {
+  // camelCase / PascalCase → snake_case (intermediate normalization only — not for UI display)
+  let s = name.replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2");
+  s = s.replace(/([a-z0-9])([A-Z])/g, "$1_$2");
+  return s.toLowerCase();
+}
+
+/** Mirror of Python apply_gql_name (camelCase convention). */
+export function toCamelCase(name: string): string {
+  return toSnakeCase(name).replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+}
+
+/** Mirror of Python apply_cql_label (PascalCase convention). */
+export function toPascalCase(name: string): string {
+  const cc = toCamelCase(name);
+  // Mirror of Python _to_pascal_case: capitalize first letter
+  return cc.charAt(0).toUpperCase() + cc.slice(1);
+}
+
+/** Mirror of Python apply_convention: apply a named convention to a name. */
+export function applyConvention(name: string, convention: string | null | undefined): string {
+  if (convention === "snake_case") return toSnakeCase(name);
+  if (convention === "camelCase") return toCamelCase(name);
+  if (convention === "PascalCase") return toPascalCase(name);
+  return toSnakeCase(name);
+}

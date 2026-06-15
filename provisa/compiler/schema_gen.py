@@ -451,7 +451,7 @@ def _build_object_type(
     sub_fields: dict[str, GraphQLField] = {}
     for sf in object_fields:
         sf_name = sf["name"]
-        sf_alias = sf.get("alias") or apply_gql_name(sf_name, override) or sf_name
+        sf_alias = sf.get("alias") or apply_gql_name(sf_name, override)
         nested = sf.get("fields") or []
         if nested and sf.get("type") == "object":
             sf_gql: GraphQLOutputType = _build_object_type(sf_name, nested, override, registry)

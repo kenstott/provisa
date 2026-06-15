@@ -1074,7 +1074,7 @@ export function SqlPage() {
     const schema: Record<string, string[] | Record<string, string[]>> = {};
     for (const t of tables) {
       const cols = t.columns.flatMap((c) =>
-        c.nativeFilterType ? [c.columnName, `_nf_${c.columnName}`] : [c.columnName],
+        c.nativeFilterType ? [c.computedSqlAlias, `_nf_${c.computedSqlAlias}`] : [c.computedSqlAlias],
       );
       schema[t.tableName] = cols;
       if (t.alias) schema[t.alias] = cols;
@@ -1784,7 +1784,7 @@ export function SqlPage() {
                                         topTab === "sql"
                                           ? () =>
                                               insertAtCursor(
-                                                `"${normalizeDomain(t.domainId || t.schemaName)}"."${t.tableName}"`,
+                                                `"${normalizeDomain(t.domainId || t.schemaName)}"."${t.alias || t.tableName}"`,
                                               )
                                           : undefined
                                       }
@@ -1801,13 +1801,13 @@ export function SqlPage() {
                                           whiteSpace: "nowrap",
                                         }}
                                       >
-                                        {t.tableName}
+                                        {t.alias || t.tableName}
                                       </span>
                                     </button>
                                     <button
                                       onClick={() =>
                                         insertAtCursor(
-                                          `"${normalizeDomain(t.domainId || t.schemaName)}"."${t.tableName}"`,
+                                          `"${normalizeDomain(t.domainId || t.schemaName)}"."${t.alias || t.tableName}"`,
                                         )
                                       }
                                       title="Insert table reference in SQL editor"
@@ -1845,7 +1845,7 @@ export function SqlPage() {
                                   {tOpen &&
                                     [
                                       ...t.columns.map((col) => ({
-                                        columnName: col.columnName,
+                                        columnName: col.computedSqlAlias,
                                         dataType: col.dataType,
                                         description: col.description,
                                         virtual: false,
@@ -1871,7 +1871,7 @@ export function SqlPage() {
                                           onClick={() =>
                                             topTab === "sql"
                                               ? insertAtCursor(
-                                                  `"${t.tableName}"."${col.columnName}"`,
+                                                  `"${t.alias || t.tableName}"."${col.columnName}"`,
                                                 )
                                               : undefined
                                           }

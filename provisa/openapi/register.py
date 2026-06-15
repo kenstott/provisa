@@ -12,7 +12,7 @@
 from __future__ import annotations
 import json
 import logging
-from provisa.compiler.naming import to_snake_case
+import re
 from provisa.openapi.mapper import OpenAPIQuery, OpenAPIMutation, parse_spec
 
 log = logging.getLogger(__name__)
@@ -41,8 +41,9 @@ def _operation_id_to_alias(op_id: str) -> str:
 
     Format: {noun_singular}_{modifiers} (e.g. findPetsByStatus → pet_by_status).
     """
-    # camelCase / PascalCase → snake_case
-    s = to_snake_case(op_id)
+    # camelCase / PascalCase → snake_case (intermediate normalization for verb-stripping parse)
+    s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", op_id)
+    s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s).lower()
     # strip leading verb segment
     for verb in _VERB_PREFIXES:
         if s.startswith(verb + "_"):
@@ -122,8 +123,7 @@ async def upsert_table(
         if p["name"] not in existing_names:
             columns.append({"name": f"_nf_{p['name']}", "type": _openapi_to_provisa_type(p.get("type")), "native_filter_type": "query_param"})
 
-    table_name = query.operation_id
-    alias = _operation_id_to_alias(table_name)
+    table_name = _operation_id_to_alias(query.operation_id)
 
     from provisa.core.models import ObjectField
     tbl = Table(
@@ -131,7 +131,7 @@ async def upsert_table(
         domain_id=domain_id or "",
         schema_name="openapi",
         table_name=table_name,
-        alias=alias if alias != table_name else None,
+        alias=None,
         columns=[
             Column(
                 name=c["name"],
@@ -186,7 +186,13 @@ async def upsert_table(
                 "param_name": p["name"],
             })
     for p in query.query_params:
-        if p["name"] not in response_col_names:
+        if p["name"] in response_col_names:
+            for col in api_columns:
+                if col["name"] == p["name"]:
+                    col["param_type"] = "query"
+                    col["param_name"] = p["name"]
+                    break
+        else:
             api_columns.append({
                 "name": p["name"],
                 "type": _openapi_to_provisa_type(p.get("type")),
@@ -256,6 +262,11 @@ async def auto_register_openapi_source(
     cache_ttl: int = 300,
 ) -> tuple[int, int]:
     """Parse spec and upsert virtual tables + tracked functions. Returns (n_tables, n_mutations)."""
+    # Delete stale rows (e.g. pre-fix verb-prefixed names) before upserting fresh set
+    await conn.execute(
+        "DELETE FROM registered_tables WHERE source_id = $1 AND schema_name = 'openapi'",
+        source_id,
+    )
     queries, mutations = parse_spec(spec)
     for q in queries:
         await upsert_table(source_id, q, conn, domain_id, base_url, auth_config, cache_ttl)

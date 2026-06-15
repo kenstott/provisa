@@ -10,9 +10,8 @@
 
 """Unit tests for config_loader: parse_config, parse_config_dict, and load_config orchestration."""
 
-import textwrap
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
@@ -26,18 +25,8 @@ from provisa.core.config_loader import (
 )
 from provisa.core.models import (
     Cardinality,
-    Column,
-    Domain,
-    GovernanceLevel,
-    NamingConfig,
-    NamingRule,
     ProvisaConfig,
-    RLSRule,
-    Relationship,
-    Role,
-    Source,
     SourceType,
-    Table,
 )
 
 
@@ -66,7 +55,6 @@ def _minimal_config_dict():
                 "domain_id": "sales",
                 "schema": "public",
                 "table": "orders",
-                "governance": "pre-approved",
                 "columns": [{"name": "id", "visible_to": ["admin"]}],
             }
         ],
@@ -84,7 +72,6 @@ def _full_config_dict():
             "domain_id": "sales",
             "schema": "public",
             "table": "customers",
-            "governance": "pre-approved",
             "columns": [{"name": "id", "visible_to": ["admin"]}],
         }
     )
@@ -132,7 +119,6 @@ class TestParseConfigDict:
         t = cfg.tables[0]
         assert t.schema_name == "public"
         assert t.table_name == "orders"
-        assert t.governance == GovernanceLevel.pre_approved
 
     def test_roles_parsed(self):
         cfg = parse_config_dict(_minimal_config_dict())
@@ -164,12 +150,6 @@ class TestParseConfigDict:
     def test_invalid_source_type_raises(self):
         data = _minimal_config_dict()
         data["sources"][0]["type"] = "not_a_real_type"
-        with pytest.raises(Exception):
-            parse_config_dict(data)
-
-    def test_invalid_governance_raises(self):
-        data = _minimal_config_dict()
-        data["tables"][0]["governance"] = "open-access"
         with pytest.raises(Exception):
             parse_config_dict(data)
 

@@ -22,7 +22,7 @@ from strawberry.types.info import Info as StrawberryInfo
 from provisa.compiler.naming import source_to_catalog
 from provisa.api.admin._config_io import config_path as _config_path, read_config
 from provisa.api.admin.db_queries import derive_graphql_alias as _derive_graphql_alias_fn
-from provisa.api.admin.db_queries import derive_cypher_alias as _derive_cypher_alias_fn
+from provisa.cypher.label_map import _to_rel_type as _to_cypher_rel_type
 from provisa.core.config_loader import _normalize_op_id
 from provisa.api.admin.types import (
     AvailableColumnType,
@@ -238,7 +238,7 @@ def _rel_from_row(row, convention: str = "apollo_graphql") -> RelationshipType:
     graphql_alias = persisted_graphql_alias or _derive_graphql_alias(
         target_table_name, cardinality, alias, convention
     )
-    computed_cypher_alias = None if alias else _derive_cypher_alias_fn(source_column, cardinality)
+    computed_cypher_alias = None if alias else _to_cypher_rel_type(graphql_alias or target_table_name or "", cardinality)
     return RelationshipType(
         id=row["id"],
         source_table_id=row["source_table_id"],
@@ -321,7 +321,7 @@ async def _fetch_table_with_columns(conn, row, all_tables: list | None = None, u
             mask_value=r.get("mask_value"),
             mask_precision=r.get("mask_precision"),
             alias=r.get("alias"),
-            computed_sql_alias=r.get("alias") or apply_sql_name(r["column_name"]) or r["column_name"],
+            computed_sql_alias=r.get("alias") or apply_sql_name(r["column_name"]),
             description=r.get("description"),
             data_type=r.get("data_type"),
             native_filter_type=r.get("native_filter_type"),
@@ -889,8 +889,7 @@ class Query:
             convention = await conn.fetchval(
                 "SELECT gql_naming_convention FROM sources WHERE id = $1", source_id
             ) or "apollo_graphql"
-            _c = apply_convention(table_name, convention)
-            candidate: str = _c if _c is not None else table_name
+            candidate: str = apply_convention(table_name, convention)
             conflict = await conn.fetchrow(
                 "SELECT 1 FROM registered_tables "
                 "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "
@@ -900,8 +899,7 @@ class Query:
             if not conflict:
                 return candidate
             # Prefix with source_id to disambiguate
-            _p = apply_convention(f"{source_id}_{table_name}", convention)
-            prefixed: str = _p if _p is not None else f"{source_id}_{table_name}"
+            prefixed: str = apply_convention(f"{source_id}_{table_name}", convention)
             conflict2 = await conn.fetchrow(
                 "SELECT 1 FROM registered_tables "
                 "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "
@@ -912,8 +910,7 @@ class Query:
                 return prefixed
             # Last resort: add numeric suffix
             for i in range(1, 100):
-                _s = apply_convention(f"{source_id}_{table_name}_{i}", convention)
-                suffixed: str = _s if _s is not None else f"{source_id}_{table_name}_{i}"
+                suffixed: str = apply_convention(f"{source_id}_{table_name}_{i}", convention)
                 taken = await conn.fetchrow(
                     "SELECT 1 FROM registered_tables "
                     "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "

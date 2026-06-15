@@ -549,7 +549,7 @@ class TestMapper:
         user_rls = [r for r in config.rls_rules if r.role_id == "user"]
         assert len(user_rls) >= 1
         # Users table has filter for user role
-        users_rls = [r for r in user_rls if "users" in r.table_id]
+        users_rls = [r for r in user_rls if r.table_id is not None and "users" in r.table_id]
         assert len(users_rls) == 1
 
     def test_object_relationship_many_to_one(self):
@@ -608,15 +608,6 @@ class TestMapper:
         )
         for t in config.tables:
             assert t.domain_id == "core"
-
-    def test_governance_default(self):
-        from provisa.core.models import GovernanceLevel
-        metadata = self._build_metadata()
-        config = convert_metadata(
-            metadata, governance_default=GovernanceLevel.registry_required,
-        )
-        for t in config.tables:
-            assert t.governance == GovernanceLevel.registry_required
 
     def test_auth_env_firebase(self):
         metadata = self._build_metadata()

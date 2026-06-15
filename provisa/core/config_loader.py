@@ -300,7 +300,13 @@ def _build_api_columns(match: OpenAPIQuery) -> tuple[list[dict], set[str]]:
             }
         )
     for p in match.query_params:
-        if p["name"] not in resp_col_names:
+        if p["name"] in resp_col_names:
+            for col in api_columns:
+                if col["name"] == p["name"]:
+                    col["param_type"] = "query"
+                    col["param_name"] = p["name"]
+                    break
+        else:
             api_columns.append(
                 {
                     "name": p["name"],

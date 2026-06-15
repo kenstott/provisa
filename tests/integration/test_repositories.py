@@ -20,7 +20,6 @@ from provisa.core.models import (
     Cardinality,
     Column,
     Domain,
-    GovernanceLevel,
     Relationship,
     RLSRule,
     Role,
@@ -79,7 +78,6 @@ def _make_table(**kwargs) -> Table:
         "domain_id": "test-domain",
         "schema": "public",
         "table": "test_table",
-        "governance": "pre-approved",
         "columns": [{"name": "id", "visible_to": ["tester"]}],
     }
     defaults.update(kwargs)
@@ -163,7 +161,6 @@ class TestTableRepo:
             table_id = await table_repo.upsert(conn, tbl)
             result = await table_repo.get(conn, table_id)
             assert result["table_name"] == "test_table"
-            assert result["governance"] == "pre-approved"
             assert len(result["columns"]) == 1
             assert result["columns"][0]["column_name"] == "id"
 

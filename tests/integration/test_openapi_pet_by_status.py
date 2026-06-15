@@ -123,7 +123,7 @@ def _make_config(spec_path: str) -> dict:
             }
         ],
         "relationships": [],
-        "roles": [{"id": "admin", "description": "Administrator", "capabilities": [], "domain_access": []}],
+        "roles": [],
         "rls_rules": [],
         "functions": [],
         "webhooks": [],
@@ -141,6 +141,21 @@ async def pg_conn():
     )
     yield conn
     await conn.close()
+
+
+@pytest_asyncio.fixture(scope="module", autouse=True)
+async def _cleanup_mock_source(pg_conn):
+    """Remove all DB state written by load_config calls in this module."""
+    yield
+    await pg_conn.execute("DELETE FROM api_endpoints WHERE source_id = 'mock-petstore-api'")
+    await pg_conn.execute("DELETE FROM api_sources WHERE id = 'mock-petstore-api'")
+    await pg_conn.execute("DELETE FROM registered_tables WHERE source_id = 'mock-petstore-api'")
+    await pg_conn.execute("DELETE FROM sources WHERE id = 'mock-petstore-api'")
+    await pg_conn.execute("DELETE FROM domains WHERE id = 'pets'")
+    try:
+        await pg_conn.execute('DROP TABLE IF EXISTS "default"."find_pets_by_status"')
+    except Exception:
+        pass
 
 
 async def test_default_params_from_spec_extracts_enum_values():

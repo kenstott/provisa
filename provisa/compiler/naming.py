@@ -124,9 +124,6 @@ def _to_snake_case(name: str) -> str:
     return name.lower()
 
 
-# Public alias for use by other modules
-to_snake_case = _to_snake_case
-
 
 def source_to_catalog(source_id: str) -> str:
     """Convert a source ID to a Trino catalog name (hyphens → underscores)."""
@@ -164,31 +161,32 @@ def active_gql_convention() -> str:
     return _gql_convention
 
 
-def apply_gql_name(name: str, override: str | None = None) -> str | None:
+def apply_gql_name(name: str, override: str | None = None) -> str:
     return apply_convention(name, override or _gql_convention)
 
 
-def apply_sql_name(name: str, override: str | None = None) -> str | None:
+def apply_sql_name(name: str, override: str | None = None) -> str:
     return apply_convention(name, override or _sql_convention)
 
 
-def apply_convention(name: str, convention: str) -> str | None:
-    """Apply a naming convention preset to produce an alias.
+def apply_cql_label(name: str) -> str:
+    """Cypher node/relationship label — always PascalCase."""
+    return _to_pascal_case(name)
 
-    snake: PascalCase → snake_case; camelCase names preserved (REQ-157).
-    hasura_graphql / apollo_graphql: snake_case → camelCase; camelCase preserved.
-    Returns None if no alias needed.
-    """
+
+def apply_cql_property(name: str) -> str:
+    """Cypher property key — follows the configured GQL convention."""
+    return apply_gql_name(name)
+
+
+def apply_convention(name: str, convention: str) -> str:
+    """Apply a naming convention preset to a name. Returns name unchanged when already correct."""
     canon = _canonical_convention(convention)
     if canon == "snake_case":
-        result = _to_snake_case(name)
-        return result if result != name else None
+        return _to_snake_case(name)
     if canon == "camelCase":
-        if name and name[0].islower() and any(c.isupper() for c in name):
-            return None
-        result = _to_camel_case(name)
-        return result if result != name else None
-    return None
+        return _to_camel_case(name)
+    return name
 
 
 def _apply_naming_rules(name: str, rules: list[dict]) -> str:

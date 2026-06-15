@@ -359,9 +359,11 @@ def _map_query_field_as_table(
         max_list_depth,
         max_list_items,
     )
+    from provisa.compiler.naming import apply_sql_name as _apply_sql_name
     table_name = _qualify_name(namespace, field["name"])
     return {
         "name": table_name,
+        "sql_name": _apply_sql_name(table_name),
         "field_name": field["name"],
         "source_id": source_id,
         "columns": columns,

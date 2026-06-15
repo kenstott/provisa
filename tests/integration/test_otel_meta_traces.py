@@ -47,7 +47,7 @@ def _admin_gql(query: str) -> dict:
 
 
 @pytest_asyncio.fixture(scope="module")
-async def _ensure_pets_registered():
+async def _ensure_pets_registered(trino_conn):
     """Register source/domain/table via admin mutations so _rebuild_schemas runs."""
     src_result = _admin_gql(
         'mutation { createSource(input: {id: "pet-store-pg", type: "postgresql"}) { success } }'
@@ -64,7 +64,6 @@ async def _ensure_pets_registered():
             registerTable(input: {
                 sourceId: "pet-store-pg", domainId: "pet-store",
                 schemaName: "pet_store", tableName: "pets",
-                governance: "pre-approved",
                 columns: [
                     {name: "id", isPrimaryKey: true, visibleTo: ["admin"], writableBy: [], unmaskedTo: []},
                     {name: "name", visibleTo: ["admin"], writableBy: [], unmaskedTo: []},
@@ -82,6 +81,16 @@ async def _ensure_pets_registered():
             pass
 
     yield
+
+    # Delete synthetic trace rows inserted during this module's tests
+    try:
+        cur = trino_conn.cursor()
+        cur.execute(
+            "DELETE FROM otel.signals.traces WHERE service_name = ? AND span_name = ? AND role_id = ?",
+            [SERVICE_NAME, SPAN_NAME, "admin"],
+        )
+    except Exception:
+        pass
 
     if table_id is not None:
         _admin_gql(f'mutation {{ deleteTable(id: {table_id}) {{ success }} }}')

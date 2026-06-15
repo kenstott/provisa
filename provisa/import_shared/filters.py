@@ -13,6 +13,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Mapping
+
 # Hasura operator -> SQL operator
 _OPERATORS: dict[str, str] = {
     "_eq": "=",
@@ -31,7 +33,7 @@ _OPERATORS: dict[str, str] = {
 }
 
 
-def _format_value(val: object) -> str:
+def _format_value(val: Any) -> str:
     """Format a value for SQL embedding."""
     if isinstance(val, str):
         if val.startswith("x-hasura-") or val.startswith("X-Hasura-"):
@@ -47,7 +49,7 @@ def _format_value(val: object) -> str:
     return str(val)
 
 
-def _convert_session_var(val: object) -> str:
+def _convert_session_var(val: Any) -> str:
     """Convert Hasura session variable references."""
     if isinstance(val, dict) and len(val) == 1:
         key = next(iter(val))
@@ -60,7 +62,7 @@ def _convert_session_var(val: object) -> str:
     return ""
 
 
-def bool_expr_to_sql(expr: dict[str, object], table_alias: str = "") -> str:
+def bool_expr_to_sql(expr: Mapping[str, Any], table_alias: str = "") -> str:
     """Convert a Hasura boolean expression to a SQL WHERE clause.
 
     Args:
@@ -81,7 +83,7 @@ def _col_ref(col: str, table_alias: str) -> str:
     return col
 
 
-def _convert_node(node: dict[str, object], table_alias: str) -> str:
+def _convert_node(node: Mapping[str, Any], table_alias: str) -> str:
     parts: list[str] = []
 
     for key, value in node.items():

@@ -314,10 +314,10 @@ def _register_table_in_ctx(
     for col in t.visible_columns:
         col_path = col.get("path")
         phys = col["column_name"]
-        gql = col.get("alias") or apply_gql_name(phys, getattr(t, "gql_convention_override", None)) or phys
+        gql = col.get("alias") or apply_gql_name(phys, getattr(t, "gql_convention_override", None))
         if gql != phys:
             ctx.exposed_to_physical[(t.table_id, gql)] = phys
-        sql_name = col.get("alias") or apply_sql_name(phys) or phys
+        sql_name = col.get("alias") or apply_sql_name(phys)
         if sql_name != phys and sql_name != gql:
             ctx.exposed_to_physical[(t.table_id, sql_name)] = phys
         ctx.physical_to_sql[(t.table_id, phys)] = sql_name
@@ -806,12 +806,12 @@ def _table_ref(meta: TableMeta, use_catalog: bool) -> str:
 
 def semantic_table_name(meta: TableMeta) -> str:
     """Bare (unquoted) semantic table name — central naming authority always."""
-    from provisa.compiler.naming import to_snake_case
+    from provisa.compiler.naming import apply_sql_name
 
     raw = meta.display_name if meta.display_name else (
         meta.field_name.split("__", 1)[1] if "__" in meta.field_name else meta.field_name
     )
-    return to_snake_case(raw)
+    return apply_sql_name(raw)
 
 
 def _semantic_table_ref(meta: TableMeta) -> str:
@@ -929,7 +929,7 @@ def normalize_table_refs(sql: str, ctx: CompilationContext) -> str:
 
 def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
     """Replace semantic (domain.field_name) refs with physical (schema.table) refs."""
-    from provisa.compiler.naming import domain_to_sql_name, to_snake_case
+    from provisa.compiler.naming import domain_to_sql_name
 
     replacements: dict[str, str] = {}
     seen: set[tuple[str, str]] = set()
@@ -941,16 +941,14 @@ def rewrite_semantic_to_physical(sql: str, ctx: CompilationContext) -> str:
         semantic = _semantic_table_ref(meta)
         physical = _table_ref(meta, use_catalog=False)
         replacements[semantic] = physical
-        # Register all name variants: field_name part (may be camelCase) and its snake_case form
         if "__" in meta.field_name:
             table_part = meta.field_name.split("__", 1)[1]
         else:
             table_part = meta.field_name
         domain_sql = domain_to_sql_name(meta.domain_id)
-        for variant in {table_part, to_snake_case(table_part)}:
-            ref = f"{_q(domain_sql)}.{_q(variant)}"
-            if ref not in replacements:
-                replacements[ref] = physical
+        ref = f"{_q(domain_sql)}.{_q(table_part)}"
+        if ref not in replacements:
+            replacements[ref] = physical
     sql = _apply_replacements(sql, replacements)
     return normalize_table_refs(sql, ctx)
 
@@ -1206,11 +1204,12 @@ def _emit_agg_subqueries(
             )
         else:
             phys_col = ctx.exposed_to_physical.get((table_meta.table_id, name), name)
+            sql_col = ctx.physical_to_sql.get((table_meta.table_id, phys_col), phys_col)
             col_alias = nesting_path.replace(".", "__") + "__" + key
             if extra_joins and agg_limit is not None:
                 select_parts.append(
-                    f"(SELECT ARRAY_AGG({_q(current_alias)}.{_q(phys_col)})"
-                    f" FROM (SELECT {_q(current_alias)}.{_q(phys_col)}"
+                    f"(SELECT ARRAY_AGG({_q(current_alias)}.{_q(sql_col)})"
+                    f" FROM (SELECT {_q(current_alias)}.{_q(sql_col)}"
                     f" FROM {from_clause} {extra_joins}"
                     f" WHERE {where_expr}"
                     f" LIMIT {agg_limit}))"
@@ -1218,15 +1217,15 @@ def _emit_agg_subqueries(
                 )
             elif extra_joins:
                 select_parts.append(
-                    f"(SELECT ARRAY_AGG({_q(current_alias)}.{_q(phys_col)})"
+                    f"(SELECT ARRAY_AGG({_q(current_alias)}.{_q(sql_col)})"
                     f" FROM {from_clause} {extra_joins}"
                     f" WHERE {where_expr})"
                     f" AS {_q(col_alias)}"
                 )
             elif agg_limit is not None:
                 select_parts.append(
-                    f"(SELECT ARRAY_AGG({_q(phys_col)})"
-                    f" FROM (SELECT {_q(phys_col)}"
+                    f"(SELECT ARRAY_AGG({_q(sql_col)})"
+                    f" FROM (SELECT {_q(sql_col)}"
                     f" FROM {from_clause}"
                     f" WHERE {where_expr}"
                     f" LIMIT {agg_limit}))"
@@ -1234,7 +1233,7 @@ def _emit_agg_subqueries(
                 )
             else:
                 select_parts.append(
-                    f"(SELECT ARRAY_AGG({_q(current_alias)}.{_q(phys_col)})"
+                    f"(SELECT ARRAY_AGG({_q(current_alias)}.{_q(sql_col)})"
                     f" FROM {from_clause}"
                     f" WHERE {where_expr})"
                     f" AS {_q(col_alias)}"
@@ -1242,7 +1241,7 @@ def _emit_agg_subqueries(
             columns.append(
                 ColumnRef(
                     alias=current_alias,
-                    column=phys_col,
+                    column=sql_col,
                     field_name=key,
                     nested_in=nesting_path,
                     cardinality=cardinality,
@@ -1380,7 +1379,8 @@ def _build_rel_json_kv(
                     kv_pairs.append(f"KEY '{key}' VALUE json_object({', '.join(sub_kv)})")
             else:
                 phys_col = ctx.exposed_to_physical.get((table_meta.table_id, name), name)
-                kv_pairs.append(f"KEY '{key}' VALUE {_q(table_alias)}.{_q(phys_col)}")
+                sql_col = ctx.physical_to_sql.get((table_meta.table_id, phys_col), phys_col)
+                kv_pairs.append(f"KEY '{key}' VALUE {_q(table_alias)}.{_q(sql_col)}")
 
     return kv_pairs, alias_counter
 
@@ -1629,11 +1629,12 @@ def _collect_nested_columns(
             # Scalar column from the parent join
             nested_response_key = nested_sel.alias.value if nested_sel.alias else nested_name
             nested_phys = ctx.exposed_to_physical.get((parent_table.table_id, nested_name), nested_name)
+            nested_sql = ctx.physical_to_sql.get((parent_table.table_id, nested_phys), nested_phys)
             if nested_phys in _VIRTUAL_COLS:
                 _nvc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(nested_phys, "")
                 col_expr = _sql_str_literal(_nvc)
             else:
-                col_expr = f"{_q(parent_alias)}.{_q(nested_phys)}"
+                col_expr = f"{_q(parent_alias)}.{_q(nested_sql)}"
             if nested_sel.alias:
                 select_parts.append(f"{col_expr} AS {_q(nested_response_key)}")
             else:
@@ -1641,7 +1642,7 @@ def _collect_nested_columns(
             columns.append(
                 ColumnRef(
                     alias=parent_alias,
-                    column=nested_phys,
+                    column=nested_sql,
                     field_name=nested_response_key,
                     nested_in=nesting_path,
                     cardinality=cardinality,
@@ -1874,6 +1875,7 @@ def _compile_root_field(
             gql_field_name = response_key
             col_path = ctx.column_paths.get((table.table_id, sel_name))
             phys_name = ctx.exposed_to_physical.get((table.table_id, sel_name), sel_name)
+            sql_name = ctx.physical_to_sql.get((table.table_id, phys_name), phys_name)
             if col_path:
                 # path is "source_col.key1.key2" → PG JSON extraction
                 # Emits PG syntax; SQLGlot transpiles to Trino json_extract_scalar
@@ -1898,20 +1900,20 @@ def _compile_root_field(
                 select_parts.append(f"{expr} AS {_q(response_key)}")
             elif use_aliases:
                 assert root_alias is not None
-                col_expr = f"{_q(root_alias)}.{_q(phys_name)}"
+                col_expr = f"{_q(root_alias)}.{_q(sql_name)}"
                 if sel.alias:
                     select_parts.append(f"{col_expr} AS {_q(response_key)}")
                 else:
                     select_parts.append(col_expr)
             else:
                 if sel.alias:
-                    select_parts.append(f"{_q(phys_name)} AS {_q(response_key)}")
+                    select_parts.append(f"{_q(sql_name)} AS {_q(response_key)}")
                 else:
-                    select_parts.append(_q(phys_name))
+                    select_parts.append(_q(sql_name))
             columns.append(
                 ColumnRef(
                     alias=root_alias if use_aliases else None,
-                    column=phys_name,
+                    column=sql_name,
                     field_name=gql_field_name,
                     nested_in=None,
                 )

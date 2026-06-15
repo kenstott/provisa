@@ -23,7 +23,7 @@ from typing import Any
 import pytest
 import yaml
 
-from provisa.core.models import GovernanceLevel, ProvisaConfig, SourceType
+from provisa.core.models import ProvisaConfig, SourceType
 from provisa.hasura_v2.mapper import (
     _collect_roles,
     _extract_connection_info,
@@ -1096,7 +1096,7 @@ class TestConvertMetadata:
         # analyst and admin have empty filters — no RLS rules for them on orders
         analyst_rls = [
             r for r in config.rls_rules
-            if r.role_id == "analyst" and "orders" in r.table_id
+            if r.role_id == "analyst" and r.table_id is not None and "orders" in r.table_id
         ]
         assert len(analyst_rls) == 0
 
@@ -1207,14 +1207,6 @@ class TestConvertMetadata:
         config = convert_metadata(md, domain_map={"public": "commerce"})
         for tbl in config.tables:
             assert tbl.domain_id == "commerce"
-
-    def test_governance_default_applied(self):
-        md = _build_full_metadata()
-        config = convert_metadata(
-            md, governance_default=GovernanceLevel.registry_required
-        )
-        for tbl in config.tables:
-            assert tbl.governance == GovernanceLevel.registry_required
 
     def test_source_overrides_applied(self):
         md = _build_full_metadata()

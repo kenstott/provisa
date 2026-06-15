@@ -184,7 +184,8 @@ class TestSqlBypassUncovered:
             # 403 with V002 is the bug — any other non-200 is an execution issue, not governance
             if resp.status_code == 403:
                 data = resp.json()
-                violations = (data.get("detail") or {}).get("violations") or []
+                detail = data.get("detail")
+                violations = detail.get("violations") or [] if isinstance(detail, dict) else []
                 v002 = [v for v in violations if v.get("code") == "V002"]
                 assert v002 == [], (
                     f"V002 raised for uncovered remote join — bypass not applied: {v002}"
