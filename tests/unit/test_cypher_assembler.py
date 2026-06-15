@@ -163,14 +163,14 @@ def test_empty_rows_returns_empty():
 # ---------------------------------------------------------------------------
 
 def test_to_serializable_node():
-    node = Node(id="1", label="Person", properties={"name": "Alice"})
+    node = Node(id="1", label="Person", table_label="Person", properties={"name": "Alice"})
     s = to_serializable(node)
-    assert s == {"id": "1", "label": "Person", "properties": {"name": "Alice"}}
+    assert s == {"id": "1", "label": "Person", "tableLabel": "Person", "properties": {"name": "Alice"}}
 
 
 def test_to_serializable_edge():
-    start = Node(id="1", label="Person", properties={})
-    end = Node(id="2", label="Company", properties={})
+    start = Node(id="1", label="Person", table_label="Person", properties={})
+    end = Node(id="2", label="Company", table_label="Company", properties={})
     edge = Edge(id="1-2", type="WORKS_AT", start_node=start, end_node=end, properties={"since": 2020})
     s = to_serializable(edge)
     assert s["identity"] == "1-2"
@@ -185,7 +185,7 @@ def test_to_serializable_edge():
 
 
 def test_to_serializable_path():
-    node = Node(id="1", label="A", properties={})
+    node = Node(id="1", label="A", table_label="A", properties={})
     path = Path(nodes=[node], edges=[])
     s = to_serializable(path)
     assert "nodes" in s

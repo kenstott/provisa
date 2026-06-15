@@ -145,6 +145,16 @@ export function buildGraphStylesheet({
       },
     },
     {
+      selector: "node[?_port]",
+      style: {
+        shape: "ellipse" as const,
+        "background-opacity": 0,
+        "border-width": 0,
+        label: "",
+        events: "no" as const,
+      },
+    },
+    {
       selector: "node[?_cluster]",
       style: {
         "background-opacity": 0,

@@ -18,7 +18,7 @@ import { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react
 import type { Relationship } from "../../types/admin";
 import { labelColor, darkenColor, clusterColor } from "./graph-model";
 import type { GNode, GEdge, RelLineOverride } from "./graph-model";
-import { buildClusterElements, cidToId, type ClusterLevel } from "./graph-clusters";
+import { buildClusterElements, buildClusterMetaEdges, cidToId, type ClusterLevel } from "./graph-clusters";
 import { buildGraphStylesheet } from "./graph-stylesheet";
 import { NodeContextMenu, type NodeCtxMenuState } from "./NodeContextMenu";
 import type {
@@ -66,6 +66,7 @@ interface CanvasProps {
   relLineOverrides: Record<string, RelLineOverride>;
   onExcludeNode: (nodeKeys: string[]) => void;
   pkMap: Record<string, string[]>;
+  labelToTableLabel: Record<string, string>;
   relationships: Relationship[];
   labelSiblings?: Record<string, string[]>;
   showingChildrenNatural: Set<string>;
@@ -119,6 +120,7 @@ export function GraphCanvas({
   relLineOverrides,
   onExcludeNode,
   pkMap,
+  labelToTableLabel,
   relationships,
   showingChildrenNatural,
   onToggleChildrenBatch,
@@ -164,10 +166,19 @@ export function GraphCanvas({
   const activeLayoutRef = useRef<{ stop: () => void } | null>(null);
   // Stable ref to nudgeLayout so event handlers can call it without stale closure
   const nudgeLayoutRef = useRef<(freeNodes?: Set<string>, aggressive?: boolean) => void>(() => {});
-  // SVG hull circles drawn over the canvas for cluster visualization
+  // Latest-value refs for nodes/edges used by computeHulls to build deferred meta-edges
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const edgesRef = useRef(edges);
+  edgesRef.current = edges;
+  const overlayEdgesRef = useRef(overlayEdges);
+  overlayEdgesRef.current = overlayEdges;
+  // SVG hull ellipses drawn over the canvas for cluster visualization
   const [hullCircles, setHullCircles] = useState<
-    Array<{ cid: string; x: number; y: number; r: number }>
+    Array<{ cid: string; x: number; y: number; rx: number; ry: number }>
   >([]);
+  // Tracks whether meta-edges have been added to the current cy instance
+  const portEdgesAddedRef = useRef(false);
   const [collapsedClusters, setCollapsedClusters] = useState<Set<string>>(new Set());
   const collapsedClustersRef = useRef<Set<string>>(new Set());
   const clusterLevelRef = useRef(clusterLevel);
@@ -204,29 +215,75 @@ export function GraphCanvas({
       return;
     }
     const collapsed = collapsedClustersRef.current;
-    const hulls: Array<{ cid: string; x: number; y: number; r: number }> = [];
+    const zoom = cy.zoom();
+    const pan = cy.pan();
+    const hulls: Array<{ cid: string; x: number; y: number; rx: number; ry: number }> = [];
     cy.nodes("[?_cluster]").forEach((cn) => {
       const cid = cn.data("_clusterId") as string;
-      if (collapsed.has(cid)) return; // collapsed clusters have no hull
+      if (collapsed.has(cid)) return;
+
+      // Compute hull from children positions in graph coords.
       const children = cn.children();
       if (children.length === 0) return;
-      let sumX = 0,
-        sumY = 0;
+      let sumX = 0, sumY = 0, count = 0;
+      children.forEach((c) => { const p = c.position(); sumX += p.x; sumY += p.y; count++; });
+      const cx_g = sumX / count;
+      const cy_g = sumY / count;
+      let maxRx_g = 0, maxRy_g = 0;
       children.forEach((c) => {
-        const p = c.renderedPosition();
-        sumX += p.x;
-        sumY += p.y;
+        const p = c.position();
+        maxRx_g = Math.max(maxRx_g, Math.abs(p.x - cx_g) + c.width() / 2 + 12);
+        maxRy_g = Math.max(maxRy_g, Math.abs(p.y - cy_g) + c.height() / 2 + 12);
       });
-      const cx = sumX / children.length;
-      const cyPos = sumY / children.length;
-      let maxR = 30;
-      children.forEach((c) => {
-        const p = c.renderedPosition();
-        maxR = Math.max(maxR, Math.hypot(p.x - cx, p.y - cyPos) + c.renderedWidth() / 2 + 20);
+      const rx_g = Math.max(30, maxRx_g * Math.SQRT2);
+      const ry_g = Math.max(30, maxRy_g * Math.SQRT2);
+
+      hulls.push({
+        cid,
+        x: cx_g * zoom + pan.x,
+        y: cy_g * zoom + pan.y,
+        rx: rx_g * zoom,
+        ry: ry_g * zoom,
       });
-      hulls.push({ cid, x: cx, y: cyPos, r: maxR });
+
+      const portId = `__port_${clusterLevelRef.current}_${cidToId(cid)}`;
+      let portNode = cy.$id(portId);
+      if (portNode.length === 0) {
+        portNode = cy.add({
+          group: "nodes",
+          data: {
+            id: portId,
+            label: "",
+            _port: true,
+            _clusterId: cid,
+            _clusterLevel: clusterLevelRef.current,
+          },
+          position: { x: cx_g, y: cy_g },
+        }) as CyElement;
+      } else {
+        if (portNode.locked()) portNode.unlock();
+        portNode.position({ x: cx_g, y: cy_g });
+      }
+      portNode.style({ width: rx_g * 2, height: ry_g * 2 });
     });
     setHullCircles(hulls);
+
+    // Swap from layout meta-edges (compound AABB routing) to port meta-edges (ellipse routing)
+    if (!portEdgesAddedRef.current) {
+      cy.edges("[?_metaEdge]").remove();
+      const metaEdges = buildClusterMetaEdges(
+        nodesRef.current,
+        edgesRef.current,
+        clusterLevelRef.current as Exclude<ClusterLevel, "none">,
+        overlayEdgesRef.current,
+        collapsedClustersRef.current,
+        true,
+      );
+      if (metaEdges.length > 0) {
+        cy.add(metaEdges);
+      }
+      portEdgesAddedRef.current = true;
+    }
   }, []);
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -335,6 +392,7 @@ export function GraphCanvas({
           cy.nodes().forEach((node) => {
             if (node.data("_cluster")) return;
             if (node.data("_collapsed")) return;
+            if (node.data("_port")) return;
             const lbl = node.data("label") as string;
             const n = node.data("_node") as GNode | undefined;
             const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
@@ -403,6 +461,19 @@ export function GraphCanvas({
       }
       layoutRunningRef.current = true;
       try {
+        // Remove port nodes + port meta-edges before nudge so they don't consume layout space
+        // or show edges at stale positions during animation. Restore layout meta-edges so fcose
+        // has correct cross-cluster attraction forces during the nudge.
+        if (portEdgesAddedRef.current && clusterLevelRef.current !== "none") {
+          cy.nodes("[?_port]").remove(); // also removes attached port meta-edges
+          const level = clusterLevelRef.current as Exclude<ClusterLevel, "none">;
+          const layoutMeta = buildClusterMetaEdges(
+            nodesRef.current, edgesRef.current, level,
+            overlayEdgesRef.current, collapsedClustersRef.current, false,
+          );
+          if (layoutMeta.length > 0) cy.add(layoutMeta);
+          portEdgesAddedRef.current = false;
+        }
         const anchored = anchoredRef.current;
         // When freeNodes is provided, lock everything except those nodes (and unlock anchored after)
         const tempLocked = new Set<string>();
@@ -434,6 +505,7 @@ export function GraphCanvas({
             cy.batch(() => {
               cy.nodes().forEach((node) => {
                 if (node.data("_cluster")) return;
+                if (node.data("_port")) return;
                 const lbl = node.data("label") as string;
                 const n = node.data("_node") as GNode | undefined;
                 const base = colorOverridesRef.current[lbl] ?? labelColor(lbl);
@@ -458,6 +530,7 @@ export function GraphCanvas({
             /* cy may have been destroyed */
           }
         };
+        const animDuration = aggressive ? 2000 : 600;
         const releaseNudge = () => {
           try {
             tempLocked.forEach((id) => {
@@ -471,7 +544,12 @@ export function GraphCanvas({
             /* cy may have been destroyed */
           }
           layoutRunningRef.current = false;
-          if (nudgeHeldRef.current) nudgeLayoutRef.current(undefined, true);
+          if (nudgeHeldRef.current) {
+            nudgeLayoutRef.current(undefined, true);
+          } else {
+            // layoutstop may fire before animation finishes; final realign after animation settles
+            setTimeout(() => { if (!layoutRunningRef.current) computeHulls(); }, animDuration + 50);
+          }
         };
         const safetyTimerNudge = setTimeout(
           () => {
@@ -512,7 +590,10 @@ export function GraphCanvas({
     if (!containerRef.current) return;
     const els: CyElementDefinition[] =
       clusterLevel !== "none"
-        ? buildClusterElements(nodes, edges, clusterLevel, overlayEdges, collapsedClusters)
+        ? [
+            ...buildClusterElements(nodes, edges, clusterLevel, overlayEdges, collapsedClusters),
+            ...buildClusterMetaEdges(nodes, edges, clusterLevel, overlayEdges, collapsedClusters, false),
+          ]
         : (() => {
             const _els: CyElementDefinition[] = [];
             nodes.forEach((n) => {
@@ -601,6 +682,7 @@ export function GraphCanvas({
       nudgeLayoutRef.current();
     });
 
+    portEdgesAddedRef.current = false;
     cyRef.current = cy;
     onCyReady?.(cy);
     anchoredRef.current = new Set();
@@ -613,6 +695,7 @@ export function GraphCanvas({
       onCyReady?.(null);
       cy.destroy();
       setHullCircles([]);
+      portEdgesAddedRef.current = false;
       // Reset prev-overlay refs so the incremental effect re-adds ALL current overlay
       // nodes after the cytoscape instance is rebuilt (e.g. when overlayEdges changes).
       prevOverlayNodesRef.current = new Map();
@@ -839,12 +922,13 @@ export function GraphCanvas({
             pointerEvents: "none",
           }}
         >
-          {hullCircles.map(({ cid, x, y, r }) => (
+          {hullCircles.map(({ cid, x, y, rx, ry }) => (
             <g key={cid}>
-              <circle
+              <ellipse
                 cx={x}
                 cy={y}
-                r={r}
+                rx={rx}
+                ry={ry}
                 fill={clusterColor(cid)}
                 fillOpacity={0.1}
                 stroke={clusterColor(cid)}
@@ -862,10 +946,11 @@ export function GraphCanvas({
                   };
                 }}
               />
-              <circle
+              <ellipse
                 cx={x}
                 cy={y}
-                r={r}
+                rx={rx}
+                ry={ry}
                 fill="none"
                 stroke={clusterColor(cid)}
                 strokeWidth={1.5}
@@ -874,7 +959,7 @@ export function GraphCanvas({
               />
               <text
                 x={x}
-                y={y - r - 6}
+                y={y - ry - 6}
                 textAnchor="middle"
                 fill={clusterColor(cid)}
                 fontSize={11}
@@ -966,6 +1051,7 @@ export function GraphCanvas({
           nodes={nodes}
           overlayNodes={overlayNodes}
           pkMap={pkMap}
+          labelToTableLabel={labelToTableLabel}
           relationships={relationships}
           cyRef={cyRef}
           anchoredRef={anchoredRef}

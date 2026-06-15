@@ -589,6 +589,35 @@ def test_domain_only_node_produces_union_all():
     assert "name" in sql.lower()
 
 
+def test_domain_union_excludes_nodes_with_native_filter_columns():
+    """Domain MATCH must exclude nodes that require a WHERE clause (native_filter_columns set)."""
+    lm = _make_label_map(with_domains=True)
+    # Inject a node that requires args into the Sales domain
+    from provisa.cypher.label_map import NodeMapping
+
+    lm.nodes["Schedule"] = NodeMapping(
+        label="Sales:Schedule",
+        type_name="Schedule",
+        domain_label="Sales",
+        table_label="Schedule",
+        table_id=99,
+        source_id="gql-remote",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="gql_remote",
+        schema_name="graphql_remote",
+        table_name="schedule_by_employee",
+        properties={"id": "id"},
+        native_filter_columns={"employee_id"},
+    )
+    lm.domains["Sales"].append("Schedule")
+    ast = parse_cypher("MATCH (n:Sales) RETURN n LIMIT 25")
+    sql_ast, _, _ = cypher_to_sql(ast, lm, {})
+    sql = sql_ast.sql(dialect="trino")
+    assert "schedule_by_employee" not in sql.lower()
+    assert "persons" in sql.lower()
+
+
 def test_type_and_domain_label_uses_type_table():
     lm = _make_label_map(with_domains=True)
     ast = parse_cypher("MATCH (n:Person:Sales) RETURN n.name")

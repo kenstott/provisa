@@ -30,6 +30,7 @@ interface NodeContextMenuProps {
   nodes: Map<string, GNode>;
   overlayNodes: Map<string, GNode>;
   pkMap: Record<string, string[]>;
+  labelToTableLabel: Record<string, string>;
   relationships: Relationship[];
   cyRef: { current: CyInstance | null };
   anchoredRef: { current: Set<string> };
@@ -53,6 +54,7 @@ export function NodeContextMenu({
   nodes,
   overlayNodes,
   pkMap,
+  labelToTableLabel,
   relationships,
   cyRef,
   anchoredRef,
@@ -71,30 +73,23 @@ export function NodeContextMenu({
 }: NodeContextMenuProps) {
   const ctxNode = nodes.get(nodeCtxMenu.nodeId) ?? overlayNodes.get(nodeCtxMenu.nodeId);
   const ctxLabel = ctxNode?.label ?? "";
-  const tableLabel = ctxLabel.includes(":") ? ctxLabel.split(":").pop()! : ctxLabel;
+  const tableLabel = ctxNode?.tableLabel ?? "";
   const ctxPkCols = pkMap[ctxLabel] ?? [];
   const hasPk = ctxPkCols.length > 0;
-  const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
-  const tl = norm(tableLabel);
-  const cl = norm(ctxLabel);
-  const myPkKey = (pkMap[ctxLabel] ?? pkMap[tableLabel] ?? []).join(",");
-  const siblingTls = myPkKey
+  const myPkKey = ctxPkCols.join(",");
+  const siblingLabels = myPkKey
     ? Object.entries(pkMap)
-        .filter(([lbl, cols]) => cols.join(",") === myPkKey && lbl !== ctxLabel && lbl !== tableLabel)
-        .map(([lbl]) => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl))
+        .filter(([lbl, cols]) => cols.join(",") === myPkKey && lbl !== ctxLabel)
+        .map(([lbl]) => labelToTableLabel[lbl] ?? lbl)
     : [];
+  // Relationship endpoints and node labels both derive from the same label function,
+  // so match the derived label exactly (directly or via a PK-equivalent sibling).
   const isSource = (r: (typeof relationships)[0]) =>
-    norm(r.sourceTableName) === tl ||
-    norm(r.sourceTableName) === cl ||
-    norm(dbTableLabel(r.sourceTableName)) === tl ||
-    siblingTls.includes(norm(r.sourceTableName)) ||
-    siblingTls.includes(norm(dbTableLabel(r.sourceTableName)));
+    dbTableLabel(r.sourceTableName) === tableLabel ||
+    siblingLabels.includes(dbTableLabel(r.sourceTableName));
   const isTarget = (r: (typeof relationships)[0]) =>
-    norm(r.targetTableName) === tl ||
-    norm(r.targetTableName) === cl ||
-    norm(dbTableLabel(r.targetTableName)) === tl ||
-    siblingTls.includes(norm(r.targetTableName)) ||
-    siblingTls.includes(norm(dbTableLabel(r.targetTableName)));
+    dbTableLabel(r.targetTableName) === tableLabel ||
+    siblingLabels.includes(dbTableLabel(r.targetTableName));
   const hasChildRels = relationships.some(isSource);
   const hasParentRels = relationships.some(isTarget);
   return (

@@ -19,6 +19,18 @@ export function cidToId(val: string): string {
   return val.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
+function clusterKeyFor(level: Exclude<ClusterLevel, "none">): string {
+  return level === "l1" || level === "schema_L1"
+    ? "scl1"
+    : level === "l2" || level === "schema_L2"
+      ? "scl2"
+      : level === "l3" || level === "schema_L3"
+        ? "scl3"
+        : level;
+}
+
+// Returns compound nodes, child data nodes, intra-cluster edges, and free↔free edges.
+// Port nodes and meta-edges are deferred — call buildClusterMetaEdges after layout.
 export function buildClusterElements(
   nodes: Map<string, GNode>,
   edges: Map<string, GEdge>,
@@ -26,14 +38,7 @@ export function buildClusterElements(
   overlayEdges?: Map<string, GEdge>,
   collapsedClusters: Set<string> = new Set(),
 ): CyElementDefinition[] {
-  const clusterKey =
-    level === "l1" || level === "schema_L1"
-      ? "scl1"
-      : level === "l2" || level === "schema_L2"
-        ? "scl2"
-        : level === "l3" || level === "schema_L3"
-          ? "scl3"
-          : level;
+  const clusterKey = clusterKeyFor(level);
 
   // 1. Cluster nodes — compound hull (expanded) or collapsed super-node
   const clusterLabels = new Map<string, Set<string>>();
@@ -46,14 +51,13 @@ export function buildClusterElements(
       clusterLabels.set(cid, new Set());
       clusterSizes.set(cid, 0);
     }
-    clusterLabels.get(cid)!.add(n.label.includes(":") ? n.label.split(":").pop()! : n.label);
+    clusterLabels.get(cid)!.add(n.tableLabel || n.label);
     clusterSizes.set(cid, (clusterSizes.get(cid) ?? 0) + 1);
   });
 
   const els: CyElementDefinition[] = [];
   clusterLabels.forEach((labels, cid) => {
     if (collapsedClusters.has(cid)) {
-      // Collapsed: single representative node
       els.push({
         group: "nodes",
         data: {
@@ -91,7 +95,7 @@ export function buildClusterElements(
 
   nodes.forEach((n, k) => {
     const cid = nodeToCid.get(k) ?? null;
-    if (cid !== null && collapsedClusters.has(cid)) return; // hidden inside collapsed super-node
+    if (cid !== null && collapsedClusters.has(cid)) return;
     const parentId = cid !== null ? `__cluster_${level}_${cidToId(cid)}` : undefined;
     els.push({
       group: "nodes",
@@ -104,21 +108,10 @@ export function buildClusterElements(
     });
   });
 
-  // 3. Edges — intra-cluster between data nodes; everything crossing a cluster boundary
-  //    (including free↔cluster and collapsed↔anything) becomes a meta-edge.
+  // 3. Intra-cluster edges (expanded) and free↔free edges only.
+  //    Cross-cluster / free↔cluster meta-edges are managed externally via
+  //    buildClusterMetaEdges so they can be swapped between layout and port routing.
   const allEdges = overlayEdges ? new Map([...edges, ...overlayEdges]) : edges;
-  const metaEdges = new Map<string, { src: string; tgt: string; type: string; count: number }>();
-
-  // Effective routing ID for an edge endpoint:
-  //   collapsed cluster member → collapsed super-node
-  //   expanded cluster member  → compound hull node (for meta-edge dedup)
-  //   free node                → null (use data node key directly)
-  const routingId = (_nodeKey: string, cid: string | null): string | null => {
-    if (cid === null) return null;
-    if (collapsedClusters.has(cid)) return `__collapsed_${level}_${cidToId(cid)}`;
-    return `__cluster_${level}_${cidToId(cid)}`;
-  };
-
   allEdges.forEach((e) => {
     const srcKey = `${e.startNode.label}:${e.startNode.id}`;
     const tgtKey = `${e.endNode.label}:${e.endNode.id}`;
@@ -126,7 +119,6 @@ export function buildClusterElements(
     const srcCid = nodeToCid.get(srcKey) ?? null;
     const tgtCid = nodeToCid.get(tgtKey) ?? null;
 
-    // Same cluster: intra-cluster data edge (expanded) or drop (collapsed)
     if (srcCid !== null && srcCid === tgtCid) {
       if (!collapsedClusters.has(srcCid)) {
         els.push({
@@ -137,21 +129,62 @@ export function buildClusterElements(
       return;
     }
 
-    const srcRouting = routingId(srcKey, srcCid);
-    const tgtRouting = routingId(tgtKey, tgtCid);
-
-    // Both free: plain data edge
-    if (srcRouting === null && tgtRouting === null) {
+    if (srcCid === null && tgtCid === null) {
       els.push({
         group: "edges",
         data: { id: e.identity, source: srcKey, target: tgtKey, label: e.type, _edge: e },
       });
-      return;
     }
+    // Cross-cluster edges handled by buildClusterMetaEdges
+  });
 
-    // At least one side is clustered: consolidate into meta-edge
+  return els;
+}
+
+// Computes meta-edges (cross-cluster / cluster↔free).
+// usePort=true  → target __port_* nodes (ellipse routing, for display after layout)
+// usePort=false → target __cluster_* compounds (AABB routing, for fcose forces during layout/nudge)
+export function buildClusterMetaEdges(
+  nodes: Map<string, GNode>,
+  edges: Map<string, GEdge>,
+  level: Exclude<ClusterLevel, "none">,
+  overlayEdges?: Map<string, GEdge>,
+  collapsedClusters: Set<string> = new Set(),
+  usePort = true,
+): CyElementDefinition[] {
+  const clusterKey = clusterKeyFor(level);
+
+  const nodeToCid = new Map<string, string | null>();
+  nodes.forEach((n, k) => {
+    const raw = n.properties[clusterKey];
+    nodeToCid.set(k, raw !== null && raw !== undefined ? String(raw) : null);
+  });
+
+  const routingId = (cid: string | null): string | null => {
+    if (cid === null) return null;
+    if (collapsedClusters.has(cid)) return `__collapsed_${level}_${cidToId(cid)}`;
+    return usePort ? `__port_${level}_${cidToId(cid)}` : `__cluster_${level}_${cidToId(cid)}`;
+  };
+
+  const allEdges = overlayEdges ? new Map([...edges, ...overlayEdges]) : edges;
+  const metaEdges = new Map<string, { src: string; tgt: string; type: string; count: number }>();
+
+  allEdges.forEach((e) => {
+    const srcKey = `${e.startNode.label}:${e.startNode.id}`;
+    const tgtKey = `${e.endNode.label}:${e.endNode.id}`;
+    if (!nodes.has(srcKey) || !nodes.has(tgtKey)) return;
+    const srcCid = nodeToCid.get(srcKey) ?? null;
+    const tgtCid = nodeToCid.get(tgtKey) ?? null;
+
+    // Same cluster or both free: handled by buildClusterElements
+    if (srcCid !== null && srcCid === tgtCid) return;
+    if (srcCid === null && tgtCid === null) return;
+
+    const srcRouting = routingId(srcCid);
+    const tgtRouting = routingId(tgtCid);
     const srcId = srcRouting ?? srcKey;
     const tgtId = tgtRouting ?? tgtKey;
+
     const metaKey = `${srcId}→${tgtId}:${e.type}`;
     const existing = metaEdges.get(metaKey);
     if (existing) {
@@ -161,6 +194,7 @@ export function buildClusterElements(
     }
   });
 
+  const els: CyElementDefinition[] = [];
   metaEdges.forEach(({ src, tgt, type, count }, metaKey) => {
     els.push({
       group: "edges",

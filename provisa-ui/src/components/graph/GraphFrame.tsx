@@ -15,7 +15,7 @@
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import type { Relationship } from "../../types/admin";
-import { extractElements, buildRemainingRelsQueries, injectExclusion } from "./graph-model";
+import { extractElements, injectExclusion } from "./graph-model";
 import type { GNode, GEdge, RelLineOverride, FrameData } from "./graph-model";
 import CodeMirror from "@uiw/react-codemirror";
 import * as _neo4jCypherMod from "@neo4j-cypher/codemirror";
@@ -40,6 +40,7 @@ import { GraphCanvas } from "./GraphCanvas";
 import { Inspector } from "./Inspector";
 import { TableView, JsonCopyButton } from "./TableView";
 import { tableLabel as dbTableLabel } from "../../naming";
+import { useLocalStorage } from "./graph-persistence";
 
 // ── Frame component ───────────────────────────────────────────────────────────
 interface GraphFrameProps {
@@ -53,10 +54,11 @@ interface GraphFrameProps {
   relLineOverrides: Record<string, RelLineOverride>;
   onColorChange: (label: string, color: string) => void;
   pkMap: Record<string, string[]>;
+  labelToTableLabel: Record<string, string>;
   relationships?: Relationship[];
-  schemaRels?: Array<{ type: string; source: string; target: string }>;
   autoImpute?: boolean;
   onSaveEdgeAlias?: (relId: number, cqlAlias: string, gqlAlias: string) => Promise<void>;
+  onSelectedLabelChange?: (label: string | null) => void;
 }
 
 export function GraphFrame({
@@ -70,17 +72,26 @@ export function GraphFrame({
   relLineOverrides,
   onColorChange,
   pkMap,
+  labelToTableLabel,
   relationships,
-  schemaRels,
   autoImpute: autoImputeProp = false,
   onSaveEdgeAlias,
+  onSelectedLabelChange,
 }: GraphFrameProps) {
   const [view, setView] = useState<"graph" | "table" | "json">("graph");
-  const [selected, setSelected] = useState<
+  const [selected, setSelectedRaw] = useState<
     { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null
   >(null);
+  const setSelected = useCallback(
+    (s: { kind: "node"; data: GNode } | { kind: "edge"; data: GEdge } | null) => {
+      setSelectedRaw(s);
+      onSelectedLabelChange?.(s?.kind === "node" ? s.data.label : null);
+    },
+    [onSelectedLabelChange],
+  );
   const [collapsed, setCollapsed] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [modalHeaderHeight, setModalHeaderHeight] = useState(44);
   const [inspectorWidth, setInspectorWidth] = useState(260);
   const [graphAreaHeight, setGraphAreaHeight] = useState(460);
   const [editQuery, setEditQuery] = useState(frame.query);
@@ -105,7 +116,11 @@ export function GraphFrame({
     [onRerun],
   );
   const [showDlMenu, setShowDlMenu] = useState(false);
-  const [clusterLevel, setClusterLevel] = useState<ClusterLevel>("none");
+  const [dlMenuPos, setDlMenuPos] = useState<{ top: number; right: number } | null>(null);
+  const [clusterLevel, setClusterLevel] = useLocalStorage<ClusterLevel>(
+    `provisa.graph.clusterLevel.${frame.id}`,
+    "none",
+  );
   const [tableWrap, setTableWrap] = useState(false);
   const [tableColWidths, setTableColWidths] = useState<number[]>(() =>
     frame.columns.map(() => 180),
@@ -169,8 +184,8 @@ export function GraphFrame({
     async (nodeKey: string): Promise<MergedOverlay | null> => {
       const gNode = _resolveNodeForKey(nodeKey);
       if (!gNode) return null;
-      const tableLabel = gNode.label.includes(":") ? gNode.label.split(":").pop()! : gNode.label;
-      const pkCols = pkMap[gNode.label] ?? pkMap[tableLabel] ?? [];
+      const tableLabel = gNode.tableLabel;
+      const pkCols = pkMap[gNode.label] ?? [];
       const pkCol = pkCols[0] ?? null;
       const pkValue = gNode.properties[pkCol ?? ""] ?? gNode.id;
       const pkLit =
@@ -180,21 +195,19 @@ export function GraphFrame({
             ? `'${String(pkValue).replace(/'/g, "\\'")}'`
             : String(pkValue);
       if (!pkLit || !pkCol) return null;
-      const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
-      const tl = norm(tableLabel);
-      const rels = (relationships ?? []).filter((r) => norm(r.sourceTableName) === tl || norm(dbTableLabel(r.sourceTableName)) === tl);
+      const rels = (relationships ?? []).filter((r) => dbTableLabel(r.sourceTableName) === tableLabel);
       const myPkKey = pkCols.join(",");
       const siblingSourceRels =
         rels.length === 0
           ? (() => {
-              const siblingTls = Object.entries(pkMap)
+              const siblingLabels = Object.entries(pkMap)
                 .filter(
                   ([lbl, cols]) =>
-                    cols.join(",") === myPkKey && lbl !== gNode.label && lbl !== tableLabel,
+                    cols.join(",") === myPkKey && lbl !== gNode.label,
                 )
-                .map(([lbl]) => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl));
+                .map(([lbl]) => labelToTableLabel[lbl] ?? lbl);
               return (relationships ?? []).filter((r) =>
-                siblingTls.includes(norm(r.sourceTableName)) || siblingTls.includes(norm(dbTableLabel(r.sourceTableName))),
+                siblingLabels.includes(dbTableLabel(r.sourceTableName)),
               );
             })()
           : null;
@@ -202,25 +215,14 @@ export function GraphFrame({
       const effectiveLabel =
         rels.length > 0
           ? tableLabel
-          : (() => {
-              if (!siblingSourceRels || siblingSourceRels.length === 0) return tableLabel;
-              const sib = siblingSourceRels[0];
-              return (
-                Object.keys(pkMap)
-                  .find(
-                    (lbl) =>
-                      norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl) ===
-                      norm(sib.sourceTableName),
-                  )
-                  ?.split(":")
-                  .pop() ?? sib.sourceTableName
-              );
-            })();
+          : (siblingSourceRels && siblingSourceRels.length > 0
+              ? dbTableLabel(siblingSourceRels[0].sourceTableName)
+              : tableLabel);
       if (effectiveRels.length === 0) return null;
       const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
       await Promise.all(
         effectiveRels.map(async (r) => {
-          const relType = (r.alias ?? r.graphqlAlias ?? "").toUpperCase();
+          const relType = (r.alias ?? r.computedCypherAlias ?? "").toUpperCase();
           const q = `MATCH (n:${effectiveLabel})-[r:${relType}]->(child) WHERE n.${pkCol} = ${pkLit} RETURN n, r, child`;
           const result = await _fetchNeighbors(q);
           if (result) {
@@ -251,8 +253,8 @@ export function GraphFrame({
     async (nodeKey: string): Promise<MergedOverlay | null> => {
       const gNode = _resolveNodeForKey(nodeKey);
       if (!gNode) return null;
-      const tableLabel = gNode.label.includes(":") ? gNode.label.split(":").pop()! : gNode.label;
-      const pkCols = pkMap[gNode.label] ?? pkMap[tableLabel] ?? [];
+      const tableLabel = gNode.tableLabel;
+      const pkCols = pkMap[gNode.label] ?? [];
       const pkCol = pkCols[0] ?? null;
       const pkValue = gNode.properties[pkCol ?? ""] ?? gNode.id;
       const pkLit =
@@ -262,21 +264,19 @@ export function GraphFrame({
             ? `'${String(pkValue).replace(/'/g, "\\'")}'`
             : String(pkValue);
       if (!pkLit || !pkCol) return null;
-      const norm = (s: string) => s.toLowerCase().replace(/_/g, "");
-      const tl = norm(tableLabel);
-      const rels = (relationships ?? []).filter((r) => norm(r.targetTableName) === tl || norm(dbTableLabel(r.targetTableName)) === tl);
+      const rels = (relationships ?? []).filter((r) => dbTableLabel(r.targetTableName) === tableLabel);
       const myPkKey = pkCols.join(",");
       const siblingTargetRels =
         rels.length === 0
           ? (() => {
-              const siblingTls = Object.entries(pkMap)
+              const siblingLabels = Object.entries(pkMap)
                 .filter(
                   ([lbl, cols]) =>
-                    cols.join(",") === myPkKey && lbl !== gNode.label && lbl !== tableLabel,
+                    cols.join(",") === myPkKey && lbl !== gNode.label,
                 )
-                .map(([lbl]) => norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl));
+                .map(([lbl]) => labelToTableLabel[lbl] ?? lbl);
               return (relationships ?? []).filter((r) =>
-                siblingTls.includes(norm(r.targetTableName)) || siblingTls.includes(norm(dbTableLabel(r.targetTableName))),
+                siblingLabels.includes(dbTableLabel(r.targetTableName)),
               );
             })()
           : null;
@@ -284,25 +284,14 @@ export function GraphFrame({
       const effectiveLabel =
         rels.length > 0
           ? tableLabel
-          : (() => {
-              if (!siblingTargetRels || siblingTargetRels.length === 0) return tableLabel;
-              const sib = siblingTargetRels[0];
-              return (
-                Object.keys(pkMap)
-                  .find(
-                    (lbl) =>
-                      norm(lbl.includes(":") ? lbl.split(":").pop()! : lbl) ===
-                      norm(sib.targetTableName),
-                  )
-                  ?.split(":")
-                  .pop() ?? sib.targetTableName
-              );
-            })();
+          : (siblingTargetRels && siblingTargetRels.length > 0
+              ? dbTableLabel(siblingTargetRels[0].targetTableName)
+              : tableLabel);
       if (effectiveRels.length === 0) return null;
       const merged: MergedOverlay = { nodes: new Map(), edges: new Map() };
       await Promise.all(
         effectiveRels.map(async (r) => {
-          const relType = (r.alias ?? r.graphqlAlias ?? "").toUpperCase();
+          const relType = (r.alias ?? r.computedCypherAlias ?? "").toUpperCase();
           const q = `MATCH (parent)-[r:${relType}]->(n:${effectiveLabel}) WHERE n.${pkCol} = ${pkLit} RETURN n, r, parent`;
           const result = await _fetchNeighbors(q);
           if (result) {
@@ -455,14 +444,13 @@ export function GraphFrame({
       for (const nodeKey of nodeKeys) {
         const gNode = frame.nodes.get(nodeKey);
         if (!gNode) continue;
-        const label = gNode.label;
         const nodeId = String(gNode.id);
-        const pkCols = pkMap[label] ?? [];
+        const pkCols = pkMap[gNode.label] ?? [];
         const pkCol = pkCols[0] ?? null;
         const pkValue = pkCol ? gNode.properties[pkCol] : undefined;
         const newQuery = injectExclusion(
           currentQuery,
-          label,
+          gNode.tableLabel,
           nodeId,
           pkCol,
           pkValue,
@@ -597,29 +585,32 @@ export function GraphFrame({
   useEffect(() => {
     if (!autoImpute || frame.status !== "done" || frame.nodes.size === 0) return;
     let cancelled = false;
-    const queries = buildRemainingRelsQueries(frame.nodes, pkMap, schemaRels);
-    if (queries.length === 0) return;
-    const merged: { nodes: Map<string, GNode>; edges: Map<string, GEdge> } = {
-      nodes: new Map(),
-      edges: new Map(),
-    };
-    Promise.all(
-      queries.map(async (q) => {
-        const result = await _fetchNeighbors(q);
-        if (!cancelled && result) {
-          result.nodes.forEach((n, k) => merged.nodes.set(k, n));
-          result.edges.forEach((e, k) => merged.edges.set(k, e));
-        }
-      }),
-    ).then(() => {
-      if (!cancelled && (merged.nodes.size > 0 || merged.edges.size > 0)) {
-        setOverlayData((prev) => new Map(prev).set("__remaining_rels", merged));
+    const nodeList = [...frame.nodes.values()].map((n) => ({ label: n.label, id: n.id }));
+    (async () => {
+      const res = await fetch("/data/impute-relationships", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodes: nodeList }),
+      });
+      if (cancelled) return;
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        let err: unknown;
+        try { err = JSON.parse(text); } catch { err = text; }
+        console.error("impute-relationships failed (HTTP", res.status, "):", err);
+        return;
       }
-    });
+      const data = await res.json();
+      const rows: Record<string, unknown>[] = data.rows ?? [];
+      const result = extractElements(rows);
+      if (!cancelled && (result.nodes.size > 0 || result.edges.size > 0)) {
+        setOverlayData((prev) => new Map(prev).set("__remaining_rels", result));
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [autoImpute, frame.status, frame.nodes, pkMap, schemaRels, _fetchNeighbors]);
+  }, [autoImpute, frame.status, frame.nodes]);
 
   const hasGraph = frame.nodes.size > 0 || frame.edges.size > 0;
 
@@ -669,6 +660,7 @@ export function GraphFrame({
           className="gf-header-query-input"
           value={editQuery}
           theme={oneDark}
+          minHeight="2.8em"
           extensions={[
             ..._gfCypherLangExts,
             _gfCypherLinter({ showErrors: false }),
@@ -686,21 +678,53 @@ export function GraphFrame({
             ),
           ]}
           onChange={(val) => setEditQuery(val)}
+          onUpdate={(vu) => { if (vu.docChanged) vu.view.requestMeasure(); }}
           basicSetup={{ lineNumbers: false, foldGutter: false, highlightActiveLine: false }}
         />
         <CopySymbolButton text={editQuery} className="gf-copy-query-btn" title="Copy query" />
       </div>
-      <div className="gf-header-meta">
-        {frame.status === "loading" && <span className="gf-loading">Running…</span>}
-        {frame.status === "done" && (
-          <span className="gf-meta-text">
-            {frame.nodes.size} nodes · {frame.edges.size} rels
-            {frame.elapsed !== undefined && ` · ${frame.elapsed}ms`}
-          </span>
-        )}
-        {frame.status === "error" && <span className="gf-meta-error">Error</span>}
-      </div>
-      <div className="gf-header-actions">
+      <div className="gf-header-right">
+        <div className="gf-header-top">
+          <div className="gf-header-meta">
+            {frame.status === "loading" && <span className="gf-loading">Running…</span>}
+            {frame.status === "done" && (
+              <span className="gf-meta-text">
+                {frame.nodes.size} nodes · {frame.edges.size} rels
+                {frame.elapsed !== undefined && ` · ${frame.elapsed}ms`}
+              </span>
+            )}
+            {frame.status === "error" && <span className="gf-meta-error">Error</span>}
+          </div>
+          {!isModal && (
+            <button className="gf-icon-btn" onClick={() => setExpanded(true)} title="Expand">
+              ⤢
+            </button>
+          )}
+          {isModal && (
+            <button
+              className="gf-icon-btn"
+              onClick={() => setExpanded(false)}
+              title="Exit full screen"
+            >
+              ⤡
+            </button>
+          )}
+          {!isModal && (
+            <button
+              className="gf-icon-btn"
+              onClick={() => setCollapsed((c) => !c)}
+              title={collapsed ? "Expand" : "Collapse"}
+            >
+              {collapsed ? "▼" : "▲"}
+            </button>
+          )}
+          {!isModal && (
+            <button className="gf-icon-btn" onClick={() => onClose(frame.id)} title="Close">
+              ✕
+            </button>
+          )}
+        </div>
+        <div className="gf-header-actions">
         <button
           className="gf-run-inline-btn"
           onClick={() => handleRerun(frame.id, editQuery.trim())}
@@ -773,7 +797,11 @@ export function GraphFrame({
             <button
               className="gf-icon-btn"
               title="Download"
-              onClick={() => setShowDlMenu((v) => !v)}
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setDlMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                setShowDlMenu((v) => !v);
+              }}
             >
               <svg
                 width="14"
@@ -786,8 +814,12 @@ export function GraphFrame({
                 <rect x="2" y="12" width="12" height="1.5" rx="0.75" />
               </svg>
             </button>
-            {showDlMenu && (
-              <div className="gf-dl-menu" onMouseLeave={() => setShowDlMenu(false)}>
+            {showDlMenu && dlMenuPos && createPortal(
+              <div
+                className="gf-dl-menu"
+                style={{ position: "fixed", top: dlMenuPos.top, right: dlMenuPos.right, left: "unset" }}
+                onMouseLeave={() => setShowDlMenu(false)}
+              >
                 {frame.rows.length > 0 && (
                   <button
                     className="gf-dl-item"
@@ -851,36 +883,12 @@ export function GraphFrame({
                     SVG
                   </button>
                 )}
-              </div>
+              </div>,
+              document.body,
             )}
           </div>
         )}
-        {!isModal && (
-          <button className="gf-icon-btn" onClick={() => setExpanded(true)} title="Expand">
-            ⤢
-          </button>
-        )}
-        {isModal && (
-          <button
-            className="gf-icon-btn"
-            onClick={() => setExpanded(false)}
-            title="Exit full screen"
-          >
-            ⤡
-          </button>
-        )}
-        {!isModal && (
-          <button
-            className="gf-icon-btn"
-            onClick={() => setCollapsed((c) => !c)}
-            title={collapsed ? "Expand" : "Collapse"}
-          >
-            {collapsed ? "▼" : "▲"}
-          </button>
-        )}
-        <button className="gf-icon-btn" onClick={() => onClose(frame.id)} title="Close">
-          ✕
-        </button>
+        </div>
       </div>
     </div>
   );
@@ -914,6 +922,7 @@ export function GraphFrame({
             relLineOverrides={relLineOverrides}
             onExcludeNode={handleExcludeNode}
             pkMap={pkMap}
+            labelToTableLabel={labelToTableLabel}
             relationships={relationships ?? []}
             showingChildrenNatural={showingChildrenNatural}
             onToggleChildren={handleToggleChildren}
@@ -981,6 +990,7 @@ export function GraphFrame({
     <>
       <div
         className={`gf-frame${expanded ? " gf-expanded" : ""}${dragOver ? " gf-frame--drag-over" : ""}`}
+        style={expanded ? { top: `calc(5vh + ${modalHeaderHeight}px)`, height: `calc(90vh - ${modalHeaderHeight}px)` } : undefined}
         onDragOver={(e) => {
           if (e.dataTransfer.types.includes("text/x-provisa-label")) {
             e.preventDefault();
@@ -1006,7 +1016,16 @@ export function GraphFrame({
       {expanded &&
         createPortal(
           <div className="gf-modal-overlay" onClick={() => setExpanded(false)}>
-            <div className="gf-modal-frame" onClick={(e) => e.stopPropagation()}>
+            <div
+              className="gf-modal-frame"
+              onClick={(e) => e.stopPropagation()}
+              ref={(el) => {
+                if (!el) return;
+                const ro = new ResizeObserver(() => setModalHeaderHeight(el.offsetHeight));
+                ro.observe(el);
+                return () => ro.disconnect();
+              }}
+            >
               {renderHeader(true)}
             </div>
           </div>,

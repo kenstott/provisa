@@ -183,6 +183,7 @@ export interface RelLineOverride {
 export interface GNode {
   id: string;
   label: string;
+  tableLabel: string;
   properties: Record<string, unknown>;
 }
 export interface GEdge {
@@ -231,59 +232,6 @@ export function extractElements(rows: unknown[]): {
 }
 
 // ── Remaining relationships query builder ────────────────────────────────────
-function _formatId(id: unknown): string {
-  if (typeof id === "number") return String(id);
-  const s = String(id);
-  return isNaN(Number(s)) || s === "" ? `"${s.replace(/"/g, '\\"')}"` : s;
-}
-
-export function buildRemainingRelsQueries(
-  nodes: Map<string, GNode>,
-  pkMap: Record<string, string[]>,
-  schemaRels?: Array<{ type: string; source: string; target: string }>,
-): Array<string> {
-  const byLabel = new Map<string, GNode[]>();
-  nodes.forEach((n) => {
-    const arr = byLabel.get(n.label) ?? [];
-    arr.push(n);
-    byLabel.set(n.label, arr);
-  });
-  const labels = [...byLabel.keys()];
-  const visibleTableLabels = new Set(
-    labels.map((l) => (l.includes(":") ? l.split(":").pop()! : l)),
-  );
-  const queries: string[] = [];
-  for (const srcLabel of labels) {
-    const srcNodes = byLabel.get(srcLabel) ?? [];
-    const tableLabel = srcLabel.includes(":") ? srcLabel.split(":").pop()! : srcLabel;
-    const pkCol = (pkMap[srcLabel] ?? pkMap[tableLabel] ?? [])[0] ?? null;
-    if (!pkCol) continue;
-    const srcIds = srcNodes.map((n) => _formatId(String(n.id))).join(", ");
-    for (const tgtLabel of labels) {
-      const tgtNodes = byLabel.get(tgtLabel) ?? [];
-      const tgtTableLabel = tgtLabel.includes(":") ? tgtLabel.split(":").pop()! : tgtLabel;
-      const tgtPkCol = (pkMap[tgtLabel] ?? pkMap[tgtTableLabel] ?? [])[0] ?? null;
-      if (!tgtPkCol) continue;
-      const tgtIds = tgtNodes.map((n) => _formatId(String(n.id))).join(", ");
-      queries.push(
-        `MATCH (a:${tableLabel})-[r]->(b:${tgtTableLabel}) WHERE a.${pkCol} IN [${srcIds}] AND b.${tgtPkCol} IN [${tgtIds}] RETURN a, r, b`,
-      );
-    }
-    // For non-visible targets: generate discovery queries using schema relationships
-    if (schemaRels) {
-      for (const rel of schemaRels) {
-        const rSrcLabel = rel.source.includes(":") ? rel.source.split(":").pop()! : rel.source;
-        if (rSrcLabel !== tableLabel) continue;
-        const tgtTableLabel = rel.target.includes(":") ? rel.target.split(":").pop()! : rel.target;
-        if (visibleTableLabels.has(tgtTableLabel)) continue;
-        queries.push(
-          `MATCH (a:${tableLabel})-[:${rel.type}]->(b:${tgtTableLabel}) WHERE a.${pkCol} IN [${srcIds}] RETURN a, b`,
-        );
-      }
-    }
-  }
-  return queries;
-}
 
 // ── Query exclusion injection ─────────────────────────────────────────────────
 // Injects a WHERE NOT clause before the RETURN clause for the variable matching
@@ -292,13 +240,12 @@ export function buildRemainingRelsQueries(
 // Returns null if the label/variable can't be found.
 export function injectExclusion(
   query: string,
-  label: string,
+  tableLabel: string,
   nodeId: string,
   pkCol: string | null,
   pkValue: unknown,
   relationships?: Relationship[],
 ): string | null {
-  const tableLabel = label.includes(":") ? label.split(":").pop()! : label;
   const escapedLabel = tableLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
   // Try named variable first: (varName:...Label...)

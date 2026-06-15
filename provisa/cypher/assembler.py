@@ -31,6 +31,7 @@ class CypherAssemblyError(Exception):
 class Node:
     id: str
     label: str
+    table_label: str
     properties: dict[str, Any]
 
 
@@ -113,8 +114,8 @@ def _deserialize_graph_value(col: str, value: Any, kind: GraphVarKind) -> Any:
         # Flat-JOIN path: {start, end, length} — build stub path
         start_id = str(data.get("start", ""))
         end_id = str(data.get("end", ""))
-        start_node = Node(id=start_id, label="", properties={})
-        end_node = Node(id=end_id, label="", properties={})
+        start_node = Node(id=start_id, label="", table_label="", properties={})
+        end_node = Node(id=end_id, label="", table_label="", properties={})
         return Path(nodes=[start_node, end_node], edges=[])
     raise CypherAssemblyError(f"Unknown GraphVarKind {kind!r} for column {col!r}")
 
@@ -123,8 +124,9 @@ def _parse_node(data: dict) -> Node:
     return Node(
         id=str(data.get("id", "")),
         label=str(data.get("label", "")),
+        table_label=str(data.get("tableLabel", "")),
         properties=data["properties"] if "properties" in data and isinstance(data["properties"], dict)
-        else {k: v for k, v in data.items() if k not in ("id", "label", "properties")},
+        else {k: v for k, v in data.items() if k not in ("id", "label", "tableLabel", "properties")},
     )
 
 
@@ -234,7 +236,7 @@ def to_serializable(obj: Any) -> Any:
     import datetime
     from decimal import Decimal
     if isinstance(obj, Node):
-        return {"id": obj.id, "label": obj.label, "properties": obj.properties}
+        return {"id": obj.id, "label": obj.label, "tableLabel": obj.table_label, "properties": obj.properties}
     if isinstance(obj, Edge):
         return {
             "identity": obj.id,

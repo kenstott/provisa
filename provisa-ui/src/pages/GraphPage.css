@@ -148,6 +148,12 @@
   text-overflow: ellipsis;
 }
 
+.graph-label-pill--highlight {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.5);
+}
+
 .graph-label-count {
   font-size: 0.7rem;
   color: var(--text-muted);
@@ -330,7 +336,7 @@
 .gf-frame {
   border: 1px solid var(--border);
   border-radius: 6px;
-  overflow: hidden;
+  overflow: visible;
   background: var(--surface);
   flex-shrink: 0;
 }
@@ -342,12 +348,32 @@
 
 .gf-header {
   display: flex;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: stretch;
   gap: 0.5rem;
   padding: 0.4rem 0.75rem;
   background: #0d0f15;
   border-bottom: 1px solid var(--border);
   min-height: 38px;
+}
+
+.gf-header-right {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  justify-content: flex-start;
+  padding: 0.15rem 0;
+}
+
+.gf-header-top {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.gf-header-top .gf-header-meta {
+  flex: 1;
 }
 
 .gf-header-query {
@@ -375,8 +401,6 @@
 .gf-header-query-input .cm-editor {
   background: transparent;
   font-size: 0.75rem;
-  max-height: 160px;
-  overflow-y: auto;
 }
 
 .gf-header-query-input .cm-editor.cm-focused {
@@ -442,8 +466,8 @@
 }
 
 .gf-header-meta {
-  flex-shrink: 0;
   font-size: 0.72rem;
+  white-space: nowrap;
 }
 
 .gf-meta-text {
@@ -466,9 +490,9 @@
 
 .gf-header-actions {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.25rem;
-  flex-shrink: 0;
 }
 
 .gf-view-btn {
@@ -549,6 +573,8 @@
 .gf-body {
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  border-radius: 0 0 6px 6px;
 }
 
 .gf-error {
@@ -668,17 +694,15 @@
 }
 
 .gf-dl-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
   background: #1a1d27;
   border: 1px solid var(--border);
   border-radius: 6px;
   display: flex;
   flex-direction: column;
   min-width: 80px;
-  z-index: 200;
+  z-index: 9999;
   overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
 }
 
 .gf-dl-item {
@@ -1121,26 +1145,27 @@
 
 .gf-modal-frame {
   width: 90vw;
-  height: 44px; /* header only — body lives in the real frame below */
+  min-height: 44px;
   display: flex;
   flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px 8px 0 0;
-  overflow: hidden;
+  overflow: visible;
   pointer-events: auto;
   position: fixed;
   top: 5vh;
   left: 5vw;
+  z-index: 1002;
 }
 
 /* When expanded, the real gf-frame is promoted to fill the modal area */
 .gf-frame.gf-expanded {
   position: fixed;
-  top: calc(5vh + 44px);
+  top: calc(5vh + 44px); /* overridden by inline style when modal header grows */
   left: 5vw;
   width: 90vw;
-  height: calc(90vh - 44px);
+  height: calc(90vh - 44px); /* overridden by inline style when modal header grows */
   z-index: 1001;
   border-radius: 0 0 8px 8px;
   display: flex;

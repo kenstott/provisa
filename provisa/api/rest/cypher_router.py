@@ -17,7 +17,6 @@ Five-stage pipeline:
   4. rewrite_semantic_to_trino_physical → catalog-qualified refs
   5. Federation executor → flat rows → assembler → typed response
 """
-
 from __future__ import annotations
 
 import logging
@@ -34,6 +33,7 @@ if TYPE_CHECKING:
     from provisa.compiler.sql_gen import CompilationContext  # noqa: F401
 
 import re as _re
+from provisa.compiler.naming import apply_cql_property as _cql_prop
 
 import trino.exceptions as _trino_exc
 
@@ -309,6 +309,26 @@ async def _dispatch_execution(
     return rows
 
 
+async def _dispatch_execution_direct(
+    exec_sql: str,
+    source_id: str,
+    resolved_params: list,
+    state: Any,
+) -> list[dict] | Response:
+    """Execute SQL against a direct (non-Trino) source. Returns rows or error Response."""
+    from provisa.executor.direct import execute_direct
+
+    try:
+        result = await execute_direct(state.source_pools, source_id, exec_sql, resolved_params or None)
+        return [dict(zip(result.column_names, row)) for row in result.rows]
+    except Exception as exc:
+        log.exception("Cypher direct execution failed: %s", exec_sql)
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Execution failed: {_federation_error(exc)}", "sql": exec_sql},
+        )
+
+
 def _serialize_rows(
     rows: list[dict],
     graph_vars: dict,
@@ -460,9 +480,14 @@ async def cypher_query(
     _t0 = _time.perf_counter()
 
     # Stage 5: Execute
+    from provisa.transpiler.router import Route as _Route
     exec_sql = plan.exec_sql or ""
     trino_sql = plan.trino_sql or ""
-    _exec_result = await _dispatch_execution(exec_sql, trino_sql, resolved_params, state, span_attrs)
+    if plan.route != _Route.TRINO and plan.source_id:
+        # Single-source direct route — cypher SQL rewritten to physical (no catalog)
+        _exec_result = await _dispatch_execution_direct(exec_sql, plan.source_id, resolved_params, state)
+    else:
+        _exec_result = await _dispatch_execution(exec_sql, trino_sql, resolved_params, state, span_attrs)
     if isinstance(_exec_result, Response):
         return _exec_result
     rows = _exec_result
@@ -508,8 +533,8 @@ async def graph_schema(request: Request) -> JSONResponse:
                     "domain_id": n.domain_id,
                     "table_label": n.table_label,
                     "properties": list(n.properties.keys()),
-                    "pk_columns": n.pk_columns,
-                    "id_column": n.id_column,
+                    "pk_columns": [_cql_prop(c) for c in n.pk_columns],
+                    "id_column": _cql_prop(n.id_column),
                     "native_filter_columns": sorted(n.native_filter_columns),
                     "traversal_only": n.traversal_only,
                     **cluster_by_name.get(
@@ -521,13 +546,96 @@ async def graph_schema(request: Request) -> JSONResponse:
             "relationship_types": [
                 {
                     "type": r.rel_type,
-                    "source": r.source_label,
-                    "target": r.target_label,
+                    "source": label_map.nodes[r.source_label].label,
+                    "target": label_map.nodes[r.target_label].label,
                 }
                 for r in label_map.relationships.values()
             ],
         }
     )
+
+
+class ImputeRequest(BaseModel):
+    nodes: list[dict]  # [{label: str, id: str}, ...]
+
+
+@router.post("/data/impute-relationships")
+async def impute_relationships(request: Request, body: ImputeRequest) -> JSONResponse:
+    """Generate and execute all relationship queries for a set of visible graph nodes.
+
+    Accepts the visible node set, uses label_map to determine pk columns and known
+    schema relationships, executes one query per relationship pair, and returns
+    merged nodes+edges in the standard cypher response format.
+    """
+    from provisa.api.app import state
+    from provisa.cypher.assembler import assemble_rows, to_serializable
+    from provisa.cypher.parser import parse_cypher
+
+    role_id = _resolve_role_id(request, state)
+    ctx = state.contexts.get(role_id)
+    if ctx is None:
+        return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
+
+    label_map = _build_label_map(ctx, role_id, state)
+
+    # Group ids by canonical label
+    by_label: dict[str, list[str]] = {}
+    for node in body.nodes:
+        lbl = str(node.get("label", ""))
+        nid = str(node.get("id", ""))
+        if lbl and nid:
+            by_label.setdefault(lbl, []).append(nid)
+
+    visible_labels = set(by_label.keys())
+
+    # Build queries for every relationship pair where both endpoints are visible
+    queries: list[str] = []
+    for rel in label_map.relationships.values():
+        src_label = label_map.nodes[rel.source_label].label
+        tgt_label = label_map.nodes[rel.target_label].label
+        if src_label not in visible_labels or tgt_label not in visible_labels:
+            continue
+        src_nm = label_map.nodes[rel.source_label]
+        tgt_nm = label_map.nodes[rel.target_label]
+        src_pk = _cql_prop(src_nm.id_column)
+        tgt_pk = _cql_prop(tgt_nm.id_column)
+
+        def _fmt(v: str) -> str:
+            try:
+                int(v)
+                return v
+            except ValueError:
+                return f'"{v}"'
+
+        src_ids = ", ".join(_fmt(i) for i in by_label[src_label])
+        tgt_ids = ", ".join(_fmt(i) for i in by_label[tgt_label])
+        queries.append(
+            f"MATCH (a:{src_label})-[r:{rel.rel_type}]->(b:{tgt_label})"
+            f" WHERE a.{src_pk} IN [{src_ids}] AND b.{tgt_pk} IN [{tgt_ids}]"
+            f" RETURN a, r, b"
+        )
+
+    if not queries:
+        return JSONResponse(content={"columns": [], "rows": []})
+
+    all_nodes: dict[str, Any] = {}
+    all_edges: dict[str, Any] = {}
+    for cypher_query in queries:
+        ast = parse_cypher(cypher_query)
+        rows, graph_vars = await _execute_call_body(ast, label_map, {}, state, ctx, role_id)
+        assembled = assemble_rows(rows, graph_vars)
+        for row in assembled:
+            for val in row.values():
+                ser = to_serializable(val)
+                if isinstance(ser, dict):
+                    if "identity" in ser:
+                        all_edges[ser["identity"]] = ser
+                    elif "label" in ser:
+                        key = f"{ser['label']}:{ser['id']}"
+                        all_nodes[key] = ser
+
+    merged_rows = list(all_nodes.values()) + list(all_edges.values())
+    return JSONResponse(content={"columns": ["node"], "rows": [{"node": r} for r in merged_rows]})
 
 
 def _resolve_role_id(request: Request, state: AppState) -> str:
@@ -558,36 +666,21 @@ def _build_label_map(ctx: CompilationContext, role_id: str, state: AppState) -> 
 
 
 def _lookup_api_endpoint(state: AppState, table_name: str):
-    """Look up an API endpoint by table name, tolerating camelCase/snake_case mismatch.
-
-    Physical SQL uses tables.table_name (may be snake_case after compiler normalization).
-    state.api_endpoints is keyed by api_endpoints.table_name (raw operationId, may be camelCase).
-    Try exact match first, then snake_case conversion of the key, then camelCase conversion.
-    """
-    from provisa.compiler.naming import to_snake_case
-
+    """Look up an API endpoint by table name."""
     ep_map: dict = getattr(state, "api_endpoints", {})
-    ep = ep_map.get(table_name)
-    if ep is not None:
-        return ep
-    # Try matching keys by comparing their snake_case forms
-    snake_tn = to_snake_case(table_name)
-    for key, val in ep_map.items():
-        if to_snake_case(key) == snake_tn:
-            return val
-    return None
+    return ep_map.get(table_name)
 
 
 def _lookup_gql_remote_table(state: AppState, table_name: str) -> dict | None:
-    """Look up graphql_remote source info by physical table name."""
+    """Look up graphql_remote source info by SQL table name (snake_case)."""
     for reg in getattr(state, "graphql_remote_sources", {}).values():
         for t in reg.get("tables", []):
-            if t["name"] == table_name or t.get("field_name") == table_name:
+            if t["sql_name"] == table_name:
                 return {
                     "source_id": reg["source_id"],
                     "url": reg["url"],
                     "auth": reg.get("auth"),
-                    "field_name": t["field_name"],
+                    "field_name": t.get("field_name", t["name"]),
                     "columns": t.get("columns", []),
                     "required_args": t.get("required_args", []),
                     "cache_ttl": reg.get("cache_ttl", 300),
@@ -753,6 +846,7 @@ async def _execute_with_gql_remote(
     from provisa.executor.trino import execute_trino
     from provisa.transpiler.transpile import transpile_to_trino
     from provisa.compiler.nf_extractor import find_api_table_names
+    from provisa.compiler.naming import apply_sql_name as _apply_sql_name
 
     @dataclass
     class _Col:
@@ -803,11 +897,13 @@ async def _execute_with_gql_remote(
                 if fetch_rows is not None:
                     col_objs = [
                         _Col(
-                            name=c["name"],
+                            name=_apply_sql_name(c["name"]),
                             type=_GQL_TO_CACHE_TYPE.get(c.get("type", "text"), "string"),
                         )
                         for c in _info_columns
                     ]
+                    _gql_to_sql = {c["name"]: _apply_sql_name(c["name"]) for c in _info_columns}
+                    fetch_rows = [{_gql_to_sql.get(k, k): v for k, v in row.items()} for row in fetch_rows]
                     create_and_insert(conn, cache_loc, cache_tbl, fetch_rows, col_objs)
                 return False
             finally:

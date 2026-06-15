@@ -41,6 +41,7 @@ export function GraphPage() {
   const [schemaRels, setSchemaRels] = useState<SchemaRel[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(240);
+  const [activeLabel, setActiveLabel] = useState<string | null>(null);
   const [colorOverrides, setColorOverrides] = useLocalStorage<Record<string, string>>(
     "provisa.graph.colorOverrides",
     {},
@@ -352,17 +353,11 @@ export function GraphPage() {
       const frame = framesRef.current.find((fr) => fr.id === frameId);
       if (!frame) return;
 
-      // The dropped label's virtual table name is the last segment (after the last colon)
-      const droppedTableName = compoundLabel.split(":").pop()!;
+      const droppedTableName = labelToTableLabel[compoundLabel] ?? compoundLabel;
 
-      // Find a relationship between any node currently in the frame and the dropped table.
-      // Match by virtual table name (alias takes precedence over raw table name).
-      const frameNodeLabels = new Set<string>();
-      frame.nodes.forEach((node) => {
-        node.label.split(":").forEach((l) => frameNodeLabels.add(l));
-      });
-
-      // Build a map from node label → variable name by parsing MATCH clauses in the query
+      // Map each declared Cypher label → its query variable by parsing the MATCH
+      // clauses. Use the QUERY (not result nodes): an OPTIONAL MATCH branch that
+      // returned no rows still declares its label and must remain matchable.
       const varByLabel: Record<string, string> = {};
       for (const m of frame.query.matchAll(/\(\s*(\w+)\s*:([\w:]+)\s*\)/g)) {
         const [, varName, labels] = m;
@@ -371,23 +366,30 @@ export function GraphPage() {
         });
       }
 
-      // Find a rel where one side is a frame node and the other is the dropped table.
-      // DB table names use domain__table format; compare via canonical tableLabel().
-      let sourceVar: string;
+      // Find a relationship whose one endpoint is the dropped table and whose other
+      // endpoint is a label already declared in the query. Comparison is exact: the
+      // dropped label and dbTableLabel(table_name) are both produced by the same
+      // label-derivation function on registered_tables.table_name.
+      let sourceVar: string | undefined;
       let relAlias: string | null = null;
-      const rel = adminRels.find((r) => {
-        const srcTbl = dbTableLabel(r.sourceTableName);
-        const tgtTbl = dbTableLabel(r.targetTableName);
-        const srcMatch = frameNodeLabels.has(srcTbl) && tgtTbl === droppedTableName;
-        const tgtMatch = frameNodeLabels.has(tgtTbl) && srcTbl === droppedTableName;
-        return srcMatch || tgtMatch;
-      });
-      if (rel) {
-        const srcTbl = dbTableLabel(rel.sourceTableName);
-        const connectedLabel = frameNodeLabels.has(srcTbl) ? srcTbl : dbTableLabel(rel.targetTableName);
-        sourceVar = varByLabel[connectedLabel] ?? "n";
-        relAlias = rel.alias;
-      } else {
+      for (const r of adminRels) {
+        if (r.disableCypher) continue;
+        const srcLabel = dbTableLabel(r.sourceTableName);
+        const tgtLabel = r.targetTableName ? dbTableLabel(r.targetTableName) : null;
+        // dropped node is the relationship target; existing query node is the source
+        if (tgtLabel === droppedTableName && varByLabel[srcLabel]) {
+          sourceVar = varByLabel[srcLabel];
+          relAlias = (r.alias ?? r.computedCypherAlias ?? "").toUpperCase() || null;
+          break;
+        }
+        // dropped node is the relationship source; existing query node is the target
+        if (srcLabel === droppedTableName && tgtLabel && varByLabel[tgtLabel]) {
+          sourceVar = varByLabel[tgtLabel];
+          relAlias = (r.alias ?? r.computedCypherAlias ?? "").toUpperCase() || null;
+          break;
+        }
+      }
+      if (!sourceVar) {
         // No known relationship — fall back to first MATCH variable
         const nodeVarMatch = frame.query.match(/\bMATCH\s*\(\s*(\w+)/i);
         sourceVar = nodeVarMatch?.[1] ?? "n";
@@ -474,7 +476,6 @@ export function GraphPage() {
     [adminRels, upsertRelationship, refetchRelationships],
   );
 
-  // Build pkMap: compound label (e.g. "SalesAnalytics:Orders") → pk_columns
   const SYSTEM_DOMAINS = new Set(["meta", "ops"]);
   const visibleNodeLabels =
     checkedDomains.size === 0
@@ -483,14 +484,16 @@ export function GraphPage() {
           (n) => !n.domainId || checkedDomains.has(n.domainId) || SYSTEM_DOMAINS.has(n.domainId),
         );
 
-  // Falls back to idColumn (heuristically resolved) when no user-designated PKs
+  // pkMap covers ALL schema nodes — pk lookup is independent of the domain visibility filter
   const pkMap: Record<string, string[]> = {};
-  for (const node of visibleNodeLabels) {
+  const labelToTableLabel: Record<string, string> = {};
+  for (const node of schemaNodeLabels) {
     const compoundLabel = node.domainLabel
       ? `${node.domainLabel}:${node.tableLabel}`
       : node.tableLabel;
     pkMap[compoundLabel] =
-      node.pkColumns.length > 0 ? node.pkColumns : node.idColumn ? [node.idColumn] : [];
+      node.pkColumns.length > 0 ? node.pkColumns : [node.idColumn];
+    labelToTableLabel[compoundLabel] = node.tableLabel;
   }
 
   const cypherSchema: CypherSchema = {
@@ -585,6 +588,7 @@ export function GraphPage() {
         onRelLineChange={handleRelLineChange}
         width={sidebarWidth}
         onWidthChange={setSidebarWidth}
+        highlightedLabel={activeLabel}
       />
 
       <div className="graph-content">
@@ -622,10 +626,11 @@ export function GraphPage() {
               relLineOverrides={relLineOverrides}
               onColorChange={handleColorChange}
               pkMap={pkMap}
+              labelToTableLabel={labelToTableLabel}
               relationships={adminRels}
-              schemaRels={schemaRels}
               autoImpute={autoImpute}
               onSaveEdgeAlias={handleSaveEdgeAlias}
+              onSelectedLabelChange={setActiveLabel}
             />
           ))}
         </div>

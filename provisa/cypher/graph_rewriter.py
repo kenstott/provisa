@@ -106,7 +106,7 @@ def _build_row_cast(tbl: str, node_meta: NodeMapping) -> exp.Expression:  # pyri
         exp.JSONKeyValue(this=exp.Literal.string("id"), expression=id_col),
         exp.JSONKeyValue(this=exp.Literal.string("label"), expression=exp.Literal.string(nm.label)),
     ]
-    reserved = {nm.id_column, "id", "label"}
+    reserved = {"id", "label"}
     for prop_key, col_name in nm.properties.items():
         if col_name in reserved:
             continue

@@ -38,6 +38,7 @@ interface SidebarProps {
   onRelLineChange: (type: string, override: RelLineOverride) => void;
   width: number;
   onWidthChange: (w: number) => void;
+  highlightedLabel?: string | null;
 }
 
 export function Sidebar({
@@ -59,6 +60,7 @@ export function Sidebar({
   onRelLineChange,
   width,
   onWidthChange,
+  highlightedLabel,
 }: SidebarProps) {
   const [section, setSection] = useState<"db" | "history">("db");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -149,7 +151,7 @@ export function Sidebar({
                         return (
                           <div key={lbl} className="graph-label-item">
                             <span
-                              className="graph-label-pill"
+                              className={`graph-label-pill${highlightedLabel === lbl ? " graph-label-pill--highlight" : ""}`}
                               style={{ background: color }}
                               onClick={() => onDomainClick(lbl)}
                               onContextMenu={(e) => {
@@ -208,7 +210,7 @@ export function Sidebar({
                         return (
                           <div key={compoundLabel} className="graph-label-item">
                             <span
-                              className="graph-label-pill"
+                              className={`graph-label-pill${highlightedLabel === compoundLabel ? " graph-label-pill--highlight" : ""}`}
                               style={{ background: color }}
                               draggable
                               onDragStart={(e) =>

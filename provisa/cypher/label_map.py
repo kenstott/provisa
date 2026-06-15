@@ -19,6 +19,12 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from provisa.compiler.naming import (
+    apply_cql_label as _apply_cql_label,
+    apply_cql_property as _apply_cql_property,
+    apply_sql_name as _apply_sql_name_mod,
+)
+
 if TYPE_CHECKING:
     from provisa.compiler.sql_gen import CompilationContext
 
@@ -267,11 +273,15 @@ def _build_node_mappings(
         col_list = ctx_typed.aggregate_columns.get(table_meta.table_id, [])
         col_names = [c for c, _ in col_list]
         user_pks = ctx_typed.pk_columns.get(table_meta.table_id, [])
-        id_col = _resolve_id_column(table_meta.type_name, col_names, target_pk, user_pks)
-        props: dict[str, str] = {_to_camel(c): c for c in col_names}
+        _phys_id = _resolve_id_column(table_meta.type_name, col_names, target_pk, user_pks)
+        id_col = ctx_typed.physical_to_sql.get((table_meta.table_id, _phys_id), _phys_id)
+        props: dict[str, str] = {
+            _apply_cql_property(c): ctx_typed.physical_to_sql.get((table_meta.table_id, c), c)
+            for c in col_names
+        }
 
         domain_id = getattr(table_meta, "domain_id", None) or None
-        domain_label = _pascal(domain_id) if domain_id else None
+        domain_label = _apply_cql_label(domain_id) if domain_id else None
         _, table_label = _split_cypher_labels(field_name)
         cypher_label = f"{domain_label}:{table_label}" if domain_label else table_label
         logical_table = _strip_domain_prefix(table_meta.table_name, domain_id)
@@ -340,12 +350,12 @@ def _make_traversal_node(
     source_catalogs: dict[str, str] | None,
 ) -> NodeMapping:
     """Build a traversal_only NodeMapping for a cross-domain target table."""
-    from provisa.compiler.naming import source_to_catalog as _s2c
+    from provisa.compiler.naming import source_to_catalog as _s2c, apply_sql_name as _apply_sql_name
 
     tgt_domain_id = tgt_table.get("domain_id") or None
-    tgt_domain_label = _pascal(tgt_domain_id) if tgt_domain_id else None
+    tgt_domain_label = _apply_cql_label(tgt_domain_id) if tgt_domain_id else None
     tgt_raw_name = tgt_table["table_name"]
-    tgt_table_label = _pascal(_strip_domain_prefix(tgt_raw_name, tgt_domain_id))
+    tgt_table_label = _apply_cql_label(_strip_domain_prefix(tgt_raw_name, tgt_domain_id))
     tgt_logical = _strip_domain_prefix(tgt_raw_name, tgt_domain_id)
     tgt_type_name = (
         f"{tgt_domain_label}_{tgt_table_label}" if tgt_domain_label else tgt_table_label
@@ -354,8 +364,9 @@ def _make_traversal_node(
         f"{tgt_domain_label}:{tgt_table_label}" if tgt_domain_label else tgt_table_label
     )
     col_names = [c.column_name for c in col_metas]
-    props: dict[str, str] = {_to_camel(c): c for c in col_names}
-    id_col = _resolve_id_column(tgt_type_name, col_names, {}, [])
+    props: dict[str, str] = {_apply_cql_property(c): _apply_sql_name(c) for c in col_names}
+    _phys_id = _resolve_id_column(tgt_type_name, col_names, {}, [])
+    id_col = _apply_sql_name(_phys_id)
     tgt_source_id = tgt_table.get("source_id") or ""
     tgt_schema = tgt_table.get("schema_name") or ""
     tgt_catalog = (source_catalogs or {}).get(tgt_source_id) or (
@@ -411,9 +422,9 @@ def _add_cross_domain_nodes(
             continue
 
         tgt_domain_id = tgt_table.get("domain_id") or None
-        tgt_domain_label = _pascal(tgt_domain_id) if tgt_domain_id else None
+        tgt_domain_label = _apply_cql_label(tgt_domain_id) if tgt_domain_id else None
         tgt_raw_name = tgt_table["table_name"]
-        tgt_table_label = _pascal(_strip_domain_prefix(tgt_raw_name, tgt_domain_id))
+        tgt_table_label = _apply_cql_label(_strip_domain_prefix(tgt_raw_name, tgt_domain_id))
         tgt_type_name = (
             f"{tgt_domain_label}_{tgt_table_label}" if tgt_domain_label else tgt_table_label
         )
@@ -512,22 +523,8 @@ def _to_rel_type(field_name: str, cardinality: str | None = None) -> str:
     one-to-many / unknown → HAS_ prefix (e.g. tableColumns → HAS_TABLE_COLUMNS, _queries → HAS_QUERIES)
     """
     s = re.sub(r"([a-z])([A-Z])", r"\1_\2", field_name).upper().lstrip("_")
-    prefix = "IS_" if cardinality == "many-to-one" else "HAS_"
+    prefix = "IS_" if cardinality in ("many-to-one", "one-to-one") else "HAS_"
     return f"{prefix}{s}"
-
-
-def _pascal(s: str) -> str:
-    parts = [p for p in re.split(r"[_\-]+", s) if p]
-    if len(parts) == 1:
-        # No separators: uppercase first letter only, preserving existing casing.
-        return (s[0].upper() + s[1:]) if s else s
-    return "".join(p.capitalize() for p in parts)
-
-
-def _to_camel(s: str) -> str:
-    """Convert snake_case column name to camelCase Cypher property name."""
-    pascal = _pascal(s)
-    return pascal[0].lower() + pascal[1:] if pascal else s
 
 
 def _domain_initials(domain_id: str) -> str:
@@ -562,7 +559,7 @@ def _table_label_from_table_name(table_name: str, domain_id: str | None) -> str:
         prefix = _domain_initials(domain_id) + "_"
         if table_name.lower().startswith(prefix):
             table_name = table_name[len(prefix) :]
-    return _pascal(table_name)
+    return _apply_cql_label(table_name)
 
 
 def _split_cypher_labels(field_name: str) -> tuple[str | None, str]:
@@ -573,5 +570,5 @@ def _split_cypher_labels(field_name: str) -> tuple[str | None, str]:
     """
     if "__" in field_name:
         domain_part, table_part = field_name.split("__", 1)
-        return _pascal(domain_part), _pascal(table_part)
-    return None, _pascal(field_name)
+        return _apply_cql_label(domain_part), _apply_cql_label(table_part)
+    return None, _apply_cql_label(field_name)

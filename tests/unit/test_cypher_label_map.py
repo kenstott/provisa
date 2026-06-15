@@ -126,6 +126,7 @@ def _make_ctx(owned_table_id: int = 1):
         aggregate_columns={owned_table_id: [("id", "integer"), ("amount", "float")]},
         pk_columns={},
         native_filter_columns={},
+        physical_to_sql={},
     )
     return ctx
 
