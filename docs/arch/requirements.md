@@ -665,3 +665,19 @@ These must never be conflated. `alias` must not appear as a GraphQL field name f
 - **REQ-468** (2026-06-11): Transpilation is a compiler responsibility, never a transport responsibility. Regardless of transport (pgwire, Arrow Flight, REST, GraphQL), all incoming queries go through a single shared pipeline: name resolution (front-end SQL/GQL/CQL names → physical), governance enforcement, dialect transpilation, and routing. Transports receive the output of this pipeline — they do not implement any part of it. No transport performs its own name rewriting, dialect conversion, or governance logic.
 
 - **REQ-469** (2026-06-11): Catalog preparation is centralized per query language. SQL catalog (pg_catalog served via pgwire/DBeaver), GraphQL SDL (schema introspection), and Cypher catalog (Nodes/Relationships schema) are each the responsibility of a single dedicated module. No transport implements catalog logic directly — transports consume the output of the centralized catalog module for their language.
+
+- **REQ-470** (2026-06-15): Heuristic name matching is never permitted. All name conversions and lookups must be deterministic: the canonical form (e.g. `sql_name`) is computed once at registration time and stored. Lookup code uses exact equality on the pre-computed canonical form — no runtime normalization, no multi-predicate fallback chains, no `to_snake_case` inline at call sites. Any code path that computes a canonical form at lookup time rather than at registration time is a violation. Extends REQ-465, REQ-466, REQ-467.
+
+- **REQ-471** (2026-06-15): `naming.use_domains` feature flag (bool, default false) gates domain-aware naming. When use_domains=false, domain_id isolation is disabled: every registered table/function/webhook is stored with domain_id = default_domain (a real stored value, not display alias), and domain never appears in GraphQL type names, Cypher labels, or UI.
+
+- **REQ-472** (2026-06-15): `naming.default_domain` configuration (str, default "default", must be non-empty valid identifier) sets the fallback domain for tables/functions/webhooks when use_domains=false. Falsy domain_id values ("" / None) coerce to default_domain at registration time.
+
+- **REQ-473** (2026-06-15): Registering any table/function/webhook with an explicit non-default, non-empty domain_id while use_domains=false is a hard error — no silent coercion or fallback. Error message names the offending registration and states the policy violation.
+
+- **REQ-474** (2026-06-15): use_domains=false with a non-empty `domains:` config list is a hard error (mutually exclusive policy). Error surfaces at startup during config validation.
+
+- **REQ-475** (2026-06-15): `naming.default_domain` must be non-empty. Empty default_domain is rejected at startup config validation with a hard error.
+
+- **REQ-476** (2026-06-15): use_domains and default_domain are runtime-editable via settings_router and trigger a full rebuild (_load_and_build). On reload, existing registered_tables are validated: dynamically-registered tables whose domain_id violates the new policy raise a hard error naming the offenders. No silent rewrite; offenders must be re-registered. This is an accepted consequential decision.
+
+- **REQ-477** (2026-06-15): When use_domains=false, domain_prefix is forced off (internally overridden to false) and domain-based access gating is bypassed entirely.
