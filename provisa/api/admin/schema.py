@@ -594,7 +594,7 @@ class Query:
     async def domains(self) -> list[DomainType]:
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            rows = await conn.fetch("SELECT * FROM domains ORDER BY id")
+            rows = await conn.fetch("SELECT * FROM domains WHERE id != '' ORDER BY id")
             return [_domain_from_row(r) for r in rows]
 
     @strawberry.field
@@ -1324,6 +1324,12 @@ def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
 
 @strawberry.type
 class Mutation:
+    @strawberry.mutation
+    async def rebuild_schemas(self) -> MutationResult:
+        """Rebuild in-memory schema from DB state. Useful after external DB changes."""
+        await _rebuild_schemas()
+        return MutationResult(success=True, message="Schemas rebuilt")
+
     @strawberry.mutation
     async def create_source(
         self, info: StrawberryInfo, input: SourceInput
