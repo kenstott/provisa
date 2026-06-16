@@ -59,26 +59,27 @@ async def _ensure_pets_registered(trino_conn):
     )
     inserted_domain = dom_result.get("data", {}).get("createDomain", {}).get("success", False)
 
-    tbl_result = _admin_gql("""
-        mutation {
-            registerTable(input: {
-                sourceId: "pet-store-pg", domainId: "pet-store",
-                schemaName: "pet_store", tableName: "pets",
-                columns: [
-                    {name: "id", isPrimaryKey: true, visibleTo: ["admin"], writableBy: [], unmaskedTo: []},
-                    {name: "name", visibleTo: ["admin"], writableBy: [], unmaskedTo: []},
-                    {name: "species", visibleTo: ["admin"], writableBy: [], unmaskedTo: []}
-                ]
-            }) { success message }
-        }
-    """)
-    tbl_msg = tbl_result.get("data", {}).get("registerTable", {}).get("message", "")
     table_id: int | None = None
-    if "id=" in tbl_msg:
-        try:
-            table_id = int(tbl_msg.split("id=")[1].rstrip(")"))
-        except (ValueError, IndexError):
-            pass
+    if inserted_source:
+        tbl_result = _admin_gql("""
+            mutation {
+                registerTable(input: {
+                    sourceId: "pet-store-pg", domainId: "pet-store",
+                    schemaName: "pet_store", tableName: "pets",
+                    columns: [
+                        {name: "id", isPrimaryKey: true, visibleTo: ["admin"], writableBy: [], unmaskedTo: []},
+                        {name: "name", visibleTo: ["admin"], writableBy: [], unmaskedTo: []},
+                        {name: "species", visibleTo: ["admin"], writableBy: [], unmaskedTo: []}
+                    ]
+                }) { success message }
+            }
+        """)
+        tbl_msg = tbl_result.get("data", {}).get("registerTable", {}).get("message", "")
+        if "id=" in tbl_msg:
+            try:
+                table_id = int(tbl_msg.split("id=")[1].rstrip(")"))
+            except (ValueError, IndexError):
+                pass
 
     yield
 
