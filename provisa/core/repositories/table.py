@@ -14,11 +14,13 @@ import json
 
 import asyncpg
 
+from provisa.core import domain_policy
 from provisa.core.models import Table
 
 
 async def upsert(conn: asyncpg.Connection, table: Table) -> int | None:
     """Upsert a registered table and its columns. Returns the table row id."""
+    domain_id = domain_policy.resolve_domain_id(table.domain_id)
     table_id = await conn.fetchval(
         """
         INSERT INTO registered_tables
@@ -35,7 +37,7 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int | None:
         RETURNING id
         """,
         table.source_id,
-        table.domain_id,
+        domain_id,
         table.schema_name,
         table.table_name,
         getattr(table, "alias", None),

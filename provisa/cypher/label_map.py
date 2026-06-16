@@ -24,6 +24,7 @@ from provisa.compiler.naming import (
     apply_cql_property as _apply_cql_property,
     apply_sql_name as _apply_sql_name_mod,
 )
+from provisa.core import domain_policy
 
 if TYPE_CHECKING:
     from provisa.compiler.sql_gen import CompilationContext
@@ -281,6 +282,9 @@ def _build_node_mappings(
         }
 
         domain_id = getattr(table_meta, "domain_id", None) or None
+        if domain_policy.single_domain():
+            # Single-domain mode: the default domain is implicit — never label with it.
+            domain_id = None
         domain_label = _apply_cql_label(domain_id) if domain_id else None
         _, table_label = _split_cypher_labels(field_name)
         cypher_label = f"{domain_label}:{table_label}" if domain_label else table_label

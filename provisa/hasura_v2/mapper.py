@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from provisa.core import domain_policy
 from provisa.core.models import (
     AuthConfig,
     Cardinality,
@@ -253,7 +254,7 @@ def _map_table(
 
     table = Table(
         source_id=source_name,
-        domain_id="default",
+        domain_id=domain_policy.import_default(),
         schema_name=ht.schema_name,
         table_name=ht.name,
         columns=columns,
@@ -313,7 +314,7 @@ def _map_table(
             function_name=cf.function_name,
             returns=tid,
             kind="query",
-            domain_id="default",
+            domain_id=domain_policy.import_default(),
         ))
 
     # Event triggers -> warnings
@@ -351,7 +352,7 @@ def _map_action(
             timeout_ms=5000,
             arguments=args,
             visible_to=visible_to,
-            domain_id="default",
+            domain_id=domain_policy.import_default(),
             kind=action_kind,
         )
 
@@ -368,7 +369,7 @@ def _map_action(
         function_name=action.name,
         returns="void",
         visible_to=visible_to,
-        domain_id="default",
+        domain_id=domain_policy.import_default(),
         kind=action_kind,
     )
 
@@ -450,7 +451,7 @@ def convert_metadata(
                 schema_name=hf.schema_name,
                 function_name=hf.name,
                 returns="void",
-                domain_id="default",
+                domain_id=domain_policy.import_default(),
             ))
 
     # Actions -> Functions or Webhooks

@@ -1593,6 +1593,9 @@ def _resolve_naming_config(raw_config: dict | None) -> tuple[bool, dict | None]:
                     state.global_gql_naming_convention = raw_config["naming"]["convention"]
                 if raw_config.get("naming", {}).get("sql_convention"):
                     state.global_sql_naming_convention = raw_config["naming"]["sql_convention"]
+    # Single-domain mode: domain prefixing is meaningless with one domain — force it off.
+    if raw_config and raw_config.get("naming", {}).get("use_domains") is False:
+        domain_prefix = False
     _naming.configure(
         gql=state.global_gql_naming_convention,
         sql=state.global_sql_naming_convention,

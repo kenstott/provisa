@@ -13,7 +13,14 @@
 import re
 from enum import Enum
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 class SourceType(str, Enum):
@@ -222,6 +229,11 @@ class NamingConfig(BaseModel):
     sql_convention: str = "snake"
     rules: list[NamingRule] = Field(default_factory=list)
     relay_pagination: bool = False  # opt-in: generate _connection fields + Edge/PageInfo types
+    domain_prefix: bool = False  # prepend domain initials to GraphQL names (namespaced mode)
+    # Tri-state domain feature. None = legacy (inert); False = single stored default_domain,
+    # domain hidden from names/UI/access; True = namespaced, domain_id required.
+    use_domains: bool | None = None
+    default_domain: str = "default"  # stored domain_id when use_domains is False (must be non-empty)
 
     @field_validator("convention", "sql_convention")
     @classmethod
@@ -233,6 +245,18 @@ class NamingConfig(BaseModel):
                 f"Invalid naming convention {v!r}. Valid options: {sorted(VALID_CONVENTIONS)}"
             )
         return v
+
+    @model_validator(mode="after")
+    def _validate_default_domain(self) -> "NamingConfig":
+        # Non-empty/identifier rule only applies when single-domain mode is engaged.
+        if self.use_domains is False:
+            if not self.default_domain:
+                raise ValueError("naming.default_domain must be non-empty when use_domains=false")
+            if not re.match(r"^[A-Za-z_][A-Za-z0-9_-]*$", self.default_domain):
+                raise ValueError(
+                    f"naming.default_domain {self.default_domain!r} is not a valid identifier"
+                )
+        return self
 
 
 class ObjectField(BaseModel):
@@ -666,3 +690,34 @@ class ProvisaConfig(BaseModel):
     ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)
     govdata_sources: list[GovDataSource] = Field(default_factory=list)
     govdata_subscriptions: list[GovDataSubscription] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validate_domain_policy(self) -> "ProvisaConfig":
+        # Inert when the feature is not engaged (use_domains absent).
+        if self.naming.use_domains is None:
+            return self
+        if self.naming.use_domains is False:
+            if self.domains:
+                raise ValueError(
+                    "naming.use_domains=false is mutually exclusive with a non-empty `domains:` list"
+                )
+            allowed = self.naming.default_domain
+            offenders: list[str] = []
+            for t in self.tables:
+                if t.domain_id and t.domain_id != allowed:
+                    offenders.append(f"table {t.source_id}.{t.table_name}={t.domain_id!r}")
+            for fn in self.functions:
+                if fn.domain_id and fn.domain_id != allowed:
+                    offenders.append(f"function {fn.name}={fn.domain_id!r}")
+            for wh in self.webhooks:
+                if wh.domain_id and wh.domain_id != allowed:
+                    offenders.append(f"webhook {wh.name}={wh.domain_id!r}")
+            for gd in self.govdata_sources:
+                if gd.domain_id and gd.domain_id != allowed:
+                    offenders.append(f"govdata_source {gd.id}={gd.domain_id!r}")
+            if offenders:
+                raise ValueError(
+                    f"naming.use_domains=false permits only domain {allowed!r}; offending: "
+                    + ", ".join(offenders)
+                )
+        return self

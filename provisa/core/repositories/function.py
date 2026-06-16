@@ -16,6 +16,7 @@ import json
 
 import asyncpg
 
+from provisa.core import domain_policy
 from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
 
 
@@ -55,7 +56,7 @@ async def upsert_function(
         json.dumps([a.model_dump() for a in func.arguments]),
         func.visible_to,
         func.writable_by,
-        func.domain_id,
+        domain_policy.resolve_domain_id(func.domain_id),
         func.description,
         func.kind,
         return_schema,
@@ -123,7 +124,7 @@ async def upsert_webhook(conn: asyncpg.Connection, wh: Webhook) -> int | None:
         json.dumps([t.model_dump() for t in wh.inline_return_type]),
         json.dumps([a.model_dump() for a in wh.arguments]),
         wh.visible_to,
-        wh.domain_id,
+        domain_policy.resolve_domain_id(wh.domain_id),
         wh.description,
         wh.kind,
     )

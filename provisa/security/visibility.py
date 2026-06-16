@@ -16,11 +16,14 @@ This module formalizes what schema_gen already does and adds validation.
 
 from __future__ import annotations
 
+from provisa.core import domain_policy
+
 
 def visible_tables(tables: list[dict], role: dict) -> list[dict]:
     """Filter tables to those visible to the role based on domain access."""
     accessible = set(role["domain_access"])
-    all_access = "*" in accessible
+    # Single-domain mode: domain is not a gate — only column visibility applies.
+    all_access = "*" in accessible or domain_policy.single_domain()
 
     result = []
     for table in tables:

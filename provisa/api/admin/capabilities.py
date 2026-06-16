@@ -82,6 +82,10 @@ def require_capability(info: "strawberry.types.Info", capability: str, domain_id
         raise PermissionError(f"Missing capability: {capability!r}")
 
     if domain_id is not None:
+        from provisa.core import domain_policy
+
+        if domain_policy.single_domain():
+            return  # single-domain mode: domain is not a gate
         domains = _domain_access(identity, state)
         if "*" not in domains and domain_id not in domains:
             raise PermissionError(f"No access to domain {domain_id!r}")

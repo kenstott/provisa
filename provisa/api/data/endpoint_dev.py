@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from provisa.cypher.label_map import CypherLabelMap
 
 from provisa.api.admin._dev_shared import detect_target
+from provisa.core import domain_policy
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import qualify_with_catalogs, rewrite_semantic_to_physical
 from provisa.security.rights import Capability, InsufficientRightsError, check_capability
@@ -485,14 +486,20 @@ def _collect_nl_user_tables(ctx) -> tuple[list, dict, dict, "CypherLabelMap"]:
             all_tables.append(jm.target)
 
     _lm = _CLM.from_schema(ctx)
-    _user_domains = {
-        d for d in (n.domain_id for n in _lm.nodes.values()) if d not in (None, "ops", "meta")
-    }
-    _user_nodes = {
-        tn: nm
-        for tn, nm in _lm.nodes.items()
-        if nm.domain_id in _user_domains and not nm.traversal_only
-    }
+    if domain_policy.single_domain():
+        # Single-domain mode: nodes carry no domain label — include all non-traversal nodes.
+        _user_nodes = {
+            tn: nm for tn, nm in _lm.nodes.items() if not nm.traversal_only
+        }
+    else:
+        _user_domains = {
+            d for d in (n.domain_id for n in _lm.nodes.values()) if d not in (None, "ops", "meta")
+        }
+        _user_nodes = {
+            tn: nm
+            for tn, nm in _lm.nodes.items()
+            if nm.domain_id in _user_domains and not nm.traversal_only
+        }
     _table_name_to_type: dict[str, str] = {nm.table_name: tn for tn, nm in _user_nodes.items()}
     return all_tables, _user_nodes, _table_name_to_type, _lm
 

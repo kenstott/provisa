@@ -18,7 +18,8 @@ import asyncpg
 import trino
 import yaml
 
-from provisa.core.models import ProvisaConfig, Source, Table
+from provisa.core.models import Domain, ProvisaConfig, Source, Table
+from provisa.core import domain_policy
 from provisa.core.secrets import resolve_secrets
 from provisa.openapi.mapper import OpenAPIQuery
 from provisa.core.repositories import (
@@ -146,7 +147,6 @@ def parse_config_dict(data: dict) -> ProvisaConfig:
 
 
 _SYSTEM_SOURCE_IDS = ["provisa-admin", "provisa-otel", "__provisa__"]
-_SYSTEM_DOMAIN_IDS = ["", "meta", "ops"]
 
 _OAPI_TRINO = {
     "string": "varchar",
@@ -162,7 +162,7 @@ _OAPI_TRINO = {
 async def _replace_mode_cleanup(conn: asyncpg.Connection, config: ProvisaConfig) -> None:
     """Delete all rows not present in the new config (full replace semantics)."""
     new_source_ids = list({src.id for src in config.sources} | set(_SYSTEM_SOURCE_IDS))
-    new_domain_ids = list({d.id for d in config.domains} | set(_SYSTEM_DOMAIN_IDS))
+    new_domain_ids = list({d.id for d in config.domains} | set(domain_policy.system_domain_ids()))
     new_role_ids = [r.id for r in config.roles]
     keep_sources = new_source_ids if new_source_ids else _SYSTEM_SOURCE_IDS
     await conn.execute(
@@ -173,7 +173,7 @@ async def _replace_mode_cleanup(conn: asyncpg.Connection, config: ProvisaConfig)
         "DELETE FROM sources WHERE id != ALL($1::text[])",
         keep_sources,
     )
-    keep_domains = new_domain_ids if new_domain_ids else _SYSTEM_DOMAIN_IDS
+    keep_domains = new_domain_ids if new_domain_ids else domain_policy.system_domain_ids()
     await conn.execute(
         "DELETE FROM domains WHERE id != ALL($1::text[])",
         keep_domains,
@@ -594,6 +594,9 @@ async def _load_config_in_txn(
     When replace=True, all existing sources/tables/domains/roles/relationships
     not present in the new config are deleted first (full replace semantics).
     """
+    # Resolve domain policy before any registration so repos/compilers read one source of truth.
+    domain_policy.configure(config.naming.use_domains, config.naming.default_domain)
+
     # Serialize concurrent config loads to prevent deadlocks when multiple
     # processes (e.g. parallel test app lifespans) upsert the same rows.
     await conn.execute("SELECT pg_advisory_xact_lock(7261748190)")
@@ -605,6 +608,9 @@ async def _load_config_in_txn(
     await _upsert_sources(conn, trino_conn, config)
 
     # 2. Domains
+    if domain_policy.single_domain():
+        # Seed the implicit single-domain bucket so registered_tables FK resolves.
+        await domain_repo.upsert(conn, Domain(id=config.naming.default_domain))
     for dom in config.domains:
         await domain_repo.upsert(conn, dom)
 
@@ -636,6 +642,31 @@ async def _load_config_in_txn(
     # 9. Tracked webhooks
     for wh in config.webhooks:
         await function_repo.upsert_webhook(conn, wh)
+
+    # 10. Policy sweep: dynamically-registered rows (openapi/hasura/graphql_remote) are not
+    # in this config file, so the model validator can't catch them. In single-domain mode any
+    # surviving row with a foreign domain_id is a hard error — re-register the offending source.
+    if domain_policy.single_domain():
+        await _validate_existing_domains(conn, config.naming.default_domain)
+
+
+async def _validate_existing_domains(conn: asyncpg.Connection, default_domain: str) -> None:
+    rows = await conn.fetch(
+        """
+        SELECT source_id, schema_name, table_name, domain_id
+        FROM registered_tables
+        WHERE domain_id <> '' AND domain_id <> ALL($1::text[])
+        """,
+        [default_domain, "meta", "ops"],
+    )
+    if rows:
+        offenders = ", ".join(
+            f"{r['source_id']}.{r['schema_name']}.{r['table_name']}={r['domain_id']!r}" for r in rows
+        )
+        raise RuntimeError(
+            f"naming.use_domains=false permits only domain {default_domain!r}; "
+            f"re-register these sources: {offenders}"
+        )
 
 
 async def load_config(
