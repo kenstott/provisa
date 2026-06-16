@@ -313,10 +313,6 @@ async def _govern_and_route_compiled(
                             f"Table {_tbl2.name!r} requires filter(s) {_req2} — "
                             "add a WHERE clause with the required parameter(s)"
                         )
-                    raise ValueError(
-                        f"Table {_tbl2.name!r} references unknown catalog {_tbl2.catalog!r} — "
-                        "GQL remote fetch failed or source not loaded"
-                    )
         except ValueError:
             raise
         except Exception:
