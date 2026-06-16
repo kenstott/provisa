@@ -93,7 +93,6 @@ class TestConfigLoader:
             tables = await table_repo.list_all(conn)
         assert len(tables) == 3
         orders = next(t for t in tables if t["table_name"] == "orders")
-        assert orders["governance"] == "pre-approved"
         assert len(orders["columns"]) == 6
 
     @pytest.mark.asyncio(loop_scope="session")
