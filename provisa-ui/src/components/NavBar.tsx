@@ -95,7 +95,7 @@ function activeGroupId(pathname: string): string | null {
 export function NavBar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { domains, checkedDomains, toggleDomain } = useDomainFilter();
+  const { domains, checkedDomains, toggleDomain, domainsEnabled } = useDomainFilter();
   const { displayName, email, devMode } = useAuth();
   const [pinnedGroup, setPinnedGroup] = useState<string | null>(null);
   const [domainOpen, setDomainOpen] = useState(false);
@@ -195,7 +195,7 @@ export function NavBar() {
           })}
         </div>
         <div className="navbar-role">
-          {onTablesPage && domains.length > 0 && (
+          {domainsEnabled && onTablesPage && domains.length > 0 && (
             <div className="navbar-domain-wrapper" ref={domainRef}>
               <button className="navbar-domain-btn" onClick={() => setDomainOpen((o) => !o)}>
                 Domains ({checkedDomains.size}/{domains.length}) ▾

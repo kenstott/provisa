@@ -224,6 +224,7 @@ export function SourcesPage() {
   const [authType, setAuthType] = useState("none");
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const domainsEnabled = settings?.naming.use_domains !== false;
   const [discoverSourceId, setDiscoverSourceId] = useState<string | null>(null);
   const [discoverSourceType, setDiscoverSourceType] = useState<string | null>(null);
   const [mappingSourceId, setMappingSourceId] = useState<string | null>(null);
@@ -1855,14 +1856,16 @@ export function SourcesPage() {
               placeholder="inherit global"
             />
           </label>
-          <label>
-            Allowed Domains
-            <input
-              value={form.allowedDomains}
-              onChange={(e) => setForm({ ...form, allowedDomains: e.target.value })}
-              placeholder="comma-separated domain IDs, blank = unrestricted"
-            />
-          </label>
+          {domainsEnabled && (
+            <label>
+              Allowed Domains
+              <input
+                value={form.allowedDomains}
+                onChange={(e) => setForm({ ...form, allowedDomains: e.target.value })}
+                placeholder="comma-separated domain IDs, blank = unrestricted"
+              />
+            </label>
+          )}
         </>
       )}
     </>
@@ -2131,7 +2134,9 @@ export function SourcesPage() {
                                       : "unrestricted",
                                   ],
                                 ] as [string, string | number][]
-                              ).map(([k, v]) => (
+                              )
+                                .filter(([k]) => domainsEnabled || k !== "Allowed Domains")
+                                .map(([k, v]) => (
                                 <React.Fragment key={k}>
                                   <dt
                                     style={{

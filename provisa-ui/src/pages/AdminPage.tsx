@@ -21,7 +21,13 @@ import {
   useCreateDomain,
   useDeleteDomain,
 } from "../hooks/useAdminQueries";
-import { downloadConfig, uploadConfig, fetchSettings, updateSettings } from "../api/admin";
+import {
+  downloadConfig,
+  uploadConfig,
+  fetchSettings,
+  updateSettings,
+  setDomainPolicy,
+} from "../api/admin";
 import type { PlatformSettings } from "../api/admin";
 import { useAuth } from "../context/AuthContext";
 import { domainGqlAlias } from "../types/admin";
@@ -68,6 +74,14 @@ export function AdminPage() {
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsMsg, setSettingsMsg] = useState("");
+  // Domain policy controls (NOT saved via updateSettings — destructive, applied separately)
+  const [policyUseDomains, setPolicyUseDomains] = useState<boolean | null>(false);
+  const [policyDefaultDomain, setPolicyDefaultDomain] = useState("default");
+  const [policyModalOpen, setPolicyModalOpen] = useState(false);
+  const [policyConfirmText, setPolicyConfirmText] = useState("");
+  const [policyApplying, setPolicyApplying] = useState(false);
+  const [policyMsg, setPolicyMsg] = useState("");
+  const [policyError, setPolicyError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [allDomains, setAllDomains] = useState<string[]>([]);
 
@@ -120,8 +134,14 @@ export function AdminPage() {
 
   // Platform settings (REST); per-tab data is loaded by each tab component.
   useEffect(() => {
-    fetchSettings().then(setSettings);
+    fetchSettings().then((s) => {
+      setSettings(s);
+      setPolicyUseDomains(s.naming.use_domains);
+      setPolicyDefaultDomain(s.naming.default_domain);
+    });
   }, []);
+
+  const domainsEnabled = settings?.naming.use_domains !== false;
 
   const handleDownload = async () => {
     const yaml = await downloadConfig();
@@ -161,10 +181,37 @@ export function AdminPage() {
     if (!settings) return;
     setSettingsSaving(true);
     setSettingsMsg("");
-    const result = await updateSettings(settings);
+    // Domain policy (use_domains/default_domain) is applied separately via the
+    // destructive /admin/domain-policy endpoint — never through the normal save.
+    const { use_domains: _ud, default_domain: _dd, ...naming } = settings.naming;
+    const payload = { ...settings, naming } as unknown as Partial<PlatformSettings>;
+    const result = await updateSettings(payload);
     setSettingsMsg(`Updated: ${result.updated.join(", ")}`);
     setSettingsSaving(false);
   }, [settings]);
+
+  const applyDomainPolicy = useCallback(async () => {
+    setPolicyApplying(true);
+    setPolicyError("");
+    setPolicyMsg("");
+    try {
+      const result = await setDomainPolicy({
+        use_domains: policyUseDomains,
+        default_domain: policyDefaultDomain,
+      });
+      setPolicyModalOpen(false);
+      setPolicyConfirmText("");
+      setPolicyMsg(`Domain policy applied. Backup saved: ${result.backup}`);
+      const s = await fetchSettings();
+      setSettings(s);
+      setPolicyUseDomains(s.naming.use_domains);
+      setPolicyDefaultDomain(s.naming.default_domain);
+    } catch (err) {
+      setPolicyError(err instanceof Error ? err.message : "Failed to apply domain policy");
+    } finally {
+      setPolicyApplying(false);
+    }
+  }, [policyUseDomains, policyDefaultDomain]);
 
   const updateRedirect = (key: string, value: unknown) => {
     if (!settings) return;
@@ -302,6 +349,48 @@ export function AdminPage() {
                       <option value="PascalCase">PascalCase</option>
                     </select>
                   </label>
+                  <label>
+                    Domain Mode
+                    <select
+                      value={
+                        policyUseDomains === null
+                          ? "legacy"
+                          : policyUseDomains
+                            ? "namespaced"
+                            : "single"
+                      }
+                      onChange={(e) =>
+                        setPolicyUseDomains(
+                          e.target.value === "legacy" ? null : e.target.value === "namespaced",
+                        )
+                      }
+                    >
+                      <option value="legacy">Legacy (unset)</option>
+                      <option value="single">Single domain</option>
+                      <option value="namespaced">Namespaced</option>
+                    </select>
+                  </label>
+                  <label>
+                    Default Domain
+                    <input
+                      type="text"
+                      value={policyDefaultDomain}
+                      disabled={policyUseDomains !== false}
+                      onChange={(e) => setPolicyDefaultDomain(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    className="btn-secondary"
+                    data-testid="apply-domain-policy"
+                    onClick={() => {
+                      setPolicyError("");
+                      setPolicyConfirmText("");
+                      setPolicyModalOpen(true);
+                    }}
+                  >
+                    Apply Domain Policy
+                  </button>
+                  {policyMsg && <span className="upload-msg">{policyMsg}</span>}
                 </div>
                 <div className="settings-section">
                   <h4>Sampling</h4>
@@ -373,7 +462,7 @@ export function AdminPage() {
           </>
         )}
 
-        {activeTab === "Domains" && (
+        {activeTab === "Domains" && domainsEnabled && (
           <>
             {domainMsg && (
               <div className="success" style={{ marginBottom: "0.5rem" }}>
@@ -534,6 +623,84 @@ export function AdminPage() {
         {activeTab === "Orgs" && isSuperAdmin && <OrgsTab />}
         {activeTab === "Roles" && <RolesTab orgId={orgId} />}
       </div>
+
+      {policyModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            data-testid="domain-policy-modal"
+            style={{
+              background: "var(--bg)",
+              border: "2px solid var(--destructive)",
+              borderRadius: "8px",
+              padding: "1.5rem",
+              maxWidth: 520,
+              width: "90%",
+            }}
+          >
+            <h3 style={{ color: "var(--destructive)", marginTop: 0 }}>
+              ⚠ Reset Entire Configuration
+            </h3>
+            <div
+              style={{
+                background: "var(--destructive)",
+                color: "#fff",
+                padding: "1rem",
+                borderRadius: "4px",
+                marginBottom: "1rem",
+              }}
+            >
+              Changing the domain policy will RESET your entire configuration. All sources, tables,
+              domains, and relationships will be deleted. A backup of your current config will be
+              saved. This cannot be undone.
+            </div>
+            <label style={{ display: "block", marginBottom: "1rem" }}>
+              Type <strong>RESET</strong> to confirm:
+              <input
+                type="text"
+                data-testid="domain-policy-confirm-input"
+                value={policyConfirmText}
+                onChange={(e) => setPolicyConfirmText(e.target.value)}
+                style={{ display: "block", width: "100%", marginTop: 4 }}
+              />
+            </label>
+            {policyError && (
+              <div style={{ color: "var(--destructive)", marginBottom: "1rem" }}>{policyError}</div>
+            )}
+            <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  setPolicyModalOpen(false);
+                  setPolicyConfirmText("");
+                  setPolicyError("");
+                }}
+                disabled={policyApplying}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn-primary"
+                data-testid="domain-policy-confirm-btn"
+                style={{ background: "var(--destructive)", borderColor: "var(--destructive)" }}
+                disabled={policyConfirmText !== "RESET" || policyApplying}
+                onClick={applyDomainPolicy}
+              >
+                {policyApplying ? "Applying..." : "Reset & Apply"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

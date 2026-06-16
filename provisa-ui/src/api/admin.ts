@@ -315,6 +315,8 @@ export interface PlatformSettings {
   naming: {
     domain_prefix: boolean;
     convention: string;
+    use_domains: boolean | null;
+    default_domain: string;
   };
   otel: {
     endpoint: string;
@@ -341,6 +343,22 @@ export async function updateSettings(
     body: JSON.stringify(settings),
   });
   if (!resp.ok) throw new Error(`Settings update failed: ${resp.status}`);
+  return resp.json();
+}
+
+export async function setDomainPolicy(body: {
+  use_domains: boolean | null;
+  default_domain: string;
+}): Promise<{ success: boolean; backup: string; use_domains: boolean | null }> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/domain-policy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(data.detail || `Domain policy update failed: ${resp.status}`);
+  }
   return resp.json();
 }
 

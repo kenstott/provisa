@@ -30,6 +30,7 @@ interface RelationshipRowProps {
   functions: TrackedFunction[];
   tableDomainById: Record<string, string>;
   normalizeDomain: (id: string) => string;
+  domainsEnabled: boolean;
 }
 
 export function RelationshipRow({
@@ -48,6 +49,7 @@ export function RelationshipRow({
   functions,
   tableDomainById,
   normalizeDomain,
+  domainsEnabled,
 }: RelationshipRowProps) {
   return (
     <React.Fragment>
@@ -80,16 +82,16 @@ export function RelationshipRow({
             <span>{r.id.replace(/([_\-:])/g, "$1​")}</span>
           </div>
         </td>
-        <td>{r.sourceDomainId || "—"}</td>
+        {domainsEnabled && <td>{r.sourceDomainId || "—"}</td>}
         <td style={{ wordBreak: "break-all", overflowWrap: "anywhere" }}>
-          {r.sourceDomainId
+          {domainsEnabled && r.sourceDomainId
             ? `${r.sourceDomainId}.${r.sourceTableName}.${r.sourceColumn}`
             : `${r.sourceTableName}.${r.sourceColumn}`}
         </td>
         <td style={{ wordBreak: "break-all", overflowWrap: "anywhere" }}>
           {r.targetFunctionName
             ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})`
-            : tableDomainById[r.targetTableId!]
+            : domainsEnabled && tableDomainById[r.targetTableId!]
               ? `${tableDomainById[r.targetTableId!]}.${r.targetTableName}.${r.targetColumn}`
               : `${r.targetTableName}.${r.targetColumn}`}
         </td>
@@ -116,7 +118,7 @@ export function RelationshipRow({
       {isExpanded && (
         <tr>
           <td
-            colSpan={8}
+            colSpan={domainsEnabled ? 8 : 7}
             style={{
               padding: "0.75rem 1rem",
               background: "var(--bg)",
@@ -160,7 +162,7 @@ export function RelationshipRow({
                     <strong>Source</strong>
                   </dt>
                   <dd style={{ color: "var(--text)", margin: 0 }}>
-                    {r.sourceDomainId
+                    {domainsEnabled && r.sourceDomainId
                       ? `${r.sourceDomainId}.${r.sourceTableName}.${r.sourceColumn}`
                       : `${r.sourceTableName}.${r.sourceColumn}`}
                   </dd>
@@ -170,7 +172,7 @@ export function RelationshipRow({
                   <dd style={{ color: "var(--text)", margin: 0 }}>
                     {r.targetFunctionName
                       ? `fn:${r.targetFunctionName}(${r.functionArg ?? ""})`
-                      : tableDomainById[r.targetTableId!]
+                      : domainsEnabled && tableDomainById[r.targetTableId!]
                         ? `${tableDomainById[r.targetTableId!]}.${r.targetTableName}.${r.targetColumn}`
                         : `${r.targetTableName}.${r.targetColumn}`}
                   </dd>
@@ -308,26 +310,28 @@ export function RelationshipRow({
                         >
                           Source
                         </strong>
-                        <label>
-                          Domain
-                          <select
-                            value={editingRel.sourceDomain}
-                            onChange={(e) =>
-                              setEditingRel({
-                                ...editingRel,
-                                sourceDomain: e.target.value,
-                                sourceTableId: "",
-                              })
-                            }
-                          >
-                            <option value="">All</option>
-                            {uniqueDomains.map((d) => (
-                              <option key={d} value={d}>
-                                {d}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                        {domainsEnabled && (
+                          <label>
+                            Domain
+                            <select
+                              value={editingRel.sourceDomain}
+                              onChange={(e) =>
+                                setEditingRel({
+                                  ...editingRel,
+                                  sourceDomain: e.target.value,
+                                  sourceTableId: "",
+                                })
+                              }
+                            >
+                              <option value="">All</option>
+                              {uniqueDomains.map((d) => (
+                                <option key={d} value={d}>
+                                  {d}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
                         <label>
                           Table
                           <select
@@ -407,26 +411,28 @@ export function RelationshipRow({
                           : tables;
                         return (
                           <>
-                            <label>
-                              Domain
-                              <select
-                                value={editingRel.targetDomain}
-                                onChange={(e) =>
-                                  setEditingRel({
-                                    ...editingRel,
-                                    targetDomain: e.target.value,
-                                    targetTableId: "",
-                                  })
-                                }
-                              >
-                                <option value="">All</option>
-                                {uniqueDomains.map((d) => (
-                                  <option key={d} value={d}>
-                                    {d}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
+                            {domainsEnabled && (
+                              <label>
+                                Domain
+                                <select
+                                  value={editingRel.targetDomain}
+                                  onChange={(e) =>
+                                    setEditingRel({
+                                      ...editingRel,
+                                      targetDomain: e.target.value,
+                                      targetTableId: "",
+                                    })
+                                  }
+                                >
+                                  <option value="">All</option>
+                                  {uniqueDomains.map((d) => (
+                                    <option key={d} value={d}>
+                                      {d}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            )}
                             <label>
                               Table
                               <select

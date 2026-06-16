@@ -25,6 +25,8 @@ export async function runSetup(body: {
   admin_username?: string;
   admin_password?: string;
   firebase_project_id?: string;
+  use_domains?: boolean | null;
+  default_domain?: string;
 }): Promise<{ success: boolean; provider: string }> {
   const res = await fetch('/setup', {
     method: 'POST',

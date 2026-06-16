@@ -24,6 +24,8 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
   const [adminPassword, setAdminPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [firebaseProjectId, setFirebaseProjectId] = useState("");
+  const [useDomains, setUseDomains] = useState<boolean | null>(false);
+  const [defaultDomain, setDefaultDomain] = useState("default");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -42,6 +44,8 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
         admin_username: provider === "basic" ? adminUsername : undefined,
         admin_password: provider === "basic" ? adminPassword : undefined,
         firebase_project_id: provider === "firebase" ? firebaseProjectId : undefined,
+        use_domains: useDomains,
+        default_domain: defaultDomain,
       });
       onSetupComplete();
     } catch (err) {
@@ -77,6 +81,42 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
               Multiple organizations with isolated access. Users are assigned to orgs via invite links.
             </div>
           </label>
+
+          <h3>Domain Model</h3>
+          <label style={{ display: "block", marginBottom: 12, cursor: "pointer" }}>
+            <input type="radio" name="domains" value="simple" checked={useDomains === false}
+              onChange={() => setUseDomains(false)} style={{ marginRight: 8 }} />
+            <strong>Simple (no domains)</strong>
+            <div style={{ marginLeft: 24, fontSize: 13, color: "var(--muted-foreground)" }}>
+              All tables live in a single domain. Simplest model.
+            </div>
+          </label>
+          {useDomains === false && (
+            <div style={{ marginLeft: 24, marginBottom: 12 }}>
+              <label htmlFor="setup-default-domain">Default domain name</label>
+              <input id="setup-default-domain" type="text" value={defaultDomain}
+                onChange={(e) => setDefaultDomain(e.target.value)} required
+                pattern="[A-Za-z_][A-Za-z0-9_]*"
+                style={{ display: "block", width: "100%", marginTop: 4 }} />
+            </div>
+          )}
+          <label style={{ display: "block", marginBottom: 12, cursor: "pointer" }}>
+            <input type="radio" name="domains" value="namespaced" checked={useDomains === true}
+              onChange={() => setUseDomains(true)} style={{ marginRight: 8 }} />
+            <strong>Namespaced domains</strong>
+            <div style={{ marginLeft: 24, fontSize: 13, color: "var(--muted-foreground)" }}>
+              Tables are organized into multiple named domains.
+            </div>
+          </label>
+          <label style={{ display: "block", marginBottom: 24, cursor: "pointer" }}>
+            <input type="radio" name="domains" value="legacy" checked={useDomains === null}
+              onChange={() => setUseDomains(null)} style={{ marginRight: 8 }} />
+            <strong>Legacy / decide later</strong>
+            <div style={{ marginLeft: 24, fontSize: 13, color: "var(--muted-foreground)" }}>
+              Leave the domain policy unset and decide later.
+            </div>
+          </label>
+
           <button className="btn-primary" onClick={() => setStep(2)}>Next</button>
         </div>
       )}
@@ -118,7 +158,12 @@ export function SetupPage({ onSetupComplete }: SetupPageProps) {
                   setError(null);
                   setLoading(true);
                   try {
-                    await runSetup({ provider: "none", mode });
+                    await runSetup({
+                      provider: "none",
+                      mode,
+                      use_domains: useDomains,
+                      default_domain: defaultDomain,
+                    });
                     onSetupComplete();
                   } catch (err) {
                     setError(err instanceof Error ? err.message : "Setup failed");

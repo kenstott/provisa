@@ -7,6 +7,7 @@
 /* eslint-disable react-refresh/only-export-components -- context Provider + hook colocated by design */
 import { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
+import { fetchSettings } from "../api/admin";
 
 interface DomainFilterContextValue {
   domains: string[];
@@ -15,6 +16,7 @@ interface DomainFilterContextValue {
   setSelectedDomain: (d: string) => void;
   checkedDomains: Set<string>;
   toggleDomain: (id: string) => void;
+  domainsEnabled: boolean;
 }
 
 const DomainFilterContext = createContext<DomainFilterContextValue>({
@@ -24,6 +26,7 @@ const DomainFilterContext = createContext<DomainFilterContextValue>({
   setSelectedDomain: () => {},
   checkedDomains: new Set(),
   toggleDomain: () => {},
+  domainsEnabled: true,
 });
 
 export function DomainFilterProvider({ children }: { children: React.ReactNode }) {
@@ -31,6 +34,13 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
   const [domains, setDomains] = useState<string[]>([]);
   const [selectedDomain, setSelectedDomain] = useState("all");
   const [checkedDomains, setCheckedDomains] = useState<Set<string>>(new Set());
+  const [domainsEnabled, setDomainsEnabled] = useState(true);
+
+  useEffect(() => {
+    fetchSettings()
+      .then((s) => setDomainsEnabled(s.naming.use_domains !== false))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!role) return;
@@ -73,6 +83,7 @@ export function DomainFilterProvider({ children }: { children: React.ReactNode }
         setSelectedDomain,
         checkedDomains,
         toggleDomain,
+        domainsEnabled,
       }}
     >
       {children}

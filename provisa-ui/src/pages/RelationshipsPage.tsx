@@ -72,7 +72,7 @@ export function RelationshipsPage() {
   const [showModelingModal, setShowModelingModal] = useState(false);
   const [conflictRel, setConflictRel] = useState<Relationship | null>(null);
 
-  const { selectedDomain } = useDomainFilter();
+  const { selectedDomain, domainsEnabled } = useDomainFilter();
   const { capabilities } = useAuth();
   const canManage = capabilities.includes("create_relationship");
 
@@ -414,7 +414,9 @@ export function RelationshipsPage() {
                 ["source", "Source", "15%", false],
                 ["target", "Target", "15%", false],
               ] as const
-            ).map(([col, label, width, isGroupable]) => {
+            )
+              .filter(([col]) => domainsEnabled || col !== "domain")
+              .map(([col, label, width, isGroupable]) => {
               const groupLevel = isGroupable ? groupBy.indexOf(col as "domain" | "cardinality" | "materialize") : -1;
               const isGrouped = groupLevel !== -1;
               return (
@@ -500,7 +502,7 @@ export function RelationshipsPage() {
             if (filtered.length > 75 && !relSearch.trim() && groupBy.length === 0) {
               return (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
+                  <td colSpan={domainsEnabled ? 8 : 7} style={{ textAlign: "center", padding: "2rem", color: "var(--text-muted)" }}>
                     {filtered.length} relationships — use the filter above to browse
                   </td>
                 </tr>
@@ -586,7 +588,7 @@ export function RelationshipsPage() {
                 return (
                   <tr key={`grp-${item.key}`}>
                     <td
-                      colSpan={8}
+                      colSpan={domainsEnabled ? 8 : 7}
                       onClick={() =>
                         setCollapsedGroups((prev) => {
                           const next = new Set(prev);
@@ -635,6 +637,7 @@ export function RelationshipsPage() {
                   functions={functions}
                   tableDomainById={tableDomainById}
                   normalizeDomain={normalizeDomain}
+                  domainsEnabled={domainsEnabled}
                 />
               );
             });

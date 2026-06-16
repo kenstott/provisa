@@ -175,7 +175,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setGroupBy((prev) => (prev.includes(col) ? prev.filter((g) => g !== col) : [...prev, col]));
   const [sortCol, setSortCol] = useState<"source" | "domain" | "table" | "cols">("source");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const { checkedDomains } = useDomainFilter();
+  const { checkedDomains, domainsEnabled } = useDomainFilter();
   const { domainAccess } = useAuth();
 
   // Form state
@@ -665,20 +665,22 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 ))}
             </select>
           </label>
-          <label>
-            Domain
-            <select value={domainId} onChange={(e) => setDomainId(e.target.value)}>
-              <option value="">Select domain...</option>
-              {domainHints
-                .filter((d) => d !== "" && d !== "meta" && d !== "ops")
-                .filter((d) => domainAccess.includes("*") || domainAccess.includes(d))
-                .map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-            </select>
-          </label>
+          {domainsEnabled && (
+            <label>
+              Domain
+              <select value={domainId} onChange={(e) => setDomainId(e.target.value)}>
+                <option value="">Select domain...</option>
+                {domainHints
+                  .filter((d) => d !== "" && d !== "meta" && d !== "ops")
+                  .filter((d) => domainAccess.includes("*") || domainAccess.includes(d))
+                  .map((d) => (
+                    <option key={d} value={d}>
+                      {d}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
           <label>
             Schema
             {(() => {
@@ -939,7 +941,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 ["domain", "Domain"],
                 ["table", "Table"],
               ] as const
-            ).map(([col, label]) => {
+            )
+              .filter(([col]) => domainsEnabled || col !== "domain")
+              .map(([col, label]) => {
               const isGroupable = col === "source" || col === "domain";
               const groupLevel = groupBy.indexOf(col);
               const isGrouped = groupLevel !== -1;
@@ -1069,7 +1073,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                 return (
                   <tr key={`grp-${item.key}`}>
                     <td
-                      colSpan={9}
+                      colSpan={domainsEnabled ? 9 : 8}
                       onClick={() =>
                         setCollapsedGroups((prev) => {
                           const next = new Set(prev);
@@ -1107,10 +1111,12 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                     className="clickable"
                   >
                     <td>{t.sourceId}</td>
-                    <td>{t.domainId ? normalizeDomain(t.domainId) : ""}</td>
+                    {domainsEnabled && (
+                      <td>{t.domainId ? normalizeDomain(t.domainId) : ""}</td>
+                    )}
                     <td style={{ fontFamily: "monospace", fontSize: "0.9rem" }}>
                       {(() => {
-                        const ns = t.domainId ? normalizeDomain(t.domainId) : "";
+                        const ns = domainsEnabled && t.domainId ? normalizeDomain(t.domainId) : "";
                         return [ns, t.alias || t.tableName].filter(Boolean).join(".");
                       })()}
                       {t.description && (
@@ -1176,7 +1182,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                   </tr>
                   {expanded === t.id && (
                     <tr key={`${t.id}-cols`}>
-                      <td colSpan={12} style={{ padding: 0 }}>
+                      <td colSpan={domainsEnabled ? 12 : 11} style={{ padding: 0 }}>
                         {!isEditing ? (
                           <>
                             <table className="data-table" style={{ margin: 0 }}>
