@@ -74,6 +74,8 @@ async def get_settings():
         "naming": {
             "domain_prefix": naming_cfg.get("domain_prefix", False),
             "convention": naming_cfg.get("convention", "apollo_graphql"),
+            "use_domains": naming_cfg.get("use_domains", None),
+            "default_domain": naming_cfg.get("default_domain", "default"),
         },
         "relationships": {
             "auto_track_fk": os.environ.get("PROVISA_AUTO_TRACK_FK", "true").lower()
@@ -149,6 +151,10 @@ async def update_settings(request: Request):
             cfg.setdefault("naming", {})["convention"] = n["convention"]
             updated.append("naming.convention")
             needs_reload = True
+        # NOTE: use_domains / default_domain are NOT editable here. Changing the domain
+        # policy is destructive (it invalidates every registered table's domain) — it is
+        # handled by the dedicated POST /admin/domain-policy endpoint which backs up and
+        # resets the config.
         if needs_reload:
             write_config(path, cfg)
             try:
@@ -203,6 +209,70 @@ async def update_settings(request: Request):
             pass
 
     return {"success": True, "updated": updated}
+
+
+@router.post("/admin/domain-policy")
+async def set_domain_policy(request: Request):
+    """Change the domain policy (use_domains / default_domain).
+
+    DESTRUCTIVE: the domain policy is a foundational decision — every registered table's
+    domain_id is bound to it. Changing it backs up the current config, then resets the
+    config to a clean default state (no sources, tables, domains, or relationships;
+    auth and roles preserved) with the new policy applied, and reloads.
+    """
+    import datetime
+
+    from provisa.api.app import _load_and_build
+
+    body = await request.json()
+    use_domains = body.get("use_domains", None)
+    default_domain = body.get("default_domain", "default")
+    if use_domains not in (None, True, False):
+        raise HTTPException(status_code=400, detail="use_domains must be true, false, or null")
+    if use_domains is False and not default_domain:
+        raise HTTPException(status_code=400, detail="default_domain required when use_domains=false")
+
+    path = config_path()
+    cfg = read_config()
+
+    # 1. Timestamped backup of the existing config.
+    backup_name = ""
+    if path.exists():
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup = path.with_name(f"{path.stem}.{ts}.bak{path.suffix}")
+        backup.write_text(path.read_text())
+        backup_name = backup.name
+
+    # 2. Reset to a clean default state — preserve only auth + roles.
+    naming: dict = {}
+    if use_domains is not None:
+        naming["use_domains"] = use_domains
+        if use_domains is False:
+            naming["default_domain"] = default_domain
+    new_cfg: dict = {
+        "sources": [],
+        "domains": [],
+        "tables": [],
+        "relationships": [],
+        "roles": cfg.get("roles", []),
+        "naming": naming,
+    }
+    if cfg.get("auth") is not None:
+        new_cfg["auth"] = cfg["auth"]
+    write_config(path, new_cfg)
+
+    # 3. Reload in replace mode to purge the prior sources/tables from the metadata DB.
+    _prev_replace = os.environ.get("PROVISA_CONFIG_REPLACE")
+    os.environ["PROVISA_CONFIG_REPLACE"] = "true"
+    try:
+        await _load_and_build(str(path))
+    finally:
+        if _prev_replace is None:
+            os.environ.pop("PROVISA_CONFIG_REPLACE", None)
+        else:
+            os.environ["PROVISA_CONFIG_REPLACE"] = _prev_replace
+
+    return {"success": True, "backup": backup_name, "use_domains": use_domains}
 
 
 @router.post("/admin/query-engine/reload-catalog")

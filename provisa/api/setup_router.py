@@ -143,6 +143,10 @@ class SetupRequest(BaseModel):
     admin_username: str | None = None
     admin_password: str | None = None
     firebase_project_id: str | None = None
+    # Domain policy decision, made once at install. None = legacy/inert (default),
+    # False = single-domain (every table under default_domain), True = namespaced.
+    use_domains: bool | None = None
+    default_domain: str = "default"
 
 
 @router.post("/")
@@ -157,11 +161,28 @@ async def run_setup(body: SetupRequest):
         )
     if body.mode not in ("single", "multi"):
         raise HTTPException(status_code=400, detail="mode must be 'single' or 'multi'")
+    if body.use_domains not in (None, True, False):
+        raise HTTPException(status_code=400, detail="use_domains must be true, false, or null")
+    if body.use_domains is False and not body.default_domain:
+        raise HTTPException(
+            status_code=400, detail="default_domain required when use_domains=false"
+        )
+
+    def _apply_naming(cfg: dict) -> None:
+        # Domain policy is an install-time decision. Only persist when explicitly chosen
+        # (use_domains not None) so a legacy install leaves naming untouched.
+        if body.use_domains is None:
+            return
+        naming = cfg.setdefault("naming", {})
+        naming["use_domains"] = body.use_domains
+        if body.use_domains is False:
+            naming["default_domain"] = body.default_domain
 
     if body.provider == "none":
         cfg_path = config_path()
         cfg = read_config()
         cfg["auth"] = {"provider": "none"}
+        _apply_naming(cfg)
         write_config(cfg_path, cfg)
         await _load_and_build(str(cfg_path))
         return {"success": True, "provider": "none"}
@@ -208,6 +229,7 @@ async def run_setup(body: SetupRequest):
     cfg_path = config_path()
     cfg = read_config()
     cfg["auth"] = auth_section
+    _apply_naming(cfg)
     write_config(cfg_path, cfg)
     await _load_and_build(str(cfg_path))
 
