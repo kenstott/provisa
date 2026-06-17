@@ -216,69 +216,10 @@ CREATE TABLE IF NOT EXISTS mv_refresh_log (
 
 -- Column-Level Masking (Phase Q) — masking rules are inline on table_columns.
 
--- Persisted Query Registry (Phase H)
-CREATE TABLE IF NOT EXISTS persisted_queries (
-    id              SERIAL PRIMARY KEY,
-    stable_id       TEXT UNIQUE,        -- assigned on approval (REQ-023)
-    query_text      TEXT NOT NULL,
-    compiled_sql    TEXT NOT NULL,
-    target_tables   INTEGER[] NOT NULL, -- registered_tables IDs
-    parameter_schema JSONB,             -- JSON Schema for variables
-    permitted_outputs TEXT[] NOT NULL DEFAULT '{json}',
-    developer_id    TEXT NOT NULL,       -- who submitted (REQ-022)
-    status          TEXT NOT NULL DEFAULT 'pending'
-                    CHECK (status IN ('pending', 'approved', 'deprecated', 'flagged')),
-    approved_by     TEXT,               -- who approved (REQ-024)
-    approved_at     TIMESTAMPTZ,
-    routing_hint    TEXT,               -- steward override: 'direct' or 'trino'
-    cache_ttl       INTEGER,            -- steward-specified cache TTL in seconds (Phase O)
-    model_version   INTEGER NOT NULL DEFAULT 1,  -- registration model version
-    deprecated_by   TEXT,               -- replacement stable_id (REQ-026)
-    sink_topic      TEXT,               -- Kafka sink topic (REQ-176)
-    sink_trigger    TEXT CHECK (sink_trigger IN ('change_event', 'schedule', 'manual')),
-    sink_key_column TEXT,               -- message key column
-    -- Submission metadata
-    business_purpose TEXT,              -- why this query is needed
-    use_cases       TEXT,               -- expected consumers/dashboards/reports
-    data_sensitivity TEXT CHECK (data_sensitivity IN ('public', 'internal', 'confidential', 'restricted')),
-    refresh_frequency TEXT,             -- how often results are needed (e.g., "real-time", "hourly", "daily")
-    expected_row_count TEXT,            -- estimated result size (e.g., "<1K", "1K-100K", "100K+")
-    owner_team      TEXT,               -- team responsible for this query
-    expiry_date     DATE,               -- optional: when this query should be reviewed/retired
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Migration: add sink and metadata columns
-DO $$ BEGIN
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS visible_to TEXT[] NOT NULL DEFAULT '{}';
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS sink_topic TEXT;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS sink_trigger TEXT;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS sink_key_column TEXT;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS business_purpose TEXT;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS use_cases TEXT;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS data_sensitivity TEXT;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS refresh_frequency TEXT;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS expected_row_count TEXT;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS owner_team TEXT;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS expiry_date DATE;
-    -- Scheduled delivery columns (Phase AX)
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS schedule_cron TEXT;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS schedule_output_type TEXT CHECK (schedule_output_type IN ('redirect', 'webhook', 'kafka'));
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS schedule_output_format TEXT;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS schedule_destination TEXT;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS compiled_cypher TEXT;
-EXCEPTION WHEN OTHERS THEN NULL;
-END $$;
-
-CREATE TABLE IF NOT EXISTS approval_log (
-    id              SERIAL PRIMARY KEY,
-    query_id        INTEGER NOT NULL REFERENCES persisted_queries(id) ON DELETE CASCADE,
-    action          TEXT NOT NULL CHECK (action IN ('submitted', 'approved', 'rejected', 'deprecated', 'flagged')),
-    actor_id        TEXT NOT NULL,
-    reason          TEXT,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- Approved-query / GPQ registry removed (REQ-001/003) — access is governed solely by
+-- table/view + relationship rights. The persisted_queries and approval_log tables are
+-- deprecated and no longer created. (Apollo APQ — REQ-288-291 — is separate, lives in
+-- Redis, and is unaffected.)
 
 -- Relationship Discovery Candidates (Phase R)
 CREATE TABLE IF NOT EXISTS relationship_candidates (
@@ -523,7 +464,6 @@ DO $$ BEGIN
     ALTER TABLE domains ADD COLUMN IF NOT EXISTS tenant_id UUID;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS tenant_id UUID;
     ALTER TABLE rls_rules ADD COLUMN IF NOT EXISTS tenant_id UUID;
-    ALTER TABLE persisted_queries ADD COLUMN IF NOT EXISTS tenant_id UUID;
     ALTER TABLE roles ADD COLUMN IF NOT EXISTS tenant_id UUID;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;

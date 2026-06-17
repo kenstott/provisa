@@ -48,7 +48,7 @@ _PROVISA_INTERNAL_SCHEMAS: frozenset[str] = frozenset({
 _PROVISA_INTERNAL_TABLES: frozenset[str] = frozenset({
     "sources", "domains", "naming_rules", "registered_tables", "table_columns",
     "relationships", "roles", "rls_rules", "materialized_views", "mv_refresh_log",
-    "persisted_queries", "approval_log", "relationship_candidates",
+    "relationship_candidates",
     "kafka_sources", "kafka_topics", "kafka_sinks",
     "api_sources", "api_endpoints", "api_endpoint_candidates",
     "live_query_state", "tracked_functions", "tracked_webhooks",

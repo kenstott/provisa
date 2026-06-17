@@ -263,6 +263,17 @@ into one `execute_governed(sql_or_doc, role)` helper. That confines governance t
   threshold** (`redirect.threshold`) — they are separate config and code paths.
   Full unit suite green (4312 passed).
 
+## Phase 5 — registry schema drop + test debt (2026-06-16)
+
+- Dropped the orphaned `persisted_queries` and `approval_log` tables from
+  [schema.sql](../../provisa/core/schema.sql) and the `tenant_id` ALTER + introspect
+  allowlist entries. `live_query_state` is retained (the live-engine watermark store,
+  reused for table/view delivery).
+- Tests: `tests/unit/test_governance.py` (rights-based governance / REQ-042),
+  `tests/unit/test_registry_removed.py` (regression guards that the registry stays
+  gone — no schema table, no code reads `persisted_queries`, GPQ-by-id paths → 410),
+  `tests/unit/test_rate_limiting.py` (Phase 1).
+
 ## Remaining tasks
 
 Status: 16 of 25 requirements resolved (REQ-005, 046, 263, 478, the row-cap
@@ -274,7 +285,9 @@ REQ-001/003**; and the **capability-rights verification REQ-042**). Phased plan 
 
 | # | REQ | Type | Effort | Task |
 | --- | --- | --- | --- | --- |
-| 1 | — | Test debt | M | Add the remaining requirement-named test: `tests/integration/test_registry.py` reframed as rights-based (the registry is gone). Also an endpoint-level ABAC integration test (REQ-203 covered at unit/structural level only). `test_rate_limiting.py` and `test_governance.py` are done. |
-| 2 | 001/003 | DB cleanup | S | Drop the now-orphaned `persisted_queries` table (+ `scheduled_queries`/stable-id dependents) from `schema.sql`. Code no longer reads it; schema tidy-up, not a governance change. |
+| 1 | 203 | Test debt (integration) | M | Endpoint-level ABAC **integration** test (Docker) — the REQ-203 hook flow is covered at unit/structural level + by `test_governance.py`/transport tests, but not yet end-to-end through the live endpoint. |
 
+Done in Phase 5: `persisted_queries`/`approval_log` dropped from `schema.sql` +
+introspect allowlist (`live_query_state` kept for the live engine);
+`test_governance.py`, `test_rate_limiting.py`, and `test_registry_removed.py` added.
 Effort: S ≈ <½ day, M ≈ ~1 day, L ≈ multi-day.
