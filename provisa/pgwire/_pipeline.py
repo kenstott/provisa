@@ -80,6 +80,7 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
         state.masking_rules,
         ctx,
         getattr(state, "tables", []),
+        role=role,
     )
 
     _role_guard = (role or {}).get("relationship_guard", True)
@@ -270,6 +271,7 @@ async def _govern_and_route_compiled(
         state.masking_rules,
         ctx,
         getattr(state, "tables", []),
+        role=state.roles.get(role_id),
     )
 
     governed_sql = apply_governance(sql, gov_ctx)

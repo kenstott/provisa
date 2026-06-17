@@ -660,6 +660,8 @@ def _build_db_field_args(
     args: dict[str, GraphQLArgument] = {
         "limit": GraphQLArgument(GraphQLInt),
         "offset": GraphQLArgument(GraphQLInt),
+        # REQ-263a: statistical row sampling — TABLESAMPLE BERNOULLI(<pct>), 0-100.
+        "sample": GraphQLArgument(GraphQLFloat),
     }
     if where_input:
         args["where"] = GraphQLArgument(where_input)

@@ -1966,6 +1966,17 @@ def _compile_root_field(
         else:
             from_clause = f"(SELECT * FROM {ref} LIMIT {base_limit})"
 
+    # REQ-263a: statistical sampling — TABLESAMPLE BERNOULLI(<pct>) on the base table.
+    # PG places TABLESAMPLE after the (optional) alias; SQLGlot transpiles per dialect.
+    # Not compatible with time-travel or lateral op-join wrapping.
+    if "sample" in args:
+        if "as_of" in args or has_lateral_ops_joins:
+            raise ValueError("sample cannot be combined with as_of or op-relationship joins")
+        _pct = float(args["sample"])
+        if not 0 < _pct <= 100:
+            raise ValueError(f"sample must be a percentage in (0, 100], got {_pct}")
+        from_clause = f"{from_clause} TABLESAMPLE BERNOULLI ({_pct})"
+
     sql = f"SELECT {', '.join(select_parts)} FROM {from_clause}"
 
     # JOIN clauses
@@ -2013,18 +2024,18 @@ def _compile_root_field(
         if "offset" in args:
             sql += f" OFFSET {collector.add(int(args['offset']))}"
     else:
-        # Always parameterized, never interpolated.
-        # Apply _DEFAULT_ROW_LIMIT when caller supplies no explicit limit so that
-        # unbounded scans over large tables (e.g. OTel Iceberg) cannot OOM Trino.
+        # Always parameterized, never interpolated. No compile-time default LIMIT:
+        # the row cap is applied by governance (stage2 resolve_row_cap) so it is
+        # role-aware — FULL_RESULTS roles get no default row limit, others get the
+        # configured default_row_limit. (The lateral-ops base guard above is a
+        # Cartesian-explosion guard, not the governance cap, and is kept.)
         if "limit" in args:
             sql += f" LIMIT {collector.add(int(args['limit']))}"
-        elif "offset" not in args:
-            sql += f" LIMIT {_get_default_row_limit()}"
         if "offset" in args:
             sql += f" OFFSET {collector.add(int(args['offset']))}"
 
     # Collect native filter args (any arg not handled by SQL compilation above)
-    _STANDARD_ARGS = {"where", "order_by", "limit", "offset", "distinct_on", "as_of"}
+    _STANDARD_ARGS = {"where", "order_by", "limit", "offset", "distinct_on", "as_of", "sample"}
     api_args = {k: v for k, v in args.items() if k not in _STANDARD_ARGS}
 
     # Inject _nf_-prefixed WHERE conditions so the SQL/CQL preview shows the filter.

@@ -19,6 +19,8 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
+from types import SimpleNamespace
+
 from provisa.auth.approval_hook import (
     ApprovalHookConfig,
     ApprovalRequest,
@@ -29,8 +31,66 @@ from provisa.auth.approval_hook import (
     HookType,
     WebhookApprovalHook,
     create_hook,
+    load_approval_hook_config,
     should_check,
 )
+
+
+class TestConfigLoading:
+    """REQ-247: build the hook config + scope dicts from provisa.yaml."""
+
+    def test_no_block_returns_none(self):
+        assert load_approval_hook_config(None) is None
+        assert load_approval_hook_config({}) is None
+
+    def test_block_maps_all_fields(self):
+        cfg = load_approval_hook_config(
+            {
+                "type": "unix_socket",
+                "socket_path": "/var/run/authz.sock",
+                "timeout_ms": 250,
+                "fallback": "allow",
+                "scope": "all",
+            }
+        )
+        assert cfg is not None
+        assert cfg.type == HookType.UNIX_SOCKET
+        assert cfg.socket_path == "/var/run/authz.sock"
+        assert cfg.timeout_ms == 250
+        assert cfg.fallback == FallbackPolicy.ALLOW
+        assert cfg.scope == "all"
+
+    def test_setup_populates_state(self):
+        from provisa.api.app import AppState, _setup_approval_hook
+
+        meta = SimpleNamespace(domain_id="sales", schema_name="public", table_name="orders", table_id=7)
+        config = SimpleNamespace(
+            auth=SimpleNamespace(approval_hook={"type": "webhook", "url": "http://h/e", "scope": ""}),
+            sources=[SimpleNamespace(id="pg1", approval_hook=True), SimpleNamespace(id="pg2", approval_hook=False)],
+            tables=[SimpleNamespace(domain_id="sales", schema_name="public", table_name="orders", approval_hook=True)],
+        )
+        st = AppState()
+        st.config = config
+        st.contexts = {"analyst": SimpleNamespace(tables={"orders": meta})}
+        st.approval_hook = None
+        st.table_approval_hooks = {}
+        st.source_approval_hooks = {}
+
+        _setup_approval_hook(st)
+
+        assert st.approval_hook is not None
+        assert st.source_approval_hooks == {"pg1": True}
+        assert st.table_approval_hooks == {7: True}
+
+    def test_setup_noop_without_block(self):
+        from provisa.api.app import AppState, _setup_approval_hook
+
+        st = AppState()
+        st.config = SimpleNamespace(auth=SimpleNamespace(approval_hook=None), sources=[], tables=[])
+        st.contexts = {}
+        st.approval_hook = None
+        _setup_approval_hook(st)
+        assert st.approval_hook is None
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -116,6 +176,19 @@ class TestShouldCheck:
 # ---------------------------------------------------------------------------
 
 
+class TestHookPosition:
+    def test_hook_runs_after_governance(self):
+        """REQ-203: the approval hook must be evaluated AFTER RLS/governance, not before."""
+        import inspect
+
+        from provisa.api.data import endpoint
+
+        src = inspect.getsource(endpoint._prepare_compiled)
+        gov_idx = src.index("apply_governance(semantic_sql_for_validation")
+        hook_idx = src.index("approval_hook.evaluate")
+        assert gov_idx < hook_idx
+
+
 class TestWebhookApprovalHook:
     @pytest.mark.asyncio
     async def test_approved(self):
@@ -140,6 +213,37 @@ class TestWebhookApprovalHook:
         payload = client.post.call_args.kwargs["json"]
         assert payload["user"] == "alice"
         assert payload["tables"] == ["orders", "customers"]
+
+    @pytest.mark.asyncio
+    async def test_session_vars_serialized_and_additional_filter_parsed(self):
+        """REQ-203: session_vars sent in payload; additional_filter read from response."""
+        hook = WebhookApprovalHook(_cfg())
+        req = ApprovalRequest(
+            user="alice",
+            roles=["analyst"],
+            tables=["1"],
+            columns=["id"],
+            operation="query",
+            session_vars={"tenant": "acme", "region": "us"},
+        )
+        mock_resp = httpx.Response(
+            200,
+            json={"approved": True, "reason": "", "additional_filter": "tenant = 'acme'"},
+            request=httpx.Request("POST", "http://hook.test/evaluate"),
+        )
+        with patch("provisa.auth.approval_hook.httpx.AsyncClient") as mock_cls:
+            client = AsyncMock()
+            client.post.return_value = mock_resp
+            client.__aenter__ = AsyncMock(return_value=client)
+            client.__aexit__ = AsyncMock(return_value=False)
+            mock_cls.return_value = client
+
+            result = await hook.evaluate(req)
+
+        payload = client.post.call_args.kwargs["json"]
+        assert payload["session_vars"] == {"tenant": "acme", "region": "us"}
+        assert result.approved is True
+        assert result.additional_filter == "tenant = 'acme'"
 
     @pytest.mark.asyncio
     async def test_denied(self):

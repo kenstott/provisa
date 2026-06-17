@@ -108,12 +108,11 @@ class ProvisaServicer:
         from provisa.compiler.rls import RLSContext, inject_rls
         from provisa.compiler.mask_inject import inject_masking
         from provisa.mv.rewriter import rewrite_if_mv_match
-        from provisa.compiler.sampling import apply_sampling, get_sample_size
+        from provisa.compiler.stage2 import apply_row_cap, resolve_row_cap
         from provisa.transpiler.router import Route, decide_route
         from provisa.transpiler.transpile import transpile, transpile_to_trino
         from provisa.executor.direct import execute_direct
         from provisa.executor.trino import execute_trino
-        from provisa.security.rights import Capability, has_capability
 
         # Use await context.abort() directly rather than raising AbortError, which
         # can cause "Abort error has been replaced!" in gRPC aio async generators.
@@ -167,10 +166,9 @@ class ProvisaServicer:
             source_dsns=getattr(state, "source_dsns", None),
         )
 
-        # Sampling
-        sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
-        if sampling:
-            compiled = apply_sampling(compiled, get_sample_size())
+        # Row cap (REQ-005) — single governance cap shared across transports.
+        row_cap = resolve_row_cap(role)
+        compiled.sql = apply_row_cap(compiled.sql, row_cap)
 
         # Execute
         if (
@@ -190,8 +188,7 @@ class ProvisaServicer:
             compiled = inject_rls(compiled, ctx, rls)
             compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
             compiled = rewrite_if_mv_match(compiled, fresh_mvs)
-            if sampling:
-                compiled = apply_sampling(compiled, get_sample_size())
+            compiled.sql = apply_row_cap(compiled.sql, row_cap)
             trino_sql = transpile_to_trino(compiled.sql)
             result = execute_trino(state.trino_conn, trino_sql, compiled.params)
 

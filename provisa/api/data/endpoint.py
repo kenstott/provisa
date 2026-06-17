@@ -45,7 +45,6 @@ from provisa.compiler.mutation_gen import (
 )
 from provisa.compiler.parser import GraphQLValidationError, coerce_variable_defaults, parse_query
 from provisa.compiler.rls import RLSContext
-from provisa.compiler.sampling import apply_sampling_if_needed
 from provisa.compiler.sql_gen import (
     compile_query,
     make_semantic_sql,
@@ -448,33 +447,6 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
 
         compiled = expand_views(compiled, state.view_sql_map)
 
-    # ABAC approval hook (Phase AE)
-    if hasattr(state, "approval_hook") and state.approval_hook is not None:
-        from provisa.auth.approval_hook import ApprovalRequest, should_check
-
-        table_ids = {m.table_id for m in ctx.tables.values() if m.field_name == compiled.root_field}
-        source_ids = compiled.sources
-        hook_config = state.approval_hook_config
-        table_hooks = getattr(state, "table_approval_hooks", {})
-        source_hooks = getattr(state, "source_approval_hooks", {})
-        if should_check(
-            list(table_ids),
-            list(source_ids),
-            hook_config,
-            table_hooks=table_hooks,
-            source_hooks=source_hooks,
-        ):
-            req = ApprovalRequest(
-                user=role_id,
-                roles=[role_id] if role_id else [],
-                tables=list(compiled.sources),
-                columns=[c.column for c in compiled.columns],
-                operation="query",
-            )
-            resp = await state.approval_hook.evaluate(req)
-            if not resp.approved:
-                raise HTTPException(status_code=403, detail=f"Approval denied: {resp.reason}")
-
     original_sources = set(compiled.sources)
     compiled = rewrite_if_mv_match(compiled, fresh_mvs)
     mv_used = compiled.sources != original_sources
@@ -502,11 +474,9 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
             state.kafka_table_configs,
         )
 
-    compiled = apply_sampling_if_needed(compiled, role)
-
     # Governance: compile → semantic SQL → apply RLS/masking/visibility
     gov_ctx = build_governance_context(
-        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
+        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", []), role=role
     )
 
     # Validate semantic SQL — V002 (join relationship check) is always skipped for
@@ -531,6 +501,35 @@ async def _prepare_compiled(compiled, ctx, rls, state, role_id, role, fresh_mvs)
     compiled.sql = apply_governance(semantic_sql_for_validation, gov_ctx)
     if compiled.nodes_sql is not None:
         compiled.nodes_sql = apply_governance(make_semantic_sql(compiled.nodes_sql, ctx), gov_ctx)
+
+    # ABAC approval hook (Phase AE, REQ-203) — evaluated AFTER RLS injection and
+    # BEFORE execution. May deny the operation or return an additional filter that is
+    # ANDed into the governed WHERE clause.
+    if getattr(state, "approval_hook", None) is not None:
+        from provisa.auth.approval_hook import ApprovalRequest, should_check
+        from provisa.compiler.rls import _inject_where
+
+        table_ids = {m.table_id for m in ctx.tables.values() if m.field_name == compiled.root_field}
+        if should_check(
+            list(table_ids),
+            list(original_sources),
+            state.approval_hook_config,
+            table_hooks=getattr(state, "table_approval_hooks", {}),
+            source_hooks=getattr(state, "source_approval_hooks", {}),
+        ):
+            req = ApprovalRequest(
+                user=role_id,
+                roles=[role_id] if role_id else [],
+                tables=sorted(str(t) for t in table_ids),
+                columns=[c.column for c in compiled.columns],
+                operation="query",
+                session_vars=dict((role or {}).get("session_vars", {})),
+            )
+            resp = await state.approval_hook.evaluate(req)
+            if not resp.approved:
+                raise HTTPException(status_code=403, detail=f"Approval denied: {resp.reason}")
+            if resp.additional_filter:
+                compiled.sql = _inject_where(compiled.sql, f"({resp.additional_filter})")
 
     return compiled, mv_used
 

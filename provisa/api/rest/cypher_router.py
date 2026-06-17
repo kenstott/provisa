@@ -446,10 +446,10 @@ async def cypher_query(
     # Stage 3: Semantic conversion + access validation (transport responsibility)
     semantic_sql = make_semantic_sql(sql_str, ctx)
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
-    _gov_ctx_for_validate = build_governance_context(
-        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
-    )
     _role_dict = state.roles.get(role_id) or {}
+    _gov_ctx_for_validate = build_governance_context(
+        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", []), role=_role_dict
+    )
     _violations = _validate_sql(
         semantic_sql, ctx, _gov_ctx_for_validate, _role_dict, getattr(state, "tables", []),
         bypass_relationship_guard=True, bypass_uncovered_relationships=True,

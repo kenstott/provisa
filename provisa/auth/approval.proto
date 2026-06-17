@@ -20,9 +20,11 @@ message ApprovalRequest {
   repeated string tables = 3;
   repeated string columns = 4;
   string operation = 5;
+  map<string, string> session_vars = 6;
 }
 
 message ApprovalResponse {
   bool approved = 1;
   string reason = 2;
+  string additional_filter = 3;
 }

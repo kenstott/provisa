@@ -4,7 +4,13 @@
 
 """Unit tests for Stage 2 SQL governance transformer."""
 
-from provisa.compiler.stage2 import GovernanceContext, apply_governance
+from types import SimpleNamespace
+
+from provisa.compiler.stage2 import (
+    GovernanceContext,
+    apply_governance,
+    build_governance_context,
+)
 from provisa.security.masking import MaskingRule, MaskType
 
 
@@ -194,3 +200,63 @@ class TestUnionGovernance:
         result = apply_governance(sql, gov)
         # Both branches should have RLS applied
         assert result.count("region = 'us'") >= 2
+
+
+class TestCeilingWiring:
+    """REQ-005 / REQ-263(4): per-role and per-table row ceilings populated from config."""
+
+    def test_role_max_rows_populates_limit_ceiling(self):
+        ctx = SimpleNamespace(tables={})
+        gov = build_governance_context(
+            "analyst", None, {}, ctx, [], role={"max_rows": 500}
+        )
+        assert gov.limit_ceiling == 500
+
+    def test_role_without_full_results_gets_default_row_limit(self, monkeypatch):
+        monkeypatch.setenv("PROVISA_DEFAULT_ROW_LIMIT", "10000")
+        ctx = SimpleNamespace(tables={})
+        gov = build_governance_context("analyst", None, {}, ctx, [], role={"capabilities": []})
+        assert gov.limit_ceiling == 10000
+
+    def test_full_results_role_is_uncapped(self):
+        ctx = SimpleNamespace(tables={})
+        gov = build_governance_context(
+            "admin", None, {}, ctx, [], role={"capabilities": ["full_results"]}
+        )
+        assert gov.limit_ceiling is None
+
+    def test_missing_role_arg_gets_default_row_limit(self, monkeypatch):
+        monkeypatch.setenv("PROVISA_DEFAULT_ROW_LIMIT", "10000")
+        ctx = SimpleNamespace(tables={})
+        gov = build_governance_context("analyst", None, {}, ctx, [])
+        assert gov.limit_ceiling == 10000
+
+    def test_table_max_rows_populates_table_ceilings(self):
+        ctx = SimpleNamespace(tables={})
+        tables = [{"id": 1, "columns": [], "max_rows": 10}]
+        gov = build_governance_context("analyst", None, {}, ctx, tables)
+        assert gov.table_ceilings == {1: 10}
+
+
+class TestPerTableCeiling:
+    """REQ-005: LIMIT injected from the most restrictive ceiling on a referenced table."""
+
+    def test_per_table_ceiling_applied_for_referenced_table(self):
+        gov = _gov(table_map={"orders": 1}, table_ceilings={1: 10})
+        result = apply_governance("SELECT id FROM orders", gov)
+        assert "LIMIT 10" in result
+
+    def test_per_table_ceiling_ignored_when_table_not_referenced(self):
+        gov = _gov(table_map={"orders": 1, "users": 2}, table_ceilings={2: 5})
+        result = apply_governance("SELECT id FROM orders", gov)
+        assert "LIMIT" not in result
+
+    def test_min_of_role_and_table_ceiling_wins(self):
+        gov = _gov(table_map={"orders": 1}, table_ceilings={1: 10}, limit_ceiling=100)
+        result = apply_governance("SELECT id FROM orders", gov)
+        assert "LIMIT 10" in result
+
+    def test_role_ceiling_used_when_more_restrictive(self):
+        gov = _gov(table_map={"orders": 1}, table_ceilings={1: 100}, limit_ceiling=20)
+        result = apply_governance("SELECT id FROM orders", gov)
+        assert "LIMIT 20" in result

@@ -383,9 +383,31 @@ class TestActionInput(BaseModel):
     name: str
 
 
+def _test_endpoints_enabled() -> bool:
+    """REQ-004: developer test endpoints are opt-in and MUST NOT be exposed in production.
+
+    Disabled unless ``PROVISA_ENABLE_TEST_ENDPOINTS`` is explicitly truthy, mirroring the
+    opt-in pattern used for other non-production features (e.g. ``allow_simple_auth``).
+    """
+    import os
+
+    return os.environ.get("PROVISA_ENABLE_TEST_ENDPOINTS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+
+
 @router.post("/test")
 async def test_action(body: TestActionInput):
     """Run a no-arg test invocation of a tracked function or webhook."""
+    if not _test_endpoints_enabled():
+        raise HTTPException(
+            status_code=404,
+            detail="Test endpoint is disabled (set PROVISA_ENABLE_TEST_ENDPOINTS to enable in non-production).",
+        )
+
     from provisa.api.app import state
 
     if state.pg_pool is None:

@@ -275,9 +275,12 @@ def create_jsonapi_router(state: Any) -> APIRouter:
 
         from provisa.compiler.rls import inject_rls
         from provisa.compiler.mask_inject import inject_masking
+        from provisa.compiler.stage2 import apply_row_cap, resolve_row_cap
 
         compiled = inject_rls(compiled, ctx, rls)
         compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
+        # Row cap (REQ-005): FULL_RESULTS uncapped, others capped at default_row_limit.
+        compiled.sql = apply_row_cap(compiled.sql, resolve_row_cap(state.roles.get(role_id)))
 
         try:
             result = await route_and_execute(compiled, state)

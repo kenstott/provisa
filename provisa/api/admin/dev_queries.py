@@ -243,12 +243,11 @@ def _parse_directives(query: str) -> tuple[Any, str]:
 
 
 def _apply_pipeline_transforms(compiled, ctx, rls, role_id: str, role, fresh_mvs, state) -> tuple[Any, bool]:
-    """Apply RLS, masking, MV rewrite, Kafka filters, and sampling. Returns (compiled, mv_applied)."""
+    """Apply RLS, masking, MV rewrite, Kafka filters, and the row cap. Returns (compiled, mv_applied)."""
     from provisa.compiler.mask_inject import inject_masking
     from provisa.compiler.rls import inject_rls
-    from provisa.compiler.sampling import apply_sampling, get_sample_size
+    from provisa.compiler.stage2 import apply_row_cap, resolve_row_cap
     from provisa.mv.rewriter import rewrite_if_mv_match
-    from provisa.security.rights import has_capability, Capability
 
     compiled = inject_rls(compiled, ctx, rls)
     compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
@@ -264,9 +263,7 @@ def _apply_pipeline_transforms(compiled, ctx, rls, role_id: str, role, fresh_mvs
             compiled, ctx, state.source_types, state.kafka_table_configs
         )
 
-    sampling = not has_capability(role, Capability.FULL_RESULTS) if role else True
-    if sampling:
-        compiled = apply_sampling(compiled, get_sample_size())
+    compiled.sql = apply_row_cap(compiled.sql, resolve_row_cap(role))
 
     return compiled, mv_applied
 

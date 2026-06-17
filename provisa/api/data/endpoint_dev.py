@@ -193,6 +193,7 @@ async def sql_endpoint(
         state.masking_rules,
         ctx,
         getattr(state, "tables", []),
+        role=state.roles.get(role_id),
     )
 
     raw_tables = getattr(state, "tables", [])
@@ -724,10 +725,10 @@ async def nl_to_sql_endpoint(
 
     ctx = state.contexts[role_id]
     rls = state.rls_contexts.get(role_id, RLSContext.empty())
-    gov_ctx = build_governance_context(
-        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", [])
-    )
     role_obj = state.roles.get(role_id)
+    gov_ctx = build_governance_context(
+        role_id, rls, state.masking_rules, ctx, getattr(state, "tables", []), role=role_obj
+    )
     raw_tables = getattr(state, "tables", [])
 
     all_tables, _user_nodes, _table_name_to_type, _lm = _collect_nl_user_tables(ctx)

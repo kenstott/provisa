@@ -41,7 +41,10 @@ class GovernanceContext:
     table_map: dict[str, int] = field(default_factory=dict)
     # table_id → [(col_name, data_type)]
     all_columns: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
+    # Role-level row ceiling (REQ-005) — applies to the whole query regardless of tables.
     limit_ceiling: int | None = None
+    # Per-table row ceiling (REQ-005) — applied only when that table is referenced.
+    table_ceilings: dict[int, int] = field(default_factory=dict)
     sample_size: int | None = None
 
 
@@ -50,12 +53,32 @@ class GovernanceContext:
 # --------------------------------------------------------------------------- #
 
 
+def resolve_row_cap(role: dict | None, explicit: int | None = None) -> int | None:
+    """Resolve the row cap (REQ-005) — the single cap path for every transport.
+
+    An explicit role/table ``max_rows`` always wins. A role holding the FULL_RESULTS
+    capability gets **no default row limit at all** (``None``); every other role —
+    including an unknown/None role — receives the configured ``default_row_limit``
+    (env ``PROVISA_DEFAULT_ROW_LIMIT``, default 10000).
+    """
+    if explicit is not None:
+        return int(explicit)
+    from provisa.security.rights import Capability, has_capability
+
+    if role and has_capability(role, Capability.FULL_RESULTS):
+        return None
+    from provisa.compiler.sql_gen import _get_default_row_limit
+
+    return _get_default_row_limit()
+
+
 def build_governance_context(
     role_id: str,
     rls_context,
     masking_rules,
     ctx: CompilationContext,
     tables: list[dict],
+    role: dict | None = None,
 ) -> GovernanceContext:
     """Build GovernanceContext from server state for a given role.
 
@@ -65,12 +88,19 @@ def build_governance_context(
         masking_rules: MaskingRules = dict[(table_id, role_id), dict[col, (rule, dtype)]].
         ctx: CompilationContext with .tables: dict[str, TableMeta].
         tables: Raw table dicts from state, each with
-                {id, columns: [{column_name, visible_to: [role_ids], data_type}]}.
+                {id, columns: [{column_name, visible_to: [role_ids], data_type}],
+                 max_rows: int | None}.
+        role: The requesting role's config dict (carries ``max_rows``, REQ-005).
+              When None, no role-level ceiling is applied.
     """
     gov = GovernanceContext()
 
     # RLS rules
     gov.rls_rules = dict(rls_context.rules) if rls_context else {}
+
+    # Row cap (REQ-005): role-level ceiling. Explicit role `max_rows` wins; otherwise a
+    # role without the FULL_RESULTS capability (or an unknown role) gets the default cap.
+    gov.limit_ceiling = resolve_row_cap(role, role.get("max_rows") if role else None)
 
     # Masking rules — flatten to (table_id, col_name) → (rule, dtype)
     for (table_id, r_id), col_map in masking_rules.items():
@@ -101,6 +131,11 @@ def build_governance_context(
             else:
                 all_visible = False
         gov.visible_columns[table_id] = None if all_visible else frozenset(visible)
+
+        # per-table ceiling (REQ-005)
+        tbl_max = tbl.get("max_rows")
+        if tbl_max is not None:
+            gov.table_ceilings[table_id] = int(tbl_max)
 
     # table_map from compilation context — semantic refs only
     from provisa.compiler.naming import domain_to_sql_name
@@ -370,13 +405,33 @@ def apply_governance(sql: str, gov_ctx: GovernanceContext) -> str:
 
     governed = tree.sql(dialect="postgres")
 
-    # Apply LIMIT ceiling
-    if gov_ctx.limit_ceiling is not None:
-        governed = _apply_limit_ceiling(governed, gov_ctx.limit_ceiling)
+    # Apply LIMIT ceiling (REQ-005): most restrictive of the role-level ceiling and
+    # any per-table ceiling on a table referenced by the query.
+    ceiling = _effective_ceiling(tree, gov_ctx)
+    if ceiling is not None:
+        governed = _apply_limit_ceiling(governed, ceiling)
     elif gov_ctx.sample_size is not None:
         governed = _apply_limit_ceiling(governed, gov_ctx.sample_size)
 
     return governed
+
+
+def _effective_ceiling(tree, gov_ctx: GovernanceContext) -> int | None:
+    """Smallest applicable row ceiling: role-level plus per-table for referenced tables."""
+    candidates: list[int] = []
+    if gov_ctx.limit_ceiling is not None:
+        candidates.append(gov_ctx.limit_ceiling)
+    if gov_ctx.table_ceilings:
+        for tbl_node in tree.find_all(exp.Table):
+            tid = _table_id_for_node(tbl_node, gov_ctx)
+            if tid is not None and tid in gov_ctx.table_ceilings:
+                candidates.append(gov_ctx.table_ceilings[tid])
+    return min(candidates) if candidates else None
+
+
+def apply_row_cap(sql: str, cap: int | None) -> str:
+    """Inject or cap a query's LIMIT to ``cap`` (no-op when ``cap`` is None)."""
+    return sql if cap is None else _apply_limit_ceiling(sql, cap)
 
 
 def _apply_limit_ceiling(sql: str, ceiling: int) -> str:

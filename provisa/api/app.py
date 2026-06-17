@@ -101,6 +101,10 @@ class AppState:
     table_cache: dict[int, int | None] = {}  # table_id → cache_ttl
     auth_config: dict | None = None  # auth section from provisa.yaml
     auth_middleware_active: bool = False  # True only when wire_auth installed AuthMiddleware
+    approval_hook: Any | None = None  # REQ-247: ApprovalHook instance (None = disabled)
+    approval_hook_config: Any | None = None  # REQ-247: ApprovalHookConfig
+    table_approval_hooks: dict[int, bool] = {}  # table_id → approval_hook flag
+    source_approval_hooks: dict[str, bool] = {}  # source_id → approval_hook flag
     api_endpoints: dict[str, Any] = {}  # table_name → ApiEndpoint
     api_sources: dict[str, Any] = {}  # source_id → ApiSource
     hot_manager: HotTableManager | None = None
@@ -155,6 +159,41 @@ class AppState:
 
 
 state = AppState()
+
+
+def _setup_approval_hook(st: AppState) -> None:
+    """REQ-247: build the ABAC approval hook + scope dicts from config.
+
+    Reads ``auth.approval_hook`` and per-source/per-table ``approval_hook`` flags from
+    the parsed config. No-op (hook stays disabled) when no block is configured.
+    """
+    from provisa.auth.approval_hook import create_hook, load_approval_hook_config
+
+    config = getattr(st, "config", None)
+    if config is None:
+        return
+    hook_cfg = load_approval_hook_config(getattr(config.auth, "approval_hook", None))
+    if hook_cfg is None:
+        return
+
+    st.approval_hook_config = hook_cfg
+    st.approval_hook = create_hook(hook_cfg)
+    st.source_approval_hooks = {s.id: True for s in config.sources if getattr(s, "approval_hook", False)}
+
+    # Resolve per-table flags to table_ids via the compilation contexts.
+    name_to_id: dict[tuple[str, str, str], int] = {}
+    for ctx in st.contexts.values():
+        for meta in ctx.tables.values():
+            name_to_id[(meta.domain_id, meta.schema_name, meta.table_name)] = meta.table_id
+    table_hooks: dict[int, bool] = {}
+    for t in config.tables:
+        if not getattr(t, "approval_hook", False):
+            continue
+        key = (t.domain_id, t.schema_name, t.table_name)
+        if key in name_to_id:
+            table_hooks[name_to_id[key]] = True
+    st.table_approval_hooks = table_hooks
+
 
 # Views replace tables that have text[] columns Trino can't surface; arrays cast to JSON text.
 _META_TABLE_VIEWS: dict[str, str] = {
@@ -2102,10 +2141,13 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
 
         await _bg_hydrate_api_endpoints()
 
-        # Load RLS rules
+        # Load RLS rules — domain_id is required so domain-scoped rules (REQ-402)
+        # are not silently dropped by build_rls_context.
         rls_rules = [
             dict(r)
-            for r in await conn.fetch("SELECT table_id, role_id, filter_expr FROM rls_rules")
+            for r in await conn.fetch(
+                "SELECT table_id, domain_id, role_id, filter_expr FROM rls_rules"
+            )
         ]
 
         await _load_masking_rules(conn, col_types_converted, roles)
@@ -2687,6 +2729,9 @@ def create_app() -> FastAPI:
     async def _timeout_handler(_req: _Request, _exc: asyncio.TimeoutError):  # noqa: F841  # registered via app.exception_handler
         log.error("Request timeout on %s %s", _req.method, _req.url.path)
         return _JSONResponse(status_code=504, content={"detail": "Request timed out"})
+
+    # ABAC approval hook (REQ-247): build from auth.approval_hook config and scope flags.
+    _setup_approval_hook(state)
 
     # Conditionally add auth middleware and routes
     from provisa.auth.wiring import wire_auth

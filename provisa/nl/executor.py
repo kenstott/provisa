@@ -80,6 +80,7 @@ async def _execute_cypher(query: str, role: str, app_state: Any) -> dict:
         getattr(app_state, "masking_rules", {}),
         ctx,
         getattr(app_state, "tables", []),
+        role=getattr(app_state, "roles", {}).get(role),
     )
     governed_sql = apply_governance(make_semantic_sql(sql_str, ctx), gov_ctx)
     exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)
@@ -120,6 +121,7 @@ async def _execute_sql(query: str, role: str, app_state: Any) -> dict:
         getattr(app_state, "masking_rules", {}),
         ctx,
         getattr(app_state, "tables", []),
+        role=getattr(app_state, "roles", {}).get(role),
     )
     governed_sql = apply_governance(make_semantic_sql(query, ctx), gov_ctx)
     exec_sql = rewrite_semantic_to_trino_physical(governed_sql, ctx)

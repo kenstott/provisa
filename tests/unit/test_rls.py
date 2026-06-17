@@ -75,6 +75,66 @@ class TestBuildRLSContext:
         assert not rls.has_rules()
 
 
+class TestDomainRLS:
+    """REQ-402: domain-scoped RLS rules must survive load and apply per domain."""
+
+    def test_domain_rule_populates_domain_rules(self):
+        rules = [
+            {"table_id": None, "domain_id": "sales", "role_id": "analyst", "filter_expr": "region = 'us'"},
+        ]
+        rls = build_rls_context(rules, "analyst")
+        assert rls.domain_rules == {"sales": "region = 'us'"}
+        assert rls.rules == {}
+
+    def test_table_and_domain_rules_coexist(self):
+        rules = [
+            {"table_id": 5, "domain_id": None, "role_id": "analyst", "filter_expr": "active"},
+            {"table_id": None, "domain_id": "sales", "role_id": "analyst", "filter_expr": "region = 'us'"},
+        ]
+        rls = build_rls_context(rules, "analyst")
+        assert rls.rules == {5: "active"}
+        assert rls.domain_rules == {"sales": "region = 'us'"}
+
+    def test_domain_rule_injected_for_table_in_domain(self):
+        meta = TableMeta(
+            table_id=1, field_name="orders", type_name="Orders", source_id="pg",
+            catalog_name="pg", schema_name="public", table_name="orders", domain_id="sales",
+        )
+        ctx = _ctx(tables={"orders": meta})
+        rls = build_rls_context(
+            [{"table_id": None, "domain_id": "sales", "role_id": "a", "filter_expr": "region = 'us'"}],
+            "a",
+        )
+        result = inject_rls(_compiled('SELECT "id" FROM "public"."orders"'), ctx, rls)
+        assert "region = 'us'" in result.sql
+
+    def test_table_rule_takes_precedence_over_domain_rule(self):
+        meta = TableMeta(
+            table_id=1, field_name="orders", type_name="Orders", source_id="pg",
+            catalog_name="pg", schema_name="public", table_name="orders", domain_id="sales",
+        )
+        ctx = _ctx(tables={"orders": meta})
+        rls = build_rls_context(
+            [
+                {"table_id": 1, "domain_id": None, "role_id": "a", "filter_expr": "owner = 'me'"},
+                {"table_id": None, "domain_id": "sales", "role_id": "a", "filter_expr": "region = 'us'"},
+            ],
+            "a",
+        )
+        result = inject_rls(_compiled('SELECT "id" FROM "public"."orders"'), ctx, rls)
+        assert "owner = 'me'" in result.sql
+        assert "region = 'us'" not in result.sql
+
+    def test_startup_loader_selects_domain_id(self):
+        """Regression: the app RLS loader must select domain_id (else domain rules drop)."""
+        import inspect
+
+        import provisa.api.app as app_module
+
+        src = inspect.getsource(app_module)
+        assert "domain_id, role_id, filter_expr FROM rls_rules" in src
+
+
 class TestInjectRLS:
     def test_no_rules_returns_unchanged(self):
         compiled = _compiled('SELECT "id" FROM "public"."orders"')

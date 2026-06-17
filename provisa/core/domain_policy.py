@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-_LEGACY_SYSTEM_DOMAIN_IDS = ["", "meta", "ops"]
+_SYSTEM_DOMAIN_IDS = ["", "meta", "ops"]
 
 
 @dataclass
@@ -90,7 +90,7 @@ def import_default() -> str:
 
 def system_domain_ids() -> list[str]:
     """Domain ids always preserved across replace-mode reloads."""
-    ids = list(_LEGACY_SYSTEM_DOMAIN_IDS)
+    ids = list(_SYSTEM_DOMAIN_IDS)
     if _policy.use_domains is False:
         ids.append(_policy.default_domain)
     return ids

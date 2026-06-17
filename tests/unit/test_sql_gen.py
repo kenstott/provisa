@@ -166,14 +166,16 @@ class TestSimpleSelect:
         assert len(results) == 1
         q = results[0]
         assert q.root_field == "orders"
-        assert q.sql == 'SELECT "id", "amount", "status" FROM "public"."orders" LIMIT 10000'
+        # No compile-time default LIMIT — the row cap is applied by governance
+        # (role-aware: FULL_RESULTS uncapped, others capped at default_row_limit).
+        assert q.sql == 'SELECT "id", "amount", "status" FROM "public"."orders"'
         assert q.params == []
 
     def test_single_field(self, schema_and_ctx):
         _, ctx = schema_and_ctx
         doc = parse("{ orders { id } }")
         results = compile_query(doc, ctx)
-        assert results[0].sql == 'SELECT "id" FROM "public"."orders" LIMIT 10000'
+        assert results[0].sql == 'SELECT "id" FROM "public"."orders"'
 
     def test_sources_tracked(self, schema_and_ctx):
         _, ctx = schema_and_ctx
@@ -455,6 +457,38 @@ class TestPagination:
         assert "LIMIT $1" in sql
         assert "OFFSET $2" in sql
         assert results[0].params == [5, 10]
+
+
+class TestSampling:
+    def test_sample_emits_tablesample(self, schema_and_ctx):
+        schema, ctx = schema_and_ctx
+        doc = parse("{ orders(sample: 10) { id amount } }")
+        assert not validate(schema, doc)
+        results = compile_query(doc, ctx)
+        sql = results[0].sql
+        assert "TABLESAMPLE BERNOULLI (10" in sql
+
+    def test_sample_with_where_and_limit(self, schema_and_ctx):
+        _, ctx = schema_and_ctx
+        doc = parse("{ orders(sample: 25.5, limit: 5) { id } }")
+        results = compile_query(doc, ctx)
+        sql = results[0].sql
+        assert "TABLESAMPLE BERNOULLI (25.5)" in sql
+        assert "LIMIT" in sql
+
+    def test_sample_out_of_range_rejected(self, schema_and_ctx):
+        _, ctx = schema_and_ctx
+        doc = parse("{ orders(sample: 150) { id } }")
+        import pytest
+
+        with pytest.raises(ValueError, match="percentage"):
+            compile_query(doc, ctx)
+
+    def test_no_sample_no_tablesample(self, schema_and_ctx):
+        _, ctx = schema_and_ctx
+        doc = parse("{ orders { id } }")
+        results = compile_query(doc, ctx)
+        assert "TABLESAMPLE" not in results[0].sql
 
 
 class TestDistinctOn:

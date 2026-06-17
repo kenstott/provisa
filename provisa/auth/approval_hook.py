@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
@@ -34,21 +34,27 @@ class HookType(str, Enum):
 
 @dataclass
 class ApprovalRequest:
-    """Payload sent to the approval hook."""
+    """Payload sent to the approval hook (REQ-203)."""
 
     user: str
     roles: list[str]
     tables: list[str]
     columns: list[str]
     operation: str
+    session_vars: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
 class ApprovalResponse:
-    """Result from the approval hook."""
+    """Result from the approval hook (REQ-203).
+
+    ``additional_filter`` is an optional raw SQL predicate that the caller ANDs into
+    the query's WHERE clause after governance, narrowing the result further.
+    """
 
     approved: bool
     reason: str = ""
+    additional_filter: str | None = None
 
 
 @dataclass
@@ -135,6 +141,7 @@ class WebhookApprovalHook(ApprovalHook):
                 return ApprovalResponse(
                     approved=data.get("approved", False),
                     reason=data.get("reason", ""),
+                    additional_filter=data.get("additional_filter"),
                 )
         except Exception:
             self._breaker.record_failure()
@@ -185,12 +192,14 @@ class GrpcApprovalHook(ApprovalHook):
                 tables=list(request.tables),
                 columns=list(request.columns),
                 operation=request.operation,
+                session_vars=dict(request.session_vars),
             )
             proto_resp = await self._stub.Evaluate(proto_req, timeout=self._timeout)
             self._breaker.record_success()
             return ApprovalResponse(
                 approved=proto_resp.approved,
                 reason=proto_resp.reason,
+                additional_filter=proto_resp.additional_filter or None,
             )
         except Exception:
             self._breaker.record_failure()
@@ -229,6 +238,7 @@ class UnixSocketApprovalHook(ApprovalHook):
                 return ApprovalResponse(
                     approved=data.get("approved", False),
                     reason=data.get("reason", ""),
+                    additional_filter=data.get("additional_filter"),
                 )
         except Exception:
             self._breaker.record_failure()
@@ -249,6 +259,25 @@ def create_hook(config: ApprovalHookConfig) -> ApprovalHook:
     if config.type == HookType.UNIX_SOCKET:
         return UnixSocketApprovalHook(config)
     raise ValueError(f"Unknown hook type: {config.type}")
+
+
+def load_approval_hook_config(block: dict | None) -> ApprovalHookConfig | None:
+    """Build an ApprovalHookConfig from the `auth.approval_hook` YAML block (REQ-247).
+
+    Returns None when no block is configured (hook disabled).
+    """
+    if not block:
+        return None
+    return ApprovalHookConfig(
+        type=HookType(block.get("type", "webhook")),
+        url=block.get("url", ""),
+        socket_path=block.get("socket_path", ""),
+        timeout_ms=int(block.get("timeout_ms", 5000)),
+        fallback=FallbackPolicy(block.get("fallback", "deny")),
+        scope=block.get("scope", ""),
+        circuit_breaker_threshold=int(block.get("circuit_breaker_threshold", 5)),
+        circuit_breaker_cooldown_s=float(block.get("circuit_breaker_cooldown_s", 30.0)),
+    )
 
 
 def should_check(
@@ -292,4 +321,5 @@ def _request_to_dict(request: ApprovalRequest) -> dict:
         "tables": request.tables,
         "columns": request.columns,
         "operation": request.operation,
+        "session_vars": request.session_vars,
     }

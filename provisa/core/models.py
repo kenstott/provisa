@@ -167,6 +167,7 @@ class Source(BaseModel):
     cache_schema: str = "api_cache"  # schema within that catalog
     gql_naming_convention: str | None = None  # overrides global; None = inherit
     federation_hints: dict[str, str] = Field(default_factory=dict)  # Trino session props
+    approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this source
     allowed_domains: list[str] = Field(
         default_factory=list
     )  # restrict this source to specific domains; empty = unrestricted
@@ -347,6 +348,7 @@ class Table(BaseModel):
     watermark_column: str | None = None  # column used by polling subscription provider
     view_sql: str | None = None  # when set, table is a Provisa-managed view
     data_product: bool = False  # publish as a Data Product (catalog export)
+    approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this table
 
 
 class HotTablesConfig(BaseModel):
@@ -385,6 +387,7 @@ class Role(BaseModel):
     relationship_guard: bool = (
         True  # when False (+ SQL opt-out), V002 join approval check is skipped
     )
+    max_rows: int | None = None  # REQ-005: per-role result-size ceiling (LIMIT injected by Stage 2)
 
 
 def flatten_roles(roles: list[Role]) -> list[Role]:
@@ -393,30 +396,38 @@ def flatten_roles(roles: list[Role]) -> list[Role]:
     Returns new Role objects with inherited permissions merged in.
     """
     by_id = {r.id: r for r in roles}
-    cache: dict[str, tuple[set[str], set[str]]] = {}
+    cache: dict[str, tuple[set[str], set[str], int | None]] = {}
 
-    def _resolve(role_id: str) -> tuple[set[str], set[str]]:
+    def _resolve(role_id: str) -> tuple[set[str], set[str], int | None]:
         if role_id in cache:
             return cache[role_id]
         role = by_id[role_id]
         caps = set(role.capabilities)
         domains = set(role.domain_access)
+        max_rows = role.max_rows
         if role.parent_role_id and role.parent_role_id in by_id:
-            p_caps, p_domains = _resolve(role.parent_role_id)
+            p_caps, p_domains, p_max_rows = _resolve(role.parent_role_id)
             caps.update(p_caps)
             domains.update(p_domains)
-        cache[role_id] = (caps, domains)
-        return caps, domains
+            # Ceiling: child inherits parent's when unset; most restrictive wins when both set.
+            if max_rows is None:
+                max_rows = p_max_rows
+            elif p_max_rows is not None:
+                max_rows = min(max_rows, p_max_rows)
+        cache[role_id] = (caps, domains, max_rows)
+        return caps, domains, max_rows
 
     result: list[Role] = []
     for r in roles:
-        caps, domains = _resolve(r.id)
+        caps, domains, max_rows = _resolve(r.id)
         result.append(
             Role(
                 id=r.id,
                 capabilities=sorted(caps),
                 domain_access=["*"] if "*" in domains else sorted(domains),
                 parent_role_id=r.parent_role_id,
+                relationship_guard=r.relationship_guard,
+                max_rows=max_rows,
             )
         )
     return result
@@ -514,6 +525,7 @@ class AuthConfig(BaseModel):
     assignments_source: str = "claims"  # claims | provisa
     default_assignments: list[dict] = Field(default_factory=list)
     trust_upstream: bool = False
+    approval_hook: dict | None = None  # REQ-247: ABAC approval hook config block
 
 
 class OtelConfig(BaseModel):
