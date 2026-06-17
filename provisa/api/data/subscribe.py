@@ -291,6 +291,35 @@ def _rls_matches(row: dict, rls_ctx, _table: str) -> bool:
     return True
 
 
+async def _acquire_sse_slot(state, role_id: str | None) -> str | None:
+    """REQ-369: acquire a concurrent-SSE-subscription slot for the role.
+
+    Returns the limiter key (to release later) or None when no cap applies.
+    Raises HTTP 429 when the role is at its ``max_sse_subscriptions`` limit.
+    """
+    limiter = getattr(state, "rate_limiter", None)
+    if not (limiter and role_id):
+        return None
+    role = state.roles.get(role_id) or {}
+    cap = (role.get("rate_limit") or {}).get("max_sse_subscriptions")
+    if not cap:
+        return None
+    key = f"rl:sse:{role_id}"
+    if not await limiter.acquire(key, cap):
+        raise HTTPException(status_code=429, detail="max concurrent SSE subscriptions reached")
+    return key
+
+
+async def _release_slot_when_done(gen, state, key: str | None):
+    """Wrap an SSE generator so the concurrency slot is released when it ends."""
+    try:
+        async for chunk in gen:
+            yield chunk
+    finally:
+        if key:
+            await state.rate_limiter.release(key)
+
+
 @router.get("/subscribe/{table}")
 async def subscribe(
     table: str,
@@ -312,6 +341,10 @@ async def subscribe(
 
     auth_role = getattr(request.state, "role", None)
     role_id = auth_role or x_provisa_role
+
+    # REQ-369: enforce the per-role concurrent SSE subscription cap (released when the
+    # stream ends, in both return paths below).
+    _sse_slot = await _acquire_sse_slot(state, role_id)
 
     # --- Live query path (Phase AM) ---
     if query_id is not None:
@@ -369,7 +402,7 @@ async def subscribe(
                     pass
 
         return StreamingResponse(
-            live_generator(),
+            _release_slot_when_done(live_generator(), state, _sse_slot),
             media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -441,7 +474,7 @@ async def subscribe(
                 pass
 
     return StreamingResponse(
-        wrapped_generator(),
+        _release_slot_when_done(wrapped_generator(), state, _sse_slot),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

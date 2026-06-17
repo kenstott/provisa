@@ -231,6 +231,27 @@ class ProvisaFlightServer(flight.FlightServerBase):  # pyright: ignore[reportPri
             raise flight.FlightServerError(f"Invalid ticket: {e}") from e  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
 
         if request.get("query"):
+            # REQ-369: cap concurrent Arrow Flight query streams per role. The slot is
+            # held for the execution window (results are materialized in _execute_query).
+            limiter = getattr(self._state, "rate_limiter", None)
+            role_id = str(request.get("role", "admin"))
+            role = self._state.roles.get(role_id) or {}
+            cap = (role.get("rate_limit") or {}).get("max_flight_streams")
+            if limiter and cap:
+                key = f"rl:flight:{role_id}"
+                ok = asyncio.run_coroutine_threadsafe(
+                    limiter.acquire(key, cap), self._main_loop
+                ).result()
+                if not ok:
+                    raise flight.FlightServerError(  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+                        "max concurrent Arrow Flight streams reached"
+                    )
+                try:
+                    return self._execute_query(request)
+                finally:
+                    asyncio.run_coroutine_threadsafe(
+                        limiter.release(key), self._main_loop
+                    ).result()
             return self._execute_query(request)
 
         return self._do_get_catalog(ticket)

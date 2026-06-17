@@ -379,10 +379,19 @@ class Relationship(BaseModel):
     )
 
 
+class RoleRateLimit(BaseModel):
+    """Per-role rate limits (REQ-369). None = unlimited for that dimension."""
+
+    requests_per_second: int | None = None
+    max_sse_subscriptions: int | None = None
+    max_flight_streams: int | None = None
+
+
 class Role(BaseModel):
     id: str
     capabilities: list[str]
     domain_access: list[str]
+    rate_limit: RoleRateLimit | None = None  # REQ-369
     parent_role_id: str | None = None  # inherit capabilities + domain_access from parent
     relationship_guard: bool = (
         True  # when False (+ SQL opt-out), V002 join approval check is skipped
@@ -428,6 +437,7 @@ def flatten_roles(roles: list[Role]) -> list[Role]:
                 parent_role_id=r.parent_role_id,
                 relationship_guard=r.relationship_guard,
                 max_rows=max_rows,
+                rate_limit=r.rate_limit,
             )
         )
     return result
@@ -589,6 +599,12 @@ class AIModelsConfig(BaseModel):
     table_selection: str | dict = "claude-haiku-4-5-20251001"
 
 
+class NlConfig(BaseModel):
+    """Natural-language query service config."""
+
+    rate_limit: int | None = None  # REQ-370: requests per minute per role (None = unlimited)
+
+
 class ServerConfig(BaseModel):
     """Server network configuration.
 
@@ -700,6 +716,7 @@ class ProvisaConfig(BaseModel):
     observability: OtelConfig = Field(default_factory=OtelConfig)
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
     ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)
+    nl: NlConfig = Field(default_factory=NlConfig)
     govdata_sources: list[GovDataSource] = Field(default_factory=list)
     govdata_subscriptions: list[GovDataSubscription] = Field(default_factory=list)
 

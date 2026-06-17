@@ -101,6 +101,8 @@ class AppState:
     table_cache: dict[int, int | None] = {}  # table_id → cache_ttl
     auth_config: dict | None = None  # auth section from provisa.yaml
     auth_middleware_active: bool = False  # True only when wire_auth installed AuthMiddleware
+    redis_url: str | None = None  # resolved Redis URL (REDIS_URL env or cache.redis_url)
+    rate_limiter: Any | None = None  # REQ-369-371: Redis-backed RateLimiter (None until startup)
     approval_hook: Any | None = None  # REQ-247: ApprovalHook instance (None = disabled)
     approval_hook_config: Any | None = None  # REQ-247: ApprovalHookConfig
     table_approval_hooks: dict[int, bool] = {}  # table_id → approval_hook flag
@@ -1401,10 +1403,13 @@ async def _load_and_build(config_path: str | None = None) -> None:
 
     # Initialize cache store — REDIS_URL env var overrides config
     cache_config = raw_config.get("cache", {})
+    # Resolve Redis URL regardless of response-cache enablement so rate limiting
+    # (REQ-371) can use it even when the response cache is off.
+    state.redis_url = os.environ.get("REDIS_URL") or resolve_secrets(
+        cache_config.get("redis_url", "")
+    ) or None
     if cache_config.get("enabled"):
-        redis_url = os.environ.get("REDIS_URL", "")
-        if not redis_url:
-            redis_url = resolve_secrets(cache_config.get("redis_url", ""))
+        redis_url = state.redis_url or ""
         if redis_url:
             state.response_cache_store = RedisCacheStore(redis_url)
         state.response_cache_default_ttl = cache_config.get("default_ttl", 300)
@@ -2732,6 +2737,16 @@ def create_app() -> FastAPI:
 
     # ABAC approval hook (REQ-247): build from auth.approval_hook config and scope flags.
     _setup_approval_hook(state)
+
+    # Rate limiting (REQ-369-371): Redis-backed limiter + per-role request middleware.
+    # Added BEFORE wire_auth so the auth middleware (added later) runs first and
+    # populates request.state.role before the rate-limit check sees it.
+    from provisa.api.rate_limit import build_rate_limiter
+
+    state.rate_limiter = build_rate_limiter(getattr(state, "redis_url", None))
+    from provisa.api.middleware.rate_limit_middleware import RateLimitMiddleware
+
+    app.add_middleware(RateLimitMiddleware)
 
     # Conditionally add auth middleware and routes
     from provisa.auth.wiring import wire_auth

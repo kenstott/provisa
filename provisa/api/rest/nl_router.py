@@ -50,6 +50,19 @@ async def submit_nl_query(body: NlRequest, request: Request) -> JSONResponse:
     """Submit an NL query. Returns job_id immediately; processing is async."""
     from provisa.api.app import state
 
+    # REQ-370: NL rate limit (requests/min/role), enforced before any LLM call.
+    limiter = getattr(state, "rate_limiter", None)
+    nl_limit = state.config.nl.rate_limit if getattr(state, "config", None) else None
+    role_id = getattr(request.state, "role", None) or body.role
+    if limiter and nl_limit and role_id:
+        allowed, retry_after = await limiter.allow(f"rl:nl:{role_id}", nl_limit, 60.0)
+        if not allowed:
+            return JSONResponse(
+                status_code=429,
+                content={"error": "rate_limited", "detail": "NL query rate limit exceeded"},
+                headers={"Retry-After": str(max(1, int(retry_after + 0.999)))},
+            )
+
     job_id = new_job_id()
     job = NlJob(job_id=job_id, nl_query=body.q, role=body.role)
     await _job_store.put(job)
