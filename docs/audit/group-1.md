@@ -32,7 +32,7 @@ header, which is now the intended behaviour.
 | 039 | Security | To spec | Visibility filters SDL + columns |
 | 040 | Security | To spec | Stage 2 injects RLS WHERE + strips/NULLs columns |
 | 041 | Security | To spec | Declarative PG-style RLS in `rls_rules` |
-| 042 | Security | Not to spec | ~17 capabilities vs the 7 specified |
+| 042 | Security | To spec 2026-06-16 | The 7 named rights are distinct, independently-assignable capabilities; the extra entries are finer granularity (e.g. `full_results`), not a violation. Pinned by test_governance.py |
 | 402 | Security | Fixed 2026-06-16 | Startup `rls_rules` load now selects `domain_id`; domain-scoped rules apply |
 | 203 | ABAC Hook | Fixed 2026-06-16 | Hook moved to after RLS; `session_vars` + `additional_filter` added across all transports |
 | 204 | ABAC Hook | To spec | Scoping + zero-overhead skip correct |
@@ -86,10 +86,18 @@ header, which is now the intended behaviour.
   [stage2.py](../../provisa/compiler/stage2.py) and
   [rls.py](../../provisa/compiler/rls.py); RLS rules are declarative PG-style
   filter expressions in `rls_rules` ([schema.sql:165](../../provisa/core/schema.sql#L165)).
-- **042 — capability sprawl.** The `Capability` enum defines ~17 entries
-  ([rights.py:21](../../provisa/security/rights.py#L21)) against the 7 distinct
-  rights named in the requirement; "query authorization" is not cleanly isolated.
-  Several entries (e.g. approval-related) are obsolete under the rights model.
+- **042 — to spec (re-assessed 2026-06-16).** The requirement is that the seven
+  named rights are "distinct and independently configured", not that *only* seven
+  exist. They are: `source_registration`, `table_registration`,
+  `create_relationship`, `access_config`, `query_development`, `approve_view`
+  (query/artifact authorization), `ad_hoc_query` (query execution) — each a separate,
+  independently-assignable `Capability` ([rights.py:21](../../provisa/security/rights.py#L21))
+  enforced independently by `check_capability`/`has_capability`. The other entries
+  (`full_results`, `masking_config`, `user_management`, `admin`, …) are legitimate
+  finer-grained rights and all live in the role-composition UI palette, so they are
+  not dead. Nothing approval/registry-specific survived Phase 3. Verified by
+  [test_governance.py](../../tests/unit/test_governance.py). (The earlier
+  "Not to spec" was a miscount, not a real gap.)
 - **402 — fixed.** The startup query now selects `domain_id`
   ([app.py:2106](../../provisa/api/app.py#L2106)), so domain-scoped RLS rules reach
   `build_rls_context` and apply with table-over-domain precedence
@@ -257,21 +265,16 @@ into one `execute_governed(sql_or_doc, role)` helper. That confines governance t
 
 ## Remaining tasks
 
-Status: 15 of 25 requirements resolved (REQ-005, 046, 263, 478, the row-cap
+Status: 16 of 25 requirements resolved (REQ-005, 046, 263, 478, the row-cap
 dedup + single-cap-path fold; the three defects REQ-402, REQ-004, REQ-203; the
 ABAC config loading REQ-247; **rate limiting REQ-369/370/371**; the **Stage 2
-transport consolidation REQ-266**; and the **approved-query registry removal
-REQ-001/003**). Phased plan order: REQ-369–371 (done) → 266 (done) → 001/003 (done)
-→ 042 → test debt.
+transport consolidation REQ-266**; the **approved-query registry removal
+REQ-001/003**; and the **capability-rights verification REQ-042**). Phased plan order: REQ-369–371 (done) → 266 (done) → 001/003 (done)
+→ 042 (done) → test debt.
 
 | # | REQ | Type | Effort | Task |
 | --- | --- | --- | --- | --- |
-| 1 | 042 | Redesign | M | Six capabilities have 0 Python references (`APPROVE_VIEW`, `APPROVE_RELATIONSHIP`, `CREATE_RELATIONSHIP`, `USAGE`, `READ_RESTRICTED`, `COLUMN_GRANT`) but are likely referenced by role configs and the role-composition UI. Reaching the 7 named rights is a capability-model redesign with config/UI coupling, not an enum trim. |
-| 2 | — | Test debt | M | Add the remaining requirement-named tests that don't exist: `tests/unit/test_governance.py`, `tests/integration/test_registry.py` (reframe as rights-based — the registry is gone). Also add an endpoint-level ABAC integration test (the REQ-203 fix is covered at unit/structural level only). `test_rate_limiting.py` is done. |
-| 3 | 001/003 | DB cleanup | S | Drop the now-orphaned `persisted_queries` table (+ `scheduled_queries`/stable-id dependents) from `schema.sql`. Code no longer reads it; this is schema tidy-up, not a governance change. |
+| 1 | — | Test debt | M | Add the remaining requirement-named test: `tests/integration/test_registry.py` reframed as rights-based (the registry is gone). Also an endpoint-level ABAC integration test (REQ-203 covered at unit/structural level only). `test_rate_limiting.py` and `test_governance.py` are done. |
+| 2 | 001/003 | DB cleanup | S | Drop the now-orphaned `persisted_queries` table (+ `scheduled_queries`/stable-id dependents) from `schema.sql`. Code no longer reads it; schema tidy-up, not a governance change. |
 
-The capability trim (item 1) couples to role configs and the role-composition UI, so
-it is a redesign rather than an enum delete. Item 3 is low-risk schema tidy-up. The
-default-limit overlap and the approved-query registry *code* are already resolved
-(see Remediation).
 Effort: S ≈ <½ day, M ≈ ~1 day, L ≈ multi-day.
