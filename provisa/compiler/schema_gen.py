@@ -81,9 +81,6 @@ class SchemaInput:
     functions: list[dict] = field(default_factory=list)  # tracked DB functions
     webhooks: list[dict] = field(default_factory=list)  # tracked webhooks
     enum_types: dict = field(default_factory=dict)  # pg_name → GraphQLEnumType (REQ-221)
-    approved_queries: list[dict] = field(
-        default_factory=list
-    )  # approved persisted queries for subscription SDL
     root_table_ids: set[int] | None = (
         None  # if set, only these tables get root query fields; others are type-defs only
     )
@@ -936,22 +933,6 @@ def _build_subscription_fields(
         fields[t.field_name] = GraphQLField(
             GraphQLList(GraphQLNonNull(gql_types[t.table_id])),
             description=t.description,
-        )
-
-    # Approved persisted queries the role can subscribe to
-    for q in si.approved_queries:
-        visible_to = q.get("visible_to") or []
-        if visible_to and "*" not in visible_to and role_id not in visible_to:
-            continue
-        stable_id = q.get("stable_id") or ""
-        if not stable_id:
-            continue
-        # stable_id is a UUID — sanitize to a valid GraphQL field name
-        field_name = "q_" + stable_id.replace("-", "_")
-        desc = q.get("business_purpose") or q.get("query_text", "")[:80]
-        fields[field_name] = GraphQLField(
-            GraphQLList(GraphQLNonNull(cast(GraphQLScalarType, JSONScalar))),
-            description=desc,
         )
 
     return fields

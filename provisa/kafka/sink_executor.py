@@ -43,53 +43,11 @@ async def trigger_sinks_for_table(table_name: str, state: AppState) -> int:
 
     Returns the number of sinks triggered.
     """
-    if state.pg_pool is None:
-        return 0
-
-    async with state.pg_pool.acquire() as conn:
-        # Find approved queries with change_event sinks that target this table
-        rows = await conn.fetch(
-            """
-            SELECT pq.id, pq.stable_id, pq.query_text, pq.sink_topic,
-                   pq.sink_key_column
-            FROM persisted_queries pq
-            WHERE pq.status = 'approved'
-              AND pq.sink_trigger = 'change_event'
-              AND pq.sink_topic IS NOT NULL
-              AND $1 = ANY(
-                  SELECT rt.table_name FROM registered_tables rt
-                  WHERE rt.id = ANY(pq.target_tables)
-              )
-            """,
-            table_name,
-        )
-
-    if not rows:
-        return 0
-
-    triggered = 0
-    for row in rows:
-        try:
-            await _execute_and_publish(
-                query_text=row["query_text"],
-                sink_topic=row["sink_topic"],
-                key_column=row["sink_key_column"],
-                stable_id=row["stable_id"],
-                state=state,
-            )
-            triggered += 1
-            log.info(
-                "Sink triggered: query %s → topic %s",
-                row["stable_id"],
-                row["sink_topic"],
-            )
-        except Exception:
-            log.exception(
-                "Sink execution failed for query %s",
-                row["stable_id"],
-            )
-
-    return triggered
+    # GPQ approved-query sinks are removed with the registry (REQ-001/003). Sinks now
+    # attach to registered tables/views (REQ-176-181) — forward work — so until that
+    # lands no sink is triggered here. ``_execute_and_publish`` below is the governed
+    # publish primitive retained for that work.
+    return 0
 
 
 async def _execute_and_publish(

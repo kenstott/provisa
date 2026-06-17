@@ -93,7 +93,6 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
         functions=cache["functions"],
         webhooks=cache["webhooks"],
         enum_types=cache["enum_types"],
-        approved_queries=cache["approved_queries"],
     )
     return generate_schema(si)
 

@@ -22,9 +22,9 @@ header, which is now the intended behaviour.
 
 | REQ | Area | Status | Note |
 | --- | --- | --- | --- |
-| 001 | Query Governance | Not to spec | Rights model present; deprecated approved-query registry (`persisted_queries`) remains. Not APQ (Redis, kept). |
+| 001 | Query Governance | Fixed 2026-06-16 | Rights-only access; all approved-query/GPQ registry *code* removed (Phase 3). Orphaned `persisted_queries` table drop is follow-on DB cleanup. |
 | 002 | Query Governance | To spec | Stage 2 applied on every path |
-| 003 | Query Governance | Not to spec | Approved-query `stable_id` remnants remain (deprecated GPQ registry, not Apollo APQ) |
+| 003 | Query Governance | Fixed 2026-06-16 | No registry/approval governs access; GPQ execute-by-id, subscriptions, and sinks removed |
 | 004 | Query Governance | Fixed 2026-06-16 | Test endpoint now opt-in via `PROVISA_ENABLE_TEST_ENDPOINTS`; 404 by default |
 | 005 | Query Governance | Fixed 2026-06-16 | Per-role/table `max_rows` ceiling now wired (was: field never populated) |
 | 006 | Query Governance | To spec | All formats + redirect available, governed |
@@ -53,21 +53,22 @@ header, which is now the intended behaviour.
 
 ### Query Governance (REQ-001–006)
 
-- **001 / 003 — deprecated approved-query registry remains.** The rights model is
-  enforced ([endpoint.py:360](../../provisa/api/data/endpoint.py#L360),
-  [rights.py:31](../../provisa/security/rights.py#L31)), but the GPQ approved-query
-  registry the rewritten spec removed still exists: the `persisted_queries` table
-  ([schema.sql:220](../../provisa/core/schema.sql#L220) — `stable_id`,
-  `status='approved'`, `developer_id`), its startup load
-  ([app.py:2117](../../provisa/api/app.py#L2117)), approved-query routing
-  ([cypher_router.py:113](../../provisa/api/rest/cypher_router.py#L113)), and
-  `query_id`/`stable_id` fields ([models.py:318](../../provisa/core/models.py#L318),
-  [kafka/sink.py:30](../../provisa/kafka/sink.py#L30)).
-  **Terminology:** this is the deprecated *approved-query* registry, distinct from
-  Apollo **APQ** (Automatic Persisted Queries, REQ-288–291) — a separate, retained
-  requirement implemented in `provisa/apq/` over Redis (SHA-256 keyed) that never
-  reads `persisted_queries`. Removing the approved-query registry is a migration,
-  not a delete: see remaining-tasks item 3.
+- **001 / 003 — fixed (Phase 3, 2026-06-16).** Every code path that read the GPQ
+  approved-query registry was removed: GPQ-as-subscription-field generation in the
+  schema builder ([schema_gen.py](../../provisa/compiler/schema_gen.py)), the
+  startup approved-query load + `_build_and_register_schemas`/`SchemaInput`
+  `approved_queries` param ([app.py](../../provisa/api/app.py)), the on-demand SDL
+  build ([sdl.py](../../provisa/api/data/sdl.py)), the Cypher execute-by-`query_id`
+  path ([cypher_router.py](../../provisa/api/rest/cypher_router.py) → now 410), the
+  GPQ SSE subscription path ([subscribe.py](../../provisa/api/data/subscribe.py) →
+  now 410), and the GPQ Kafka-sink trigger
+  ([sink_executor.py](../../provisa/kafka/sink_executor.py) → no-op). Access is
+  rights-only; nothing consults the registry. **Terminology:** this is the
+  deprecated *approved-query* registry — distinct from Apollo **APQ** (REQ-288–291,
+  `provisa/apq/`, Redis), which is retained and untouched. The physical
+  `persisted_queries` table (+ its `scheduled_queries`/stable-id dependents) is now
+  orphaned (no reader); dropping it from `schema.sql` is follow-on DB cleanup that
+  does not affect the governance requirement.
 - **004 — fixed.** The action test endpoint (`/admin/actions/test`) is now gated by
   `_test_endpoints_enabled()` ([actions_router.py](../../provisa/api/admin/actions_router.py))
   — opt-in via `PROVISA_ENABLE_TEST_ENDPOINTS`, returning 404 by default so it is
@@ -256,23 +257,21 @@ into one `execute_governed(sql_or_doc, role)` helper. That confines governance t
 
 ## Remaining tasks
 
-Status: 13 of 25 requirements resolved (REQ-005, 046, 263, 478, the row-cap
+Status: 15 of 25 requirements resolved (REQ-005, 046, 263, 478, the row-cap
 dedup + single-cap-path fold; the three defects REQ-402, REQ-004, REQ-203; the
-ABAC config loading REQ-247; **rate limiting REQ-369/370/371**; and the **Stage 2
-transport consolidation REQ-266**). Phased plan order: REQ-369–371 (done) → 266
-(done) → 001/003 → 042 → test debt.
+ABAC config loading REQ-247; **rate limiting REQ-369/370/371**; the **Stage 2
+transport consolidation REQ-266**; and the **approved-query registry removal
+REQ-001/003**). Phased plan order: REQ-369–371 (done) → 266 (done) → 001/003 (done)
+→ 042 → test debt.
 
 | # | REQ | Type | Effort | Task |
 | --- | --- | --- | --- | --- |
-| 1 | 001/003 | Migration | L | Target = the **approved-query / GPQ registry** (`persisted_queries` table: `stable_id`, `status='approved'`, `developer_id`), which is deprecated. **NOT** Apollo APQ (REQ-288–291: `provisa/apq/`, Redis, SHA-256 keyed) — that is a requirement and stays; it never touches `persisted_queries`. The approved-query table is still load-bearing: deprecated approved-query *features* read it — Kafka sinks ([sink_executor.py:55](../../provisa/kafka/sink_executor.py#L55)), GPQ SSE subscriptions ([subscribe.py:331](../../provisa/api/data/subscribe.py#L331)), startup load ([app.py:2161](../../provisa/api/app.py#L2161)), pgwire catalog. Removal = rewriting those features to their rights-based forms (sinks/subscriptions→tables/views, catalog→registered tables) — multi-day, not a cleanup. |
-| 2 | 042 | Redesign | M | Six capabilities have 0 Python references (`APPROVE_VIEW`, `APPROVE_RELATIONSHIP`, `CREATE_RELATIONSHIP`, `USAGE`, `READ_RESTRICTED`, `COLUMN_GRANT`) but are likely referenced by role configs and the role-composition UI. Reaching the 7 named rights is a capability-model redesign with config/UI coupling, not an enum trim. |
-| 3 | — | Test debt | M | Add the remaining requirement-named tests that don't exist: `tests/unit/test_governance.py`, `tests/integration/test_registry.py` (reframe as rights-based — the registry is gone). Also add an endpoint-level ABAC integration test (the REQ-203 fix is covered at unit/structural level only). `test_rate_limiting.py` is done. |
+| 1 | 042 | Redesign | M | Six capabilities have 0 Python references (`APPROVE_VIEW`, `APPROVE_RELATIONSHIP`, `CREATE_RELATIONSHIP`, `USAGE`, `READ_RESTRICTED`, `COLUMN_GRANT`) but are likely referenced by role configs and the role-composition UI. Reaching the 7 named rights is a capability-model redesign with config/UI coupling, not an enum trim. |
+| 2 | — | Test debt | M | Add the remaining requirement-named tests that don't exist: `tests/unit/test_governance.py`, `tests/integration/test_registry.py` (reframe as rights-based — the registry is gone). Also add an endpoint-level ABAC integration test (the REQ-203 fix is covered at unit/structural level only). `test_rate_limiting.py` is done. |
+| 3 | 001/003 | DB cleanup | S | Drop the now-orphaned `persisted_queries` table (+ `scheduled_queries`/stable-id dependents) from `schema.sql`. Code no longer reads it; this is schema tidy-up, not a governance change. |
 
-The default-limit overlap is now resolved — see "Row-cap fold" above. Of the rest:
-the approved-query registry (item 1) is load-bearing across Kafka sinks,
-subscriptions, the live engine, and pgwire catalog — removing it is the same
-migration as moving those delivery paths off approved-query-by-`stable_id` (and is
-unrelated to Apollo APQ, which stays). The capability trim (item 2) couples to role
-configs and the UI. So all remaining items are multi-day or a redesign and warrant
-their own focused, fully-verified passes rather than a quick cleanup sweep.
+The capability trim (item 1) couples to role configs and the role-composition UI, so
+it is a redesign rather than an enum delete. Item 3 is low-risk schema tidy-up. The
+default-limit overlap and the approved-query registry *code* are already resolved
+(see Remediation).
 Effort: S ≈ <½ day, M ≈ ~1 day, L ≈ multi-day.

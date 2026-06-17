@@ -1927,7 +1927,6 @@ def _build_and_register_schemas(
     kafka_physical: dict,
     tracked_functions: list[dict],
     tracked_webhooks: list[dict],
-    approved_queries: list[dict],
     gql_object_cols: dict,
     rls_rules: list[dict],
 ) -> None:
@@ -1948,7 +1947,6 @@ def _build_and_register_schemas(
             functions=tracked_functions,
             webhooks=tracked_webhooks,
             enum_types=state.pg_enum_types,
-            approved_queries=approved_queries,
             gql_object_columns=gql_object_cols,
         )
         try:
@@ -2161,12 +2159,6 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             conn, raw_config
         )
 
-        approved_query_rows = await conn.fetch(
-            "SELECT id, stable_id, query_text, target_tables, business_purpose "
-            "FROM persisted_queries WHERE status = 'approved' AND stable_id IS NOT NULL"
-        )
-        approved_queries = [dict(r) for r in approved_query_rows]
-
         _build_and_register_schemas(
             roles=roles,
             tables=tables,
@@ -2178,7 +2170,6 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             kafka_physical=kafka_physical,
             tracked_functions=tracked_functions,
             tracked_webhooks=tracked_webhooks,
-            approved_queries=approved_queries,
             gql_object_cols=_gql_object_cols,
             rls_rules=rls_rules,
         )
@@ -2195,7 +2186,6 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         "functions": tracked_functions,
         "webhooks": tracked_webhooks,
         "enum_types": state.pg_enum_types,
-        "approved_queries": approved_queries,
         "physical_table_map": {**_META_TABLE_ALIAS, **(kafka_physical or {})},
     }
     state.schema_version += 1

@@ -404,20 +404,17 @@ class TestEncoder:
 
 
 class TestTriggerSinksForTable:
-    def _make_state(self, *, pg_pool=None, rows=None, execute_raises=False):
-        state = MagicMock()
-        state.pg_pool = pg_pool
-        return state
+    """REQ-001/003: GPQ approved-query sinks are removed with the registry.
+    ``trigger_sinks_for_table`` is a no-op (returns 0) and no longer reads the
+    ``persisted_queries`` registry. Table/view sinks (REQ-176-181) are forward work.
+    """
 
     async def test_returns_zero_when_pg_pool_is_none(self):
         state = MagicMock()
         state.pg_pool = None
+        assert await trigger_sinks_for_table("orders", state) == 0
 
-        result = await trigger_sinks_for_table("orders", state)
-
-        assert result == 0
-
-    async def test_returns_zero_when_no_matching_rows(self):
+    async def test_returns_zero_and_does_not_read_registry(self):
         mock_conn = AsyncMock()
         mock_conn.fetch = AsyncMock(return_value=[])
         mock_pool = _mock_pool_with_conn(mock_conn)
@@ -428,122 +425,8 @@ class TestTriggerSinksForTable:
         result = await trigger_sinks_for_table("orders", state)
 
         assert result == 0
-        mock_conn.fetch.assert_awaited_once()
-
-    async def test_returns_count_of_triggered_sinks(self):
-        rows = [_make_sink_row(stable_id="q-1"), _make_sink_row(stable_id="q-2")]
-        mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=rows)
-        mock_pool = _mock_pool_with_conn(mock_conn)
-
-        state = MagicMock()
-        state.pg_pool = mock_pool
-
-        with patch(
-            "provisa.kafka.sink_executor._execute_and_publish", new_callable=AsyncMock
-        ) as mock_exec:
-            result = await trigger_sinks_for_table("orders", state)
-
-        assert result == 2
-        assert mock_exec.await_count == 2
-
-    async def test_calls_execute_and_publish_for_each_row(self):
-        rows = [
-            _make_sink_row(stable_id="q-1", sink_topic="topic-a", sink_key_column="id"),
-            _make_sink_row(stable_id="q-2", sink_topic="topic-b", sink_key_column=None),
-        ]
-        mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=rows)
-        mock_pool = _mock_pool_with_conn(mock_conn)
-
-        state = MagicMock()
-        state.pg_pool = mock_pool
-
-        with patch(
-            "provisa.kafka.sink_executor._execute_and_publish", new_callable=AsyncMock
-        ) as mock_exec:
-            await trigger_sinks_for_table("orders", state)
-
-        calls = mock_exec.call_args_list
-        assert len(calls) == 2
-
-        first_kwargs = calls[0][1]
-        assert first_kwargs["stable_id"] == "q-1"
-        assert first_kwargs["sink_topic"] == "topic-a"
-        assert first_kwargs["key_column"] == "id"
-
-        second_kwargs = calls[1][1]
-        assert second_kwargs["stable_id"] == "q-2"
-        assert second_kwargs["sink_topic"] == "topic-b"
-        assert second_kwargs["key_column"] is None
-
-    async def test_handles_execute_and_publish_exception_gracefully(self):
-        """A failing sink should not prevent subsequent sinks from running."""
-        rows = [_make_sink_row(stable_id="q-fail"), _make_sink_row(stable_id="q-ok")]
-        mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=rows)
-        mock_pool = _mock_pool_with_conn(mock_conn)
-
-        state = MagicMock()
-        state.pg_pool = mock_pool
-
-        call_order = []
-
-        async def _side_effect(**kwargs):
-            call_order.append(kwargs["stable_id"])
-            if kwargs["stable_id"] == "q-fail":
-                raise RuntimeError("publish failed")
-
-        with patch(
-            "provisa.kafka.sink_executor._execute_and_publish",
-            side_effect=_side_effect,
-        ):
-            result = await trigger_sinks_for_table("orders", state)
-
-        # Only the successful sink counted
-        assert result == 1
-        # Both were attempted
-        assert call_order == ["q-fail", "q-ok"]
-
-    async def test_returns_correct_count_when_some_sinks_fail(self):
-        rows = [
-            _make_sink_row(stable_id="q-1"),
-            _make_sink_row(stable_id="q-2"),
-            _make_sink_row(stable_id="q-3"),
-        ]
-        mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=rows)
-        mock_pool = _mock_pool_with_conn(mock_conn)
-
-        state = MagicMock()
-        state.pg_pool = mock_pool
-
-        async def _side_effect(**kwargs):
-            if kwargs["stable_id"] == "q-2":
-                raise RuntimeError("failed")
-
-        with patch(
-            "provisa.kafka.sink_executor._execute_and_publish",
-            side_effect=_side_effect,
-        ):
-            result = await trigger_sinks_for_table("orders", state)
-
-        # q-1 and q-3 succeeded; q-2 failed
-        assert result == 2
-
-    async def test_fetch_called_with_table_name_parameter(self):
-        mock_conn = AsyncMock()
-        mock_conn.fetch = AsyncMock(return_value=[])
-        mock_pool = _mock_pool_with_conn(mock_conn)
-
-        state = MagicMock()
-        state.pg_pool = mock_pool
-
-        await trigger_sinks_for_table("invoices", state)
-
-        fetch_args = mock_conn.fetch.call_args
-        # Second positional arg is the table_name parameter
-        assert fetch_args[0][1] == "invoices"
+        # The deprecated registry must not be queried.
+        mock_conn.fetch.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

@@ -110,29 +110,6 @@ class CypherRequest(BaseModel):
     params: dict[str, Any] = {}
 
 
-async def _route_approved_query(
-    query_id: str,
-    request: Request,
-    state: AppState,
-) -> Response:
-    """Dispatch a pre-approved query by stable_id."""
-    from provisa.api.data.endpoint_dev import QueryRequest, unified_query_endpoint
-
-    queries: list[dict] = (getattr(state, "schema_build_cache", {}) or {}).get(
-        "approved_queries", []
-    )
-    matched = next((q for q in queries if q.get("stable_id") == query_id), None)
-    if matched is None:
-        return JSONResponse(
-            status_code=404, content={"error": f"Approved query not found: {query_id!r}"}
-        )
-    query_req = QueryRequest(
-        query=matched.get("query_text") or "", role=_resolve_role_id(request, state)
-    )
-    result = await unified_query_endpoint(request, query_req, x_provisa_role=None)
-    return result  # type: ignore[return-value]
-
-
 def _handle_procedure(proc: str, label_map: CypherLabelMap) -> JSONResponse:
     """Return schema-inspection results for Neo4j-compatible CALL procedures."""
     if proc == "db.labels":
@@ -386,7 +363,13 @@ async def cypher_query(
     from provisa.api.app import state
 
     if query_id:
-        return await _route_approved_query(query_id, request, state)
+        return JSONResponse(
+            status_code=410,
+            content={
+                "error": "execute-by-approved-query-id is removed; submit the Cypher query "
+                "directly — access is governed by table/view and relationship rights"
+            },
+        )
 
     try:
         from provisa.cypher.parser import parse_cypher, CypherParseError
