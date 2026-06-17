@@ -42,7 +42,7 @@ header, which is now the intended behaviour.
 | 263 | Two-Stage | Fixed 2026-06-16 | Renamed to four concerns (RLS/mask/visibility/row cap); cap wired + transport-uniform; "sampling" removed |
 | 264 | Two-Stage | To spec | AST transform covers CTE/subquery/JOIN/UNION/`SELECT *` |
 | 265 | Two-Stage | To spec | Operates on physical names |
-| 266 | Two-Stage | Partial | Row cap now uniform across all transports; gRPC/JSON:API/Kafka still inject RLS/masking via the string path, not Stage 2 |
+| 266 | Two-Stage | Fixed 2026-06-16 | All data-serving query transports (GraphQL, /data/sql, pgwire, NL, Cypher, REST, gRPC, JSON:API, Kafka sink) route through Stage 2; injectors remain only for admin dev-preview + mutation write-RLS |
 | 267 | Two-Stage | To spec | `/data/sql` rights-based, no approval gate |
 | 369 | Rate Limiting | Fixed 2026-06-16 | Per-role req/sec middleware + SSE & Flight concurrency caps; 429 + Retry-After |
 | 370 | Rate Limiting | Fixed 2026-06-16 | NL `nl.rate_limit` (req/min/role) enforced before the LLM call |
@@ -135,15 +135,17 @@ header, which is now the intended behaviour.
   implementation in [stage2.py](../../provisa/compiler/stage2.py)
   (`resolve_row_cap` / `apply_row_cap` / `_apply_limit_ceiling`). Statistical
   sampling moved to a user query feature (REQ-478, `TABLESAMPLE`).
-- **266 — row cap unified; RLS/masking still split.** GraphQL, `/data/sql`, pgwire,
-  NL, and Cypher converge on `stage2.apply_governance`. The **row cap** is now
-  uniform on every transport: gRPC ([grpc/server.py](../../provisa/grpc/server.py))
-  and admin dev_queries call the same `resolve_row_cap`/`apply_row_cap`. **RLS and
-  masking** on gRPC, JSON:API
-  ([jsonapi/generator.py:279](../../provisa/api/jsonapi/generator.py#L279)), and
-  Kafka sink ([kafka/sink_executor.py:129](../../provisa/kafka/sink_executor.py#L129))
-  still use the older string-based `inject_rls`/`inject_masking`. Routing those three
-  through Stage 2 closes the remaining divergence.
+- **266 — fixed (Phase 2, 2026-06-16).** gRPC ([grpc/server.py](../../provisa/grpc/server.py)),
+  JSON:API ([jsonapi/generator.py](../../provisa/api/jsonapi/generator.py)), and the
+  Kafka sink ([kafka/sink_executor.py](../../provisa/kafka/sink_executor.py)) were
+  rewritten to compile to semantic SQL then call `_govern_and_route_compiled` +
+  `_execute_plan` — the same Stage 2 path as GraphQL/REST — so RLS, masking,
+  visibility, and the row cap are applied uniformly. No data-serving query transport
+  bypasses Stage 2. The query-side `compiler/rls.py:inject_rls` and
+  `compiler/mask_inject.py:inject_masking` are **not** deleted: they remain the admin
+  compile-preview compiler (`dev_queries`, admin-only) with their own unit tests, and
+  `mutation_gen.inject_rls_into_mutation` (write-RLS, REQ-035) is a separate function
+  that stays. 66 transport tests + full unit suite (4322) green.
 
 ### Rate Limiting (REQ-369–371) — implemented 2026-06-16 (Phase 1)
 
@@ -254,24 +256,23 @@ into one `execute_governed(sql_or_doc, role)` helper. That confines governance t
 
 ## Remaining tasks
 
-Status: 12 of 25 requirements resolved (REQ-005, 046, 263, 478, the row-cap
+Status: 13 of 25 requirements resolved (REQ-005, 046, 263, 478, the row-cap
 dedup + single-cap-path fold; the three defects REQ-402, REQ-004, REQ-203; the
-ABAC config loading REQ-247; and **rate limiting REQ-369/370/371**). The items below
-are what remains for Group 1. Phased plan order: REQ-369–371 (done) → 266 → 001/003
-→ 042 → test debt.
+ABAC config loading REQ-247; **rate limiting REQ-369/370/371**; and the **Stage 2
+transport consolidation REQ-266**). Phased plan order: REQ-369–371 (done) → 266
+(done) → 001/003 → 042 → test debt.
 
 | # | REQ | Type | Effort | Task |
 | --- | --- | --- | --- | --- |
-| 1 | 266 | Gap (consistency) | L | Route gRPC, JSON:API, and Kafka sink through `stage2.apply_governance` for **RLS/masking** (the row cap is already uniform); delete the string injectors `compiler/rls.py:inject_rls` and `compiler/mask_inject.py`. |
-| 2 | 001/003 | Migration | L | Target = the **approved-query / GPQ registry** (`persisted_queries` table: `stable_id`, `status='approved'`, `developer_id`), which is deprecated. **NOT** Apollo APQ (REQ-288–291: `provisa/apq/`, Redis, SHA-256 keyed) — that is a requirement and stays; it never touches `persisted_queries`. The approved-query table is still load-bearing: deprecated approved-query *features* read it — Kafka sinks ([sink_executor.py:55](../../provisa/kafka/sink_executor.py#L55)), GPQ SSE subscriptions ([subscribe.py:331](../../provisa/api/data/subscribe.py#L331)), startup load ([app.py:2161](../../provisa/api/app.py#L2161)), pgwire catalog. Removal = rewriting those features to their rights-based forms (sinks/subscriptions→tables/views, catalog→registered tables) — multi-day, not a cleanup. |
-| 3 | 042 | Redesign | M | Six capabilities have 0 Python references (`APPROVE_VIEW`, `APPROVE_RELATIONSHIP`, `CREATE_RELATIONSHIP`, `USAGE`, `READ_RESTRICTED`, `COLUMN_GRANT`) but are likely referenced by role configs and the role-composition UI. Reaching the 7 named rights is a capability-model redesign with config/UI coupling, not an enum trim. |
-| 4 | — | Test debt | M | Add the remaining requirement-named tests that don't exist: `tests/unit/test_governance.py`, `tests/integration/test_registry.py` (reframe as rights-based — the registry is gone). Also add an endpoint-level ABAC integration test (the REQ-203 fix is covered at unit/structural level only). `test_rate_limiting.py` is done. |
+| 1 | 001/003 | Migration | L | Target = the **approved-query / GPQ registry** (`persisted_queries` table: `stable_id`, `status='approved'`, `developer_id`), which is deprecated. **NOT** Apollo APQ (REQ-288–291: `provisa/apq/`, Redis, SHA-256 keyed) — that is a requirement and stays; it never touches `persisted_queries`. The approved-query table is still load-bearing: deprecated approved-query *features* read it — Kafka sinks ([sink_executor.py:55](../../provisa/kafka/sink_executor.py#L55)), GPQ SSE subscriptions ([subscribe.py:331](../../provisa/api/data/subscribe.py#L331)), startup load ([app.py:2161](../../provisa/api/app.py#L2161)), pgwire catalog. Removal = rewriting those features to their rights-based forms (sinks/subscriptions→tables/views, catalog→registered tables) — multi-day, not a cleanup. |
+| 2 | 042 | Redesign | M | Six capabilities have 0 Python references (`APPROVE_VIEW`, `APPROVE_RELATIONSHIP`, `CREATE_RELATIONSHIP`, `USAGE`, `READ_RESTRICTED`, `COLUMN_GRANT`) but are likely referenced by role configs and the role-composition UI. Reaching the 7 named rights is a capability-model redesign with config/UI coupling, not an enum trim. |
+| 3 | — | Test debt | M | Add the remaining requirement-named tests that don't exist: `tests/unit/test_governance.py`, `tests/integration/test_registry.py` (reframe as rights-based — the registry is gone). Also add an endpoint-level ABAC integration test (the REQ-203 fix is covered at unit/structural level only). `test_rate_limiting.py` is done. |
 
 The default-limit overlap is now resolved — see "Row-cap fold" above. Of the rest:
-the approved-query registry (item 2) is load-bearing across Kafka sinks,
+the approved-query registry (item 1) is load-bearing across Kafka sinks,
 subscriptions, the live engine, and pgwire catalog — removing it is the same
 migration as moving those delivery paths off approved-query-by-`stable_id` (and is
-unrelated to Apollo APQ, which stays). The capability trim (item 3) couples to role
+unrelated to Apollo APQ, which stays). The capability trim (item 2) couples to role
 configs and the UI. So all remaining items are multi-day or a redesign and warrant
 their own focused, fully-verified passes rather than a quick cleanup sweep.
 Effort: S ≈ <½ day, M ≈ ~1 day, L ≈ multi-day.

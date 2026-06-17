@@ -105,10 +105,8 @@ async def _execute_and_publish(
     from graphql import GraphQLSchema
 
     from provisa.compiler.parser import parse_query
-    from provisa.compiler.rls import RLSContext, inject_rls
     from provisa.compiler.sql_gen import compile_query
-    from provisa.executor.trino import execute_trino
-    from provisa.transpiler.transpile import transpile_to_trino
+    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
     # Execute as admin role (sink runs server-side)
     role_id = "admin"
@@ -118,7 +116,6 @@ async def _execute_and_publish(
 
     schema = cast("GraphQLSchema", state.schemas[role_id])
     ctx = state.contexts[role_id]
-    rls = state.rls_contexts.get(role_id, RLSContext.empty())
 
     document = parse_query(schema, query_text)
     compiled_queries = compile_query(document, ctx)
@@ -126,18 +123,13 @@ async def _execute_and_publish(
         return
 
     compiled = compiled_queries[0]
-    compiled = inject_rls(compiled, ctx, rls)
 
-    # Always route through Trino for sinks (catalog-qualified)
-    compiled = compile_query(document, ctx, use_catalog=True)[0]
-    compiled = inject_rls(compiled, ctx, rls)
-    trino_sql = transpile_to_trino(compiled.sql)
-
-    if state.trino_conn is None:
-        log.warning("Trino not connected — cannot execute sink")
-        return
-
-    result = execute_trino(state.trino_conn, trino_sql, compiled.params)
+    # Governance + routing via Stage 2 (REQ-266) — RLS/masking/visibility applied like
+    # every other transport (sink runs as admin, so governance is typically a no-op).
+    plan = await _govern_and_route_compiled(
+        compiled.sql, role_id, exec_params=compiled.params or None, state=state
+    )
+    result = await _execute_plan(plan, state)
 
     # Publish to Kafka
     bootstrap = os.environ.get(

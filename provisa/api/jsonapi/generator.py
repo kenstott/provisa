@@ -40,10 +40,8 @@ from provisa.api.jsonapi.serializer import rows_to_jsonapi
 from provisa.api._query_helpers import (
     build_graphql_query as _build_graphql_query_shared,
     get_scalar_fields as _get_scalar_fields_shared,
-    route_and_execute,
 )
 from provisa.compiler.parser import GraphQLValidationError, parse_query
-from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import compile_query
 
 log = logging.getLogger(__name__)
@@ -209,7 +207,6 @@ def create_jsonapi_router(state: Any) -> APIRouter:
 
         schema = state.schemas[role_id]
         ctx = state.contexts[role_id]
-        rls = state.rls_contexts.get(role_id, RLSContext.empty())
 
         query_type = schema.query_type
         if query_type is None or table not in query_type.fields:
@@ -273,17 +270,18 @@ def create_jsonapi_router(state: Any) -> APIRouter:
 
         compiled = compiled_queries[0]
 
-        from provisa.compiler.rls import inject_rls
-        from provisa.compiler.mask_inject import inject_masking
-        from provisa.compiler.stage2 import apply_row_cap, resolve_row_cap
-
-        compiled = inject_rls(compiled, ctx, rls)
-        compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
-        # Row cap (REQ-005): FULL_RESULTS uncapped, others capped at default_row_limit.
-        compiled.sql = apply_row_cap(compiled.sql, resolve_row_cap(state.roles.get(role_id)))
+        # Governance + routing via Stage 2 (REQ-266): RLS, masking, visibility, and the
+        # row cap are applied by apply_governance — the same path as GraphQL and REST,
+        # so no transport bypasses governance.
+        from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
         try:
-            result = await route_and_execute(compiled, state)
+            plan = await _govern_and_route_compiled(
+                compiled.sql, role_id, exec_params=compiled.params or None, state=state
+            )
+            result = await _execute_plan(plan, state)
+        except PermissionError as e:
+            return _jsonapi_error_response(403, "Forbidden", str(e))
         except HTTPException as e:
             if e.status_code == 503:
                 return _jsonapi_error_response(503, "Service Unavailable", e.detail)

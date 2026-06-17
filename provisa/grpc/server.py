@@ -105,14 +105,7 @@ class ProvisaServicer:
 
         from provisa.compiler.parser import parse_query
         from provisa.compiler.sql_gen import compile_query
-        from provisa.compiler.rls import RLSContext, inject_rls
-        from provisa.compiler.mask_inject import inject_masking
-        from provisa.mv.rewriter import rewrite_if_mv_match
-        from provisa.compiler.stage2 import apply_row_cap, resolve_row_cap
-        from provisa.transpiler.router import Route, decide_route
-        from provisa.transpiler.transpile import transpile, transpile_to_trino
-        from provisa.executor.direct import execute_direct
-        from provisa.executor.trino import execute_trino
+        from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
 
         # Use await context.abort() directly rather than raising AbortError, which
         # can cause "Abort error has been replaced!" in gRPC aio async generators.
@@ -129,8 +122,6 @@ class ProvisaServicer:
 
         schema = state.schemas[role_id]
         ctx = state.contexts[role_id]
-        rls = state.rls_contexts.get(role_id, RLSContext.empty())
-        role = state.roles.get(role_id)
 
         # Build a GraphQL query from the proto request
         gql_query = f"{{ {field_name} {{ "
@@ -152,45 +143,16 @@ class ProvisaServicer:
             return
         compiled = compiled_queries[0]
 
-        # Apply RLS, masking, MV rewrite
-        compiled = inject_rls(compiled, ctx, rls)
-        compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
-        fresh_mvs = state.mv_registry.get_fresh()
-        compiled = rewrite_if_mv_match(compiled, fresh_mvs)
-
-        # Route
-        decision = decide_route(
-            sources=compiled.sources,
-            source_types=state.source_types,
-            source_dialects=state.source_dialects,
-            source_dsns=getattr(state, "source_dsns", None),
-        )
-
-        # Row cap (REQ-005) — single governance cap shared across transports.
-        row_cap = resolve_row_cap(role)
-        compiled.sql = apply_row_cap(compiled.sql, row_cap)
-
-        # Execute
-        if (
-            decision.route == Route.DIRECT
-            and decision.source_id
-            and state.source_pools.has(decision.source_id)
-        ):
-            target_sql = transpile(compiled.sql, decision.dialect or "postgres")
-            result = await execute_direct(
-                state.source_pools,
-                decision.source_id,
-                target_sql,
-                compiled.params,
+        # Governance + routing via Stage 2 (REQ-266) — unified with the GraphQL/REST
+        # paths so gRPC cannot bypass RLS, masking, visibility, or the row cap.
+        try:
+            plan = await _govern_and_route_compiled(
+                compiled.sql, role_id, exec_params=compiled.params or None, state=state
             )
-        else:
-            compiled = compile_query(document, ctx, use_catalog=True)[0]
-            compiled = inject_rls(compiled, ctx, rls)
-            compiled = inject_masking(compiled, ctx, state.masking_rules, role_id)
-            compiled = rewrite_if_mv_match(compiled, fresh_mvs)
-            compiled.sql = apply_row_cap(compiled.sql, row_cap)
-            trino_sql = transpile_to_trino(compiled.sql)
-            result = execute_trino(state.trino_conn, trino_sql, compiled.params)
+            result = await _execute_plan(plan, state)
+        except PermissionError as exc:
+            await context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
+            return
 
         # Stream rows as proto messages
         msg_cls = getattr(self._pb2, type_name)
