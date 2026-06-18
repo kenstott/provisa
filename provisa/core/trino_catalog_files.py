@@ -114,28 +114,38 @@ def _prometheus_config(source: Source):
 
 
 def catalog_properties_for(source: Source, resolved_password: str) -> dict[str, str] | None:
-    """Return connector catalog properties for a mapping-DSL source, else None."""
+    """Return connector catalog properties for a mapping-DSL source, else None.
+
+    ``connector.name`` is stripped: a dynamic ``CREATE CATALOG ... USING <connector>``
+    sets the connector, and Trino rejects ``connector.name`` in the WITH clause.
+    """
     stype = source.type.value
     if stype == "redis":
         from provisa.redis.source import generate_catalog_properties
 
-        return generate_catalog_properties(_redis_config(source, resolved_password))
-    if stype == "elasticsearch":
+        props = generate_catalog_properties(_redis_config(source, resolved_password))
+    elif stype == "elasticsearch":
         from provisa.elasticsearch.source import generate_catalog_properties
 
-        return generate_catalog_properties(_es_config(source, resolved_password))
-    if stype == "prometheus":
+        props = generate_catalog_properties(_es_config(source, resolved_password))
+    elif stype == "prometheus":
         from provisa.prometheus.source import generate_catalog_properties
 
-        return generate_catalog_properties(_prometheus_config(source))
-    return None
+        props = generate_catalog_properties(_prometheus_config(source))
+    else:
+        return None
+    return {k: v for k, v in props.items() if k != "connector.name"}
 
 
 # --- table-description file writing (REQ-250/251) ---
 
 
 def _table_definitions(source: Source, resolved_password: str) -> tuple[str, list[dict]] | None:
-    """Return (connector_subdir, table-definition dicts) for a mapping-DSL source."""
+    """Return (connector_subdir, table-definition dicts) for a mapping-DSL source.
+
+    Only redis/elasticsearch use on-disk table-description files; prometheus
+    auto-discovers metrics as tables and needs none.
+    """
     stype = source.type.value
     if stype == "redis":
         from provisa.redis.source import generate_table_definitions
@@ -145,10 +155,6 @@ def _table_definitions(source: Source, resolved_password: str) -> tuple[str, lis
         from provisa.elasticsearch.source import generate_table_definitions
 
         return "elasticsearch", generate_table_definitions(_es_config(source, resolved_password))
-    if stype == "prometheus":
-        from provisa.prometheus.source import generate_table_definitions
-
-        return "prometheus", generate_table_definitions(_prometheus_config(source))
     return None
 
 

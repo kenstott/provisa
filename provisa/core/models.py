@@ -106,6 +106,11 @@ SOURCE_TO_CONNECTOR: dict[str, str] = {
     "iceberg": "iceberg",
     "hive_s3": "hive",
     "delta_lake": "delta_lake",
+    # NoSQL/non-relational connectors driven by the mapping DSL (REQ-250/251)
+    "redis": "redis",
+    "elasticsearch": "elasticsearch",
+    "prometheus": "prometheus",
+    "kafka": "kafka",
 }
 
 # Map source types to SQLGlot dialect names (enables direct-route single-source queries)

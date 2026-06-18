@@ -37,7 +37,8 @@ class TestRedis:
     def test_catalog_properties(self):
         props = tcf.catalog_properties_for(_redis_source(), "")
         assert props is not None
-        assert props["connector.name"] == "redis"
+        # connector.name is set by USING <connector>, not the WITH clause.
+        assert "connector.name" not in props
         assert props["redis.nodes"] == "redis-host:6379"
         assert props["redis.table-names"] == "users"
 
@@ -68,7 +69,7 @@ class TestElasticsearch:
         )
         props = tcf.catalog_properties_for(src, "")
         assert props is not None
-        assert props["connector.name"] == "elasticsearch"
+        assert "connector.name" not in props
         assert props["elasticsearch.host"] == "es-host"
         assert props["elasticsearch.tls.enabled"] == "true"
         written = tcf.write_table_definitions(src, "", tmp_path)
@@ -85,7 +86,7 @@ class TestPrometheus:
             mapping={"url": "http://prom:9090", "tables": [{"name": "cpu", "metric": "node_cpu"}]},
         )
         props = tcf.catalog_properties_for(src, "")
-        assert props == {"connector.name": "prometheus", "prometheus.uri": "http://prom:9090"}
+        assert props == {"prometheus.uri": "http://prom:9090"}
 
 
 class TestKafka:
