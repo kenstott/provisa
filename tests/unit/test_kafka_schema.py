@@ -173,3 +173,43 @@ class TestKafkaTopicConfig:
             table_name="order_events",
         )
         assert topic.table_name == "order_events"
+
+
+# --- REQ-250 SAMPLE: infer record types from sampled JSON records ---
+
+
+class TestInferColumnsFromRecords:
+    def test_infers_scalar_types(self):
+        from provisa.kafka.source import infer_columns_from_records
+
+        cols = {c.name: (c.data_type, c.is_complex) for c in infer_columns_from_records(
+            [{"id": 1, "amount": 9.5, "paid": True, "region": "us"}]
+        )}
+        assert cols["id"] == ("BIGINT", False)
+        assert cols["amount"] == ("DOUBLE", False)
+        assert cols["paid"] == ("BOOLEAN", False)
+        assert cols["region"] == ("VARCHAR", False)
+
+    def test_object_and_array_are_complex_varchar(self):
+        from provisa.kafka.source import infer_columns_from_records
+
+        cols = {c.name: (c.data_type, c.is_complex) for c in infer_columns_from_records(
+            [{"items": [1, 2], "meta": {"k": "v"}}]
+        )}
+        assert cols["items"] == ("VARCHAR", True)
+        assert cols["meta"] == ("VARCHAR", True)
+
+    def test_int_then_float_widens_to_double(self):
+        from provisa.kafka.source import infer_columns_from_records
+
+        cols = {c.name: c.data_type for c in infer_columns_from_records(
+            [{"x": 1}, {"x": 2.5}]
+        )}
+        assert cols["x"] == "DOUBLE"
+
+    def test_null_contributes_no_type_and_field_order_preserved(self):
+        from provisa.kafka.source import infer_columns_from_records
+
+        cols = infer_columns_from_records([{"a": 1, "b": None}, {"a": 2, "c": "x"}])
+        names = [c.name for c in cols]
+        assert names == ["a", "c"]  # b was always null -> dropped; order by first-seen

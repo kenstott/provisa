@@ -71,3 +71,42 @@ async def test_prometheus_catalog_created_and_queryable():
         assert len(rows) >= 1
     finally:
         _drop(cur, catalog)
+
+
+_KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "localhost:19092")
+
+
+async def test_kafka_sample_infers_record_layout():
+    """REQ-250 SAMPLE: produce JSON records, sample the topic, infer column types.
+
+    The no-Confluent path — sampling a topic and proposing the record layout. Skips
+    when no broker is reachable.
+    """
+    pytest.importorskip("aiokafka")
+    from aiokafka import AIOKafkaProducer
+    from aiokafka.errors import KafkaConnectionError
+
+    from provisa.kafka.source import infer_columns_from_records, sample_topic_records
+
+    import json as _json
+
+    topic = "itest.orders"
+    producer = AIOKafkaProducer(bootstrap_servers=_KAFKA_BOOTSTRAP, request_timeout_ms=3000)
+    try:
+        await producer.start()
+    except (KafkaConnectionError, Exception):
+        pytest.skip(f"Kafka broker not reachable at {_KAFKA_BOOTSTRAP}")
+    try:
+        for i in range(8):
+            rec = {"order_id": i, "amount": round(i * 1.5, 2), "paid": i % 2 == 0, "region": "us"}
+            await producer.send_and_wait(topic, _json.dumps(rec).encode())
+    finally:
+        await producer.stop()
+
+    records = await sample_topic_records(_KAFKA_BOOTSTRAP, topic, max_records=20, timeout_ms=3000)
+    assert len(records) >= 8
+    cols = {c.name: (c.data_type, c.is_complex) for c in infer_columns_from_records(records)}
+    assert cols["order_id"] == ("BIGINT", False)
+    assert cols["amount"] == ("DOUBLE", False)
+    assert cols["paid"] == ("BOOLEAN", False)
+    assert cols["region"] == ("VARCHAR", False)

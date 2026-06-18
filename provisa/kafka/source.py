@@ -233,3 +233,100 @@ def map_json_schema_to_trino(json_type: str) -> tuple[str, bool]:
         "array": ("varchar", True),  # JSONB
     }
     return mapping.get(json_type, ("varchar", True))
+
+
+def _json_type_of(value) -> str | None:
+    """JSON Schema type name for a decoded value (None = skip, no type signal)."""
+    if value is None:
+        return None
+    if isinstance(value, bool):  # before int — bool is a subclass of int
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, dict):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    return "string"
+
+
+def infer_columns_from_records(records: list[dict]) -> list[KafkaColumn]:
+    """Propose KafkaColumn types from sampled JSON records (SchemaSource.SAMPLE).
+
+    Field order follows first appearance. When a field shows more than one type
+    across the sample, the widest wins: object/array (complex) > number > integer >
+    boolean > string. null values contribute no type signal.
+    """
+    order: list[str] = []
+    seen: dict[str, set[str]] = {}
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        for key, value in rec.items():
+            jt = _json_type_of(value)
+            if jt is None:
+                continue
+            if key not in seen:
+                seen[key] = set()
+                order.append(key)
+            seen[key].add(jt)
+
+    columns: list[KafkaColumn] = []
+    for key in order:
+        types = seen[key]
+        if "object" in types or "array" in types:
+            jt = "object"
+        elif "number" in types:
+            jt = "number"
+        elif "integer" in types:
+            jt = "integer"
+        elif "boolean" in types:
+            jt = "boolean"
+        else:
+            jt = "string"
+        trino_type, is_complex = map_json_schema_to_trino(jt)
+        columns.append(KafkaColumn(name=key, data_type=trino_type.upper(), is_complex=is_complex))
+    return columns
+
+
+async def sample_topic_records(
+    bootstrap_servers: str, topic: str, max_records: int = 50, timeout_ms: int = 4000
+) -> list[dict]:
+    """Consume up to ``max_records`` JSON messages from ``topic`` (SchemaSource.SAMPLE).
+
+    Reads from the earliest offset and JSON-decodes each value; non-JSON messages are
+    skipped. Requires a reachable broker. Returns the decoded records.
+    """
+    import json
+
+    from aiokafka import AIOKafkaConsumer
+
+    consumer = AIOKafkaConsumer(
+        topic,
+        bootstrap_servers=bootstrap_servers,
+        auto_offset_reset="earliest",
+        enable_auto_commit=False,
+        group_id=None,
+    )
+    await consumer.start()
+    records: list[dict] = []
+    try:
+        while len(records) < max_records:
+            batch = await consumer.getmany(timeout_ms=timeout_ms, max_records=max_records)
+            if not batch:
+                break
+            for _tp, messages in batch.items():
+                for msg in messages:
+                    if msg.value is None:
+                        continue
+                    try:
+                        decoded = json.loads(msg.value)
+                    except Exception:
+                        continue
+                    if isinstance(decoded, dict):
+                        records.append(decoded)
+    finally:
+        await consumer.stop()
+    return records[:max_records]

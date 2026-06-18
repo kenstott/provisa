@@ -54,8 +54,8 @@ REQ-434's admin UI is tracked as the Group-10 REQ-063 item.
 | 160 | Auto-MV | To spec | Auto-MVs default `STALE`; populated by refresh loop (`mv/models.py:76`, `mv/registry.py:60`) |
 | 194 | Naming convention | Fixed 2026-06-18 | `hasura_graphql` now maps to snake_case (Phase 1, `compiler/naming.py`) |
 | 195 | Naming convention | Fixed 2026-06-18 | `normalize_convention` maps `hasura-default`/`graphql-default`/DDN `graphql` literals to presets (Phase 1) |
-| 250 | Trino catalog gen | Fixed 2026-06-18 (Confluent now optional; backend-unverified) | Phase 3b + fix: `generate_trino_kafka_properties` now selects the table-description supplier — FILE (default) from each topic's manual columns via `generate_kafka_table_definitions`, or CONFLUENT only when `schema_registry_url` is set. So Kafka no longer requires Confluent (the MANUAL "directly enter columns" variant). Open: the SAMPLE variant (sample the topic for layout) is unimplemented; the CONFLUENT path is left untested (needs a registry); and under `catalog.management=dynamic` the kafka `.properties` likely needs `CREATE CATALOG` rather than a file drop |
-| 251 | NoSQL mapping DSL | Fixed 2026-06-18 (Prometheus verified live) | Phase 3b + live verify: `Source.mapping` exposes the redis/es/prometheus DSL; `catalog_properties_for` builds the typed config, `_build_catalog_properties` routes to it, table-description files written at `create_catalog`. Verified end-to-end against live Trino + Prometheus (`tests/integration/test_nosql_catalogs.py`). Two bugs found + fixed: `connector.name` stripped from the WITH clause, and redis/es/prometheus/kafka added to `SOURCE_TO_CONNECTOR`. Redis/ES query still needs those backends |
+| 250 | Trino catalog gen | Fixed 2026-06-18 (MANUAL + SAMPLE verified live) | Phase 3b + fix: `generate_trino_kafka_properties` selects the table-description supplier — FILE (default) from each topic's columns, or CONFLUENT only when `schema_registry_url` is set; Kafka no longer requires Confluent. SAMPLE implemented: `sample_topic_records` consumes JSON messages and `infer_columns_from_records` proposes the layout. Verified end-to-end against a live Redpanda broker: produce → sample → infer → FILE table-description → `CREATE CATALOG` → query returns typed rows. Open: the CONFLUENT/registry path is left untested (needs a registry) |
+| 251 | NoSQL mapping DSL | Fixed 2026-06-18 (Prometheus/Redis/ES verified live) | Phase 3b + live verify: `Source.mapping` exposes the redis/es/prometheus DSL; `catalog_properties_for` builds the typed config, `_build_catalog_properties` routes to it, table-description files written at `create_catalog`. All three verified end-to-end against live Trino — Prometheus (`up` metric), Elasticsearch (indexed docs, auto-discover), Redis (hash data via generated table-description). Two bugs found + fixed by live testing: `connector.name` stripped from the WITH clause, and redis/es/prometheus/kafka added to `SOURCE_TO_CONNECTOR` |
 | 363 | Semantic layer | To spec | SQLAlchemy dialect introspects via `POST /data/graphql` with `X-Role`; server returns per-role filtered schema (`provisa-client/.../sqlalchemy_dialect.py:102`, `api/data/endpoint.py:330`) |
 | 366 | View approval | Fixed 2026-06-18 | Phase 4b: a user lacking `create_view`/`create_relationship` no longer errors — `register_table`/`upsert_relationship` queue a creation request (REQ-434) that a rights-holder executes or rejects (`api/admin/schema.py`) |
 | 367 | Domain views | To spec (now tested) | Cross-domain data only enters a domain via a view — enforced by V001 domain-access (a role cannot query another domain's table directly, only an import view in its own domain). Pinned by `tests/unit/test_domain_views.py` |
@@ -287,11 +287,10 @@ remediation list (012, 119, 250, 251, 366, 367/418, 433, 194/195, 017, 019, 020,
 392, 415, 417, 434) is fully resolved; see the per-REQ status in the Summary table
 and the phase notes in each commit.
 
-Two operational caveats (implementation done, live coverage limited here):
+One residual caveat (everything else verified end-to-end against live Trino):
 
-- REQ-250 Kafka: the MANUAL (no-Confluent) FILE-supplier path is the default and
-  unit-tested; the CONFLUENT/registry path and the SAMPLE variant are left untested
-  (SAMPLE is unimplemented). End-to-end catalog load also needs a broker.
-- REQ-251 Redis/ES: catalog-property + table-description generation is unit-tested;
-  Prometheus is verified end-to-end against live Trino, but Redis/ES query needs
-  those backends.
+- REQ-250 Kafka: the MANUAL and SAMPLE (no-Confluent) paths are verified live against
+  a Redpanda broker (produce → sample → infer → FILE table-description → query). Only
+  the CONFLUENT/registry path is left untested — it needs a schema registry.
+- REQ-251 Redis/ES/Prometheus: all three verified end-to-end against live Trino with
+  sample data loaded into each backend.
