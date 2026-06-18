@@ -101,6 +101,57 @@ class TestJWTValidationRoundTrip:
             await provider_b.validate_token(token)
 
 
+class TestAllowSimpleAuthGuard:
+    """REQ-124: simple auth must be explicitly opted into via allow_simple_auth."""
+
+    def _simple_cfg(self, **extra) -> dict:
+        return {
+            "provider": "simple",
+            "jwt_secret": JWT_SECRET,
+            "simple": {"users": []},
+            **extra,
+        }
+
+    async def test_simple_without_flag_refused(self):
+        from provisa.auth.wiring import build_auth_provider
+
+        with pytest.raises(ValueError, match="allow_simple_auth"):
+            build_auth_provider(self._simple_cfg())
+
+    async def test_simple_with_flag_false_refused(self):
+        from provisa.auth.wiring import build_auth_provider
+
+        with pytest.raises(ValueError, match="allow_simple_auth"):
+            build_auth_provider(self._simple_cfg(allow_simple_auth=False))
+
+    async def test_simple_with_flag_true_builds(self):
+        from provisa.auth.wiring import build_auth_provider
+
+        provider = build_auth_provider(self._simple_cfg(allow_simple_auth=True))
+        assert isinstance(provider, SimpleAuthProvider)
+
+    async def test_other_providers_unaffected_by_flag(self):
+        # A non-simple provider never consults allow_simple_auth.
+        from provisa.auth.wiring import build_auth_provider
+
+        provider = build_auth_provider(
+            {
+                "provider": "oauth",
+                "oauth": {"discovery_url": "https://idp.example/.well-known", "client_id": "c"},
+            }
+        )
+        from provisa.auth.providers.oauth import OAuthProvider
+
+        assert isinstance(provider, OAuthProvider)
+
+
+class TestAuthConfigDefault:
+    async def test_allow_simple_auth_defaults_false(self):
+        from provisa.core.models import AuthConfig
+
+        assert AuthConfig().allow_simple_auth is False
+
+
 class TestRoleMappingFromJWT:
     async def test_role_from_claims_contains_rule(self, provider):
         token = provider.login("bob", "bob-pass")

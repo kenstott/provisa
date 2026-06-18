@@ -28,6 +28,13 @@ def build_auth_provider(auth_config: dict, db_pool=None) -> AuthProvider:
 
         return BasicAuthProvider(db_pool=db_pool)
     if provider_name == "simple":
+        # REQ-124: simple username/password auth is for testing only and must be
+        # explicitly opted into. Refuse to build it in the absence of the flag.
+        if not auth_config.get("allow_simple_auth", False):
+            raise ValueError(
+                "auth.provider 'simple' requires auth.allow_simple_auth: true "
+                "(simple username/password auth is not for production)"
+            )
         from provisa.auth.providers.simple import SimpleAuthProvider
 
         simple_cfg = auth_config.get("simple", {})

@@ -529,6 +529,7 @@ class AuthConfig(BaseModel):
     keycloak: dict | None = None
     oauth: dict | None = None
     simple: dict | None = None
+    allow_simple_auth: bool = False  # REQ-124: production guard — simple auth refused unless true
     superuser: dict | None = None
     role_mapping: list[dict] = Field(default_factory=list)
     default_role: str = "analyst"
