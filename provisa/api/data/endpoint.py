@@ -1585,6 +1585,18 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
     return field_rows, response_data, phase1_ms, phase2_ms, trino_sql, not _cache_miss
 
 
+def _grpc_cache_type(sql_type: str) -> str:
+    """Map a gRPC ColumnDef SQL type to the cache-table type vocabulary (REQ-327)."""
+    t = (sql_type or "").upper()
+    if "INT" in t:
+        return "integer"
+    if t in ("DOUBLE", "REAL", "FLOAT") or "DECIMAL" in t or "NUMERIC" in t:
+        return "number"
+    if "BOOL" in t:
+        return "boolean"
+    return "string"
+
+
 async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_field, output_format):
     """Execute a gRPC remote query method.
 
@@ -1624,38 +1636,100 @@ async def _execute_grpc_remote_source(compiled, ctx, state, source_id, root_fiel
 
     nf_args: dict = compiled.api_args.copy() if compiled.api_args else {}
 
-    _t0 = _time.perf_counter()
-    rows = await grpc_remote_adapter.fetch(
-        source_id=source_id,
-        full_method_path=grpc_query.full_method_path,
-        input_message_name=grpc_query.input_message,
-        output_message_name=grpc_query.output_message,
-        pb2=reg["pb2"],
-        args=nf_args,
-        grpc_remote_sources=getattr(state, "grpc_remote_sources", {}),
-        response_cache_store=state.response_cache_store,
-        ttl=reg.get("cache_ttl", 300),
-        server_streaming=grpc_query.server_streaming,
-    )
-    phase1_ms = (_time.perf_counter() - _t0) * 1000
+    # REQ-327: materialize gRPC-remote results to the PG cache table (like graphql_remote),
+    # then inline small results as a VALUES CTE and reference the cache table for large
+    # ones. A repeat query hits the PG cache table (no re-fetch). The VALUES CTE is the
+    # safe fallback if any cache step fails.
+    from collections import namedtuple as _nt
 
-    col_names = (
-        [c.name for c in grpc_query.columns] if rows else (list(rows[0].keys()) if rows else [])
+    from provisa.api_source.trino_cache import (
+        cache_location,
+        cache_table_name,
+        create_and_insert,
+        ensure_cache_schema,
+        rewrite_from_cache,
+        schedule_drop,
+        table_known_live,
     )
-    entry = HotTableEntry(
-        table_name=table_name,
-        catalog="",
-        schema="",
-        pk_column="",
-        rows=rows,
-        column_names=col_names,
-        is_api=True,
-    )
+    from provisa.cache.store import NoopCacheStore
+    from provisa.executor.redirect import RedirectConfig
+
+    cache_loc = cache_location(source_id, "provisa_admin", "grpc_cache")
+    cache_tbl = cache_table_name(source_id, table_name, nf_args)  # SHA-256(source+method+args)
+    redirect_config = RedirectConfig.from_env()
+    hot_mgr = getattr(state, "hot_manager", None)
+    _hot_threshold = hot_mgr.auto_threshold if hot_mgr is not None else 500
 
     exec_sql, exec_params, _ = extract_nf_args(compiled.sql, compiled.params)
     exec_sql = rewrite_semantic_to_trino_physical(exec_sql, ctx)
-    hot_sql = build_values_cte_sql(exec_sql, table_name, entry)
-    trino_sql = transpile_to_trino(hot_sql)
+
+    ensure_cache_schema(state.trino_conn, cache_loc)
+
+    phase1_ms = 0.0
+    final_sql: str | None = None
+    if table_known_live(cache_loc, cache_tbl):
+        final_sql = rewrite_from_cache(exec_sql, cache_loc, cache_tbl)  # None on failure
+
+    if final_sql is None:
+        _t0 = _time.perf_counter()
+        rows = await grpc_remote_adapter.fetch(
+            source_id=source_id,
+            full_method_path=grpc_query.full_method_path,
+            input_message_name=grpc_query.input_message,
+            output_message_name=grpc_query.output_message,
+            pb2=reg["pb2"],
+            args=nf_args,
+            grpc_remote_sources=getattr(state, "grpc_remote_sources", {}),
+            response_cache_store=NoopCacheStore(),  # the PG cache table is the cache, not Redis
+            ttl=reg.get("cache_ttl", 300),
+            server_streaming=grpc_query.server_streaming,
+        )
+        phase1_ms = (_time.perf_counter() - _t0) * 1000
+
+        col_names = (
+            [c.name for c in grpc_query.columns]
+            if grpc_query.columns
+            else (list(rows[0].keys()) if rows else [])
+        )
+
+        _Col = _nt("_Col", ["name", "type"])
+        cache_cols = (
+            [_Col(name=c.name, type=_grpc_cache_type(c.type)) for c in grpc_query.columns]
+            if grpc_query.columns
+            else [_Col(name=n, type="string") for n in col_names]
+        )
+        materialized = False
+        if rows:
+            try:
+                create_and_insert(state.trino_conn, cache_loc, cache_tbl, rows, cache_cols)
+                asyncio.create_task(
+                    schedule_drop(
+                        state.trino_conn,
+                        cache_loc,
+                        cache_tbl,
+                        reg.get("cache_ttl", 300),
+                        redirect_config,
+                    )
+                )
+                materialized = True
+            except Exception as cache_exc:
+                log.warning("[GRPC REMOTE] cache write failed for %s: %s", table_name, cache_exc)
+
+        if materialized and len(rows) > _hot_threshold:
+            final_sql = rewrite_from_cache(exec_sql, cache_loc, cache_tbl)
+        if final_sql is None:  # small result, or rewrite failed → inline VALUES CTE
+            entry = HotTableEntry(
+                table_name=table_name,
+                catalog="",
+                schema="",
+                pk_column="",
+                rows=rows,
+                column_names=col_names,
+                is_api=True,
+            )
+            final_sql = build_values_cte_sql(exec_sql, table_name, entry)
+
+    trino_sql = transpile_to_trino(final_sql)
 
     _loop = asyncio.get_running_loop()
     _api_conn_kwargs = getattr(state, "trino_conn_kwargs", None)
