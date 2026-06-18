@@ -19,13 +19,14 @@ snapshot ([overview.md](overview.md), Group 1 only).
 | --- | --- | --- | --- |
 | 120 | Authentication | To spec | `AuthProvider` ABC → `AuthIdentity`; one provider selected from YAML via `auth.provider` |
 | 121 | Authentication | To spec | `FirebaseAuthProvider.verify_id_token` via firebase-admin; token-agnostic (all sign-in methods); optional `[firebase]` extra |
-| 122 | Authentication | Incomplete | Keycloak realm roles only — **client roles (`resource_access`) not extracted**; JWKS URI by convention, not OIDC discovery |
+| 122 | Authentication | Fixed 2026-06-18 | Keycloak now merges realm roles + this client's roles (`resource_access.<client_id>.roles`), deduped, order preserved (Phase 2) |
 | 123 | Authentication | To spec | `OAuthProvider`: discovery URL → JWKS → RS256 JWT; configurable `role_claim` + audience |
-| 124 | Authentication | Not to spec | bcrypt + short-lived HS256 JWT present, but the **`allow_simple_auth: true` production guard is missing** — no such config field, no gate in wiring |
-| 125 | Authentication | Not added | `check_superuser` + `AuthConfig.superuser` defined but **never invoked** anywhere; superuser bootstrap is inert; password not resolved from env secret |
+| 124 | Authentication | Fixed 2026-06-18 | `auth.allow_simple_auth` (default false) added; `build_auth_provider` hard-fails for `simple` unless set (Phase 1) |
+| 125 | Authentication | Fixed 2026-06-18 | `check_superuser` wired into `AuthMiddleware` (Basic short-circuit, any provider); secrets resolved once at startup via `resolve_superuser_config` (Phase 3) |
 
-3 of 6 to spec. Gaps: REQ-122 (client roles), REQ-124 (production guard),
-REQ-125 (superuser unwired).
+All 6 to spec — every Group-2 gap closed. REQ-122/124/125 remediated; REQ-120/121/123
+were already to spec. Provider test debt cleared in Phase 4 (Firebase, Keycloak
+realm+client, generic OAuth, Basic).
 
 ## Detail
 
@@ -112,22 +113,18 @@ compared against the raw config value
 ## Named tests
 
 Spec names `tests/unit/test_auth_providers.py` and
-`tests/unit/test_auth_middleware.py` (both exist). Current coverage is limited to
-`SimpleAuthProvider` (login, JWT round-trip, tamper/secret rejection) and role
-mapping ([test_auth_providers.py](../../tests/unit/test_auth_providers.py)).
-Firebase, Keycloak, OAuth, Basic, superuser, and the `allow_simple_auth` guard have
-no unit coverage.
+`tests/unit/test_auth_middleware.py` (both exist). Coverage now spans Simple
+(login, JWT round-trip, tamper/secret rejection), role mapping, the
+`allow_simple_auth` guard, Keycloak (realm-only, client-only, merged, overlap-dedup,
+other-client-ignored, no-roles), Firebase, generic OAuth (list/string/custom-claim),
+Basic (valid/wrong/unknown/malformed), and the superuser short-circuit
+([test_auth_providers.py](../../tests/unit/test_auth_providers.py),
+[test_auth_middleware.py](../../tests/unit/test_auth_middleware.py)) — 47 tests.
 
 ## Remaining tasks
 
-| # | REQ | Type | Effort | Task |
-| --- | --- | --- | --- | --- |
-| 1 | 122 | Incomplete | S | Extract Keycloak client roles from `resource_access.{client_id}.roles` and merge with realm roles |
-| 2 | 124 | Not to spec | S | Add `auth.allow_simple_auth` (default false) and refuse to build `SimpleAuthProvider` unless set; cover with a test |
-| 3 | 125 | Not added | M | Wire `check_superuser` into the auth path (login/middleware), resolve the password from env via `resolve_secrets`, ensure admin role + all capabilities regardless of provider |
-| 4 | 121/123/122 | Test debt | M | Add provider unit tests for Firebase, Keycloak (realm + client roles), and generic OAuth |
-
-Effort: S ≈ <½ day, M ≈ ~1 day, L ≈ multi-day.
+None — all four phases implemented. See the phased plan below for the as-built
+record.
 
 ## Phased implementation plan
 

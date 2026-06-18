@@ -12,6 +12,8 @@
 
 from __future__ import annotations
 
+import base64
+
 import bcrypt
 import jwt
 import pytest
@@ -233,6 +235,159 @@ class TestKeycloakRoles:
         provider = self._provider(monkeypatch, {"sub": "u1"})
         identity = await provider.validate_token("t")
         assert identity.roles == []
+
+
+class TestFirebaseProvider:
+    """REQ-121: Firebase ID token validation maps uid/email/name/roles."""
+
+    def _provider(self, monkeypatch, decoded: dict):
+        from provisa.auth.providers import firebase as fb_mod
+        from provisa.auth.providers.firebase import FirebaseAuthProvider
+
+        class _Auth:
+            def verify_id_token(self, token):
+                return decoded
+
+        # Bypass __init__ (which needs firebase-admin); validate_token only uses
+        # the module-level firebase_auth handle.
+        provider = FirebaseAuthProvider.__new__(FirebaseAuthProvider)
+        monkeypatch.setattr(fb_mod, "firebase_auth", _Auth())
+        return provider
+
+    async def test_validate_token_maps_identity(self, monkeypatch):
+        provider = self._provider(
+            monkeypatch,
+            {"uid": "u-123", "email": "a@b.com", "name": "Ada", "roles": ["analyst"]},
+        )
+        identity = await provider.validate_token("t")
+        assert identity.user_id == "u-123"
+        assert identity.email == "a@b.com"
+        assert identity.display_name == "Ada"
+        assert identity.roles == ["analyst"]
+
+    async def test_validate_token_defaults_when_claims_absent(self, monkeypatch):
+        provider = self._provider(monkeypatch, {"uid": "anon-1"})
+        identity = await provider.validate_token("t")
+        assert identity.user_id == "anon-1"
+        assert identity.email is None
+        assert identity.roles == []
+
+
+class TestOAuthProvider:
+    """REQ-123: generic OIDC — discovery → JWKS → JWT; configurable role claim."""
+
+    def _provider(self, monkeypatch, decoded: dict, role_claim: str = "roles"):
+        from provisa.auth.providers import oauth as oa_mod
+        from provisa.auth.providers.oauth import OAuthProvider
+
+        provider = OAuthProvider(
+            discovery_url="https://idp.example/.well-known/openid-configuration",
+            client_id="provisa",
+            role_claim=role_claim,
+        )
+
+        class _Key:
+            key = "k"
+
+        class _JwksClient:
+            def get_signing_key_from_jwt(self, token):
+                return _Key()
+
+        monkeypatch.setattr(provider, "_get_jwks_client", lambda: _JwksClient())
+        monkeypatch.setattr(oa_mod.jwt, "decode", lambda *a, **k: decoded)
+        return provider
+
+    async def test_roles_as_list(self, monkeypatch):
+        provider = self._provider(
+            monkeypatch, {"sub": "u", "email": "u@x.io", "name": "U", "roles": ["a", "b"]}
+        )
+        identity = await provider.validate_token("t")
+        assert identity.user_id == "u"
+        assert identity.email == "u@x.io"
+        assert identity.roles == ["a", "b"]
+
+    async def test_role_as_string_coerced_to_list(self, monkeypatch):
+        provider = self._provider(monkeypatch, {"sub": "u", "roles": "solo"})
+        identity = await provider.validate_token("t")
+        assert identity.roles == ["solo"]
+
+    async def test_custom_role_claim(self, monkeypatch):
+        provider = self._provider(
+            monkeypatch, {"sub": "u", "groups": ["g1"]}, role_claim="groups"
+        )
+        identity = await provider.validate_token("t")
+        assert identity.roles == ["g1"]
+
+    async def test_no_roles(self, monkeypatch):
+        provider = self._provider(monkeypatch, {"sub": "u"})
+        identity = await provider.validate_token("t")
+        assert identity.roles == []
+
+
+class TestBasicProvider:
+    """REQ-120: Basic provider validates against local_users with bcrypt."""
+
+    def _provider(self, row):
+        from provisa.auth.providers.basic import BasicAuthProvider
+
+        class _Conn:
+            async def fetchrow(self, query, *args):
+                return row
+
+        class _Ctx:
+            async def __aenter__(self):
+                return _Conn()
+
+            async def __aexit__(self, *a):
+                return False
+
+        class _Pool:
+            def acquire(self):
+                return _Ctx()
+
+        return BasicAuthProvider(db_pool=_Pool())
+
+    def _creds(self, username: str, password: str) -> str:
+        return base64.b64encode(f"{username}:{password}".encode()).decode()
+
+    async def test_valid_credentials(self):
+        row = {
+            "id": "user-1",
+            "username": "alice",
+            "password_hash": _hash_pw("pw"),
+            "email": "alice@x.io",
+            "display_name": "Alice",
+            "attributes": {"team": "data"},
+        }
+        provider = self._provider(row)
+        identity = await provider.validate_token(self._creds("alice", "pw"))
+        assert identity.user_id == "user-1"
+        assert identity.email == "alice@x.io"
+        assert identity.raw_claims["username"] == "alice"
+        assert identity.raw_claims["team"] == "data"
+
+    async def test_wrong_password_rejected(self):
+        row = {
+            "id": "user-1",
+            "username": "alice",
+            "password_hash": _hash_pw("pw"),
+            "email": None,
+            "display_name": None,
+            "attributes": None,
+        }
+        provider = self._provider(row)
+        with pytest.raises(ValueError, match="Invalid credentials"):
+            await provider.validate_token(self._creds("alice", "wrong"))
+
+    async def test_unknown_user_rejected(self):
+        provider = self._provider(None)
+        with pytest.raises(ValueError, match="Invalid credentials"):
+            await provider.validate_token(self._creds("nobody", "pw"))
+
+    async def test_malformed_token_rejected(self):
+        provider = self._provider(None)
+        with pytest.raises(ValueError, match="Invalid credentials"):
+            await provider.validate_token("not-base64-without-colon")
 
 
 class TestRoleMappingFromJWT:
