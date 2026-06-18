@@ -89,6 +89,8 @@ export interface RegisteredTable {
   columnPresets: ColumnPreset[];
   apiEndpoint: string | null;
   viewSql: string | null;
+  materialize: boolean;
+  mvRefreshInterval: number;
   dataProduct: boolean;
   canDeployToDb: boolean;
 }

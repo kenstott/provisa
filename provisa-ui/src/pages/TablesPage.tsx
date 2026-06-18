@@ -586,6 +586,8 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         description: editingTable.description || undefined,
         watermarkColumn: editingTable.watermarkColumn || null,
         viewSql: editingTable.viewSql || undefined,
+        materialize: editingTable.materialize,
+        mvRefreshInterval: editingTable.mvRefreshInterval,
         dataProduct: editingTable.dataProduct,
         columnPresets: editingTable.columnPresets,
         columns: editingTable.columns.map((c) => ({
@@ -1706,6 +1708,50 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                   }}
                                 />
                               </label>
+                              {editingTable.viewSql && (
+                                <>
+                                  <label
+                                    style={{
+                                      flexDirection: "row",
+                                      alignItems: "center",
+                                      gap: "0.5rem",
+                                      gridColumn: "1 / -1",
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={editingTable.materialize}
+                                      onChange={(e) =>
+                                        setEditingTable({
+                                          ...editingTable,
+                                          materialize: e.target.checked,
+                                        })
+                                      }
+                                      style={{ width: "auto" }}
+                                    />
+                                    Materialized View
+                                    <span style={{ fontWeight: "normal", color: "var(--text-muted)" }}>
+                                      (CTAS into mv_cache, refreshed periodically)
+                                    </span>
+                                  </label>
+                                  {editingTable.materialize && (
+                                    <label>
+                                      Refresh Interval (seconds)
+                                      <input
+                                        type="number"
+                                        min={30}
+                                        value={editingTable.mvRefreshInterval}
+                                        onChange={(e) =>
+                                          setEditingTable({
+                                            ...editingTable,
+                                            mvRefreshInterval: parseInt(e.target.value, 10) || 300,
+                                          })
+                                        }
+                                      />
+                                    </label>
+                                  )}
+                                </>
+                              )}
                               <label
                                 style={{
                                   flexDirection: "row",

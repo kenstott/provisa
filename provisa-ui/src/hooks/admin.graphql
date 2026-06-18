@@ -83,6 +83,8 @@ query TablesQuery {
     watermarkColumn
     apiEndpoint
     viewSql
+    materialize
+    mvRefreshInterval
     dataProduct
     canDeployToDb
     columns {

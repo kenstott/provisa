@@ -24,8 +24,8 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int | None:
     table_id = await conn.fetchval(
         """
         INSERT INTO registered_tables
-            (source_id, domain_id, schema_name, table_name, alias, description, watermark_column, column_presets, view_sql, data_product)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            (source_id, domain_id, schema_name, table_name, alias, description, watermark_column, column_presets, view_sql, data_product, materialize, mv_refresh_interval)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT (source_id, schema_name, table_name) DO UPDATE SET
             domain_id = EXCLUDED.domain_id,
             alias = EXCLUDED.alias,
@@ -33,7 +33,9 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int | None:
             watermark_column = EXCLUDED.watermark_column,
             column_presets = EXCLUDED.column_presets,
             view_sql = EXCLUDED.view_sql,
-            data_product = EXCLUDED.data_product
+            data_product = EXCLUDED.data_product,
+            materialize = EXCLUDED.materialize,
+            mv_refresh_interval = EXCLUDED.mv_refresh_interval
         RETURNING id
         """,
         table.source_id,
@@ -46,6 +48,8 @@ async def upsert(conn: asyncpg.Connection, table: Table) -> int | None:
         json.dumps([p.model_dump() for p in getattr(table, "column_presets", [])]),
         getattr(table, "view_sql", None),
         getattr(table, "data_product", False),
+        getattr(table, "materialize", False),
+        getattr(table, "mv_refresh_interval", 300),
     )
 
     # Replace columns: delete existing, insert new

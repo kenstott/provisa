@@ -64,6 +64,8 @@ class RegisteredTableType:
     column_presets: list[ColumnPresetType] = strawberry.field(default_factory=list)
     api_endpoint: str | None = None
     view_sql: str | None = None
+    materialize: bool = False
+    mv_refresh_interval: int = 300
     data_product: bool = False
     can_deploy_to_db: bool = False
 
@@ -212,6 +214,8 @@ class TableInput:
     watermark_column: str | None = None
     column_presets: list[ColumnPresetInput] = strawberry.field(default_factory=list)
     view_sql: str | None = None
+    materialize: bool = False
+    mv_refresh_interval: int = 300
     data_product: bool = False
 
 
