@@ -18,8 +18,10 @@ snapshot [overview.md](overview.md) covers Group 1 only.
 
 ## Summary
 
-36 of 45 to spec (after Phase 1 + Phase 2 remediation). Gaps: 3 Incomplete
-(119, 250, 251), 3 Not to spec (017, 019, 366), 3 Not added (020, 417, 434).
+39 of 45 to spec (after Phase 1–3 remediation). Gaps: 0 Incomplete, 3 Not to spec
+(017, 019, 366), 3 Not added (020, 417, 434). Note: REQ-250/251 are code-complete +
+unit-tested but end-to-end catalog load is unverified here (no live Kafka/ES/
+Prometheus backends + writable Trino volume); REQ-366 is deferred to Phase 4.
 
 | REQ | Sub-area | Status | Finding |
 | --- | --- | --- | --- |
@@ -33,7 +35,7 @@ snapshot [overview.md](overview.md) covers Group 1 only.
 | 019 | Relationships | Not to spec | Manual cross-source rels via `upsert_relationship`; `one-to-one` is absent by design — the relationship field model is a strict binary (single vs list) and 1:1 collapses to many-to-one. The requirement, not the code, should drop `one-to-one` (`core/models.py:81`, `compiler/schema_gen.py:1046`) |
 | 020 | Relationships | Not added | `relationships` has no owner, no version, no re-review/stale flag (`core/schema.sql:119`) |
 | 021 | Source registration | To spec | GraphQL schema reflects registration model + aliases, not raw DB (`compiler/schema_gen.py:11`) |
-| 119 | JSONB promotion | Incomplete (registration wired) | Phase 3a: promotions declared on a table (`Table.promotions`) persist to `api_endpoints.promotions`, load through `loader.py` and register as first-class columns via `promotions_map`; `apply_promotions()` execution helper added + tested. Remaining: auto-run the DDL at api-cache materialization (Trino cache stores JSONB as VARCHAR + has no PG conn in that path) |
+| 119 | JSONB promotion | Fixed 2026-06-18 | Phase 3a registered promoted columns; Phase 3b runs the DDL at api-cache materialization (`_apply_cache_promotions` via `state.pg_pool`, `cast_source` for the varchar-stored JSON) |
 | 133 | Views | To spec | `views:` config → governed tables with column visibility/mask/description/alias (`api/app.py:1178`, `core/models.py:272`) |
 | 134 | Views | To spec | View tables flow through Stage-2 RLS/mask/visibility/row-cap like any table (`compiler/stage2.py:231`); approval via per-table `approval_hook` |
 | 135 | Views | To spec | `materialize:true` → CTAS-refreshed MV; non-materialized → inline subquery via `view_sql_map` (`api/app.py:1189`, `compiler/view_expand.py:30`) |
@@ -50,8 +52,8 @@ snapshot [overview.md](overview.md) covers Group 1 only.
 | 160 | Auto-MV | To spec | Auto-MVs default `STALE`; populated by refresh loop (`mv/models.py:76`, `mv/registry.py:60`) |
 | 194 | Naming convention | Fixed 2026-06-18 | `hasura_graphql` now maps to snake_case (Phase 1, `compiler/naming.py`) |
 | 195 | Naming convention | Fixed 2026-06-18 | `normalize_convention` maps `hasura-default`/`graphql-default`/DDN `graphql` literals to presets (Phase 1) |
-| 250 | Trino catalog gen | Incomplete | `generate_trino_kafka_properties` exists but never wired to startup; catalog/table-def files hand-authored (`kafka/source.py:84`, `api/app.py:880`) |
-| 251 | NoSQL mapping DSL | Incomplete | Redis/ES/Prometheus mapping dataclasses exist but not exposed in YAML config / `Source` model (`redis/source.py:43`, `core/models.py:140`) |
+| 250 | Trino catalog gen | Fixed 2026-06-18 (backend-unverified) | Phase 3b: `_process_kafka_sources` generates the Kafka catalog `.properties` (+ SASL client props) from YAML via `write_kafka_catalog_files`; redis/es/prometheus table-description files written at `create_catalog`. End-to-end catalog load needs a live Kafka + Trino volume |
+| 251 | NoSQL mapping DSL | Fixed 2026-06-18 (backend-unverified) | Phase 3b: `Source.mapping` exposes the redis/es/prometheus table DSL in YAML; `trino_catalog_files.catalog_properties_for` builds the typed config and `_build_catalog_properties` routes to it; table-description files written at `create_catalog`. End-to-end query needs the live backends |
 | 363 | Semantic layer | To spec | SQLAlchemy dialect introspects via `POST /data/graphql` with `X-Role`; server returns per-role filtered schema (`provisa-client/.../sqlalchemy_dialect.py:102`, `api/data/endpoint.py:330`) |
 | 366 | View approval | Not to spec | View/rel creation gated only by `create_view`/`create_relationship`; no approval workflow, no originator-rights/join check; `APPROVE_VIEW`/`APPROVE_RELATIONSHIP` never invoked (`api/admin/schema.py:1560`, `security/rights.py:27`) |
 | 367 | Domain views | To spec (now tested) | Cross-domain data only enters a domain via a view — enforced by V001 domain-access (a role cannot query another domain's table directly, only an import view in its own domain). Pinned by `tests/unit/test_domain_views.py` |

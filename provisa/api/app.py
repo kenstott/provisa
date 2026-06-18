@@ -880,9 +880,12 @@ async def _connect_flight_and_object_store() -> None:
 def _process_kafka_sources(raw_config: dict) -> None:
     """Register Kafka topics as virtual tables and populate state.kafka_table_configs/windows."""
     from provisa.kafka.window import KafkaTableConfig
+    from provisa.core.trino_catalog_files import write_kafka_catalog_files
 
     for ks in raw_config.get("kafka_sources", []):
         source_id = ks["id"]
+        # REQ-250: generate the Kafka catalog .properties from YAML config.
+        write_kafka_catalog_files(ks)
         for topic in ks.get("topics", []):
             topic_id = topic.get("id", "")
             physical_table = topic.get("topic", "").replace(".", "_").replace("-", "_")
@@ -2105,11 +2108,29 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
         _prov_logger = _prov_log.getLogger(__name__)
         try:
             _view_rows = await _pg.fetch(
-                "SELECT table_name, view_sql FROM registered_tables"
+                "SELECT table_name, view_sql, materialize, mv_refresh_interval FROM registered_tables"
                 " WHERE source_id = '__provisa__' AND view_sql IS NOT NULL"
             )
             for _vr in _view_rows:
-                state.view_sql_map[_vr["table_name"]] = _vr["view_sql"].rstrip().rstrip(";")
+                if _vr.get("materialize"):
+                    from provisa.mv.models import MVDefinition, MVStatus
+
+                    _mv_id = f"view-{_vr['table_name']}"
+                    if state.mv_registry.get(_mv_id) is None:
+                        state.mv_registry.register(MVDefinition(
+                            id=_mv_id,
+                            source_tables=[],
+                            target_catalog="postgresql",
+                            target_schema="mv_cache",
+                            target_table=f"mv_{_vr['table_name']}",
+                            refresh_interval=int(_vr.get("mv_refresh_interval") or 300),
+                            enabled=True,
+                            sql=_vr["view_sql"].rstrip().rstrip(";"),
+                            expose_in_sdl=False,
+                            status=MVStatus.STALE,
+                        ))
+                else:
+                    state.view_sql_map[_vr["table_name"]] = _vr["view_sql"].rstrip().rstrip(";")
         except Exception as _e:
             _prov_logger.warning("Failed to load user views for inline expansion: %s", _e)
 

@@ -47,6 +47,14 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
     port = source.port
     username = resolve_secrets(source.username or "")
 
+    # REQ-251: NoSQL/non-relational connectors (redis/elasticsearch/prometheus)
+    # build their catalog properties from the type-specific mapping DSL.
+    from provisa.core.trino_catalog_files import catalog_properties_for
+
+    _mapping_props = catalog_properties_for(source, resolved_password)
+    if _mapping_props is not None:
+        return _mapping_props
+
     # SQLite and OpenAPI sources — data lives in the local PG instance
     # (SQLite tables are migrated to PG at registration; OpenAPI responses cached there)
     if stype in ("sqlite", "openapi"):
@@ -118,6 +126,13 @@ def create_catalog(conn: trino.dbapi.Connection, source: Source, resolved_passwo
     if not props:
         # Some source types (e.g., DuckDB) don't have Trino connectors
         return
+
+    # REQ-250/251: write table-description files the connector reads before the
+    # catalog is created (redis/elasticsearch/prometheus).
+    from provisa.core.trino_catalog_files import is_mapping_dsl_source, write_table_definitions
+
+    if is_mapping_dsl_source(source):
+        write_table_definitions(source, resolved_password)
 
     props_sql = ", ".join(f"\"{k}\" = '{_escape_sql_string(v)}'" for k, v in props.items())
     sql = f"CREATE CATALOG IF NOT EXISTS {catalog_name} USING {connector} WITH ({props_sql})"

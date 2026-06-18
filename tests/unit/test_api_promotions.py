@@ -135,6 +135,22 @@ async def test_apply_promotions_noop_when_empty():
     assert conn.executed == []
 
 
+def test_dot_path_cast_source_for_varchar_json():
+    # REQ-119: the Trino api-cache stores JSON as varchar, so the source column is
+    # cast to jsonb before extraction.
+    expr = dot_path_to_pg_expression("data", "addr.city", cast_source=True)
+    assert "data::jsonb" in expr
+    assert expr.endswith("->>'city')")
+
+
+@pytest.mark.asyncio
+async def test_apply_promotions_cast_source_emits_jsonb_cast():
+    conn = _RecordingConn()
+    promotions = [PromotionConfig(jsonb_column="data", field="city", target_column="city", target_type="text")]
+    await apply_promotions(conn, "cache_tbl", promotions, cast_source=True)
+    assert "::jsonb" in conn.executed[0]
+
+
 def test_table_config_parses_promotions():
     # REQ-119: a steward declares promotions on a table in YAML config.
     from provisa.core.models import Table

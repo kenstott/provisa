@@ -167,6 +167,9 @@ class Source(BaseModel):
     cache_schema: str = "api_cache"  # schema within that catalog
     gql_naming_convention: str | None = None  # overrides global; None = inherit
     federation_hints: dict[str, str] = Field(default_factory=dict)  # Trino session props
+    # REQ-251: type-specific mapping DSL for NoSQL/non-relational sources
+    # (redis/elasticsearch/prometheus). Holds {"tables": [...]} plus connector options.
+    mapping: dict = Field(default_factory=dict)
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this source
     allowed_domains: list[str] = Field(
         default_factory=list

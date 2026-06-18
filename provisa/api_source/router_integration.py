@@ -46,6 +46,16 @@ class QueryResult:
     cache_table: str | None = field(default=None)
 
 
+async def _apply_cache_promotions(loc: CacheLocation, tbl: str, endpoint: ApiEndpoint) -> None:
+    """Run JSONB→generated-column promotion DDL on the PG-backed api-cache table (REQ-119)."""
+    from provisa.api.app import state
+    from provisa.api_source.promotions import apply_promotions
+
+    target = f'{loc.schema}."{tbl}"'
+    async with state.pg_pool.acquire() as pgc:
+        await apply_promotions(pgc, target, endpoint.promotions, cast_source=True)
+
+
 def is_api_source(source_id: str, source_types: dict[str, str]) -> bool:
     """Check if a source_id corresponds to an API source type."""
     stype = source_types.get(source_id, "")
@@ -92,6 +102,13 @@ async def handle_api_query(
 
     create_and_insert(conn, loc, tbl, all_rows, endpoint.columns)
     log.info("[API CACHE] miss — %d rows materialized → %s.%s.%s (ttl=%ds)", len(all_rows), loc.catalog, loc.schema, tbl, ttl)
+
+    # REQ-119: promote JSONB fields to generated columns on the (PG-backed) cache table.
+    # The cache stores JSON as varchar, so cast the source column to jsonb. Iceberg
+    # tables have no PG generated columns and are skipped.
+    if endpoint.promotions and loc.backend != "iceberg":
+        await _apply_cache_promotions(loc, tbl, endpoint)
+
     asyncio.ensure_future(schedule_drop(conn, loc, tbl, ttl))
 
     return QueryResult(rows=all_rows, from_cache=False, cache_table=tbl)
