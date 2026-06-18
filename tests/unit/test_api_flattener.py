@@ -24,6 +24,7 @@ def _col(name: str, col_type: ApiColumnType) -> ApiColumn:
 
 # --- Root path navigation ---
 
+
 def test_navigate_path_simple():
     data = {"data": {"users": [{"id": 1}]}}
     result = _navigate_path(data, "data.users")
@@ -50,6 +51,7 @@ def test_navigate_path_missing_key():
 
 # --- Primitive flattening ---
 
+
 def test_flatten_primitives():
     """Primitive types become native Python values."""
     data = [
@@ -67,6 +69,20 @@ def test_flatten_primitives():
     assert rows[0]["age"] == 30
     assert rows[0]["score"] == 9.5
     assert rows[0]["active"] is True
+
+
+def test_flatten_applies_response_normalizer():
+    """REQ-299: a response_normalizer is applied before flattening.
+
+    Locks the 4-arg path that handle_api_query uses for query-API sources
+    (neo4j_tabular / sparql_bindings).
+    """
+    sparql = {
+        "head": {"vars": ["name"]},
+        "results": {"bindings": [{"name": {"type": "literal", "value": "Alice"}}]},
+    }
+    rows = flatten_response(sparql, None, [_col("name", ApiColumnType.string)], "sparql_bindings")
+    assert rows == [{"name": "Alice"}]
 
 
 def test_flatten_objects_to_jsonb():
@@ -105,6 +121,7 @@ def test_flatten_null_values():
 
 
 # --- Root path + flattening ---
+
 
 def test_flatten_with_root_path():
     """Root path navigates to nested data before flattening."""
