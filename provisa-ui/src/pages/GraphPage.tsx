@@ -66,9 +66,6 @@ export function GraphPage() {
     compoundLabel: string;
     filterColumns: string[];
   } | null>(null);
-  const frameIdRef = useRef(
-    graphState.frames.reduce((max, f) => Math.max(max, parseInt(f.id) || 0), 0),
-  );
   const clusterMapRef = useRef<
     Record<string, { scl1: number | null; scl2: number | null; scl3: number | null }>
   >({});
@@ -149,7 +146,7 @@ export function GraphPage() {
   const runQuery = useCallback(
     async (query: string) => {
       if (!query) return;
-      const id = String(++frameIdRef.current);
+      const id = crypto.randomUUID();
       const start = Date.now();
       setFrames((f) => {
         const next = [
