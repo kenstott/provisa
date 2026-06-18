@@ -514,6 +514,42 @@ async def _domain_table_conflict(
     return None
 
 
+def _normalize_dataset_name(name: str) -> str:
+    """Snake-case + lowercase normalization for dataset ownership comparison (REQ-433)."""
+    from provisa.compiler.naming import apply_sql_name
+
+    return apply_sql_name(name, "snake").lower()
+
+
+async def _dataset_ownership_conflict(
+    conn, source_id: str, table_name: str, domain_id: str
+) -> str | None:
+    """Return an error if this dataset is already claimed by a DIFFERENT domain (REQ-433).
+
+    First-come ownership: a physical dataset — identified by (source_id, normalized
+    table name) — may be registered by only one domain. Re-registration by the owning
+    domain is allowed. Virtual Provisa views (``__provisa__``) are exempt: they are not
+    datasource claims and many domains legitimately share that source id.
+    """
+    if source_id == "__provisa__":
+        return None
+    from provisa.core import domain_policy
+
+    target_domain = domain_policy.resolve_domain_id(domain_id)
+    norm = _normalize_dataset_name(table_name)
+    rows = await conn.fetch(
+        "SELECT domain_id, table_name FROM registered_tables WHERE source_id = $1",
+        source_id,
+    )
+    for r in rows:
+        if _normalize_dataset_name(r["table_name"]) == norm and r["domain_id"] != target_domain:
+            return (
+                f"Table {table_name!r} on source {source_id!r} is already claimed by "
+                f"domain {r['domain_id']!r} (first-come ownership)."
+            )
+    return None
+
+
 async def _ensure_view_column_types(conn, view_sql: str, columns: list) -> list:
     """Fill any null/empty data_type on caller-supplied view columns.
 
@@ -1670,6 +1706,11 @@ class Mutation:
             )
             if _conflict:
                 return MutationResult(success=False, message=_conflict)
+            _owner_conflict = await _dataset_ownership_conflict(
+                _conn, model.source_id, model.table_name, model.domain_id
+            )
+            if _owner_conflict:
+                return MutationResult(success=False, message=_owner_conflict)
             if input.source_id == "__provisa__":
                 await _conn.execute(
                     """
@@ -1791,6 +1832,11 @@ class Mutation:
             )
             if _conflict:
                 return MutationResult(success=False, message=_conflict)
+            _owner_conflict = await _dataset_ownership_conflict(
+                _conn, model.source_id, model.table_name, model.domain_id
+            )
+            if _owner_conflict:
+                return MutationResult(success=False, message=_owner_conflict)
             table_id = await table_repo.upsert(_conn, model)
             src_row = await _conn.fetchrow(
                 "SELECT type, path FROM sources WHERE id = $1", input.source_id

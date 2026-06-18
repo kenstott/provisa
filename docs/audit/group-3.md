@@ -18,11 +18,12 @@ snapshot [overview.md](overview.md) covers Group 1 only.
 
 ## Summary
 
-28 of 45 to spec. Gaps: 7 Incomplete, 6 Not to spec, 4 Not added.
+36 of 45 to spec (after Phase 1 + Phase 2 remediation). Gaps: 3 Incomplete
+(119, 250, 251), 3 Not to spec (017, 019, 366), 3 Not added (020, 417, 434).
 
 | REQ | Sub-area | Status | Finding |
 | --- | --- | --- | --- |
-| 012 | Source registration | Incomplete | Live `CREATE CATALOG`, no restart (`core/catalog.py:96`), `source_registration`-gated; but connection validation is govdata-only — other types swallow pool failures (`api/admin/schema.py:1240`) |
+| 012 | Source registration | Fixed 2026-06-18 | Connection now validated for all driver-backed types before persisting; `_add_source_pool` propagates failures and `create_source` rejects (Phase 1) |
 | 013 | Source registration | To spec | No table queryable until registered; schema built only from `table_repo.list_all()` (`api/app.py:1936`) |
 | 014 | Source registration | To spec | Unregistered tables absent from schema/runtime; `generate_schema` driven solely by registered tables (`compiler/schema_gen.py:70`) |
 | 015 | Source registration | To spec | No per-table governance mode / registry-required mode; uniform Stage-2 governance (`compiler/stage2.py:34`) |
@@ -47,25 +48,25 @@ snapshot [overview.md](overview.md) covers Group 1 only.
 | 158 | Auto-MV | To spec | Cross-source rels with `materialize:true` auto-generate MV defs at startup (`api/app.py:1207`) |
 | 159 | Auto-MV | To spec | Guard `src_source != tgt_source` skips same-source rels (`api/app.py:1223`) |
 | 160 | Auto-MV | To spec | Auto-MVs default `STALE`; populated by refresh loop (`mv/models.py:76`, `mv/registry.py:60`) |
-| 194 | Naming convention | Not to spec | `apply_sql_name`/`apply_gql_name` + alias-canonical exist, but `hasura_graphql` maps to camelCase, contradicting spec's snake_case (`compiler/naming.py:140`) |
-| 195 | Naming convention | Not to spec | No mapping for literal `hasura-default`/`graphql-default`/DDN `namingConvention: graphql`; `hasura_graphql` resolves to camelCase (`compiler/naming.py:133`) |
+| 194 | Naming convention | Fixed 2026-06-18 | `hasura_graphql` now maps to snake_case (Phase 1, `compiler/naming.py`) |
+| 195 | Naming convention | Fixed 2026-06-18 | `normalize_convention` maps `hasura-default`/`graphql-default`/DDN `graphql` literals to presets (Phase 1) |
 | 250 | Trino catalog gen | Incomplete | `generate_trino_kafka_properties` exists but never wired to startup; catalog/table-def files hand-authored (`kafka/source.py:84`, `api/app.py:880`) |
 | 251 | NoSQL mapping DSL | Incomplete | Redis/ES/Prometheus mapping dataclasses exist but not exposed in YAML config / `Source` model (`redis/source.py:43`, `core/models.py:140`) |
 | 363 | Semantic layer | To spec | SQLAlchemy dialect introspects via `POST /data/graphql` with `X-Role`; server returns per-role filtered schema (`provisa-client/.../sqlalchemy_dialect.py:102`, `api/data/endpoint.py:330`) |
 | 366 | View approval | Not to spec | View/rel creation gated only by `create_view`/`create_relationship`; no approval workflow, no originator-rights/join check; `APPROVE_VIEW`/`APPROVE_RELATIONSHIP` never invoked (`api/admin/schema.py:1560`, `security/rights.py:27`) |
-| 367 | Domain views | Incomplete | Unified single view model + single-source deploy guard, but guard is source-spanning not cross-domain-import; named tests absent (`api/admin/schema.py:2303`, `core/models.py:349`) |
-| 392 | Graph PK | Incomplete | Feature works but wire field is `pk_columns: string[]`, not spec's `pk: string\|null`; no `graph/schema.py` (`api/rest/cypher_router.py:519`, `GraphFrame.tsx:188`) |
+| 367 | Domain views | To spec (now tested) | Cross-domain data only enters a domain via a view — enforced by V001 domain-access (a role cannot query another domain's table directly, only an import view in its own domain). Pinned by `tests/unit/test_domain_views.py` |
+| 392 | Graph PK | Fixed 2026-06-18 | `/data/graph-schema` now returns singular `pk: string\|null` per node label (Phase 1, `api/rest/cypher_router.py:520`) |
 | 393 | PK designation | To spec | `is_primary_key: bool = False` on `ColumnConfig`, persisted, informational only — no constraint generated (`core/models.py:289`, `core/schema.sql:79`) |
 | 394 | PK designation | To spec | Composite PK in column order; first PK = canonical `id_column` before all heuristics (`compiler/sql_gen.py:307`, `cypher/label_map.py:492`) |
 | 399 | Relationship cols | To spec | `is_foreign_key`/`is_alternate_key` via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` at schema-init (not a migration); source col marked FK on save (`core/schema.sql:100`, `repositories/relationship.py:82`) |
 | 400 | Relationship cols | To spec | Target col → PK if none exists else AK (`repositories/relationship.py:92`) |
 | 413 | FK auto-gen | To spec | FK auto-gen in `discovery/fk_introspect.py:225` (not `compiler/introspect.py` as named); both directions, `ON CONFLICT DO NOTHING` |
 | 414 | Demo schema | To spec | One FK in demo: `user_id ... REFERENCES users(id)` (`demo/files/create_demo_files.py:248`) |
-| 415 | FK naming style | Not added | `hasura_v2_relationship_style` absent; `inflection` never imported; alias fns return raw table name (`discovery/fk_introspect.py:146`) |
+| 415 | FK naming style | Fixed 2026-06-18 | `NamingConfig.hasura_v2_relationship_style` drives inflection-based singular/plural FK aliases (Phase 1, `discovery/fk_introspect.py`) |
 | 417 | Hasura migration | Not added | Mapper still skips remote schemas with "not supported" warning; no `graphql_remote` registration path (`hasura_v2/parser.py:314`, `hasura_v2/mapper.py:476`) |
-| 418 | Domain views | Incomplete | Domain-local V001/V002 query-time validation + capability-gated import, but cross-source views only blocked (not domain-scoped imports); named test absent (`compiler/sql_validator.py:8`, `api/admin/schema.py:2303`) |
+| 418 | Domain views | To spec (now tested) | Same V001 mechanism as 367 — domain-local calculations/relationships; cross-domain data imported only via views in the role's own domain. Pinned by `tests/unit/test_domain_views.py` |
 | 432 | Table uniqueness | To spec | register/updateTable call `_domain_table_conflict`; startup `_assert_domain_table_unique` fails on duplicates (`api/admin/schema.py:1631`, `api/app.py:1595`) |
-| 433 | Dataset ownership | Not to spec | First-come ownership not enforced — `ON CONFLICT DO UPDATE` lets another domain overwrite the claim; no `(source_id, normalized_table_name)` constraint (`repositories/table.py:29`, `core/schema.sql:60`) |
+| 433 | Dataset ownership | Fixed 2026-06-18 | `register_table`/`update_table` reject a cross-domain claim of an already-owned dataset (`_dataset_ownership_conflict`, normalized name per source); virtual `__provisa__` views exempt (`api/admin/schema.py`) |
 | 434 | Creation requests | Not added | No creation-request table/model/queue or execute/reject mutations anywhere; named test absent (`core/`, `provisa-ui/src/`) |
 
 ## Detail
