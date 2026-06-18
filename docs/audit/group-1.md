@@ -276,18 +276,23 @@ into one `execute_governed(sql_or_doc, role)` helper. That confines governance t
 
 ## Remaining tasks
 
-Status: 16 of 25 requirements resolved (REQ-005, 046, 263, 478, the row-cap
-dedup + single-cap-path fold; the three defects REQ-402, REQ-004, REQ-203; the
-ABAC config loading REQ-247; **rate limiting REQ-369/370/371**; the **Stage 2
-transport consolidation REQ-266**; the **approved-query registry removal
-REQ-001/003**; and the **capability-rights verification REQ-042**). Phased plan order: REQ-369–371 (done) → 266 (done) → 001/003 (done)
-→ 042 (done) → test debt.
+Status: 17 of 25 requirements resolved — all Group-1 items closed (REQ-005, 046,
+263, 478, the row-cap dedup + single-cap-path fold; the three defects REQ-402,
+REQ-004, REQ-203; the ABAC config loading REQ-247; **rate limiting
+REQ-369/370/371**; the **Stage 2 transport consolidation REQ-266**; the
+**approved-query registry removal REQ-001/003**; the **capability-rights
+verification REQ-042**; and the **endpoint-level ABAC integration test
+REQ-203**). Phased plan order: REQ-369–371 (done) → 266 (done) → 001/003 (done)
+→ 042 (done) → test debt (done).
 
-| # | REQ | Type | Effort | Task |
-| --- | --- | --- | --- | --- |
-| 1 | 203 | Test debt (integration) | M | Endpoint-level ABAC **integration** test (Docker) — the REQ-203 hook flow is covered at unit/structural level + by `test_governance.py`/transport tests, but not yet end-to-end through the live endpoint. |
+No remaining tasks.
 
 Done in Phase 5: `persisted_queries`/`approval_log` dropped from `schema.sql` +
 introspect allowlist (`live_query_state` kept for the live engine);
-`test_governance.py`, `test_rate_limiting.py`, and `test_registry_removed.py` added.
+`test_governance.py`, `test_rate_limiting.py`, and `test_registry_removed.py`
+added; **`tests/integration/test_abac_hook_endpoint.py`** added — drives a
+governed query through `/data/graphql` with a stub `ApprovalHook` (scope=all)
+injected into `AppState` against live Postgres, asserting the hook runs after RLS
+with a governed payload, a denial yields HTTP 403, and `additional_filter`
+narrows the real result set (single-source → routes direct-to-PG, no Trino).
 Effort: S ≈ <½ day, M ≈ ~1 day, L ≈ multi-day.
