@@ -278,7 +278,9 @@ class TestParser:
         assert len(metadata.cron_triggers) == 1
         assert metadata.cron_triggers[0].schedule == "0 0 * * *"
 
-    def test_parse_remote_schemas_emits_warning(self, tmp_path: Path):
+    def test_parse_remote_schemas_no_longer_warns(self, tmp_path: Path):
+        # REQ-417: remote schemas are parsed and later mapped to graphql_remote
+        # sources by the mapper — the parser no longer warns "not supported".
         rs_yaml = [
             {"name": "my_remote", "definition": {"url": "https://remote.example.com"}},
         ]
@@ -288,8 +290,7 @@ class TestParser:
         collector = WarningCollector()
         metadata = parse_metadata_dir(tmp_path, collector)
         assert len(metadata.remote_schemas) == 1
-        assert collector.has_warnings()
-        assert any(w.category == "remote_schemas" for w in collector.warnings)
+        assert not any(w.category == "remote_schemas" for w in collector.warnings)
 
     def test_parse_inherited_roles(self, tmp_path: Path):
         ir_yaml = [
@@ -480,7 +481,9 @@ class TestMapper:
         # Validate via Pydantic
         dumped = config.model_dump(by_alias=True)
         validated = ProvisaConfig.model_validate(dumped)
-        assert len(validated.sources) == 1
+        # 1 postgres source + 1 graphql_remote mapped from the remote schema (REQ-417).
+        assert len(validated.sources) == 2
+        assert any(s.type.value == "graphql_remote" for s in validated.sources)
         assert len(validated.tables) == 2
 
     def test_source_mapping(self):

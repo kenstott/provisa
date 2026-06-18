@@ -388,6 +388,10 @@ class Relationship(BaseModel):
     source_json_key: str | None = (
         None  # when set, JOIN extracts this key from source column as JSON object
     )
+    # REQ-020: defining-steward ownership, version, and re-review flag.
+    owner: str | None = None  # role/user id of the defining steward
+    version: int = 1  # bumped on every upsert and on re-review flagging
+    needs_review: bool = False  # set when a join-field schema change may have stale-d the join
 
 
 class RoleRateLimit(BaseModel):

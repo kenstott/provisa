@@ -37,6 +37,7 @@ from provisa.core.models import (
 from provisa.hasura_v2.models import (
     HasuraAction,
     HasuraMetadata,
+    HasuraRemoteSchema,
     HasuraSource,
     HasuraTable,
 )
@@ -119,6 +120,33 @@ def _map_source(hs: HasuraSource) -> Source:
         pool_min=conn.get("pool_min", 1),
         pool_max=conn.get("pool_max", 5),
     )
+
+
+def _map_remote_schema(rs: HasuraRemoteSchema) -> Source:
+    """Map a Hasura Remote Schema to a Provisa graphql_remote source (REQ-417).
+
+    Preserves the remote name, URL (or ${env:...} for url_from_env), headers, and
+    forward-client-headers/timeout options in the source mapping.
+    """
+    from provisa.core.models import SourceType
+
+    d = rs.definition or {}
+    url = d.get("url") or ""
+    if not url and d.get("url_from_env"):
+        url = "${env:" + str(d["url_from_env"]) + "}"
+    headers = {
+        h["name"]: h.get("value", "")
+        for h in d.get("headers", [])
+        if isinstance(h, dict) and "name" in h
+    }
+    mapping: dict = {}
+    if headers:
+        mapping["headers"] = headers
+    if d.get("forward_client_headers"):
+        mapping["forward_client_headers"] = True
+    if d.get("timeout_seconds") is not None:
+        mapping["timeout_seconds"] = d["timeout_seconds"]
+    return Source(id=rs.name, type=SourceType.graphql_remote, base_url=url, mapping=mapping)
 
 
 def _collect_roles(metadata: HasuraMetadata) -> dict[str, Role]:
@@ -407,6 +435,10 @@ def convert_metadata(
                 if hasattr(src, k):
                     object.__setattr__(src, k, v)
         sources.append(src)
+
+    # Remote schemas -> graphql_remote sources (REQ-417)
+    for rs in metadata.remote_schemas:
+        sources.append(_map_remote_schema(rs))
 
     # Roles
     roles_dict = _collect_roles(metadata)

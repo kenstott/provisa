@@ -39,8 +39,8 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
                                        source_column, target_column, cardinality,
                                        materialize, refresh_interval,
                                        target_function_name, function_arg, alias, graphql_alias,
-                                       disable_cypher, source_json_key)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                                       disable_cypher, source_json_key, owner, version, needs_review)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
             ON CONFLICT (id) DO UPDATE SET
                 source_table_id = EXCLUDED.source_table_id,
                 target_table_id = EXCLUDED.target_table_id,
@@ -54,7 +54,11 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
                 alias = EXCLUDED.alias,
                 graphql_alias = EXCLUDED.graphql_alias,
                 disable_cypher = EXCLUDED.disable_cypher,
-                source_json_key = EXCLUDED.source_json_key
+                source_json_key = EXCLUDED.source_json_key,
+                -- REQ-020: bump version on every save, clear the re-review flag (a
+                -- save is an explicit re-review), preserve the original owner.
+                version = relationships.version + 1,
+                needs_review = FALSE
             """,
             rel.id,
             source_tbl["id"],
@@ -70,6 +74,9 @@ async def upsert(conn: asyncpg.Connection, rel: Relationship) -> None:
             rel.graphql_alias or None,
             rel.disable_cypher,
             rel.source_json_key or None,
+            rel.owner or None,
+            rel.version,
+            rel.needs_review,
         )
     except Exception as e:
         if "relationships_source_alias_unique" in str(e):
@@ -119,3 +126,40 @@ async def list_all(conn: asyncpg.Connection) -> list[dict]:
 async def delete(conn: asyncpg.Connection, rel_id: str) -> bool:
     result = await conn.execute("DELETE FROM relationships WHERE id = $1", rel_id)
     return result == "DELETE 1"
+
+
+async def mark_relationships_for_review(
+    conn: asyncpg.Connection, table_id: int, valid_columns: list[str]
+) -> list[str]:
+    """Flag relationships whose join column on ``table_id`` is no longer present (REQ-020).
+
+    Called after a table's columns change; any relationship whose source/target join
+    column on this table is absent from ``valid_columns`` is flagged ``needs_review``
+    (and its version bumped). Returns the flagged relationship ids.
+    """
+    rows = await conn.fetch(
+        "SELECT id, source_table_id, target_table_id, source_column, target_column "
+        "FROM relationships WHERE source_table_id = $1 OR target_table_id = $1",
+        table_id,
+    )
+    valid = set(valid_columns)
+    flagged: list[str] = []
+    for r in rows:
+        stale = (
+            r["source_table_id"] == table_id
+            and r["source_column"]
+            and r["source_column"] not in valid
+        ) or (
+            r["target_table_id"] == table_id
+            and r["target_column"]
+            and r["target_column"] not in valid
+        )
+        if stale:
+            flagged.append(r["id"])
+    if flagged:
+        await conn.execute(
+            "UPDATE relationships SET needs_review = TRUE, version = version + 1 "
+            "WHERE id = ANY($1)",
+            flagged,
+        )
+    return flagged

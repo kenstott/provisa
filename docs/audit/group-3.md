@@ -18,10 +18,12 @@ snapshot [overview.md](overview.md) covers Group 1 only.
 
 ## Summary
 
-39 of 45 to spec (after Phase 1–3 remediation). Gaps: 0 Incomplete, 3 Not to spec
-(017, 019, 366), 3 Not added (020, 417, 434). Note: REQ-250/251 are code-complete +
-unit-tested but end-to-end catalog load is unverified here (no live Kafka/ES/
-Prometheus backends + writable Trino volume); REQ-366 is deferred to Phase 4.
+41 of 45 to spec (after Phase 1–4a remediation). Gaps: 0 Incomplete, 3 Not to spec
+(017, 019, 366), 1 Not added (434). REQ-366 + REQ-434 (creation-request queue) are
+Phase 4b; REQ-017/019 are requirement defects (NoSQL-via-Parquet vs the
+Trino-connector approach; one-to-one redundant with many-to-one). Note: REQ-250/251
+are code-complete + unit-tested but end-to-end catalog load is unverified here
+(no live Kafka/ES/Prometheus backends + writable Trino volume).
 
 | REQ | Sub-area | Status | Finding |
 | --- | --- | --- | --- |
@@ -33,7 +35,7 @@ Prometheus backends + writable Trino volume); REQ-366 is deferred to Phase 4.
 | 017 | Source registration | Not to spec | NoSQL (Mongo) uses the Trino Mongo connector, not Parquet materialization (`mongodb/source.py:74`); read-only not enforced |
 | 018 | Relationships | To spec | Trino FK metadata → `relationship_candidates` suggested/accepted/rejected (`compiler/introspect.py:209`, `discovery/collector.py:209`) |
 | 019 | Relationships | Not to spec | Manual cross-source rels via `upsert_relationship`; `one-to-one` is absent by design — the relationship field model is a strict binary (single vs list) and 1:1 collapses to many-to-one. The requirement, not the code, should drop `one-to-one` (`core/models.py:81`, `compiler/schema_gen.py:1046`) |
-| 020 | Relationships | Not added | `relationships` has no owner, no version, no re-review/stale flag (`core/schema.sql:119`) |
+| 020 | Relationships | Fixed 2026-06-18 | Phase 4a: `relationships` gains owner/version/needs_review; the relationship mutation records the defining steward; `mark_relationships_for_review` flags + version-bumps relationships whose join column disappears on a table update |
 | 021 | Source registration | To spec | GraphQL schema reflects registration model + aliases, not raw DB (`compiler/schema_gen.py:11`) |
 | 119 | JSONB promotion | Fixed 2026-06-18 | Phase 3a registered promoted columns; Phase 3b runs the DDL at api-cache materialization (`_apply_cache_promotions` via `state.pg_pool`, `cast_source` for the varchar-stored JSON) |
 | 133 | Views | To spec | `views:` config → governed tables with column visibility/mask/description/alias (`api/app.py:1178`, `core/models.py:272`) |
@@ -65,7 +67,7 @@ Prometheus backends + writable Trino volume); REQ-366 is deferred to Phase 4.
 | 413 | FK auto-gen | To spec | FK auto-gen in `discovery/fk_introspect.py:225` (not `compiler/introspect.py` as named); both directions, `ON CONFLICT DO NOTHING` |
 | 414 | Demo schema | To spec | One FK in demo: `user_id ... REFERENCES users(id)` (`demo/files/create_demo_files.py:248`) |
 | 415 | FK naming style | Fixed 2026-06-18 | `NamingConfig.hasura_v2_relationship_style` drives inflection-based singular/plural FK aliases (Phase 1, `discovery/fk_introspect.py`) |
-| 417 | Hasura migration | Not added | Mapper still skips remote schemas with "not supported" warning; no `graphql_remote` registration path (`hasura_v2/parser.py:314`, `hasura_v2/mapper.py:476`) |
+| 417 | Hasura migration | Fixed 2026-06-18 | Phase 4a: `_map_remote_schema` maps each Hasura Remote Schema to a `graphql_remote` source (URL/`${env:}`, headers, forward-headers, timeout) in `convert_metadata`; the parser's "not supported" warning removed |
 | 418 | Domain views | To spec (now tested) | Same V001 mechanism as 367 — domain-local calculations/relationships; cross-domain data imported only via views in the role's own domain. Pinned by `tests/unit/test_domain_views.py` |
 | 432 | Table uniqueness | To spec | register/updateTable call `_domain_table_conflict`; startup `_assert_domain_table_unique` fails on duplicates (`api/admin/schema.py:1631`, `api/app.py:1595`) |
 | 433 | Dataset ownership | Fixed 2026-06-18 | `register_table`/`update_table` reject a cross-domain claim of an already-owned dataset (`_dataset_ownership_conflict`, normalized name per source); virtual `__provisa__` views exempt (`api/admin/schema.py`) |

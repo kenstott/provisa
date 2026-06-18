@@ -1838,6 +1838,14 @@ class Mutation:
             if _owner_conflict:
                 return MutationResult(success=False, message=_owner_conflict)
             table_id = await table_repo.upsert(_conn, model)
+            # REQ-020: a column change may invalidate a relationship's join field — flag
+            # any relationship whose join column on this table is no longer present.
+            from provisa.core.repositories import relationship as _rel_repo
+
+            if table_id is not None:
+                await _rel_repo.mark_relationships_for_review(
+                    _conn, table_id, [c.name for c in model.columns]
+                )
             src_row = await _conn.fetchrow(
                 "SELECT type, path FROM sources WHERE id = $1", input.source_id
             )
@@ -1925,6 +1933,7 @@ class Mutation:
         require_capability(info, "create_relationship")
         from provisa.core.models import Relationship as RelModel, Cardinality
         from provisa.core.repositories import relationship as rel_repo
+        from provisa.api.admin.capabilities import _identity_from_info
 
         pool = await _get_pool()
         try:
@@ -1934,6 +1943,9 @@ class Mutation:
                 success=False,
                 message=f"Invalid cardinality: {input.cardinality!r}",
             )
+        # REQ-020: record the defining steward as owner.
+        _identity = _identity_from_info(info)
+        _owner = getattr(_identity, "user_id", None) if _identity is not None else None
         model = RelModel(
             id=input.id,
             source_table_id=input.source_table_id,
@@ -1948,6 +1960,7 @@ class Mutation:
             alias=input.alias or None,
             graphql_alias=getattr(input, "graphql_alias", None) or None,
             disable_cypher=getattr(input, "disable_cypher", False),
+            owner=_owner,
         )
         async with pool.acquire() as conn:
             _conn = cast(asyncpg.Connection, conn)

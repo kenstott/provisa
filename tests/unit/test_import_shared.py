@@ -540,8 +540,8 @@ class TestHasuraV2ConverterIntegration:
         viewer_rls = [r for r in config.rls_rules if r.role_id == "viewer"]
         assert len(viewer_rls) == 0
 
-    def test_warning_collector_receives_remote_schema_warnings(self, tmp_path: Path):
-        """Remote schemas generate warnings via parse_metadata_dir."""
+    def test_remote_schemas_parsed_without_warning(self, tmp_path: Path):
+        """REQ-417: remote schemas are mapped to graphql_remote sources, not warned."""
         from provisa.hasura_v2.parser import parse_metadata_dir
 
         rs_yaml = [{"name": "payments_api", "definition": {"url": "https://pay.example.com"}}]
@@ -549,11 +549,11 @@ class TestHasuraV2ConverterIntegration:
         (tmp_path / "tables.yaml").write_text("[]")
 
         collector = WarningCollector()
-        parse_metadata_dir(tmp_path, collector)
+        md = parse_metadata_dir(tmp_path, collector)
 
-        assert collector.has_warnings()
+        assert len(md.remote_schemas) == 1
         categories = {w.category for w in collector.warnings}
-        assert "remote_schemas" in categories
+        assert "remote_schemas" not in categories
 
     def test_warning_collector_receives_event_trigger_warnings(self):
         """Event triggers generate warnings during mapper convert."""

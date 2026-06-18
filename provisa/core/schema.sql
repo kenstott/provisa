@@ -141,6 +141,10 @@ DO $$ BEGIN
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS disable_cypher BOOLEAN NOT NULL DEFAULT FALSE;
     ALTER TABLE relationships ADD COLUMN IF NOT EXISTS source_json_key TEXT;
+    -- REQ-020: ownership, versioning, and re-review flag for join-field schema changes.
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS owner TEXT;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE relationships ADD COLUMN IF NOT EXISTS needs_review BOOLEAN NOT NULL DEFAULT FALSE;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

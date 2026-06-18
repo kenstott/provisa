@@ -733,7 +733,8 @@ class TestParseMetadataDir:
         assert md.inherited_roles[0].role_name == "superadmin"
         assert "admin" in md.inherited_roles[0].role_set
 
-    def test_remote_schemas_emit_warnings(self, tmp_path: Path):
+    def test_remote_schemas_parsed_without_warning(self, tmp_path: Path):
+        # REQ-417: remote schemas are mapped to graphql_remote sources, not warned.
         rs_data = [
             {"name": "payments_gql", "definition": {"url": "https://pay.example.com/graphql"}},
         ]
@@ -743,8 +744,7 @@ class TestParseMetadataDir:
         collector = WarningCollector()
         md = parse_metadata_dir(tmp_path, collector)
         assert len(md.remote_schemas) == 1
-        assert collector.has_warnings()
-        assert any(w.category == "remote_schemas" for w in collector.warnings)
+        assert not any(w.category == "remote_schemas" for w in collector.warnings)
 
     def test_tables_with_permissions_in_flat_layout(self, tmp_path: Path):
         tables_yaml = [

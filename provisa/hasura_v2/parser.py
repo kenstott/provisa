@@ -311,11 +311,7 @@ def parse_metadata_dir(
             metadata.remote_schemas.append(HasuraRemoteSchema(
                 name=name, definition=raw_rs.get("definition", {}),
             ))
-            collector.warn(
-                "remote_schemas",
-                f"Remote schema '{name}' skipped (not supported in Provisa)",
-                source_path="remote_schemas.yaml",
-            )
+            # REQ-417: remote schemas are mapped to graphql_remote sources by the mapper.
 
     return metadata
 
