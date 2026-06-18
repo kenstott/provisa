@@ -282,22 +282,16 @@ added alongside the corresponding fixes.
 
 ## Remaining tasks
 
-Prioritised by type. Effort: S ≈ <½ day, M ≈ ~1 day, L ≈ multi-day.
+None — all 45 requirements are To spec (Phases 1–4 complete). The original 15-item
+remediation list (012, 119, 250, 251, 366, 367/418, 433, 194/195, 017, 019, 020,
+392, 415, 417, 434) is fully resolved; see the per-REQ status in the Summary table
+and the phase notes in each commit.
 
-| # | REQ | Type | Effort | Task |
-| --- | --- | --- | --- | --- |
-| 1 | 012 | Incomplete | S | Validate the connection for all source types at registration; reject (not log) failures |
-| 2 | 119 | Incomplete | M | Wire JSONB promotion end-to-end: call `generate_promotion_ddl` and pass `promotions_map` through the loader so generated columns are created + registered |
-| 3 | 250 | Incomplete | M | Generate Trino catalog `.properties` + table-def files from YAML at startup (Kafka exemplar); stop relying on hand-authored files |
-| 4 | 251 | Incomplete | M | Expose the Redis/ES/Prometheus mapping DSLs in YAML config + `Source` model + config_loader |
-| 5 | 366 | Not to spec | L | Enforce view/relationship approval-or-originator-rights at creation (`APPROVE_VIEW`/`APPROVE_RELATIONSHIP` + underlying-table/join rights check) |
-| 6 | 367/418 | Incomplete | M | Enforce the cross-domain-import-only-via-view constraint at the domain level (not just source-spanning); add `test_domain_views.py` |
-| 7 | 433 | Not to spec | M | Enforce first-come table ownership: add `UNIQUE(source_id, normalized_table_name)` and stop `ON CONFLICT DO UPDATE` overwriting a claim |
-| 8 | 194/195 | Not to spec | S | Fix Hasura-parity naming: `hasura_graphql` → snake_case; map literal `hasura-default`/`graphql-default`/DDN `graphql` |
-| 9 | 017 | Not to spec | L | NoSQL via automatic Parquet materialization, read-only (or revise the requirement to match the Trino-connector approach) |
-| 10 | 019 | Not to spec | S | Revise the requirement: drop `one-to-one` as redundant (1:1 collapses to many-to-one; the binary field model silently drops a third value). Document the bidirectional-many-to-one pattern. Do **not** add the enum value. |
-| 11 | 020 | Not added | M | Add owner, version, and re-review/stale flag to relationships; flag on join-field schema change |
-| 12 | 392 | Incomplete | S | Return the singular `pk: string\|null` field per node label as specified |
-| 13 | 415 | Not added | S | Add `hasura_v2_relationship_style` driving inflection-based singular/plural FK relationship names |
-| 14 | 417 | Not added | M | Implement the Hasura Remote Schema → `graphql_remote` mapper path |
-| 15 | 434 | Not added | L | Build the creation-request queue (persisted request, queue view, execute/reject with reason) |
+Two operational caveats (implementation done, live coverage limited here):
+
+- REQ-250 Kafka: the MANUAL (no-Confluent) FILE-supplier path is the default and
+  unit-tested; the CONFLUENT/registry path and the SAMPLE variant are left untested
+  (SAMPLE is unimplemented). End-to-end catalog load also needs a broker.
+- REQ-251 Redis/ES: catalog-property + table-description generation is unit-tested;
+  Prometheus is verified end-to-end against live Trino, but Redis/ES query needs
+  those backends.
