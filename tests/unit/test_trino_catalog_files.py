@@ -101,6 +101,54 @@ class TestKafka:
         assert "kafka.nodes=kafka:9092" in content
         assert "kafka.confluent-schema-registry-url=http://sr:8081" in content
 
+    def test_no_registry_uses_file_supplier_and_writes_table_defs(self, tmp_path):
+        # REQ-250: Confluent is optional — no registry → FILE supplier + table-defs
+        # from the topic's manual columns.
+        written = tcf.write_kafka_catalog_files(
+            {
+                "id": "events",
+                "bootstrap_servers": "kafka:9092",
+                "topics": [
+                    {
+                        "topic": "orders.v1",
+                        "schema_source": "manual",
+                        "value_format": "json",
+                        "columns": [
+                            {"name": "order_id", "data_type": "BIGINT"},
+                            {"name": "payload", "is_complex": True},
+                        ],
+                    }
+                ],
+            },
+            tmp_path,
+        )
+        names = {p.name for p in written}
+        assert "events.properties" in names
+        assert "orders_v1.json" in names
+        props = next(p for p in written if p.name == "events.properties").read_text()
+        assert "kafka.table-description-supplier=FILE" in props
+        assert "CONFLUENT" not in props
+        assert "kafka.table-names=orders_v1" in props
+        tdef = json.loads(next(p for p in written if p.name == "orders_v1.json").read_text())
+        assert tdef["topicName"] == "orders.v1"
+        assert tdef["tableName"] == "orders_v1"
+        fields = {f["name"]: f["type"] for f in tdef["message"]["fields"]}
+        assert fields == {"order_id": "BIGINT", "payload": "VARCHAR"}  # complex → VARCHAR
+
+    def test_registry_uses_confluent_no_table_def_files(self, tmp_path):
+        written = tcf.write_kafka_catalog_files(
+            {
+                "id": "reg",
+                "bootstrap_servers": "kafka:9092",
+                "schema_registry_url": "http://sr:8081",
+                "topics": [{"topic": "t"}],
+            },
+            tmp_path,
+        )
+        props = next(p for p in written if p.name == "reg.properties").read_text()
+        assert "kafka.table-description-supplier=CONFLUENT" in props
+        assert not any(p.suffix == ".json" for p in written)
+
     def test_catalog_file_with_sasl_auth_writes_client_props(self, tmp_path):
         written = tcf.write_kafka_catalog_files(
             {

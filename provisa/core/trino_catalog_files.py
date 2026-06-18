@@ -189,18 +189,39 @@ def write_kafka_catalog_files(kafka_source: dict, etc_dir: Path | None = None) -
 
     from provisa.core.auth_models import KafkaAuth
     from provisa.kafka.source import (
+        KafkaColumn,
         KafkaSourceConfig,
+        KafkaTopicConfig,
+        SchemaSource,
+        ValueFormat,
         generate_kafka_client_properties,
+        generate_kafka_table_definitions,
         generate_trino_kafka_properties,
     )
 
     auth_raw = kafka_source.get("auth")
     auth = TypeAdapter(KafkaAuth).validate_python(auth_raw) if auth_raw else None
+    topics = [
+        KafkaTopicConfig(
+            id=t.get("id", t["topic"]),
+            topic=t["topic"],
+            source_id=kafka_source["id"],
+            schema_source=SchemaSource(t.get("schema_source", "registry")),
+            value_format=ValueFormat(t.get("value_format", "json")),
+            columns=[
+                KafkaColumn(name=c["name"], data_type=c.get("data_type", "VARCHAR"),
+                            is_complex=c.get("is_complex", False))
+                for c in t.get("columns", [])
+            ],
+            table_name=t.get("table_name"),
+        )
+        for t in kafka_source.get("topics", [])
+    ]
     cfg = KafkaSourceConfig(
         id=kafka_source["id"],
         bootstrap_servers=resolve_secrets(kafka_source.get("bootstrap_servers", "localhost:9092")),
         schema_registry_url=kafka_source.get("schema_registry_url"),
-        topics=[],
+        topics=topics,
         auth=auth,
     )
     base = etc_dir or trino_etc_dir()
@@ -211,6 +232,16 @@ def write_kafka_catalog_files(kafka_source: dict, etc_dir: Path | None = None) -
     props_path = install_dir / f"{cfg.id.replace('-', '_')}.properties"
     props_path.write_text(generate_trino_kafka_properties(cfg), encoding="utf-8")
     written.append(props_path)
+
+    # No registry → FILE supplier: write per-topic table-description JSON from the
+    # manual/sampled columns so Trino can read the topics without Confluent.
+    if not cfg.schema_registry_url:
+        kafka_dir = base / "kafka"
+        kafka_dir.mkdir(parents=True, exist_ok=True)
+        for d in generate_kafka_table_definitions(cfg):
+            path = kafka_dir / f"{d['tableName']}.json"
+            path.write_text(json.dumps(d, indent=2), encoding="utf-8")
+            written.append(path)
 
     client_props = generate_kafka_client_properties(cfg)
     if client_props is not None:

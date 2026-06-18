@@ -77,7 +77,7 @@ class KafkaSourceConfig:
     id: str
     bootstrap_servers: str
     schema_registry_url: str | None = None
-    auth: object = None  # KafkaAuth from core.auth_models (or None)
+    auth: object = None  # object-ok: KafkaAuth union from core.auth_models; avoids import cycle
     topics: list[KafkaTopicConfig] = field(default_factory=list)
 
 
@@ -96,17 +96,52 @@ def generate_trino_kafka_properties(source: KafkaSourceConfig) -> str:
     lines = [
         "connector.name=kafka",
         f"kafka.nodes={source.bootstrap_servers}",
-        "kafka.table-description-supplier=CONFLUENT",
         "kafka.hide-internal-columns=false",
     ]
 
+    # REQ-250: Confluent is optional. Use the schema registry only when one is
+    # configured; otherwise use FILE table descriptions generated from the topic's
+    # manual columns (or a sampled layout) — no Confluent dependency.
     if source.schema_registry_url:
+        lines.append("kafka.table-description-supplier=CONFLUENT")
         lines.append(f"kafka.confluent-schema-registry-url={source.schema_registry_url}")
+    else:
+        lines.append("kafka.table-description-supplier=FILE")
+        lines.append("kafka.table-description-dir=/etc/trino/kafka")
+        # Table names (sanitized) match the table-description tableName; the
+        # description maps each back to its raw topicName.
+        table_names = [t.table_name or t.topic for t in source.topics]
+        if table_names:
+            lines.append("kafka.table-names=" + ",".join(table_names))
 
     if isinstance(source.auth, (KafkaAuthSaslPlain, KafkaAuthSaslScram256, KafkaAuthSaslScram512)):
         lines.append("kafka.config.resources=/etc/trino/kafka-client.properties")
 
     return "\n".join(lines)
+
+
+def generate_kafka_table_definitions(source: "KafkaSourceConfig") -> list[dict]:
+    """Generate Trino Kafka FILE table-description dicts from each topic's columns.
+
+    Used when no Confluent schema registry is configured: the record layout comes
+    from the topic's manually-entered (or sampled) columns. One dict per topic in
+    Trino's kafka table-description JSON format.
+    """
+    definitions: list[dict] = []
+    for topic in source.topics:
+        fields = [
+            {"name": c.name, "type": "VARCHAR" if c.is_complex else c.data_type, "mapping": c.name}
+            for c in topic.columns
+        ]
+        definitions.append(
+            {
+                "tableName": topic.table_name or topic.topic,
+                "topicName": topic.topic,
+                "schemaName": "default",
+                "message": {"dataFormat": topic.value_format.value, "fields": fields},
+            }
+        )
+    return definitions
 
 
 def generate_kafka_client_properties(source: KafkaSourceConfig) -> str | None:
