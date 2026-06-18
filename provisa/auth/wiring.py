@@ -17,6 +17,7 @@ import os
 from fastapi import FastAPI
 
 from provisa.auth.models import AuthProvider
+from provisa.auth.superuser import resolve_superuser_config
 
 
 # auth.provider: basic — uses local_users table; db_pool injected at startup
@@ -102,6 +103,7 @@ def wire_auth(app: FastAPI, auth_config: dict | None, db_pool=None) -> None:
         default_assignments=auth_config.get("default_assignments", []),
         multitenancy=multitenancy,
         default_org_id=default_org_id,
+        superuser=resolve_superuser_config(auth_config.get("superuser")),
     )
 
     # Mount simple auth login route when provider=simple

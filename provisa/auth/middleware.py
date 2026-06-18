@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -20,6 +21,7 @@ from starlette.responses import JSONResponse
 
 from provisa.auth.models import AuthIdentity, AuthProvider, RoleAssignment
 from provisa.auth.role_mapping import resolve_assignments, resolve_role
+from provisa.auth.superuser import check_superuser
 
 _SKIP_PATHS = {"/health", "/docs", "/openapi.json", "/auth/login"}
 
@@ -38,6 +40,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         default_assignments: list[dict] | None = None,
         multitenancy: bool = False,
         default_org_id: str = "root",
+        superuser: dict | None = None,
     ) -> None:
         super().__init__(app)
         self._provider = provider
@@ -48,6 +51,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self._default_assignments = default_assignments or []
         self._multitenancy = multitenancy
         self._default_org_id = default_org_id
+        self._superuser = superuser
 
     async def dispatch(self, request: Request, call_next):
         if request.url.path in _SKIP_PATHS:
@@ -66,6 +70,27 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.state.assignments = [RoleAssignment(role_id="admin", domain_id="*")]
             request.state.active_org_id = self._default_org_id
             return await call_next(request)
+
+        # REQ-125: superuser bootstrap — works regardless of the configured provider.
+        # The superuser presents HTTP Basic credentials; on match, short-circuit to an
+        # admin identity (admin role grants all capabilities downstream). Checked before
+        # provider validation so it functions even when an IdP (bearer) is configured.
+        if self._superuser:
+            auth_header = request.headers.get("authorization")
+            if auth_header and auth_header.startswith("Basic "):
+                try:
+                    decoded = base64.b64decode(auth_header[len("Basic "):]).decode("utf-8")
+                    su_username, su_password = decoded.split(":", 1)
+                except Exception:
+                    su_username = su_password = None
+                if su_username is not None and su_password is not None:
+                    su_identity = check_superuser(su_username, su_password, self._superuser)
+                    if su_identity is not None:
+                        request.state.identity = su_identity
+                        request.state.role = "admin"
+                        request.state.assignments = [RoleAssignment(role_id="admin", domain_id="*")]
+                        request.state.active_org_id = self._default_org_id
+                        return await call_next(request)
 
         scheme = getattr(self._provider, "auth_scheme", "bearer")
         if scheme == "basic":
