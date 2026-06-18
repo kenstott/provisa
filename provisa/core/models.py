@@ -77,7 +77,6 @@ class SourceType(str, Enum):
     govdata = "govdata"
 
 
-
 class Cardinality(str, Enum):
     many_to_one = "many-to-one"
     one_to_many = "one-to-many"
@@ -245,7 +244,9 @@ class NamingConfig(BaseModel):
     # Tri-state domain feature. None = legacy (inert); False = single stored default_domain,
     # domain hidden from names/UI/access; True = namespaced, domain_id required.
     use_domains: bool | None = None
-    default_domain: str = "default"  # stored domain_id when use_domains is False (must be non-empty)
+    default_domain: str = (
+        "default"  # stored domain_id when use_domains is False (must be non-empty)
+    )
 
     @field_validator("convention", "sql_convention")
     @classmethod
@@ -304,6 +305,12 @@ class Column(BaseModel):
     )
     object_fields: list[ObjectField] = []  # sub-fields for object/jsonb columns
     scope: str = "domain"  # "domain" | "public" | "restricted"
+    # REQ-421: declare a column as an embedding vector. embedding_model references a
+    # registered vector model (REQ-419); embedding_source_column is the text column it
+    # is generated from (for the generation tier). dimensions come from the model.
+    embedding: bool = False
+    embedding_model: str | None = None
+    embedding_source_column: str | None = None
 
 
 class ColumnPreset(BaseModel):
@@ -605,6 +612,17 @@ class GraphQLRemoteConfig(BaseModel):
     max_list_items: int = 100
 
 
+class VectorModelConfig(BaseModel):
+    """A registered embedding model (REQ-419). The registry is an allowlist."""
+
+    id: str  # provider model id, e.g. "text-embedding-3-small"
+    provider: str  # "openai" | "ollama" | "huggingface"
+    dimensions: int
+    api_key_env: str | None = None  # env var holding the API key
+    base_url: str | None = None  # provider base URL override
+    enabled: bool = True
+
+
 class AIModelsConfig(BaseModel):
     """AI model configuration for various operations.
 
@@ -726,6 +744,7 @@ class ProvisaConfig(BaseModel):
     naming: NamingConfig = Field(default_factory=NamingConfig)
     tables: list[Table]
     relationships: list[Relationship] = Field(default_factory=list)
+    vector_models: list[VectorModelConfig] = Field(default_factory=list)  # REQ-419
     roles: list[Role]
     rls_rules: list[RLSRule] = Field(default_factory=list)
     event_triggers: list[EventTrigger] = Field(default_factory=list)
