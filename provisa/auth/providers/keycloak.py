@@ -54,8 +54,13 @@ class KeycloakAuthProvider(AuthProvider):
             algorithms=["RS256"],
             audience=self._client_id,
         )
-        realm_access = decoded.get("realm_access", {})
-        roles = realm_access.get("roles", [])
+        # REQ-122: map both realm roles (realm_access.roles) and this client's
+        # roles (resource_access.<client_id>.roles). Realm roles first, then client
+        # roles, de-duplicated with order preserved.
+        realm_roles = decoded.get("realm_access", {}).get("roles", [])
+        client_roles = decoded.get("resource_access", {}).get(self._client_id, {}).get("roles", [])
+        seen: set[str] = set()
+        roles = [r for r in [*realm_roles, *client_roles] if not (r in seen or seen.add(r))]
         return AuthIdentity(
             user_id=decoded["sub"],
             email=decoded.get("email"),

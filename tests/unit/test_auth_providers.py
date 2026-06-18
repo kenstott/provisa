@@ -152,6 +152,89 @@ class TestAuthConfigDefault:
         assert AuthConfig().allow_simple_auth is False
 
 
+class TestKeycloakRoles:
+    """REQ-122: Keycloak maps realm roles AND this client's roles."""
+
+    def _provider(self, monkeypatch, decoded: dict):
+        from provisa.auth.providers import keycloak as kc_mod
+        from provisa.auth.providers.keycloak import KeycloakAuthProvider
+
+        provider = KeycloakAuthProvider(
+            server_url="https://kc.example", realm="r", client_id="provisa-api"
+        )
+
+        class _Key:
+            key = "k"
+
+        class _JwksClient:
+            def get_signing_key_from_jwt(self, token):
+                return _Key()
+
+        monkeypatch.setattr(provider, "_get_jwks_client", lambda: _JwksClient())
+        monkeypatch.setattr(kc_mod.jwt, "decode", lambda *a, **k: decoded)
+        return provider
+
+    async def test_realm_roles_only(self, monkeypatch):
+        provider = self._provider(
+            monkeypatch,
+            {"sub": "u1", "realm_access": {"roles": ["analyst", "viewer"]}},
+        )
+        identity = await provider.validate_token("t")
+        assert identity.roles == ["analyst", "viewer"]
+
+    async def test_client_roles_only(self, monkeypatch):
+        provider = self._provider(
+            monkeypatch,
+            {"sub": "u1", "resource_access": {"provisa-api": {"roles": ["editor"]}}},
+        )
+        identity = await provider.validate_token("t")
+        assert identity.roles == ["editor"]
+
+    async def test_realm_and_client_roles_merged(self, monkeypatch):
+        provider = self._provider(
+            monkeypatch,
+            {
+                "sub": "u1",
+                "realm_access": {"roles": ["analyst"]},
+                "resource_access": {"provisa-api": {"roles": ["editor"]}},
+            },
+        )
+        identity = await provider.validate_token("t")
+        assert identity.roles == ["analyst", "editor"]  # realm first, then client
+
+    async def test_overlap_deduplicated_order_preserved(self, monkeypatch):
+        provider = self._provider(
+            monkeypatch,
+            {
+                "sub": "u1",
+                "realm_access": {"roles": ["analyst", "shared"]},
+                "resource_access": {"provisa-api": {"roles": ["shared", "editor"]}},
+            },
+        )
+        identity = await provider.validate_token("t")
+        assert identity.roles == ["analyst", "shared", "editor"]
+
+    async def test_other_clients_roles_ignored(self, monkeypatch):
+        # Only the configured client's roles are mapped, not other clients'.
+        provider = self._provider(
+            monkeypatch,
+            {
+                "sub": "u1",
+                "resource_access": {
+                    "provisa-api": {"roles": ["editor"]},
+                    "some-other-client": {"roles": ["should-not-appear"]},
+                },
+            },
+        )
+        identity = await provider.validate_token("t")
+        assert identity.roles == ["editor"]
+
+    async def test_no_roles(self, monkeypatch):
+        provider = self._provider(monkeypatch, {"sub": "u1"})
+        identity = await provider.validate_token("t")
+        assert identity.roles == []
+
+
 class TestRoleMappingFromJWT:
     async def test_role_from_claims_contains_rule(self, provider):
         token = provider.login("bob", "bob-pass")
