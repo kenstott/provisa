@@ -75,6 +75,13 @@ class PaginationConfig(BaseModel):
     max_pages: int = 10
 
 
+class PromotionConfig(BaseModel):
+    jsonb_column: str
+    field: str  # dot-path e.g. "address.city"
+    target_column: str
+    target_type: str  # integer, numeric, boolean, timestamptz, text
+
+
 class ApiEndpoint(BaseModel):
     id: int | None = None
     source_id: str
@@ -89,6 +96,8 @@ class ApiEndpoint(BaseModel):
     pagination: PaginationConfig | None = None
     max_concurrency: int | None = None  # caps parallel path-param fetches; None = unlimited
     default_params: dict = Field(default_factory=dict)  # query params used for initial cache population
+    # REQ-119: JSONB field promotions → PG generated columns (registered + filterable).
+    promotions: list[PromotionConfig] = Field(default_factory=list)
     # Phase AO: query-API sources (Neo4j, SPARQL)
     body_encoding: Literal["json", "form"] | None = None
     query_template: str | None = None  # Cypher or SPARQL query
@@ -103,10 +112,3 @@ class ApiEndpointCandidate(BaseModel):
     table_name: str | None = None
     columns: list[ApiColumn]
     status: str = "discovered"
-
-
-class PromotionConfig(BaseModel):
-    jsonb_column: str
-    field: str  # dot-path e.g. "address.city"
-    target_column: str
-    target_type: str  # integer, numeric, boolean, timestamptz, text

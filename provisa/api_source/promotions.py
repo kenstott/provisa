@@ -58,3 +58,22 @@ def generate_promotion_ddl(
         )
         stmts.append(stmt)
     return stmts
+
+
+async def apply_promotions(
+    conn,
+    table_name: str,
+    promotions: list[PromotionConfig],
+) -> int:
+    """Execute promotion DDL against a Postgres table; return the count applied.
+
+    Each statement is ``ADD COLUMN IF NOT EXISTS ... GENERATED ALWAYS AS ... STORED``,
+    so this is idempotent and safe to call repeatedly. ``conn`` is an asyncpg
+    connection to the database hosting the table. No-op when there are no promotions.
+    """
+    if not promotions:
+        return 0
+    stmts = generate_promotion_ddl(table_name, promotions)
+    for stmt in stmts:
+        await conn.execute(stmt)
+    return len(stmts)

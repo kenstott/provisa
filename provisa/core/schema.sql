@@ -111,6 +111,8 @@ DO $$ BEGIN
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS column_presets JSONB NOT NULL DEFAULT '[]';
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS view_sql TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS data_product BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS materialize BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS mv_refresh_interval INTEGER NOT NULL DEFAULT 300;
     ALTER TABLE registered_tables DROP CONSTRAINT IF EXISTS registered_tables_governance_check;
     ALTER TABLE registered_tables ALTER COLUMN governance SET DEFAULT 'pre-approved';
 EXCEPTION WHEN OTHERS THEN NULL;
@@ -305,6 +307,7 @@ DO $$ BEGIN
     ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS pagination JSONB;
     ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS max_concurrency INTEGER;
     ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS default_params JSONB;
+    ALTER TABLE api_endpoints ADD COLUMN IF NOT EXISTS promotions JSONB NOT NULL DEFAULT '[]';
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 

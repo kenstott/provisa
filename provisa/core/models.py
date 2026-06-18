@@ -341,6 +341,9 @@ class Table(BaseModel):
     )
     columns: list[Column]
     column_presets: list[ColumnPreset] = Field(default_factory=list)
+    # REQ-119: JSONB field promotions → PG generated columns. Each entry:
+    # {jsonb_column, field (dot-path), target_column, target_type}.
+    promotions: list[dict] = Field(default_factory=list)
     alias: str | None = None  # GraphQL type/field name override
     description: str | None = None  # GraphQL type description
     cache_ttl: int | None = None  # overrides source-level; None = inherit

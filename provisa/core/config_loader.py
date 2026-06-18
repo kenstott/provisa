@@ -344,14 +344,15 @@ async def _register_api_endpoint(
     await conn.execute(
         """
         INSERT INTO api_endpoints
-            (source_id, path, method, table_name, columns, ttl, default_params)
-        VALUES ($1, $2, 'GET', $3, $4::jsonb, $5, $6::jsonb)
+            (source_id, path, method, table_name, columns, ttl, default_params, promotions)
+        VALUES ($1, $2, 'GET', $3, $4::jsonb, $5, $6::jsonb, $7::jsonb)
         ON CONFLICT (table_name) DO UPDATE SET
             source_id     = EXCLUDED.source_id,
             path          = EXCLUDED.path,
             columns       = EXCLUDED.columns,
             ttl           = EXCLUDED.ttl,
-            default_params = EXCLUDED.default_params
+            default_params = EXCLUDED.default_params,
+            promotions    = EXCLUDED.promotions
         """,
         src.id,
         match.path,
@@ -359,6 +360,7 @@ async def _register_api_endpoint(
         _json.dumps(api_columns),
         src.cache_ttl or 300,
         _json.dumps(default_params) if default_params else None,
+        _json.dumps(getattr(tbl, "promotions", []) or []),
     )
     for col_data in api_columns:
         if col_data.get("object_fields"):

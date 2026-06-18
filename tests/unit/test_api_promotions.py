@@ -8,11 +8,15 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Tests for JSONB field promotions (Phase U)."""
+"""Tests for JSONB field promotions (Phase U / REQ-119)."""
 
 import pytest
 
-from provisa.api_source.promotions import dot_path_to_pg_expression, generate_promotion_ddl
+from provisa.api_source.promotions import (
+    apply_promotions,
+    dot_path_to_pg_expression,
+    generate_promotion_ddl,
+)
 from provisa.api_source.models import PromotionConfig
 
 
@@ -98,3 +102,64 @@ def test_generate_promotion_ddl_timestamptz():
     ]
     stmts = generate_promotion_ddl("tbl", promotions)
     assert "::timestamptz" in stmts[0]
+
+
+# --- REQ-119: end-to-end wiring (execution helper + registration) ---
+
+
+class _RecordingConn:
+    def __init__(self):
+        self.executed: list[str] = []
+
+    async def execute(self, sql, *args):
+        self.executed.append(sql)
+
+
+@pytest.mark.asyncio
+async def test_apply_promotions_executes_ddl():
+    conn = _RecordingConn()
+    promotions = [
+        PromotionConfig(jsonb_column="data", field="a.b", target_column="ab", target_type="text"),
+        PromotionConfig(jsonb_column="data", field="n", target_column="n_int", target_type="integer"),
+    ]
+    n = await apply_promotions(conn, "orders", promotions)
+    assert n == 2
+    assert len(conn.executed) == 2
+    assert all("GENERATED ALWAYS AS" in s and "IF NOT EXISTS" in s for s in conn.executed)
+
+
+@pytest.mark.asyncio
+async def test_apply_promotions_noop_when_empty():
+    conn = _RecordingConn()
+    assert await apply_promotions(conn, "orders", []) == 0
+    assert conn.executed == []
+
+
+def test_table_config_parses_promotions():
+    # REQ-119: a steward declares promotions on a table in YAML config.
+    from provisa.core.models import Table
+
+    t = Table(
+        source_id="s", domain_id="d", schema="public", table="t", columns=[],
+        promotions=[{"jsonb_column": "data", "field": "addr.city", "target_column": "city", "target_type": "text"}],
+    )
+    assert t.promotions[0]["target_column"] == "city"
+
+
+def test_register_api_columns_includes_promoted_columns():
+    # REQ-119: promoted columns are registered as first-class schema columns.
+    from provisa.api_source.models import ApiEndpoint
+    from provisa.api_source.schema_integration import register_api_columns
+
+    ep = ApiEndpoint(source_id="s", path="/x", table_name="people", columns=[])
+    tables: list[dict] = []
+    col_types: dict = {}
+    promotions_map = {
+        "people": [PromotionConfig(jsonb_column="data", field="addr.city", target_column="city", target_type="text")]
+    }
+    register_api_columns(
+        tables, col_types, [ep], domain_id="api", role_ids=["admin"], promotions_map=promotions_map
+    )
+    assert len(tables) == 1
+    col_names = [c["column_name"] for c in tables[0]["columns"]]
+    assert "city" in col_names

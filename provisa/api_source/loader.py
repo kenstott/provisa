@@ -24,6 +24,7 @@ from provisa.api_source.models import (
     ApiSourceType,
     PaginationConfig,
     ParamType,
+    PromotionConfig,
 )
 from provisa.api_source.schema_integration import register_api_columns
 from provisa.compiler.introspect import ColumnMetadata
@@ -71,7 +72,8 @@ async def load_api_sources(
     # Load API endpoints
     ep_rows = await conn.fetch(
         "SELECT id, source_id, path, method, table_name, columns, ttl, "
-        "response_root, error_path, pk_column, pagination, max_concurrency, default_params FROM api_endpoints"
+        "response_root, error_path, pk_column, pagination, max_concurrency, default_params, "
+        "promotions FROM api_endpoints"
     )
     api_endpoints: dict[str, ApiEndpoint] = {}
     api_endpoint_list: list[ApiEndpoint] = []
@@ -97,6 +99,11 @@ async def load_api_sources(
         default_params = (
             json.loads(dp_raw) if isinstance(dp_raw, str) else dp_raw
         ) or {}
+        promo_raw = r.get("promotions")
+        promo_list = (
+            json.loads(promo_raw) if isinstance(promo_raw, str) else promo_raw
+        ) or []
+        promotions = [PromotionConfig(**p) for p in promo_list]
         ep = ApiEndpoint(
             id=r["id"],
             source_id=r["source_id"],
@@ -111,6 +118,7 @@ async def load_api_sources(
             pagination=pagination,
             max_concurrency=r.get("max_concurrency"),
             default_params=default_params,
+            promotions=promotions,
         )
         api_endpoints[ep.table_name] = ep
         api_endpoint_list.append(ep)
@@ -120,9 +128,14 @@ async def load_api_sources(
         registered_source_ids = {t["source_id"] for t in tables if t.get("source_id")}
         unregistered = [ep for ep in api_endpoint_list if ep.source_id not in registered_source_ids]
         if unregistered:
+            # REQ-119: promoted JSONB columns are registered as first-class columns.
+            promotions_map = {
+                ep.table_name: ep.promotions for ep in unregistered if ep.promotions
+            }
             register_api_columns(
                 tables, col_types, unregistered,
                 domain_id="api", role_ids=role_ids,
+                promotions_map=promotions_map,
             )
 
     return api_endpoints, api_sources
