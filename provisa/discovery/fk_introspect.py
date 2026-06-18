@@ -28,10 +28,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import cast
 
 import asyncpg
+import inflect as _inflect_mod
+from inflect import Word
 
 _log = logging.getLogger(__name__)
+_inflect = _inflect_mod.engine()
 
 # ---------------------------------------------------------------------------
 # SQL templates per dialect
@@ -143,13 +147,26 @@ async def _sqlite_fks(
     return results
 
 
-def _m2o_alias(ref_table: str) -> str:
-    """Hasura-style object relationship alias: ref table name."""
+def _m2o_alias(ref_table: str, hasura_v2_style: bool = False) -> str:
+    """Object relationship alias: ref table name.
+
+    REQ-415: under Hasura V2 style the many-to-one (object) alias is singular.
+    """
+    if hasura_v2_style:
+        return _inflect.singular_noun(cast(Word, ref_table)) or ref_table
     return ref_table
 
 
-def _o2m_alias(fk_table: str) -> str:
-    """Hasura-style array relationship alias: FK table name."""
+def _o2m_alias(fk_table: str, hasura_v2_style: bool = False) -> str:
+    """Array relationship alias: FK table name.
+
+    REQ-415: under Hasura V2 style the one-to-many (array) alias is plural.
+    """
+    if hasura_v2_style:
+        # Singularize first so an already-plural table name is not double-pluralized
+        # (inflect.plural_noun("orders") → "orderss").
+        singular = _inflect.singular_noun(cast(Word, fk_table)) or fk_table
+        return _inflect.plural_noun(cast(Word, singular)) or singular
     return fk_table
 
 
@@ -229,6 +246,7 @@ async def auto_register_fk_relationships(
     schema_name: str,
     table_name: str,
     config_conn: asyncpg.Connection,
+    hasura_v2_relationship_style: bool = False,
 ) -> int:
     """Introspect FK constraints and insert BOTH relationship directions.
 
@@ -291,7 +309,7 @@ async def auto_register_fk_relationships(
             fk_id, ref_id = fk_row["id"], ref_row["id"]
 
             m2o_aliases_used.setdefault(fk_id, set())
-            base_m2o = _m2o_alias(ref_tbl)
+            base_m2o = _m2o_alias(ref_tbl, hasura_v2_relationship_style)
             alias_m2o = (
                 base_m2o if base_m2o not in m2o_aliases_used[fk_id] else f"{base_m2o}_by_{fk_col}"
             )
@@ -312,7 +330,7 @@ async def auto_register_fk_relationships(
 
             # one-to-many: ref_table.ref_col ← fk_table.fk_col
             o2m_aliases_used.setdefault(ref_id, set())
-            base_o2m = _o2m_alias(fk_tbl)
+            base_o2m = _o2m_alias(fk_tbl, hasura_v2_relationship_style)
             alias_o2m = (
                 base_o2m if base_o2m not in o2m_aliases_used[ref_id] else f"{base_o2m}_by_{fk_col}"
             )

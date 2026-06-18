@@ -388,6 +388,8 @@ async def _fetch_table_with_columns(conn, row, all_tables: list | None = None, u
         column_presets=presets,
         api_endpoint=api_endpoint,
         view_sql=view_sql,
+        materialize=bool(row.get("materialize", False)),
+        mv_refresh_interval=int(row.get("mv_refresh_interval") or 300),
         data_product=bool(row.get("data_product", False)),
         can_deploy_to_db=can_deploy,
     )
@@ -1227,22 +1229,17 @@ async def _add_source_pool(state, input: SourceInput) -> None:
 
     if not has_driver(input.type):
         return
-    try:
-        await state.source_pools.add(
-            source_id=input.id,
-            source_type=input.type,
-            host=resolve_secrets(input.host) if input.host else "localhost",
-            port=input.port,
-            database=input.database,
-            user=input.username,
-            password=resolve_secrets(input.password),
-        )
-    except Exception as _pool_err:
-        logging.getLogger(__name__).warning(
-            "Direct pool for %r failed: %s — Trino-routed queries still work.",
-            input.id,
-            _pool_err,
-        )
+    # REQ-012: a failed direct connection must surface (no silent swallow), so the
+    # caller can reject registration instead of persisting a dead source.
+    await state.source_pools.add(
+        source_id=input.id,
+        source_type=input.type,
+        host=resolve_secrets(input.host) if input.host else "localhost",
+        port=input.port,
+        database=input.database,
+        user=input.username,
+        password=resolve_secrets(input.password),
+    )
 
 
 def _create_trino_catalog(state, model, input: SourceInput) -> None:
@@ -1322,6 +1319,35 @@ def _fire_catalog_indexing(state, pool, input: SourceInput) -> None:
     )
 
 
+def _sync_view_mv(table_name: str, view_sql: str, refresh_interval: int) -> None:
+    """Register or update an MVDefinition for a materialized user-defined view."""
+    from provisa.api.app import state
+    from provisa.mv.models import MVDefinition, MVStatus
+
+    mv_id = f"view-{table_name}"
+    existing = state.mv_registry.get(mv_id)
+    mv = MVDefinition(
+        id=mv_id,
+        source_tables=[],
+        target_catalog="postgresql",
+        target_schema="mv_cache",
+        target_table=f"mv_{table_name}",
+        refresh_interval=refresh_interval,
+        enabled=True,
+        sql=view_sql,
+        expose_in_sdl=False,
+        status=existing.status if existing is not None else MVStatus.STALE,
+    )
+    state.mv_registry.register(mv)
+
+
+def _remove_view_mv(table_name: str) -> None:
+    """Remove a materialized view definition when materialize is toggled off."""
+    from provisa.api.app import state
+
+    state.mv_registry.unregister(f"view-{table_name}")
+
+
 @strawberry.type
 class Mutation:
     @strawberry.mutation
@@ -1356,17 +1382,26 @@ class Mutation:
             path=input.path,
             description=input.description,
         )
+        from provisa.api.app import state
+
+        # REQ-012: validate the direct connection before persisting; reject on failure
+        # rather than leaving a half-registered source behind a swallowed error.
+        try:
+            await _add_source_pool(state, input)
+        except Exception as _conn_err:
+            return MutationResult(
+                success=False,
+                message=f"Source {input.id!r}: connection validation failed: {_conn_err}",
+            )
+
         await _upsert_source_with_domains(pool, model, input)
 
         if input.type == "govdata" and input.username:
             _configure_govdata_env(input)
 
-        from provisa.api.app import state
-
         _domains = [d for d in (input.allowed_domains or []) if d.strip()]
         if _domains:
             state.source_allowed_domains[input.id] = _domains
-        await _add_source_pool(state, input)
         state.source_types[input.id] = input.type
         state.source_dialects[input.id] = ""
 
@@ -1624,6 +1659,8 @@ class Mutation:
             watermark_column=input.watermark_column,
             column_presets=presets,
             view_sql=input.view_sql or None,
+            materialize=input.materialize,
+            mv_refresh_interval=input.mv_refresh_interval,
             data_product=input.data_product,
         )
         async with pool.acquire() as conn:
@@ -1666,6 +1703,8 @@ class Mutation:
                 from provisa.api.app import state as _state
 
                 source_type = (src_row["type"] if src_row else None) or ""
+                _naming_cfg = getattr(getattr(_state, "config", None), "naming", None)
+                _v2_style = bool(getattr(_naming_cfg, "hasura_v2_relationship_style", False))
                 fk_count = await auto_register_fk_relationships(
                     _state.source_pools,
                     source_type,
@@ -1673,6 +1712,7 @@ class Mutation:
                     input.schema_name,
                     input.table_name,
                     _conn,
+                    hasura_v2_relationship_style=_v2_style,
                 )
                 if fk_count:
                     import logging as _logging
@@ -1683,6 +1723,9 @@ class Mutation:
                         input.schema_name,
                         input.table_name,
                     )
+
+        if input.view_sql and input.materialize:
+            _sync_view_mv(input.table_name, input.view_sql, input.mv_refresh_interval)
 
         await _rebuild_schemas()
         return MutationResult(
@@ -1737,6 +1780,8 @@ class Mutation:
             watermark_column=input.watermark_column,
             column_presets=presets,
             view_sql=input.view_sql or None,
+            materialize=input.materialize,
+            mv_refresh_interval=input.mv_refresh_interval,
             data_product=input.data_product,
         )
         async with pool.acquire() as conn:
@@ -1753,6 +1798,10 @@ class Mutation:
             await _maybe_migrate_sqlite(
                 src_row, _conn, input.source_id, input.table_name, input.schema_name
             )
+        if input.view_sql and input.materialize:
+            _sync_view_mv(input.table_name, input.view_sql, input.mv_refresh_interval)
+        elif not input.materialize:
+            _remove_view_mv(input.table_name)
         await _rebuild_schemas()
         return MutationResult(
             success=True,

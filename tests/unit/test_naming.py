@@ -100,3 +100,57 @@ class TestToTypeName:
 
     def test_single_char(self):
         assert to_type_name("a") == "A"
+
+
+class TestNamingConvention:
+    """REQ-194/195: convention → casing, with Hasura v2 / DDN literal parity."""
+
+    def test_hasura_graphql_is_snake_case(self):
+        # REQ-194: hasura_graphql GQL convention is snake_case (not camelCase).
+        from provisa.compiler.naming import apply_convention
+
+        assert apply_convention("orderItems", "hasura_graphql") == "order_items"
+
+    def test_apollo_graphql_is_camel_case(self):
+        from provisa.compiler.naming import apply_convention
+
+        assert apply_convention("order_items", "apollo_graphql") == "orderItems"
+
+    def test_snake_is_snake_case(self):
+        from provisa.compiler.naming import apply_convention
+
+        assert apply_convention("orderItems", "snake") == "order_items"
+
+    def test_hasura_default_literal_maps_to_snake(self):
+        # REQ-195: hasura-default → snake_case.
+        from provisa.compiler.naming import apply_convention, normalize_convention
+
+        assert normalize_convention("hasura-default") == "hasura_graphql"
+        assert apply_convention("orderItems", "hasura-default") == "order_items"
+
+    def test_graphql_default_literal_maps_to_camel(self):
+        # REQ-195: graphql-default → camelCase.
+        from provisa.compiler.naming import apply_convention, normalize_convention
+
+        assert normalize_convention("graphql-default") == "apollo_graphql"
+        assert apply_convention("order_items", "graphql-default") == "orderItems"
+
+    def test_ddn_graphql_literal_maps_to_camel(self):
+        # REQ-195: DDN namingConvention: graphql → camelCase.
+        from provisa.compiler.naming import apply_convention, normalize_convention
+
+        assert normalize_convention("graphql") == "apollo_graphql"
+        assert apply_convention("order_items", "graphql") == "orderItems"
+
+    def test_literals_are_valid_conventions(self):
+        from provisa.compiler.naming import VALID_CONVENTIONS
+
+        for lit in ("hasura-default", "graphql-default", "graphql"):
+            assert lit in VALID_CONVENTIONS
+
+    def test_mutation_style_hasura_is_snake(self):
+        from provisa.compiler.naming import mutation_style
+
+        assert mutation_style("hasura_graphql") == "snake"
+        assert mutation_style("hasura-default") == "snake"
+        assert mutation_style("apollo_graphql") == "camel"

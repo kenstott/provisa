@@ -230,6 +230,9 @@ class NamingConfig(BaseModel):
     sql_convention: str = "snake"
     rules: list[NamingRule] = Field(default_factory=list)
     relay_pagination: bool = False  # opt-in: generate _connection fields + Edge/PageInfo types
+    # REQ-415: FK-derived relationship names follow Hasura V2 conventions —
+    # singular object (many-to-one), plural array (one-to-many) via inflection.
+    hasura_v2_relationship_style: bool = False
     domain_prefix: bool = False  # prepend domain initials to GraphQL names (namespaced mode)
     # Tri-state domain feature. None = legacy (inert); False = single stored default_domain,
     # domain hidden from names/UI/access; True = namespaced, domain_id required.
@@ -347,6 +350,8 @@ class Table(BaseModel):
     live: LiveDeliveryConfig | None = None  # live query delivery config (Phase AM)
     watermark_column: str | None = None  # column used by polling subscription provider
     view_sql: str | None = None  # when set, table is a Provisa-managed view
+    materialize: bool = False  # when True, view_sql is materialized as a physical CTAS in mv_cache
+    mv_refresh_interval: int = 300  # seconds between MV refreshes (only used when materialize=True)
     data_product: bool = False  # publish as a Data Product (catalog export)
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this table
 

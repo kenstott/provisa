@@ -130,19 +130,38 @@ def source_to_catalog(source_id: str) -> str:
     return source_id.replace("-", "_")
 
 
-VALID_CONVENTIONS = frozenset({"snake", "hasura_graphql", "apollo_graphql"})
+# REQ-195: Hasura v2 / DDN literals map to internal presets.
+#   hasura-default  → snake_case   graphql-default → camelCase
+#   graphql (DDN namingConvention) → camelCase
+_CONVENTION_ALIASES = {
+    "hasura-default": "hasura_graphql",
+    "graphql-default": "apollo_graphql",
+    "graphql": "apollo_graphql",
+}
+
+
+def normalize_convention(convention: str) -> str:
+    """Resolve a Hasura/DDN literal convention name to its internal preset."""
+    return _CONVENTION_ALIASES.get(convention, convention)
+
+
+VALID_CONVENTIONS = frozenset(
+    {"snake", "hasura_graphql", "apollo_graphql"} | set(_CONVENTION_ALIASES)
+)
 
 
 def _canonical_convention(convention: str) -> str:
     """Resolve preset convention to field/column naming form."""
-    if convention == "snake":
+    convention = normalize_convention(convention)
+    # REQ-194: hasura_graphql is snake_case; apollo_graphql is camelCase.
+    if convention in ("snake", "hasura_graphql"):
         return "snake_case"
-    return "camelCase"  # hasura_graphql, apollo_graphql
+    return "camelCase"  # apollo_graphql
 
 
 def mutation_style(convention: str) -> str:
     """Return 'snake' or 'camel' mutation prefix style for a given convention."""
-    if convention in ("snake", "hasura_graphql"):
+    if normalize_convention(convention) in ("snake", "hasura_graphql"):
         return "snake"
     return "camel"  # apollo_graphql
 
@@ -153,8 +172,8 @@ _sql_convention: str = "snake"
 
 def configure(gql: str = "apollo_graphql", sql: str = "snake") -> None:
     global _gql_convention, _sql_convention
-    _gql_convention = gql
-    _sql_convention = sql
+    _gql_convention = normalize_convention(gql)
+    _sql_convention = normalize_convention(sql)
 
 
 def active_gql_convention() -> str:
