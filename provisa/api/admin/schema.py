@@ -550,6 +550,59 @@ async def _dataset_ownership_conflict(
     return None
 
 
+# --- Creation-request queue (REQ-434/063/366) -------------------------------
+
+
+@strawberry.type
+class CreationRequestType:
+    id: int
+    request_type: str
+    capability: str
+    requested_by: Optional[str]
+    status: str
+    rejection_reason: Optional[str]
+    payload_json: str
+
+
+def _rebuild_relationship_input(payload: dict):
+    from provisa.api.admin.types import RelationshipInput
+
+    return RelationshipInput(**payload)
+
+
+def _rebuild_table_input(payload: dict):
+    from provisa.api.admin.types import ColumnInput, ColumnPresetInput, TableInput
+
+    data = dict(payload)
+    data["columns"] = [ColumnInput(**c) for c in payload.get("columns", [])]
+    data["column_presets"] = [ColumnPresetInput(**c) for c in payload.get("column_presets", [])]
+    return TableInput(**data)
+
+
+async def _queue_creation_request(info, request_type: str, capability: str, input) -> MutationResult:
+    """Persist a governed create the caller is not authorized to perform (REQ-434)."""
+    import dataclasses
+
+    from provisa.api.admin.capabilities import _identity_from_info
+    from provisa.core.repositories import creation_request as cr_repo
+
+    payload = dataclasses.asdict(input)
+    identity = _identity_from_info(info)
+    requested_by = getattr(identity, "user_id", None) if identity is not None else None
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        rid = await cr_repo.create(
+            cast(asyncpg.Connection, conn), request_type, capability, payload, requested_by
+        )
+    return MutationResult(
+        success=True,
+        message=(
+            f"Queued as creation request #{rid} — awaiting a user holding "
+            f"{capability!r} to execute or reject it."
+        ),
+    )
+
+
 async def _ensure_view_column_types(conn, view_sql: str, columns: list) -> list:
     """Fill any null/empty data_type on caller-supplied view columns.
 
@@ -588,6 +641,29 @@ async def _ensure_view_column_types(conn, view_sql: str, columns: list) -> list:
 
 @strawberry.type
 class Query:
+    @strawberry.field
+    async def creation_requests(self, info: StrawberryInfo) -> list[CreationRequestType]:
+        """REQ-434/063: pending creation requests, for users holding a create capability."""
+        import json as _json
+
+        from provisa.core.repositories import creation_request as cr_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = await cr_repo.list_pending(cast(asyncpg.Connection, conn))
+        return [
+            CreationRequestType(
+                id=r["id"],
+                request_type=r["request_type"],
+                capability=r["capability"],
+                requested_by=r.get("requested_by"),
+                status=r["status"],
+                rejection_reason=r.get("rejection_reason"),
+                payload_json=_json.dumps(r["payload"]),
+            )
+            for r in rows
+        ]
+
     @strawberry.field
     async def schema_version(self) -> str:
         """Returns SHA256 hash of current schema state for cache validation."""
@@ -1637,9 +1713,8 @@ class Mutation:
             if identity is not None and getattr(identity, "user_id", "anonymous") != "anonymous":
                 caps = _resolved_capabilities(identity, _cap_state)
                 if not (caps & {"create_view", "query_development", "admin", "superadmin"}):
-                    raise PermissionError(
-                        "Missing capability: 'create_view' or 'query_development'"
-                    )
+                    # REQ-434/366: lacking view-create authority queues a request.
+                    return await _queue_creation_request(info, "view", "create_view", input)
         else:
             require_capability(info, "table_registration", domain_id=input.domain_id)
         from provisa.core.models import (
@@ -1925,12 +2000,75 @@ class Mutation:
         return MutationResult(success=False, message="RLS rule not found")
 
     @strawberry.mutation
+    async def execute_creation_request(
+        self, info: StrawberryInfo, request_id: int
+    ) -> MutationResult:
+        """REQ-434: a rights-holder executes a queued creation request."""
+        from provisa.api.admin.capabilities import _identity_from_info, require_capability
+        from provisa.core.repositories import creation_request as cr_repo
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            req = await cr_repo.get(cast(asyncpg.Connection, conn), request_id)
+        if req is None or req["status"] != "pending":
+            return MutationResult(success=False, message="Request not found or already resolved")
+        try:
+            require_capability(info, req["capability"])
+        except PermissionError as e:
+            return MutationResult(success=False, message=str(e))
+
+        if req["request_type"] == "relationship":
+            result = await self.upsert_relationship(info, _rebuild_relationship_input(req["payload"]))
+        elif req["request_type"] == "view":
+            result = await self.register_table(info, _rebuild_table_input(req["payload"]))
+        else:
+            return MutationResult(
+                success=False, message=f"Unknown request type {req['request_type']!r}"
+            )
+        if not result.success:
+            return result
+
+        identity = _identity_from_info(info)
+        resolved_by = getattr(identity, "user_id", None) if identity is not None else None
+        async with pool.acquire() as conn:
+            await cr_repo.mark_executed(cast(asyncpg.Connection, conn), request_id, resolved_by)
+        return MutationResult(success=True, message=f"Executed creation request #{request_id}")
+
+    @strawberry.mutation
+    async def reject_creation_request(
+        self, info: StrawberryInfo, request_id: int, reason: str
+    ) -> MutationResult:
+        """REQ-434/063: a rights-holder rejects a queued request with an actionable reason."""
+        from provisa.api.admin.capabilities import _identity_from_info, require_capability
+        from provisa.core.repositories import creation_request as cr_repo
+
+        if not reason or not reason.strip():
+            return MutationResult(success=False, message="A rejection reason is required")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            req = await cr_repo.get(cast(asyncpg.Connection, conn), request_id)
+            if req is None or req["status"] != "pending":
+                return MutationResult(success=False, message="Request not found or already resolved")
+            try:
+                require_capability(info, req["capability"])
+            except PermissionError as e:
+                return MutationResult(success=False, message=str(e))
+            identity = _identity_from_info(info)
+            resolved_by = getattr(identity, "user_id", None) if identity is not None else None
+            await cr_repo.mark_rejected(
+                cast(asyncpg.Connection, conn), request_id, reason.strip(), resolved_by
+            )
+        return MutationResult(success=True, message=f"Rejected creation request #{request_id}")
+
+    @strawberry.mutation
     async def upsert_relationship(
         self, info: StrawberryInfo, input: RelationshipInput
     ) -> MutationResult:
-        from provisa.api.admin.capabilities import require_capability
+        from provisa.api.admin.capabilities import has_capability
 
-        require_capability(info, "create_relationship")
+        # REQ-434/366: a user lacking create_relationship queues a request instead of erroring.
+        if not has_capability(info, "create_relationship"):
+            return await _queue_creation_request(info, "relationship", "create_relationship", input)
         from provisa.core.models import Relationship as RelModel, Cardinality
         from provisa.core.repositories import relationship as rel_repo
         from provisa.api.admin.capabilities import _identity_from_info

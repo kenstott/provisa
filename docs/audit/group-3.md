@@ -18,12 +18,12 @@ snapshot [overview.md](overview.md) covers Group 1 only.
 
 ## Summary
 
-41 of 45 to spec (after Phase 1–4a remediation). Gaps: 0 Incomplete, 3 Not to spec
-(017, 019, 366), 1 Not added (434). REQ-366 + REQ-434 (creation-request queue) are
-Phase 4b; REQ-017/019 are requirement defects (NoSQL-via-Parquet vs the
-Trino-connector approach; one-to-one redundant with many-to-one). Note: REQ-250/251
-are code-complete + unit-tested but end-to-end catalog load is unverified here
-(no live Kafka/ES/Prometheus backends + writable Trino volume).
+45 of 45 to spec (Phases 1–4 complete). REQ-366 + REQ-434 (creation-request queue)
+landed in Phase 4b; REQ-017/019 resolved by revising the requirement text (NoSQL via
+the native Trino connector; one-to-one dropped as redundant with many-to-one).
+Caveats: REQ-250/251 are code-complete + unit-tested but end-to-end catalog load is
+unverified here (no live Kafka/ES/Prometheus backends + writable Trino volume);
+REQ-434's admin UI is tracked as the Group-10 REQ-063 item.
 
 | REQ | Sub-area | Status | Finding |
 | --- | --- | --- | --- |
@@ -32,9 +32,9 @@ are code-complete + unit-tested but end-to-end catalog load is unverified here
 | 014 | Source registration | To spec | Unregistered tables absent from schema/runtime; `generate_schema` driven solely by registered tables (`compiler/schema_gen.py:70`) |
 | 015 | Source registration | To spec | No per-table governance mode / registry-required mode; uniform Stage-2 governance (`compiler/stage2.py:34`) |
 | 016 | Source registration | To spec | `register_table` calls `_rebuild_schemas` synchronously (`api/admin/schema.py:1687`) |
-| 017 | Source registration | Not to spec | NoSQL (Mongo) uses the Trino Mongo connector, not Parquet materialization (`mongodb/source.py:74`); read-only not enforced |
+| 017 | Source registration | To spec (req revised 2026-06-18) | NoSQL exposed read-only via its native Trino connector (`mongodb/source.py:74`); REQ-017 reworded to bless the connector approach over "Parquet materialization" |
 | 018 | Relationships | To spec | Trino FK metadata → `relationship_candidates` suggested/accepted/rejected (`compiler/introspect.py:209`, `discovery/collector.py:209`) |
-| 019 | Relationships | Not to spec | Manual cross-source rels via `upsert_relationship`; `one-to-one` is absent by design — the relationship field model is a strict binary (single vs list) and 1:1 collapses to many-to-one. The requirement, not the code, should drop `one-to-one` (`core/models.py:81`, `compiler/schema_gen.py:1046`) |
+| 019 | Relationships | To spec (req revised 2026-06-18) | Manual cross-source rels via `upsert_relationship`; REQ-019 reworded to drop `one-to-one` — the field model is a strict binary (single vs list) so 1:1 collapses to many-to-one (`compiler/schema_gen.py:1046`) |
 | 020 | Relationships | Fixed 2026-06-18 | Phase 4a: `relationships` gains owner/version/needs_review; the relationship mutation records the defining steward; `mark_relationships_for_review` flags + version-bumps relationships whose join column disappears on a table update |
 | 021 | Source registration | To spec | GraphQL schema reflects registration model + aliases, not raw DB (`compiler/schema_gen.py:11`) |
 | 119 | JSONB promotion | Fixed 2026-06-18 | Phase 3a registered promoted columns; Phase 3b runs the DDL at api-cache materialization (`_apply_cache_promotions` via `state.pg_pool`, `cast_source` for the varchar-stored JSON) |
@@ -57,7 +57,7 @@ are code-complete + unit-tested but end-to-end catalog load is unverified here
 | 250 | Trino catalog gen | Fixed 2026-06-18 (backend-unverified) | Phase 3b: `_process_kafka_sources` generates the Kafka catalog `.properties` (+ SASL client props) from YAML via `write_kafka_catalog_files`; redis/es/prometheus table-description files written at `create_catalog`. End-to-end catalog load needs a live Kafka + Trino volume |
 | 251 | NoSQL mapping DSL | Fixed 2026-06-18 (backend-unverified) | Phase 3b: `Source.mapping` exposes the redis/es/prometheus table DSL in YAML; `trino_catalog_files.catalog_properties_for` builds the typed config and `_build_catalog_properties` routes to it; table-description files written at `create_catalog`. End-to-end query needs the live backends |
 | 363 | Semantic layer | To spec | SQLAlchemy dialect introspects via `POST /data/graphql` with `X-Role`; server returns per-role filtered schema (`provisa-client/.../sqlalchemy_dialect.py:102`, `api/data/endpoint.py:330`) |
-| 366 | View approval | Not to spec | View/rel creation gated only by `create_view`/`create_relationship`; no approval workflow, no originator-rights/join check; `APPROVE_VIEW`/`APPROVE_RELATIONSHIP` never invoked (`api/admin/schema.py:1560`, `security/rights.py:27`) |
+| 366 | View approval | Fixed 2026-06-18 | Phase 4b: a user lacking `create_view`/`create_relationship` no longer errors — `register_table`/`upsert_relationship` queue a creation request (REQ-434) that a rights-holder executes or rejects (`api/admin/schema.py`) |
 | 367 | Domain views | To spec (now tested) | Cross-domain data only enters a domain via a view — enforced by V001 domain-access (a role cannot query another domain's table directly, only an import view in its own domain). Pinned by `tests/unit/test_domain_views.py` |
 | 392 | Graph PK | Fixed 2026-06-18 | `/data/graph-schema` now returns singular `pk: string\|null` per node label (Phase 1, `api/rest/cypher_router.py:520`) |
 | 393 | PK designation | To spec | `is_primary_key: bool = False` on `ColumnConfig`, persisted, informational only — no constraint generated (`core/models.py:289`, `core/schema.sql:79`) |
@@ -71,7 +71,7 @@ are code-complete + unit-tested but end-to-end catalog load is unverified here
 | 418 | Domain views | To spec (now tested) | Same V001 mechanism as 367 — domain-local calculations/relationships; cross-domain data imported only via views in the role's own domain. Pinned by `tests/unit/test_domain_views.py` |
 | 432 | Table uniqueness | To spec | register/updateTable call `_domain_table_conflict`; startup `_assert_domain_table_unique` fails on duplicates (`api/admin/schema.py:1631`, `api/app.py:1595`) |
 | 433 | Dataset ownership | Fixed 2026-06-18 | `register_table`/`update_table` reject a cross-domain claim of an already-owned dataset (`_dataset_ownership_conflict`, normalized name per source); virtual `__provisa__` views exempt (`api/admin/schema.py`) |
-| 434 | Creation requests | Not added | No creation-request table/model/queue or execute/reject mutations anywhere; named test absent (`core/`, `provisa-ui/src/`) |
+| 434 | Creation requests | Fixed 2026-06-18 (UI pending) | Phase 4b: `creation_requests` table + repo; unauthorized view/relationship creates queue a request; `creationRequests` query + `executeCreationRequest`/`rejectCreationRequest` mutations (rejection requires a reason). Admin UI surface is the Group-10 REQ-063 item |
 
 ## Detail
 

@@ -89,3 +89,17 @@ def require_capability(info: "strawberry.types.Info", capability: str, domain_id
         domains = _domain_access(identity, state)
         if "*" not in domains and domain_id not in domains:
             raise PermissionError(f"No access to domain {domain_id!r}")
+
+
+def has_capability(info: "strawberry.types.Info", capability: str) -> bool:
+    """Non-raising capability check (REQ-434 gating).
+
+    Returns True when the caller holds the capability — including dev/no-auth mode
+    and admins (who bypass all checks). Used to decide whether a governed create
+    proceeds or is queued as a creation request.
+    """
+    try:
+        require_capability(info, capability)
+        return True
+    except PermissionError:
+        return False

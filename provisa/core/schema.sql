@@ -315,6 +315,23 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+-- REQ-434/063: creation-request queue. A governed create (view, relationship)
+-- attempted by a user lacking the authority becomes a persisted request that a
+-- rights-holder executes or rejects (with an actionable reason).
+CREATE TABLE IF NOT EXISTS creation_requests (
+    id               SERIAL PRIMARY KEY,
+    request_type     TEXT NOT NULL,        -- 'view' | 'relationship'
+    capability       TEXT NOT NULL,        -- capability required to execute
+    payload          JSONB NOT NULL,       -- original create input
+    requested_by     TEXT,                 -- user_id of the requester
+    status           TEXT NOT NULL DEFAULT 'pending'
+                     CHECK (status IN ('pending', 'executed', 'rejected')),
+    rejection_reason TEXT,
+    resolved_by      TEXT,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at      TIMESTAMPTZ
+);
+
 CREATE TABLE IF NOT EXISTS api_endpoint_candidates (
     id              SERIAL PRIMARY KEY,
     source_id       TEXT NOT NULL REFERENCES api_sources(id) ON DELETE CASCADE,
