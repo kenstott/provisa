@@ -211,6 +211,7 @@ class CompiledQuery:
     def with_sql(self, new_sql: str) -> "CompiledQuery":
         """Return a copy of this CompiledQuery with sql replaced."""
         import dataclasses
+
         return dataclasses.replace(self, sql=new_sql)
 
 
@@ -263,8 +264,7 @@ def _register_table_in_ctx(
         field_name=t.field_name,
         type_name=t.type_name,
         source_id=t.source_id,
-        catalog_name=(si.source_catalogs or {}).get(t.source_id)
-        or source_to_catalog(t.source_id),
+        catalog_name=(si.source_catalogs or {}).get(t.source_id) or source_to_catalog(t.source_id),
         schema_name=t.schema_name,
         table_name=physical_name,
         domain_id=t.domain_id,
@@ -307,9 +307,7 @@ def _register_table_in_ctx(
     ctx.pk_columns[t.table_id] = [
         col["column_name"] for col in t.visible_columns if col.get("is_primary_key")
     ]
-    ctx.native_filter_columns[t.table_id] = {
-        nfc["column_name"] for nfc in t.native_filter_columns
-    }
+    ctx.native_filter_columns[t.table_id] = {nfc["column_name"] for nfc in t.native_filter_columns}
 
     for col in t.visible_columns:
         col_path = col.get("path")
@@ -488,7 +486,11 @@ def _register_ops_synthetic_joins(
             )
 
 
-def build_context(si: object) -> CompilationContext:  # object-ok: circular import boundary — SchemaInput imported inside function body
+def build_context(
+    si: object,
+) -> (
+    CompilationContext
+):  # object-ok: circular import boundary — SchemaInput imported inside function body
     """Build CompilationContext from a SchemaInput.
 
     This mirrors the logic in schema_gen._build_visible_tables and _assign_names
@@ -532,7 +534,9 @@ def build_context(si: object) -> CompilationContext:  # object-ok: circular impo
 # --- AST value extraction ---
 
 
-def _extract_value(node: object, variables: dict | None) -> object:  # object-ok: truly-any payload — GraphQL AST value nodes and Python primitives unified
+def _extract_value(
+    node: object, variables: dict | None
+) -> object:  # object-ok: truly-any payload — GraphQL AST value nodes and Python primitives unified
     """Extract a Python value from a GraphQL AST value node."""
     if isinstance(node, StringValueNode):
         return node.value
@@ -569,7 +573,9 @@ _ISO_DATE_RE = _re.compile(
 )
 
 
-def _timestamp_literal_or_param(val: object, collector) -> str:  # object-ok: truly-any payload — caller may pass str, int, float, bool, None
+def _timestamp_literal_or_param(
+    val: object, collector
+) -> str:  # object-ok: truly-any payload — caller may pass str, int, float, bool, None
     """Return a TIMESTAMP literal if val is an ISO date, otherwise a parameter.
 
     Accepts: 2000-01-01, 2000-01-01T00:00:00, 2000-01-01 00:00:00,
@@ -671,11 +677,17 @@ def _compile_where(
 
     for key, value in where_obj.items():
         if key == "_and":
-            sub_parts = [_compile_where(sub, collector, alias, virtual_vals, table_id, exposed_to_physical) for sub in value]
+            sub_parts = [
+                _compile_where(sub, collector, alias, virtual_vals, table_id, exposed_to_physical)
+                for sub in value
+            ]
             parts.append(f"({' AND '.join(sub_parts)})")
             continue
         if key == "_or":
-            sub_parts = [_compile_where(sub, collector, alias, virtual_vals, table_id, exposed_to_physical) for sub in value]
+            sub_parts = [
+                _compile_where(sub, collector, alias, virtual_vals, table_id, exposed_to_physical)
+                for sub in value
+            ]
             parts.append(f"({' OR '.join(sub_parts)})")
             continue
 
@@ -725,7 +737,9 @@ def _compile_order_by(
             sql_dir = _DIRECTION_SQL.get(direction)
             if sql_dir is None:
                 raise ValueError(f"Unknown order direction: {direction!r}")
-            phys_col = _e2p.get((table_id, col_name), col_name) if table_id is not None else col_name
+            phys_col = (
+                _e2p.get((table_id, col_name), col_name) if table_id is not None else col_name
+            )
             col = _q(phys_col) if alias is None else f"{_q(alias)}.{_q(phys_col)}"
             parts.append(f"{col} {sql_dir}")
     return ", ".join(parts)
@@ -808,8 +822,10 @@ def semantic_table_name(meta: TableMeta) -> str:
     """Bare (unquoted) semantic table name — central naming authority always."""
     from provisa.compiler.naming import apply_sql_name
 
-    raw = meta.display_name if meta.display_name else (
-        meta.field_name.split("__", 1)[1] if "__" in meta.field_name else meta.field_name
+    raw = (
+        meta.display_name
+        if meta.display_name
+        else (meta.field_name.split("__", 1)[1] if "__" in meta.field_name else meta.field_name)
     )
     return apply_sql_name(raw)
 
@@ -1035,7 +1051,9 @@ def _explicit_limit(field_node: FieldNode, variables: dict | None) -> int | None
     return None
 
 
-def _extract_non_negative_int(value: object, name: str) -> int:  # object-ok: truly-any payload — validated via isinstance checks inside body
+def _extract_non_negative_int(
+    value: object, name: str
+) -> int:  # object-ok: truly-any payload — validated via isinstance checks inside body
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{name} must be an integer")
     if value < 0:
@@ -1628,7 +1646,9 @@ def _collect_nested_columns(
                 continue
             # Scalar column from the parent join
             nested_response_key = nested_sel.alias.value if nested_sel.alias else nested_name
-            nested_phys = ctx.exposed_to_physical.get((parent_table.table_id, nested_name), nested_name)
+            nested_phys = ctx.exposed_to_physical.get(
+                (parent_table.table_id, nested_name), nested_name
+            )
             nested_sql = ctx.physical_to_sql.get((parent_table.table_id, nested_phys), nested_phys)
             if nested_phys in _VIRTUAL_COLS:
                 _nvc = (ctx.virtual_columns.get(parent_table.table_id) or {}).get(nested_phys, "")
@@ -1991,7 +2011,8 @@ def _compile_root_field(
         _e2p_d = ctx.exposed_to_physical
         _tid_d = table.table_id
         parts_d = [
-            _q(_e2p_d.get((_tid_d, c), c)) if root_alias is None
+            _q(_e2p_d.get((_tid_d, c), c))
+            if root_alias is None
             else f"{_q(root_alias)}.{_q(_e2p_d.get((_tid_d, c), c))}"
             for c in distinct_cols
         ]
@@ -2001,7 +2022,9 @@ def _compile_root_field(
     # WHERE
     if "where" in args:
         _vvals = ctx.virtual_columns.get(table.table_id)
-        where_sql = _compile_where(args["where"], collector, root_alias, _vvals, table.table_id, ctx.exposed_to_physical)
+        where_sql = _compile_where(
+            args["where"], collector, root_alias, _vvals, table.table_id, ctx.exposed_to_physical
+        )
         sql += f" WHERE {where_sql}"
 
     # ORDER BY
@@ -2009,7 +2032,9 @@ def _compile_root_field(
         order_by_val = args["order_by"]
         if isinstance(order_by_val, dict):
             order_by_val = [order_by_val]
-        order_sql = _compile_order_by(order_by_val, root_alias, table.table_id, ctx.exposed_to_physical)
+        order_sql = _compile_order_by(
+            order_by_val, root_alias, table.table_id, ctx.exposed_to_physical
+        )
         sql += f" ORDER BY {order_sql}"
 
     # LIMIT / OFFSET
@@ -2072,20 +2097,28 @@ def _compile_root_field(
 
 def _collect_requested_agg_funcs(
     field_node: FieldNode,
-) -> tuple[bool, list[str], list[str], list[str], list[str], bool]:
+) -> tuple[bool, dict[str, list[str]], bool]:
     """Parse the aggregate selection set to find which functions are requested.
 
-    Returns: (has_count, sum_cols, avg_cols, min_cols, max_cols, has_nodes)
+    Returns: (has_count, cols_by_func, has_nodes) where cols_by_func maps each aggregate
+    function name (sum/avg/stddev/variance/min/max) to its selected columns.
     """
     has_count = False
-    sum_cols: list[str] = []
-    avg_cols: list[str] = []
-    min_cols: list[str] = []
-    max_cols: list[str] = []
+    cols_by_func: dict[str, list[str]] = {
+        "sum": [],
+        "avg": [],
+        "stddev": [],
+        "variance": [],
+        "min": [],
+        "max": [],
+    }
     has_nodes = False
 
+    def _result() -> tuple[bool, dict[str, list[str]], bool]:
+        return has_count, cols_by_func, has_nodes
+
     if not field_node.selection_set:
-        return has_count, sum_cols, avg_cols, min_cols, max_cols, has_nodes
+        return _result()
 
     for sel in field_node.selection_set.selections:
         if not isinstance(sel, FieldNode):
@@ -2100,22 +2133,14 @@ def _collect_requested_agg_funcs(
                 agg_name = agg_sel.name.value
                 if agg_name == "count":
                     has_count = True
-                elif agg_name in ("sum", "avg", "min", "max") and agg_sel.selection_set:
-                    cols = [
+                elif agg_name in cols_by_func and agg_sel.selection_set:
+                    cols_by_func[agg_name] = [
                         s.name.value
                         for s in agg_sel.selection_set.selections
                         if isinstance(s, FieldNode)
                     ]
-                    if agg_name == "sum":
-                        sum_cols = cols
-                    elif agg_name == "avg":
-                        avg_cols = cols
-                    elif agg_name == "min":
-                        min_cols = cols
-                    elif agg_name == "max":
-                        max_cols = cols
 
-    return has_count, sum_cols, avg_cols, min_cols, max_cols, has_nodes
+    return _result()
 
 
 def _collect_agg_aliases(
@@ -2208,7 +2233,9 @@ def _build_nodes_sql(
     nodes_params: list = []
     if "where" in args:
         nodes_collector = ParamCollector()
-        nodes_where_sql = _compile_where(args["where"], nodes_collector, None, agg_vvals, table_id, exposed_to_physical)
+        nodes_where_sql = _compile_where(
+            args["where"], nodes_collector, None, agg_vvals, table_id, exposed_to_physical
+        )
         nodes_sql += f" WHERE {nodes_where_sql}"
         nodes_params = nodes_collector.params
     return nodes_sql, nodes_cols, nodes_params
@@ -2226,9 +2253,7 @@ def _compile_aggregate_field(
     collector = ParamCollector()
     sources: set[str] = {table.source_id}
 
-    has_count, sum_cols, avg_cols, min_cols, max_cols, has_nodes = _collect_requested_agg_funcs(
-        field_node
-    )
+    has_count, cols_by_func, has_nodes = _collect_requested_agg_funcs(field_node)
 
     agg_key, func_aliases, col_aliases = _collect_agg_aliases(field_node)
 
@@ -2240,13 +2265,25 @@ def _compile_aggregate_field(
         select_parts.append("COUNT(*)")
         columns.append(ColumnRef(alias=None, column="count", field_name="count", nested_in=agg_key))
 
-    for func_name, sql_func, cols in (
-        ("sum", "SUM", sum_cols),
-        ("avg", "AVG", avg_cols),
-        ("min", "MIN", min_cols),
-        ("max", "MAX", max_cols),
+    for func_name, sql_func in (
+        ("sum", "SUM"),
+        ("avg", "AVG"),
+        ("stddev", "STDDEV"),
+        ("variance", "VARIANCE"),
+        ("min", "MIN"),
+        ("max", "MAX"),
     ):
-        sp, cr = _build_agg_func_parts(sql_func, func_name, cols, agg_key, func_aliases, col_aliases, table.table_id, ctx.exposed_to_physical)
+        cols = cols_by_func[func_name]
+        sp, cr = _build_agg_func_parts(
+            sql_func,
+            func_name,
+            cols,
+            agg_key,
+            func_aliases,
+            col_aliases,
+            table.table_id,
+            ctx.exposed_to_physical,
+        )
         select_parts.extend(sp)
         columns.extend(cr)
 
@@ -2264,7 +2301,9 @@ def _compile_aggregate_field(
 
     _agg_vvals = ctx.virtual_columns.get(table.table_id)
     if "where" in args:
-        where_sql = _compile_where(args["where"], collector, None, _agg_vvals, table.table_id, ctx.exposed_to_physical)
+        where_sql = _compile_where(
+            args["where"], collector, None, _agg_vvals, table.table_id, ctx.exposed_to_physical
+        )
         sql += f" WHERE {where_sql}"
 
     # Build nodes SQL: plain SELECT with same WHERE, no aggregate functions
@@ -2290,7 +2329,9 @@ def _compile_aggregate_field(
     )
 
 
-def _sql_literal(val: object) -> str:  # object-ok: truly-any payload — SQL literal accepts any Python scalar
+def _sql_literal(
+    val: object,
+) -> str:  # object-ok: truly-any payload — SQL literal accepts any Python scalar
     """Convert a Python value to a SQL literal for VALUES injection."""
     if val is None:
         return "NULL"
@@ -2306,7 +2347,11 @@ def _sql_literal(val: object) -> str:  # object-ok: truly-any payload — SQL li
     return f"'{val!s}'"
 
 
-def rewrite_hot_joins(compiled: CompiledQuery, hot_manager: object) -> CompiledQuery:  # object-ok: circular import boundary — HotTableManager imported inside function body
+def rewrite_hot_joins(
+    compiled: CompiledQuery, hot_manager: object
+) -> (
+    CompiledQuery
+):  # object-ok: circular import boundary — HotTableManager imported inside function body
     """Rewrite JOINs targeting hot tables to use VALUES-based CTEs.
 
     When a LEFT JOIN target is a hot-cached table, replace the table reference
@@ -2440,7 +2485,11 @@ def _compile_connection_field(
     where_parts: list[str] = []
     if "where" in args:
         _conn_vvals = ctx.virtual_columns.get(table.table_id)
-        where_parts.append(_compile_where(args["where"], collector, None, _conn_vvals, table.table_id, ctx.exposed_to_physical))
+        where_parts.append(
+            _compile_where(
+                args["where"], collector, None, _conn_vvals, table.table_id, ctx.exposed_to_physical
+            )
+        )
 
     cursor_where, effective_limit, is_backward = apply_cursor_pagination(
         args,

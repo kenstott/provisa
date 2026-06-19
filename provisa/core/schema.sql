@@ -156,10 +156,11 @@ EXCEPTION WHEN duplicate_table THEN NULL;
 END $$;
 
 CREATE TABLE IF NOT EXISTS roles (
-    id              TEXT PRIMARY KEY,
-    capabilities    TEXT[] NOT NULL DEFAULT '{}',
-    domain_access   TEXT[] NOT NULL DEFAULT '{}',
-    parent_role_id  TEXT REFERENCES roles(id)
+    id                 TEXT PRIMARY KEY,
+    capabilities       TEXT[] NOT NULL DEFAULT '{}',
+    domain_access      TEXT[] NOT NULL DEFAULT '{}',
+    parent_role_id     TEXT REFERENCES roles(id),
+    allow_aggregations BOOLEAN NOT NULL DEFAULT TRUE  -- REQ-197: per-role aggregate gating
 );
 
 -- Migration: add parent_role_id if missing

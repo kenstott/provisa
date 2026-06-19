@@ -424,6 +424,7 @@ class Role(BaseModel):
         True  # when False (+ SQL opt-out), V002 join approval check is skipped
     )
     max_rows: int | None = None  # REQ-005: per-role result-size ceiling (LIMIT injected by Stage 2)
+    allow_aggregations: bool = True  # REQ-197: when False, aggregate root fields are not exposed
 
 
 def flatten_roles(roles: list[Role]) -> list[Role]:
@@ -432,17 +433,18 @@ def flatten_roles(roles: list[Role]) -> list[Role]:
     Returns new Role objects with inherited permissions merged in.
     """
     by_id = {r.id: r for r in roles}
-    cache: dict[str, tuple[set[str], set[str], int | None]] = {}
+    cache: dict[str, tuple[set[str], set[str], int | None, bool]] = {}
 
-    def _resolve(role_id: str) -> tuple[set[str], set[str], int | None]:
+    def _resolve(role_id: str) -> tuple[set[str], set[str], int | None, bool]:
         if role_id in cache:
             return cache[role_id]
         role = by_id[role_id]
         caps = set(role.capabilities)
         domains = set(role.domain_access)
         max_rows = role.max_rows
+        allow_agg = role.allow_aggregations
         if role.parent_role_id and role.parent_role_id in by_id:
-            p_caps, p_domains, p_max_rows = _resolve(role.parent_role_id)
+            p_caps, p_domains, p_max_rows, p_allow_agg = _resolve(role.parent_role_id)
             caps.update(p_caps)
             domains.update(p_domains)
             # Ceiling: child inherits parent's when unset; most restrictive wins when both set.
@@ -450,12 +452,14 @@ def flatten_roles(roles: list[Role]) -> list[Role]:
                 max_rows = p_max_rows
             elif p_max_rows is not None:
                 max_rows = min(max_rows, p_max_rows)
-        cache[role_id] = (caps, domains, max_rows)
-        return caps, domains, max_rows
+            # Aggregate gating: most restrictive wins — a parent that disallows disallows the child.
+            allow_agg = allow_agg and p_allow_agg
+        cache[role_id] = (caps, domains, max_rows, allow_agg)
+        return caps, domains, max_rows, allow_agg
 
     result: list[Role] = []
     for r in roles:
-        caps, domains, max_rows = _resolve(r.id)
+        caps, domains, max_rows, allow_agg = _resolve(r.id)
         result.append(
             Role(
                 id=r.id,
@@ -465,6 +469,7 @@ def flatten_roles(roles: list[Role]) -> list[Role]:
                 relationship_guard=r.relationship_guard,
                 max_rows=max_rows,
                 rate_limit=r.rate_limit,
+                allow_aggregations=allow_agg,
             )
         )
     return result

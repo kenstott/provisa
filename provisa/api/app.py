@@ -180,7 +180,9 @@ def _setup_approval_hook(st: AppState) -> None:
 
     st.approval_hook_config = hook_cfg
     st.approval_hook = create_hook(hook_cfg)
-    st.source_approval_hooks = {s.id: True for s in config.sources if getattr(s, "approval_hook", False)}
+    st.source_approval_hooks = {
+        s.id: True for s in config.sources if getattr(s, "approval_hook", False)
+    }
 
     # Resolve per-table flags to table_ids via the compilation contexts.
     name_to_id: dict[tuple[str, str, str], int] = {}
@@ -536,7 +538,9 @@ async def _seed_ops_pg(conn: asyncpg.Connection) -> None:
             )
 
 
-def _seed_ops_trino(trino_conn: trino.dbapi.Connection, snapshot_retention_hours: int | None = None) -> None:
+def _seed_ops_trino(
+    trino_conn: trino.dbapi.Connection, snapshot_retention_hours: int | None = None
+) -> None:
     """Create Iceberg schema/tables/views in Trino for the ops domain (idempotent)."""
     import logging as _ops_log
 
@@ -714,7 +718,9 @@ async def _init_pg_pool_and_schema() -> tuple[str, int, str, str]:
     return pg_host, pg_port, pg_database, pg_user
 
 
-async def _seed_built_in_sources(pg_host: str, pg_port: int, pg_database: str, pg_user: str) -> None:
+async def _seed_built_in_sources(
+    pg_host: str, pg_port: int, pg_database: str, pg_user: str
+) -> None:
     """Seed provisa-admin, provisa-otel, and __provisa__ source rows; seed meta domain and ops; compute clusters."""
     assert state.pg_pool is not None
     trino_host_early = os.environ.get("TRINO_HOST", "localhost")
@@ -1092,8 +1098,13 @@ async def _load_openapi_specs() -> None:
             _spec = load_spec(_resolved_path)
             _servers = _spec.get("servers", [])
             _base_url = _servers[0].get("url", "") if _servers else ""
-            if _base_url and not _base_url.startswith(("http://", "https://")) and _resolved_path.startswith(("http://", "https://")):
+            if (
+                _base_url
+                and not _base_url.startswith(("http://", "https://"))
+                and _resolved_path.startswith(("http://", "https://"))
+            ):
                 from urllib.parse import urljoin
+
                 _base_url = urljoin(_resolved_path, _base_url)
             state.openapi_specs[_row["id"]] = {
                 "spec_path": _row["path"],
@@ -1408,9 +1419,9 @@ async def _load_and_build(config_path: str | None = None) -> None:
     cache_config = raw_config.get("cache", {})
     # Resolve Redis URL regardless of response-cache enablement so rate limiting
     # (REQ-371) can use it even when the response cache is off.
-    state.redis_url = os.environ.get("REDIS_URL") or resolve_secrets(
-        cache_config.get("redis_url", "")
-    ) or None
+    state.redis_url = (
+        os.environ.get("REDIS_URL") or resolve_secrets(cache_config.get("redis_url", "")) or None
+    )
     if cache_config.get("enabled"):
         redis_url = state.redis_url or ""
         if redis_url:
@@ -1559,7 +1570,9 @@ async def _load_graphql_remote_sources_from_db() -> None:
                     tname = tr["table_name"]
                     _snake_field = tname.split("__", 1)[-1]
                     _camel_parts = _snake_field.split("_")
-                    _field_name = _camel_parts[0] + "".join(p.capitalize() for p in _camel_parts[1:])
+                    _field_name = _camel_parts[0] + "".join(
+                        p.capitalize() for p in _camel_parts[1:]
+                    )
                     tables.append(
                         {
                             "name": tname,
@@ -1650,13 +1663,12 @@ def _resolve_naming_config(raw_config: dict | None) -> tuple[bool, dict | None]:
     return domain_prefix, raw_config
 
 
-def _inject_gql_required_args(
-    tables: list[dict], gql_remote_srcs: dict
-) -> None:
+def _inject_gql_required_args(tables: list[dict], gql_remote_srcs: dict) -> None:
     """Inject required GQL args as native filter columns for graphql_remote tables."""
     if not gql_remote_srcs:
         return
     from provisa.compiler.naming import apply_sql_name as _asn
+
     _gql_req_args: dict[tuple, list[dict]] = {}
     for _reg in gql_remote_srcs.values():
         _sid = _reg.get("source_id", "")
@@ -1990,7 +2002,9 @@ async def _bg_hydrate_api_endpoints() -> None:
 
     assert state.pg_pool is not None
 
-    async def _bg_hydrate(eps=_zero_param_eps, pool: asyncpg.Pool = state.pg_pool, _log=_hydrate_log):
+    async def _bg_hydrate(
+        eps=_zero_param_eps, pool: asyncpg.Pool = state.pg_pool, _log=_hydrate_log
+    ):
         from provisa.openapi.pg_cache import fill_api_table
 
         async with pool.acquire() as _conn:
@@ -2080,7 +2094,10 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             if _src_dict.get("type") == "postgresql":
                 sources[_sid] = {**_src_dict, "database": source_to_catalog(_sid)}
         roles = [
-            dict(r) for r in await conn.fetch("SELECT id, capabilities, domain_access FROM roles")
+            dict(r)
+            for r in await conn.fetch(
+                "SELECT id, capabilities, domain_access, allow_aggregations FROM roles"
+            )
         ]
 
         # Inject source-level naming convention into table dicts for hierarchical resolution
@@ -2117,18 +2134,20 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
 
                     _mv_id = f"view-{_vr['table_name']}"
                     if state.mv_registry.get(_mv_id) is None:
-                        state.mv_registry.register(MVDefinition(
-                            id=_mv_id,
-                            source_tables=[],
-                            target_catalog="postgresql",
-                            target_schema="mv_cache",
-                            target_table=f"mv_{_vr['table_name']}",
-                            refresh_interval=int(_vr.get("mv_refresh_interval") or 300),
-                            enabled=True,
-                            sql=_vr["view_sql"].rstrip().rstrip(";"),
-                            expose_in_sdl=False,
-                            status=MVStatus.STALE,
-                        ))
+                        state.mv_registry.register(
+                            MVDefinition(
+                                id=_mv_id,
+                                source_tables=[],
+                                target_catalog="postgresql",
+                                target_schema="mv_cache",
+                                target_table=f"mv_{_vr['table_name']}",
+                                refresh_interval=int(_vr.get("mv_refresh_interval") or 300),
+                                enabled=True,
+                                sql=_vr["view_sql"].rstrip().rstrip(";"),
+                                expose_in_sdl=False,
+                                status=MVStatus.STALE,
+                            )
+                        )
                 else:
                     state.view_sql_map[_vr["table_name"]] = _vr["view_sql"].rstrip().rstrip(";")
         except Exception as _e:
@@ -2572,12 +2591,60 @@ async def _auto_register_graphql_demo(_log: logging.Logger) -> None:
                 async with _demo_pool.acquire() as _rel_conn:
                     _pg_rel = cast(asyncpg.Connection, _rel_conn)
                     for _rel_id, _src_tbl, _tgt_tbl, _src_col, _tgt_col, _card, _alias in [
-                        ("employees_to_assignments", "employees", "assignments", "id", "employee_id", "one-to-many", None),
-                        ("pets-to-shelter-breed", "pets", "animal_breeds", "breed_name", "name", "many-to-one", "BREED_INFO"),
-                        ("shelter-breed-to-pets", "animal_breeds", "pets", "name", "breed_name", "one-to-many", "PETS_OF_BREED"),
-                        ("pets-to-shelter-assignments", "pets", "assignments", "breed_name", "breed_name", "many-to-one", None),
-                        ("shelter-assignments-to-pets", "assignments", "pets", "breed_name", "breed_name", "one-to-many", None),
-                        ("shelter-assignments-to-employees", "assignments", "employees", "employee_id", "id", "many-to-one", None),
+                        (
+                            "employees_to_assignments",
+                            "employees",
+                            "assignments",
+                            "id",
+                            "employee_id",
+                            "one-to-many",
+                            None,
+                        ),
+                        (
+                            "pets-to-shelter-breed",
+                            "pets",
+                            "animal_breeds",
+                            "breed_name",
+                            "name",
+                            "many-to-one",
+                            "BREED_INFO",
+                        ),
+                        (
+                            "shelter-breed-to-pets",
+                            "animal_breeds",
+                            "pets",
+                            "name",
+                            "breed_name",
+                            "one-to-many",
+                            "PETS_OF_BREED",
+                        ),
+                        (
+                            "pets-to-shelter-assignments",
+                            "pets",
+                            "assignments",
+                            "breed_name",
+                            "breed_name",
+                            "many-to-one",
+                            None,
+                        ),
+                        (
+                            "shelter-assignments-to-pets",
+                            "assignments",
+                            "pets",
+                            "breed_name",
+                            "breed_name",
+                            "one-to-many",
+                            None,
+                        ),
+                        (
+                            "shelter-assignments-to-employees",
+                            "assignments",
+                            "employees",
+                            "employee_id",
+                            "id",
+                            "many-to-one",
+                            None,
+                        ),
                     ]:
                         try:
                             await rel_repo.upsert(

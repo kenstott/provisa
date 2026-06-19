@@ -1341,11 +1341,12 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         _build_native_filter_args(t, args)
         query_fields[t.field_name] = GraphQLField(GraphQLList(GraphQLNonNull(gql_type)), args=args)
 
-        agg_result = _build_aggregate_query_field(
-            t, gql_type, si.enum_types
-        )
-        if agg_result:
-            query_fields[agg_result[0]] = agg_result[1]
+        # REQ-197: per-role aggregate gating. When the role disallows aggregations, the
+        # <table>_aggregate root field is not exposed at all.
+        if si.role.get("allow_aggregations", True):
+            agg_result = _build_aggregate_query_field(t, gql_type, si.enum_types)
+            if agg_result:
+                query_fields[agg_result[0]] = agg_result[1]
 
         if t.relay_pagination:
             conn_name, conn_field = _build_connection_query_field(

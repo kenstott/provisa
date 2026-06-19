@@ -17,7 +17,6 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler import naming as _naming
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 from provisa.compiler.sql_gen import (
-    CompilationContext,
     build_context,
     compile_query,
 )
@@ -28,7 +27,7 @@ def _col(name: str, data_type: str = "varchar(100)", nullable: bool = False) -> 
 
 
 def _build_schema_and_ctx(
-    tables=None, relationships=None, role_id="admin", naming_rules=None
+    tables=None, relationships=None, role_id="admin", naming_rules=None, role_extra=None
 ):
     _naming.configure(gql="snake")
     if tables is None:
@@ -89,7 +88,7 @@ def _build_schema_and_ctx(
             _col("email", "varchar(200)"),
         ],
     }
-    role = {"id": role_id, "capabilities": [], "domain_access": ["*"]}
+    role = {"id": role_id, "capabilities": [], "domain_access": ["*"], **(role_extra or {})}
     domains = [{"id": "sales", "description": "Sales"}]
     si = SchemaInput(
         tables=tables,
@@ -225,8 +224,11 @@ class TestAggregate:
         _naming.configure(gql="snake")
         tables = [
             {
-                "id": 1, "source_id": "pg", "domain_id": "d",
-                "schema_name": "public", "table_name": "orders",
+                "id": 1,
+                "source_id": "pg",
+                "domain_id": "d",
+                "schema_name": "public",
+                "table_name": "orders",
                 "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "limited"]},
@@ -239,7 +241,9 @@ class TestAggregate:
             1: [_col("id", "integer"), _col("amount", "decimal(10,2)"), _col("status", "varchar")],
         }
         si = SchemaInput(
-            tables=tables, relationships=[], column_types=col_types,
+            tables=tables,
+            relationships=[],
+            column_types=col_types,
             naming_rules=[],
             role={"id": "limited", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
@@ -274,8 +278,11 @@ class TestAggregate:
         _naming.configure(gql="snake")
         tables = [
             {
-                "id": 1, "source_id": "pg", "domain_id": "d",
-                "schema_name": "public", "table_name": "tags",
+                "id": 1,
+                "source_id": "pg",
+                "domain_id": "d",
+                "schema_name": "public",
+                "table_name": "tags",
                 "governance": "pre-approved",
                 "columns": [
                     {"column_name": "name", "visible_to": ["admin"]},
@@ -287,7 +294,9 @@ class TestAggregate:
             1: [_col("name", "varchar(50)"), _col("category", "varchar(50)")],
         }
         si = SchemaInput(
-            tables=tables, relationships=[], column_types=col_types,
+            tables=tables,
+            relationships=[],
+            column_types=col_types,
             naming_rules=[],
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
@@ -350,8 +359,11 @@ class TestAggregate:
         _naming.configure(gql="snake")
         tables = [
             {
-                "id": 1, "source_id": "pg", "domain_id": "d",
-                "schema_name": "public", "table_name": "orders",
+                "id": 1,
+                "source_id": "pg",
+                "domain_id": "d",
+                "schema_name": "public",
+                "table_name": "orders",
                 "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
@@ -360,8 +372,11 @@ class TestAggregate:
                 ],
             },
             {
-                "id": 2, "source_id": "pg", "domain_id": "d",
-                "schema_name": "public", "table_name": "customers",
+                "id": 2,
+                "source_id": "pg",
+                "domain_id": "d",
+                "schema_name": "public",
+                "table_name": "customers",
                 "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin"]},
@@ -369,17 +384,28 @@ class TestAggregate:
                 ],
             },
         ]
-        rels = [{
-            "id": "r1", "source_table_id": 1, "target_table_id": 2,
-            "source_column": "customer_id", "target_column": "id",
-            "cardinality": "many-to-one",
-        }]
+        rels = [
+            {
+                "id": "r1",
+                "source_table_id": 1,
+                "target_table_id": 2,
+                "source_column": "customer_id",
+                "target_column": "id",
+                "cardinality": "many-to-one",
+            }
+        ]
         col_types = {
-            1: [_col("id", "integer"), _col("customer_id", "integer"), _col("amount", "decimal(10,2)")],
+            1: [
+                _col("id", "integer"),
+                _col("customer_id", "integer"),
+                _col("amount", "decimal(10,2)"),
+            ],
             2: [_col("id", "integer"), _col("name", "varchar")],
         }
         si = SchemaInput(
-            tables=tables, relationships=rels, column_types=col_types,
+            tables=tables,
+            relationships=rels,
+            column_types=col_types,
             naming_rules=[],
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
@@ -408,7 +434,7 @@ class TestAggregate:
         q = results[0]
         assert q.nodes_sql is not None
         assert "COUNT(*)" not in q.nodes_sql
-        assert 'SELECT' in q.nodes_sql
+        assert "SELECT" in q.nodes_sql
         assert 'FROM "public"."orders"' in q.nodes_sql
         assert q.nodes_columns is not None
         node_field_names = {c.field_name for c in q.nodes_columns}
@@ -447,8 +473,11 @@ class TestAggregate:
         _naming.configure(gql="snake")
         tables = [
             {
-                "id": 1, "source_id": "pg", "domain_id": "d",
-                "schema_name": "public", "table_name": "orders",
+                "id": 1,
+                "source_id": "pg",
+                "domain_id": "d",
+                "schema_name": "public",
+                "table_name": "orders",
                 "governance": "pre-approved",
                 "columns": [
                     {"column_name": "id", "visible_to": ["admin", "analyst"]},
@@ -467,7 +496,9 @@ class TestAggregate:
             ],
         }
         si_admin = SchemaInput(
-            tables=tables, relationships=[], column_types=col_types,
+            tables=tables,
+            relationships=[],
+            column_types=col_types,
             naming_rules=[],
             role={"id": "admin", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
@@ -481,7 +512,9 @@ class TestAggregate:
         assert "cost" in admin_sum_fields
 
         si_analyst = SchemaInput(
-            tables=tables, relationships=[], column_types=col_types,
+            tables=tables,
+            relationships=[],
+            column_types=col_types,
             naming_rules=[],
             role={"id": "analyst", "capabilities": [], "domain_access": ["*"]},
             domains=[{"id": "d", "description": "D"}],
@@ -547,11 +580,11 @@ def test_aggregate_column_alias_appears_as_sql_alias():
 def test_aggregate_unaliased_column_no_sql_alias():
     """Unaliased column produces no AS in the SQL."""
     schema, ctx = _build_schema_and_ctx()
-    doc = parse('{ orders_aggregate { aggregate { sum { amount } } } }')
+    doc = parse("{ orders_aggregate { aggregate { sum { amount } } } }")
     results = compile_query(doc, ctx)
     q = results[0]
     assert 'SUM("amount")' in q.sql
-    assert 'AS' not in q.sql
+    assert "AS" not in q.sql
 
 
 def test_field_alias_used_as_response_key():
@@ -595,3 +628,60 @@ def test_aggregate_aliases_at_all_levels():
     assert len(sum_cols) == 1
     assert sum_cols[0].field_name == "rev"
     assert sum_cols[0].nested_in == "derived.total"
+
+
+class TestStddevVariance:
+    """REQ-196: numeric columns also get stddev/variance aggregate fields."""
+
+    def test_stddev_variance_fields_in_schema(self):
+        schema, _ = _build_schema_and_ctx()
+        agg_fields_type = schema.query_type.fields["orders_aggregate"].type.fields["aggregate"].type
+        assert "stddev" in agg_fields_type.fields
+        assert "variance" in agg_fields_type.fields
+
+    def test_stddev_only_numeric(self):
+        schema, _ = _build_schema_and_ctx()
+        agg_fields_type = schema.query_type.fields["orders_aggregate"].type.fields["aggregate"].type
+        stddev_fields = set(agg_fields_type.fields["stddev"].type.fields.keys())
+        assert "amount" in stddev_fields
+        assert "region" not in stddev_fields
+
+    def test_stddev_compiles_to_sql(self):
+        schema, ctx = _build_schema_and_ctx()
+        doc = parse("""
+            { orders_aggregate {
+                aggregate { stddev { amount } }
+            } }
+        """)
+        assert not validate(schema, doc)
+        q = compile_query(doc, ctx)[0]
+        assert "STDDEV(" in q.sql.upper()
+
+    def test_variance_compiles_to_sql(self):
+        schema, ctx = _build_schema_and_ctx()
+        doc = parse("""
+            { orders_aggregate {
+                aggregate { variance { amount } }
+            } }
+        """)
+        assert not validate(schema, doc)
+        q = compile_query(doc, ctx)[0]
+        assert "VARIANCE(" in q.sql.upper()
+
+
+class TestAggregateGating:
+    """REQ-197: per-role allow_aggregations gates the <table>_aggregate root field."""
+
+    def test_aggregate_present_by_default(self):
+        schema, _ = _build_schema_and_ctx()
+        assert "orders_aggregate" in schema.query_type.fields
+
+    def test_aggregate_absent_when_disallowed(self):
+        schema, _ = _build_schema_and_ctx(role_extra={"allow_aggregations": False})
+        assert "orders_aggregate" not in schema.query_type.fields
+        # plain table field is still present
+        assert "orders" in schema.query_type.fields
+
+    def test_aggregate_present_when_explicitly_allowed(self):
+        schema, _ = _build_schema_and_ctx(role_extra={"allow_aggregations": True})
+        assert "orders_aggregate" in schema.query_type.fields
