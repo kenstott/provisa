@@ -360,17 +360,17 @@ def _map_query_field_as_table(
         max_list_items,
     )
     from provisa.compiler.naming import apply_sql_name as _apply_sql_name
+
     table_name = _qualify_name(namespace, field["name"])
     return {
         "name": table_name,
         "sql_name": _apply_sql_name(table_name),
         "field_name": field["name"],
+        "gql_type_name": ret_name,
         "source_id": source_id,
         "columns": columns,
         "domain_id": domain_id,
-        "description": field.get("description")
-        or (return_type or {}).get("description")
-        or None,
+        "description": field.get("description") or (return_type or {}).get("description") or None,
         "required_args": _build_required_args(field),
         "pagination": _detect_pagination_args(field.get("args") or []),
     }
@@ -503,7 +503,9 @@ def map_schema(
         max_list_depth,
         max_list_items,
     )
-    functions.extend(_process_mutation_fields(mutation_type, namespace, source_id, domain_id, types))
+    functions.extend(
+        _process_mutation_fields(mutation_type, namespace, source_id, domain_id, types)
+    )
 
     relationships = _detect_relationships(tables, types, queryable_type_names, type_to_table)
     return tables, functions, relationships

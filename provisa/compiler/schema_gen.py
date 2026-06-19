@@ -87,6 +87,7 @@ class SchemaInput:
     gql_object_columns: dict[str, dict[str, list[str]]] = field(
         default_factory=dict
     )  # {table_name: {col_name: [sub_fields]}}
+    governed_gql_types: set[str] = field(default_factory=set)  # GQL type names backed by governed tables
 
 
 @dataclass
@@ -465,6 +466,7 @@ def _build_column_fields(
     override: str | None = None,
     enum_types: dict | None = None,
     object_type_registry: dict[str, GraphQLObjectType] | None = None,
+    governed_gql_types: set[str] | None = None,
 ) -> dict[str, GraphQLField]:
     """Build GraphQL fields for visible columns.
 
@@ -476,8 +478,11 @@ def _build_column_fields(
     _obj_registry: dict[str, GraphQLObjectType] = (
         object_type_registry if object_type_registry is not None else {}
     )
+    _governed = governed_gql_types or set()
     for col in table.visible_columns:
         col_name = col["column_name"]
+        if _governed and col.get("gql_object_type") in _governed:
+            continue
         meta = table.column_metadata.get(col_name.lower())
         if meta is None:
             import logging as _clog
@@ -1272,6 +1277,7 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
             override=t.gql_convention_override,
             enum_types=si.enum_types,
             object_type_registry=_object_type_registry,
+            governed_gql_types=si.governed_gql_types or None,
         )
 
     table_lookup: dict[int, _TableInfo] = {t.table_id: t for t in tables}

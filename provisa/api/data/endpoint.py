@@ -593,11 +593,14 @@ def _lookup_ep(state, table_name: str):
 
 
 def _lookup_gql_remote_table(state, table_name: str):
-    """Find a graphql_remote table registration by SQL table name (snake_case)."""
+    """Find a graphql_remote table registration by SQL table name (snake_case or camelCase)."""
+    from provisa.compiler.naming import apply_sql_name as _asn
+
+    normalised = _asn(table_name)
     gql_srcs = getattr(state, "graphql_remote_sources", {})
     for reg in gql_srcs.values():
         for tbl in reg.get("tables", []):
-            if tbl["sql_name"] == table_name:
+            if tbl["sql_name"] == table_name or tbl["sql_name"] == normalised:
                 return reg, tbl
     return None, None
 
@@ -700,27 +703,38 @@ async def _mat_gql_remote_table(
         for _fname, _gql_sel in extra_selections.items():
             if _fname not in _existing_names:
                 col_dicts.append({"name": _fname, "type": "jsonb", "gql_selection": _gql_sel})
-    _sb = getattr(state, "schema_build_cache", {})
-    _sb_tbls = _sb.get("tables", [])
-    _sb_rels = _sb.get("relationships", [])
-    _tbl_int_id = next((t["id"] for t in _sb_tbls if t.get("table_name") == tn), None)
-    if _tbl_int_id is not None and _sb_rels:
-        _src_rels = [
-            r
-            for r in _sb_rels
-            if r.get("source_table_id") == _tbl_int_id and r.get("source_column")
-        ]
-        if _src_rels:
-            _covered = {
-                c["name"]
-                for c in col_dicts
-                if c.get("gql_object_type")
-                and not c.get("gql_is_list", False)
-                and any(r["source_column"].lower().startswith(c["name"].lower()) for r in _src_rels)
-            }
-            if _covered:
-                col_dicts = [c for c in col_dicts if c["name"] not in _covered]
+    _gql_srcs = getattr(state, "graphql_remote_sources", {})
+    _governed_gql_types = {
+        tbl.get("gql_type_name")
+        for reg in _gql_srcs.values()
+        for tbl in reg.get("tables", [])
+        if tbl.get("gql_type_name")
+    }
+    if _governed_gql_types:
+        _governed_excluded = {
+            c["name"]
+            for c in col_dicts
+            if c.get("gql_object_type")
+            and not c.get("gql_is_list", False)
+            and c["gql_object_type"] in _governed_gql_types
+        }
+        if _governed_excluded:
+            col_dicts = [c for c in col_dicts if c["name"] not in _governed_excluded]
     from provisa.compiler.naming import apply_sql_name as _apply_sql_name
+
+    def _sel_from_obj_fields(fname: str, sub_fields: list) -> str:
+        parts = []
+        for sf in sub_fields or []:
+            if sf.get("fields"):
+                parts.append(_sel_from_obj_fields(sf["name"], sf["fields"]))
+            else:
+                parts.append(sf["name"])
+        return f"{fname} {{ {' '.join(parts)} }}" if parts else fname
+
+    # Synthesize gql_selection from gql_object_fields when not explicitly set
+    for _c in col_dicts:
+        if not _c.get("gql_selection") and _c.get("gql_object_fields"):
+            _c["gql_selection"] = _sel_from_obj_fields(_c["name"], _c["gql_object_fields"])
 
     # Map raw GQL field name → SQL name (snake_case) so CTE headers match SQL column refs
     _gql_to_sql = {c["name"]: _apply_sql_name(c["name"]) for c in col_dicts}
@@ -732,7 +746,7 @@ async def _mat_gql_remote_table(
     ]
 
     gql_cache_loc = cache_location(gql_reg["source_id"], "provisa_admin", "gql_cache")
-    gql_cache_tbl = cache_table_name(gql_reg["source_id"], tn, {})
+    gql_cache_tbl = cache_table_name(gql_reg["source_id"], tn, {"cols": sorted(col_selections)})
 
     redirect_config = RedirectConfig.from_env()
 

@@ -1977,6 +1977,12 @@ def _build_and_register_schemas(
             webhooks=tracked_webhooks,
             enum_types=state.pg_enum_types,
             gql_object_columns=gql_object_cols,
+            governed_gql_types={
+                tbl.get("gql_type_name")
+                for reg in getattr(state, "graphql_remote_sources", {}).values()
+                for tbl in reg.get("tables", [])
+                if tbl.get("gql_type_name")
+            },
         )
         try:
             state.schemas[role["id"]] = generate_schema(si)

@@ -93,6 +93,12 @@ def _build_domain_schema(role: dict, domain_ids: list[str], cache: dict):
         functions=cache["functions"],
         webhooks=cache["webhooks"],
         enum_types=cache["enum_types"],
+        governed_gql_types={
+            tbl.get("gql_type_name")
+            for reg in getattr(state, "graphql_remote_sources", {}).values()
+            for tbl in reg.get("tables", [])
+            if tbl.get("gql_type_name")
+        },
     )
     return generate_schema(si)
 
