@@ -39,6 +39,16 @@ _PROTO_TO_SQL: dict[str, str] = {
     "bool": "boolean",
 }
 
+# REQ-323: a method whose name begins with one of these read verbs is a query by default.
+# Per-method overrides take precedence; the structural heuristics (server-streaming /
+# repeated-message output) act as a fallback for methods that don't follow this convention.
+_QUERY_NAME_PREFIXES = ("get", "list", "find", "fetch", "search", "stream")
+
+
+def _has_query_name_prefix(method_name: str) -> bool:
+    name = method_name.lower()
+    return any(name.startswith(p) for p in _QUERY_NAME_PREFIXES)
+
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -183,15 +193,19 @@ def map_proto(
                 output_cols = _message_columns(output_type, messages, enum_names)
 
             override = overrides.get(method_name, "").lower()
-            is_query = (
-                not is_scalar_output
-                and override != "mutation"
-                and (
-                    override == "query"
-                    or server_streaming
+            if override == "mutation":
+                is_query = False
+            elif override == "query":
+                is_query = True
+            elif _has_query_name_prefix(method_name):
+                # REQ-323: Get/List/Find/Fetch/Search/Stream name prefix → query (read).
+                is_query = True
+            else:
+                # Structural fallback for methods that don't follow the naming convention.
+                is_query = not is_scalar_output and (
+                    server_streaming
                     or _output_has_repeated_message_field(output_type, messages, enum_names)
                 )
-            )
 
             if is_query:
                 queries.append(

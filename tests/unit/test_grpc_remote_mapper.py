@@ -14,12 +14,12 @@ from provisa.grpc_remote.mapper import (
     map_proto,
 )
 
-# Methods:
-#   ListOrders   — server_streaming=True  → query (signal: streaming)
-#   BrowseOrders — unary, returns OrderPage (has repeated Order items) → query (signal: repeated message field)
-#   GetOrder     — unary, returns Order (no repeated message fields) → mutation
-#   CreateOrder  — unary, returns Order → mutation
-#   DeleteOrder  — unary, returns DeleteResponse → mutation
+# Methods (REQ-323 name-prefix classification; structural heuristics are the fallback):
+#   ListOrders   — "List" prefix → query
+#   BrowseOrders — no read prefix, returns OrderPage (repeated Order items) → query (structural fallback)
+#   GetOrder     — "Get" prefix → query
+#   CreateOrder  — no read prefix, unary single entity → mutation
+#   DeleteOrder  — no read prefix, unary single entity → mutation
 PROTO_DICT = {
     "package": "orders",
     "services": [
@@ -98,13 +98,13 @@ PROTO_DICT = {
 
 
 def test_map_proto_query_count():
-    queries, mutations = map_proto(PROTO_DICT, "", "src", "dom")
-    assert len(queries) == 2  # ListOrders (streaming), BrowseOrders (repeated message field)
+    queries, _ = map_proto(PROTO_DICT, "", "src", "dom")
+    assert len(queries) == 3  # GetOrder, ListOrders (prefixes); BrowseOrders (repeated message)
 
 
 def test_map_proto_mutation_count():
-    queries, mutations = map_proto(PROTO_DICT, "", "src", "dom")
-    assert len(mutations) == 3  # GetOrder, CreateOrder, DeleteOrder
+    _, mutations = map_proto(PROTO_DICT, "", "src", "dom")
+    assert len(mutations) == 2  # CreateOrder, DeleteOrder
 
 
 def test_server_streaming_is_query():
@@ -117,10 +117,18 @@ def test_repeated_message_field_is_query():
     assert any(q.method == "BrowseOrders" for q in queries)
 
 
+def test_get_prefix_is_query():
+    # REQ-323: "Get" prefix classifies GetOrder as a read (query), even though its Order
+    # output has only a repeated *scalar* field (tags), which does not structurally signal a list.
+    queries, _ = map_proto(PROTO_DICT, "", "src", "dom")
+    assert any(q.method == "GetOrder" for q in queries)
+
+
 def test_repeated_scalar_field_does_not_trigger_query():
-    # GetOrder returns Order which has repeated string tags — should be mutation
+    # Structural fallback: a non-prefixed method whose output has only a repeated scalar
+    # field is a mutation (repeated scalar ≠ list-wrapper). DeleteOrder has no read prefix.
     _, mutations = map_proto(PROTO_DICT, "", "src", "dom")
-    assert any(m.method == "GetOrder" for m in mutations)
+    assert any(m.method == "DeleteOrder" for m in mutations)
 
 
 def test_unary_single_entity_is_mutation():
@@ -153,7 +161,9 @@ def test_override_mutation_forces_mutation():
     assert not any(q.method == "ListOrders" for q in queries)
 
 
-def test_override_query_ignored_for_scalar_output():
+def test_scalar_output_query_via_prefix_and_override():
+    # REQ-323: override precedence is retained even for scalar output. GetVersion also has
+    # the "Get" read prefix, so it classifies as a single-column ("value") query.
     d = {
         "package": "",
         "services": [
@@ -174,9 +184,9 @@ def test_override_query_ignored_for_scalar_output():
         "enums": [],
     }
     queries, mutations = map_proto(d, "", "src", "dom", method_overrides={"GetVersion": "query"})
-    assert len(queries) == 0
-    assert len(mutations) == 1
-    assert mutations[0].return_columns[0].name == "value"
+    assert len(queries) == 1
+    assert len(mutations) == 0
+    assert queries[0].columns[0].name == "value"
 
 
 def test_full_method_path_with_package():
@@ -201,23 +211,23 @@ def test_server_streaming_flag_propagated():
 
 
 def test_repeated_scalar_maps_to_jsonb():
-    _, mutations = map_proto(PROTO_DICT, "", "src", "dom")
-    get_order = next(m for m in mutations if m.method == "GetOrder")
-    col = next(c for c in get_order.return_columns if c.name == "tags")
+    queries, _ = map_proto(PROTO_DICT, "", "src", "dom")
+    get_order = next(q for q in queries if q.method == "GetOrder")
+    col = next(c for c in get_order.columns if c.name == "tags")
     assert col.type == "jsonb"
 
 
 def test_scalar_type_mapping():
-    _, mutations = map_proto(PROTO_DICT, "", "src", "dom")
-    get_order = next(m for m in mutations if m.method == "GetOrder")
-    cols = {c.name: c.type for c in get_order.return_columns}
+    queries, _ = map_proto(PROTO_DICT, "", "src", "dom")
+    get_order = next(q for q in queries if q.method == "GetOrder")
+    cols = {c.name: c.type for c in get_order.columns}
     assert cols["id"] == "text"
     assert cols["amount"] == "numeric"
     assert cols["shipped"] == "boolean"
 
 
 def test_namespace_does_not_affect_service():
-    queries, mutations = map_proto(PROTO_DICT, "myns", "src", "dom")
+    queries, _ = map_proto(PROTO_DICT, "myns", "src", "dom")
     for q in queries:
         assert q.service == "OrderService"
 
@@ -230,7 +240,7 @@ def test_enum_type_maps_to_text():
                 "name": "Svc",
                 "methods": [
                     {
-                        "name": "GetItem",
+                        "name": "EchoItem",
                         "input_type": "Req",
                         "output_type": "Res",
                         "server_streaming": False,
@@ -258,7 +268,7 @@ def test_unknown_message_type_maps_to_jsonb():
                 "name": "Svc",
                 "methods": [
                     {
-                        "name": "GetItem",
+                        "name": "EchoItem",
                         "input_type": "Req",
                         "output_type": "Res",
                         "server_streaming": False,
@@ -286,7 +296,7 @@ def test_enum_repeated_field_does_not_trigger_query():
                 "name": "Svc",
                 "methods": [
                     {
-                        "name": "GetItem",
+                        "name": "EchoItem",
                         "input_type": "Req",
                         "output_type": "Res",
                         "server_streaming": False,

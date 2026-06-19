@@ -16,9 +16,12 @@ from provisa.security.masking import (
     MaskType,
     MaskingRule,
     MaskingValidationError,
+    apply_mask_to_value,
     build_mask_expression,
     validate_masking_rule,
 )
+
+assert apply_mask_to_value  # used in TestApplyMaskToValue below
 
 
 class TestValidateMaskingRule:
@@ -28,12 +31,16 @@ class TestValidateMaskingRule:
 
     def test_regex_on_integer_raises(self):
         rule = MaskingRule(mask_type=MaskType.regex, pattern=".*", replace="X")
-        with pytest.raises(MaskingValidationError, match="regex masking is only supported on string"):
+        with pytest.raises(
+            MaskingValidationError, match="regex masking is only supported on string"
+        ):
             validate_masking_rule(rule, "amount", "integer", True)
 
     def test_regex_on_bigint_raises(self):
         rule = MaskingRule(mask_type=MaskType.regex, pattern=".*", replace="X")
-        with pytest.raises(MaskingValidationError, match="regex masking is only supported on string"):
+        with pytest.raises(
+            MaskingValidationError, match="regex masking is only supported on string"
+        ):
             validate_masking_rule(rule, "id", "bigint", True)
 
     def test_regex_missing_pattern_raises(self):
@@ -56,7 +63,9 @@ class TestValidateMaskingRule:
 
     def test_truncate_on_integer_raises(self):
         rule = MaskingRule(mask_type=MaskType.truncate, precision="month")
-        with pytest.raises(MaskingValidationError, match="truncate masking is only supported on date"):
+        with pytest.raises(
+            MaskingValidationError, match="truncate masking is only supported on date"
+        ):
             validate_masking_rule(rule, "amount", "integer", True)
 
     def test_truncate_missing_precision_raises(self):
@@ -115,7 +124,7 @@ class TestBuildMaskExpression:
     def test_truncate_month(self):
         rule = MaskingRule(mask_type=MaskType.truncate, precision="month")
         expr = build_mask_expression(rule, '"t0"."created_at"', "timestamp")
-        assert expr == "DATE_TRUNC('month', \"t0\".\"created_at\")"
+        assert expr == 'DATE_TRUNC(\'month\', "t0"."created_at")'
 
     def test_truncate_year(self):
         rule = MaskingRule(mask_type=MaskType.truncate, precision="year")
@@ -146,3 +155,63 @@ class TestBuildMaskExpression:
         rule = MaskingRule(mask_type=MaskType.constant, value=False)
         expr = build_mask_expression(rule, '"flag"', "boolean")
         assert expr == "FALSE"
+
+
+class TestApplyMaskToValue:
+    """REQ-336: Python-side masking for change-event subscription rows."""
+
+    def test_regex_replaces_all_matches(self):
+        rule = MaskingRule(mask_type=MaskType.regex, pattern=r"\d", replace="X")
+        assert apply_mask_to_value(rule, "ab12cd3", "varchar") == "abXXcdX"
+
+    def test_regex_dollar_backreference_converted(self):
+        # Trino $1 backref → Python \g<1>
+        rule = MaskingRule(mask_type=MaskType.regex, pattern=r"(\w+)@(\w+)", replace="$1@REDACTED")
+        assert apply_mask_to_value(rule, "user@host", "varchar") == "user@REDACTED"
+
+    def test_regex_literal_dollar_dollar(self):
+        rule = MaskingRule(mask_type=MaskType.regex, pattern=r"\d+", replace="$$")
+        assert apply_mask_to_value(rule, "amt 500", "varchar") == "amt $"
+
+    def test_regex_none_value_stays_none(self):
+        rule = MaskingRule(mask_type=MaskType.regex, pattern=r"\d", replace="X")
+        assert apply_mask_to_value(rule, None, "varchar") is None
+
+    def test_constant_string(self):
+        rule = MaskingRule(mask_type=MaskType.constant, value="REDACTED")
+        assert apply_mask_to_value(rule, "secret", "varchar") == "REDACTED"
+
+    def test_constant_null(self):
+        rule = MaskingRule(mask_type=MaskType.constant, value=None)
+        assert apply_mask_to_value(rule, "secret", "varchar") is None
+
+    def test_constant_int(self):
+        rule = MaskingRule(mask_type=MaskType.constant, value=0)
+        assert apply_mask_to_value(rule, 12345, "integer") == 0
+
+    def test_constant_max_resolved(self):
+        rule = MaskingRule(mask_type=MaskType.constant, value="MAX")
+        assert apply_mask_to_value(rule, 5, "integer") == 2147483647
+
+    def test_truncate_iso_string_to_month(self):
+        rule = MaskingRule(mask_type=MaskType.truncate, precision="month")
+        out = apply_mask_to_value(rule, "2026-06-17T13:45:09", "timestamp")
+        assert out.year == 2026 and out.month == 6 and out.day == 1
+        assert out.hour == 0 and out.minute == 0 and out.second == 0
+
+    def test_truncate_datetime_to_year(self):
+        import datetime as dt
+
+        rule = MaskingRule(mask_type=MaskType.truncate, precision="year")
+        out = apply_mask_to_value(rule, dt.datetime(2026, 6, 17, 13, 45), "timestamp")
+        assert out == dt.datetime(2026, 1, 1)
+
+    def test_truncate_non_temporal_raises(self):
+        rule = MaskingRule(mask_type=MaskType.truncate, precision="day")
+        with pytest.raises(MaskingValidationError):
+            apply_mask_to_value(rule, 12345, "timestamp")
+
+    def test_truncate_bad_iso_raises(self):
+        rule = MaskingRule(mask_type=MaskType.truncate, precision="day")
+        with pytest.raises(ValueError):
+            apply_mask_to_value(rule, "not-a-date", "timestamp")
