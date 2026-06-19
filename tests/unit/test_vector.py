@@ -311,4 +311,217 @@ class TestResolveQueryVector:
             await resolve_query_vector(42, VectorModel("m", "openai", 3))
 
 
+# --- Phase B2: fallback cache + invalidation (REQ-424/425) ---
+
+
+class TestFallbackCache:
+    async def test_cache_ddl_creates_table_and_hnsw_index(self):
+        from provisa.vector.fallback_cache import cache_ddl
+
+        ddl = cache_ddl("vcache.docs", 384)
+        assert "vector(384)" in ddl[0]
+        assert "PRIMARY KEY" in ddl[0]
+        assert "USING hnsw (embedding vector_cosine_ops)" in ddl[1]
+
+    async def test_fallback_similarity_sql_joins_pks_back(self):
+        from provisa.vector.fallback_cache import fallback_similarity_sql
+
+        sql = fallback_similarity_sql("docs", "id", "vcache.docs", [0.1, 0.2], limit=5)
+        assert "FROM docs AS s" in sql
+        assert "embedding <=> '[0.1,0.2]'::vector" in sql
+        assert "LIMIT 5" in sql
+        assert "ON s.id = c.pk" in sql
+        assert "ORDER BY c._score DESC" in sql
+
+    async def test_materialize_embeds_and_upserts(self):
+        from provisa.vector.fallback_cache import materialize
+
+        executed = []
+
+        class _Conn:
+            async def execute(self, sql, *args):
+                executed.append((sql, args))
+
+        class _Provider:
+            async def embed(self, texts, model):
+                return [[float(len(t))] for t in texts]
+
+        rows = [{"id": 1, "body": "ab"}, {"id": 2, "body": "abc"}]
+        n = await materialize(
+            _Conn(), "vc", rows, "id", "body", VectorModel("m", "openai", 1), provider=_Provider()
+        )
+        assert n == 2
+        assert all("INSERT INTO vc" in e[0] and "ON CONFLICT" in e[0] for e in executed)
+        assert executed[0][1] == ("1", "[2.0]")
+
+
+class TestInvalidation:
+    def _state(self, **kw):
+        from provisa.vector.cache_invalidation import CacheState
+
+        base = dict(last_refresh_ts=900.0, ttl_seconds=50, source_row_count=10, cache_row_count=10)
+        base.update(kw)
+        return CacheState(**base)
+
+    async def test_ttl_expiry(self):
+        from provisa.vector.cache_invalidation import InvalidationReason, invalidation_reason
+
+        assert (
+            invalidation_reason(self._state(last_refresh_ts=900.0), 1000.0)
+            is InvalidationReason.TTL
+        )
+
+    async def test_drift(self):
+        from provisa.vector.cache_invalidation import InvalidationReason, invalidation_reason
+
+        assert (
+            invalidation_reason(self._state(last_refresh_ts=990.0, cache_row_count=8), 1000.0)
+            is InvalidationReason.DRIFT
+        )
+
+    async def test_mutation_takes_precedence(self):
+        from provisa.vector.cache_invalidation import InvalidationReason, invalidation_reason
+
+        s = self._state(last_refresh_ts=990.0, mutated_since_refresh=True)
+        assert invalidation_reason(s, 1000.0) is InvalidationReason.MUTATION
+
+    async def test_valid_cache_returns_none(self):
+        from provisa.vector.cache_invalidation import invalidation_reason, needs_refresh
+
+        s = self._state(last_refresh_ts=995.0)
+        assert invalidation_reason(s, 1000.0) is None
+        assert needs_refresh(s, 1000.0) is False
+
+    async def test_no_ttl_never_expires(self):
+        from provisa.vector.cache_invalidation import invalidation_reason
+
+        s = self._state(ttl_seconds=None, last_refresh_ts=0.0)
+        assert invalidation_reason(s, 10**9) is None
+
+
+# --- Phase B3: generation, scheduled refresh, governance (REQ-427/428/426) ---
+
+
+class TestGeneration:
+    async def test_spec_from_column(self):
+        from provisa.core.models import Column
+        from provisa.vector.generation import spec_from_column
+
+        col = Column(
+            name="vec",
+            visible_to=["admin"],
+            embedding=True,
+            embedding_model="m",
+            embedding_source_column="body",
+        )
+        spec = spec_from_column(col)
+        assert spec is not None and spec.source_column == "body" and spec.model_id == "m"
+
+    async def test_spec_none_when_not_embedding(self):
+        from provisa.core.models import Column
+        from provisa.vector.generation import spec_from_column
+
+        assert spec_from_column(Column(name="x", visible_to=["admin"])) is None
+
+    async def test_validate_generation_passes(self):
+        from provisa.vector.generation import GeneratedEmbeddingSpec, validate_generation
+
+        class _P:
+            async def embed(self, texts, model):
+                return [[0.1, 0.2, 0.3] for _ in texts]
+
+        spec = GeneratedEmbeddingSpec("vec", "body", "m")
+        await validate_generation(
+            [{"body": "hi"}], spec, VectorModel("m", "openai", 3), provider=_P()
+        )
+
+    async def test_validate_generation_rejects_empty_source(self):
+        from provisa.vector.generation import (
+            GeneratedEmbeddingSpec,
+            GenerationError,
+            validate_generation,
+        )
+
+        class _P:
+            async def embed(self, texts, model):
+                return [[0.1, 0.2, 0.3]]
+
+        spec = GeneratedEmbeddingSpec("vec", "body", "m")
+        with pytest.raises(GenerationError, match="empty"):
+            await validate_generation(
+                [{"body": ""}], spec, VectorModel("m", "openai", 3), provider=_P()
+            )
+
+    async def test_validate_generation_rejects_dim_mismatch(self):
+        from provisa.vector.generation import GeneratedEmbeddingSpec, validate_generation
+
+        class _P:
+            async def embed(self, texts, model):
+                return [[0.1, 0.2]]  # 2 dims, model wants 3
+
+        spec = GeneratedEmbeddingSpec("vec", "body", "m")
+        with pytest.raises(VectorModelError):
+            await validate_generation(
+                [{"body": "hi"}], spec, VectorModel("m", "openai", 3), provider=_P()
+            )
+
+
+class TestScheduledRefresh:
+    async def test_incremental_when_nothing_structural_changed(self):
+        from provisa.vector.scheduled_refresh import RefreshMode, plan_refresh
+
+        plan = plan_refresh([1, 2], "m", 3, old_model_id="m", old_dimensions=3)
+        assert plan.mode is RefreshMode.INCREMENTAL and plan.pks == [1, 2]
+
+    async def test_full_rebuild_on_model_change(self):
+        from provisa.vector.scheduled_refresh import RefreshMode, plan_refresh
+
+        plan = plan_refresh([1], "m2", 3, old_model_id="m", old_dimensions=3)
+        assert plan.mode is RefreshMode.FULL
+
+    async def test_full_rebuild_on_dimension_change(self):
+        from provisa.vector.scheduled_refresh import RefreshMode, plan_refresh
+
+        plan = plan_refresh([1], "m", 768, old_model_id="m", old_dimensions=384)
+        assert plan.mode is RefreshMode.FULL
+
+    async def test_full_rebuild_on_schema_change(self):
+        from provisa.vector.scheduled_refresh import RefreshMode, plan_refresh
+
+        plan = plan_refresh([1], "m", 3, old_model_id="m", old_dimensions=3, schema_changed=True)
+        assert plan.mode is RefreshMode.FULL
+
+
+class TestEmbeddingGovernance:
+    async def test_visible_role_can_search(self):
+        from provisa.core.models import Column
+        from provisa.vector.governance import can_search_embedding
+
+        col = Column(name="v", visible_to=["admin", "analyst"], embedding=True)
+        assert can_search_embedding("analyst", col) is True
+        assert can_search_embedding("guest", col) is False
+
+    async def test_masked_column_blocks_search_for_masked_role(self):
+        from provisa.core.models import Column
+        from provisa.vector.governance import can_search_embedding
+
+        col = Column(
+            name="v",
+            visible_to=["admin", "analyst"],
+            mask_type="constant",
+            unmasked_to=["admin"],
+            embedding=True,
+        )
+        assert can_search_embedding("admin", col) is True
+        assert can_search_embedding("analyst", col) is False  # masked for analyst
+
+    async def test_assert_raises_for_unauthorized(self):
+        from provisa.core.models import Column
+        from provisa.vector.governance import EmbeddingAccessError, assert_search_allowed
+
+        col = Column(name="v", visible_to=["admin"], embedding=True)
+        with pytest.raises(EmbeddingAccessError):
+            assert_search_allowed("guest", col)
+
+
 _ = types  # silence unused-import lints in some environments
