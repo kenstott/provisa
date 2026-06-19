@@ -274,6 +274,49 @@ def _inject_stats_into_response(response, stats_dict: dict):
     return response
 
 
+async def _handle_normalized(document, ctx, rls, state, variables, role_id, role):
+    """REQ-049: emit one governed, deduplicated relational table per entity via per-table CTAS.
+
+    Each entity's scoped SELECT DISTINCT is governed identically to the normal path, written
+    to S3 by Trino CTAS (the denormalized product never forms), and returned as a manifest of
+    presigned URLs. A computed-join query that cannot be normalized returns 400.
+    """
+    from provisa.compiler.normalize import NormalizeError, compile_normalized
+    from provisa.executor.redirect import RedirectConfig
+    from provisa.executor.trino_write import (
+        execute_ctas_redirect,
+        presign_ctas_result,
+        schedule_s3_cleanup,
+    )
+    from provisa.transpiler.transpile import transpile_to_trino
+
+    try:
+        ntables = compile_normalized(document, ctx, variables, use_catalog=True)
+    except NormalizeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    redirect_config = RedirectConfig.from_env()
+    fresh_mvs = state.mv_registry.get_fresh()
+    manifest: list[dict] = []
+    for nt in ntables:
+        # Govern each per-table query exactly like the normal path (RLS/masking/visibility).
+        await _prepare_compiled(nt.compiled, ctx, rls, state, role_id, role, fresh_mvs)
+        exec_sql = rewrite_semantic_to_trino_physical(nt.compiled.sql, ctx)
+        trino_sql = transpile_to_trino(exec_sql)
+        ctas = execute_ctas_redirect(state.trino_conn, trino_sql, "parquet")
+        url = await presign_ctas_result(ctas["s3_prefix"], redirect_config)
+        asyncio.create_task(schedule_s3_cleanup(ctas["s3_prefix"], redirect_config))
+        manifest.append(
+            {
+                "table": nt.table_name,
+                "path": list(nt.path),
+                "url": url,
+                "rowCount": ctas["row_count"],
+            }
+        )
+    return JSONResponse({"normalized": manifest})
+
+
 @router.post("/graphql")
 async def graphql_endpoint(
     raw_request: Request,
@@ -284,6 +327,7 @@ async def graphql_endpoint(
     x_provisa_redirect_threshold: int | None = Header(None),
     x_provisa_redirect_format: str | None = Header(None),
     x_provisa_stats: str | None = Header(None),
+    x_provisa_normalized: str | None = Header(None),
 ):
     """Execute a GraphQL query or mutation. Content negotiation via Accept header.
 
@@ -393,6 +437,13 @@ async def graphql_endpoint(
     stats_enabled = (x_provisa_stats or "").lower() == "true"
     if stats_enabled:
         _qs_mod.begin()
+
+    # REQ-049: X-Provisa-Normalized returns one governed, deduplicated relational table per
+    # entity (PK/FK preserved) as a manifest of S3 URLs, instead of the denormalized result.
+    if (x_provisa_normalized or "").lower() == "true" and not is_mut:
+        return await _handle_normalized(
+            document, ctx, rls, state, effective_variables, role_id, role
+        )
 
     if is_mut:
         response = await _handle_mutation(
