@@ -21,8 +21,8 @@ Companion to the Group-2 audit ([group-2.md](group-2.md)).
 | --- | --- | --- | --- |
 | 047 | Output & Delivery | To spec | Flat JOIN rows reassembled to nested GraphQL JSON; m2o→object, o2m→array, null propagation `serialize.py:439` |
 | 048 | Output & Delivery | To spec | NDJSON: one JSON object per line, Decimal-aware encoder `formats/ndjson.py:31` |
-| 049 | Output & Delivery | Incomplete | CSV/Parquet emitted, but only denormalized/flat; no FK-preserving normalized multi-table output `formats/tabular.py:95` |
-| 050 | Output & Delivery | Incomplete | Denormalized single-table CSV/Parquet present; no single-file-vs-partitioned option `formats/tabular.py:109` |
+| 049 | Output & Delivery | To spec | Fixed: `X-Provisa-Normalized` shreds the query into one governed, deduplicated relational table per entity (real PK/FK preserved) via IR decomposition + per-table CTAS to S3; returns a manifest `provisa/compiler/normalize.py`, `provisa/api/data/endpoint.py` |
+| 050 | Output & Delivery | To spec | Satisfied by REQ-049: normalized multi-table output is the client-selectable alternative to the denormalized single file; the client picks per request |
 | 051 | Output & Delivery | To spec | Arrow IPC stream buffer + native Arrow Table for Flight `formats/arrow.py:36` |
 | 137 | Redirect & CTAS | To spec | `X-Provisa-Redirect-Format` / `-Threshold` / `-Redirect` headers parsed; format-without-threshold forces redirect `endpoint.py:281` |
 | 138 | Redirect & CTAS | To spec | Parquet/ORC use Iceberg CTAS; Trino writes S3 directly, no data through Provisa `trino_write.py:60`, `endpoint.py:1922` |
@@ -33,11 +33,10 @@ Companion to the Group-2 audit ([group-2.md](group-2.md)).
 | 143 | Arrow Flight | To spec | Flight server on 8815 streams batches; query routed through `_govern_and_route` security `flight/server.py:106`, `flight/server.py:557` |
 | 144 | Arrow Flight | To spec | Zaychik Flight SQL proxy connection translates to Trino JDBC; SQL substituted inline `trino_flight.py:29`, `app.py:825` |
 | 145 | Arrow Flight | To spec | Trino route returns `GeneratorStream` over a lazy batch generator, full result never materialized `server.py:592`, `trino_flight.py:134` |
-| 146 | Arrow Flight | Not added | When `flight_client is None`, Trino route raises `FlightServerError` telling operator to configure Zaychik; no Trino-REST materialization fallback `server.py:511`, `server.py:579` |
+| 146 | Arrow Flight | Withdrawn | The Flight Trino route hard-requires Zaychik — its absence/outage is a hard failure (`flight_client is None` means a failed connect, since there is no "disabled" config). A Trino-REST fallback would mask an outage, violating the no-silent-fallback rule; the requirement is withdrawn. `server.py:511`, `server.py:579` |
 
-11 to spec, 2 incomplete (REQ-049, REQ-050 — tabular output is denormalized-only,
-no normalized/FK or partitioned variant), 1 not added (REQ-146 — no Trino REST
-fallback for the Flight Trino route).
+13 to spec (REQ-049/050 remediated 2026-06-19), 1 withdrawn (REQ-146). Original audit
+(2026-06-18): 11 to spec, 2 incomplete (REQ-049, REQ-050), 1 not added (REQ-146).
 
 ## Detail
 
@@ -135,15 +134,17 @@ All six named files exist:
 - `tests/integration/test_blob_upload.py` (4 tests).
 - `tests/integration/test_arrow_flight_integration.py` (11 tests).
 
-Gap: no named test exercises normalized/FK tabular output (REQ-049) or
-partitioned output (REQ-050) — neither feature exists to test.
+Added 2026-06-19: `tests/unit/test_normalize.py` (IR decomposition: per-entity paths,
+PK/FK auto-include, DISTINCT, computed-join precondition) and
+`tests/unit/test_normalized_endpoint.py` (header → per-table CTAS → manifest, 400 on
+non-normalizable) cover REQ-049/050. The Detail section above reflects the original
+2026-06-18 audit; the Remediation section supersedes its verdicts.
 
-## Remaining tasks
+## Remediation (2026-06-19)
 
-| # | REQ | Type | Effort | Task |
-| --- | --- | --- | --- | --- |
-| 1 | 049 | Feature | M | Add normalized tabular output: split nested result into per-entity tables with FK columns; emit a CSV/Parquet file set, not one flat table |
-| 2 | 050 | Feature | M | Add single-file-vs-partitioned option for denormalized output (e.g. partition key + multiple Parquet files) |
-| 3 | 146 | Feature | S | When `flight_client is None`, materialize the Trino SQL via Trino REST (`execute_trino` on `state.trino_conn`) and return a `RecordBatchStream` instead of raising, for both SQL and GraphQL Trino routes |
-| 4 | 049/050 | Test | S | Add tests asserting normalized FK output and partitioned output once #1/#2 land |
-| 5 | 146 | Test | S | Add a test that drives the Flight Trino route with `flight_client=None` and asserts REST-materialized batches |
+Implemented in the `group-7` worktree; design settled with the user before building.
+
+- **REQ-049/050 — normalized output (`X-Provisa-Normalized`).** Done at the IR level, not the serializer: `provisa/compiler/normalize.py` decomposes a nested query into one relational table per projected entity type, each produced by its own scoped `SELECT DISTINCT` (the denormalized join product never forms — it is the whole point at 1M×1M→1B scale). Real PK/FK keys are auto-included on the correct side (`source_column` on the parent, `target_column` on the child) so a consumer can load the small tables into a BI tool and replay the same query locally. Each per-table query is governed identically to the normal path and written to S3 via the existing `execute_ctas_redirect` (Trino CTAS), returning a manifest of `{table, path, url, rowCount}`. Computed-join queries (`source_expr`/`source_constant`/`source_json_key`) cannot key relationally and are rejected with 400. Denormalized single-file output is unchanged and remains the default — normalization is a per-request client choice, so REQ-050's single-vs-multi is satisfied by the client picking. Tests: `tests/unit/test_normalize.py`, `tests/unit/test_normalized_endpoint.py`.
+- **REQ-146 — withdrawn.** The audit assumed `flight_client is None` meant "Zaychik intentionally not configured" and wanted a Trino-REST fallback. In fact there is no "disabled" config (`_connect_flight` always dials `localhost:8480`; `create_flight_connection` raises on failure), so `flight_client is None` means Zaychik failed to connect — a REST fallback would silently mask an outage, violating the project's no-silent-fallback rule. The Flight Trino route therefore hard-requires Zaychik; its absence is a hard failure by design. No code change.
+
+Follow-up (not in audit scope): per-table CTAS currently uses Parquet; exposing the inner format and an integration test that drives the full normalized path against live Trino/S3 remain.
