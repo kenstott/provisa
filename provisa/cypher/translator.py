@@ -599,35 +599,6 @@ class _Translator(
         result = self._apply_order_limit(result, order_exprs)
         return result, self._param_order, self._graph_vars
 
-    def _check_cross_source_join(
-        self,
-        rm: "RelationshipMapping",
-        src_nm: "NodeMapping | None",
-        tgt_nm: "NodeMapping | None",
-    ) -> None:
-        """REQ-353: reject a plain relational JOIN between tables on different sources.
-
-        A column-FK join (`src.col = tgt.col`) cannot cross Trino catalogs in the graph
-        rewrite, so it is rejected with guidance to restructure. The supported cross-source
-        constructs are excluded: traversal-only (cross-domain) nodes and computed/meta joins
-        (HAS_TABLE → RegisteredTables and ops-joins, which use source_expr/target_expr/
-        source_constant stable keys, not a catalog join).
-        """
-        if src_nm is None or tgt_nm is None:
-            return
-        if src_nm.traversal_only or tgt_nm.traversal_only:
-            return
-        if rm.source_expr is not None or rm.target_expr is not None or rm.source_constant is not None:
-            return
-        src_sid = src_nm.source_id or ""
-        tgt_sid = tgt_nm.source_id or ""
-        if src_sid and tgt_sid and src_sid != tgt_sid:
-            raise CypherCrossSourceError(
-                f"Cypher query spans multiple data sources: {src_nm.label!r} (source {src_sid!r}) "
-                f"and {tgt_nm.label!r} (source {tgt_sid!r}). A single Cypher query must target "
-                "one source — restructure to query each source separately."
-            )
-
     def _group_pipeline(
         self,
     ) -> list[tuple[list[MatchStep], list[UnwindClause], WithClause | None]]:
@@ -976,7 +947,6 @@ class _Translator(
             src_table_ref = src_var or src_nm.table_name
 
         primary_rm, primary_bwd = candidates[0]
-        self._check_cross_source_join(primary_rm, src_nm, tgt_nm)
         if rel.variable:
             self._rel_var_types[rel.variable] = primary_rm.rel_type
             _src_alias = src_var or src_nm.table_name
@@ -1025,7 +995,6 @@ class _Translator(
             src_table_ref = src_var or src_nm.table_name
 
         primary_rm, primary_bwd = candidates[0]
-        self._check_cross_source_join(primary_rm, src_nm, tgt_nm)
         if rel.variable:
             self._rel_var_types[rel.variable] = primary_rm.rel_type
             _src_alias = src_var or src_nm.table_name

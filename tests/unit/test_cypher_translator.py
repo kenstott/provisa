@@ -178,22 +178,11 @@ def test_limit_offset_in_sql():
     assert "OFFSET" in sql.upper() or "5" in sql
 
 
-def test_cross_source_rejected():
-    # REQ-353: labels resolving to tables on different sources are rejected; the consumer
-    # is directed to restructure rather than silently get a cross-catalog join.
-    from provisa.cypher.translator import CypherCrossSourceError
-
+def test_cross_source_allowed():
+    # Trino handles cross-catalog joins natively — translation must not raise.
     lm = _make_label_map(multi_source=True)
     ast = parse_cypher("MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN n.name, c.name")
-    with pytest.raises(CypherCrossSourceError):
-        cypher_to_sql(ast, lm, {})
-
-
-def test_single_source_not_rejected():
-    # REQ-353: a single-source query (all labels on one source) translates normally.
-    lm = _make_label_map(multi_source=False)
-    ast = parse_cypher("MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN n.name, c.name")
-    sql_ast, _params, _graph_vars = cypher_to_sql(ast, lm, {})
+    sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "persons" in sql.lower()
     assert "companies" in sql.lower()

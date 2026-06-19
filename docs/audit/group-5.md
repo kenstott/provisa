@@ -64,7 +64,7 @@ Grep/Read. Companion to [group-2.md](group-2.md).
 | 350 | Cypher Frontend | To spec | Node/Edge/Path GraphQL types defined `provisa/cypher/graph_types.py:33` |
 | 351 | Cypher Frontend | To spec | `CypherLabelMap.from_schema(ctx)`, no separate config `provisa/cypher/label_map.py:197` |
 | 352 | Cypher Frontend | To spec | `$param`→positional; missing param rejected `provisa/cypher/params.py:30` |
-| 353 | Cypher Frontend | To spec | Fixed: a plain relational JOIN across sources raises `CypherCrossSourceError` (traversal-only + computed/meta joins excluded) `provisa/cypher/translator.py` |
+| 353 | Cypher Frontend | Withdrawn | Requirement withdrawn 2026-06-19 — cross-source Cypher is allowed (Trino joins catalogs natively). The rejection added in Phase 1 was reverted `provisa/cypher/translator.py` |
 | 354 | NL Query Service | To spec | `POST /query/nl` → job_id; poll + SSE routes `provisa/nl/` router |
 | 355 | NL Query Service | To spec | Three parallel loops; compiler-validated retry `provisa/nl/loop.py:57` |
 | 356 | NL Query Service | To spec | Role-scoped SDL in prompt; compiler rejects invisible refs `provisa/nl/runner.py:53` |
@@ -81,7 +81,7 @@ Grep/Read. Companion to [group-2.md](group-2.md).
 | 416 | Compiler & Schema | To spec | Fixed: `update_gql_naming_convention` validates against `VALID_CONVENTIONS` via `validation_error_for_convention` before applying `provisa/api/admin/schema.py`, `provisa/compiler/naming.py` |
 | 478 | Compiler & Schema | To spec | `sample` arg, range check, TABLESAMPLE BERNOULLI, as_of/lateral guard `provisa/compiler/sql_gen.py:1969` |
 
-61 To spec (all remediated 2026-06-19). Original audit (2026-06-18): 54 To spec, 4 Incomplete (196, 197, 199, 416), 1 Not to spec (353), 1 Not added (252).
+60 To spec, 1 Withdrawn (REQ-353). Remediated 2026-06-19. Original audit (2026-06-18): 54 To spec, 4 Incomplete (196, 197, 199, 416), 1 Not to spec (353), 1 Not added (252). REQ-353's cross-source rejection was implemented then withdrawn the same day (cross-source Cypher is allowed).
 
 **Audit correction (REQ-252):** the inference primitives were not absent — per-connector `discover_schema()` functions and a `discover` flag already existed (REQ-250). The gap was wiring them to run automatically at registration and a live ES `_mapping` bridge; both are now in place.
 
@@ -206,9 +206,10 @@ Grep/Read. Companion to [group-2.md](group-2.md).
 - REQ-350 — Node/Edge/Path types `provisa/cypher/graph_types.py:33`.
 - REQ-351 — label map from `CompilationContext` `provisa/cypher/label_map.py:197`.
 - REQ-352 — named→positional params `provisa/cypher/params.py:30`.
-- REQ-353 — **Not to spec.** `CypherCrossSourceError` is declared
-  `provisa/cypher/translator.py:251` but no code path raises it; cross-source Cypher
-  queries are not detected or rejected.
+- REQ-353 — **Withdrawn (2026-06-19).** The requirement was removed at the user's
+  direction: cross-source Cypher is a supported capability because Trino joins across
+  catalogs natively. A Phase-1 rejection was added and then reverted; `CypherCrossSourceError`
+  remains declared but unused (`provisa/cypher/translator.py`).
 
 ### Natural Language Query Service (REQ-354–359)
 
@@ -241,7 +242,7 @@ All named test files exist except one. Verified by directory listing.
 
 All 8 audit tasks resolved across five phases on the `group-5` branch.
 
-- **Phase 1 — guards:** REQ-353 cross-source Cypher rejection; REQ-416 naming-convention validation on the admin update path; REQ-403 spec-named `tests/unit/test_rls_compiler_fallback.py`.
+- **Phase 1 — guards:** REQ-416 naming-convention validation on the admin update path; REQ-403 spec-named `tests/unit/test_rls_compiler_fallback.py`. (A REQ-353 cross-source Cypher rejection was added in this phase and **reverted 2026-06-19** — the requirement was withdrawn; cross-source Cypher is allowed.)
 - **Phase 2 — aggregates:** REQ-196 stddev/variance fields + SQL; REQ-197 per-role gate via the `no_aggregations` capability.
 - **Phase 3 — webhook gate:** REQ-209 steward approval through the creation_requests queue.
 - **Phase 4 — discover:** REQ-252 auto-discovery at registration (explicit columns win) + ES live `_mapping` bridge; ES/Cassandra raise instead of returning empty columns.
