@@ -163,6 +163,10 @@ class Source(BaseModel):
     base_url: str | None = None  # Base URL for OpenAPI sources (e.g. https://api.example.com/v1)
     pool_min: int = Field(default=1, alias="pool_min")
     pool_max: int = Field(default=5, alias="pool_max")
+    # REQ-053: PgBouncer is opt-in per PostgreSQL source. Default is direct asyncpg pooling
+    # (a warm per-source pool, REQ-052); set use_pgbouncer=true to route through PgBouncer on
+    # pgbouncer_port (statement_cache_size is then forced to 0). Not defaulted on because it
+    # requires a running PgBouncer for every PG source.
     use_pgbouncer: bool = Field(default=False, alias="use_pgbouncer")
     pgbouncer_port: int = Field(default=6432, alias="pgbouncer_port")
     cache_enabled: bool = True
