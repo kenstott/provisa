@@ -88,6 +88,17 @@ class MVDefinition:
     def is_fresh(self) -> bool:
         return self.status == MVStatus.FRESH
 
+    def is_fresh_at(self, now: float) -> bool:
+        """TTL-aware freshness (REQ-199).
+
+        An MV is serveable only when its status is FRESH and its last refresh is within
+        ``refresh_interval`` (its TTL). A FRESH MV whose TTL has elapsed is treated as stale
+        so the query falls back to the live source rather than serving expired data.
+        """
+        if self.status != MVStatus.FRESH or self.last_refresh_at is None:
+            return False
+        return (now - self.last_refresh_at) < self.refresh_interval
+
     @property
     def is_join_pattern(self) -> bool:
         return self.join_pattern is not None

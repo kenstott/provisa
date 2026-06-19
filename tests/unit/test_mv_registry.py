@@ -18,8 +18,10 @@ from provisa.mv.registry import MVRegistry
 
 def _mv(
     mv_id="mv-orders-customers",
-    left="orders", left_col="customer_id",
-    right="customers", right_col="id",
+    left="orders",
+    left_col="customer_id",
+    right="customers",
+    right_col="id",
     status=MVStatus.FRESH,
     enabled=True,
     refresh_interval=300,
@@ -40,6 +42,10 @@ def _mv(
         enabled=enabled,
     )
     mv.status = status
+    # A FRESH MV has been refreshed — stamp it within its TTL so get_fresh() serves it.
+    # Tests that exercise TTL expiry override last_refresh_at explicitly.
+    if status == MVStatus.FRESH:
+        mv.last_refresh_at = time.time()
     return mv
 
 
@@ -85,6 +91,45 @@ class TestMVRegistryFresh:
     def test_get_fresh_empty_registry(self):
         reg = MVRegistry()
         assert reg.get_fresh() == []
+
+    def test_get_fresh_excludes_ttl_expired(self):
+        # REQ-199: a FRESH MV whose TTL has elapsed is not served — query falls back to live.
+        reg = MVRegistry()
+        mv = _mv(mv_id="mv1", status=MVStatus.FRESH, refresh_interval=300)
+        mv.last_refresh_at = time.time() - 400  # past its 300s TTL
+        reg.register(mv)
+        assert reg.get_fresh() == []
+
+    def test_get_fresh_includes_within_ttl(self):
+        reg = MVRegistry()
+        mv = _mv(mv_id="mv1", status=MVStatus.FRESH, refresh_interval=300)
+        mv.last_refresh_at = time.time() - 100  # within TTL
+        reg.register(mv)
+        assert [m.id for m in reg.get_fresh()] == ["mv1"]
+
+
+class TestMVFreshAt:
+    """REQ-199: TTL-aware freshness on the MV definition."""
+
+    def test_fresh_within_ttl(self):
+        mv = _mv(status=MVStatus.FRESH, refresh_interval=300)
+        mv.last_refresh_at = time.time() - 10
+        assert mv.is_fresh_at(time.time()) is True
+
+    def test_stale_when_ttl_expired(self):
+        mv = _mv(status=MVStatus.FRESH, refresh_interval=300)
+        mv.last_refresh_at = time.time() - 500
+        assert mv.is_fresh_at(time.time()) is False
+
+    def test_not_fresh_when_never_refreshed(self):
+        mv = _mv(status=MVStatus.FRESH)
+        mv.last_refresh_at = None
+        assert mv.is_fresh_at(time.time()) is False
+
+    def test_not_fresh_when_status_not_fresh(self):
+        mv = _mv(status=MVStatus.STALE, refresh_interval=300)
+        mv.last_refresh_at = time.time()
+        assert mv.is_fresh_at(time.time()) is False
 
 
 class TestMVRegistryEnabled:

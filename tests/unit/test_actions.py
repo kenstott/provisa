@@ -32,13 +32,13 @@ from provisa.compiler.function_gen import (
     build_function_sql,
 )
 from provisa.core.models import Function, FunctionArgument, InlineType, Webhook
-from provisa.webhooks.executor import execute_webhook, map_response_to_return_type, WebhookResult
-
+from provisa.webhooks.executor import execute_webhook, map_response_to_return_type
 
 
 # ---------------------------------------------------------------------------
 # DB Function: SQL generation
 # ---------------------------------------------------------------------------
+
 
 class TestFunctionSQLGeneration:
     def test_build_function_sql_no_args(self):
@@ -89,6 +89,7 @@ class TestFunctionSQLGeneration:
 # ---------------------------------------------------------------------------
 # GraphQL mutation field generation
 # ---------------------------------------------------------------------------
+
 
 class TestFunctionMutationGeneration:
     def _make_return_type(self) -> GraphQLObjectType:
@@ -203,6 +204,7 @@ class TestFunctionMutationGeneration:
 # Webhooks: mutation field generation
 # ---------------------------------------------------------------------------
 
+
 class TestWebhookMutationGeneration:
     def _make_return_type(self) -> GraphQLObjectType:
         return GraphQLObjectType(
@@ -261,6 +263,7 @@ class TestWebhookMutationGeneration:
     def test_webhook_falls_back_to_json_scalar(self):
         """Webhook with no return type or inline_return_type uses JSON scalar."""
         from provisa.compiler.type_map import JSONScalar
+
         wh = Webhook(name="fireAndForget", url="https://example.com/fire")
         fields = build_function_mutations([], [wh], {})
         assert "fireAndForget" in fields
@@ -270,6 +273,7 @@ class TestWebhookMutationGeneration:
 # ---------------------------------------------------------------------------
 # Webhooks: HTTP execution (mocked)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestWebhookExecution:
@@ -318,6 +322,7 @@ class TestWebhookExecution:
         mock_response.raise_for_status = MagicMock()
 
         with patch("provisa.webhooks.executor.httpx.AsyncClient") as mock_client_cls:
+
             def capture_timeout(timeout=None):
                 captured_timeout["value"] = timeout
                 mock_client = AsyncMock()
@@ -325,11 +330,13 @@ class TestWebhookExecution:
                 mock_client.__aexit__ = AsyncMock(return_value=False)
                 mock_client.request = AsyncMock(return_value=mock_response)
                 return mock_client
+
             mock_client_cls.side_effect = capture_timeout
 
             await execute_webhook(wh, {})
 
         import httpx as _httpx
+
         assert isinstance(captured_timeout.get("value"), _httpx.Timeout)
 
     async def test_webhook_http_error_propagates(self):
@@ -381,6 +388,7 @@ class TestWebhookExecution:
 # Webhook response mapping
 # ---------------------------------------------------------------------------
 
+
 class TestWebhookResponseMapping:
     def test_map_dict_filters_to_inline_fields(self):
         """Dict response is filtered to only include declared inline fields."""
@@ -419,3 +427,66 @@ class TestWebhookResponseMapping:
         inline = [{"name": "id", "type": "Int"}]
         result = map_response_to_return_type(data, inline)
         assert result == [{"id": 1}]
+
+
+# ---------------------------------------------------------------------------
+# REQ-209: webhook steward-approval gate via the creation_requests queue
+# ---------------------------------------------------------------------------
+
+
+class _FakeConn:
+    def __init__(self):
+        self.executed: list[tuple] = []
+
+    async def execute(self, sql, *args):
+        self.executed.append((sql, args))
+        return "INSERT 0 1"
+
+
+class _FakePool:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def acquire(self):
+        conn = self._conn
+
+        class _Ctx:
+            async def __aenter__(self):
+                return conn
+
+            async def __aexit__(self, *a):
+                return False
+
+        return _Ctx()
+
+
+class TestWebhookApprovalGate:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_create_webhook_enqueues_approval_request(self):
+        from provisa.api.admin.actions_router import WebhookInput, create_webhook
+
+        conn = _FakeConn()
+        fake_state = MagicMock()
+        fake_state.pg_pool = _FakePool(conn)
+
+        with (
+            patch("provisa.api.app.state", fake_state),
+            patch("provisa.api.admin.actions_router._ensure_tables", new=AsyncMock()),
+            patch("provisa.api.app._rebuild_schemas", new=AsyncMock()) as rebuild,
+            patch(
+                "provisa.core.repositories.creation_request.create",
+                new=AsyncMock(return_value=42),
+            ) as cr_create,
+        ):
+            result = await create_webhook(WebhookInput(name="notify", url="http://x"))
+
+        # webhook registered unapproved (exposure gated until the request is executed)
+        assert result["approved"] is False
+        assert result["creationRequestId"] == 42
+        # a webhook_registration request was enqueued for this webhook
+        cr_create.assert_awaited_once()
+        cr_args = cr_create.await_args.args
+        assert cr_args[1] == "webhook"
+        assert cr_args[2] == "webhook_registration"
+        assert cr_args[3] == {"name": "notify"}
+        rebuild.assert_awaited_once()

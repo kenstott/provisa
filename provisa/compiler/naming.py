@@ -22,10 +22,23 @@ from inflect import Word
 _inflect = _inflect_mod.engine()
 
 
-_VERB_PREFIXES = frozenset({
-    "find", "get", "list", "create", "add", "update", "delete",
-    "remove", "search", "fetch", "query", "retrieve", "read",
-})
+_VERB_PREFIXES = frozenset(
+    {
+        "find",
+        "get",
+        "list",
+        "create",
+        "add",
+        "update",
+        "delete",
+        "remove",
+        "search",
+        "fetch",
+        "query",
+        "retrieve",
+        "read",
+    }
+)
 
 
 def rel_field_name(target_field_name: str, cardinality: str) -> str:
@@ -124,7 +137,6 @@ def _to_snake_case(name: str) -> str:
     return name.lower()
 
 
-
 def source_to_catalog(source_id: str) -> str:
     """Convert a source ID to a Trino catalog name (hyphens → underscores)."""
     return source_id.replace("-", "_")
@@ -148,6 +160,18 @@ def normalize_convention(convention: str) -> str:
 VALID_CONVENTIONS = frozenset(
     {"snake", "hasura_graphql", "apollo_graphql"} | set(_CONVENTION_ALIASES)
 )
+
+
+def validation_error_for_convention(convention: str) -> str | None:
+    """REQ-416: return an error message if `convention` is not a valid preset, else None.
+
+    Only the presets (and their literal aliases in VALID_CONVENTIONS) are accepted; free-form
+    strings must be rejected before `configure` is called on the naming-update path.
+    """
+    if convention in VALID_CONVENTIONS:
+        return None
+    valid = ", ".join(sorted(VALID_CONVENTIONS))
+    return f"Invalid naming convention {convention!r}. Valid conventions: {valid}"
 
 
 def _canonical_convention(convention: str) -> str:

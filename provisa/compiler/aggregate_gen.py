@@ -109,6 +109,21 @@ def build_aggregate_types(
             avg_fields[col_name] = GraphQLField(GraphQLFloat)
         avg_type = cast(GraphQLObjectType, GraphQLObjectType(f"{type_name}AvgFields", lambda f=avg_fields: f))
 
+    # Build stddev/variance fields types (REQ-196, numeric only)
+    stddev_type: GraphQLObjectType | None = None
+    variance_type: GraphQLObjectType | None = None
+    if numeric_cols:
+        stddev_fields = {col_name: GraphQLField(GraphQLFloat) for col_name, _ in numeric_cols}
+        stddev_type = cast(
+            GraphQLObjectType,
+            GraphQLObjectType(f"{type_name}StddevFields", lambda f=stddev_fields: f),
+        )
+        variance_fields = {col_name: GraphQLField(GraphQLFloat) for col_name, _ in numeric_cols}
+        variance_type = cast(
+            GraphQLObjectType,
+            GraphQLObjectType(f"{type_name}VarianceFields", lambda f=variance_fields: f),
+        )
+
     # Build min fields type (comparable)
     min_type: GraphQLObjectType | None = None
     if comparable_cols:
@@ -135,6 +150,10 @@ def build_aggregate_types(
         agg_inner_fields["sum"] = GraphQLField(sum_type)
     if avg_type:
         agg_inner_fields["avg"] = GraphQLField(avg_type)
+    if stddev_type:
+        agg_inner_fields["stddev"] = GraphQLField(stddev_type)
+    if variance_type:
+        agg_inner_fields["variance"] = GraphQLField(variance_type)
     if min_type:
         agg_inner_fields["min"] = GraphQLField(min_type)
     if max_type:

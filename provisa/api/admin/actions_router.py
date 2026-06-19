@@ -70,7 +70,9 @@ def _row_to_function(row: dict) -> dict:
         "schemaName": row["schema_name"],
         "functionName": row["function_name"],
         "returns": row["returns"],
-        "arguments": json.loads(row["arguments"]) if isinstance(row["arguments"], str) else (row["arguments"] or []),
+        "arguments": json.loads(row["arguments"])
+        if isinstance(row["arguments"], str)
+        else (row["arguments"] or []),
         "visibleTo": list(row["visible_to"] or []),
         "writableBy": list(row["writable_by"] or []),
         "domainId": row["domain_id"],
@@ -87,8 +89,12 @@ def _row_to_webhook(row: dict) -> dict:
         "method": row["method"],
         "timeoutMs": row["timeout_ms"],
         "returns": row.get("returns"),
-        "inlineReturnType": json.loads(row["inline_return_type"]) if isinstance(row["inline_return_type"], str) else (row["inline_return_type"] or []),
-        "arguments": json.loads(row["arguments"]) if isinstance(row["arguments"], str) else (row["arguments"] or []),
+        "inlineReturnType": json.loads(row["inline_return_type"])
+        if isinstance(row["inline_return_type"], str)
+        else (row["inline_return_type"] or []),
+        "arguments": json.loads(row["arguments"])
+        if isinstance(row["arguments"], str)
+        else (row["arguments"] or []),
         "visibleTo": list(row["visible_to"] or []),
         "domainId": row["domain_id"],
         "description": row.get("description"),
@@ -173,10 +179,13 @@ async def create_function(body: FunctionInput):
     return_schema = json.dumps(body.returnSchema) if body.returnSchema is not None else None
 
     async with state.pg_pool.acquire() as _conn:
-        await function_repo.upsert_function(cast(asyncpg.Connection, _conn), func, return_schema=return_schema)
+        await function_repo.upsert_function(
+            cast(asyncpg.Connection, _conn), func, return_schema=return_schema
+        )
 
     log.info("Saved tracked function %s", body.name)
     from provisa.api.app import _rebuild_schemas
+
     await _rebuild_schemas()
     return {"success": True, "name": body.name}
 
@@ -228,6 +237,7 @@ async def update_function(name: str, body: FunctionInput):
 
     log.info("Updated tracked function %s", name)
     from provisa.api.app import _rebuild_schemas
+
     await _rebuild_schemas()
     return {"success": True, "name": name}
 
@@ -243,15 +253,14 @@ async def delete_function(name: str):
     await _ensure_tables(state.pg_pool)
 
     async with state.pg_pool.acquire() as conn:
-        result = await conn.execute(
-            "DELETE FROM tracked_functions WHERE name = $1", name
-        )
+        result = await conn.execute("DELETE FROM tracked_functions WHERE name = $1", name)
 
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail=f"Function '{name}' not found")
 
     log.info("Deleted tracked function %s", name)
     from provisa.api.app import _rebuild_schemas
+
     await _rebuild_schemas()
     return {"success": True, "name": name}
 
@@ -265,6 +274,8 @@ async def create_webhook(body: WebhookInput):
         raise HTTPException(status_code=503, detail="Database not connected")
 
     await _ensure_tables(state.pg_pool)
+
+    from provisa.core.repositories import creation_request as cr_repo
 
     async with state.pg_pool.acquire() as conn:
         await conn.execute(
@@ -298,11 +309,32 @@ async def create_webhook(body: WebhookInput):
             body.description,
             body.kind,
         )
+        # REQ-209: a webhook is exposed only after a steward approves it. Approval is tracked
+        # via the creation_requests queue — a webhook is approved when its most recent
+        # "webhook" request is executed. Registering or editing enqueues a fresh pending
+        # request, so any edit resets approval until re-approved.
+        request_id = await cr_repo.create(
+            cast(asyncpg.Connection, conn),
+            "webhook",
+            "webhook_registration",
+            {"name": body.name},
+            None,
+        )
 
-    log.info("Saved tracked webhook %s", body.name)
+    log.info("Saved tracked webhook %s (pending approval, request #%s)", body.name, request_id)
     from provisa.api.app import _rebuild_schemas
+
     await _rebuild_schemas()
-    return {"success": True, "name": body.name}
+    return {
+        "success": True,
+        "name": body.name,
+        "approved": False,
+        "creationRequestId": request_id,
+        "message": (
+            f"Webhook {body.name!r} registered — awaiting a steward holding "
+            "'webhook_registration' to approve it before it is exposed."
+        ),
+    }
 
 
 @router.put("/webhooks/{name}")
@@ -350,6 +382,7 @@ async def update_webhook(name: str, body: WebhookInput):
 
     log.info("Updated tracked webhook %s", name)
     from provisa.api.app import _rebuild_schemas
+
     await _rebuild_schemas()
     return {"success": True, "name": name}
 
@@ -365,15 +398,14 @@ async def delete_webhook(name: str):
     await _ensure_tables(state.pg_pool)
 
     async with state.pg_pool.acquire() as conn:
-        result = await conn.execute(
-            "DELETE FROM tracked_webhooks WHERE name = $1", name
-        )
+        result = await conn.execute("DELETE FROM tracked_webhooks WHERE name = $1", name)
 
     if result == "DELETE 0":
         raise HTTPException(status_code=404, detail=f"Webhook '{name}' not found")
 
     log.info("Deleted tracked webhook %s", name)
     from provisa.api.app import _rebuild_schemas
+
     await _rebuild_schemas()
     return {"success": True, "name": name}
 
@@ -417,9 +449,7 @@ async def test_action(body: TestActionInput):
 
     if body.actionType == "function":
         async with state.pg_pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM tracked_functions WHERE name = $1", body.name
-            )
+            row = await conn.fetchrow("SELECT * FROM tracked_functions WHERE name = $1", body.name)
         if not row:
             raise HTTPException(status_code=404, detail=f"Function '{body.name}' not found")
 
@@ -438,9 +468,7 @@ async def test_action(body: TestActionInput):
 
     elif body.actionType == "webhook":
         async with state.pg_pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT * FROM tracked_webhooks WHERE name = $1", body.name
-            )
+            row = await conn.fetchrow("SELECT * FROM tracked_webhooks WHERE name = $1", body.name)
         if not row:
             raise HTTPException(status_code=404, detail=f"Webhook '{body.name}' not found")
 

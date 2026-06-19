@@ -34,10 +34,10 @@ Grep/Read. Companion to [group-2.md](group-2.md).
 | 066 | SQLGlot Transpilation | To spec | PG-style canonical → SQLGlot transpile to target dialect `provisa/transpiler/transpile.py:11` |
 | 067 | SQLGlot Transpilation | To spec | Dialect from `source_dialects` map keyed by source `provisa/transpiler/router.py:79` |
 | 068 | SQLGlot Transpilation | To spec | `SUPPORTED_DIALECTS` covers all 7 `provisa/transpiler/transpile.py:23` |
-| 196 | Aggregates | Incomplete | sum/avg/min/max/count present; stddev/variance missing `provisa/compiler/aggregate_gen.py:97` |
-| 197 | Aggregates | Incomplete | `allow_aggregations` parsed but not enforced; aggregate fields added unconditionally `provisa/compiler/schema_gen.py:1344` |
+| 196 | Aggregates | To spec | Fixed: stddev/variance added (numeric-only) with STDDEV/VARIANCE SQL emission `provisa/compiler/aggregate_gen.py`, `provisa/compiler/sql_gen.py` |
+| 197 | Aggregates | To spec | Fixed: per-role gate via the `no_aggregations` capability suppresses the `<table>_aggregate` field `provisa/compiler/schema_gen.py` |
 | 198 | Aggregates | To spec | `find_aggregate_mv` + `rewrite_sql` route aggregates to MV `provisa/mv/aggregate_catalog.py:54` |
-| 199 | Aggregates | Incomplete | Refresh loop exists; no expensive-view auto-materialization or `default_ttl` config `provisa/mv/refresh.py:90` |
+| 199 | Aggregates | To spec | Fixed: `materialized_views.default_ttl` config + TTL-aware `is_fresh_at`/`get_fresh` so stale MVs fall back to live; materialization is opt-in (no cost auto-detect) `provisa/mv/models.py`, `provisa/mv/registry.py` |
 | 200 | OrderBy Alignment | To spec | Column-keyed OrderBy input type `provisa/compiler/schema_gen.py:587` |
 | 201 | OrderBy Alignment | To spec | 6-value `OrderDirection` enum → `_DIRECTION_SQL` `provisa/compiler/schema_gen.py:117` |
 | 202 | OrderBy Alignment | To spec | Relationship fields nested into order_by input via thunk `provisa/compiler/schema_gen.py:614` |
@@ -45,10 +45,10 @@ Grep/Read. Companion to [group-2.md](group-2.md).
 | 206 | Tracked Functions | To spec | `FunctionInput` config model with governance fields `provisa/api/admin/actions_router.py:119` |
 | 207 | Tracked Functions | To spec | `func.returns` must be in `table_gql_types`; reuses table governance `provisa/compiler/function_gen.py:113` |
 | 208 | Tracked Functions | To spec | Functions execute via `source_pools.execute`, no Trino `provisa/api/data/endpoint.py:2470` |
-| 209 | Tracked Functions | Incomplete | Webhook table/input present; no `governance`/`registry-required` gating field `provisa/api/admin/actions_router.py:44` |
+| 209 | Tracked Functions | To spec | Fixed: webhooks exposed only after steward approval, tracked via the creation_requests queue (latest "webhook" request executed) `provisa/api/admin/actions_router.py`, `provisa/api/app.py` |
 | 210 | Tracked Functions | To spec | `inlineReturnType` → inline type when `returns` empty `provisa/compiler/schema_gen.py:877` |
 | 211 | Tracked Functions | To spec | Args → GraphQL input; parameterized `$N` (DB) + JSON body (webhook) `provisa/compiler/function_gen.py:157` |
-| 252 | Compiler & Schema | Not added | No `discover` flag / connector schema inference `provisa/compiler/introspect.py` |
+| 252 | Compiler & Schema | To spec | Fixed: `register_table(discover=true)` infers columns from the live source (explicit columns win); ES live `_mapping` bridge; ES/Cassandra raise instead of silent-empty `provisa/api/admin/schema.py`, `provisa/elasticsearch/source.py`, `provisa/discovery/column_inference.py` |
 | 253 | Compiler & Schema | To spec | Naming update calls `_naming.configure` + `_rebuild_schemas` `provisa/api/admin/schema.py:2049` |
 | 259 | Compiler & Schema | To spec | `FederationConfig(enabled=False)`; @key, _service, _entities `provisa/compiler/federation.py:44` |
 | 300 | GraphQL Variable Defaults | To spec | `coerce_variable_defaults` applies defaults for missing vars `provisa/compiler/parser.py:91` |
@@ -64,7 +64,7 @@ Grep/Read. Companion to [group-2.md](group-2.md).
 | 350 | Cypher Frontend | To spec | Node/Edge/Path GraphQL types defined `provisa/cypher/graph_types.py:33` |
 | 351 | Cypher Frontend | To spec | `CypherLabelMap.from_schema(ctx)`, no separate config `provisa/cypher/label_map.py:197` |
 | 352 | Cypher Frontend | To spec | `$param`→positional; missing param rejected `provisa/cypher/params.py:30` |
-| 353 | Cypher Frontend | Not to spec | `CypherCrossSourceError` defined but never raised `provisa/cypher/translator.py:251` |
+| 353 | Cypher Frontend | To spec | Fixed: a plain relational JOIN across sources raises `CypherCrossSourceError` (traversal-only + computed/meta joins excluded) `provisa/cypher/translator.py` |
 | 354 | NL Query Service | To spec | `POST /query/nl` → job_id; poll + SSE routes `provisa/nl/` router |
 | 355 | NL Query Service | To spec | Three parallel loops; compiler-validated retry `provisa/nl/loop.py:57` |
 | 356 | NL Query Service | To spec | Role-scoped SDL in prompt; compiler rejects invisible refs `provisa/nl/runner.py:53` |
@@ -78,10 +78,12 @@ Grep/Read. Companion to [group-2.md](group-2.md).
 | 409 | Compiler & Schema | To spec | `_coerce_ts_literals` wraps ISO datetime as `TIMESTAMP '...'` `provisa/cypher/translator.py:1854` |
 | 411 | Compiler & Schema | To spec | `hasura-default`→`hasura_graphql` (snake_case) `provisa/compiler/naming.py:137` |
 | 412 | Compiler & Schema | To spec | `graphql-default`→`apollo_graphql`, default `provisa/compiler/naming.py:138` |
-| 416 | Compiler & Schema | Incomplete | Three enums + alias map in place, but admin update path skips validation `provisa/api/admin/schema.py:2049` |
+| 416 | Compiler & Schema | To spec | Fixed: `update_gql_naming_convention` validates against `VALID_CONVENTIONS` via `validation_error_for_convention` before applying `provisa/api/admin/schema.py`, `provisa/compiler/naming.py` |
 | 478 | Compiler & Schema | To spec | `sample` arg, range check, TABLESAMPLE BERNOULLI, as_of/lateral guard `provisa/compiler/sql_gen.py:1969` |
 
-54 To spec, 4 Incomplete (196, 197, 199, 416), 1 Not to spec (353), 1 Not added (252).
+61 To spec (all remediated 2026-06-19). Original audit (2026-06-18): 54 To spec, 4 Incomplete (196, 197, 199, 416), 1 Not to spec (353), 1 Not added (252).
+
+**Audit correction (REQ-252):** the inference primitives were not absent — per-connector `discover_schema()` functions and a `discover` flag already existed (REQ-250). The gap was wiring them to run automatically at registration and a live ES `_mapping` bridge; both are now in place.
 
 ## Detail
 
@@ -233,17 +235,18 @@ All named test files exist except one. Verified by directory listing.
 | `tests/unit/test_params.py` | yes |
 | `tests/unit/test_sql_gen_aggregate.py` | yes |
 | `tests/integration/test_schema_gen.py`, `test_mutations.py`, `test_cypher_endpoint.py`, `test_nl_endpoint.py` | yes |
-| `tests/unit/test_rls_compiler_fallback.py` (REQ-403) | **missing** — RLS fallback covered by `tests/unit/test_rls.py` under a different name |
+| `tests/unit/test_rls_compiler_fallback.py` (REQ-403) | yes — added 2026-06-19 (table-rule-first / domain-fallback coverage; broader domain-RLS load path remains in `test_rls.py`) |
 
-## Remaining tasks
+## Remediation (2026-06-19)
 
-| # | REQ | Type | Effort | Task |
-| --- | --- | --- | --- | --- |
-| 1 | 196 | Incomplete | S | Add `stddev`/`variance` aggregate fields for numeric columns in `aggregate_gen.py` |
-| 2 | 197 | Incomplete | M | Enforce `allow_aggregations` (and per-table `aggregates` overrides) when adding aggregate root fields in `schema_gen.py:1344` |
-| 3 | 199 | Incomplete | L | Add expensive-view auto-materialization, `materialized_views.default_ttl` config, and explicit stale-MV→live fallback in `provisa/mv/` |
-| 4 | 209 | Incomplete | M | Add `governance`/`registry-required` field + steward-approval gate to webhook registration in `actions_router.py:44` |
-| 5 | 252 | Not added | L | Implement connector schema inference (`discover: true`) for MongoDB/Cassandra/Elasticsearch; explicit columns take precedence |
-| 6 | 353 | Not to spec | S | Detect cross-source Cypher (labels on different source ids) and raise `CypherCrossSourceError` in the translator |
-| 7 | 416 | Incomplete | S | Validate the naming convention against `VALID_CONVENTIONS` in `update_gql_naming_convention` (`schema.py:2049`) before applying |
-| 8 | 403 | Test gap | S | Rename/add `tests/unit/test_rls_compiler_fallback.py` to match the spec test name, or update the requirement to point at `test_rls.py` |
+All 8 audit tasks resolved across five phases on the `group-5` branch.
+
+- **Phase 1 — guards:** REQ-353 cross-source Cypher rejection; REQ-416 naming-convention validation on the admin update path; REQ-403 spec-named `tests/unit/test_rls_compiler_fallback.py`.
+- **Phase 2 — aggregates:** REQ-196 stddev/variance fields + SQL; REQ-197 per-role gate via the `no_aggregations` capability.
+- **Phase 3 — webhook gate:** REQ-209 steward approval through the creation_requests queue.
+- **Phase 4 — discover:** REQ-252 auto-discovery at registration (explicit columns win) + ES live `_mapping` bridge; ES/Cassandra raise instead of returning empty columns.
+- **Phase 5 — MV lifecycle:** REQ-199 TTL-aware freshness (stale→live fallback) + `materialized_views.default_ttl`; materialization stays opt-in.
+
+Two requirements were re-scoped to honor V1's no-migration rule: REQ-197 (aggregate gating) and REQ-209 (webhook approval) are tracked via existing structures — the role `capabilities` array and the creation_requests queue — rather than new columns on `roles` / `tracked_webhooks`.
+
+Follow-up (not in audit scope): a live Cassandra CQL metadata client for `discover` (currently raises), and per-table `aggregates` config overrides (REQ-197 mentions them; the per-role capability gate is implemented).

@@ -178,11 +178,22 @@ def test_limit_offset_in_sql():
     assert "OFFSET" in sql.upper() or "5" in sql
 
 
-def test_cross_source_allowed():
-    # Trino handles cross-catalog joins natively — translation must not raise.
+def test_cross_source_rejected():
+    # REQ-353: labels resolving to tables on different sources are rejected; the consumer
+    # is directed to restructure rather than silently get a cross-catalog join.
+    from provisa.cypher.translator import CypherCrossSourceError
+
     lm = _make_label_map(multi_source=True)
     ast = parse_cypher("MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN n.name, c.name")
-    sql_ast, params, graph_vars = cypher_to_sql(ast, lm, {})
+    with pytest.raises(CypherCrossSourceError):
+        cypher_to_sql(ast, lm, {})
+
+
+def test_single_source_not_rejected():
+    # REQ-353: a single-source query (all labels on one source) translates normally.
+    lm = _make_label_map(multi_source=False)
+    ast = parse_cypher("MATCH (n:Person)-[:WORKS_AT]->(c:Company) RETURN n.name, c.name")
+    sql_ast, _params, _graph_vars = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
     assert "persons" in sql.lower()
     assert "companies" in sql.lower()
@@ -1982,26 +1993,44 @@ def test_where_on_required_match_variable_is_not_guarded():
 def _make_label_map_bidir_multi_hop() -> CypherLabelMap:
     """Label map with bidir Inquiries↔Pets (both directions registered) and one-way Inquiries→Users."""
     nm_inq = NodeMapping(
-        label="PetStore:Inquiries", type_name="PetStore_Inquiries",
-        domain_label="PetStore", table_label="Inquiries",
-        table_id=1, source_id="sqlite-petstore", id_column="id", pk_columns=[],
-        catalog_name="sqlite", schema_name="petstore",
+        label="PetStore:Inquiries",
+        type_name="PetStore_Inquiries",
+        domain_label="PetStore",
+        table_label="Inquiries",
+        table_id=1,
+        source_id="sqlite-petstore",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="sqlite",
+        schema_name="petstore",
         table_name="inquiries",
         properties={"id": "id", "petId": "pet_id", "userId": "user_id"},
     )
     nm_pets = NodeMapping(
-        label="PetStore:Pets", type_name="PetStore_Pets",
-        domain_label="PetStore", table_label="Pets",
-        table_id=2, source_id="sqlite-petstore", id_column="id", pk_columns=[],
-        catalog_name="sqlite", schema_name="petstore",
+        label="PetStore:Pets",
+        type_name="PetStore_Pets",
+        domain_label="PetStore",
+        table_label="Pets",
+        table_id=2,
+        source_id="sqlite-petstore",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="sqlite",
+        schema_name="petstore",
         table_name="pets",
         properties={"id": "id", "name": "name"},
     )
     nm_users = NodeMapping(
-        label="PetStore:Users", type_name="PetStore_Users",
-        domain_label="PetStore", table_label="Users",
-        table_id=3, source_id="sqlite-petstore", id_column="id", pk_columns=[],
-        catalog_name="sqlite", schema_name="petstore",
+        label="PetStore:Users",
+        type_name="PetStore_Users",
+        domain_label="PetStore",
+        table_label="Users",
+        table_id=3,
+        source_id="sqlite-petstore",
+        id_column="id",
+        pk_columns=[],
+        catalog_name="sqlite",
+        schema_name="petstore",
         table_name="users",
         properties={"id": "id", "name": "name", "email": "email"},
     )
@@ -2013,20 +2042,29 @@ def _make_label_map_bidir_multi_hop() -> CypherLabelMap:
         },
         relationships={
             "HAS_PET::PetStore_Inquiries→PetStore_Pets": RelationshipMapping(
-                rel_type="HAS_PET", source_label="PetStore_Inquiries",
-                target_label="PetStore_Pets", join_source_column="pet_id",
-                join_target_column="id", field_name="hasPet",
+                rel_type="HAS_PET",
+                source_label="PetStore_Inquiries",
+                target_label="PetStore_Pets",
+                join_source_column="pet_id",
+                join_target_column="id",
+                field_name="hasPet",
             ),
             "HAS_USER::PetStore_Inquiries→PetStore_Users": RelationshipMapping(
-                rel_type="HAS_USER", source_label="PetStore_Inquiries",
-                target_label="PetStore_Users", join_source_column="user_id",
-                join_target_column="id", field_name="hasUser",
+                rel_type="HAS_USER",
+                source_label="PetStore_Inquiries",
+                target_label="PetStore_Users",
+                join_source_column="user_id",
+                join_target_column="id",
+                field_name="hasUser",
             ),
             # reverse direction registered — causes bidir to produce a UNION ALL branch
             "INQUIRIES_FOR_PET::PetStore_Pets→PetStore_Inquiries": RelationshipMapping(
-                rel_type="INQUIRIES_FOR_PET", source_label="PetStore_Pets",
-                target_label="PetStore_Inquiries", join_source_column="id",
-                join_target_column="pet_id", field_name="inquiriesForPet",
+                rel_type="INQUIRIES_FOR_PET",
+                source_label="PetStore_Pets",
+                target_label="PetStore_Inquiries",
+                join_source_column="id",
+                join_target_column="pet_id",
+                field_name="inquiriesForPet",
             ),
         },
         domains={"PetStore": ["PetStore_Inquiries", "PetStore_Pets", "PetStore_Users"]},
