@@ -159,6 +159,8 @@ class CompilationContext:
     virtual_columns: dict[int, dict[str, str]] = field(default_factory=dict)
     # (table_id, col_name) pairs where the column is a GQL OBJECT stored as JSON
     gql_json_columns: set[tuple[int, str]] = field(default_factory=set)
+    # table_name → {gql_field_name: gql_selection_string} for undeclared graphql_remote OBJECT fields
+    gql_remote_extra_selections: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 # --- Compiled query result ---
@@ -207,6 +209,8 @@ class CompiledQuery:
     agg_columns: list[str] = field(default_factory=list)
     table: str = ""
     filters: list[str] = field(default_factory=list)
+    # table_name → {gql_field_name: gql_selection_string} for undeclared graphql_remote OBJECT fields
+    gql_remote_extra_selections: dict[str, dict[str, str]] = field(default_factory=dict)
 
     def with_sql(self, new_sql: str) -> "CompiledQuery":
         """Return a copy of this CompiledQuery with sql replaced."""
@@ -487,7 +491,7 @@ def _register_ops_synthetic_joins(
 
 
 def build_context(
-    si: object,
+    si: object,  # object-ok: circular-import boundary — SchemaInput imported inside function body
 ) -> (
     CompilationContext
 ):  # object-ok: circular import boundary — SchemaInput imported inside function body
@@ -535,7 +539,8 @@ def build_context(
 
 
 def _extract_value(
-    node: object, variables: dict | None
+    node: object,  # object-ok: truly-any GraphQL AST value node
+    variables: dict | None,
 ) -> object:  # object-ok: truly-any payload — GraphQL AST value nodes and Python primitives unified
     """Extract a Python value from a GraphQL AST value node."""
     if isinstance(node, StringValueNode):
@@ -574,7 +579,8 @@ _ISO_DATE_RE = _re.compile(
 
 
 def _timestamp_literal_or_param(
-    val: object, collector
+    val: object,  # object-ok: truly-any payload — caller may pass str, int, float, bool, None
+    collector,
 ) -> str:  # object-ok: truly-any payload — caller may pass str, int, float, bool, None
     """Return a TIMESTAMP literal if val is an ISO date, otherwise a parameter.
 
@@ -1052,7 +1058,8 @@ def _explicit_limit(field_node: FieldNode, variables: dict | None) -> int | None
 
 
 def _extract_non_negative_int(
-    value: object, name: str
+    value: object,  # object-ok: truly-any payload — validated via isinstance checks inside body
+    name: str,
 ) -> int:  # object-ok: truly-any payload — validated via isinstance checks inside body
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{name} must be an integer")
@@ -1457,6 +1464,24 @@ def _build_rel_json_expr(
     return expr, alias_counter
 
 
+def _build_gql_selection(field_name: str, selection_set) -> str:
+    """Serialize a GQL field + its selection_set back to a GQL selection string."""
+
+    def _sels(ss) -> str:
+        parts = []
+        for sel in ss.selections:
+            if not isinstance(sel, FieldNode):
+                continue
+            sn = sel.name.value
+            if sel.selection_set:
+                parts.append(f"{sn} {{ {_sels(sel.selection_set)} }}")
+            else:
+                parts.append(sn)
+        return " ".join(parts)
+
+    return f"{field_name} {{ {_sels(selection_set)} }}"
+
+
 def _collect_nested_columns(
     selections,
     parent_alias: str,
@@ -1599,6 +1624,17 @@ def _collect_nested_columns(
                 )
                 has_lateral |= _child_lateral
         else:
+            # Undeclared OBJECT field on a graphql_remote table — hydrate from remote endpoint
+            if (
+                nested_sel.selection_set
+                and parent_table.source_type == "graphql_remote"
+                and (parent_table.table_id, nested_name) not in ctx.gql_json_columns
+            ):
+                _gql_sel = _build_gql_selection(nested_name, nested_sel.selection_set)
+                ctx.gql_json_columns.add((parent_table.table_id, nested_name))
+                ctx.gql_remote_extra_selections.setdefault(parent_table.table_name, {})[
+                    nested_name
+                ] = _gql_sel
             # GQL OBJECT column stored as JSON — expand sub-selections recursively via -> / ->>
             if (
                 nested_sel.selection_set
@@ -1848,6 +1884,17 @@ def _compile_root_field(
                     )
                     has_lateral_ops_joins |= _child_lateral
         else:
+            # Undeclared OBJECT field on a graphql_remote table — hydrate from remote endpoint
+            if (
+                sel.selection_set
+                and table.source_type == "graphql_remote"
+                and (table.table_id, sel_name) not in ctx.gql_json_columns
+            ):
+                _gql_sel = _build_gql_selection(sel_name, sel.selection_set)
+                ctx.gql_json_columns.add((table.table_id, sel_name))
+                ctx.gql_remote_extra_selections.setdefault(table.table_name, {})[sel_name] = (
+                    _gql_sel
+                )
             # GQL OBJECT column stored as JSON — expand sub-selections recursively via -> / ->>
             if sel.selection_set and (table.table_id, sel_name) in ctx.gql_json_columns:
 
@@ -2092,6 +2139,7 @@ def _compile_root_field(
         sources=sources,
         api_args=api_args,
         result_limit=result_limit,
+        gql_remote_extra_selections=ctx.gql_remote_extra_selections,
     )
 
 
@@ -2330,8 +2378,8 @@ def _compile_aggregate_field(
 
 
 def _sql_literal(
-    val: object,
-) -> str:  # object-ok: truly-any payload — SQL literal accepts any Python scalar
+    val: object,  # object-ok: truly-any payload — SQL literal accepts any Python scalar
+) -> str:
     """Convert a Python value to a SQL literal for VALUES injection."""
     if val is None:
         return "NULL"

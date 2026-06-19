@@ -18,6 +18,7 @@ REST call Phase 1.
 Handles both literal values and $N positional params (postgres dialect).
 After extraction, remaining $N references are renumbered contiguously.
 """
+
 from __future__ import annotations
 
 import re
@@ -94,9 +95,9 @@ def extract_nf_args(sql: str, params: list[Any]) -> tuple[str, list[Any], dict[s
         if isinstance(cond, exp.EQ):
             left, right = cond.left, cond.right
             if isinstance(left, exp.Column) and left.name.startswith(_NF_PREFIX):
-                nf_col, val_expr = left.name[len(_NF_PREFIX):], right
+                nf_col, val_expr = left.name[len(_NF_PREFIX) :], right
             elif isinstance(right, exp.Column) and right.name.startswith(_NF_PREFIX):
-                nf_col, val_expr = right.name[len(_NF_PREFIX):], left
+                nf_col, val_expr = right.name[len(_NF_PREFIX) :], left
 
         if nf_col is not None and val_expr is not None:
             value, param_idx = _resolve_value(val_expr, params)
@@ -128,7 +129,9 @@ def extract_nf_args(sql: str, params: list[Any]) -> tuple[str, list[Any], dict[s
             if old_idx not in consumed_indices:
                 old_to_new[old_idx] = new_idx
                 new_idx += 1
-        clean_sql = _PARAM_RE.sub(lambda m: f"${old_to_new.get(int(m.group(1)), int(m.group(1)))}", clean_sql)
+        clean_sql = _PARAM_RE.sub(
+            lambda m: f"${old_to_new.get(int(m.group(1)), int(m.group(1)))}", clean_sql
+        )
 
     return clean_sql, clean_params, nf_args
 
