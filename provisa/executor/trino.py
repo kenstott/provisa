@@ -125,6 +125,8 @@ def execute_trino(
                 cur.execute(exec_sql)
             rows = cur.fetchall()
         except Exception as exc:
+            from provisa.executor.errors import FederationError
+
             err_msg = str(exc)
             span.set_attribute("error", True)
             span.set_attribute("error.message", err_msg[:500])
@@ -141,6 +143,8 @@ def execute_trino(
                 raise MemoryError(
                     f"Query exceeded Trino memory limit — add a limit clause or narrow your filter. Detail: {err_msg[:300]}"
                 ) from exc
+            if isinstance(exc, trino.exceptions.TrinoQueryError):
+                raise FederationError.from_trino(exc) from exc
             raise
 
         column_names = [desc[0] for desc in cur.description] if cur.description else []
