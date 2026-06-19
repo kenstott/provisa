@@ -128,7 +128,7 @@ Register any HTTP endpoint as a queryable table. [tool-verified: `provisa/core/m
 
 API responses are fetched, cached in PostgreSQL (configurable TTL), and exposed as GraphQL types. Cached tables participate in federated queries like any other source.
 
-**JSONB rules**: Complex columns (objects, arrays) stored as JSONB are not filterable and cannot participate in relationships. Use JSONB promotion to convert nested fields into native columns.
+**JSONB rules**: Complex columns (objects, arrays) stored as JSONB are not filterable. Sub-field access uses `->>` extraction in SQL. Relationships are declared between tables using scalar FK columns — JSONB blob columns are not join targets. Use JSONB promotion to convert nested fields into native scalar columns when filtering or joining on them is needed.
 
 ### GovData
 
@@ -286,7 +286,7 @@ relationships:
 | `target_function_name` | No | DB function name for computed relationships |
 | `function_arg` | No | Which function argument receives the source column value |
 | `alias` | No | Human-readable relationship type (e.g. `WORKS_FOR`) |
-| `graphql_alias` | No | GraphQL field name override |
+| `graphql_alias` | No | Names the SDL field this relationship exposes on the parent type. When absent, the name is derived from the target table's `field_name` and relationship cardinality. [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
 | `disable_cypher` | No | When `true`, exclude this relationship from Cypher graph edges |
 | `source_json_key` | No | Extract this key from source column as a JSON object before JOIN |
 

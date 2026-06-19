@@ -2,8 +2,6 @@
 
 A remote schema source connects an external API — GraphQL, gRPC, or REST (OpenAPI) — to the Provisa semantic layer. Once registered, the external API's operations become first-class Provisa tables and functions. Every governance rule, query interface, and security layer applies automatically. The remote service never sees Provisa's governance rules.
 
-This document covers: how to register each source type, what gets auto-discovered, how types map to Provisa structures, and what happens when you register relationships between remote tables.
-
 ---
 
 ## Three source types
@@ -38,7 +36,7 @@ Auth options: `none`, `bearer` (Authorization header), `basic` (Base64 username:
 
 **Table naming.** Tables are named `{namespace}__{field_name}`. With namespace `petstore` and a `pets` query field: table name is `petstore__pets`. [tool-verified: `provisa/graphql_remote/mapper.py:250`]
 
-**Type mapping (REQ-308).** Scalar fields map to Provisa types directly. Non-scalar fields (OBJECT, ENUM) become `jsonb`. [tool-verified: `provisa/graphql_remote/mapper.py:14–36`]
+**Type mapping (REQ-308).** Scalar fields map to Provisa types directly. OBJECT fields split into two cases depending on whether the target type is governed (see "Governed tables" below). [tool-verified: `provisa/graphql_remote/mapper.py:14–36`, `provisa/api/data/endpoint.py:655–671`, `provisa/compiler/schema_gen.py:481–485`]
 
 | GraphQL type | Provisa type |
 |---|---|
@@ -47,9 +45,20 @@ Auth options: `none`, `bearer` (Authorization header), `basic` (Base64 username:
 | `Int` | `integer` |
 | `Float` | `numeric` |
 | `Boolean` | `boolean` |
-| Any OBJECT | `jsonb` |
+| OBJECT (non-governed inline type, e.g. `ContactInfo`) | `jsonb` blob column |
+| OBJECT (governed-target type) | excluded from SDL and fetch entirely |
 | Any ENUM | `jsonb` |
 | Custom scalar | `text` (fallback) |
+
+**Governed tables.** A GQL type is governed when it appears as a root `Query` field in the remote schema. `_collect_queryable_types` collects these during registration, preferring no-required-arg fields so they can be bulk-fetched as join targets. [tool-verified: `provisa/graphql_remote/mapper.py:395–413`]
+
+When an OBJECT-typed column on a governed table points to another governed type, that column is subject to three rules simultaneously [tool-verified: `provisa/api/data/endpoint.py:655–671`, `provisa/compiler/schema_gen.py:481–485`]:
+
+1. **Excluded from the GQL fetch** — the field is not requested when fetching the parent table's rows.
+2. **Excluded from the SDL** — the field does not appear on the parent type in the generated schema.
+3. **Accessible only via a declared relationship** — a steward must register a JOIN between the two materialized governed tables. Without one, the field is simply absent; there is no blob fallback.
+
+OBJECT types that are NOT reachable as root Query fields (inline types such as `ContactInfo` or `Address`) follow different rules: they are fetched as `jsonb` blob columns and appear in the SDL as nested-object fields. Sub-fields are accessible via `-->>` extraction in SQL.
 
 **Required arguments.** When a root query field has non-null arguments with no default value, those become `native_filter_type: query_param` columns on the table (prefixed `_nf_` at injection time). The executor passes them as GraphQL variables. [tool-verified: `provisa/graphql_remote/mapper.py:110–120`, `provisa/api/app.py:1280–1303`]
 
@@ -63,7 +72,7 @@ Auth options: `none`, `bearer` (Authorization header), `basic` (Base64 username:
 - Scalar and ENUM root query fields (return type is not OBJECT) become tracked functions, not virtual tables. Their `return_schema` is a single `value` column of the mapped scalar type. [tool-verified: `provisa/graphql_remote/mapper.py:254–279`]
 - Object nesting is resolved at registration time up to `graphql_remote.max_object_depth` (default: 5). Both the remote fetch selection and the sub-field metadata are built to that depth; fields beyond the limit are not fetched and are not available for SQL extraction. [tool-verified: `provisa/graphql_remote/mapper.py:38–52`]
 - LIST-typed nested OBJECT fields (e.g. `breed.awards: [Award]`) are included in the fetch selection up to `graphql_remote.max_list_depth` nesting levels (default: 2). Within that limit, the list is fetched as a `jsonb` array on the parent column, and the GQL selection injects `first: N` where N is `graphql_remote.max_list_items` (default: 100) to cap array size. Beyond `max_list_depth`, the LIST field is excluded entirely to prevent unbounded data expansion. In SQL, the array is accessed via `json_array_elements(column_name)` or `->>` index extraction. If the list's item type has its own root query, register it as a separate table and create a relationship instead — the join path is more efficient and bypasses the blob. [tool-verified: `provisa/graphql_remote/mapper.py:43–70`]
-- For SQL queries, OBJECT-typed columns are fetched in full from the remote (all sub-fields up to the configured depth) and cached as `jsonb`. Sub-field access in SQL is handled via `->>`  extraction against the blob; the remote request is not narrowed to only the fields the SQL query selects. When the LIST-item type has no root query and the blob representation is insufficient, write the query in GraphQL SDL directly — Provisa faithfully reproduces the GQL field selection, so the remote sees exactly the fields requested. [tool-verified: `provisa/compiler/sql_gen.py:1332–1368`]
+- For SQL queries, non-governed OBJECT-typed columns are fetched in full from the remote (all sub-fields up to the configured depth) and cached as `jsonb`. Sub-field access in SQL is handled via `->>`  extraction against the blob; the remote request is not narrowed to only the fields the SQL query selects. When the LIST-item type has no root query and the blob representation is insufficient, write the query in GraphQL SDL directly — Provisa faithfully reproduces the GQL field selection, so the remote sees exactly the fields requested. [tool-verified: `provisa/compiler/sql_gen.py:1332–1368`]
 - If the remote server rejects an OBJECT-typed field because it requires subfield selection (which should not occur when `gql_selection` is available), the executor retries once with those fields removed so scalar columns are still returned. [tool-verified: `provisa/graphql_remote/executor.py:76–80`]
 
 ---
@@ -206,7 +215,7 @@ Remote tables are registered with `GovernanceLevel.pre_approved`, meaning ad-hoc
 
 **Relationship governance (V002).** JOIN conditions against remote tables — when queried via SQL or Cypher — must match a registered, approved relationship. The V002 check is skipped for GraphQL queries because SDL-defined relationships are pre-approved by design. See [docs/security.md](security.md#relationship-governance-v002).
 
-**OBJECT-typed columns.** When a column maps to a GQL OBJECT or OpenAPI object type, its Provisa type is `jsonb`. The column stores the full nested JSON blob. When sub-fields are declared (`gql_object_fields` or `object_fields`), the `gql_object_columns` map is populated at schema build time. The SQL generator uses this map to emit `->>`  extraction expressions for sub-fields when a query selects them. [tool-verified: `provisa/api/app.py:1305–1315`, `provisa/compiler/schema_gen.py:80–82`]
+**OBJECT-typed columns.** When a column maps to a non-governed inline GQL OBJECT or OpenAPI object type, its Provisa type is `jsonb`. The column stores the full nested JSON blob. When sub-fields are declared (`gql_object_fields` or `object_fields`), the `gql_object_columns` map is populated at schema build time. The SQL generator uses this map to emit `->>`  extraction expressions for sub-fields when a query selects them. [tool-verified: `provisa/api/app.py:1305–1315`, `provisa/compiler/schema_gen.py:80–82`]
 
 **Required args as native filter params.** Root query fields with non-null, no-default args inject additional columns onto the registered table. These columns carry `native_filter_type: query_param`. The Cypher translator rewrites `WHERE n.id = $val` to `WHERE n._nf_id = $val`, and the GraphQL executor picks them up as variables to pass to the remote endpoint. [tool-verified: `provisa/api/app.py:1280–1303`]
 
@@ -218,9 +227,11 @@ When a steward registers a relationship between two remote tables (or between a 
 
 **How the join wins.** At query compilation, Provisa resolves the join path through the registered relationship. The `source_column` and `target_column` on the relationship become the join condition in generated SQL. The join replaces any per-table remote call that would otherwise be needed for the connected type.
 
-**The raw blob is never exposed in SQL.** The `breed` column on `petstore__pets` is not selectable as a raw jsonb value in SQL queries. When a relationship is registered between `petstore__pets` and `petstore__breeds`, SQL queries traverse the join — `SELECT breed.name FROM petstore__pets` resolves via the FK join, not a blob. When no relationship is registered but the column has declared sub-fields (`gql_object_fields`), SQL sub-field references are rewritten to `->>`  extraction against the stored blob. The raw blob itself is never emitted as a bare column value. [tool-verified: `provisa/compiler/sql_gen.py:1156`, `tests/unit/test_sql_gen.py:TestGqlJsonBlobExtraction`]
+**The raw blob is never exposed in SQL.** The `breed` column on `petstore__pets` is not selectable as a raw jsonb value in SQL queries. When a relationship is registered between `petstore__pets` and `petstore__breeds`, SQL queries traverse the join — `SELECT breed.name FROM petstore__pets` resolves via the FK join, not a blob. When no relationship is registered but the column has declared sub-fields (`gql_object_fields`), SQL sub-field references are rewritten to `->>`  extraction against the stored blob. This path is only available for non-governed inline types — governed-target fields are excluded from the SDL entirely and have no blob to extract from. The raw blob itself is never emitted as a bare column value. [tool-verified: `provisa/compiler/sql_gen.py:1156`, `tests/unit/test_sql_gen.py:TestGqlJsonBlobExtraction`]
 
-In GraphQL SDL, the field is typed as the nested object type. Whether it is served by a join or by blob extraction at execution time is an implementation detail — the SDL shape is identical either way. When the child type is registered as its own table, however, all five governance layers apply to it independently: its own RLS rules, column visibility, masking rules, predicate guards, and domain access control. Blob extraction bypasses this — the child data arrives pre-embedded in the parent row and is governed only by the parent table's rules. Registering the child as a table and creating a relationship is the path to fine-grained governance on the child type.
+In GraphQL SDL, a non-governed inline OBJECT field is typed as the nested object type. Whether it is served by a join or by blob extraction at execution time is an implementation detail — the SDL shape is identical either way. When the child type is registered as its own table (and becomes governed), all five governance layers apply to it independently: its own RLS rules, column visibility, masking rules, predicate guards, and domain access control. Blob extraction bypasses this — the child data arrives pre-embedded in the parent row and is governed only by the parent table's rules. Registering the child as a table and creating a relationship is the path to fine-grained governance on the child type.
+
+**`graphql_alias` on the relationship.** The `graphql_alias` field names the SDL field that the relationship exposes on the parent type. When absent, the name is derived from the target table's `field_name` and the relationship's cardinality via `rel_field_name(target.field_name, cardinality)`. [tool-verified: `provisa/compiler/schema_gen.py:1050`]
 
 **V002 on the join path.** SQL and Cypher queries that traverse the relationship are subject to V002 relationship governance. The relationship must be registered and approved for the join to be allowed. GraphQL traversal via the SDL relationship field is always pre-approved. [tool-verified: `docs/security.md:41–54`]
 
