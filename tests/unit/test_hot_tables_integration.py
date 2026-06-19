@@ -13,10 +13,9 @@
 from __future__ import annotations
 
 import os
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock
 
 import pytest
-import pytest_asyncio
 
 from provisa.cache.hot_tables import (
     HotTableEntry,
@@ -25,9 +24,7 @@ from provisa.cache.hot_tables import (
 )
 from provisa.compiler.sql_gen import (
     ColumnRef,
-    CompilationContext,
     CompiledQuery,
-    TableMeta,
     rewrite_hot_joins,
 )
 
@@ -169,15 +166,14 @@ class TestHotTableLoading:
         rows = await mgr.get_rows("products")
         assert rows == [{"id": 1, "name": "Zing"}]
 
-    async def test_hot_table_not_found_raises_key_error(self):
-        """get_rows raises KeyError when table is not in Redis or memory."""
+    async def test_hot_table_not_found_returns_empty(self):
+        """REQ-231: get_rows returns [] on a miss (live fallback), not a KeyError."""
         mgr = _make_hot_manager()
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         mgr._redis = mock_redis
 
-        with pytest.raises(KeyError, match="missing_table"):
-            await mgr.get_rows("missing_table")
+        assert await mgr.get_rows("missing_table") == []
 
 
 # ---------------------------------------------------------------------------
