@@ -109,8 +109,13 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
         spec = load_spec(resolved_path)
         servers = spec.get("servers", [])
         base_url = servers[0].get("url", "") if servers else ""
-        if base_url and not base_url.startswith(("http://", "https://")) and resolved_path.startswith(("http://", "https://")):
+        if (
+            base_url
+            and not base_url.startswith(("http://", "https://"))
+            and resolved_path.startswith(("http://", "https://"))
+        ):
             from urllib.parse import urljoin
+
             base_url = urljoin(resolved_path, base_url)
         if not hasattr(state, "openapi_specs"):
             state.openapi_specs = {}
@@ -238,7 +243,11 @@ def _rel_from_row(row, convention: str = "apollo_graphql") -> RelationshipType:
     graphql_alias = persisted_graphql_alias or _derive_graphql_alias(
         target_table_name, cardinality, alias, convention
     )
-    computed_cypher_alias = None if alias else _to_cypher_rel_type(graphql_alias or target_table_name or "", cardinality)
+    computed_cypher_alias = (
+        None
+        if alias
+        else _to_cypher_rel_type(graphql_alias or target_table_name or "", cardinality)
+    )
     return RelationshipType(
         id=row["id"],
         source_table_id=row["source_table_id"],
@@ -299,7 +308,9 @@ def _compute_can_deploy_to_db(
     return state.source_pools.has(target_source_id)
 
 
-async def _fetch_table_with_columns(conn, row, all_tables: list | None = None, user_can_deploy: bool = True) -> RegisteredTableType:
+async def _fetch_table_with_columns(
+    conn, row, all_tables: list | None = None, user_can_deploy: bool = True
+) -> RegisteredTableType:
     col_rows = await conn.fetch(
         "SELECT id, column_name, visible_to, writable_by, unmasked_to, "
         "mask_type, mask_pattern, mask_replace, mask_value, mask_precision, "
@@ -308,6 +319,7 @@ async def _fetch_table_with_columns(conn, row, all_tables: list | None = None, u
         row["id"],
     )
     from provisa.compiler.naming import apply_sql_name
+
     columns = [
         TableColumnType(
             id=r["id"],
@@ -370,7 +382,12 @@ async def _fetch_table_with_columns(conn, row, all_tables: list | None = None, u
 
     view_sql = row.get("view_sql")
     can_deploy = False
-    if user_can_deploy and row["source_id"] == "__provisa__" and view_sql and all_tables is not None:
+    if (
+        user_can_deploy
+        and row["source_id"] == "__provisa__"
+        and view_sql
+        and all_tables is not None
+    ):
         can_deploy = _compute_can_deploy_to_db(view_sql, all_tables)
 
     return RegisteredTableType(
@@ -489,7 +506,12 @@ async def _introspect_view_columns(conn, view_sql: str, default_roles: list[str]
 
 
 async def _domain_table_conflict(
-    conn, domain_id: str, table_name: str, source_id: str, schema_name: str, alias: str | None = None
+    conn,
+    domain_id: str,
+    table_name: str,
+    source_id: str,
+    schema_name: str,
+    alias: str | None = None,
 ) -> str | None:
     """Return an error message if the effective name (alias or table_name) is already
     registered in the domain from a DIFFERENT physical table.
@@ -579,7 +601,9 @@ def _rebuild_table_input(payload: dict):
     return TableInput(**data)
 
 
-async def _queue_creation_request(info, request_type: str, capability: str, input) -> MutationResult:
+async def _queue_creation_request(
+    info, request_type: str, capability: str, input
+) -> MutationResult:
     """Persist a governed create the caller is not authorized to perform (REQ-434)."""
     import dataclasses
 
@@ -838,6 +862,7 @@ class Query:
             return result
         # Trino fallback
         from provisa.api.admin.introspect import _PROVISA_INTERNAL_TABLES
+
         catalog = source_to_catalog(source_id)
         skip = _PROVISA_INTERNAL_TABLES if schema_name.lower() == "public" else frozenset()
         try:
@@ -929,10 +954,12 @@ class Query:
             if q is None:
                 return []
             cols = _schema_to_columns(q.response_schema)
-            if not cols and not q.path_params and (q.response_schema or {}).get("additionalProperties"):
-                cols = await _dynamic_openapi_columns(
-                    state.openapi_specs[source_id]["base_url"], q
-                )
+            if (
+                not cols
+                and not q.path_params
+                and (q.response_schema or {}).get("additionalProperties")
+            ):
+                cols = await _dynamic_openapi_columns(state.openapi_specs[source_id]["base_url"], q)
             existing = {c["name"] for c in cols}
             for p in q.path_params:
                 nf_name = f"_nf_{p['name']}"
@@ -987,9 +1014,7 @@ class Query:
             return []
 
     @strawberry.field
-    async def suggest_table_alias(
-        self, table_name: str, domain_id: str, source_id: str
-    ) -> str:
+    async def suggest_table_alias(self, table_name: str, domain_id: str, source_id: str) -> str:
         """Return the alias to use when registering table_name in domain_id from source_id.
 
         Returns a plain snake_case alias when no conflict exists, or a source-prefixed
@@ -1000,15 +1025,20 @@ class Query:
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            convention = await conn.fetchval(
-                "SELECT gql_naming_convention FROM sources WHERE id = $1", source_id
-            ) or "apollo_graphql"
+            convention = (
+                await conn.fetchval(
+                    "SELECT gql_naming_convention FROM sources WHERE id = $1", source_id
+                )
+                or "apollo_graphql"
+            )
             candidate: str = apply_convention(table_name, convention)
             conflict = await conn.fetchrow(
                 "SELECT 1 FROM registered_tables "
                 "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "
                 "AND source_id != $3 LIMIT 1",
-                domain_id, candidate, source_id,
+                domain_id,
+                candidate,
+                source_id,
             )
             if not conflict:
                 return candidate
@@ -1018,7 +1048,9 @@ class Query:
                 "SELECT 1 FROM registered_tables "
                 "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "
                 "AND source_id != $3 LIMIT 1",
-                domain_id, prefixed, source_id,
+                domain_id,
+                prefixed,
+                source_id,
             )
             if not conflict2:
                 return prefixed
@@ -1029,7 +1061,9 @@ class Query:
                     "SELECT 1 FROM registered_tables "
                     "WHERE domain_id = $1 AND COALESCE(alias, table_name) = $2 "
                     "AND source_id != $3 LIMIT 1",
-                    domain_id, suffixed, source_id,
+                    domain_id,
+                    suffixed,
+                    source_id,
                 )
                 if not taken:
                     return suffixed
@@ -1469,9 +1503,7 @@ class Mutation:
         return MutationResult(success=True, message="Schemas rebuilt")
 
     @strawberry.mutation
-    async def create_source(
-        self, info: StrawberryInfo, input: SourceInput
-    ) -> MutationResult:
+    async def create_source(self, info: StrawberryInfo, input: SourceInput) -> MutationResult:
         from provisa.api.admin.capabilities import require_capability
 
         require_capability(info, "source_registration")
@@ -1529,9 +1561,7 @@ class Mutation:
         return MutationResult(success=True, message=f"Source {input.id!r} created")
 
     @strawberry.mutation
-    async def update_source(
-        self, info: StrawberryInfo, input: SourceInput
-    ) -> MutationResult:
+    async def update_source(self, info: StrawberryInfo, input: SourceInput) -> MutationResult:
         from provisa.api.admin.capabilities import require_capability
 
         require_capability(info, "source_registration")
@@ -1691,9 +1721,7 @@ class Mutation:
         return MutationResult(success=True, message=f"Role {input.id!r} created")
 
     @strawberry.mutation
-    async def register_table(
-        self, info: StrawberryInfo, input: TableInput
-    ) -> MutationResult:
+    async def register_table(self, info: StrawberryInfo, input: TableInput) -> MutationResult:
         import logging
 
         logging.getLogger(__name__).warning(
@@ -1730,9 +1758,7 @@ class Mutation:
         if input.view_sql and not columns:
             async with pool.acquire() as _vc:
                 _roles = [r["id"] for r in await _vc.fetch("SELECT id FROM roles")]
-                columns = await _introspect_view_columns(
-                    _vc, input.view_sql, _roles or ["admin"]
-                )
+                columns = await _introspect_view_columns(_vc, input.view_sql, _roles or ["admin"])
         elif input.view_sql and columns:
             async with pool.acquire() as _vc:
                 columns = await _ensure_view_column_types(_vc, input.view_sql, columns)
@@ -1867,9 +1893,7 @@ class Mutation:
         if input.view_sql and not columns:
             async with pool.acquire() as _vc:
                 _roles = [r["id"] for r in await _vc.fetch("SELECT id FROM roles")]
-                columns = await _introspect_view_columns(
-                    _vc, input.view_sql, _roles or ["admin"]
-                )
+                columns = await _introspect_view_columns(_vc, input.view_sql, _roles or ["admin"])
         elif input.view_sql and columns:
             async with pool.acquire() as _vc:
                 columns = await _ensure_view_column_types(_vc, input.view_sql, columns)
@@ -1903,7 +1927,12 @@ class Mutation:
         async with pool.acquire() as conn:
             _conn = cast(asyncpg.Connection, conn)
             _conflict = await _domain_table_conflict(
-                _conn, model.domain_id, model.table_name, model.source_id, model.schema_name, input.alias
+                _conn,
+                model.domain_id,
+                model.table_name,
+                model.source_id,
+                model.schema_name,
+                input.alias,
             )
             if _conflict:
                 return MutationResult(success=False, message=_conflict)
@@ -1994,7 +2023,9 @@ class Mutation:
 
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            deleted = await rls_repo.delete(cast(asyncpg.Connection, conn), role_id, table_id=table_id, domain_id=domain_id)
+            deleted = await rls_repo.delete(
+                cast(asyncpg.Connection, conn), role_id, table_id=table_id, domain_id=domain_id
+            )
         if deleted:
             return MutationResult(success=True, message="RLS rule deleted")
         return MutationResult(success=False, message="RLS rule not found")
@@ -2018,7 +2049,9 @@ class Mutation:
             return MutationResult(success=False, message=str(e))
 
         if req["request_type"] == "relationship":
-            result = await self.upsert_relationship(info, _rebuild_relationship_input(req["payload"]))
+            result = await self.upsert_relationship(
+                info, _rebuild_relationship_input(req["payload"])
+            )
         elif req["request_type"] == "view":
             result = await self.register_table(info, _rebuild_table_input(req["payload"]))
         else:
@@ -2048,7 +2081,9 @@ class Mutation:
         async with pool.acquire() as conn:
             req = await cr_repo.get(cast(asyncpg.Connection, conn), request_id)
             if req is None or req["status"] != "pending":
-                return MutationResult(success=False, message="Request not found or already resolved")
+                return MutationResult(
+                    success=False, message="Request not found or already resolved"
+                )
             try:
                 require_capability(info, req["capability"])
             except PermissionError as e:
@@ -2189,6 +2224,11 @@ class Mutation:
         from provisa.api.app import state
 
         from provisa.compiler import naming as _naming
+
+        # REQ-416: reject free-form conventions; only the presets (and their aliases) are valid.
+        err = _naming.validation_error_for_convention(convention)
+        if err:
+            return MutationResult(success=False, message=err)
 
         state.global_gql_naming_convention = convention
         _naming.configure(gql=convention, sql=state.global_sql_naming_convention)
