@@ -66,6 +66,13 @@ def build_values_cte_sql(sql: str, table_name: str, entry: "HotTableEntry") -> s
     """Replace the first table reference matching table_name with a VALUES CTE.
 
     Works for both FROM and JOIN targets. Merges with any existing WITH clause.
+
+    REQ-233: hot rows are injected verbatim into the CTE on purpose. Column governance
+    (RLS / masking / visibility) is applied by Stage 2 (`apply_governance`) to the governed
+    SQL that wraps this CTE — the pipeline order is governance → cache/CTE → route — so the
+    governed query filters and masks the CTE rows exactly as it would the live table. Storing
+    governed-per-role copies in Redis would be both redundant and a leak risk, so the cache
+    holds the raw rows and governance stays at query time.
     """
     import re
     import sqlglot
@@ -143,10 +150,18 @@ class HotTableCandidate:
 class HotTableManager:
     """Manages small lookup tables cached in Redis for JOIN optimization."""
 
-    def __init__(self, redis_url: str, auto_threshold: int, max_rows: int, ttl: int = 300):
+    def __init__(
+        self,
+        redis_url: str,
+        auto_threshold: int,
+        max_rows: int,
+        ttl: int = 300,
+        max_bytes: int = 10 * 1024 * 1024,
+    ):
         self._redis_url = redis_url
         self._auto_threshold = auto_threshold
         self._max_rows = max_rows
+        self._max_bytes = max_bytes  # REQ-230: serialized blob ceiling (default 10 MB)
         self._ttl = ttl
         self._redis = None
         self._hot_tables: dict[str, HotTableEntry] = {}
@@ -176,9 +191,22 @@ class HotTableManager:
         columns = list(rows[0].keys()) if rows else []
         blob_key = HOT_PREFIX + table_name + ":blob"
 
+        # REQ-230: measure the serialized blob and skip caching a table that exceeds the byte
+        # ceiling, even when its row count is within max_rows (wide rows can still be large).
+        blob = _dumps(rows)
+        blob_bytes = len(blob.encode("utf-8"))
+        if blob_bytes > self._max_bytes:
+            log.warning(
+                "Hot table %s is %d bytes (max %d), skipping",
+                table_name,
+                blob_bytes,
+                self._max_bytes,
+            )
+            return len(rows)
+
         pipe = self._redis.pipeline()
         pipe.delete(blob_key)
-        pipe.set(blob_key, _dumps(rows), ex=self._ttl)
+        pipe.set(blob_key, blob, ex=self._ttl)
         await pipe.execute()
 
         self._hot_tables[table_name] = HotTableEntry(
@@ -293,7 +321,10 @@ class HotTableManager:
             entry = self._hot_tables.get(table_name)
             if entry:
                 return entry.rows
-            raise KeyError(f"Hot table {table_name!r} not found in Redis")
+            # REQ-231: a cache miss returns no rows rather than raising — the caller falls
+            # back to the live source. (CTE injection is gated on is_hot()/get_entry(), so an
+            # evicted/expired hot table is simply queried live; this is the structural fallback.)
+            return []
         return json.loads(data)
 
     async def invalidate(self, table_name: str) -> None:
@@ -511,6 +542,32 @@ async def count_table_rows(trino_conn, table_name: str, schema: str, catalog: st
     return row[0] if row else 0
 
 
+async def detect_hot_tables_by_count(
+    trino_conn,
+    candidates: list[tuple[str, str, str]],
+    auto_threshold: int,
+    hot_overrides: dict[str, bool | None],
+) -> list[str]:
+    """REQ-236 criterion (1): a table whose row count is at/below ``auto_threshold`` is hot.
+
+    candidates: list of (table_name, schema, catalog) for Trino-backed tables to size.
+    Opt-outs (hot: false) are skipped; COUNT(*) failures are tolerated (table left non-hot).
+    Returns the table names that qualify by row count.
+    """
+    result: list[str] = []
+    for table_name, schema, catalog in candidates:
+        if hot_overrides.get(table_name) is False:
+            continue
+        try:
+            count = await count_table_rows(trino_conn, table_name, schema, catalog)
+        except Exception:
+            log.debug("COUNT(*) failed for hot-detect of %s; leaving non-hot", table_name)
+            continue
+        if 0 < count <= auto_threshold:
+            result.append(table_name)
+    return result
+
+
 async def init_hot_tables(
     raw_config: dict,
     trino_conn,
@@ -528,12 +585,18 @@ async def init_hot_tables(
         return None
 
     auto_threshold = hot_config.get("auto_threshold", 1_000)
-    refresh_interval = hot_config.get("refresh_interval", 300)
+    # REQ-231: hot TTL defaults to the materialized-views default TTL when not set explicitly.
+    mv_default_ttl = raw_config.get("materialized_views", {}).get("default_ttl", 300)
+    refresh_interval = hot_config.get("refresh_interval", mv_default_ttl)
+    # REQ-230: max_rows has its own default (falls back to auto_threshold) and a byte ceiling.
+    max_rows = hot_config.get("max_rows", auto_threshold)
+    max_bytes = hot_config.get("max_bytes", 10 * 1024 * 1024)
     hot_mgr = HotTableManager(
         redis_url=redis_url,
         auto_threshold=auto_threshold,
-        max_rows=auto_threshold,
+        max_rows=max_rows,
         ttl=refresh_interval,
+        max_bytes=max_bytes,
     )
 
     hot_overrides: dict[str, bool | None] = {}
@@ -604,5 +667,33 @@ async def init_hot_tables(
             )
         )
         log.debug("Registered hot table candidate %s (lazy promotion on first query)", tbl_name)
+
+    # REQ-236 criterion (1): also size small Trino-backed tables by COUNT(*) and register
+    # those at/below auto_threshold as candidates. Skip ones already handled above.
+    already = set(auto_candidates) | {n for n, o in hot_overrides.items() if o is True}
+    count_candidates: list[tuple[str, str, str]] = []
+    count_meta: dict[str, tuple] = {}
+    for tbl_cfg in tables_list:
+        tbl_name = tbl_cfg.get("table") or tbl_cfg.get("table_name")
+        if not tbl_name or tbl_name in already:
+            continue
+        result = _tbl_meta(tbl_name)
+        if result[0] is None or result[3] not in _TRINO_BACKED:
+            continue
+        _, source_id, _source_cfg, _source_type, pk_col, schema_name = result
+        catalog = source_to_catalog(source_id)
+        count_candidates.append((tbl_name, schema_name, catalog))
+        count_meta[tbl_name] = (pk_col, catalog, schema_name)
+
+    for tbl_name in await detect_hot_tables_by_count(
+        trino_conn, count_candidates, auto_threshold, hot_overrides
+    ):
+        pk_col, catalog, schema_name = count_meta[tbl_name]
+        hot_mgr.register_candidate(
+            HotTableCandidate(
+                table_name=tbl_name, pk_column=pk_col, catalog=catalog, schema=schema_name
+            )
+        )
+        log.debug("Registered hot table candidate %s by row-count (REQ-236)", tbl_name)
 
     return hot_mgr

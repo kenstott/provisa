@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -139,13 +139,19 @@ class TestHotTableManager:
             (2, "UK", "United Kingdom"),
         ]
         mock_cursor.description = [
-            ("id",), ("code",), ("name",),
+            ("id",),
+            ("code",),
+            ("name",),
         ]
         mock_conn = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
         count = await manager.load_table(
-            mock_conn, "countries", "public", "pg", "id",
+            mock_conn,
+            "countries",
+            "public",
+            "pg",
+            "id",
         )
         assert count == 2
         assert manager.is_hot("countries")
@@ -171,7 +177,11 @@ class TestHotTableManager:
         mock_conn.cursor.return_value = mock_cursor
 
         count = await manager.load_table(
-            mock_conn, "big_countries", "public", "pg", "id",
+            mock_conn,
+            "big_countries",
+            "public",
+            "pg",
+            "id",
         )
         assert count == 10_001
         assert not manager.is_hot("big_countries")
@@ -204,6 +214,7 @@ class TestHotTableManager:
     @pytest.mark.asyncio
     async def test_get_rows_from_redis(self, manager):
         import json
+
         rows = [{"id": 1, "name": "US"}, {"id": 2, "name": "UK"}]
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=json.dumps(rows))
@@ -231,13 +242,34 @@ class TestHotTableManager:
         assert len(result) == 1
 
     @pytest.mark.asyncio
-    async def test_get_rows_raises_when_not_found(self, manager):
+    async def test_get_rows_returns_empty_when_not_found(self, manager):
+        # REQ-231: a cache miss returns no rows (caller falls back to live), not a KeyError.
         mock_redis = AsyncMock()
         mock_redis.get = AsyncMock(return_value=None)
         manager._redis = mock_redis
 
-        with pytest.raises(KeyError, match="not found"):
-            await manager.get_rows("nonexistent")
+        assert await manager.get_rows("nonexistent") == []
+
+    @pytest.mark.asyncio
+    async def test_max_bytes_guard_skips_wide_table(self):
+        # REQ-230: a table within max_rows but over the byte ceiling is not cached.
+        mgr = HotTableManager(
+            redis_url="redis://localhost:6379",
+            auto_threshold=1_000,
+            max_rows=1_000,
+            max_bytes=200,  # tiny ceiling
+        )
+        mock_redis = MagicMock()
+        mock_pipe = MagicMock()
+        mock_pipe.execute = AsyncMock(return_value=[])
+        mock_redis.pipeline.return_value = mock_pipe
+        mgr._redis = mock_redis
+
+        wide = [{"id": i, "blob": "x" * 100} for i in range(10)]
+        count = await mgr._store_rows("wide", wide, "id", "pg", "public")
+        assert count == 10
+        assert not mgr.is_hot("wide")  # over byte ceiling → not stored
+        mock_redis.pipeline.assert_not_called()
 
 
 # --- VALUES CTE rewrite ---
@@ -363,6 +395,7 @@ class TestSqlLiteral:
 class TestHotTableModelField:
     def test_table_hot_field_default_none(self):
         from provisa.core.models import Table
+
         t = Table(
             source_id="pg",
             domain_id="test",
@@ -375,6 +408,7 @@ class TestHotTableModelField:
 
     def test_table_hot_true(self):
         from provisa.core.models import Table
+
         t = Table(
             source_id="pg",
             domain_id="test",
@@ -388,6 +422,7 @@ class TestHotTableModelField:
 
     def test_table_hot_false(self):
         from provisa.core.models import Table
+
         t = Table(
             source_id="pg",
             domain_id="test",
@@ -403,12 +438,14 @@ class TestHotTableModelField:
 class TestHotTablesConfig:
     def test_defaults(self):
         from provisa.core.models import HotTablesConfig
+
         cfg = HotTablesConfig()
         assert cfg.auto_threshold == 1_000
         assert cfg.refresh_interval == 300
 
     def test_custom(self):
         from provisa.core.models import HotTablesConfig
+
         cfg = HotTablesConfig(auto_threshold=5_000, refresh_interval=60)
         assert cfg.auto_threshold == 5_000
         assert cfg.refresh_interval == 60
@@ -449,3 +486,72 @@ class TestMutationInvalidation:
 
         await mgr.invalidate("countries")
         assert not mgr.is_hot("countries")
+
+
+# --- REQ-236: COUNT(*) auto-detection ---
+
+class _CountConn:
+    def __init__(self, counts: dict):
+        self._counts = counts
+        self._last = 0
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql):
+        self._last = 0
+        for t, c in self._counts.items():
+            if f'"{t}"' in sql:
+                self._last = c
+                return
+
+    def fetchone(self):
+        return (self._last,)
+
+
+class TestDetectHotTablesByCount:
+    @pytest.mark.asyncio
+    async def test_small_table_qualifies(self):
+        from provisa.cache.hot_tables import detect_hot_tables_by_count
+
+        conn = _CountConn({"small": 50, "big": 5000})
+        cands = [("small", "public", "pg"), ("big", "public", "pg")]
+        result = await detect_hot_tables_by_count(conn, cands, 1_000, {})
+        assert result == ["small"]
+
+    @pytest.mark.asyncio
+    async def test_empty_table_excluded(self):
+        from provisa.cache.hot_tables import detect_hot_tables_by_count
+
+        conn = _CountConn({"empty": 0})
+        result = await detect_hot_tables_by_count(conn, [("empty", "public", "pg")], 1_000, {})
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_opt_out_skipped(self):
+        from provisa.cache.hot_tables import detect_hot_tables_by_count
+
+        conn = _CountConn({"small": 50})
+        result = await detect_hot_tables_by_count(
+            conn, [("small", "public", "pg")], 1_000, {"small": False}
+        )
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_count_failure_tolerated(self):
+        from provisa.cache.hot_tables import detect_hot_tables_by_count
+
+        class _BoomConn:
+            def cursor(self):
+                return self
+
+            def execute(self, sql):
+                raise RuntimeError("connector has no COUNT")
+
+            def fetchone(self):
+                return (0,)
+
+        result = await detect_hot_tables_by_count(
+            _BoomConn(), [("t", "public", "pg")], 1_000, {}
+        )
+        assert result == []
