@@ -615,6 +615,7 @@ async def _mat_gql_remote_table(
     _hot_threshold: int,
     cache_rewrites: dict,
     values_cte_entries: dict,
+    extra_selections: dict[str, str] | None = None,
 ) -> None:
     """Materialize a graphql_remote-backed table into the Trino cache or VALUES CTE."""
     from provisa.api_source.trino_cache import (
@@ -642,7 +643,12 @@ async def _mat_gql_remote_table(
         "boolean": "boolean",
         "jsonb": "jsonb",
     }
-    col_dicts = gql_tbl.get("columns", [])
+    col_dicts = list(gql_tbl.get("columns", []))
+    if extra_selections:
+        _existing_names = {c["name"] for c in col_dicts}
+        for _fname, _gql_sel in extra_selections.items():
+            if _fname not in _existing_names:
+                col_dicts.append({"name": _fname, "type": "jsonb", "gql_selection": _gql_sel})
     _sb = getattr(state, "schema_build_cache", {})
     _sb_tbls = _sb.get("tables", [])
     _sb_rels = _sb.get("relationships", [])
@@ -966,7 +972,9 @@ async def _mat_api_ep_table(
     )
 
 
-async def _materialize_api_to_trino_cache(exec_sql: str, state) -> tuple[dict, dict]:
+async def _materialize_api_to_trino_cache(
+    exec_sql: str, state, gql_remote_extra_selections: dict | None = None
+) -> tuple[dict, dict]:
     """Materialize API-backed tables into Trino cache (VARCHAR columns) before Trino SQL runs.
 
     Avoids INVALID_CAST_ARGUMENT: Trino's PG connector exposes JSONB as json type;
@@ -1015,6 +1023,7 @@ async def _materialize_api_to_trino_cache(exec_sql: str, state) -> tuple[dict, d
                     _hot_threshold,
                     cache_rewrites,
                     values_cte_entries,
+                    extra_selections=(gql_remote_extra_selections or {}).get(tn),
                 )
             continue
 
@@ -1558,7 +1567,9 @@ async def _execute_api_source(compiled, ctx, state, source_id, root_field, outpu
     assert cache_tbl is not None, "cache_tbl must be set before Phase 2"
     rewritten_sql = rewrite_from_cache(exec_sql, _cache_loc, cache_tbl)
     # Rewrite any joined API table refs → VALUES CTE (hot) or Trino cache
-    _join_rewrites, _join_values_ctes = await _materialize_api_to_trino_cache(rewritten_sql, state)
+    _join_rewrites, _join_values_ctes = await _materialize_api_to_trino_cache(
+        rewritten_sql, state, compiled.gql_remote_extra_selections
+    )
     if _join_values_ctes:
         from provisa.cache.hot_tables import build_values_cte_sql
 
@@ -1845,7 +1856,9 @@ async def _execute_trino_standard(
         exec_sql = _inject_probe_limit(exec_sql, probe_limit)
 
     # Materialize API-backed tables into Trino cache to avoid INVALID_CAST_ARGUMENT
-    _api_cache_rewrites, _api_values_ctes = await _materialize_api_to_trino_cache(exec_sql, state)
+    _api_cache_rewrites, _api_values_ctes = await _materialize_api_to_trino_cache(
+        exec_sql, state, compiled.gql_remote_extra_selections
+    )
     for _tn, _entry in _api_values_ctes.items():
         exec_sql = build_values_cte_sql(exec_sql, _tn, _entry)
     if _api_cache_rewrites:
@@ -1853,10 +1866,14 @@ async def _execute_trino_standard(
 
     # AL5/AL3: extract comment hints, merge source federation hints
     exec_sql, comment_hints = extract_hints(exec_sql)
+    from provisa.compiler.directives import translate_federation_hints
+
     session_hints: dict[str, str] = {}
     for sid in compiled.sources:
         src_hints = getattr(state, "source_federation_hints", {}).get(sid, {})
-        session_hints.update(src_hints)
+        # REQ-281: source hints use the Provisa-branded @provisa vocabulary; translate to
+        # Trino session props here (the single translation layer) before they reach SET SESSION.
+        session_hints.update(translate_federation_hints(src_hints))
     session_hints.update(query_session_props or {})
     session_hints.update(comment_hints)
 
@@ -2152,7 +2169,9 @@ async def _exec_ctas_route(compiled, ctx, state, effective_redirect_format, redi
 
     _, _, _, _ = await _hydrate_api_tables_before_trino(compiled, ctx, state)
     _ctas_exec_sql = rewrite_semantic_to_trino_physical(compiled.sql, ctx)
-    _ctas_rewrites, _ctas_values_ctes = await _materialize_api_to_trino_cache(_ctas_exec_sql, state)
+    _ctas_rewrites, _ctas_values_ctes = await _materialize_api_to_trino_cache(
+        _ctas_exec_sql, state, compiled.gql_remote_extra_selections
+    )
     if _ctas_values_ctes:
         from provisa.cache.hot_tables import build_values_cte_sql
 

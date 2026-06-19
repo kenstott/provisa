@@ -174,7 +174,10 @@ class Source(BaseModel):
     cache_catalog: str | None = None  # Trino catalog for API cache; None = source's own catalog
     cache_schema: str = "api_cache"  # schema within that catalog
     gql_naming_convention: str | None = None  # overrides global; None = inherit
-    federation_hints: dict[str, str] = Field(default_factory=dict)  # Trino session props
+    # REQ-281: Provisa-branded federation hints (join/reorder/broadcast_size, the @provisa
+    # vocabulary), translated to Trino session props at query time. Raw Trino keys still pass
+    # through for backward compatibility but are deprecated.
+    federation_hints: dict[str, str] = Field(default_factory=dict)
     # REQ-251: type-specific mapping DSL for NoSQL/non-relational sources
     # (redis/elasticsearch/prometheus). Holds {"tables": [...]} plus connector options.
     mapping: dict = Field(default_factory=dict)
