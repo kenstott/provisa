@@ -91,3 +91,10 @@ node_modules/
 /packaging/macos/Provisa.app/Contents/Resources/
 /packaging/macos/Provisa.app/Contents/_CodeSignature/
 identifier.sqlite
+
+# Test output
+/test-results/
+
+# Transient Trino catalog artifacts (rebuild triggers, temp/probe catalogs; may hold creds)
+/trino/catalog-install/rebuild_trigger.properties
+/trino/catalog-install/tmp_src_*.properties
