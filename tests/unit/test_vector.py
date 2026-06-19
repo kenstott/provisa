@@ -222,4 +222,93 @@ class TestConfigWiring:
         assert reg.is_allowed("m")
 
 
+# --- Phase B1: native tier (REQ-423/429/430) ---
+
+
+class TestCosineSimilaritySql:
+    async def test_pgvector_translation(self):
+        from provisa.vector.query import cosine_similarity_sql
+
+        sql = cosine_similarity_sql("title_vec", [0.1, 0.2, 0.3], "pgvector")
+        assert sql == "(1 - (title_vec <=> '[0.1,0.2,0.3]'::vector))"
+
+    async def test_cortex_translation(self):
+        from provisa.vector.query import cosine_similarity_sql
+
+        sql = cosine_similarity_sql("v", [0.1, 0.2], "cortex")
+        assert sql == "VECTOR_COSINE_SIMILARITY(v, [0.1,0.2]::VECTOR(FLOAT, 2))"
+
+    async def test_atlas_has_no_sql_scalar(self):
+        from provisa.vector.query import VectorQueryError, cosine_similarity_sql
+
+        with pytest.raises(VectorQueryError, match="vectorSearch"):
+            cosine_similarity_sql("v", [0.1], "atlas_vector")
+
+    async def test_no_native_capability_directs_to_fallback(self):
+        from provisa.vector.query import VectorQueryError, cosine_similarity_sql
+
+        with pytest.raises(VectorQueryError, match="fallback"):
+            cosine_similarity_sql("v", [0.1], None)
+
+    async def test_empty_vector_rejected(self):
+        from provisa.vector.query import VectorQueryError, cosine_similarity_sql
+
+        with pytest.raises(VectorQueryError, match="empty"):
+            cosine_similarity_sql("v", [], "pgvector")
+
+
+class TestModelLocking:
+    async def test_dimension_match_ok(self):
+        from provisa.vector.query import validate_vector_dimensions
+
+        validate_vector_dimensions([1.0, 2.0, 3.0], VectorModel("m", "openai", 3))  # no raise
+
+    async def test_dimension_mismatch_rejected(self):
+        from provisa.vector.query import validate_vector_dimensions
+
+        with pytest.raises(VectorModelError, match="expects 3"):
+            validate_vector_dimensions([1.0, 2.0], VectorModel("m", "openai", 3))
+
+
+class TestResolveQueryVector:
+    async def test_raw_vector_passthrough_with_validation(self):
+        from provisa.vector.query import resolve_query_vector
+
+        m = VectorModel("m", "openai", 3)
+        assert await resolve_query_vector([0.1, 0.2, 0.3], m) == [0.1, 0.2, 0.3]
+
+    async def test_raw_vector_wrong_dimension_rejected(self):
+        from provisa.vector.query import resolve_query_vector
+
+        with pytest.raises(VectorModelError):
+            await resolve_query_vector([0.1, 0.2], VectorModel("m", "openai", 3))
+
+    async def test_text_input_vectorized_via_locked_model(self):
+        from provisa.vector.query import resolve_query_vector
+
+        class _Provider:
+            async def embed(self, texts, model):
+                assert texts == ["hello"]
+                return [[0.5, 0.6, 0.7]]
+
+        m = VectorModel("m", "openai", 3)
+        assert await resolve_query_vector("hello", m, provider=_Provider()) == [0.5, 0.6, 0.7]
+
+    async def test_text_input_dimension_mismatch_rejected(self):
+        from provisa.vector.query import resolve_query_vector
+
+        class _Provider:
+            async def embed(self, texts, model):
+                return [[0.1, 0.2]]  # 2 dims, model expects 3
+
+        with pytest.raises(VectorModelError):
+            await resolve_query_vector("hello", VectorModel("m", "openai", 3), provider=_Provider())
+
+    async def test_bad_input_type_rejected(self):
+        from provisa.vector.query import VectorQueryError, resolve_query_vector
+
+        with pytest.raises(VectorQueryError, match="text or a vector"):
+            await resolve_query_vector(42, VectorModel("m", "openai", 3))
+
+
 _ = types  # silence unused-import lints in some environments
