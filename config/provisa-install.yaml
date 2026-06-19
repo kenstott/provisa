@@ -107,6 +107,21 @@ relationships:
   source_table_id: assignments
   target_column: breed_name
   target_table_id: pets
+- alias: ASSIGNMENT_EMPLOYEE
+  cardinality: many-to-one
+  id: shelter-assignments-to-employees
+  source_column: employee_id
+  source_table_id: assignments
+  target_column: id
+  target_table_id: employees
+- alias: ASSIGNMENT_BREED
+  cardinality: many-to-one
+  graphql_alias: breed
+  id: shelter-assignments-to-breeds
+  source_column: breed_name
+  source_table_id: assignments
+  target_column: name
+  target_table_id: animal_breeds
 roles:
 - capabilities:
   - source_registration
@@ -538,17 +553,26 @@ tables:
     visible_to:
     - admin
     - analyst
-  - name: email
+  - name: contact
+    data_type: jsonb
     visible_to:
     - admin
     - analyst
-  - name: phone
-    visible_to:
-    - admin
-    - analyst
-  - name: ssn
-    visible_to:
-    - admin
+    object_fields:
+    - name: phone
+      type: string
+      visible_to:
+      - admin
+      - analyst
+    - name: email
+      type: string
+      visible_to:
+      - admin
+      - analyst
+    - name: ssn
+      type: string
+      visible_to:
+      - admin
   description: "All staff eligible for breed assignments \u2014 use to identify who\
     \ can be assigned or scheduled"
   domain_id: shelter
@@ -580,17 +604,26 @@ tables:
     visible_to:
     - admin
     - analyst
-  - name: email
+  - name: contact
+    data_type: jsonb
     visible_to:
     - admin
     - analyst
-  - name: phone
-    visible_to:
-    - admin
-    - analyst
-  - name: ssn
-    visible_to:
-    - admin
+    object_fields:
+    - name: phone
+      type: string
+      visible_to:
+      - admin
+      - analyst
+    - name: email
+      type: string
+      visible_to:
+      - admin
+      - analyst
+    - name: ssn
+      type: string
+      visible_to:
+      - admin
   description: "Contact details and department for a single staff member \u2014 use\
     \ to route assignment requests or resolve scheduling conflicts"
   domain_id: shelter
