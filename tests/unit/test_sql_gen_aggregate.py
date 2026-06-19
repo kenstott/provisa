@@ -670,18 +670,18 @@ class TestStddevVariance:
 
 
 class TestAggregateGating:
-    """REQ-197: per-role allow_aggregations gates the <table>_aggregate root field."""
+    """REQ-197: the "no_aggregations" capability gates the <table>_aggregate root field."""
 
     def test_aggregate_present_by_default(self):
         schema, _ = _build_schema_and_ctx()
         assert "orders_aggregate" in schema.query_type.fields
 
-    def test_aggregate_absent_when_disallowed(self):
-        schema, _ = _build_schema_and_ctx(role_extra={"allow_aggregations": False})
+    def test_aggregate_absent_when_capability_denies(self):
+        schema, _ = _build_schema_and_ctx(role_extra={"capabilities": ["no_aggregations"]})
         assert "orders_aggregate" not in schema.query_type.fields
         # plain table field is still present
         assert "orders" in schema.query_type.fields
 
-    def test_aggregate_present_when_explicitly_allowed(self):
-        schema, _ = _build_schema_and_ctx(role_extra={"allow_aggregations": True})
+    def test_aggregate_present_with_unrelated_capabilities(self):
+        schema, _ = _build_schema_and_ctx(role_extra={"capabilities": ["table_registration"]})
         assert "orders_aggregate" in schema.query_type.fields

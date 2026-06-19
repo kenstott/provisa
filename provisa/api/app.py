@@ -1885,8 +1885,21 @@ async def _load_tracked_functions_and_webhooks(
 
     await _ensure_catalog_cache(state.pg_pool)
     fn_rows = await conn.fetch("SELECT * FROM tracked_functions ORDER BY name")
-    # REQ-209: only steward-approved webhooks are exposed and callable.
-    wh_rows = await conn.fetch("SELECT * FROM tracked_webhooks WHERE approved = TRUE ORDER BY name")
+    # REQ-209: only steward-approved webhooks are exposed and callable. A webhook is approved
+    # when its most recent "webhook" creation_request is executed (editing enqueues a fresh
+    # pending request, which resets approval). Tracked in creation_requests — no column on
+    # tracked_webhooks.
+    wh_rows = await conn.fetch(
+        """
+        SELECT w.* FROM tracked_webhooks w
+        WHERE (
+            SELECT c.status FROM creation_requests c
+            WHERE c.request_type = 'webhook' AND c.payload->>'name' = w.name
+            ORDER BY c.id DESC LIMIT 1
+        ) = 'executed'
+        ORDER BY w.name
+        """
+    )
     import json as _json
 
     tracked_functions = [
@@ -2095,10 +2108,7 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
             if _src_dict.get("type") == "postgresql":
                 sources[_sid] = {**_src_dict, "database": source_to_catalog(_sid)}
         roles = [
-            dict(r)
-            for r in await conn.fetch(
-                "SELECT id, capabilities, domain_access, allow_aggregations FROM roles"
-            )
+            dict(r) for r in await conn.fetch("SELECT id, capabilities, domain_access FROM roles")
         ]
 
         # Inject source-level naming convention into table dicts for hierarchical resolution

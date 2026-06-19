@@ -1341,9 +1341,10 @@ def generate_schema(si: SchemaInput) -> GraphQLSchema:
         _build_native_filter_args(t, args)
         query_fields[t.field_name] = GraphQLField(GraphQLList(GraphQLNonNull(gql_type)), args=args)
 
-        # REQ-197: per-role aggregate gating. When the role disallows aggregations, the
-        # <table>_aggregate root field is not exposed at all.
-        if si.role.get("allow_aggregations", True):
+        # REQ-197: per-role aggregate gating. Aggregations are allowed by default; a role
+        # carrying the "no_aggregations" capability has the <table>_aggregate root field
+        # suppressed entirely. Modeled on the existing capabilities array (no schema change).
+        if "no_aggregations" not in (si.role.get("capabilities") or []):
             agg_result = _build_aggregate_query_field(t, gql_type, si.enum_types)
             if agg_result:
                 query_fields[agg_result[0]] = agg_result[1]

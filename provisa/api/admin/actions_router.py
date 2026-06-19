@@ -52,7 +52,6 @@ CREATE TABLE IF NOT EXISTS tracked_webhooks (
     visible_to         TEXT[] NOT NULL DEFAULT '{}',
     domain_id          TEXT NOT NULL DEFAULT '',
     description        TEXT,
-    approved           BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-209: steward-approval gate
     created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -100,7 +99,6 @@ def _row_to_webhook(row: dict) -> dict:
         "domainId": row["domain_id"],
         "description": row.get("description"),
         "kind": row.get("kind", "mutation"),
-        "approved": bool(row.get("approved", False)),
     }
 
 
@@ -280,14 +278,12 @@ async def create_webhook(body: WebhookInput):
     from provisa.core.repositories import creation_request as cr_repo
 
     async with state.pg_pool.acquire() as conn:
-        # REQ-209: a webhook is registered unapproved and is not exposed until a steward
-        # approves it. Any create/edit resets approval (the behavior changed).
         await conn.execute(
             """
             INSERT INTO tracked_webhooks
                 (name, url, method, timeout_ms, returns,
-                 inline_return_type, arguments, visible_to, domain_id, description, kind, approved)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, FALSE)
+                 inline_return_type, arguments, visible_to, domain_id, description, kind)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             ON CONFLICT (name) DO UPDATE SET
                 url                = EXCLUDED.url,
                 method             = EXCLUDED.method,
@@ -299,7 +295,6 @@ async def create_webhook(body: WebhookInput):
                 domain_id          = EXCLUDED.domain_id,
                 description        = EXCLUDED.description,
                 kind               = EXCLUDED.kind,
-                approved           = FALSE,
                 updated_at         = NOW()
             """,
             body.name,
@@ -314,6 +309,10 @@ async def create_webhook(body: WebhookInput):
             body.description,
             body.kind,
         )
+        # REQ-209: a webhook is exposed only after a steward approves it. Approval is tracked
+        # via the creation_requests queue — a webhook is approved when its most recent
+        # "webhook" request is executed. Registering or editing enqueues a fresh pending
+        # request, so any edit resets approval until re-approved.
         request_id = await cr_repo.create(
             cast(asyncpg.Connection, conn),
             "webhook",
@@ -323,7 +322,6 @@ async def create_webhook(body: WebhookInput):
         )
 
     log.info("Saved tracked webhook %s (pending approval, request #%s)", body.name, request_id)
-    # Unapproved → not exposed; rebuild keeps any previously-approved state consistent.
     from provisa.api.app import _rebuild_schemas
 
     await _rebuild_schemas()
