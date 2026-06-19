@@ -463,6 +463,28 @@ def _build_column_models(columns: list) -> list:
     ]
 
 
+async def _discover_columns_for_registration(source_id: str, table_name: str) -> list[dict]:
+    """REQ-252: infer columns from a live NoSQL source via its adapter discover_schema.
+
+    Reuses the same dispatch as the admin discovery endpoint. The table name is the target
+    index/collection/keyspace. Raises (HTTPException or transport error) on failure so the
+    caller can refuse to register an empty schema.
+    """
+    from provisa.api.admin.discovery_schema import DiscoverRequest, _call_discover
+    from provisa.source_adapters.registry import get_adapter
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM sources WHERE id = $1", source_id)
+    if row is None:
+        raise ValueError(f"source {source_id!r} not found for discovery")
+    adapter = get_adapter(row["type"])
+    hints = DiscoverRequest(
+        collection=table_name, index=table_name, keyspace=table_name, table=table_name
+    )
+    return _call_discover(adapter, row["type"], row, hints)
+
+
 async def _introspect_view_columns(conn, view_sql: str, default_roles: list[str]) -> list:
     """Derive a view's columns from its SQL when the caller supplies none.
 
@@ -1762,6 +1784,22 @@ class Mutation:
         elif input.view_sql and columns:
             async with pool.acquire() as _vc:
                 columns = await _ensure_view_column_types(_vc, input.view_sql, columns)
+        elif getattr(input, "discover", False):
+            # REQ-252: infer columns from the live NoSQL source; explicit columns take
+            # precedence. Discovery failures raise rather than registering an empty schema.
+            from provisa.api.admin.types import ColumnInput as _ColInput
+            from provisa.discovery.column_inference import merge_discovered_columns
+
+            try:
+                discovered = await _discover_columns_for_registration(
+                    input.source_id, input.table_name
+                )
+            except Exception as e:
+                return MutationResult(success=False, message=f"Schema discovery failed: {e}")
+            discovered_models = _build_column_models(
+                [_ColInput(name=d["name"], visible_to=[]) for d in discovered]
+            )
+            columns = merge_discovered_columns(columns, discovered_models)
         alias = input.alias or None
         if not alias:
             from provisa.compiler.naming import apply_convention
@@ -2055,15 +2093,15 @@ class Mutation:
         elif req["request_type"] == "view":
             result = await self.register_table(info, _rebuild_table_input(req["payload"]))
         elif req["request_type"] == "webhook":
-            # REQ-209: approving a webhook marks it approved so it is exposed on rebuild.
+            # REQ-209: approving a webhook only requires marking this request executed (done
+            # below) — the schema-build gate then exposes the webhook whose latest request is
+            # executed. Verify the webhook still exists, then rebuild.
             wh_name = req["payload"]["name"]
             async with pool.acquire() as conn:
-                updated = await conn.execute(
-                    "UPDATE tracked_webhooks SET approved = TRUE, updated_at = NOW() "
-                    "WHERE name = $1",
-                    wh_name,
+                exists = await conn.fetchval(
+                    "SELECT 1 FROM tracked_webhooks WHERE name = $1", wh_name
                 )
-            if updated == "UPDATE 0":
+            if not exists:
                 return MutationResult(success=False, message=f"Webhook {wh_name!r} not found")
             from provisa.api.app import _rebuild_schemas
 

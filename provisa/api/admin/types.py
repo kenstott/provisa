@@ -217,6 +217,7 @@ class TableInput:
     materialize: bool = False
     mv_refresh_interval: int = 300
     data_product: bool = False
+    discover: bool = False  # REQ-252: infer columns from the live NoSQL source at registration
 
 
 @strawberry.input

@@ -128,6 +128,37 @@ def discover_schema(index_mapping: dict) -> list[dict]:
     return columns
 
 
+def extract_mapping_properties(mapping_response: dict, index: str) -> dict:
+    """Extract ``mappings.properties`` from a GET /<index>/_mapping response (REQ-252).
+
+    ES returns ``{<index>: {"mappings": {"properties": {...}}}}``. When the request used an
+    alias or the index name differs, fall back to the single key in the response.
+    """
+    entry = mapping_response.get(index)
+    if entry is None and len(mapping_response) == 1:
+        entry = next(iter(mapping_response.values()))
+    if not entry:
+        raise ValueError(f"no mapping returned for Elasticsearch index {index!r}")
+    properties = (entry.get("mappings") or {}).get("properties")
+    if properties is None:
+        raise ValueError(f"Elasticsearch index {index!r} has no mappings.properties")
+    return properties
+
+
+def fetch_index_mapping(host: str, port: int, index: str, use_ssl: bool = False) -> dict:
+    """Fetch the live ``mappings.properties`` for an index via GET /<index>/_mapping (REQ-252).
+
+    Raises on any transport/HTTP error — discovery must not silently produce empty columns.
+    """
+    import httpx
+
+    scheme = "https" if use_ssl else "http"
+    url = f"{scheme}://{host}:{port}/{index}/_mapping"
+    resp = httpx.get(url, timeout=10.0)
+    resp.raise_for_status()
+    return extract_mapping_properties(resp.json(), index)
+
+
 def _flatten_mapping(properties: dict, prefix: str, columns: list[dict]) -> None:
     """Recursively flatten nested ES mapping properties."""
     for field_name, field_def in sorted(properties.items()):

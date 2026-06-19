@@ -28,6 +28,7 @@ from provisa.source_adapters.registry import get_adapter
 class _SampleableDriver(Protocol):
     def sample_documents(self, collection: str, limit: int) -> list[dict]: ...
 
+
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/schema-discovery", tags=["schema-discovery"])
@@ -42,6 +43,7 @@ _REQUIRES_LIVE_CONNECTION = {"mongodb"}
 def _get_source_pool():
     """Return the current source_pools from app state."""
     from provisa.api.app import state
+
     return state.source_pools
 
 
@@ -61,6 +63,7 @@ class DiscoverResponse(BaseModel):
 
 class DiscoverRequest(BaseModel):
     """Optional hints for discovery — e.g. collection name, index, keyspace."""
+
     collection: str | None = None
     index: str | None = None
     keyspace: str | None = None
@@ -130,7 +133,6 @@ async def discover_source_schema(source_id: str, body: DiscoverRequest | None = 
     )
 
 
-
 def _call_discover(adapter, source_type: str, row, hints: DiscoverRequest) -> list[dict]:
     """Dispatch to the correct adapter.discover_schema() signature."""
     if source_type == "mongodb":
@@ -156,13 +158,34 @@ def _call_discover(adapter, source_type: str, row, hints: DiscoverRequest) -> li
         return adapter.discover_schema(sample_docs, collection)
 
     if source_type == "elasticsearch":
-        # ES discover_schema expects an index mapping dict.
-        # Real deployment would call ES /_mapping API; stub returns empty.
-        return adapter.discover_schema({})
+        # REQ-252: fetch the live index mapping via GET /<index>/_mapping. No index hint or a
+        # transport error raises — discovery must never silently produce empty columns.
+        index = hints.index
+        if not index:
+            raise HTTPException(
+                status_code=400,
+                detail="Elasticsearch discovery requires an 'index' hint.",
+            )
+        try:
+            properties = adapter.fetch_index_mapping(row["host"], int(row["port"]), index)
+        except Exception as e:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to read Elasticsearch mapping for index {index!r}: {e}",
+            )
+        return adapter.discover_schema(properties)
 
     if source_type == "cassandra":
-        # Cassandra discover_schema expects keyspace metadata dict.
-        return adapter.discover_schema({})
+        # REQ-252: Cassandra schema lives in system_schema and requires a live CQL session,
+        # which Provisa does not maintain. Rather than return empty columns, direct the steward
+        # to provide columns explicitly.
+        raise HTTPException(
+            status_code=501,
+            detail=(
+                "Cassandra schema discovery requires a live CQL session, which is not "
+                "available. Define columns manually for this source."
+            ),
+        )
 
     if source_type == "prometheus":
         # Prometheus discover_schema expects metric_metadata dict + metric_name.
