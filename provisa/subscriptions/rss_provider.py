@@ -36,9 +36,14 @@ def _strip_ns(tag: str) -> str:
     return tag.split("}", 1)[1] if tag.startswith("{") else tag
 
 
+# REQ-343: unparseable/empty dates sort oldest via a stable sentinel rather than
+# now() (which would make a date-less item look freshly published on every poll).
+_UNPARSEABLE_DATE = datetime.min.replace(tzinfo=timezone.utc)
+
+
 def _parse_date(value: str | None) -> datetime:
     if not value:
-        return datetime.now(timezone.utc)
+        return _UNPARSEABLE_DATE
     value = value.strip()
     # ISO 8601 (Atom)
     try:
@@ -50,7 +55,7 @@ def _parse_date(value: str | None) -> datetime:
     try:
         return parsedate_to_datetime(value)
     except Exception:
-        return datetime.now(timezone.utc)
+        return _UNPARSEABLE_DATE
 
 
 def _child_text(el: ET.Element, *tags: str) -> str | None:
@@ -72,13 +77,15 @@ def _parse_rss(root: ET.Element) -> list[dict]:
         return []
     items = []
     for item in channel.findall("item"):
-        items.append({
-            "title": _child_text(item, "title"),
-            "link": _child_text(item, "link"),
-            "description": _child_text(item, "description"),
-            "published": _child_text(item, "pubDate"),
-            "id": _child_text(item, "guid") or _child_text(item, "link"),
-        })
+        items.append(
+            {
+                "title": _child_text(item, "title"),
+                "link": _child_text(item, "link"),
+                "description": _child_text(item, "description"),
+                "published": _child_text(item, "pubDate"),
+                "id": _child_text(item, "guid") or _child_text(item, "link"),
+            }
+        )
     return items
 
 
@@ -91,13 +98,15 @@ def _parse_atom(root: ET.Element) -> list[dict]:
         if link_el is None:
             link_el = child.find("link")
         link = link_el.get("href") if link_el is not None else None
-        items.append({
-            "title": _child_text(child, "title"),
-            "link": link,
-            "description": _child_text(child, "summary", "content"),
-            "published": _child_text(child, "updated", "published"),
-            "id": _child_text(child, "id") or link,
-        })
+        items.append(
+            {
+                "title": _child_text(child, "title"),
+                "link": link,
+                "description": _child_text(child, "summary", "content"),
+                "published": _child_text(child, "updated", "published"),
+                "id": _child_text(child, "id") or link,
+            }
+        )
     return items
 
 

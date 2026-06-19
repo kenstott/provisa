@@ -169,8 +169,10 @@ def _resolve_tbl_meta(table: str, state):
 async def _stream_provider_events(
     provider,
     table: str,
+    table_id: int | None,
     role_id: str | None,
     rls_contexts: dict,
+    masking_rules,
     disconnect: asyncio.Event,
 ) -> AsyncGenerator[str, None]:
     yield ": connected\n\n"
@@ -183,7 +185,8 @@ async def _stream_provider_events(
                 if rls_ctx and rls_ctx.has_rules():
                     if not _rls_matches(event.row, rls_ctx, table):
                         continue
-            payload = json.dumps({"op": event.operation.upper(), "row": event.row})
+            row = _mask_row(event.row, table_id, role_id, masking_rules)
+            payload = json.dumps({"op": event.operation.upper(), "row": row}, default=str)
             yield f"data: {payload}\n\n"
     finally:
         await provider.close()
@@ -195,6 +198,7 @@ async def _provider_sse_generator(
     source_type: str,
     role_id: str | None,
     rls_contexts: dict,
+    masking_rules,
     disconnect: asyncio.Event,
 ) -> AsyncGenerator[str, None]:
     """Yield SSE-formatted events from the appropriate subscription provider."""
@@ -202,18 +206,23 @@ async def _provider_sse_generator(
     from provisa.subscriptions.registry import get_provider
 
     tbl_meta = _resolve_tbl_meta(table, state)
+    table_id = getattr(tbl_meta, "table_id", None) if tbl_meta else None
     provider_config = _build_provider_config(source_type, source_id, table, tbl_meta, state)
     provider = get_provider(source_type, provider_config)
 
-    async for chunk in _stream_provider_events(provider, table, role_id, rls_contexts, disconnect):
+    async for chunk in _stream_provider_events(
+        provider, table, table_id, role_id, rls_contexts, masking_rules, disconnect
+    ):
         yield chunk
 
 
 async def _sse_generator(
     pool,
     table: str,
+    table_id: int | None,
     role_id: str | None,
     rls_contexts: dict,
+    masking_rules,
     disconnect: asyncio.Event,
 ) -> AsyncGenerator[str, None]:
     """Yield SSE-formatted events from a PostgreSQL LISTEN channel.
@@ -249,19 +258,25 @@ async def _sse_generator(
                 yield ": keepalive\n\n"
                 continue
 
-            # Optional RLS filtering: if the role has RLS rules for this
-            # table, drop events whose row doesn't match.  Full SQL-level
-            # RLS is enforced at query time; here we do a best-effort
-            # client-side filter on the notify payload.
-            if role_id and rls_contexts:
-                rls_ctx = rls_contexts.get(role_id)
-                if rls_ctx and rls_ctx.has_rules():
-                    try:
-                        parsed = json.loads(payload)
-                        if not _rls_matches(parsed.get("row", {}), rls_ctx, table):
-                            continue
-                    except (json.JSONDecodeError, TypeError):
-                        pass
+            # RLS filtering + column masking on the notify payload (REQ-336): subscriptions
+            # enforce the same row-level and column-level governance as local-table queries.
+            # Full SQL-level RLS is also enforced at query time; this is the serving-layer
+            # filter on streamed change events.
+            try:
+                parsed = json.loads(payload)
+            except (json.JSONDecodeError, TypeError):
+                parsed = None
+
+            if parsed is not None and role_id:
+                row = parsed.get("row", {})
+                if rls_contexts:
+                    rls_ctx = rls_contexts.get(role_id)
+                    if rls_ctx and rls_ctx.has_rules() and not _rls_matches(row, rls_ctx, table):
+                        continue
+                masked = _mask_row(row, table_id, role_id, masking_rules)
+                if masked is not row:
+                    parsed["row"] = masked
+                    payload = json.dumps(parsed, default=str)
 
             yield f"data: {payload}\n\n"
 
@@ -272,6 +287,32 @@ async def _sse_generator(
             log.debug("Failed to remove listener on %s", channel, exc_info=True)
         await pool.release(conn)
         log.info("SSE: disconnected from channel %s", channel)
+
+
+def _resolve_table_id(table: str, state) -> int | None:
+    meta = _resolve_tbl_meta(table, state)
+    return getattr(meta, "table_id", None) if meta else None
+
+
+def _mask_row(row: dict, table_id: int | None, role_id: str | None, masking_rules) -> dict:
+    """Apply column masking to a change-event row (REQ-336).
+
+    Mirrors local-table governance: a role not in a column's ``unmasked_to`` receives the
+    masked value, computed by the same rules Stage 2 injects into SQL. Returns the row
+    unchanged when no masking applies.
+    """
+    if not (role_id and masking_rules and table_id is not None):
+        return row
+    col_rules = masking_rules.get((table_id, role_id))
+    if not col_rules:
+        return row
+    from provisa.security.masking import apply_mask_to_value
+
+    masked = dict(row)
+    for col, (rule, dtype) in col_rules.items():
+        if col in masked:
+            masked[col] = apply_mask_to_value(rule, masked[col], dtype)
+    return masked
 
 
 def _rls_matches(row: dict, rls_ctx, _table: str) -> bool:
@@ -378,6 +419,7 @@ async def subscribe(
     # Resolve provider from source type
     source_info = _resolve_table_source(table)
 
+    table_id = _resolve_table_id(table, state)
     disconnect = asyncio.Event()
 
     async def on_disconnect() -> None:
@@ -397,14 +439,17 @@ async def subscribe(
                     source_info[1],
                     role_id,
                     state.rls_contexts,
+                    state.masking_rules,
                     disconnect,
                 )
             else:
                 gen = _sse_generator(
                     state.pg_pool,
                     table,
+                    table_id,
                     role_id,
                     state.rls_contexts,
+                    state.masking_rules,
                     disconnect,
                 )
             async for chunk in gen:

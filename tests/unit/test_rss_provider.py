@@ -122,17 +122,17 @@ class TestParseDate:
         assert dt.year == 2026
         assert dt.tzinfo is not None
 
-    def test_none_returns_now(self):
-        from provisa.subscriptions.rss_provider import _parse_date
-        before = datetime.now(timezone.utc)
+    def test_none_returns_sentinel(self):
+        # REQ-343: empty date → datetime.min sentinel (sorts oldest), not now().
+        from provisa.subscriptions.rss_provider import _UNPARSEABLE_DATE, _parse_date
         dt = _parse_date(None)
-        assert dt >= before
+        assert dt == _UNPARSEABLE_DATE
+        assert dt == datetime.min.replace(tzinfo=timezone.utc)
 
-    def test_garbage_returns_now(self):
-        from provisa.subscriptions.rss_provider import _parse_date
-        before = datetime.now(timezone.utc)
+    def test_garbage_returns_sentinel(self):
+        from provisa.subscriptions.rss_provider import _UNPARSEABLE_DATE, _parse_date
         dt = _parse_date("not a date")
-        assert dt >= before
+        assert dt == _UNPARSEABLE_DATE
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +174,6 @@ class TestRSSProvider:
             events = []
             # Force watermark to before the items
             import provisa.subscriptions.rss_provider as _mod
-            from datetime import timezone
             orig_now = _mod.datetime
 
             async for ev in provider.watch("news"):
@@ -191,7 +190,7 @@ class TestRSSProvider:
     @pytest.mark.asyncio
     async def test_watermark_excludes_old_items(self):
         """Items older than the watermark are not re-emitted on the second poll."""
-        from provisa.subscriptions.rss_provider import RSSNotificationProvider, _parse_date
+        from provisa.subscriptions.rss_provider import RSSNotificationProvider
 
         # Two polls of the same feed — second poll should yield nothing new
         resp1 = _make_mock_response(RSS_FEED)

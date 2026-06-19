@@ -97,11 +97,20 @@ async def handle_api_query(
 
     all_rows: list[dict] = []
     for page_data in pages:
-        rows = flatten_response(page_data, endpoint.response_root, endpoint.columns)
+        rows = flatten_response(
+            page_data, endpoint.response_root, endpoint.columns, endpoint.response_normalizer
+        )
         all_rows.extend(rows)
 
     create_and_insert(conn, loc, tbl, all_rows, endpoint.columns)
-    log.info("[API CACHE] miss — %d rows materialized → %s.%s.%s (ttl=%ds)", len(all_rows), loc.catalog, loc.schema, tbl, ttl)
+    log.info(
+        "[API CACHE] miss — %d rows materialized → %s.%s.%s (ttl=%ds)",
+        len(all_rows),
+        loc.catalog,
+        loc.schema,
+        tbl,
+        ttl,
+    )
 
     # REQ-119: promote JSONB fields to generated columns on the (PG-backed) cache table.
     # The cache stores JSON as varchar, so cast the source column to jsonb. Iceberg

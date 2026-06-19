@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -106,7 +106,7 @@ class TestSSEGenerator:
         disconnect = asyncio.Event()
         disconnect.set()  # Disconnect immediately after first yield
 
-        gen = _sse_generator(pool, "orders", None, {}, disconnect)
+        gen = _sse_generator(pool, "orders", None, None, {}, {}, disconnect)
         first = await gen.__anext__()
         assert first == ": connected\n\n"
 
@@ -116,7 +116,7 @@ class TestSSEGenerator:
         pool = FakePool(conn)
         disconnect = asyncio.Event()
 
-        gen = _sse_generator(pool, "orders", None, {}, disconnect)
+        gen = _sse_generator(pool, "orders", None, None, {}, {}, disconnect)
         # Get the connected comment
         await gen.__anext__()
 
@@ -137,7 +137,7 @@ class TestSSEGenerator:
         pool = FakePool(conn)
         disconnect = asyncio.Event()
 
-        gen = _sse_generator(pool, "orders", None, {}, disconnect)
+        gen = _sse_generator(pool, "orders", None, None, {}, {}, disconnect)
         await gen.__anext__()  # connected
 
         # Patch wait_for to simulate timeout quickly
@@ -164,7 +164,7 @@ class TestSSEGenerator:
         rls_ctx.rules = {1: "region = 'us'"}
         rls_contexts = {"analyst": rls_ctx}
 
-        gen = _sse_generator(pool, "orders", "analyst", rls_contexts, disconnect)
+        gen = _sse_generator(pool, "orders", None, "analyst", rls_contexts, {}, disconnect)
         await gen.__anext__()  # connected
 
         channel = f"{CHANNEL_PREFIX}orders"
@@ -181,13 +181,49 @@ class TestSSEGenerator:
         disconnect.set()
 
     @pytest.mark.asyncio
+    async def test_masking_applied_to_streamed_row(self):
+        # REQ-336: a column masked for the role is transformed in the SSE payload,
+        # matching local-table governance.
+        from provisa.security.masking import MaskingRule, MaskType
+
+        conn = FakeConnection()
+        pool = FakePool(conn)
+        disconnect = asyncio.Event()
+
+        ssn_rule = MaskingRule(mask_type=MaskType.regex, pattern=r"\d", replace="X")
+        const_rule = MaskingRule(mask_type=MaskType.constant, value="REDACTED")
+        masking_rules = {
+            (7, "analyst"): {
+                "ssn": (ssn_rule, "varchar"),
+                "salary": (const_rule, "varchar"),
+            }
+        }
+
+        gen = _sse_generator(pool, "orders", 7, "analyst", {}, masking_rules, disconnect)
+        await gen.__anext__()  # connected
+
+        channel = f"{CHANNEL_PREFIX}orders"
+        conn.fire(
+            channel,
+            json.dumps({"op": "INSERT", "row": {"id": 1, "ssn": "123-45", "salary": "90000"}}),
+        )
+
+        event = await gen.__anext__()
+        parsed = json.loads(event.removeprefix("data: ").strip())
+        assert parsed["row"]["ssn"] == "XXX-XX"  # regex mask applied
+        assert parsed["row"]["salary"] == "REDACTED"  # constant mask applied
+        assert parsed["row"]["id"] == 1  # unmasked column untouched
+
+        disconnect.set()
+
+    @pytest.mark.asyncio
     async def test_listener_cleanup(self):
         conn = FakeConnection()
         pool = FakePool(conn)
         disconnect = asyncio.Event()
         disconnect.set()
 
-        gen = _sse_generator(pool, "orders", None, {}, disconnect)
+        gen = _sse_generator(pool, "orders", None, None, {}, {}, disconnect)
         # Exhaust the generator
         chunks = []
         async for chunk in gen:
@@ -203,7 +239,7 @@ class TestSSEGenerator:
         pool = FakePool(conn)
         disconnect = asyncio.Event()
 
-        gen = _sse_generator(pool, "orders", None, {}, disconnect)
+        gen = _sse_generator(pool, "orders", None, None, {}, {}, disconnect)
         await gen.__anext__()  # connected
 
         channel = f"{CHANNEL_PREFIX}orders"

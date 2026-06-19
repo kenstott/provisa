@@ -172,3 +172,105 @@ def build_mask_expression(
         return f"DATE_TRUNC('{rule.precision}', {column_ref})"
 
     raise MaskingValidationError(f"Unknown mask type: {rule.mask_type!r}")
+
+
+def _resolve_constant_value(value: int | float | str | None, data_type: str):
+    """Python equivalent of _resolve_constant: return the actual masked value, not a SQL literal."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        upper = value.upper()
+        base = _base_type(data_type)
+        if upper == "MAX" and base in _INTEGER_BOUNDS:
+            return _INTEGER_BOUNDS[base][1]
+        if upper == "MIN" and base in _INTEGER_BOUNDS:
+            return _INTEGER_BOUNDS[base][0]
+    return value
+
+
+def _convert_regexp_replacement(replace: str) -> str:
+    """Convert Trino REGEXP_REPLACE replacement syntax ($1, $$) to Python re.sub (\\g<1>, $)."""
+    out: list[str] = []
+    i = 0
+    while i < len(replace):
+        ch = replace[i]
+        if ch == "$" and i + 1 < len(replace):
+            nxt = replace[i + 1]
+            if nxt == "$":
+                out.append("$")
+                i += 2
+                continue
+            if nxt.isdigit():
+                j = i + 1
+                while j < len(replace) and replace[j].isdigit():
+                    j += 1
+                out.append(f"\\g<{replace[i + 1 : j]}>")
+                i = j
+                continue
+        if ch == "\\":
+            out.append("\\\\")  # escape literal backslash for re.sub
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _truncate_temporal(value, precision: str):
+    """Python equivalent of DATE_TRUNC for change-event rows (datetime/date or ISO string)."""
+    import datetime as _dt
+
+    if isinstance(value, str):
+        parsed = _dt.datetime.fromisoformat(value)  # raises ValueError on a non-ISO string
+    elif isinstance(value, _dt.datetime):
+        parsed = value
+    elif isinstance(value, _dt.date):
+        parsed = _dt.datetime(value.year, value.month, value.day)
+    else:
+        raise MaskingValidationError(
+            f"truncate mask cannot be applied to value of type {type(value).__name__}"
+        )
+
+    p = precision.lower()
+    if p == "year":
+        return parsed.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    if p == "quarter":
+        q_month = 3 * ((parsed.month - 1) // 3) + 1
+        return parsed.replace(month=q_month, day=1, hour=0, minute=0, second=0, microsecond=0)
+    if p == "month":
+        return parsed.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    if p == "week":  # DATE_TRUNC week → Monday
+        monday = parsed - _dt.timedelta(days=parsed.weekday())
+        return monday.replace(hour=0, minute=0, second=0, microsecond=0)
+    if p == "day":
+        return parsed.replace(hour=0, minute=0, second=0, microsecond=0)
+    if p == "hour":
+        return parsed.replace(minute=0, second=0, microsecond=0)
+    if p == "minute":
+        return parsed.replace(second=0, microsecond=0)
+    if p == "second":
+        return parsed.replace(microsecond=0)
+    raise MaskingValidationError(f"Unknown truncate precision: {precision!r}")
+
+
+def apply_mask_to_value(rule: MaskingRule, value, data_type: str):
+    """Apply a masking rule to a Python value (REQ-336).
+
+    Mirrors build_mask_expression in Python for change-event subscription rows, which
+    never pass through a SQL projection. Subscriptions thus enforce the same column
+    masking as local-table queries.
+    """
+    if rule.mask_type == MaskType.constant:
+        return _resolve_constant_value(rule.value, data_type)
+    if value is None:
+        return None
+    if rule.mask_type == MaskType.regex:
+        assert rule.pattern is not None
+        assert rule.replace is not None
+        import re
+
+        return re.sub(rule.pattern, _convert_regexp_replacement(rule.replace), str(value))
+    if rule.mask_type == MaskType.truncate:
+        assert rule.precision is not None
+        return _truncate_temporal(value, rule.precision)
+    raise MaskingValidationError(f"Unknown mask type: {rule.mask_type!r}")
