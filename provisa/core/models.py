@@ -368,6 +368,9 @@ class Table(BaseModel):
     cache_ttl: int | None = None  # overrides source-level; None = inherit
     gql_naming_convention: str | None = None  # overrides source; None = inherit
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
+    warm: bool | None = (
+        None  # REQ-240: None = auto by query frequency, True = force, False = opt out
+    )
     relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
     live: LiveDeliveryConfig | None = None  # live query delivery config (Phase AM)
     watermark_column: str | None = None  # column used by polling subscription provider
@@ -381,6 +384,18 @@ class Table(BaseModel):
 class HotTablesConfig(BaseModel):
     auto_threshold: int = 1_000  # max rows for auto-detection
     refresh_interval: int = 300  # seconds between refreshes
+    max_rows: int | None = None  # REQ-230: own ceiling; None = fall back to auto_threshold
+    max_bytes: int = 10 * 1024 * 1024  # REQ-230: serialized-blob ceiling (10 MB)
+
+
+class WarmTablesConfig(BaseModel):
+    # REQ-240: tier promotion thresholds + the Trino filesystem (SSD) read-cache settings.
+    query_threshold: int = 100  # promote a table after this many queries
+    max_rows: int = 10_000_000  # do not promote tables larger than this
+    refresh_interval: int = 60  # seconds between promotion/demotion sweeps
+    fs_cache_enabled: bool = False  # REQ-238: emit fs.cache.* on the Iceberg catalog
+    fs_cache_directories: str = "/tmp/trino-cache"  # nosec B108 - Trino-node cache dir, configurable
+    fs_cache_max_sizes: str = "10GB"
 
 
 class MaterializedViewsConfig(BaseModel):
@@ -764,6 +779,7 @@ class ProvisaConfig(BaseModel):
     webhooks: list[Webhook] = Field(default_factory=list)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     hot_tables: HotTablesConfig = Field(default_factory=HotTablesConfig)
+    warm_tables: WarmTablesConfig = Field(default_factory=WarmTablesConfig)
     materialized_views: MaterializedViewsConfig = Field(default_factory=MaterializedViewsConfig)
     observability: OtelConfig = Field(default_factory=OtelConfig)
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)

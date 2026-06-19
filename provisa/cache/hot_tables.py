@@ -341,6 +341,14 @@ class HotTableManager:
         entry = self._hot_tables.get(table_name)
         return entry is not None and len(entry.rows) > 0
 
+    def managed_tables(self) -> set[str]:
+        """REQ-241: names of tables owned by the hot tier (loaded or candidate).
+
+        Used for hot-over-warm precedence — a table the hot tier manages must not also be
+        promoted to the warm tier.
+        """
+        return set(self._hot_tables) | set(self._candidates)
+
     def get_entry(self, table_name: str) -> HotTableEntry | None:
         """Get the hot table entry with metadata."""
         return self._hot_tables.get(table_name)
