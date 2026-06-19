@@ -50,8 +50,13 @@ class MVRegistry:
         return self._mvs.get(self._key(mv_id))
 
     def get_fresh(self) -> list[MVDefinition]:
-        """Return all enabled and fresh MVs (for rewriter)."""
-        return [mv for mv in self._mvs.values() if mv.enabled and mv.is_fresh]
+        """Return enabled MVs that are fresh and within their TTL (for the rewriter).
+
+        REQ-199: an MV whose TTL has elapsed is excluded here, so the query falls back to
+        the live source instead of being rewritten onto stale data.
+        """
+        now = time.time()
+        return [mv for mv in self._mvs.values() if mv.enabled and mv.is_fresh_at(now)]
 
     def get_enabled(self) -> list[MVDefinition]:
         """Return all enabled MVs (for refresh scheduler)."""

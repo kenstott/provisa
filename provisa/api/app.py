@@ -2139,6 +2139,10 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                 "SELECT table_name, view_sql, materialize, mv_refresh_interval FROM registered_tables"
                 " WHERE source_id = '__provisa__' AND view_sql IS NOT NULL"
             )
+            # REQ-199: MVs without an explicit interval fall back to the configured default TTL.
+            _mv_default_ttl = int(
+                (raw_config or {}).get("materialized_views", {}).get("default_ttl", 300)
+            )
             for _vr in _view_rows:
                 if _vr.get("materialize"):
                     from provisa.mv.models import MVDefinition, MVStatus
@@ -2152,7 +2156,9 @@ async def _rebuild_schemas(raw_config: dict | None = None) -> None:
                                 target_catalog="postgresql",
                                 target_schema="mv_cache",
                                 target_table=f"mv_{_vr['table_name']}",
-                                refresh_interval=int(_vr.get("mv_refresh_interval") or 300),
+                                refresh_interval=int(
+                                    _vr.get("mv_refresh_interval") or _mv_default_ttl
+                                ),
                                 enabled=True,
                                 sql=_vr["view_sql"].rstrip().rstrip(";"),
                                 expose_in_sdl=False,

@@ -379,6 +379,13 @@ class HotTablesConfig(BaseModel):
     refresh_interval: int = 300  # seconds between refreshes
 
 
+class MaterializedViewsConfig(BaseModel):
+    # REQ-199: default TTL / refresh interval (seconds) for materialized views that do not
+    # specify their own. Materialization is opt-in (per-table/relationship materialize flag);
+    # there is no cost-based auto-materialization.
+    default_ttl: int = 300
+
+
 class Relationship(BaseModel):
     id: str
     source_table_id: str
@@ -753,6 +760,7 @@ class ProvisaConfig(BaseModel):
     webhooks: list[Webhook] = Field(default_factory=list)
     auth: AuthConfig = Field(default_factory=AuthConfig)
     hot_tables: HotTablesConfig = Field(default_factory=HotTablesConfig)
+    materialized_views: MaterializedViewsConfig = Field(default_factory=MaterializedViewsConfig)
     observability: OtelConfig = Field(default_factory=OtelConfig)
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
     ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)
