@@ -194,3 +194,55 @@ class TestWarmDemotion:
         tables = mgr.get_warm_tables()
         tables.add("injected")
         assert mgr.get_warm_tables() == set()
+
+
+# --- REQ-240/241: hot precedence, opt-out, force ---
+
+class TestWarmTierMembership:
+    def test_hot_table_not_promoted_to_warm(self):
+        # REQ-241: a table the hot tier manages is never also promoted to warm.
+        counter = QueryCounter()
+        for _ in range(100):
+            counter.increment("countries")
+        cursor = _mock_cursor(count_result=50)
+        conn = _mock_trino(cursor)
+        mgr = WarmTableManager()
+        promoted = mgr.check_promotions(
+            counter, conn, threshold=100, hot_tables={"countries"}
+        )
+        assert promoted == []
+        cursor.execute.assert_not_called()
+
+    def test_excluded_table_not_promoted(self):
+        # REQ-240: warm: false opts a table out of warming.
+        counter = QueryCounter()
+        for _ in range(100):
+            counter.increment("orders")
+        cursor = _mock_cursor(count_result=50)
+        conn = _mock_trino(cursor)
+        mgr = WarmTableManager()
+        promoted = mgr.check_promotions(
+            counter, conn, threshold=100, excluded={"orders"}
+        )
+        assert promoted == []
+
+    def test_forced_table_promoted_below_threshold(self):
+        # REQ-240: warm: true forces promotion even with no query traffic.
+        counter = QueryCounter()  # zero queries
+        cursor = _mock_cursor(count_result=50)
+        conn = _mock_trino(cursor)
+        mgr = WarmTableManager()
+        promoted = mgr.check_promotions(
+            counter, conn, threshold=100, forced={"reference_data"}
+        )
+        assert promoted == ["reference_data"]
+
+    def test_forced_still_respects_hot_precedence(self):
+        counter = QueryCounter()
+        cursor = _mock_cursor(count_result=50)
+        conn = _mock_trino(cursor)
+        mgr = WarmTableManager()
+        promoted = mgr.check_promotions(
+            counter, conn, threshold=100, forced={"t"}, hot_tables={"t"}
+        )
+        assert promoted == []

@@ -90,16 +90,34 @@ class WarmTableManager:
         trino_conn: Any,
         threshold: int = DEFAULT_QUERY_THRESHOLD,
         max_rows: int = DEFAULT_MAX_ROWS,
+        hot_tables: set[str] | None = None,
+        excluded: set[str] | None = None,
+        forced: set[str] | None = None,
     ) -> list[str]:
         """Promote tables exceeding query threshold if under max_rows.
 
-        Returns list of newly promoted table names.
+        REQ-241: a table that is hot (in ``hot_tables``) is never also promoted to warm —
+        hot wins (a table lives in at most one tier). REQ-240: ``excluded`` (warm: false)
+        tables are never promoted; ``forced`` (warm: true) tables are promoted regardless of
+        query count. Returns list of newly promoted table names.
         """
         counts = counter.get_counts()
+        hot_tables = hot_tables or set()
+        excluded = excluded or set()
+        forced = forced or set()
+        # Consider forced tables even if they have not hit the query threshold.
+        candidates = dict(counts)
+        for t in forced:
+            candidates.setdefault(t, threshold)
         promoted: list[str] = []
 
-        for table, count in counts.items():
-            if count < threshold:
+        for table, count in candidates.items():
+            if table in excluded:
+                continue
+            # Hot-over-warm precedence: a hot table is not duplicated into the warm tier.
+            if table in hot_tables:
+                continue
+            if table not in forced and count < threshold:
                 continue
             with self._lock:
                 if table in self._warm_tables:

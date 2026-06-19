@@ -144,12 +144,21 @@ def table_exists(conn, loc: CacheLocation, table_name: str, ttl: int | None = No
         return True
     except Exception as exc:
         _TABLE_EXISTS_CACHE.pop(key, None)
-        log.debug("[API CACHE] table_exists=False: %s.%s.%r — %s", loc.catalog, loc.schema, table_name, exc)
+        log.debug(
+            "[API CACHE] table_exists=False: %s.%s.%r — %s",
+            loc.catalog,
+            loc.schema,
+            table_name,
+            exc,
+        )
         return False
 
 
-def create_and_insert(conn, loc: CacheLocation, table_name: str, rows: list[dict], columns: list) -> None:
+def create_and_insert(
+    conn, loc: CacheLocation, table_name: str, rows: list[dict], columns: list
+) -> None:
     """Create cache table and INSERT API response rows."""
+
     def _trino_type(col) -> str:
         raw = col.type.value if hasattr(col.type, "value") else str(col.type)
         return _API_TYPE_TO_TRINO.get(raw, "VARCHAR")
@@ -165,8 +174,7 @@ def create_and_insert(conn, loc: CacheLocation, table_name: str, rows: list[dict
         )
     else:
         create_sql = (
-            f'CREATE TABLE IF NOT EXISTS {loc.catalog}.{loc.schema}."{table_name}" '
-            f"({col_defs})"
+            f'CREATE TABLE IF NOT EXISTS {loc.catalog}.{loc.schema}."{table_name}" ({col_defs})'
         )
     cur = conn.cursor()
     cur.execute(create_sql)
@@ -194,8 +202,7 @@ def create_and_insert(conn, loc: CacheLocation, table_name: str, rows: list[dict
             if not batch:
                 break
             vals = ", ".join(
-                "(" + ", ".join(_lit(r.get(c)) for c in col_names) + ")"
-                for r in batch
+                "(" + ", ".join(_lit(r.get(c)) for c in col_names) + ")" for r in batch
             )
             insert_sql = f'INSERT INTO {loc.catalog}.{loc.schema}."{table_name}" VALUES {vals}'
             cur2 = conn.cursor()
@@ -217,9 +224,28 @@ def create_and_insert(conn, loc: CacheLocation, table_name: str, rows: list[dict
         else:
             raise
 
+    # REQ-280: collect statistics on the freshly-materialized cache table so the Trino cost
+    # optimizer can plan joins against it. ANALYZE support varies by connector, so a failure is
+    # logged (not raised) — matching analyze_source_tables (REQ-275).
+    try:
+        analyze_cur = conn.cursor()
+        analyze_cur.execute(f'ANALYZE {loc.catalog}.{loc.schema}."{table_name}"')
+        analyze_cur.fetchall()
+    except Exception:
+        log.warning(
+            "[API CACHE] ANALYZE failed for %s.%s.%s",
+            loc.catalog,
+            loc.schema,
+            table_name,
+            exc_info=True,
+        )
+
     log.info(
         '[API CACHE] materialized %d rows → %s.%s."%s"',
-        len(rows), loc.catalog, loc.schema, table_name,
+        len(rows),
+        loc.catalog,
+        loc.schema,
+        table_name,
     )
 
 
@@ -237,6 +263,7 @@ def rewrite_from_cache(sql: str, loc: CacheLocation, table_name: str) -> str:
         log.warning("rewrite_from_cache SQLGlot failed: %s", exc)
 
     import re
+
     return re.sub(
         r'FROM\s+"[^"]*"\."[^"]*"(?:\."[^"]*")?',
         f'FROM {loc.catalog}.{loc.schema}."{table_name}"',
@@ -276,6 +303,7 @@ def rewrite_all_from_cache(
         log.warning("rewrite_all_from_cache SQLGlot failed: %s", exc)
 
     import re
+
     result = sql
     for orig_tbl, (loc, cache_tbl) in cache_rewrites.items():
         result = re.sub(
@@ -298,13 +326,12 @@ async def schedule_drop(
     await asyncio.sleep(ttl)
     _TABLE_EXISTS_CACHE.pop((loc.catalog, loc.schema, table_name), None)
     try:
-        conn.cursor().execute(
-            f'DROP TABLE IF EXISTS {loc.catalog}.{loc.schema}."{table_name}"'
-        )
+        conn.cursor().execute(f'DROP TABLE IF EXISTS {loc.catalog}.{loc.schema}."{table_name}"')
         log.info("[API CACHE] dropped %s after TTL=%ds", table_name, ttl)
     except Exception as exc:
         log.warning("[API CACHE] drop failed for %s: %s", table_name, exc)
     if loc.backend == "iceberg" and redirect_config is not None:
         from provisa.executor.trino_write import schedule_s3_cleanup
+
         s3_prefix = f"s3a://{_ICEBERG_BUCKET}/{loc.schema}/{table_name}/"
         await schedule_s3_cleanup(s3_prefix, redirect_config, delay_seconds=0)

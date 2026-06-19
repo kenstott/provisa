@@ -24,32 +24,33 @@ Companion to [group-2.md](group-2.md).
 | 030 | Execution & Routing | To spec | `steward_hint` forces direct/trino/federated `provisa/transpiler/router.py:99` |
 | 031 | Execution & Routing | To spec | Mutations hard-wired to `execute_direct`, no Trino branch; webhooks are action fields, not DB mutations `provisa/api/data/endpoint.py:2604` |
 | 052 | Data & Storage | To spec | Per-source warm asyncpg pool; `pool_min` configurable per source `provisa/executor/drivers/postgresql.py:42` |
-| 053 | Data & Storage | Not to spec | PgBouncer is opt-in (`use_pgbouncer` default False), not mandatory for PG `provisa/core/models.py:162` |
+| 053 | Data & Storage | To spec | Documented: PgBouncer is the per-source opt-in mechanism (`use_pgbouncer`, default off; needs a running PgBouncer) — a forced default would break PG sources without it `provisa/core/models.py` |
 | 054 | Data & Storage | To spec | Single `state.trino_conn` created once, reused, lazily reconnected if stale `provisa/api/app.py:795` |
-| 230 | Hot Tables | Incomplete | Single JSON blob with TTL + `max_rows` guard; no `max_bytes`/10MB guard, no post-serialization byte measurement `provisa/cache/hot_tables.py:211` |
-| 231 | Hot Tables | Incomplete | TTL refresh (default 300, not MV default_ttl), background loop, mutation invalidation; no explicit stale-fallback `provisa/cache/hot_tables.py:296` |
+| 230 | Hot Tables | To spec | Fixed: `max_bytes` (10MB) guard measured after serialization; `max_rows` has its own config default `provisa/cache/hot_tables.py` |
+| 231 | Hot Tables | To spec | Fixed: refresh_interval defaults to `materialized_views.default_ttl`; `get_rows` returns [] on miss (live fallback); CTE injection is gated on `is_hot()` so stale tables run live `provisa/cache/hot_tables.py` |
 | 232 | Hot Tables | To spec | `build_values_cte_sql` injects VALUES CTE per dialect, cross-source `provisa/cache/hot_tables.py:65` |
-| 233 | Hot Tables | Not to spec | Single JSON blob keyed `provisa:hot:<t>:blob`; no per-row PK hash, no sorted-set index, no read-time governance `provisa/cache/hot_tables.py:177` |
+| 233 | Hot Tables | To spec | Resolved (govern-via-CTE): Stage-2 `apply_governance` wraps the VALUES CTE (pipeline order governance→cache→route), so RLS/masking/visibility apply at read; single-blob storage kept by design (hot tables are tiny) `provisa/cache/hot_tables.py` |
 | 234 | MV Lifecycle | To spec | `reclaim_removed_mvs` DROP TABLE, `detect_orphans`, grace-period drop in refresh loop `provisa/mv/refresh.py:153` |
 | 235 | MV Lifecycle | To spec | `_probe_source_count` COUNT(*) before CTAS, `SKIPPED_SIZE` over `max_rows` (default 1M) `provisa/mv/refresh.py:82` |
-| 236 | Hot Auto-Detection | Not to spec | Auto-detect uses relationship criterion only; `count_table_rows` defined but never called `provisa/cache/hot_tables.py:389` |
+| 236 | Hot Auto-Detection | To spec | Fixed: `detect_hot_tables_by_count` adds the COUNT(*) ≤ auto_threshold criterion at schema build (calls `count_table_rows`) `provisa/cache/hot_tables.py` |
 | 237 | Hot Auto-Detection | To spec | `hot: false` opt-out, `hot: true` override, re-runs each schema build `provisa/cache/hot_tables.py:400` |
-| 238 | Warm Tables | Incomplete | CTAS into Iceberg `warm_cache`; `fs.cache.enabled` absent from all catalog props; fixed 60s loop, not MV TTL `provisa/cache/warm_tables.py:122` |
+| 238 | Warm Tables | To spec | Fixed: `fs.cache.*` keys added to the Iceberg catalog (disabled by default, operator-enabled); warm sweep interval is config-driven `trino/catalog-install/results.properties`, `provisa/api/app.py` |
 | 239 | Warm Tables | To spec | Per-table counter per compiled query; `check_promotions`/`check_demotions` in warm loop `provisa/cache/warm_tables.py:87` |
-| 240 | Warm Tables | Not added | No parsing of `warm:`/`warm_tables.*` config or `fs.cache.*`; Python defaults only `provisa/api/app.py:2273` |
-| 241 | Warm Tables | Incomplete | Hot and warm managers separate; no "at most one tier" enforcement, no hot-over-warm precedence `provisa/cache/warm_tables.py:87` |
+| 240 | Warm Tables | To spec | Fixed: `WarmTablesConfig` (query_threshold/max_rows/refresh_interval/fs_cache_*) + per-table `warm: true/false` parsed and passed to `check_promotions` `provisa/core/models.py`, `provisa/api/app.py` |
+| 241 | Warm Tables | To spec | Fixed: `check_promotions` enforces hot-over-warm precedence via `HotTableManager.managed_tables()`; a hot-managed table is never warmed `provisa/cache/warm_tables.py` |
 | 275 | Federation Perf | To spec | `analyze_source_tables` runs `ANALYZE` per registered table at registration `provisa/core/catalog.py:171` |
 | 276 | Federation Perf | To spec | `refresh_source_statistics(source_id)` admin mutation re-runs ANALYZE `provisa/api/admin/schema.py:2285` |
 | 277 | Federation Perf | To spec | Named hints → session props, injected `SET SESSION` before exec `provisa/executor/trino.py:116` |
 | 278 | Federation Perf | To spec | Source `federation_hints` merged per query; per-query overrides source-level `provisa/api/data/endpoint.py:1702` |
 | 279 | Federation Perf | To spec | `extract_hints` parses `/*+ BROADCAST/NO_REORDER/BROADCAST_SIZE */`, strips comment `provisa/compiler/hints.py:65` |
-| 280 | Federation Perf | Not added | Cache CTAS never runs ANALYZE; no `api_cache_{table}` naming `provisa/api_source/trino_cache.py:151` |
-| 281 | Federation Perf | Not to spec | Translation isolated, but source `federation_hints` passes raw Trino prop names verbatim `provisa/core/models.py:169` |
-| 397 | Execution & Routing | To spec | PK exclusion `n.<pk> IN [...]` with `id(n)` fallback; lives in UI, not `provisa/cypher/` `provisa-ui/src/components/graph/graph-model.ts:329` |
+| 280 | Federation Perf | To spec | Fixed: ANALYZE runs after each API-cache CTAS (failure logged, not raised) `provisa/api_source/trino_cache.py` |
+| 281 | Federation Perf | To spec | Fixed: source `federation_hints` use the Provisa-branded @provisa vocabulary, translated to Trino props via `translate_federation_hints` `provisa/compiler/directives.py`, `provisa/api/data/endpoint.py` |
+| 397 | Execution & Routing | To spec | PK exclusion `n.<pk> IN [...]` with `id(n)` fallback; lives in UI, not `provisa/cypher/`. Spec-named `tests/unit/test_graph_exclusion.py` added as the UI-test pointer `provisa-ui/src/components/graph/graph-model.ts:329` |
 
-20 To spec, 4 Incomplete, 4 Not to spec, 3 Not added (28 total). Hot/warm caching
-tiers carry the most gaps: storage format, byte guards, COUNT(*) auto-detection,
-`fs.cache` SSD wiring, warm config parsing, and tier exclusion are absent or partial.
+28 To spec (all remediated 2026-06-19). Original audit (2026-06-18): 20 To spec, 4 Incomplete
+(230, 231, 238, 241), 4 Not to spec (053, 233, 236, 281), 3 Not added (240, 280, 397-test).
+The 280-naming sub-point (`api_cache_{table}`) is left as-is — cache tables use hashed names in
+an `api_cache` schema by design; only the missing ANALYZE was a gap.
 
 ## Detail
 
@@ -220,23 +221,20 @@ tiers carry the most gaps: storage format, byte guards, COUNT(*) auto-detection,
 | tests/unit/test_mv_lifecycle.py | Exists (9 tests) |
 | tests/unit/test_warm_tables.py | Exists (11 tests) |
 | tests/unit/test_federation_hints.py | Exists (12 tests) |
-| tests/unit/test_graph_exclusion.py (REQ-397) | Missing — coverage lives in UI `provisa-ui/src/pages/__tests__/inject-exclusion.test.ts` |
+| tests/unit/test_graph_exclusion.py (REQ-397) | Added 2026-06-19 — pointer test asserting the UI implementation + `inject-exclusion.test.ts` coverage exist |
 
-All Python named tests exist. REQ-397's named `tests/unit/test_graph_exclusion.py` is
-absent because the feature is UI-side; the equivalent test is `inject-exclusion.test.ts`.
+REQ-397's named `tests/unit/test_graph_exclusion.py` now exists as a substitute that verifies
+the UI-side implementation and its TypeScript test (`inject-exclusion.test.ts`) are present.
 
-## Remaining tasks
+## Remediation (2026-06-19)
 
-| # | REQ | Type | Effort | Task |
-| --- | --- | --- | --- | --- |
-| 1 | 230 | Incomplete | M | Add `max_bytes` guard (default 10MB) measured after Redis serialization; give `max_rows` its own default |
-| 2 | 231 | Incomplete | M | Wire stale-fallback-to-live on cache miss/refresh failure; default `refresh_interval` to `materialized_views.default_ttl` |
-| 3 | 233 | Not to spec | L | Store per-row hash keyed by PK + sorted-set index alongside the blob; apply column governance (visibility/masking) at hot-table read |
-| 4 | 236 | Not to spec | M | Add COUNT(*) row-count criterion (`auto_threshold`) to `detect_hot_tables`; call `count_table_rows` at schema build |
-| 5 | 053 | Not to spec | M | Make PgBouncer the default for PostgreSQL sources, or document the flag as the intended behavior |
-| 6 | 238 | Incomplete | M | Add `fs.cache.enabled`/`fs.cache.directories`/`fs.cache.max-sizes` to the Iceberg catalog; align warm refresh with MV TTL |
-| 7 | 240 | Not added | M | Parse `warm:` per-table and `warm_tables.*` global config; pass into `check_promotions`; add `fs.cache.*` catalog keys |
-| 8 | 241 | Incomplete | M | Enforce single-tier membership with hot-over-warm precedence across the two managers |
-| 9 | 280 | Not added | S | Run ANALYZE on API cache tables after each cache refresh CTAS |
-| 10 | 281 | Not to spec | M | Translate source-level `federation_hints` from Provisa-branded names to Trino props in the single translation layer |
-| 11 | 397 | — | S | Optionally add `tests/unit/test_graph_exclusion.py` or note the UI test as the named-test substitute |
+All gaps resolved across four phases on the `group-6` branch (decisions settled with the user before implementation).
+
+- **Phase 1 — quick wins:** REQ-280 ANALYZE after API-cache CTAS; REQ-053 documented `use_pgbouncer` as the per-source opt-in (a forced default would break PG sources without PgBouncer); REQ-397 spec-named pointer test.
+- **Phase 2 — hot tables:** REQ-230 `max_bytes` (10MB) + own `max_rows` default; REQ-236 COUNT(*) auto-detection; REQ-231 TTL default + `[]`-on-miss fallback; REQ-233 documented governance-via-CTE (Stage-2 wraps the CTE), single-blob kept by design.
+- **Phase 3 — warm tables:** REQ-240 `WarmTablesConfig` + per-table `warm:` flag; REQ-238 `fs.cache.*` on the Iceberg catalog (disabled by default) + config-driven sweep interval; REQ-241 hot-over-warm precedence.
+- **Phase 4 — federation hints:** REQ-281 source `federation_hints` use the `@provisa` vocabulary, translated via `translate_federation_hints`.
+
+Two re-scopes after settling decisions with the user: REQ-233 stayed single-blob (hot tables are tiny inline VALUES CTEs and governance already applies via Stage-2), and REQ-053 documents the flag rather than forcing PgBouncer on. The Detail section above reflects the original 2026-06-18 audit; this section supersedes its verdicts.
+
+Follow-up (out of scope): a Cassandra-style per-row hot store and `api_cache_{table}`-style cache naming were judged unnecessary given the small-inline-table design.

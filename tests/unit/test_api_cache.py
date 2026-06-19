@@ -147,3 +147,65 @@ def test_rewrite_from_cache_catalog_schema():
     result = rewrite_from_cache(sql, loc, "r_xyz")
     assert "analytics_pg" in result
     assert "staging" in result
+
+
+# --- REQ-280: ANALYZE after cache materialization ---
+
+class _FakeCursor:
+    def __init__(self, log):
+        self._log = log
+
+    def execute(self, sql):
+        self._log.append(sql)
+
+    def fetchall(self):
+        return []
+
+
+class _FakeConn:
+    def __init__(self):
+        self.executed: list[str] = []
+
+    def cursor(self):
+        return _FakeCursor(self.executed)
+
+
+class _Col:
+    def __init__(self, name, type_="VARCHAR"):
+        self.name = name
+        self.type = type_
+
+
+def test_create_and_insert_runs_analyze():
+    from provisa.api_source.trino_cache import CacheLocation, create_and_insert
+
+    conn = _FakeConn()
+    loc = CacheLocation(catalog="petstore_api", schema="api_cache", backend="postgresql")
+    cols = [_Col("id", "BIGINT"), _Col("name", "VARCHAR")]
+    create_and_insert(conn, loc, "api_cache_users", [{"id": 1, "name": "x"}], cols)
+
+    analyze = [s for s in conn.executed if s.startswith("ANALYZE")]
+    assert len(analyze) == 1
+    assert 'petstore_api.api_cache."api_cache_users"' in analyze[0]
+
+
+def test_create_and_insert_analyze_after_insert():
+    from provisa.api_source.trino_cache import CacheLocation, create_and_insert
+
+    conn = _FakeConn()
+    loc = CacheLocation(catalog="petstore_api", schema="api_cache", backend="postgresql")
+    create_and_insert(conn, loc, "t", [{"id": 1}], [_Col("id", "BIGINT")])
+
+    kinds = [s.split()[0] for s in conn.executed]
+    # ANALYZE comes after CREATE and INSERT
+    assert kinds.index("ANALYZE") > kinds.index("INSERT")
+
+
+def test_create_and_insert_no_analyze_when_empty():
+    from provisa.api_source.trino_cache import CacheLocation, create_and_insert
+
+    conn = _FakeConn()
+    loc = CacheLocation(catalog="petstore_api", schema="api_cache", backend="postgresql")
+    create_and_insert(conn, loc, "t", [], [_Col("id", "BIGINT")])
+    # empty result returns before insert/analyze
+    assert not any(s.startswith("ANALYZE") for s in conn.executed)

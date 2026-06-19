@@ -2303,14 +2303,48 @@ async def _start_background_tasks(_log: logging.Logger) -> None:
     if state.trino_conn:
         from provisa.compiler.sql_gen import query_counter as _qc
 
+        # REQ-240: warm-tier thresholds + sweep interval come from config (warm_tables.*),
+        # not Python constants. Per-table warm: true/false sets force/opt-out.
+        _raw: dict = {}
+        _warm_cfg_path = Path(os.environ.get("PROVISA_CONFIG", "config/provisa.yaml"))
+        if _warm_cfg_path.exists():
+            with open(_warm_cfg_path) as _wf:
+                _raw = yaml.safe_load(_wf) or {}
+        _wcfg = _raw.get("warm_tables", {})
+        _warm_threshold = int(_wcfg.get("query_threshold", 100))
+        _warm_max_rows = int(_wcfg.get("max_rows", 10_000_000))
+        _warm_interval = int(_wcfg.get("refresh_interval", 60))
+        _warm_forced: set[str] = set()
+        _warm_excluded: set[str] = set()
+        for _t in _raw.get("tables", []):
+            _tn = _t.get("table") or _t.get("table_name")
+            if _tn and "warm" in _t:
+                (_warm_forced if _t["warm"] else _warm_excluded).add(_tn)
+
         async def _warm_loop() -> None:
             while True:
                 try:
-                    state.warm_manager.check_promotions(_qc, state.trino_conn)
-                    state.warm_manager.check_demotions(_qc, state.trino_conn)
+                    # REQ-241: hot-over-warm precedence — exclude tables the hot tier manages.
+                    _hot_names = (
+                        state.hot_manager.managed_tables()
+                        if state.hot_manager is not None
+                        else set()
+                    )
+                    state.warm_manager.check_promotions(
+                        _qc,
+                        state.trino_conn,
+                        threshold=_warm_threshold,
+                        max_rows=_warm_max_rows,
+                        hot_tables=_hot_names,
+                        excluded=_warm_excluded,
+                        forced=_warm_forced,
+                    )
+                    state.warm_manager.check_demotions(
+                        _qc, state.trino_conn, threshold=_warm_threshold
+                    )
                 except Exception:
                     _log.exception("Error in warm-table loop")
-                await asyncio.sleep(60)
+                await asyncio.sleep(_warm_interval)
 
         state._warm_task = asyncio.create_task(_warm_loop())
 

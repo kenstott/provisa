@@ -119,3 +119,55 @@ class TestExecuteTrinoSessionHints:
         set_calls = [c for c in calls if c.startswith("SET SESSION")]
         # Only the default timeout hint is injected; no user-supplied hints
         assert all("query_max_execution_time" in c for c in set_calls)
+
+
+# --- REQ-281: source federation hint translation ---
+
+from provisa.compiler.directives import translate_federation_hints  # noqa: E402
+
+
+class TestTranslateFederationHints:
+    def test_join_broadcast(self):
+        out = translate_federation_hints({"join": "broadcast"})
+        assert out == {"join_distribution_type": "BROADCAST"}
+
+    def test_join_partitioned_case_insensitive(self):
+        out = translate_federation_hints({"join": "Partitioned"})
+        assert out == {"join_distribution_type": "PARTITIONED"}
+
+    def test_reorder_none(self):
+        assert translate_federation_hints({"reorder": "none"}) == {
+            "join_reordering_strategy": "NONE"
+        }
+        assert translate_federation_hints({"reorder": "false"}) == {
+            "join_reordering_strategy": "NONE"
+        }
+
+    def test_reorder_auto(self):
+        assert translate_federation_hints({"reorder": "auto"}) == {
+            "join_reordering_strategy": "AUTOMATIC"
+        }
+
+    def test_broadcast_size(self):
+        assert translate_federation_hints({"broadcast_size": "1GB"}) == {
+            "join_max_broadcast_table_size": "1GB"
+        }
+
+    def test_combined(self):
+        out = translate_federation_hints(
+            {"join": "broadcast", "reorder": "none", "broadcast_size": "2GB"}
+        )
+        assert out == {
+            "join_distribution_type": "BROADCAST",
+            "join_reordering_strategy": "NONE",
+            "join_max_broadcast_table_size": "2GB",
+        }
+
+    def test_unknown_key_passthrough(self):
+        # raw Trino keys still work (transitional)
+        out = translate_federation_hints({"query_max_memory": "8GB"})
+        assert out == {"query_max_memory": "8GB"}
+
+    def test_unknown_join_value_dropped(self):
+        # an invalid friendly value does not emit a bogus session prop
+        assert translate_federation_hints({"join": "nonsense"}) == {}

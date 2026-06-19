@@ -60,15 +60,16 @@ from graphql.language.ast import (
 # Result dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class QueryDirectives:
     """Extracted directive values for a single GraphQL operation."""
 
     # @route
-    route: str | None = None           # "FEDERATED" | "DIRECT" | None
+    route: str | None = None  # "FEDERATED" | "DIRECT" | None
 
     # @join
-    join_strategy: str | None = None   # "BROADCAST" | "PARTITIONED" | None
+    join_strategy: str | None = None  # "BROADCAST" | "PARTITIONED" | None
 
     # @reorder
     reorder_enabled: bool | None = None  # False = disable
@@ -84,14 +85,14 @@ class QueryDirectives:
     sink_broker: str | None = None
 
     # @redirect
-    redirect_format: str | None = None    # "parquet" | "csv" | "arrow"
+    redirect_format: str | None = None  # "parquet" | "csv" | "arrow"
     redirect_threshold: int | None = None
 
     # @cached
-    cache_ttl: int | None = None          # seconds; 0 = disable; None = use server default
+    cache_ttl: int | None = None  # seconds; 0 = disable; None = use server default
 
     # @noCache
-    no_cache: bool = False                # True = skip cache read and write entirely
+    no_cache: bool = False  # True = skip cache read and write entirely
 
     # -----------------------------------------------------------------------
     # Convenience helpers
@@ -127,9 +128,44 @@ class QueryDirectives:
         return None
 
 
+def translate_federation_hints(hints: dict[str, str]) -> dict[str, str]:
+    """REQ-281: map Provisa-branded source federation hints to Trino session props.
+
+    Source-level ``federation_hints`` use the same vocabulary as the @provisa query
+    directives so admins never write Trino-specific names:
+      - ``join``: ``broadcast`` | ``partitioned`` → ``join_distribution_type``
+      - ``reorder``: ``none``/``false`` → ``join_reordering_strategy=NONE``;
+        ``auto``/``true`` → ``AUTOMATIC``
+      - ``broadcast_size``: ``<size>`` → ``join_max_broadcast_table_size``
+
+    Unrecognized keys pass through unchanged (Trino validates them) so configs still using
+    raw Trino session-prop names keep working during the transition.
+    """
+    out: dict[str, str] = {}
+    for key, value in hints.items():
+        k = key.lower()
+        v = str(value)
+        if k == "join":
+            vu = v.upper()
+            if vu in ("BROADCAST", "PARTITIONED"):
+                out["join_distribution_type"] = vu
+        elif k == "reorder":
+            vl = v.lower()
+            if vl in ("none", "false", "off", "no"):
+                out["join_reordering_strategy"] = "NONE"
+            elif vl in ("auto", "automatic", "true", "on", "yes"):
+                out["join_reordering_strategy"] = "AUTOMATIC"
+        elif k == "broadcast_size":
+            out["join_max_broadcast_table_size"] = v
+        else:
+            out[key] = value  # passthrough (raw Trino prop) — transitional
+    return out
+
+
 # ---------------------------------------------------------------------------
 # AST value extraction helper
 # ---------------------------------------------------------------------------
+
 
 def _arg_value(node: Any) -> Any:
     if isinstance(node, StringValueNode):
@@ -151,6 +187,7 @@ def _arg_value(node: Any) -> Any:
 # Watermark field scanner (recursive)
 # ---------------------------------------------------------------------------
 
+
 def _scan_watermark_fields(selection_set: SelectionSetNode) -> set[str]:
     found: set[str] = set()
     for sel in selection_set.selections:
@@ -167,6 +204,7 @@ def _scan_watermark_fields(selection_set: SelectionSetNode) -> set[str]:
 # ---------------------------------------------------------------------------
 # GraphQL AST extraction
 # ---------------------------------------------------------------------------
+
 
 def extract_directives(document: DocumentNode) -> QueryDirectives:
     """Extract all provisa directives from a parsed GraphQL ``DocumentNode``.
@@ -257,9 +295,21 @@ def extract_directives_from_sql_comments(sql: str) -> QueryDirectives:
             key = key.lower()
             value_lower = value.lower()
             if key == "route":
-                result.route = "FEDERATED" if value_lower == "federated" else "DIRECT" if value_lower == "direct" else None
+                result.route = (
+                    "FEDERATED"
+                    if value_lower == "federated"
+                    else "DIRECT"
+                    if value_lower == "direct"
+                    else None
+                )
             elif key == "join":
-                result.join_strategy = "BROADCAST" if value_lower == "broadcast" else "PARTITIONED" if value_lower == "partitioned" else None
+                result.join_strategy = (
+                    "BROADCAST"
+                    if value_lower == "broadcast"
+                    else "PARTITIONED"
+                    if value_lower == "partitioned"
+                    else None
+                )
             elif key == "reorder" and value_lower == "off":
                 result.reorder_enabled = False
             elif key == "broadcast_size":
