@@ -1885,7 +1885,8 @@ async def _load_tracked_functions_and_webhooks(
 
     await _ensure_catalog_cache(state.pg_pool)
     fn_rows = await conn.fetch("SELECT * FROM tracked_functions ORDER BY name")
-    wh_rows = await conn.fetch("SELECT * FROM tracked_webhooks ORDER BY name")
+    # REQ-209: only steward-approved webhooks are exposed and callable.
+    wh_rows = await conn.fetch("SELECT * FROM tracked_webhooks WHERE approved = TRUE ORDER BY name")
     import json as _json
 
     tracked_functions = [

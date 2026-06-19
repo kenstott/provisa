@@ -2054,6 +2054,21 @@ class Mutation:
             )
         elif req["request_type"] == "view":
             result = await self.register_table(info, _rebuild_table_input(req["payload"]))
+        elif req["request_type"] == "webhook":
+            # REQ-209: approving a webhook marks it approved so it is exposed on rebuild.
+            wh_name = req["payload"]["name"]
+            async with pool.acquire() as conn:
+                updated = await conn.execute(
+                    "UPDATE tracked_webhooks SET approved = TRUE, updated_at = NOW() "
+                    "WHERE name = $1",
+                    wh_name,
+                )
+            if updated == "UPDATE 0":
+                return MutationResult(success=False, message=f"Webhook {wh_name!r} not found")
+            from provisa.api.app import _rebuild_schemas
+
+            await _rebuild_schemas()
+            result = MutationResult(success=True, message=f"Approved webhook {wh_name!r}")
         else:
             return MutationResult(
                 success=False, message=f"Unknown request type {req['request_type']!r}"

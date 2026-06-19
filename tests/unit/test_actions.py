@@ -419,3 +419,108 @@ class TestWebhookResponseMapping:
         inline = [{"name": "id", "type": "Int"}]
         result = map_response_to_return_type(data, inline)
         assert result == [{"id": 1}]
+
+
+# ---------------------------------------------------------------------------
+# REQ-209: webhook steward-approval gate via the creation_requests queue
+# ---------------------------------------------------------------------------
+
+
+class _FakeConn:
+    def __init__(self):
+        self.executed: list[tuple] = []
+
+    async def execute(self, sql, *args):
+        self.executed.append((sql, args))
+        return "INSERT 0 1"
+
+
+class _FakePool:
+    def __init__(self, conn):
+        self._conn = conn
+
+    def acquire(self):
+        conn = self._conn
+
+        class _Ctx:
+            async def __aenter__(self):
+                return conn
+
+            async def __aexit__(self, *a):
+                return False
+
+        return _Ctx()
+
+
+class TestWebhookRowMapping:
+    def test_row_to_webhook_includes_approved(self):
+        from provisa.api.admin.actions_router import _row_to_webhook
+
+        row = {
+            "name": "notify",
+            "url": "http://x",
+            "method": "POST",
+            "timeout_ms": 5000,
+            "returns": None,
+            "inline_return_type": [],
+            "arguments": [],
+            "visible_to": [],
+            "domain_id": "",
+            "description": None,
+            "kind": "mutation",
+            "approved": True,
+        }
+        assert _row_to_webhook(row)["approved"] is True
+
+    def test_row_to_webhook_defaults_approved_false(self):
+        from provisa.api.admin.actions_router import _row_to_webhook
+
+        row = {
+            "name": "notify",
+            "url": "http://x",
+            "method": "POST",
+            "timeout_ms": 5000,
+            "returns": None,
+            "inline_return_type": [],
+            "arguments": [],
+            "visible_to": [],
+            "domain_id": "",
+            "description": None,
+            "kind": "mutation",
+        }
+        assert _row_to_webhook(row)["approved"] is False
+
+
+class TestWebhookApprovalGate:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_create_webhook_registers_unapproved_and_enqueues_request(self):
+        from provisa.api.admin.actions_router import WebhookInput, create_webhook
+
+        conn = _FakeConn()
+        fake_state = MagicMock()
+        fake_state.pg_pool = _FakePool(conn)
+
+        with (
+            patch("provisa.api.app.state", fake_state),
+            patch("provisa.api.admin.actions_router._ensure_tables", new=AsyncMock()),
+            patch("provisa.api.app._rebuild_schemas", new=AsyncMock()) as rebuild,
+            patch(
+                "provisa.core.repositories.creation_request.create",
+                new=AsyncMock(return_value=42),
+            ) as cr_create,
+        ):
+            result = await create_webhook(WebhookInput(name="notify", url="http://x"))
+
+        # webhook stored unapproved
+        assert result["approved"] is False
+        assert result["creationRequestId"] == 42
+        insert_sql = conn.executed[0][0]
+        assert "approved" in insert_sql
+        assert "FALSE" in insert_sql
+        # a webhook_registration request was enqueued
+        cr_create.assert_awaited_once()
+        cr_args = cr_create.await_args.args
+        assert cr_args[1] == "webhook"
+        assert cr_args[2] == "webhook_registration"
+        assert cr_args[3] == {"name": "notify"}
+        rebuild.assert_awaited_once()
