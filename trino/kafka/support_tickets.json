@@ -1,43 +1,14 @@
 {
   "tableName": "support_tickets",
-  "schemaName": "default",
   "topicName": "support.tickets",
-  "key": {
-    "dataFormat": "raw",
-    "fields": [
-      {
-        "name": "customer_key",
-        "type": "VARCHAR"
-      }
-    ]
-  },
+  "schemaName": "default",
   "message": {
     "dataFormat": "json",
     "fields": [
       {
-        "name": "event_type",
+        "name": "id",
         "type": "VARCHAR",
-        "mapping": "event_type"
-      },
-      {
-        "name": "ticket_id",
-        "type": "INTEGER",
-        "mapping": "ticket_id"
-      },
-      {
-        "name": "customer_id",
-        "type": "INTEGER",
-        "mapping": "customer_id"
-      },
-      {
-        "name": "category",
-        "type": "VARCHAR",
-        "mapping": "category"
-      },
-      {
-        "name": "priority",
-        "type": "VARCHAR",
-        "mapping": "priority"
+        "mapping": "id"
       },
       {
         "name": "subject",
@@ -45,29 +16,14 @@
         "mapping": "subject"
       },
       {
-        "name": "agent",
+        "name": "status",
         "type": "VARCHAR",
-        "mapping": "agent"
-      },
-      {
-        "name": "resolution",
-        "type": "VARCHAR",
-        "mapping": "resolution"
-      },
-      {
-        "name": "resolution_time_minutes",
-        "type": "INTEGER",
-        "mapping": "resolution_time_minutes"
+        "mapping": "status"
       },
       {
         "name": "created_at",
         "type": "VARCHAR",
         "mapping": "created_at"
-      },
-      {
-        "name": "resolved_at",
-        "type": "VARCHAR",
-        "mapping": "resolved_at"
       }
     ]
   }
