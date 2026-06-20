@@ -13,10 +13,8 @@
 from __future__ import annotations
 
 import json
-import sys
-import types
 from typing import Any
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pyarrow as pa
 import pytest
@@ -25,6 +23,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_httpx_response(
     status_code: int = 200,
@@ -45,6 +44,7 @@ def _make_httpx_response(
 def _http_status_error() -> Exception:
     """Return a plausible httpx.HTTPStatusError."""
     import httpx
+
     request = httpx.Request("POST", "http://localhost:8001/data/graphql")
     response = httpx.Response(status_code=500, request=request)
     return httpx.HTTPStatusError("Server error", request=request, response=response)
@@ -54,44 +54,54 @@ def _http_status_error() -> Exception:
 # DB-API 2.0  (dbapi.py)
 # ===========================================================================
 
+
 class TestDbApiModuleConstants:
     def test_apilevel(self):
         from provisa_client import dbapi
+
         assert dbapi.apilevel == "2.0"
 
     def test_threadsafety(self):
         from provisa_client import dbapi
+
         assert dbapi.threadsafety == 1
 
     def test_paramstyle(self):
         from provisa_client import dbapi
+
         assert dbapi.paramstyle == "named"
 
 
 class TestDbApiExceptionHierarchy:
     def test_error_is_exception(self):
         from provisa_client.dbapi import Error
+
         assert issubclass(Error, Exception)
 
     def test_database_error_inherits_error(self):
         from provisa_client.dbapi import DatabaseError, Error
+
         assert issubclass(DatabaseError, Error)
 
     def test_operational_error_inherits_database_error(self):
         from provisa_client.dbapi import OperationalError, DatabaseError
+
         assert issubclass(OperationalError, DatabaseError)
 
     def test_programming_error_inherits_database_error(self):
         from provisa_client.dbapi import ProgrammingError, DatabaseError
+
         assert issubclass(ProgrammingError, DatabaseError)
 
     def test_operational_error_can_be_raised_and_caught_as_error(self):
         from provisa_client.dbapi import OperationalError, Error
+
         with pytest.raises(Error):
             raise OperationalError("test")
 
     def test_programming_error_can_be_raised_and_caught_as_error(self):
         from provisa_client.dbapi import ProgrammingError, Error
+
         with pytest.raises(Error):
             raise ProgrammingError("test")
 
@@ -99,65 +109,79 @@ class TestDbApiExceptionHierarchy:
 class TestIsGraphql:
     def test_curly_brace_query(self):
         from provisa_client.dbapi import _is_graphql
+
         assert _is_graphql("{ orders { id } }")
 
     def test_whitespace_before_brace(self):
         from provisa_client.dbapi import _is_graphql
+
         assert _is_graphql("   { users { name } }")
 
     def test_query_keyword(self):
         from provisa_client.dbapi import _is_graphql
+
         assert _is_graphql("query GetUsers { users { id } }")
 
     def test_mutation_keyword(self):
         from provisa_client.dbapi import _is_graphql
-        assert _is_graphql("mutation CreateUser { createUser(name: \"x\") { id } }")
+
+        assert _is_graphql('mutation CreateUser { createUser(name: "x") { id } }')
 
     def test_query_keyword_case_insensitive(self):
         from provisa_client.dbapi import _is_graphql
+
         assert _is_graphql("QUERY GetAll { items { id } }")
 
     def test_plain_sql_select(self):
         from provisa_client.dbapi import _is_graphql
+
         assert not _is_graphql("SELECT id FROM orders")
 
     def test_plain_sql_with(self):
         from provisa_client.dbapi import _is_graphql
+
         assert not _is_graphql("WITH cte AS (SELECT 1) SELECT * FROM cte")
 
     def test_empty_string(self):
         from provisa_client.dbapi import _is_graphql
+
         assert not _is_graphql("")
 
 
 class TestApplyParameters:
     def test_no_parameters_returns_query_unchanged(self):
         from provisa_client.dbapi import _apply_parameters
+
         sql = "SELECT * FROM orders"
         assert _apply_parameters(sql, None) == sql
 
     def test_empty_parameters_returns_query_unchanged(self):
         from provisa_client.dbapi import _apply_parameters
+
         sql = "SELECT * FROM orders"
         assert _apply_parameters(sql, {}) == sql
 
     def test_string_value_is_quoted(self):
         from provisa_client.dbapi import _apply_parameters
+
         result = _apply_parameters("SELECT * FROM t WHERE name = :name", {"name": "Alice"})
         assert result == "SELECT * FROM t WHERE name = 'Alice'"
 
     def test_numeric_value_is_unquoted(self):
         from provisa_client.dbapi import _apply_parameters
+
         result = _apply_parameters("SELECT * FROM t WHERE id = :id", {"id": 42})
         assert result == "SELECT * FROM t WHERE id = 42"
 
     def test_float_value_is_unquoted(self):
         from provisa_client.dbapi import _apply_parameters
+
         result = _apply_parameters("SELECT * FROM t WHERE score > :score", {"score": 3.14})
         assert result == "SELECT * FROM t WHERE score > 3.14"
 
     def test_multiple_parameters(self):
         from provisa_client.dbapi import _apply_parameters
+
         result = _apply_parameters(
             "SELECT * FROM t WHERE name = :name AND age = :age",
             {"name": "Bob", "age": 30},
@@ -169,6 +193,7 @@ class TestApplyParameters:
 
     def test_boolean_value_is_unquoted(self):
         from provisa_client.dbapi import _apply_parameters
+
         result = _apply_parameters("SELECT * FROM t WHERE active = :flag", {"flag": True})
         assert "True" in result
 
@@ -176,6 +201,7 @@ class TestApplyParameters:
 class TestConnect:
     def test_successful_auth_returns_connection_with_token(self):
         from provisa_client import dbapi
+
         login_resp = _make_httpx_response(200, {"token": "tok-abc"})
         with patch("provisa_client.dbapi.httpx.post", return_value=login_resp):
             conn = dbapi.connect(
@@ -184,10 +210,12 @@ class TestConnect:
                 password="secret",
             )
         assert conn._token == "tok-abc"
-        assert conn._role == "admin"
+        # REQ-268/269/273: no role is assumed client-side; role stays unset unless requested.
+        assert conn._role is None
 
-    def test_failed_auth_falls_back_to_username_as_role(self):
+    def test_failed_auth_leaves_token_none_and_no_role_fallback(self):
         from provisa_client import dbapi
+
         login_resp = _make_httpx_response(401, {})
         with patch("provisa_client.dbapi.httpx.post", return_value=login_resp):
             conn = dbapi.connect(
@@ -195,12 +223,14 @@ class TestConnect:
                 username="analyst_user",
                 password="wrong",
             )
+        # REQ-273: failed auth does not silently adopt the username as a role.
         assert conn._token is None
-        assert conn._role == "analyst_user"
+        assert conn._role is None
 
-    def test_http_error_during_auth_falls_back_gracefully(self):
+    def test_http_error_during_auth_leaves_role_unset(self):
         import httpx
         from provisa_client import dbapi
+
         with patch("provisa_client.dbapi.httpx.post", side_effect=httpx.HTTPError("network fail")):
             conn = dbapi.connect(
                 "http://localhost:8001",
@@ -208,10 +238,11 @@ class TestConnect:
                 password="pw",
             )
         assert conn._token is None
-        assert conn._role == "fallback_user"
+        assert conn._role is None
 
     def test_trailing_slash_stripped_from_base_url(self):
         from provisa_client import dbapi
+
         login_resp = _make_httpx_response(200, {"token": "t"})
         with patch("provisa_client.dbapi.httpx.post", return_value=login_resp):
             conn = dbapi.connect(
@@ -221,34 +252,40 @@ class TestConnect:
             )
         assert conn._base_url == "http://localhost:8001"
 
-    def test_mode_propagated(self):
+    def test_requested_role_propagated(self):
         from provisa_client import dbapi
+
         login_resp = _make_httpx_response(200, {"token": "t"})
         with patch("provisa_client.dbapi.httpx.post", return_value=login_resp):
             conn = dbapi.connect(
                 "http://localhost:8001",
                 username="u",
                 password="p",
-                mode="approved",
+                role="analyst",
             )
-        assert conn._mode == "approved"
+        assert conn._role == "analyst"
 
 
 class TestConnection:
-    def _make_conn(self, token: str | None = "tok-xyz", role: str = "admin") -> Any:
+    def _make_conn(self, token: str | None = "tok-xyz", role: str | None = "admin") -> Any:
         from provisa_client.dbapi import Connection
+
         return Connection(
             base_url="http://localhost:8001",
             token=token,
             role=role,
-            mode="approved",
         )
 
     def test_headers_include_content_type_and_role(self):
         conn = self._make_conn()
         h = conn._headers()
         assert h["Content-Type"] == "application/json"
-        assert h["X-Role"] == "admin"
+        assert h["X-Provisa-Role"] == "admin"
+
+    def test_headers_omit_role_when_unset(self):
+        conn = self._make_conn(role=None)
+        h = conn._headers()
+        assert "X-Provisa-Role" not in h
 
     def test_headers_include_bearer_token_when_present(self):
         conn = self._make_conn(token="tok-xyz")
@@ -262,6 +299,7 @@ class TestConnection:
 
     def test_cursor_returns_cursor_instance(self):
         from provisa_client.dbapi import Cursor
+
         conn = self._make_conn()
         cur = conn.cursor()
         assert isinstance(cur, Cursor)
@@ -273,6 +311,7 @@ class TestConnection:
 
     def test_cursor_on_closed_connection_raises_operational_error(self):
         from provisa_client.dbapi import OperationalError
+
         conn = self._make_conn()
         conn.close()
         with pytest.raises(OperationalError, match="closed"):
@@ -310,11 +349,11 @@ class TestConnection:
 class TestCursorExecuteRouting:
     def _make_cursor(self):
         from provisa_client.dbapi import Connection, Cursor
+
         conn = Connection(
             base_url="http://localhost:8001",
             token="tok",
             role="admin",
-            mode="approved",
         )
         return Cursor(connection=conn)
 
@@ -352,6 +391,7 @@ class TestCursorExecuteRouting:
 
     def test_closed_cursor_raises_operational_error(self):
         from provisa_client.dbapi import OperationalError
+
         cur = self._make_cursor()
         cur.close()
         with pytest.raises(OperationalError, match="closed"):
@@ -361,11 +401,11 @@ class TestCursorExecuteRouting:
 class TestCursorExecuteGraphql:
     def _make_cursor(self):
         from provisa_client.dbapi import Connection, Cursor
+
         conn = Connection(
             base_url="http://localhost:8001",
             token="tok",
             role="admin",
-            mode="approved",
         )
         return Cursor(connection=conn)
 
@@ -381,6 +421,7 @@ class TestCursorExecuteGraphql:
 
     def test_graphql_error_in_body_raises_programming_error(self):
         from provisa_client.dbapi import ProgrammingError
+
         cur = self._make_cursor()
         body = {"errors": [{"message": "Unknown field"}]}
         resp = _make_httpx_response(200, body)
@@ -390,6 +431,7 @@ class TestCursorExecuteGraphql:
 
     def test_http_error_raises_operational_error(self):
         from provisa_client.dbapi import OperationalError
+
         cur = self._make_cursor()
         resp = _make_httpx_response(500, raise_for_status_exc=_http_status_error())
         with patch("provisa_client.dbapi.httpx.post", return_value=resp):
@@ -417,11 +459,11 @@ class TestCursorExecuteGraphql:
 class TestCursorExecuteSql:
     def _make_cursor(self):
         from provisa_client.dbapi import Connection, Cursor
+
         conn = Connection(
             base_url="http://localhost:8001",
             token="tok",
             role="admin",
-            mode="approved",
         )
         return Cursor(connection=conn)
 
@@ -451,6 +493,7 @@ class TestCursorExecuteSql:
 
     def test_http_error_raises_operational_error(self):
         from provisa_client.dbapi import OperationalError
+
         cur = self._make_cursor()
         resp = _make_httpx_response(500, raise_for_status_exc=_http_status_error())
         with patch("provisa_client.dbapi.httpx.post", return_value=resp):
@@ -461,11 +504,11 @@ class TestCursorExecuteSql:
 class TestCursorSetRows:
     def _make_cursor(self):
         from provisa_client.dbapi import Connection, Cursor
+
         conn = Connection(
             base_url="http://localhost:8001",
             token=None,
             role="admin",
-            mode="approved",
         )
         return Cursor(connection=conn)
 
@@ -508,11 +551,11 @@ class TestCursorSetRows:
 class TestCursorFetchMethods:
     def _make_cursor_with_rows(self, rows=None):
         from provisa_client.dbapi import Connection, Cursor
+
         conn = Connection(
             base_url="http://localhost:8001",
             token=None,
             role="admin",
-            mode="approved",
         )
         cur = Cursor(connection=conn)
         if rows is not None:
@@ -562,6 +605,7 @@ class TestCursorFetchMethods:
 
     def test_fetchone_on_closed_cursor_raises(self):
         from provisa_client.dbapi import OperationalError
+
         cur = self._make_cursor_with_rows([{"id": 1}])
         cur.close()
         with pytest.raises(OperationalError):
@@ -569,6 +613,7 @@ class TestCursorFetchMethods:
 
     def test_fetchmany_on_closed_cursor_raises(self):
         from provisa_client.dbapi import OperationalError
+
         cur = self._make_cursor_with_rows([{"id": 1}])
         cur.close()
         with pytest.raises(OperationalError):
@@ -576,6 +621,7 @@ class TestCursorFetchMethods:
 
     def test_fetchall_on_closed_cursor_raises(self):
         from provisa_client.dbapi import OperationalError
+
         cur = self._make_cursor_with_rows([{"id": 1}])
         cur.close()
         with pytest.raises(OperationalError):
@@ -585,11 +631,11 @@ class TestCursorFetchMethods:
 class TestCursorExecuteMany:
     def _make_cursor(self):
         from provisa_client.dbapi import Connection, Cursor
+
         conn = Connection(
             base_url="http://localhost:8001",
             token=None,
             role="admin",
-            mode="approved",
         )
         return Cursor(connection=conn)
 
@@ -609,6 +655,7 @@ class TestCursorExecuteMany:
 
     def test_executemany_on_closed_cursor_raises(self):
         from provisa_client.dbapi import OperationalError
+
         cur = self._make_cursor()
         cur.close()
         with pytest.raises(OperationalError):
@@ -618,11 +665,11 @@ class TestCursorExecuteMany:
 class TestCursorContextManager:
     def test_cursor_context_manager_returns_self(self):
         from provisa_client.dbapi import Connection, Cursor
+
         conn = Connection(
             base_url="http://localhost:8001",
             token=None,
             role="admin",
-            mode="approved",
         )
         cur = Cursor(connection=conn)
         with cur as c:
@@ -630,11 +677,11 @@ class TestCursorContextManager:
 
     def test_cursor_context_manager_closes_on_exit(self):
         from provisa_client.dbapi import Connection, Cursor
+
         conn = Connection(
             base_url="http://localhost:8001",
             token=None,
             role="admin",
-            mode="approved",
         )
         cur = Cursor(connection=conn)
         with cur:
@@ -646,17 +693,21 @@ class TestCursorContextManager:
 # SQLAlchemy Dialect (sqlalchemy_dialect.py)
 # ===========================================================================
 
+
 class TestProvisaDialectAttributes:
     def test_name_attribute(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         assert ProvisaDialect.name == "provisa"
 
     def test_driver_attribute(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         assert ProvisaDialect.driver == "provisa_client"
 
     def test_supports_alter_is_false(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         assert ProvisaDialect.supports_alter is False
 
 
@@ -681,6 +732,7 @@ class TestProvisaDialectCreateConnectArgs:
 
     def test_extracts_scheme_from_drivername(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         url = self._make_url(drivername="provisa+https", port=443)
         _, opts = dialect.create_connect_args(url)
@@ -688,6 +740,7 @@ class TestProvisaDialectCreateConnectArgs:
 
     def test_extracts_host(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         url = self._make_url(host="data.example.com")
         _, opts = dialect.create_connect_args(url)
@@ -695,6 +748,7 @@ class TestProvisaDialectCreateConnectArgs:
 
     def test_extracts_port(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         url = self._make_url(port=9999)
         _, opts = dialect.create_connect_args(url)
@@ -702,6 +756,7 @@ class TestProvisaDialectCreateConnectArgs:
 
     def test_default_port_8001_when_not_specified(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         url = self._make_url(port=None)
         _, opts = dialect.create_connect_args(url)
@@ -709,6 +764,7 @@ class TestProvisaDialectCreateConnectArgs:
 
     def test_extracts_username(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         url = self._make_url(username="bob")
         _, opts = dialect.create_connect_args(url)
@@ -716,6 +772,7 @@ class TestProvisaDialectCreateConnectArgs:
 
     def test_extracts_password(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         url = self._make_url(password="hunter2")
         _, opts = dialect.create_connect_args(url)
@@ -723,34 +780,33 @@ class TestProvisaDialectCreateConnectArgs:
 
     def test_extracts_role_from_query(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         url = self._make_url(query={"role": "analyst"})
         _, opts = dialect.create_connect_args(url)
         assert opts["role"] == "analyst"
 
-    def test_default_role_is_admin(self):
+    def test_no_role_when_query_empty(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         url = self._make_url(query={})
         _, opts = dialect.create_connect_args(url)
-        assert opts["role"] == "admin"
+        # REQ-268/269/273: no default role is assumed; role is server-validated when requested.
+        assert "role" not in opts
 
-    def test_extracts_mode_from_query(self):
+    def test_mode_in_query_is_ignored(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         url = self._make_url(query={"mode": "catalog"})
         _, opts = dialect.create_connect_args(url)
-        assert opts["mode"] == "catalog"
-
-    def test_default_mode_is_approved(self):
-        from provisa_client.sqlalchemy_dialect import ProvisaDialect
-        dialect = ProvisaDialect()
-        url = self._make_url(query={})
-        _, opts = dialect.create_connect_args(url)
-        assert opts["mode"] == "approved"
+        # REQ-268/269: connection mode no longer exists.
+        assert "mode" not in opts
 
     def test_returns_empty_positional_args(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         url = self._make_url()
         positional, _ = dialect.create_connect_args(url)
@@ -758,6 +814,7 @@ class TestProvisaDialectCreateConnectArgs:
 
     def test_drivername_without_plus_defaults_to_http(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         url = self._make_url(drivername="provisa")
         _, opts = dialect.create_connect_args(url)
@@ -775,6 +832,7 @@ class TestProvisaDialectGetTableNames:
 
     def test_returns_field_names_from_introspection(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         conn = self._make_connection()
         body = {
@@ -798,6 +856,7 @@ class TestProvisaDialectGetTableNames:
     def test_http_error_returns_empty_list(self):
         import httpx
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         conn = self._make_connection()
         with patch(
@@ -809,6 +868,7 @@ class TestProvisaDialectGetTableNames:
 
     def test_filters_fields_without_name(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         conn = self._make_connection()
         body = {
@@ -841,6 +901,7 @@ class TestProvisaDialectGetColumns:
 
     def test_returns_columns_for_matching_table(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         conn = self._make_connection()
         body = {
@@ -848,11 +909,22 @@ class TestProvisaDialectGetColumns:
                 "__schema": {
                     "queryType": {
                         "fields": [
-                            {"name": "orders", "type": {"name": None, "kind": "LIST", "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None}}},
+                            {
+                                "name": "orders",
+                                "type": {
+                                    "name": None,
+                                    "kind": "LIST",
+                                    "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None},
+                                },
+                            },
                         ]
                     },
                     "types": [
-                        {"name": "Orders", "kind": "OBJECT", "fields": [{"name": "id"}, {"name": "total"}]},
+                        {
+                            "name": "Orders",
+                            "kind": "OBJECT",
+                            "fields": [{"name": "id"}, {"name": "total"}],
+                        },
                     ],
                 }
             }
@@ -867,6 +939,7 @@ class TestProvisaDialectGetColumns:
 
     def test_returns_empty_list_when_table_not_found(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         conn = self._make_connection()
         body = {
@@ -874,7 +947,14 @@ class TestProvisaDialectGetColumns:
                 "__schema": {
                     "queryType": {
                         "fields": [
-                            {"name": "orders", "type": {"name": None, "kind": "LIST", "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None}}},
+                            {
+                                "name": "orders",
+                                "type": {
+                                    "name": None,
+                                    "kind": "LIST",
+                                    "ofType": {"name": "Orders", "kind": "OBJECT", "ofType": None},
+                                },
+                            },
                         ]
                     },
                     "types": [
@@ -891,6 +971,7 @@ class TestProvisaDialectGetColumns:
     def test_http_error_returns_empty_list(self):
         import httpx
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         conn = self._make_connection()
         with patch(
@@ -902,6 +983,7 @@ class TestProvisaDialectGetColumns:
 
     def test_columns_are_nullable(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         conn = self._make_connection()
         body = {
@@ -909,7 +991,14 @@ class TestProvisaDialectGetColumns:
                 "__schema": {
                     "queryType": {
                         "fields": [
-                            {"name": "t", "type": {"name": None, "kind": "LIST", "ofType": {"name": "T", "kind": "OBJECT", "ofType": None}}},
+                            {
+                                "name": "t",
+                                "type": {
+                                    "name": None,
+                                    "kind": "LIST",
+                                    "ofType": {"name": "T", "kind": "OBJECT", "ofType": None},
+                                },
+                            },
                         ]
                     },
                     "types": [
@@ -935,6 +1024,7 @@ class TestProvisaDialectHasTable:
 
     def test_returns_true_when_table_present(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         conn = self._make_connection()
         body = {"data": {"__schema": {"queryType": {"fields": [{"name": "my-query"}]}}}}
@@ -944,6 +1034,7 @@ class TestProvisaDialectHasTable:
 
     def test_returns_false_when_table_absent(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         conn = self._make_connection()
         body = {"data": {"__schema": {"queryType": {"fields": [{"name": "other-query"}]}}}}
@@ -958,42 +1049,50 @@ class TestProvisaDialectMiscMethods:
 
     def test_get_schema_names_returns_default(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         assert dialect.get_schema_names(self._make_connection()) == ["default"]
 
     def test_get_foreign_keys_returns_empty(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         assert dialect.get_foreign_keys(self._make_connection(), "t") == []
 
     def test_get_indexes_returns_empty(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         assert dialect.get_indexes(self._make_connection(), "t") == []
 
     def test_get_pk_constraint_returns_empty_dict(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         result = dialect.get_pk_constraint(self._make_connection(), "t")
         assert result == {"constrained_columns": [], "name": None}
 
     def test_get_unique_constraints_returns_empty(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         assert dialect.get_unique_constraints(self._make_connection(), "t") == []
 
     def test_check_unicode_returns_true(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         assert dialect._check_unicode_returns(self._make_connection()) is True
 
     def test_check_unicode_description_returns_true(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         assert dialect._check_unicode_description(self._make_connection()) is True
 
     def test_do_execute_delegates_to_cursor(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         cursor = MagicMock()
         dialect.do_execute(cursor, "SELECT 1", None)
@@ -1001,6 +1100,7 @@ class TestProvisaDialectMiscMethods:
 
     def test_do_execute_passes_parameters(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         cursor = MagicMock()
         dialect.do_execute(cursor, "SELECT :id", {"id": 1})
@@ -1008,6 +1108,7 @@ class TestProvisaDialectMiscMethods:
 
     def test_do_execute_converts_empty_dict_to_none(self):
         from provisa_client.sqlalchemy_dialect import ProvisaDialect
+
         dialect = ProvisaDialect()
         cursor = MagicMock()
         # parameters={} is falsy, so or None makes it None
@@ -1018,6 +1119,7 @@ class TestProvisaDialectMiscMethods:
 # ===========================================================================
 # ADBC / Arrow Flight  (adbc.py)
 # ===========================================================================
+
 
 def _make_arrow_table(data: dict | None = None) -> pa.Table:
     if data is None:
@@ -1034,49 +1136,80 @@ def _make_mock_stream(table: pa.Table | None = None) -> MagicMock:
 
 
 class TestAdbcConnect:
-    def test_successful_auth_gives_role_admin(self):
+    def test_successful_auth_leaves_role_unset(self):
         from provisa_client.adbc import adbc_connect
+
         login_resp = _make_httpx_response(200, {"token": "flight-tok"})
         mock_flight_client = MagicMock()
-        with patch("provisa_client.adbc.httpx.post", return_value=login_resp), \
-             patch("provisa_client.adbc.fl.connect", return_value=mock_flight_client):
+        with (
+            patch("provisa_client.adbc.httpx.post", return_value=login_resp),
+            patch("provisa_client.adbc.fl.connect", return_value=mock_flight_client),
+        ):
             conn = adbc_connect("http://localhost:8001", user="alice", password="secret")
         assert conn._token == "flight-tok"
-        assert conn._role == "admin"
+        # REQ-268/269/273: no role assumed client-side.
+        assert conn._role is None
 
-    def test_failed_auth_gives_role_equal_to_username(self):
+    def test_requested_role_propagated(self):
         from provisa_client.adbc import adbc_connect
+
+        login_resp = _make_httpx_response(200, {"token": "flight-tok"})
+        mock_flight_client = MagicMock()
+        with (
+            patch("provisa_client.adbc.httpx.post", return_value=login_resp),
+            patch("provisa_client.adbc.fl.connect", return_value=mock_flight_client),
+        ):
+            conn = adbc_connect(
+                "http://localhost:8001", user="alice", password="secret", role="analyst"
+            )
+        assert conn._role == "analyst"
+
+    def test_failed_auth_leaves_token_and_role_none(self):
+        from provisa_client.adbc import adbc_connect
+
         login_resp = _make_httpx_response(401, {})
         mock_flight_client = MagicMock()
-        with patch("provisa_client.adbc.httpx.post", return_value=login_resp), \
-             patch("provisa_client.adbc.fl.connect", return_value=mock_flight_client):
+        with (
+            patch("provisa_client.adbc.httpx.post", return_value=login_resp),
+            patch("provisa_client.adbc.fl.connect", return_value=mock_flight_client),
+        ):
             conn = adbc_connect("http://localhost:8001", user="analyst_bob", password="bad")
+        # REQ-273: no username-as-role fallback.
         assert conn._token is None
-        assert conn._role == "analyst_bob"
+        assert conn._role is None
 
     def test_flight_client_connected_to_grpc_endpoint(self):
         from provisa_client.adbc import adbc_connect
+
         login_resp = _make_httpx_response(200, {"token": "t"})
         mock_flight_client = MagicMock()
-        with patch("provisa_client.adbc.httpx.post", return_value=login_resp), \
-             patch("provisa_client.adbc.fl.connect", return_value=mock_flight_client) as mock_connect:
+        with (
+            patch("provisa_client.adbc.httpx.post", return_value=login_resp),
+            patch(
+                "provisa_client.adbc.fl.connect", return_value=mock_flight_client
+            ) as mock_connect,
+        ):
             adbc_connect("http://myhost:8001", user="u", password="p")
         mock_connect.assert_called_once_with("grpc://myhost:8815")
 
-    def test_http_error_during_auth_falls_back(self):
+    def test_http_error_during_auth_leaves_role_unset(self):
         import httpx
         from provisa_client.adbc import adbc_connect
+
         mock_flight_client = MagicMock()
-        with patch("provisa_client.adbc.httpx.post", side_effect=httpx.HTTPError("fail")), \
-             patch("provisa_client.adbc.fl.connect", return_value=mock_flight_client):
+        with (
+            patch("provisa_client.adbc.httpx.post", side_effect=httpx.HTTPError("fail")),
+            patch("provisa_client.adbc.fl.connect", return_value=mock_flight_client),
+        ):
             conn = adbc_connect("http://localhost:8001", user="guest", password="pw")
         assert conn._token is None
-        assert conn._role == "guest"
+        assert conn._role is None
 
 
 class TestAdbcConnection:
     def _make_conn(self, token: str | None = "tok") -> Any:
         from provisa_client.adbc import AdbcConnection
+
         mock_flight_client = MagicMock()
         return AdbcConnection(
             flight_client=mock_flight_client,
@@ -1087,6 +1220,7 @@ class TestAdbcConnection:
 
     def test_cursor_returns_adbc_cursor(self):
         from provisa_client.adbc import AdbcCursor
+
         conn = self._make_conn()
         cur = conn.cursor()
         assert isinstance(cur, AdbcCursor)
@@ -1137,6 +1271,7 @@ class TestAdbcConnection:
 class TestAdbcCursorBuildTicket:
     def _make_cursor(self, token: str | None = "tok-abc", role: str = "admin") -> Any:
         from provisa_client.adbc import AdbcConnection, AdbcCursor
+
         mock_fc = MagicMock()
         conn = AdbcConnection(
             flight_client=mock_fc,
@@ -1174,6 +1309,7 @@ class TestAdbcCursorBuildTicket:
 class TestAdbcCursorExecute:
     def _make_cursor(self, token: str | None = "tok") -> Any:
         from provisa_client.adbc import AdbcConnection, AdbcCursor
+
         mock_fc = MagicMock()
         conn = AdbcConnection(
             flight_client=mock_fc,
@@ -1221,6 +1357,7 @@ class TestAdbcCursorExecute:
 class TestAdbcCursorFetchArrowTable:
     def _make_cursor_with_stream(self, table: pa.Table | None = None) -> Any:
         from provisa_client.adbc import AdbcConnection, AdbcCursor
+
         mock_fc = MagicMock()
         conn = AdbcConnection(
             flight_client=mock_fc,
@@ -1246,6 +1383,7 @@ class TestAdbcCursorFetchArrowTable:
 
     def test_fetchone_before_execute_raises_runtime_error(self):
         from provisa_client.adbc import AdbcConnection, AdbcCursor
+
         mock_fc = MagicMock()
         conn = AdbcConnection(
             flight_client=mock_fc,
@@ -1261,6 +1399,7 @@ class TestAdbcCursorFetchArrowTable:
 class TestAdbcCursorFetchMethods:
     def _make_cursor_with_data(self, data: dict | None = None) -> Any:
         from provisa_client.adbc import AdbcConnection, AdbcCursor
+
         mock_fc = MagicMock()
         conn = AdbcConnection(
             flight_client=mock_fc,
@@ -1306,6 +1445,7 @@ class TestAdbcCursorFetchMethods:
 class TestAdbcCursorDescription:
     def _make_cursor_with_stream(self) -> Any:
         from provisa_client.adbc import AdbcConnection, AdbcCursor
+
         mock_fc = MagicMock()
         conn = AdbcConnection(
             flight_client=mock_fc,
@@ -1320,6 +1460,7 @@ class TestAdbcCursorDescription:
 
     def test_description_returns_none_before_execute(self):
         from provisa_client.adbc import AdbcConnection, AdbcCursor
+
         mock_fc = MagicMock()
         conn = AdbcConnection(
             flight_client=mock_fc,
@@ -1350,6 +1491,7 @@ class TestAdbcCursorDescription:
 class TestAdbcCursorClose:
     def _make_cursor(self) -> Any:
         from provisa_client.adbc import AdbcConnection, AdbcCursor
+
         mock_fc = MagicMock()
         conn = AdbcConnection(
             flight_client=mock_fc,
