@@ -34,6 +34,7 @@ const GraphPage = lazy(() => import("./pages/GraphPage").then((m) => ({ default:
 const SqlPage = lazy(() => import("./pages/SqlPage").then((m) => ({ default: m.SqlPage })));
 const SetupPage = lazy(() => import("./pages/SetupPage").then((m) => ({ default: m.SetupPage })));
 const SchemaExplorer = lazy(() => import("./pages/SchemaExplorer").then((m) => ({ default: m.SchemaExplorer })));
+const NlPage = lazy(() => import("./pages/NlPage").then((m) => ({ default: m.NlPage })));
 
 const AUTH_ENABLED = import.meta.env.VITE_AUTH_ENABLED === "true";
 
@@ -179,6 +180,14 @@ function App() {
                     element={
                       <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
                         <SqlPage />
+                      </CapabilityGate>
+                    }
+                  />
+                  <Route
+                    path="/nl"
+                    element={
+                      <CapabilityGate capability="query_development" fallback={<NotAuthorized />}>
+                        <NlPage />
                       </CapabilityGate>
                     }
                   />

@@ -59,6 +59,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/query", label: "GraphQL", capability: "query_development", separatorBefore: true },
       { to: "/graph", label: "Cypher", capability: "query_development" },
       { to: "/sql", label: "SQL", capability: "query_development" },
+      { to: "/nl", label: "NL", capability: "query_development" },
     ],
   },
   {
@@ -153,7 +154,8 @@ export function NavBar() {
     location.pathname === "/schema" ||
     location.pathname === "/query" ||
     location.pathname === "/graph" ||
-    location.pathname === "/sql";
+    location.pathname === "/sql" ||
+    location.pathname === "/nl";
 
   function toggleGroup(id: string) {
     // If already in this group's route, just toggle the pin

@@ -1,0 +1,276 @@
+.nl-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: hsl(224, 20%, 12%);
+  color: hsl(224, 10%, 85%);
+  padding: 16px;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.nl-guide {
+  background: hsl(224, 20%, 15%);
+  border: 1px solid hsl(224, 15%, 26%);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.nl-guide-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: hsl(224, 10%, 80%);
+  font-size: 13px;
+  text-align: left;
+}
+
+.nl-guide-toggle:hover {
+  background: hsl(224, 20%, 18%);
+}
+
+.nl-guide-title {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.nl-guide-chevron {
+  font-size: 11px;
+  color: hsl(224, 10%, 55%);
+}
+
+.nl-guide-body {
+  padding: 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.nl-guide-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: hsl(224, 10%, 70%);
+}
+
+.nl-guide-rules {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nl-guide-rules li {
+  font-size: 13px;
+  color: hsl(224, 10%, 65%);
+  line-height: 1.5;
+}
+
+.nl-guide-rules em {
+  font-style: normal;
+  color: hsl(199, 89%, 70%);
+}
+
+.nl-guide-examples-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: hsl(224, 10%, 50%);
+}
+
+.nl-guide-examples {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nl-guide-example {
+  font-size: 13px;
+  color: hsl(239, 60%, 75%);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.nl-input-bar {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.nl-textarea {
+  flex: 1;
+  resize: vertical;
+  min-height: 52px;
+  font-size: 14px;
+  font-family: inherit;
+  padding: 10px 12px;
+  background: hsl(224, 20%, 18%);
+  color: hsl(224, 10%, 90%);
+  border: 1px solid hsl(224, 15%, 28%);
+  border-radius: 6px;
+  outline: none;
+  line-height: 1.5;
+}
+
+.nl-textarea:focus {
+  border-color: hsl(239, 84%, 67%);
+}
+
+.nl-submit-btn {
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  background: hsl(239, 84%, 60%);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  align-self: stretch;
+}
+
+.nl-submit-btn:hover:not(:disabled) {
+  background: hsl(239, 84%, 67%);
+}
+
+.nl-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.nl-global-error {
+  padding: 8px 12px;
+  background: hsl(0, 50%, 20%);
+  border: 1px solid hsl(0, 70%, 35%);
+  border-radius: 6px;
+  color: hsl(0, 80%, 75%);
+  font-size: 13px;
+}
+
+.nl-panels {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 900px) {
+  .nl-panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+.nl-branch-panel {
+  display: flex;
+  flex-direction: column;
+  background: hsl(224, 20%, 16%);
+  border: 1px solid hsl(224, 15%, 24%);
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 200px;
+}
+
+.nl-branch-header {
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: hsl(239, 84%, 75%);
+  background: hsl(224, 20%, 13%);
+  border-bottom: 1px solid hsl(224, 15%, 24%);
+}
+
+.nl-branch-body {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nl-branch-loading {
+  color: hsl(224, 10%, 55%);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.nl-branch-error {
+  color: hsl(0, 80%, 70%);
+  font-size: 13px;
+}
+
+.nl-branch-empty {
+  color: hsl(224, 10%, 45%);
+  font-size: 13px;
+  font-style: italic;
+}
+
+.nl-branch-query {
+  margin: 0;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: hsl(199, 89%, 70%);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.nl-result-table-wrap {
+  overflow: auto;
+  border: 1px solid hsl(224, 15%, 22%);
+  border-radius: 4px;
+}
+
+.nl-result-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+
+.nl-result-table th,
+.nl-result-table td {
+  padding: 4px 8px;
+  border: 1px solid hsl(224, 15%, 22%);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.nl-result-table th {
+  background: hsl(224, 20%, 20%);
+  color: hsl(224, 10%, 75%);
+  font-weight: 600;
+}
+
+.nl-result-table tbody tr:nth-child(even) {
+  background: hsl(224, 20%, 14%);
+}
+
+.nl-result-truncated {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: hsl(224, 10%, 50%);
+  background: hsl(224, 20%, 13%);
+  border-top: 1px solid hsl(224, 15%, 22%);
+}
+
+.nl-branch-result-raw {
+  margin: 0;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: hsl(224, 10%, 70%);
+}
