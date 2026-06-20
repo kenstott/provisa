@@ -10,6 +10,8 @@
 
 """Source repository — CRUD for data sources in PG config DB."""
 
+import json as _json
+
 import asyncpg
 
 from provisa.core.models import Source
@@ -18,8 +20,8 @@ from provisa.core.models import Source
 async def upsert(conn: asyncpg.Connection, source: Source) -> None:
     await conn.execute(
         """
-        INSERT INTO sources (id, type, host, port, database, username, dialect, path, description)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        INSERT INTO sources (id, type, host, port, database, username, dialect, path, description, mapping)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb)
         ON CONFLICT (id) DO UPDATE SET
             type = EXCLUDED.type,
             host = EXCLUDED.host,
@@ -28,7 +30,8 @@ async def upsert(conn: asyncpg.Connection, source: Source) -> None:
             username = EXCLUDED.username,
             dialect = EXCLUDED.dialect,
             path = EXCLUDED.path,
-            description = EXCLUDED.description
+            description = EXCLUDED.description,
+            mapping = EXCLUDED.mapping
         """,
         source.id,
         source.type.value,
@@ -39,6 +42,7 @@ async def upsert(conn: asyncpg.Connection, source: Source) -> None:
         source.dialect or "",
         source.path,
         source.description,
+        _json.dumps(source.mapping or {}),
     )
 
 
@@ -69,13 +73,20 @@ async def rename(conn: asyncpg.Connection, old_id: str, new_id: str) -> bool:
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             ON CONFLICT (id) DO NOTHING
             """,
-            new_id, row["type"], row["host"], row["port"],
-            row["database"], row["username"], row["dialect"], row["path"],
+            new_id,
+            row["type"],
+            row["host"],
+            row["port"],
+            row["database"],
+            row["username"],
+            row["dialect"],
+            row["path"],
             row.get("description", ""),
         )
         await conn.execute(
             "UPDATE registered_tables SET source_id = $1 WHERE source_id = $2",
-            new_id, old_id,
+            new_id,
+            old_id,
         )
         await conn.execute("DELETE FROM sources WHERE id = $1", old_id)
     return True

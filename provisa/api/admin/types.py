@@ -30,6 +30,7 @@ class SourceType:
     path: str | None
     allowed_domains: list[str] = strawberry.field(default_factory=list)
     description: str = ""
+    mapping_json: str = "{}"
 
 
 @strawberry.type
@@ -165,6 +166,7 @@ class SourceInput:
     path: str | None = None
     description: str = ""
     allowed_domains: list[str] = strawberry.field(default_factory=list)
+    mapping_json: str | None = None
 
 
 @strawberry.input

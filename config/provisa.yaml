@@ -14,6 +14,17 @@ sources:
     port: 9092
     database: support_kafka
     description: Live support ticket stream from the customer helpdesk — captures issue submissions and status changes in real time for support operations and SLA tracking
+  - id: sharepoint
+    type: sharepoint
+    base_url: ${env:SP_SITE_URL:-}
+    username: ${env:SP_CLIENT_ID:-}
+    password: ${env:SP_CLIENT_SECRET:-}
+    database: ${env:SP_TENANT_ID:-}
+    mapping:
+      auth_type: ${env:SP_AUTH_TYPE:-CLIENT_CREDENTIALS}
+      certificate_path: ${env:SP_CERT_PATH:-/certs/sharepoint.pfx}
+      certificate_password: ${env:SP_CERT_PASSWORD:-}
+    description: SharePoint site — lists and document libraries accessible via Microsoft Graph
 
 domains:
   - id: sales-analytics

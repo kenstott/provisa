@@ -95,6 +95,9 @@ const SOURCE_TYPES = [
   { value: "grpc", label: "gRPC", category: "API", defaultPort: 50051 },
   // Streaming
   { value: "kafka", label: "Kafka", category: "Streaming", defaultPort: 9092 },
+  // Enterprise SaaS
+  { value: "sharepoint", label: "SharePoint", category: "Enterprise", defaultPort: 0 },
+  { value: "splunk", label: "Splunk", category: "Enterprise", defaultPort: 8089 },
   // Public Data
 ];
 
@@ -230,6 +233,11 @@ export function SourcesPage() {
   const [mappingSourceId, setMappingSourceId] = useState<string | null>(null);
   const [mappingSourceType, setMappingSourceType] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [spAuthType, setSpAuthType] = useState("CLIENT_CREDENTIALS");
+  const [spCertPath, setSpCertPath] = useState("");
+  const [spCertPassword, setSpCertPassword] = useState("");
+  const [spUsername, setSpUsername] = useState("");
+  const [spPassword, setSpPassword] = useState("");
 
   const updateSearch = (v: string) => {
     setSourceSearch(v);
@@ -329,10 +337,19 @@ export function SourcesPage() {
     return "default";
   };
 
+  const resetSpFields = () => {
+    setSpAuthType("CLIENT_CREDENTIALS");
+    setSpCertPath("");
+    setSpCertPassword("");
+    setSpUsername("");
+    setSpPassword("");
+  };
+
   const handleTypeChange = (type: string) => {
     setForm({ ...form, type, port: getDefaultPort(type), description: "" });
     setAuthType("none");
     setAuthFields({});
+    resetSpFields();
   };
 
   const handleEdit = (s: Source) => {
@@ -353,6 +370,28 @@ export function SourcesPage() {
     });
     setAuthType("none");
     setAuthFields({});
+    if (s.type === "sharepoint" && s.mappingJson) {
+      try {
+        const m = JSON.parse(s.mappingJson) as Record<string, string>;
+        setSpAuthType(m.auth_type ?? "CLIENT_CREDENTIALS");
+        setSpCertPath(m.certificate_path ?? "");
+        setSpCertPassword(m.certificate_password ?? "");
+        setSpUsername(m.sp_username ?? "");
+        setSpPassword(m.sp_password ?? "");
+      } catch {
+        setSpAuthType("CLIENT_CREDENTIALS");
+        setSpCertPath("");
+        setSpCertPassword("");
+        setSpUsername("");
+        setSpPassword("");
+      }
+    } else {
+      setSpAuthType("CLIENT_CREDENTIALS");
+      setSpCertPath("");
+      setSpCertPassword("");
+      setSpUsername("");
+      setSpPassword("");
+    }
     if (s.type === "govdata" && s.database) {
       const storedSchemas = s.database
         .split(",")
@@ -391,6 +430,7 @@ export function SourcesPage() {
     });
     setAuthType("none");
     setAuthFields({});
+    resetSpFields();
     setGovdataSubjects([]);
   };
 
@@ -400,6 +440,18 @@ export function SourcesPage() {
     setSubmitting(true);
     try {
       const { gqlNamingConvention: _nc, cacheTtl: _ct, cacheEnabled: _ce, ...coreForm } = form;
+      const spMappingJson =
+        form.type === "sharepoint"
+          ? JSON.stringify({
+              auth_type: spAuthType,
+              ...(spAuthType === "CERTIFICATE"
+                ? { certificate_path: spCertPath, certificate_password: spCertPassword }
+                : {}),
+              ...(spAuthType === "USERNAME_PASSWORD"
+                ? { sp_username: spUsername, sp_password: spPassword }
+                : {}),
+            })
+          : undefined;
       const sourcePayload = {
         ...coreForm,
         path: FILE_SOURCES.has(form.type) ? form.path || null : null,
@@ -415,6 +467,7 @@ export function SourcesPage() {
                 ]),
               ).join(",")
             : coreForm.database,
+        ...(spMappingJson !== undefined ? { mappingJson: spMappingJson } : {}),
       };
       if (editingSourceId) {
         const effectiveId = form.id.trim() || editingSourceId;
@@ -1813,6 +1866,150 @@ export function SourcesPage() {
           {authType !== "none" && (
             <AuthUserPass authFields={authFields} setAuthFields={setAuthFields} />
           )}
+        </>
+      )}
+      {form.type === "sharepoint" && (
+        <>
+          <label style={{ gridColumn: "1 / -1" }}>
+            Site URL{" "}
+            <input
+              required
+              value={form.host}
+              onChange={(e) => setForm({ ...form, host: e.target.value })}
+              placeholder="https://contoso.sharepoint.com/sites/mysite"
+            />
+          </label>
+          <label>
+            Tenant ID{" "}
+            <input
+              required
+              value={form.database}
+              onChange={(e) => setForm({ ...form, database: e.target.value })}
+              placeholder="Azure AD tenant ID"
+            />
+          </label>
+          <label>
+            Auth Type{" "}
+            <select
+              value={spAuthType}
+              onChange={(e) => setSpAuthType(e.target.value)}
+            >
+              <option value="CLIENT_CREDENTIALS">Client Credentials</option>
+              <option value="USERNAME_PASSWORD">Username / Password</option>
+              <option value="CERTIFICATE">Certificate</option>
+            </select>
+          </label>
+          <label>
+            Client ID{" "}
+            <input
+              required
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+              placeholder="Azure AD app client ID"
+            />
+          </label>
+          {spAuthType === "CLIENT_CREDENTIALS" && (
+            <label>
+              Client Secret{" "}
+              <input
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                placeholder="Client secret"
+              />
+            </label>
+          )}
+          {spAuthType === "USERNAME_PASSWORD" && (
+            <>
+              <label>
+                SP Username{" "}
+                <input
+                  required
+                  value={spUsername}
+                  onChange={(e) => setSpUsername(e.target.value)}
+                  placeholder="user@contoso.com"
+                />
+              </label>
+              <label>
+                SP Password{" "}
+                <input
+                  type="password"
+                  required
+                  value={spPassword}
+                  onChange={(e) => setSpPassword(e.target.value)}
+                />
+              </label>
+            </>
+          )}
+          {spAuthType === "CERTIFICATE" && (
+            <>
+              <label>
+                Client Secret{" "}
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  placeholder="Client secret (if required alongside cert)"
+                />
+              </label>
+              <label style={{ gridColumn: "1 / -1" }}>
+                Certificate Path{" "}
+                <input
+                  required
+                  value={spCertPath}
+                  onChange={(e) => setSpCertPath(e.target.value)}
+                  placeholder="/certs/sharepoint.pfx"
+                />
+              </label>
+              <label>
+                Certificate Password{" "}
+                <input
+                  type="password"
+                  value={spCertPassword}
+                  onChange={(e) => setSpCertPassword(e.target.value)}
+                />
+              </label>
+            </>
+          )}
+        </>
+      )}
+      {form.type === "splunk" && (
+        <>
+          <label>
+            Host{" "}
+            <input
+              required
+              value={form.host}
+              onChange={(e) => setForm({ ...form, host: e.target.value })}
+              placeholder="splunk.example.com"
+            />
+          </label>
+          <label>
+            Port{" "}
+            <input
+              type="number"
+              value={form.port}
+              onChange={(e) => setForm({ ...form, port: +e.target.value })}
+            />
+          </label>
+          <label style={{ gridColumn: "1 / -1" }}>
+            Auth Token{" "}
+            <input
+              type="password"
+              required
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              placeholder="Splunk authentication token"
+            />
+          </label>
+          <label style={{ gridColumn: "1 / -1" }}>
+            App (optional){" "}
+            <input
+              value={form.database}
+              onChange={(e) => setForm({ ...form, database: e.target.value })}
+              placeholder="Splunk_SA_CIM"
+            />
+          </label>
         </>
       )}
       {editingSourceId && (

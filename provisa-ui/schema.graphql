@@ -34,6 +34,7 @@ type SourceType {
   path: String
   allowedDomains: [String!]!
   description: String!
+  mappingJson: String!
 }
 
 type DomainType {
@@ -225,6 +226,7 @@ input SourceInput {
   path: String = null
   description: String! = ""
   allowedDomains: [String!]! = []
+  mappingJson: String = null
 }
 
 input DomainInput {

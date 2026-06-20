@@ -81,6 +81,53 @@ def _build_catalog_properties(source: Source, resolved_password: str) -> dict[st
             "mongodb.schema-collection": "_schema",
         }
 
+    # SharePoint connector (Apache Calcite, kenstott/calcite)
+    if stype == "sharepoint":
+        mapping = {
+            k: resolve_secrets(v) if isinstance(v, str) else v for k, v in source.mapping.items()
+        }
+        site_url = resolve_secrets(source.base_url or source.host or "")
+        auth_type = mapping.get("auth_type", "CLIENT_CREDENTIALS")
+        props: dict[str, str] = {
+            "site-url": site_url,
+            "auth-type": auth_type,
+        }
+        if username:
+            props["client-id"] = username
+        if resolved_password:
+            props["client-secret"] = resolved_password
+        if source.database:
+            props["tenant-id"] = resolve_secrets(source.database)
+        if mapping.get("certificate_path"):
+            props["certificate-path"] = mapping["certificate_path"]
+        if mapping.get("certificate_password"):
+            props["certificate-password"] = mapping["certificate_password"]
+        return props
+
+    # Splunk connector (Apache Calcite, kenstott/calcite)
+    if stype == "splunk":
+        mapping = {
+            k: resolve_secrets(v) if isinstance(v, str) else v for k, v in source.mapping.items()
+        }
+        splunk_port = port or 8089
+        splunk_url = resolve_secrets(source.base_url or f"https://{host}:{splunk_port}")
+        props = {"url": splunk_url}
+        use_token = mapping.get("use_token", True)
+        if use_token and resolved_password:
+            props["token"] = resolved_password
+        else:
+            if username:
+                props["user"] = username
+            if resolved_password:
+                props["password"] = resolved_password
+        if source.database:
+            props["app"] = source.database
+        if mapping.get("datamodel_filter"):
+            props["datamodel-filter"] = mapping["datamodel_filter"]
+        if mapping.get("disable_ssl_validation"):
+            props["disable-ssl-validation"] = "true"
+        return props
+
     # Cassandra connector
     if stype == "cassandra":
         return {

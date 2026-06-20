@@ -58,6 +58,7 @@ query SourcesQuery {
     gqlNamingConvention
     allowedDomains
     description
+    mappingJson
   }
 }
 

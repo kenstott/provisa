@@ -75,6 +75,9 @@ class SourceType(str, Enum):
     ingest = "ingest"
     # U.S. government open data via Apache Calcite / GovData JDBC adapter
     govdata = "govdata"
+    # Enterprise SaaS via Apache Calcite connectors
+    sharepoint = "sharepoint"
+    splunk = "splunk"
 
 
 class Cardinality(str, Enum):
@@ -110,6 +113,9 @@ SOURCE_TO_CONNECTOR: dict[str, str] = {
     "elasticsearch": "elasticsearch",
     "prometheus": "prometheus",
     "kafka": "kafka",
+    # Apache Calcite-based connectors (kenstott/calcite)
+    "sharepoint": "sharepoint",
+    "splunk": "splunk",
 }
 
 # Map source types to SQLGlot dialect names (enables direct-route single-source queries)

@@ -106,6 +106,7 @@ DO $$ BEGIN
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS path TEXT;
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS allowed_domains TEXT[] NOT NULL DEFAULT '{}';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS mapping JSONB NOT NULL DEFAULT '{}';
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS column_presets JSONB NOT NULL DEFAULT '[]';

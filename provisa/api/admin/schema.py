@@ -199,7 +199,20 @@ async def _rebuild_schemas():
     logging.getLogger(__name__).warning("[DEBUG] _rebuild_schemas completed")
 
 
+def _parse_mapping_json(mapping_json: str | None) -> dict:
+    if not mapping_json:
+        return {}
+    import json as _json
+    try:
+        return _json.loads(mapping_json)
+    except Exception:
+        return {}
+
+
 def _source_from_row(row) -> SourceType:
+    import json as _json
+    raw_mapping = row.get("mapping") or {}
+    mapping_json = _json.dumps(raw_mapping) if isinstance(raw_mapping, dict) else str(raw_mapping)
     return SourceType(
         id=row["id"],
         type=row["type"],
@@ -214,6 +227,7 @@ def _source_from_row(row) -> SourceType:
         path=row.get("path"),
         allowed_domains=list(row.get("allowed_domains") or []),
         description=row.get("description") or "",
+        mapping_json=mapping_json,
     )
 
 
@@ -1552,6 +1566,7 @@ class Mutation:
             password=input.password,
             path=input.path,
             description=input.description,
+            mapping=_parse_mapping_json(input.mapping_json),
         )
         from provisa.api.app import state
 
@@ -1611,6 +1626,7 @@ class Mutation:
                 password=input.password,
                 path=input.path,
                 description=input.description,
+                mapping=_parse_mapping_json(input.mapping_json),
             )
             await source_repo.upsert(_conn, model)
             if input.allowed_domains is not None:

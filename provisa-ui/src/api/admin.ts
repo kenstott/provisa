@@ -667,3 +667,60 @@ export async function recomputeSchemaClusters(): Promise<{
   }
   return res.json();
 }
+
+export async function submitNlQuery(
+  q: string,
+  role: string,
+): Promise<{ job_id: string }> {
+  const res = await fetch(`${API_BASE}/query/nl`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ q, role }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(data.error || `NL submit failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export interface NlBranchEvent {
+  target: "sql" | "graphql" | "cypher";
+  query: string | null;
+  result: unknown | null;
+  error: string | null;
+}
+
+export function streamNlResult(
+  jobId: string,
+  onBranch: (event: NlBranchEvent) => void,
+  onDone: (state: string) => void,
+  onError: (msg: string) => void,
+): () => void {
+  const es = new EventSource(`${API_BASE}/query/nl/${jobId}/stream`);
+  es.addEventListener("branch", (e) => {
+    try {
+      onBranch(JSON.parse((e as MessageEvent).data) as NlBranchEvent);
+    } catch {
+      // ignore malformed event
+    }
+  });
+  es.addEventListener("done", (e) => {
+    try {
+      const payload = JSON.parse((e as MessageEvent).data) as { state: string };
+      onDone(payload.state);
+    } catch {
+      onDone("complete");
+    }
+    es.close();
+  });
+  es.addEventListener("error", () => {
+    onError("Stream error");
+    es.close();
+  });
+  es.addEventListener("timeout", () => {
+    onError("NL query timed out");
+    es.close();
+  });
+  return () => es.close();
+}
