@@ -174,6 +174,23 @@
                   </excludes>
                 </filter>
               </filters>
+              <!-- REQ-132: relocate bundled third-party packages under io.provisa.shaded so
+                   the fat JAR never collides with a host application's own copies. The JDBC
+                   SPI and Apache Arrow stay at their original packages by design. -->
+              <relocations>
+                <relocation>
+                  <pattern>com.google.gson</pattern>
+                  <shadedPattern>io.provisa.shaded.gson</shadedPattern>
+                </relocation>
+                <relocation>
+                  <pattern>com.google.protobuf</pattern>
+                  <shadedPattern>io.provisa.shaded.protobuf</shadedPattern>
+                </relocation>
+                <relocation>
+                  <pattern>com.google.common</pattern>
+                  <shadedPattern>io.provisa.shaded.guava</shadedPattern>
+                </relocation>
+              </relocations>
               <transformers>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
