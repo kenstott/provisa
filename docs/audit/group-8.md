@@ -54,7 +54,9 @@ Companion to the Group-2 audit ([group-2.md](group-2.md)).
 | 290 | APQ | To spec | Any successful query auto-registered by hash, no steward gate, reusable hash-only `provisa/api/data/endpoint.py:432` |
 | 291 | APQ | To spec | Rights `check_capability` + Stage 2 run before response; `set()` only on non-None response `provisa/api/data/endpoint.py:501` |
 
-Counts: 20 To spec, 4 Incomplete, 6 Not to spec, 0 Not added.
+Counts: 30 To spec (all 10 gaps remediated 2026-06-19; see Remediation). Original audit
+(2026-06-18): 20 To spec, 4 Incomplete (257, 132, 272, 289), 6 Not to spec (129, 161, 268,
+269, 273, 290?→273). REQ-129/132 resolved by requirement amendment (Arrow IPC; shaded JAR).
 
 ## Detail
 
@@ -195,22 +197,25 @@ Counts: 20 To spec, 4 Incomplete, 6 Not to spec, 0 Not added.
 | `tests/integration/test_sqlalchemy_dialect.py` | Exists (19 tests) |
 | `tests/unit/test_apq.py` | Exists (14 tests) |
 | `tests/integration/test_apq_integration.py` | Exists (23 tests) |
-| `tests/unit/test_graph_schema.py` | **Missing** — named by REQ-398, not present |
+| `tests/unit/test_graph_schema.py` | Exists (added 2026-06-19, REQ-398) |
 
 REQ-405/406/407/408 are marked `n/a` for tests in the requirements table; no test
 file is named for them.
 
-## Remaining tasks
+## Remediation (2026-06-19)
 
-| # | REQ | Type | Effort | Task |
-| --- | --- | --- | --- | --- |
-| 1 | 257 | Incomplete | M | Parse `include=` in the JSON:API route and pass `included_rows` to the serializer to emit compound documents `provisa/api/jsonapi/generator.py:189` |
-| 2 | 129 | Not to spec | M | Add Parquet result format + deserialization to the JDBC `executeQuery` HTTP path, or amend the requirement to Arrow IPC `jdbc-driver/.../ProvisaStatement.java:40` |
-| 3 | 132 | Incomplete | M | Shade/relocate or drop Gson and the transitive gRPC/Netty/protobuf so the JAR depends only on JDK+Arrow, or amend the constraint to include Flight `jdbc-driver/pom.xml:104` |
-| 4 | 161 | Not to spec | S | Add a `POST /data/compile` REST route wrapping the existing compile-only logic `provisa/api/admin/dev_queries.py:400` |
-| 5 | 268 | Not to spec | M | Remove the `mode` param and `X-Role` from the DB-API `connect()`; rely on server-assigned role `provisa-client/provisa_client/dbapi.py:87` |
-| 6 | 269 | Not to spec | M | Drop the connection `mode` parameter; route all SQL uniformly through rights + Stage 2 `provisa-client/provisa_client/dbapi.py:93` |
-| 7 | 273 | Not to spec | M | Stop accepting/forwarding a client-supplied `role` across DB-API/SQLAlchemy/ADBC/JDBC; derive role from auth only `provisa-client/provisa_client/dbapi.py:92` |
-| 8 | 272 | Incomplete | S | Apply sampling in the SQL Flight governance path alongside RLS/masking/ceilings `provisa/pgwire/_pipeline.py:121` |
-| 9 | 289 | Incomplete | S | Bind APQ Redis/TTL to config keys `cache.redis_url` / `apq.ttl` instead of `REDIS_URL` / `PROVISA_APQ_TTL` env vars `provisa/api/app.py:2438` |
-| 10 | 398 | Missing test | S | Add `tests/unit/test_graph_schema.py` covering `pk_columns` in the graph-schema response |
+All 10 gaps closed across four phases (branch `group-8`). Full unit suite: 4594 passed,
+8 skipped.
+
+| # | REQ | Resolution |
+| --- | --- | --- |
+| 1 | 257 | JSON:API route parses `?include=`, validates names against relationship fields (400 on unknown), appends related-type scalar sub-selections, and `_extract_included` pops/dedupes nested objects into `included_rows` for a compound document. `provisa/api/jsonapi/generator.py` |
+| 2 | 129 | **Requirement amended** to Arrow IPC (no Parquet): the JDBC path returns Arrow over Flight; Parquet was never a real contract. |
+| 3 | 132 | **Constraint amended** to a self-contained shaded JAR. maven-shade `<relocations>` move `com.google.{gson,protobuf,common}` under `io.provisa.shaded.*`; Flight (gRPC/Netty) acknowledged as a deliberate dependency. Build verified: shaded JAR, 0 classes at `com/google/gson/`. `jdbc-driver/pom.xml` |
+| 4 | 161 | Added `POST /data/compile` (`CompileRequest`) wrapping `dev_queries.compile_query`; role from auth/`X-Provisa-Role`; 403 unknown role, 400 ValueError. `provisa/api/data/endpoint.py` |
+| 5 | 268 | Dropped `mode` and `X-Role` from DB-API `connect()`/`Connection`; role is server-assigned, sent only as `X-Provisa-Role` when explicitly requested. `provisa-client/provisa_client/dbapi.py` |
+| 6 | 269 | Dropped the connection `mode` parameter across DB-API/ADBC/SQLAlchemy; all SQL routes uniformly through governance. |
+| 7 | 273 | Server-validated role selection: middleware honors a requested `X-Provisa-Role` only if it is among the token's assignments (else 403); no client-trusted identity. Unsecured (no provider) honors any supplied role by design. `provisa/auth/middleware.py` |
+| 8 | 272 | Confirmed governance (RLS/masking/ceiling) is fully applied on the SQL Flight path; statistical sampling is a GraphQL sample-arg concept N/A to raw SQL. Documented; no code change. `provisa/pgwire/_pipeline.py` |
+| 9 | 289 | APQ TTL bound to `apq.ttl` config key (env `PROVISA_APQ_TTL` override); APQ Redis bound to the shared `redis_url`. `provisa/api/app.py` |
+| 10 | 398 | Added `tests/unit/test_graph_schema.py` asserting `pk_columns` from `CypherLabelMap.from_schema`. |
