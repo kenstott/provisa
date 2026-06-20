@@ -200,13 +200,13 @@ for i in $(seq 1 120); do
 done
 
 echo -n "Waiting for Trino"
-for i in $(seq 1 90); do
+for i in $(seq 1 270); do
   TRINO_OK=$(docker inspect --format '{{.State.Health.Status}}' provisa-trino-1 2>/dev/null || echo "missing")
   if [ "$TRINO_OK" = "healthy" ]; then
     echo " OK"
     break
   fi
-  if [ "$i" -eq 90 ]; then
+  if [ "$i" -eq 270 ]; then
     echo " TIMEOUT (continuing anyway)"
     break
   fi
