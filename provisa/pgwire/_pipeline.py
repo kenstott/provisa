@@ -118,6 +118,11 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
         msgs = "; ".join(f"[{v.code}] {v.message}" for v in violations)
         raise PermissionError(msgs)
 
+    # REQ-272: apply_governance enforces full Stage-2 governance on this SQL path — RLS,
+    # masking, visibility, and the role row-cap ceiling (gov_ctx carries the role, so
+    # resolve_row_cap applies). Statistical sampling is the GraphQL `sample` arg → TABLESAMPLE,
+    # a query-construction feature with no equivalent for already-formed raw SQL, so it is N/A
+    # here; there is no ungoverned access path.
     governed_semantic = apply_governance(normalized_sql, gov_ctx)
 
     sources = extract_sources(governed_semantic, gov_ctx, ctx)
@@ -146,10 +151,15 @@ async def _govern_and_route(sql: str, role_id: str) -> _Plan:
             _qualified = build_values_cte_sql(_qualified, _tn, _entry)
         if _rewrites:
             _qualified = rewrite_all_from_cache(_qualified, _rewrites)
-        _known_cats_pgwire = set(getattr(state, "source_catalogs", {}).values()) | {"iceberg", "otel", "results"}
+        _known_cats_pgwire = set(getattr(state, "source_catalogs", {}).values()) | {
+            "iceberg",
+            "otel",
+            "results",
+        }
         from provisa.api.data.endpoint import _lookup_gql_remote_table as _lookup_gql
         import sqlglot as _sg
         import sqlglot.expressions as _exp
+
         try:
             _tree = _sg.parse_one(_qualified, dialect="postgres")
             for _tbl in _tree.find_all(_exp.Table):
@@ -213,7 +223,6 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:
         pg_pool = state.pg_pool
         if pg_pool is None:
             raise RuntimeError("Admin pg_pool not available")
-        import asyncpg as _asyncpg
         async with pg_pool.acquire() as _conn:
             _conn = _conn  # type: ignore[assignment]
             _rows = await _conn.fetch(plan.sql)
@@ -254,7 +263,10 @@ async def _govern_and_route_compiled(
     from provisa.api_source.trino_cache import rewrite_all_from_cache
     from provisa.cache.hot_tables import build_values_cte_sql
     from provisa.compiler.rls import RLSContext
-    from provisa.compiler.sql_gen import rewrite_semantic_to_physical, rewrite_semantic_to_trino_physical
+    from provisa.compiler.sql_gen import (
+        rewrite_semantic_to_physical,
+        rewrite_semantic_to_trino_physical,
+    )
     from provisa.compiler.stage2 import apply_governance, build_governance_context, extract_sources
     from provisa.transpiler.router import Route, decide_route
     from provisa.transpiler.transpile import transpile, transpile_to_trino
@@ -293,6 +305,7 @@ async def _govern_and_route_compiled(
         _view_map = getattr(state, "view_sql_map", None)
         if _view_map:
             from provisa.compiler.view_expand import expand_view_refs
+
             _exec_sql = expand_view_refs(_exec_sql, _view_map)
         _exec_sql_base = _exec_sql
         _rewrites, _values_ctes = await _materialize_api_to_trino_cache(_exec_sql, state)
@@ -300,10 +313,15 @@ async def _govern_and_route_compiled(
             _exec_sql = build_values_cte_sql(_exec_sql, _tn, _entry)
         if _rewrites:
             _exec_sql = rewrite_all_from_cache(_exec_sql, _rewrites)
-        _known_cats = set(getattr(state, "source_catalogs", {}).values()) | {"iceberg", "otel", "results"}
+        _known_cats = set(getattr(state, "source_catalogs", {}).values()) | {
+            "iceberg",
+            "otel",
+            "results",
+        }
         import sqlglot as _sg2
         import sqlglot.expressions as _exp2
         from provisa.api.data.endpoint import _lookup_gql_remote_table as _lookup_gql2
+
         try:
             _tree2 = _sg2.parse_one(_exec_sql, dialect="postgres")
             for _tbl2 in _tree2.find_all(_exp2.Table):

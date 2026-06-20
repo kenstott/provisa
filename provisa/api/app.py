@@ -114,6 +114,7 @@ class AppState:
     warm_manager: WarmTableManager = WarmTableManager()
     _warm_task: asyncio.Task | None = None
     apq_cache: APQCache = NoopAPQCache()  # Phase AN: Automatic Persisted Queries
+    apq_ttl: int = 86400  # REQ-289: APQ cache TTL (apq.ttl config / PROVISA_APQ_TTL env)
     live_engine: Any | None = None  # Phase AM: LiveEngine instance
     hostname: str = "localhost"  # publicly reachable hostname (PROVISA_HOSTNAME)
     source_federation_hints: dict[str, dict[str, str]] = {}  # source_id → Trino session props (AL3)
@@ -1422,6 +1423,10 @@ async def _load_and_build(config_path: str | None = None) -> None:
     state.redis_url = (
         os.environ.get("REDIS_URL") or resolve_secrets(cache_config.get("redis_url", "")) or None
     )
+    # REQ-289: APQ TTL from the apq.ttl config key (PROVISA_APQ_TTL env overrides, like redis_url).
+    state.apq_ttl = int(
+        os.environ.get("PROVISA_APQ_TTL") or raw_config.get("apq", {}).get("ttl") or 86400
+    )
     if cache_config.get("enabled"):
         redis_url = state.redis_url or ""
         if redis_url:
@@ -2511,13 +2516,14 @@ async def _start_servers(_log: logging.Logger) -> None:
     except Exception:
         _log.exception("Live Query Engine startup failed")
 
-    redis_url = os.environ.get("REDIS_URL")
-    if redis_url:
+    # REQ-289: APQ cache uses the resolved cache.redis_url and apq.ttl (not raw env vars).
+    apq_redis_url = state.redis_url
+    if apq_redis_url:
         try:
             from provisa.apq.cache import RedisAPQCache
 
-            state.apq_cache = RedisAPQCache(redis_url)
-            _log.info("APQ cache initialized (Redis: %s)", redis_url)
+            state.apq_cache = RedisAPQCache(apq_redis_url, ttl=state.apq_ttl)
+            _log.info("APQ cache initialized (Redis: %s, ttl=%ds)", apq_redis_url, state.apq_ttl)
         except Exception:
             _log.exception("APQ cache initialization failed")
 

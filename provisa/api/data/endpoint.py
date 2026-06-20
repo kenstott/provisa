@@ -274,6 +274,36 @@ def _inject_stats_into_response(response, stats_dict: dict):
     return response
 
 
+class CompileRequest(BaseModel):
+    query: str
+    variables: dict | None = None
+
+
+@router.post("/compile")
+async def compile_endpoint(
+    raw_request: Request,
+    request: CompileRequest,
+    x_provisa_role: str | None = Header(None),
+):
+    """REQ-161: compile-only — return governed SQL / route / sources / params without executing.
+
+    The REST companion to the GraphQL `compileQuery` mutation; the role is the authenticated
+    role (header used only when unauthenticated).
+    """
+    from provisa.api.admin.dev_queries import compile_query as _compile_only
+    from provisa.api.app import state
+
+    auth_role = getattr(raw_request.state, "role", None)
+    role_id = auth_role or x_provisa_role
+    if not role_id or role_id not in state.contexts:
+        raise HTTPException(status_code=403, detail="No accessible schema for role")
+    try:
+        results = await _compile_only(role_id, request.query, request.variables)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return JSONResponse({"compiled": results})
+
+
 async def _handle_normalized(document, ctx, rls, state, variables, role_id, role):
     """REQ-049: emit one governed, deduplicated relational table per entity via per-table CTAS.
 
