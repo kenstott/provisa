@@ -104,7 +104,8 @@ def _parse_sort(sort_param: str | None) -> list[dict[str, str]]:
 
 
 def _parse_sparse_fieldsets(
-    params: dict[str, str], table: str,
+    params: dict[str, str],
+    table: str,
 ) -> list[str] | None:
     """Parse JSON:API sparse fieldsets: ?fields[orders]=amount,created_at
 
@@ -123,7 +124,8 @@ def _get_scalar_fields(schema: GraphQLSchema, table: str) -> list[str]:
 
 
 def _get_relationship_fields(
-    schema: GraphQLSchema, table: str,
+    schema: GraphQLSchema,
+    table: str,
 ) -> dict[str, str]:
     """Get relationship field names: {fk_column: related_type_name}.
 
@@ -151,6 +153,56 @@ def _get_relationship_fields(
             # The FK column is typically name_id, the relationship field is name
             rels[f"{name}_id"] = name
     return rels
+
+
+def _extract_included(
+    rows: list[dict[str, Any]], include_names: list[str]
+) -> dict[str, list[dict[str, Any]]]:
+    """REQ-257: move nested included entities out of the primary rows into a deduplicated set.
+
+    The nested object/array under each included relationship is popped from the primary
+    resource (its attributes must not carry it — the FK column links it) and collected,
+    deduplicated by id, keyed by relationship name (the JSON:API included type).
+    """
+    included_rows: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        for inc in include_names:
+            nested = row.pop(inc, None)
+            if not nested:
+                continue
+            items = nested if isinstance(nested, list) else [nested]
+            bucket = included_rows.setdefault(inc, [])
+            seen_ids = {r.get("id") for r in bucket}
+            for item in items:
+                if isinstance(item, dict) and item.get("id") not in seen_ids:
+                    bucket.append(item)
+                    seen_ids.add(item.get("id"))
+    return included_rows
+
+
+def _relationship_scalars(schema: GraphQLSchema, table: str, rel_field: str) -> list[str]:
+    """Scalar field names of the related type for a relationship field on ``table`` (REQ-257)."""
+    query_type = schema.query_type
+    if query_type is None or table not in query_type.fields:
+        return []
+    rt = query_type.fields[table].type
+    while hasattr(rt, "of_type"):
+        rt = rt.of_type
+    if not isinstance(rt, GraphQLObjectType) or rel_field not in rt.fields:
+        return []
+    inner = rt.fields[rel_field].type
+    while isinstance(inner, (GraphQLNonNull, GraphQLList)):
+        inner = inner.of_type
+    if not isinstance(inner, GraphQLObjectType):
+        return []
+    scalars: list[str] = []
+    for name, f in inner.fields.items():
+        ft = f.type
+        while isinstance(ft, (GraphQLNonNull, GraphQLList)):
+            ft = ft.of_type
+        if not isinstance(ft, GraphQLObjectType):
+            scalars.append(name)
+    return scalars
 
 
 def _build_graphql_query(
@@ -192,7 +244,8 @@ def create_jsonapi_router(state: Any) -> APIRouter:
         accept = request.headers.get("accept", "")
         if accept and JSONAPI_CONTENT_TYPE not in accept and "*/*" not in accept:
             return _jsonapi_error_response(
-                406, "Not Acceptable",
+                406,
+                "Not Acceptable",
                 f"This endpoint requires Accept: {JSONAPI_CONTENT_TYPE}",
             )
 
@@ -201,7 +254,8 @@ def create_jsonapi_router(state: Any) -> APIRouter:
 
         if role_id not in state.schemas:
             return _jsonapi_error_response(
-                400, "Bad Request",
+                400,
+                "Bad Request",
                 f"No schema available for role {role_id!r}",
             )
 
@@ -211,7 +265,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:
         query_type = schema.query_type
         if query_type is None or table not in query_type.fields:
             return _jsonapi_error_response(
-                404, "Not Found", f"Resource type {table!r} not found",
+                404,
+                "Not Found",
+                f"Resource type {table!r} not found",
             )
 
         raw_params = dict(request.query_params)
@@ -223,7 +279,8 @@ def create_jsonapi_router(state: Any) -> APIRouter:
 
         if not selected_fields:
             return _jsonapi_error_response(
-                400, "Bad Request",
+                400,
+                "Bad Request",
                 f"No selectable fields for resource type {table!r}",
             )
 
@@ -240,7 +297,8 @@ def create_jsonapi_router(state: Any) -> APIRouter:
         for col in filters:
             if col not in all_scalars:
                 return _jsonapi_error_response(
-                    400, "Invalid Filter",
+                    400,
+                    "Invalid Filter",
                     f"Unknown filter field {col!r}",
                     source_parameter=f"filter[{col}]",
                 )
@@ -249,13 +307,46 @@ def create_jsonapi_router(state: Any) -> APIRouter:
         for s in sort:
             if s["field"] not in all_scalars:
                 return _jsonapi_error_response(
-                    400, "Invalid Sort",
+                    400,
+                    "Invalid Sort",
                     f"Unknown sort field {s['field']!r}",
                     source_parameter="sort",
                 )
 
+        # REQ-257: ?include=rel1,rel2 — sideload related resources as a compound document.
+        rel_fields = _get_relationship_fields(schema, table)
+        valid_rel_names = set(rel_fields.values())
+        fk_by_rel = {rel_name: fk for fk, rel_name in rel_fields.items()}
+        include_param = raw_params.get("include")
+        include_names = (
+            [n.strip() for n in include_param.split(",") if n.strip()] if include_param else []
+        )
+        for inc in include_names:
+            if inc not in valid_rel_names:
+                return _jsonapi_error_response(
+                    400,
+                    "Invalid Include",
+                    f"Unknown relationship {inc!r}",
+                    source_parameter="include",
+                )
+        query_fields = list(selected_fields)
+        for inc in include_names:
+            inc_scalars = _relationship_scalars(schema, table, inc)
+            if "id" in inc_scalars:
+                inc_scalars = ["id"] + [s for s in inc_scalars if s != "id"]
+            query_fields.append(f"{inc} {{ {' '.join(inc_scalars)} }}")
+            # the FK column must be selected so the resource's relationship linkage resolves
+            fk = fk_by_rel.get(inc)
+            if fk and fk in all_scalars and fk not in query_fields:
+                query_fields.append(fk)
+
         gql_query = _build_graphql_query(
-            table, selected_fields, filters, sort, limit, pg_offset,
+            table,
+            query_fields,
+            filters,
+            sort,
+            limit,
+            pg_offset,
         )
         log.debug("JSON:API -> GraphQL: %s", gql_query)
 
@@ -292,15 +383,20 @@ def create_jsonapi_router(state: Any) -> APIRouter:
 
         # Serialize to flat rows first
         from provisa.executor.serialize import serialize_rows
+
         response_data = serialize_rows(result.rows, compiled.columns, table)
         rows = response_data.get("data", {}).get(table, [])
 
-        # Detect relationship fields from schema
-        rel_fields = _get_relationship_fields(schema, table)
+        # REQ-257: pull nested included entities out of the rows into a deduplicated set.
+        included_rows = _extract_included(rows, include_names)
 
-        # Build JSON:API document
+        # Build JSON:API document (compound when includes were requested)
         doc = rows_to_jsonapi(
-            rows, table, id_field="id", relationship_fields=rel_fields,
+            rows,
+            table,
+            id_field="id",
+            relationship_fields=rel_fields,
+            included_rows=included_rows or None,
         )
 
         # Pagination links
@@ -315,7 +411,11 @@ def create_jsonapi_router(state: Any) -> APIRouter:
                 extra[k] = v
 
         doc["links"] = build_pagination_links(
-            base_path, page_number, page_size, len(rows), extra or None,
+            base_path,
+            page_number,
+            page_size,
+            len(rows),
+            extra or None,
         )
 
         return JSONResponse(content=doc, media_type=JSONAPI_CONTENT_TYPE)
