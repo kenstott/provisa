@@ -68,10 +68,12 @@ async def register_neo4j_source(body: Neo4jSourceRequest, request: Request):
         use_https=body.use_https,
     )
     api_source = build_api_source(cfg)
-    # Persist to state — mirrors how api_discovery registers sources
     if not hasattr(state, "api_sources"):
         state.api_sources = {}
     state.api_sources[api_source.id] = api_source
+    if not hasattr(state, "neo4j_configs"):
+        state.neo4j_configs = {}
+    state.neo4j_configs[api_source.id] = cfg
     log.info("Registered Neo4j source %s at %s:%d", body.source_id, body.host, body.port)
     return {"source_id": api_source.id, "base_url": api_source.base_url}
 
@@ -91,10 +93,12 @@ async def preview_neo4j_query(
     if api_source is None:
         raise HTTPException(status_code=404, detail=f"Neo4j source {source_id!r} not found")
 
+    neo4j_cfg = getattr(state, "neo4j_configs", {}).get(source_id)
+    database = neo4j_cfg.database if neo4j_cfg else "neo4j"
     try:
         rows = await preview_query(
             base_url=api_source.base_url,
-            database="neo4j",  # TODO: store database on source config
+            database=database,
             cypher=body.cypher,
         )
         validate_shape(rows)
@@ -120,11 +124,13 @@ async def register_neo4j_table(
     if api_source is None:
         raise HTTPException(status_code=404, detail=f"Neo4j source {source_id!r} not found")
 
+    neo4j_cfg = getattr(state, "neo4j_configs", {}).get(source_id)
+    database = neo4j_cfg.database if neo4j_cfg else "neo4j"
     # Preview + validate before persisting
     try:
         rows = await preview_query(
             base_url=api_source.base_url,
-            database="neo4j",
+            database=database,
             cypher=body.cypher,
         )
         validate_shape(rows)
@@ -132,8 +138,8 @@ async def register_neo4j_table(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     columns = infer_columns(rows)
-    cfg = Neo4jSourceConfig(source_id=source_id, host="")  # base_url already on api_source
-    endpoint = build_endpoint(cfg, body.table_name, body.cypher, columns, body.ttl)
+    source_cfg = neo4j_cfg or Neo4jSourceConfig(source_id=source_id, host="")
+    endpoint = build_endpoint(source_cfg, body.table_name, body.cypher, columns, body.ttl)
 
     # Persist endpoint
     if not hasattr(state, "api_endpoints"):
