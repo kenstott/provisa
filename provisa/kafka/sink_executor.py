@@ -39,15 +39,57 @@ class _Encoder(json.JSONEncoder):
 
 
 async def trigger_sinks_for_table(table_name: str, state: AppState) -> int:
-    """Find and execute sinks triggered by a change to the given table.
+    """Find and execute change_event-triggered sinks for the given table."""
 
-    Returns the number of sinks triggered.
-    """
-    # GPQ approved-query sinks are removed with the registry (REQ-001/003). Sinks now
-    # attach to registered tables/views (REQ-176-181) — forward work — so until that
-    # lands no sink is triggered here. ``_execute_and_publish`` below is the governed
-    # publish primitive retained for that work.
-    return 0
+    triggered = 0
+    for table in state.config.tables:
+        if table.table_name != table_name:
+            continue
+        if table.kafka_sink is None:
+            continue
+        if "change_event" not in table.kafka_sink.triggers:
+            continue
+        await _execute_and_publish_table_sink(table, state)
+        triggered += 1
+    return triggered
+
+
+async def _execute_and_publish_table_sink(table, state: AppState) -> None:
+    """Execute a SELECT on the table and publish rows to its Kafka sink."""
+    if state.pg_pool is None:
+        log.warning("No pg_pool for sink execution on %s", table.table_name)
+        return
+    sink = table.kafka_sink
+    assert sink is not None
+
+    bootstrap = os.environ.get(
+        "PROVISA_CHANGE_EVENT_BOOTSTRAP",
+        os.environ.get("KAFKA_BOOTSTRAP_SERVERS", ""),
+    )
+    if not bootstrap:
+        log.warning("No Kafka bootstrap for sink on %s", table.table_name)
+        return
+
+    async with state.pg_pool.acquire() as conn:
+        rows_raw = await conn.fetch(
+            f'SELECT * FROM "{table.schema_name}"."{table.table_name}" LIMIT 1000'
+        )
+    rows = [dict(r) for r in rows_raw]
+
+    from confluent_kafka import Producer
+
+    producer = Producer({"bootstrap.servers": bootstrap})
+    for row in rows:
+        key = None
+        if sink.key_column and sink.key_column in row:
+            key = str(row[sink.key_column]).encode()
+        producer.produce(
+            sink.topic,
+            key=key,
+            value=json.dumps(row, cls=_Encoder).encode(),
+        )
+    producer.flush(timeout=10)
+    log.info("Sink published %d rows to %s for table %s", len(rows), sink.topic, table.table_name)
 
 
 async def _execute_and_publish(

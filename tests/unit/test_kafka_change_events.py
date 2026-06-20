@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -585,3 +585,74 @@ class TestKafkaProducer:
         with patch.dict("sys.modules", {"confluent_kafka": None}):
             with pytest.raises(ImportError, match="confluent-kafka is required"):
                 producer._ensure_producer()
+
+
+# ---------------------------------------------------------------------------
+# TestTouchEndpoint
+# ---------------------------------------------------------------------------
+
+
+class TestTouchEndpoint:
+    """Tests for POST /data/touch/{table} (REQ-174)."""
+
+    async def test_touch_emits_change_event_with_type_touch(self):
+
+        from provisa.api.data.endpoint import touch_table
+
+        mock_table = MagicMock()
+        mock_table.table_name = "orders"
+        mock_table.source_id = "src-1"
+
+        mock_state = MagicMock()
+        mock_state.config.tables = [mock_table]
+
+        mock_request = MagicMock()
+
+        with (
+            patch("provisa.api.app.state", mock_state),
+            patch("provisa.kafka.change_events.emit_change_event") as mock_emit,
+        ):
+
+            result = await touch_table(table="orders", request=mock_request, x_provisa_role=None)
+
+        assert result.status_code == 204
+
+    async def test_touch_unknown_table_returns_404(self):
+        from fastapi import HTTPException
+
+        from provisa.api.data.endpoint import touch_table
+
+        mock_state = MagicMock()
+        mock_state.config.tables = []
+
+        mock_request = MagicMock()
+
+        with (
+            patch("provisa.api.app.state", mock_state),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await touch_table(table="nonexistent", request=mock_request, x_provisa_role=None)
+
+        assert exc_info.value.status_code == 404
+        assert "nonexistent" in exc_info.value.detail
+
+    async def test_touch_no_kafka_no_ops(self):
+        """emit_change_event returns None when no producer; must not raise."""
+        from provisa.api.data.endpoint import touch_table
+
+        mock_table = MagicMock()
+        mock_table.table_name = "orders"
+        mock_table.source_id = "src-1"
+
+        mock_state = MagicMock()
+        mock_state.config.tables = [mock_table]
+
+        mock_request = MagicMock()
+
+        with (
+            patch("provisa.api.app.state", mock_state),
+            patch("provisa.kafka.change_events.emit_change_event", return_value=None),
+        ):
+            result = await touch_table(table="orders", request=mock_request, x_provisa_role=None)
+
+        assert result.status_code == 204

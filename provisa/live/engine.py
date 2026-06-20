@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -173,13 +173,20 @@ class LiveEngine:
             from provisa.live.watermark import get_watermark, set_watermark
 
             async with self._pg_pool.acquire() as conn:
-                # Get current watermark
-                watermark = await get_watermark(conn, query_id)
+                # Get per-output watermarks
+                sse_watermark = await get_watermark(conn, query_id, "sse")
+                kafka_watermark = (
+                    await get_watermark(conn, query_id, "kafka") if job.kafka_outputs else None
+                )
+
+                # Use the earliest watermark as the query lower bound
+                watermarks = [w for w in [sse_watermark, kafka_watermark] if w is not None]
+                query_watermark = min(watermarks) if watermarks else None
 
                 incremental_sql = _build_incremental_sql(
                     job.sql,
                     job.watermark_column,
-                    watermark,
+                    query_watermark,
                 )
 
                 rows_raw = await conn.fetch(incremental_sql)
@@ -187,15 +194,24 @@ class LiveEngine:
                     return
 
                 rows = [dict(r) for r in rows_raw]
-
-                # Update watermark to the max value seen
                 max_val = max(str(r.get(job.watermark_column, "")) for r in rows)
-                await set_watermark(conn, query_id, max_val)
 
-            # Deliver to outputs
-            await job.fanout.send(rows)
-            for kout in job.kafka_outputs:
-                await kout.send(rows)
+            # Deliver to outputs independently (neither blocks the other)
+            async def _deliver_sse():
+                await job.fanout.send(rows)
+                async with self._pg_pool.acquire() as conn:
+                    await set_watermark(conn, query_id, "sse", max_val)
+
+            async def _deliver_kafka():
+                for kout in job.kafka_outputs:
+                    await kout.send(rows)
+                async with self._pg_pool.acquire() as conn:
+                    await set_watermark(conn, query_id, "kafka", max_val)
+
+            tasks = [_deliver_sse()]
+            if job.kafka_outputs:
+                tasks.append(_deliver_kafka())
+            await asyncio.gather(*tasks, return_exceptions=True)
 
             log.debug("[LIVE ENGINE] polled %s: %d new rows", query_id, len(rows))
 

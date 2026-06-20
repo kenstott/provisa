@@ -345,11 +345,14 @@ CREATE TABLE IF NOT EXISTS api_endpoint_candidates (
     UNIQUE (source_id, path, method)
 );
 
--- Live Query Engine watermark state (Phase AM)
+-- Live Query Engine watermark state (Phase AM, Phase AY)
 CREATE TABLE IF NOT EXISTS live_query_state (
-    query_id    TEXT PRIMARY KEY,       -- stable_id of the approved persisted query
-    watermark   TEXT,                   -- last-seen watermark column value (serialized as text)
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    source          TEXT NOT NULL,
+    output_type     TEXT NOT NULL,
+    last_watermark  TEXT,
+    last_polled_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    status          TEXT NOT NULL DEFAULT 'active',
+    PRIMARY KEY (source, output_type)
 );
 
 -- Tracked DB functions exposed as GraphQL mutations (REQ-205)

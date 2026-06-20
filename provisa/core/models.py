@@ -330,12 +330,21 @@ class ColumnPreset(BaseModel):
     data_type: str | None = None  # Trino data type of the column (for coercion)
 
 
+class KafkaSinkAttachment(BaseModel):
+    """Per-table opt-in Kafka sink config (REQ-176–180)."""
+
+    topic: str
+    key_column: str | None = None
+    triggers: list[str] = Field(default_factory=lambda: ["change_event"])
+
+
 class LiveOutputConfig(BaseModel):
     """Single output destination for a live query (SSE fanout or Kafka sink)."""
 
     type: str  # "sse" | "kafka"
     topic: str | None = None  # Kafka topic (required when type="kafka")
     key_column: str | None = None  # Kafka message key column
+    bootstrap_servers: str | None = None  # Kafka bootstrap (required when type="kafka")
 
 
 class LiveDeliveryConfig(BaseModel):
@@ -344,6 +353,7 @@ class LiveDeliveryConfig(BaseModel):
     query_id: str  # stable_id of the approved persisted query to run
     watermark_column: str  # column whose max value is tracked as the watermark
     poll_interval: int = 10  # seconds between polls
+    delivery: str = "poll"  # "poll" or "cdc"
     outputs: list[LiveOutputConfig] = Field(default_factory=list)
 
 
@@ -382,6 +392,7 @@ class Table(BaseModel):
     mv_refresh_interval: int = 300  # seconds between MV refreshes (only used when materialize=True)
     data_product: bool = False  # publish as a Data Product (catalog export)
     approval_hook: bool = False  # REQ-204/247: scope the ABAC approval hook to this table
+    kafka_sink: KafkaSinkAttachment | None = None  # REQ-176: per-table Kafka sink config
 
 
 class HotTablesConfig(BaseModel):

@@ -239,7 +239,11 @@ def _enrich_openapi_table_columns(
 
     queries, _ = parse_spec(spec)
     match = next(
-        (q for q in queries if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)),
+        (
+            q
+            for q in queries
+            if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)
+        ),
         None,
     )
     if not match:
@@ -259,9 +263,7 @@ async def _handle_sqlite_table(
 
     assert src.path is not None
     try:
-        await migrate_sqlite_table(
-            src.path, tbl.table_name, conn, tbl.schema_name, tbl.table_name
-        )
+        await migrate_sqlite_table(src.path, tbl.table_name, conn, tbl.schema_name, tbl.table_name)
         await _fill_null_column_types(
             conn,
             tbl.source_id,
@@ -270,9 +272,7 @@ async def _handle_sqlite_table(
             sqlite_column_trino_types(src.path, tbl.table_name),
         )
     except Exception as _e:
-        log.warning(
-            "SQLite → PG migration failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e
-        )
+        log.warning("SQLite → PG migration failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e)
 
 
 def _build_api_columns(match: OpenAPIQuery) -> tuple[list[dict], set[str]]:
@@ -404,9 +404,7 @@ async def _register_api_endpoint(
         _pt = _OAPI_TRINO.get(_p.get("type") or "string", "varchar")
         _oapi_types[_p["name"]] = _pt
         _oapi_types["_nf_" + _p["name"]] = _pt
-    await _fill_null_column_types(
-        conn, tbl.source_id, tbl.schema_name, tbl.table_name, _oapi_types
-    )
+    await _fill_null_column_types(conn, tbl.source_id, tbl.schema_name, tbl.table_name, _oapi_types)
 
 
 async def _handle_openapi_table(
@@ -422,7 +420,11 @@ async def _handle_openapi_table(
     resolved_base_url = resolve_secrets(src.base_url)
     queries, _ = parse_spec(spec)
     match = next(
-        (q for q in queries if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)),
+        (
+            q
+            for q in queries
+            if _normalize_op_id(q.operation_id) == _normalize_op_id(tbl.table_name)
+        ),
         None,
     )
     if not match:
@@ -446,9 +448,7 @@ async def _handle_openapi_table(
             fallback_cols,
         )
     except Exception as _e:
-        log.warning(
-            "OpenAPI cache failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e
-        )
+        log.warning("OpenAPI cache failed for %s.%s: %s", tbl.source_id, tbl.table_name, _e)
     # Register in api_sources + api_endpoints for runtime hydration
     try:
         api_columns, _ = _build_api_columns(match)
@@ -518,9 +518,7 @@ async def _purge_removed_tables(conn: asyncpg.Connection, config: ProvisaConfig)
         )
 
 
-async def _analyze_sources(
-    trino_conn: trino.dbapi.Connection, config: ProvisaConfig
-) -> None:
+async def _analyze_sources(trino_conn: trino.dbapi.Connection, config: ProvisaConfig) -> None:
     """Prime federation CBO stats after tables are registered."""
     for src in config.sources:
         try:
@@ -625,6 +623,8 @@ async def _load_config_in_txn(
 
     # 5. Tables + columns
     openapi_specs = _load_openapi_specs(config)
+    _validate_table_kafka_sinks(config)
+    _validate_table_live_delivery(config)
     await _upsert_tables(conn, trino_conn, config, openapi_specs)
 
     # 6. Relationships (tables must exist first)
@@ -652,6 +652,42 @@ async def _load_config_in_txn(
         await _validate_existing_domains(conn, config.naming.default_domain)
 
 
+def _validate_table_kafka_sinks(config) -> None:
+    """Validate kafka_sink fields on all tables (REQ-176–180)."""
+    valid_triggers = {"change_event", "schedule", "manual", "poll"}
+    for table in config.tables:
+        if table.kafka_sink is None:
+            continue
+        if not table.kafka_sink.topic:
+            raise ValueError(f"Table {table.table_name!r}: kafka_sink.topic is required")
+        if not table.kafka_sink.triggers:
+            raise ValueError(f"Table {table.table_name!r}: kafka_sink.triggers must not be empty")
+        for t in table.kafka_sink.triggers:
+            if t not in valid_triggers:
+                raise ValueError(f"Table {table.table_name!r}: unknown kafka_sink trigger {t!r}")
+
+
+_CDC_SUPPORTED_SOURCE_TYPES = {"postgresql", "mysql", "mariadb", "mssql", "oracle"}
+
+
+def _validate_table_live_delivery(config) -> None:
+    """Validate live delivery config on all tables (REQ-282–287)."""
+    for table in config.tables:
+        if table.live is None:
+            continue
+        if table.live.delivery == "poll" and not table.live.watermark_column:
+            raise ValueError(
+                f"Table {table.table_name!r}: live.delivery=poll requires watermark_column"
+            )
+        if table.live.delivery == "cdc":
+            source = next((s for s in config.sources if s.id == table.source_id), None)
+            if source and getattr(source, "type", None) not in _CDC_SUPPORTED_SOURCE_TYPES:
+                raise ValueError(
+                    f"Table {table.table_name!r}: live.delivery=cdc not supported for source type "
+                    f"{getattr(source, 'type', 'unknown')!r}"
+                )
+
+
 async def _validate_existing_domains(conn: asyncpg.Connection, default_domain: str) -> None:
     rows = await conn.fetch(
         """
@@ -663,7 +699,8 @@ async def _validate_existing_domains(conn: asyncpg.Connection, default_domain: s
     )
     if rows:
         offenders = ", ".join(
-            f"{r['source_id']}.{r['schema_name']}.{r['table_name']}={r['domain_id']!r}" for r in rows
+            f"{r['source_id']}.{r['schema_name']}.{r['table_name']}={r['domain_id']!r}"
+            for r in rows
         )
         raise RuntimeError(
             f"naming.use_domains=false permits only domain {default_domain!r}; "

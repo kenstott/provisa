@@ -2513,6 +2513,30 @@ async def _start_servers(_log: logging.Logger) -> None:
         await live_engine.start()
         state.live_engine = live_engine
         _log.info("Live Query Engine started")
+
+        # Register tables with live delivery config (Phase AY)
+        for _table in state.config.tables:
+            if _table.live is None:
+                continue
+            _kafka_outs = []
+            for _out in _table.live.outputs:
+                if _out.type == "kafka" and _out.topic and _out.bootstrap_servers:
+                    from provisa.live.outputs.kafka import KafkaSinkOutput
+
+                    _kafka_outs.append(
+                        KafkaSinkOutput(
+                            bootstrap_servers=_out.bootstrap_servers,
+                            topic=_out.topic,
+                            key_column=_out.key_column,
+                        )
+                    )
+            live_engine.register(
+                query_id=f"{_table.source_id}.{_table.table_name}",
+                sql=f'SELECT * FROM "{_table.schema_name}"."{_table.table_name}"',
+                watermark_column=_table.live.watermark_column,
+                poll_interval=_table.live.poll_interval,
+                kafka_outputs=_kafka_outs,
+            )
     except Exception:
         _log.exception("Live Query Engine startup failed")
 

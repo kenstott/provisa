@@ -3196,4 +3196,30 @@ async def _handle_mutation(document, ctx, rls, state, variables, role_id, reques
     return {"data": {mutation_name: results[0] if results else None}}
 
 
+@router.post("/touch/{table}", status_code=204)
+async def touch_table(
+    table: str,
+    request: Request,
+    x_provisa_role: str | None = Header(None),
+):
+    """Emit a change event for a table without mutating any data (REQ-174).
+
+    Useful for triggering downstream sinks or SSE subscribers when an external
+    system has modified a table that Provisa tracks.
+    """
+    from provisa.api.app import state
+    from provisa.kafka.change_events import emit_change_event
+
+    # Find the table in config
+    table_obj = next(
+        (t for t in state.config.tables if t.table_name == table),
+        None,
+    )
+    if table_obj is None:
+        raise HTTPException(status_code=404, detail=f"Table {table!r} not found")
+
+    emit_change_event(table_obj.table_name, table_obj.source_id, "touch")
+    return Response(status_code=204)
+
+
 # Dev endpoints (compile, submit, proto, sql) have been moved to endpoint_dev.py
