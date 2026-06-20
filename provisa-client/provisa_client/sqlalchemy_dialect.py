@@ -43,11 +43,13 @@ class ProvisaDialect(DefaultDialect):
     @classmethod
     def dbapi(cls):
         from provisa_client import dbapi as _dbapi
+
         return _dbapi
 
     @classmethod
     def import_dbapi(cls):
         from provisa_client import dbapi as _dbapi
+
         return _dbapi
 
     def create_connect_args(self, url: Any) -> tuple[list, dict]:
@@ -57,9 +59,11 @@ class ProvisaDialect(DefaultDialect):
             "url": f"{scheme}://{url.host}:{port}",
             "username": url.username or "",
             "password": url.password or "",
-            "role": (url.query or {}).get("role", "admin"),
-            "mode": (url.query or {}).get("mode", "approved"),
         }
+        # REQ-268/269/273: no connection mode; role is optional and server-validated.
+        requested_role = (url.query or {}).get("role")
+        if requested_role:
+            opts["role"] = requested_role
         return [], opts
 
     def _get_base_url_and_role(self, connection: Any) -> tuple[str, str]:

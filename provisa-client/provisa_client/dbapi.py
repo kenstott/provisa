@@ -12,7 +12,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
@@ -24,6 +23,7 @@ paramstyle = "named"
 
 
 # ── Exceptions ────────────────────────────────────────────────────────────────
+
 
 class Error(Exception):
     """Base DB-API exception."""
@@ -84,27 +84,23 @@ def _apply_parameters(query: str, parameters: dict | None) -> str:
 
 # ── Connection ────────────────────────────────────────────────────────────────
 
+
 def connect(
     url: str,
     *,
     username: str,
     password: str,
-    role: str = "admin",
-    mode: str = "approved",
+    role: str | None = None,
 ) -> "Connection":
-    """Create a DB-API 2.0 connection to a Provisa server."""
+    """Create a DB-API 2.0 connection to a Provisa server.
+
+    REQ-268/269/273: there is no connection ``mode`` and the role is server-assigned.
+    ``role`` is an optional *request* for a specific assignment; the server honors it only if
+    the authenticated user holds that role (otherwise rejects). It cannot assume an arbitrary
+    role — there is no client-trusted identity.
+    """
     token = _auth_login(url, username, password)
-    if token is None:
-        # Fall back to username as role (test mode)
-        effective_role = username if username else role
-    else:
-        effective_role = role
-    return Connection(
-        base_url=url.rstrip("/"),
-        token=token,
-        role=effective_role,
-        mode=mode,
-    )
+    return Connection(base_url=url.rstrip("/"), token=token, role=role)
 
 
 class Connection:
@@ -115,13 +111,11 @@ class Connection:
         *,
         base_url: str,
         token: str | None,
-        role: str,
-        mode: str,
+        role: str | None = None,
     ) -> None:
         self._base_url = base_url
         self._token = token
-        self._role = role
-        self._mode = mode
+        self._role = role  # optional requested role; the server validates it against auth
         self._closed = False
 
     def _check_open(self) -> None:
@@ -129,9 +123,12 @@ class Connection:
             raise OperationalError("Connection is closed")
 
     def _headers(self) -> dict[str, str]:
-        h = {"Content-Type": "application/json", "X-Role": self._role}
+        h = {"Content-Type": "application/json"}
         if self._token:
             h["Authorization"] = f"Bearer {self._token}"
+        # REQ-273: server-validated requested role; sent only when explicitly chosen.
+        if self._role:
+            h["X-Provisa-Role"] = self._role
         return h
 
     def cursor(self) -> "Cursor":
@@ -157,6 +154,7 @@ class Connection:
 
 
 # ── Cursor ────────────────────────────────────────────────────────────────────
+
 
 class Cursor:
     """PEP 249 Cursor."""
@@ -247,9 +245,7 @@ class Cursor:
             return
         if isinstance(rows_raw[0], dict):
             columns = list(rows_raw[0].keys())
-            self.description = [
-                (col, None, None, None, None, None, None) for col in columns
-            ]
+            self.description = [(col, None, None, None, None, None, None) for col in columns]
             self._rows = [tuple(row.get(c) for c in columns) for row in rows_raw]
         else:
             # Already tuples/lists
@@ -274,13 +270,13 @@ class Cursor:
     def fetchmany(self, size: int | None = None) -> list[tuple]:
         self._check_open()
         n = size if size is not None else self.arraysize
-        rows = self._rows[self._pos: self._pos + n]
+        rows = self._rows[self._pos : self._pos + n]
         self._pos += len(rows)
         return rows
 
     def fetchall(self) -> list[tuple]:
         self._check_open()
-        rows = self._rows[self._pos:]
+        rows = self._rows[self._pos :]
         self._pos = len(self._rows)
         return rows
 

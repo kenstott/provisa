@@ -57,17 +57,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if request.url.path in _SKIP_PATHS:
             return await call_next(request)
 
-        # No auth configured — backward compat: admin identity
+        # No auth configured — backward compat: admin identity. REQ-273 caveat: when the
+        # server is unsecured, a client-supplied role IS honored (there is no auth to validate
+        # against), so X-Provisa-Role is taken at face value here; it defaults to admin.
         if self._provider is None:
+            unsecured_role = request.headers.get("x-provisa-role") or "admin"
             request.state.identity = AuthIdentity(
                 user_id="anonymous",
                 email=None,
                 display_name="Anonymous",
-                roles=["admin"],
+                roles=[unsecured_role],
                 raw_claims={},
             )
-            request.state.role = "admin"
-            request.state.assignments = [RoleAssignment(role_id="admin", domain_id="*")]
+            request.state.role = unsecured_role
+            request.state.assignments = [RoleAssignment(role_id=unsecured_role, domain_id="*")]
             request.state.active_org_id = self._default_org_id
             return await call_next(request)
 
@@ -79,7 +82,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             auth_header = request.headers.get("authorization")
             if auth_header and auth_header.startswith("Basic "):
                 try:
-                    decoded = base64.b64decode(auth_header[len("Basic "):]).decode("utf-8")
+                    decoded = base64.b64decode(auth_header[len("Basic ") :]).decode("utf-8")
                     su_username, su_password = decoded.split(":", 1)
                 except Exception:
                     su_username = su_password = None
@@ -105,7 +108,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Missing or invalid Authorization header"},
             )
 
-        token = auth_header[len(expected_prefix):]
+        token = auth_header[len(expected_prefix) :]
         try:
             identity = await self._provider.validate_token(token)
         except Exception:
@@ -121,7 +124,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     identity.user_id,
                 )
             if rows:
-                assignments = [RoleAssignment(role_id=r["role_id"], domain_id=r["domain_id"]) for r in rows]
+                assignments = [
+                    RoleAssignment(role_id=r["role_id"], domain_id=r["domain_id"]) for r in rows
+                ]
             elif self._default_assignments:
                 assignments = [
                     RoleAssignment(role_id=a["role_id"], domain_id=a.get("domain_id", "*"))
@@ -134,9 +139,24 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         role = resolve_role(identity, self._mapping_rules, self._default_role)
 
+        # REQ-273: a client may request a specific role via X-Provisa-Role, but the server
+        # honors it only when the authenticated user is actually assigned that role — a bare
+        # client-supplied role is never trusted. With a single assignment the default stands.
+        requested_role = request.headers.get("x-provisa-role")
+        if requested_role:
+            assigned_role_ids = {a.role_id for a in assignments}
+            if requested_role in assigned_role_ids:
+                role = requested_role
+            else:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": f"Role {requested_role!r} is not assigned to this user"},
+                )
+
         # Fire-and-forget upsert of user_profiles
         if self._db_pool is not None:
             _db_pool = self._db_pool
+
             async def _upsert():
                 try:
                     async with _db_pool.acquire() as conn:
@@ -146,11 +166,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
                                ON CONFLICT (user_id) DO UPDATE
                                SET email = EXCLUDED.email, display_name = EXCLUDED.display_name,
                                    provider = EXCLUDED.provider, last_seen = NOW()""",
-                            identity.user_id, identity.email, identity.display_name,
-                            getattr(self._provider, 'provider_name', 'unknown'),
+                            identity.user_id,
+                            identity.email,
+                            identity.display_name,
+                            getattr(self._provider, "provider_name", "unknown"),
                         )
                 except Exception:
                     pass
+
             asyncio.ensure_future(_upsert())
 
         # Resolve active org

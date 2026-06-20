@@ -40,12 +40,15 @@ def adbc_connect(
     *,
     user: str = "",
     password: str = "",
-    mode: str = "approved",
+    role: str | None = None,
 ) -> "AdbcConnection":
-    """Create an ADBC-compatible connection backed by Arrow Flight."""
+    """Create an ADBC-compatible connection backed by Arrow Flight.
+
+    REQ-268/269/273: no connection ``mode``; ``role`` is an optional server-validated request,
+    not a client-assumed identity.
+    """
     base_url = url.rstrip("/")
     token = _auth_login(base_url, user, password)
-    role = user if token is None else "admin"
 
     parsed = urlparse(base_url)
     host = parsed.hostname or "localhost"
@@ -56,7 +59,6 @@ def adbc_connect(
         role=role,
         token=token,
         base_url=base_url,
-        mode=mode,
     )
 
 
@@ -66,16 +68,14 @@ class AdbcConnection:
     def __init__(
         self,
         flight_client: fl.FlightClient,
-        role: str,
+        role: str | None,
         token: str | None,
         base_url: str,
-        mode: str = "approved",
     ) -> None:
         self._flight_client = flight_client
-        self._role = role
+        self._role = role  # optional requested role; server-validated
         self._token = token
         self._base_url = base_url
-        self._mode = mode
         self._closed = False
 
     def cursor(self) -> "AdbcCursor":
@@ -109,7 +109,11 @@ class AdbcCursor:
         self._closed = False
 
     def _build_ticket(self, query: str) -> fl.Ticket:
-        data = {"query": query, "role": self._conn._role, "mode": self._conn._mode}
+        # REQ-273: no mode; role sent only when requested and validated server-side against
+        # the token's assignments.
+        data: dict = {"query": query}
+        if self._conn._role:
+            data["role"] = self._conn._role
         if self._conn._token:
             data["token"] = self._conn._token
         return fl.Ticket(json.dumps(data).encode())
@@ -142,9 +146,7 @@ class AdbcCursor:
             pydict = tbl.to_pydict()
             columns = list(pydict.keys())
             n = tbl.num_rows
-            self._rows = [
-                tuple(pydict[col][i] for col in columns) for i in range(n)
-            ]
+            self._rows = [tuple(pydict[col][i] for col in columns) for i in range(n)]
         return self._rows
 
     def fetchone(self) -> tuple | None:
@@ -157,7 +159,7 @@ class AdbcCursor:
 
     def fetchall(self) -> list[tuple]:
         rows = self._ensure_rows()
-        result = rows[self._pos:]
+        result = rows[self._pos :]
         self._pos = len(rows)
         return result
 
@@ -167,10 +169,7 @@ class AdbcCursor:
             return None
         tbl = self._ensure_table()
         schema = tbl.schema
-        return [
-            (field.name, None, None, None, None, None, None)
-            for field in schema
-        ]
+        return [(field.name, None, None, None, None, None, None) for field in schema]
 
     def close(self) -> None:
         self._closed = True
