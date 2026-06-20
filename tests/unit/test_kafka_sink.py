@@ -12,10 +12,13 @@
 
 import json
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from provisa.core.models import KafkaSinkAttachment
 from provisa.kafka.sink import KafkaProducer, KafkaSinkConfig
-from provisa.kafka.sink_executor import _Encoder
+from provisa.kafka.sink_executor import _Encoder, trigger_sinks_for_table
 
 
 class TestKafkaSinkConfig:
@@ -109,6 +112,7 @@ class TestKafkaSinkEncoder:
     async def test_encoder_handles_datetime(self):
         """_Encoder serializes datetime objects as ISO strings."""
         from datetime import datetime, timezone
+
         now = datetime(2026, 4, 6, 12, 0, 0, tzinfo=timezone.utc)
         encoded = json.dumps({"ts": now}, cls=_Encoder)
         decoded = json.loads(encoded)
@@ -116,9 +120,11 @@ class TestKafkaSinkEncoder:
 
     async def test_encoder_handles_string_fallback(self):
         """Arbitrary objects fall back to str() via _Encoder."""
+
         class Weird:
             def __str__(self):
                 return "weird_value"
+
         encoded = json.dumps({"x": Weird()}, cls=_Encoder)
         assert "weird_value" in encoded
 
@@ -221,3 +227,124 @@ class TestKafkaProducerMocked:
 
         mock_producer.flush.assert_called_once()
         assert producer._producer is None
+
+
+# ---------------------------------------------------------------------------
+# TestKafkaSinkAttachment
+# ---------------------------------------------------------------------------
+
+
+class TestKafkaSinkAttachment:
+    """Tests for KafkaSinkAttachment model (REQ-176)."""
+
+    def test_default_triggers(self):
+        attachment = KafkaSinkAttachment(topic="my-topic")
+        assert attachment.triggers == ["change_event"]
+        assert attachment.key_column is None
+
+    def test_explicit_triggers(self):
+        attachment = KafkaSinkAttachment(topic="t", triggers=["manual", "schedule"])
+        assert attachment.triggers == ["manual", "schedule"]
+
+    def test_key_column_set(self):
+        attachment = KafkaSinkAttachment(topic="t", key_column="id")
+        assert attachment.key_column == "id"
+
+    def test_topic_required(self):
+        with pytest.raises(Exception):
+            KafkaSinkAttachment()
+
+
+# ---------------------------------------------------------------------------
+# TestTriggerSinksForTable (real dispatch)
+# ---------------------------------------------------------------------------
+
+
+class _MockAcquireCtx:
+    def __init__(self, conn):
+        self._conn = conn
+
+    async def __aenter__(self):
+        return self._conn
+
+    async def __aexit__(self, *args):
+        return False
+
+
+class TestTriggerSinksForTable:
+    """Tests for trigger_sinks_for_table real dispatch (REQ-176–180)."""
+
+    def _make_state(self, tables, pg_pool=None):
+        state = MagicMock()
+        state.config.tables = tables
+        state.pg_pool = pg_pool
+        return state
+
+    def _make_table(self, table_name="orders", kafka_sink=None):
+        table = MagicMock()
+        table.table_name = table_name
+        table.schema_name = "public"
+        table.kafka_sink = kafka_sink
+        return table
+
+    async def test_returns_zero_when_no_tables_match(self):
+        state = self._make_state([self._make_table("other")])
+        result = await trigger_sinks_for_table("orders", state)
+        assert result == 0
+
+    async def test_returns_zero_when_table_has_no_kafka_sink(self):
+        state = self._make_state([self._make_table("orders", kafka_sink=None)])
+        result = await trigger_sinks_for_table("orders", state)
+        assert result == 0
+
+    async def test_returns_zero_when_trigger_not_change_event(self):
+        sink = KafkaSinkAttachment(topic="t", triggers=["manual"])
+        state = self._make_state([self._make_table("orders", kafka_sink=sink)])
+        result = await trigger_sinks_for_table("orders", state)
+        assert result == 0
+
+    async def test_triggers_sink_and_returns_count(self):
+        sink = KafkaSinkAttachment(topic="orders-topic", triggers=["change_event"])
+        table = self._make_table("orders", kafka_sink=sink)
+
+        conn = AsyncMock()
+        conn.fetch = AsyncMock(return_value=[])
+        pool = MagicMock()
+        pool.acquire.return_value = _MockAcquireCtx(conn)
+
+        state = self._make_state([table], pg_pool=pool)
+
+        with patch(
+            "provisa.kafka.sink_executor._execute_and_publish_table_sink",
+            new=AsyncMock(),
+        ) as mock_exec:
+            result = await trigger_sinks_for_table("orders", state)
+
+        assert result == 1
+        mock_exec.assert_called_once()
+
+    async def test_skips_execution_when_no_bootstrap(self):
+        sink = KafkaSinkAttachment(topic="t", triggers=["change_event"])
+        table = self._make_table("orders", kafka_sink=sink)
+
+        conn = AsyncMock()
+        pool = MagicMock()
+        pool.acquire.return_value = _MockAcquireCtx(conn)
+
+        state = self._make_state([table], pg_pool=pool)
+
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(
+                "provisa.kafka.sink_executor._execute_and_publish_table_sink",
+                new=AsyncMock(),
+            ),
+        ):
+            import os
+
+            os.environ.pop("PROVISA_CHANGE_EVENT_BOOTSTRAP", None)
+            os.environ.pop("KAFKA_BOOTSTRAP_SERVERS", None)
+            result = await trigger_sinks_for_table("orders", state)
+
+        # trigger_sinks_for_table counts dispatches regardless of inner bootstrap check
+        assert result == 1

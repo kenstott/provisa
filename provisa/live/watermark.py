@@ -8,18 +8,19 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Watermark persistence for live queries (Phase AM).
+"""Watermark persistence for live queries (Phase AM, Phase AY).
 
-Each live query tracks the maximum value seen in its watermark column.
-The state is persisted in the ``live_query_state`` PostgreSQL table so that
-Provisa instances can resume polling after a restart without replaying rows.
+Each live output tracks the maximum value seen in its watermark column.
+State is persisted in live_query_state keyed by (source, output_type).
 
-Schema (created by ``provisa.core.db.init_schema``):
-
+Schema:
     CREATE TABLE IF NOT EXISTS live_query_state (
-        query_id    TEXT PRIMARY KEY,
-        watermark   TEXT,
-        updated_at  TIMESTAMPTZ DEFAULT NOW()
+        source          TEXT NOT NULL,
+        output_type     TEXT NOT NULL,
+        last_watermark  TEXT,
+        last_polled_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        status          TEXT NOT NULL DEFAULT 'active',
+        PRIMARY KEY (source, output_type)
     );
 """
 
@@ -30,25 +31,35 @@ import logging
 log = logging.getLogger(__name__)
 
 
-async def get_watermark(conn, query_id: str) -> str | None:
-    """Return the persisted watermark value for *query_id*, or None if absent."""
+async def get_watermark(conn, source: str, output_type: str) -> str | None:
     row = await conn.fetchrow(
-        "SELECT watermark FROM live_query_state WHERE query_id = $1",
-        query_id,
+        "SELECT last_watermark FROM live_query_state WHERE source = $1 AND output_type = $2",
+        source,
+        output_type,
     )
-    return row["watermark"] if row else None
+    return row["last_watermark"] if row else None
 
 
-async def set_watermark(conn, query_id: str, value: str) -> None:
-    """Upsert the watermark for *query_id*."""
+async def set_watermark(
+    conn, source: str, output_type: str, value: str, status: str = "active"
+) -> None:
     await conn.execute(
         """
-        INSERT INTO live_query_state (query_id, watermark, updated_at)
-        VALUES ($1, $2, NOW())
-        ON CONFLICT (query_id)
-        DO UPDATE SET watermark = EXCLUDED.watermark, updated_at = NOW()
+        INSERT INTO live_query_state (source, output_type, last_watermark, last_polled_at, status)
+        VALUES ($1, $2, $3, NOW(), $4)
+        ON CONFLICT (source, output_type)
+        DO UPDATE SET last_watermark = EXCLUDED.last_watermark,
+                      last_polled_at = NOW(),
+                      status = EXCLUDED.status
         """,
-        query_id,
+        source,
+        output_type,
+        value,
+        status,
+    )
+    log.debug(
+        "[LIVE] watermark updated: source=%s output_type=%s value=%s",
+        source,
+        output_type,
         value,
     )
-    log.debug("[LIVE] watermark updated: query_id=%s value=%s", query_id, value)

@@ -383,12 +383,33 @@ async def subscribe(
     auth_role = getattr(request.state, "role", None)
     role_id = auth_role or x_provisa_role
 
-    # query_id (GPQ-by-stable-id) subscriptions are removed (REQ-001/003). Subscribe to a
-    # registered table/view instead — access is governed by table/view + relationship rights.
     if query_id is not None:
-        raise HTTPException(
-            status_code=410,
-            detail="query_id subscriptions are removed; subscribe to a registered table/view",
+        # Route to live engine SSE output
+        if state.live_engine is None or not state.live_engine.is_registered(query_id):
+            raise HTTPException(status_code=404, detail=f"Live query {query_id!r} not registered")
+        queue = state.live_engine.subscribe(query_id)
+
+        async def _live_event_stream():
+            try:
+                while True:
+                    rows = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    for row in rows:
+                        yield f"data: {json.dumps(row, default=str)}\n\n"
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+            except asyncio.CancelledError:
+                pass
+            finally:
+                state.live_engine.unsubscribe(query_id, queue)
+
+        return StreamingResponse(
+            _live_event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
         )
 
     # REQ-369: enforce the per-role concurrent SSE subscription cap (released when the
