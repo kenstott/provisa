@@ -8,7 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useContext } from "react";
+import { useAuth } from "../context/AuthContext";
 import { Trash2, Pencil, Save, X } from "lucide-react";
 import { FilterInput } from "../components/admin/FilterInput";
 import {
@@ -27,6 +28,8 @@ import {
   useAvailableFunctionsLazy,
 } from "../hooks/useAdminQueries";
 import type { TableMetadata } from "../api/admin";
+import { fetchOrgRoles } from "../api/admin";
+import type { Role } from "../types/auth";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 
 const GRAPHQL_TYPES = ["String", "Int", "Float", "Boolean", "DateTime", "Date", "BigInt", "JSON"];
@@ -119,9 +122,13 @@ export function CommandsPage() {
   const { tables } = useTables();
   const { domains } = useDomains();
   const getAvailableFunctions = useAvailableFunctionsLazy();
+  const { activeOrgId } = useAuth();
+  const orgId = activeOrgId ?? "root";
   const domainHints = domains.map((d) => d.id);
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
   const [webhooks, setWebhooks] = useState<TrackedWebhook[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [testRoleId, setTestRoleId] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
@@ -159,6 +166,10 @@ export function CommandsPage() {
     load();
   }, [load]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  useEffect(() => {
+    fetchOrgRoles(orgId).then(setRoles).catch(() => {});
+  }, [orgId]);
 
   useEffect(() => {
     /* eslint-disable-next-line react-hooks/set-state-in-effect --
@@ -333,7 +344,7 @@ export function CommandsPage() {
     setTestResult(null);
     setError("");
     try {
-      const result = await testAction(actionType, name);
+      const result = await testAction(actionType, name, testRoleId || undefined);
       setTestResult({ name, data: result });
     } catch (e) {
       setError(`Test failed: ${e instanceof Error ? e.message : String(e)}`);
@@ -1245,6 +1256,22 @@ export function CommandsPage() {
         );
       })()}
 
+      <div style={{ marginTop: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <label style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
+          Test as role:
+        </label>
+        <select
+          value={testRoleId}
+          onChange={(e) => setTestRoleId(e.target.value)}
+          style={{ fontSize: "0.85rem", padding: "0.2rem 0.4rem" }}
+        >
+          <option value="">(no governance)</option>
+          {roles.map((r) => (
+            <option key={r.id} value={r.id}>{r.id}</option>
+          ))}
+        </select>
+      </div>
+
       {testResult && (
         <div
           style={{
@@ -1271,8 +1298,31 @@ export function CommandsPage() {
               Close
             </button>
           </div>
+          {testResult.data && typeof testResult.data === "object" && "enforcement" in testResult.data && (
+            <div
+              style={{
+                marginBottom: "0.75rem",
+                padding: "0.5rem 0.75rem",
+                background: "hsl(var(--color-info) / 0.08)",
+                border: "1px solid hsl(var(--color-info) / 0.3)",
+                borderRadius: "4px",
+                fontSize: "0.8rem",
+              }}
+            >
+              <strong>Governance applied</strong>
+              <pre style={{ margin: "0.25rem 0 0", fontSize: "0.78rem" }}>
+                {JSON.stringify((testResult.data as Record<string, unknown>).enforcement, null, 2)}
+              </pre>
+            </div>
+          )}
           <pre style={{ fontSize: "0.85rem", overflow: "auto", maxHeight: "300px" }}>
-            {JSON.stringify(testResult.data, null, 2)}
+            {JSON.stringify(
+              testResult.data && typeof testResult.data === "object" && "rows" in testResult.data
+                ? (testResult.data as Record<string, unknown>).rows
+                : testResult.data,
+              null,
+              2,
+            )}
           </pre>
         </div>
       )}

@@ -320,7 +320,7 @@ END $$;
 -- rights-holder executes or rejects (with an actionable reason).
 CREATE TABLE IF NOT EXISTS creation_requests (
     id               SERIAL PRIMARY KEY,
-    request_type     TEXT NOT NULL,        -- 'view' | 'relationship'
+    request_type     TEXT NOT NULL,        -- 'view' | 'relationship' | 'webhook_registration'
     capability       TEXT NOT NULL,        -- capability required to execute
     payload          JSONB NOT NULL,       -- original create input
     requested_by     TEXT,                 -- user_id of the requester
@@ -331,6 +331,8 @@ CREATE TABLE IF NOT EXISTS creation_requests (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     resolved_at      TIMESTAMPTZ
 );
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS approvals JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE creation_requests ADD COLUMN IF NOT EXISTS required_approvals INT NOT NULL DEFAULT 1;
 
 CREATE TABLE IF NOT EXISTS api_endpoint_candidates (
     id              SERIAL PRIMARY KEY,

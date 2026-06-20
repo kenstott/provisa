@@ -25,7 +25,7 @@ vi.mock("react-router-dom", () => ({
 import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../../context/DomainFilterContext", () => ({
-  useDomainFilter: () => ({ checkedDomains: new Set<string>(), domains: [], setDomains: vi.fn(), selectedDomain: null, setSelectedDomain: vi.fn(), toggleDomain: vi.fn() }),
+  useDomainFilter: () => ({ checkedDomains: new Set<string>(), domains: [], domainsEnabled: true, setDomains: vi.fn(), selectedDomain: null, setSelectedDomain: vi.fn(), toggleDomain: vi.fn() }),
 }));
 
 vi.mock("../../context/AuthContext", () => ({

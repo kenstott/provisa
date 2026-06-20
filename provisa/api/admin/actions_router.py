@@ -413,6 +413,7 @@ async def delete_webhook(name: str):
 class TestActionInput(BaseModel):
     actionType: str  # "function" or "webhook"
     name: str
+    role_id: str | None = None  # REQ-245: governance role selector
 
 
 def _test_endpoints_enabled() -> bool:
@@ -429,6 +430,70 @@ def _test_endpoints_enabled() -> bool:
         "yes",
         "on",
     )
+
+
+def _build_function_enforcement(
+    table_id: int | None,
+    role_id: str,
+    state,
+    rls_filter: str | None,
+    masked_cols: list[str],
+    excluded_cols: list[str],
+) -> dict:
+    """REQ-062: build enforcement metadata for the function test response."""
+    masking_applied = []
+    if table_id is not None:
+        col_masking = state.masking_rules.get((table_id, role_id), {})
+        for col, (rule, _) in col_masking.items():
+            if col in masked_cols:
+                masking_applied.append(f"{col} -> {rule.mask_type.value}")
+    return {
+        "role_used": role_id,
+        "rls_filters_applied": [rls_filter] if rls_filter else [],
+        "columns_excluded": excluded_cols,
+        "masking_applied": masking_applied,
+    }
+
+
+def _apply_row_governance(
+    rows: list[dict],
+    table_id: int | None,
+    role_id: str,
+    state,
+    gov_ctx,
+) -> tuple[list[dict], list[str], list[str]]:
+    """Apply visibility and masking governance to Python result rows.
+
+    Returns (governed_rows, masked_col_names, excluded_col_names).
+    """
+    from provisa.security.masking import apply_mask_to_value
+
+    if table_id is None or not rows:
+        return rows, [], []
+
+    col_masking = state.masking_rules.get((table_id, role_id), {})
+    visible = gov_ctx.visible_columns.get(table_id)  # None = all visible
+
+    all_cols = set(rows[0].keys())
+    excluded = [c for c in all_cols if visible is not None and c not in visible]
+    masked_col_names: list[str] = []
+
+    governed: list[dict] = []
+    for row in rows:
+        new_row: dict = {}
+        for col, val in row.items():
+            if col in excluded:
+                continue
+            if col in col_masking:
+                rule, dtype = col_masking[col]
+                new_row[col] = apply_mask_to_value(rule, val, dtype)
+                if col not in masked_col_names:
+                    masked_col_names.append(col)
+            else:
+                new_row[col] = val
+        governed.append(new_row)
+
+    return governed, masked_col_names, excluded
 
 
 @router.post("/test")
@@ -456,15 +521,65 @@ async def test_action(body: TestActionInput):
         src_id = row["source_id"]
         fn = row["function_name"]
         schema = row["schema_name"]
+        returns = row["returns"] or ""
 
         if not state.source_pools.has(src_id):
             raise HTTPException(status_code=503, detail=f"Source '{src_id}' not connected")
 
-        result = await state.source_pools.execute(
-            src_id, f'SELECT * FROM "{schema}"."{fn}"() LIMIT 5'
-        )
+        role_id = body.role_id
+        gov_ctx = None
+        table_id: int | None = None
+        rls_filter: str | None = None
+
+        if role_id:
+            from provisa.compiler.rls import RLSContext
+            from provisa.compiler.stage2 import build_governance_context
+
+            if role_id not in state.contexts:
+                raise HTTPException(status_code=422, detail=f"Unknown role '{role_id}'")
+
+            ctx = state.contexts[role_id]
+            rls = state.rls_contexts.get(role_id, RLSContext.empty())
+            role = state.roles.get(role_id)
+            gov_ctx = build_governance_context(
+                role_id,
+                rls,
+                state.masking_rules,
+                ctx,
+                getattr(state, "tables", []),
+                role=role,
+            )
+
+            # Find return table_id by matching table_name to function's `returns` field
+            for meta in ctx.tables.values():
+                if meta.table_name == returns or meta.field_name == returns:
+                    table_id = meta.table_id
+                    break
+
+            if table_id is not None:
+                rls_filter = gov_ctx.rls_rules.get(table_id)
+
+        # Build governed SQL — wrap in subquery to apply RLS WHERE
+        base_sql = f'SELECT * FROM "{schema}"."{fn}"()'
+        if rls_filter:
+            exec_sql = f"SELECT * FROM ({base_sql}) AS _fn_result WHERE {rls_filter} LIMIT 5"
+        else:
+            exec_sql = f"{base_sql} LIMIT 5"
+
+        result = await state.source_pools.execute(src_id, exec_sql)
         cols = result.column_names
-        return {"rows": [dict(zip(cols, r)) for r in result.rows]}
+        raw_rows = [dict(zip(cols, r)) for r in result.rows]
+
+        if role_id and gov_ctx is not None:
+            governed_rows, masked_cols, excluded_cols = _apply_row_governance(
+                raw_rows, table_id, role_id, state, gov_ctx
+            )
+            enforcement = _build_function_enforcement(
+                table_id, role_id, state, rls_filter, masked_cols, excluded_cols
+            )
+            return {"rows": governed_rows, "enforcement": enforcement}
+
+        return {"rows": raw_rows}
 
     elif body.actionType == "webhook":
         async with state.pg_pool.acquire() as conn:
@@ -475,10 +590,17 @@ async def test_action(body: TestActionInput):
         url = row["url"]
         method = row["method"].upper()
         timeout = row["timeout_ms"] / 1000
+        role_id = body.role_id
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.request(method, url, json={"_test": True})
 
-        return {"status": resp.status_code, "body": resp.json()}
+        webhook_result: dict = {"status": resp.status_code, "body": resp.json()}
+        if role_id:
+            webhook_result["enforcement"] = {
+                "role_used": role_id,
+                "note": "Webhook responses are not subject to SQL-level RLS or column masking.",
+            }
+        return webhook_result
 
     raise HTTPException(status_code=400, detail=f"Unknown actionType '{body.actionType}'")
