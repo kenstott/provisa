@@ -28,6 +28,7 @@ const QueryPage = lazy(() => import("./pages/QueryPage").then((m) => ({ default:
 const AdminPage = lazy(() => import("./pages/AdminPage").then((m) => ({ default: m.AdminPage })));
 const CommandsPage = lazy(() => import("./pages/CommandsPage").then((m) => ({ default: m.CommandsPage })));
 const ViewsPage = lazy(() => import("./pages/ViewsPage").then((m) => ({ default: m.ViewsPage })));
+const RequestsPage = lazy(() => import("./pages/RequestsPage").then((m) => ({ default: m.RequestsPage })));
 const LoginPage = lazy(() => import("./pages/LoginPage").then((m) => ({ default: m.LoginPage })));
 const GraphPage = lazy(() => import("./pages/GraphPage").then((m) => ({ default: m.GraphPage })));
 const SqlPage = lazy(() => import("./pages/SqlPage").then((m) => ({ default: m.SqlPage })));
@@ -198,6 +199,14 @@ function App() {
                     }
                   />
                   <Route path="/actions" element={<Navigate to="/commands" replace />} />
+                  <Route
+                    path="/admin/requests"
+                    element={
+                      <CapabilityGate capability="admin" fallback={<NotAuthorized />}>
+                        <RequestsPage />
+                      </CapabilityGate>
+                    }
+                  />
                   <Route path="/admin" element={<Navigate to="/admin/overview" replace />} />
                   {[
                     "/admin/overview",

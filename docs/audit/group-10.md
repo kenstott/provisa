@@ -139,13 +139,124 @@ filenames.
 | `tests/integration/test_admin_api.py` | Exists | — |
 | `tests/e2e/test_admin_flow.py` | Exists | — |
 
-## Remaining tasks
+## Implementation plan
 
-| # | REQ | Type | Effort | Task |
-| --- | --- | --- | --- | --- |
-| 1 | 063 | Feature | L | Build creation-request queue: model, queue API, submit/review UI, specific rejection reasons |
-| 2 | 060 | Feature | M | Wire create-capability holders to execute queued creation requests (depends on task 1) |
-| 3 | 062 | Feature | M | Surface enforcement metadata (RLS filters, excluded columns, schema scope) in the action/command test response, not just `compile_query` |
-| 4 | 245 | Feature | M | Apply the governance pipeline (masking, RLS, role) when the command test button executes |
-| 5 | 401 | UI | S | Render read-only FK/AK badges in the column editor from existing `isForeignKey`/`isAlternateKey` fields |
-| 6 | 058–062, 395–404 | Test | M | Add the named Playwright specs (`pages`, `tables`, `graph`, `security`) or update the requirement doc to the actual filenames |
+### Phase A — Quick wins (unblocked, S effort)
+
+#### A1 — REQ-401: FK/AK badges
+
+- `provisa-ui/src/pages/TablesPage.tsx:1209` — render read-only FK/AK badges from
+  `isForeignKey`/`isAlternateKey` fields that already exist in types and persist to the
+  backend. No API change required.
+
+### Phase B — Governance test path (unblocked, M effort)
+
+#### B1 — REQ-062: Surface enforcement metadata in test response
+
+- `provisa/api/admin/actions_router.py:402` — call `_build_enforcement_metadata` and
+  include `rls_filters`, `excluded_columns`, `schema_scope` in the test endpoint
+  response alongside the existing rows.
+- `provisa-ui/src/pages/CommandsPage.tsx:331` — display the returned metadata in the
+  test result panel.
+
+#### B2 — REQ-245: Apply governance pipeline during test execution
+
+- `provisa/api/admin/actions_router.py:434` — route test execution through
+  `apply_governance` (masking + RLS + role) instead of the current raw query path.
+- Add a role selector to the test UI (`provisa-ui/src/pages/CommandsPage.tsx:331`);
+  the selected role is passed to the endpoint and used to build the governance context.
+- B1 and B2 touch the same endpoint and should be done in one pass.
+
+### Phase C — E2E test coverage (unblocked, S effort)
+
+#### C1 — REQ-058–062, 395–404: Remap named specs to actual files
+
+Update `docs/arch/requirements.md` to replace the four non-existent named spec paths
+with the actual files that provide equivalent coverage:
+
+| Named (non-existent) | Actual coverage file |
+| --- | --- |
+| `provisa-ui/e2e/pages.spec.ts` | `no-domain-mode.spec.ts`, `relationships-header.spec.ts` |
+| `provisa-ui/e2e/tables.spec.ts` | `tables-register.spec.ts` |
+| `provisa-ui/e2e/graph.spec.ts` | `graph-query-panel-height.spec.ts`, `graph-show-children.spec.ts` |
+| `provisa-ui/e2e/security.spec.ts` | *(no existing coverage — note as gap)* |
+
+### Phase D — Creation-request queue (unblocked, L effort)
+
+#### D1 — REQ-063 + REQ-434 + REQ-480: Data model + API
+
+Request types: `relationship`, `view`, `webhook_registration` (REQ-480).
+
+New table `creation_requests`:
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid PK | |
+| `type` | text | `relationship` \| `view` \| `webhook_registration` |
+| `requester` | text | identity of submitter |
+| `payload` | jsonb | full create payload |
+| `status` | text | `pending` \| `executed` \| `rejected` |
+| `rejection_reason` | text | required when `status = rejected`; constrained to typed enum per request type (see below) |
+| `created_at` | timestamptz | |
+| `resolved_at` | timestamptz | nullable |
+| `resolved_by` | text | nullable; identity of executor/rejecter |
+
+Relationships require up to 2 approvers before execution. Add:
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `approvals` | jsonb | list of `{approver, approved_at}`; execution gated on required count |
+| `required_approvals` | int | defaults to 1; 2 for `relationship` type |
+
+Routes:
+
+- `POST /admin/creation-requests` — submit; any authenticated user.
+- `GET /admin/creation-requests` — list; filterable by `status`, `type`.
+- `POST /admin/creation-requests/{id}/approve` — approver only (capability check).
+- `POST /admin/creation-requests/{id}/reject` — approver only; body requires `reason`.
+- `POST /admin/creation-requests/{id}/execute` — triggered automatically when
+  `approvals` reaches `required_approvals`; also callable manually by a single approver
+  for non-relationship types.
+
+**Rejection reasons** — the spec requires "specific and actionable" reasons but does not
+enumerate them. The following set is proposed; confirm before implementation:
+
+| Type | Reasons |
+| --- | --- |
+| `relationship` | `duplicate`, `incorrect_join_columns`, `wrong_cardinality`, `source_not_registered`, `insufficient_detail` |
+| `view` | `duplicate`, `query_invalid`, `governance_violation`, `out_of_scope`, `insufficient_detail` |
+| `webhook_registration` | `duplicate`, `endpoint_unreachable`, `schema_mismatch`, `governance_violation`, `insufficient_detail` |
+
+#### D2 — REQ-063: Submit/review UI
+
+- New admin page at **Admin › Requests** (`provisa-ui/src/pages/RequestsPage.tsx`).
+- Wired into `App.tsx` under the `ADMIN` capability gate.
+- Pending queue: table showing type, requester, submitted date, payload summary, action buttons.
+- Approve button: adds current user to `approvals`; shows approval count vs required.
+- Reject button: opens a dropdown of typed rejection reasons, then confirms.
+- Resolved tab: shows executed/rejected items with reason and resolver.
+
+### Phase E — Capability wiring (blocked on D, M effort)
+
+#### E1 — REQ-060: create-capability → queue execution
+
+- Blocked on D1 + D2.
+- Update the `CREATE` capability check so holders can also *execute* items from the
+  creation-request queue (not just submit).
+- Update `CapabilityGate` usage and role enforcement at the relevant API paths.
+
+### Sequencing
+
+```text
+A1              (unblocked — start here)
+B1 → B2         (unblocked, do together)
+C1              (unblocked, parallel to B)
+D1 → D2         (unblocked, largest item)
+E1              (blocked on D1 + D2)
+```
+
+### Open decision
+
+**Rejection reasons (D1):** the spec says reasons must be "specific and actionable"
+but does not enumerate them. The proposed set above is a draft — confirm or replace
+before implementing D1.

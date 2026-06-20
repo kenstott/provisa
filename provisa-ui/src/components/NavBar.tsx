@@ -75,6 +75,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/admin/local-users", label: "Local Users", capability: "admin" },
       { to: "/admin/orgs", label: "Orgs", capability: "admin" },
       { to: "/admin/roles", label: "Roles", capability: "admin" },
+      { to: "/admin/requests", label: "Requests", capability: "admin" },
     ],
   },
 ];

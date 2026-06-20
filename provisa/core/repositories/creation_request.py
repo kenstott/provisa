@@ -24,7 +24,7 @@ async def create(
     requested_by: str | None,
 ) -> int:
     """Persist a pending creation request; return its id."""
-    return await conn.fetchval(
+    rid = await conn.fetchval(
         """
         INSERT INTO creation_requests (request_type, capability, payload, requested_by)
         VALUES ($1, $2, $3::jsonb, $4)
@@ -35,6 +35,8 @@ async def create(
         json.dumps(payload),
         requested_by,
     )
+    assert rid is not None
+    return int(rid)
 
 
 async def list_pending(conn: asyncpg.Connection) -> list[dict]:
@@ -71,6 +73,44 @@ async def mark_rejected(
         resolved_by,
     )
     return result == "UPDATE 1"
+
+
+async def add_approval(conn: asyncpg.Connection, request_id: int, approver: str) -> dict | None:
+    """Append an approval entry. Returns updated row or None if not found/already resolved."""
+    entry = json.dumps({"approver": approver, "approved_at": "now"})
+    row = await conn.fetchrow(
+        """
+        UPDATE creation_requests
+        SET approvals = approvals || $2::jsonb
+        WHERE id = $1 AND status = 'pending'
+        RETURNING *
+        """,
+        request_id,
+        f"[{entry}]",
+    )
+    return _row_to_dict(row) if row else None
+
+
+async def list_all(
+    conn: asyncpg.Connection,
+    status: str | None = None,
+    request_type: str | None = None,
+) -> list[dict]:
+    """Return all requests, newest first, with optional filters."""
+    conditions = []
+    params: list = []
+    if status:
+        params.append(status)
+        conditions.append(f"status = ${len(params)}")
+    if request_type:
+        params.append(request_type)
+        conditions.append(f"request_type = ${len(params)}")
+    where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    rows = await conn.fetch(
+        f"SELECT * FROM creation_requests {where} ORDER BY created_at DESC",
+        *params,
+    )
+    return [_row_to_dict(r) for r in rows]
 
 
 def _row_to_dict(row) -> dict:

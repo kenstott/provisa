@@ -41,6 +41,7 @@ class SDLConfig:
 
     domain_id: str
     columns: list[dict] | None = None  # [{name, visible_to: [roles]}]
+    governance: str | None = None
 
 
 @dataclass

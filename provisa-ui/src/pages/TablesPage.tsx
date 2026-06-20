@@ -1227,6 +1227,36 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                             {c.nativeFilterType === "path_param" ? "path" : "query"}
                                           </span>
                                         )}
+                                        {c.isForeignKey && (
+                                          <span
+                                            style={{
+                                              marginLeft: "0.4rem",
+                                              fontSize: "0.65rem",
+                                              padding: "0.1rem 0.35rem",
+                                              borderRadius: "0.25rem",
+                                              background: "hsl(var(--color-success) / 0.2)",
+                                              color: "hsl(var(--color-success))",
+                                              fontFamily: "monospace",
+                                            }}
+                                          >
+                                            FK
+                                          </span>
+                                        )}
+                                        {c.isAlternateKey && (
+                                          <span
+                                            style={{
+                                              marginLeft: "0.4rem",
+                                              fontSize: "0.65rem",
+                                              padding: "0.1rem 0.35rem",
+                                              borderRadius: "0.25rem",
+                                              background: "hsl(var(--color-warning) / 0.2)",
+                                              color: "hsl(var(--color-warning))",
+                                              fontFamily: "monospace",
+                                            }}
+                                          >
+                                            AK
+                                          </span>
+                                        )}
                                       </td>
                                       <td style={{ textAlign: "center" }}>
                                         {c.isPrimaryKey && (
@@ -1905,6 +1935,36 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                                             }}
                                           >
                                             {c.nativeFilterType === "path_param" ? "path" : "query"}
+                                          </span>
+                                        )}
+                                        {c.isForeignKey && (
+                                          <span
+                                            style={{
+                                              marginLeft: "0.4rem",
+                                              fontSize: "0.65rem",
+                                              padding: "0.1rem 0.35rem",
+                                              borderRadius: "0.25rem",
+                                              background: "hsl(var(--color-success) / 0.2)",
+                                              color: "hsl(var(--color-success))",
+                                              fontFamily: "monospace",
+                                            }}
+                                          >
+                                            FK
+                                          </span>
+                                        )}
+                                        {c.isAlternateKey && (
+                                          <span
+                                            style={{
+                                              marginLeft: "0.4rem",
+                                              fontSize: "0.65rem",
+                                              padding: "0.1rem 0.35rem",
+                                              borderRadius: "0.25rem",
+                                              background: "hsl(var(--color-warning) / 0.2)",
+                                              color: "hsl(var(--color-warning))",
+                                              fontFamily: "monospace",
+                                            }}
+                                          >
+                                            AK
                                           </span>
                                         )}
                                       </td>
